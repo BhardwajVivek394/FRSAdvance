@@ -1,0 +1,568 @@
+﻿@model Domain.FRSAlertLister
+
+@{ // Process data once at the top for better performance
+    var alertSummaryReport = new List<dynamic>();
+
+    if (Model != null && Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+    {
+        alertSummaryReport = Model.mFRSAlerts
+            .GroupBy(c => new
+            {
+                c.ZoneName,
+                c.DivisionName,
+                c.SectionName,
+                c.SiteName,
+            })
+     .Select(gcs => new
+     {
+         gcs.Key.ZoneName,
+         gcs.Key.DivisionName,
+         gcs.Key.SectionName,
+         gcs.Key.SiteName,
+         Count = gcs.Count(),
+         TrueCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True),
+         PTCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT),
+         FalseCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False),
+         FailCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure),
+         PredictiveCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive),
+
+
+         //1st
+         TotalPTFailAlerts = gcs.Count(x =>
+            x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+            (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+             x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+
+         TotalFailAlerts = gcs.Count(x =>
+             x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+             (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+              x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+
+
+         //2nd
+         TotalPTPredictiveAlerts = gcs.Count(x =>
+                     x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive &&
+            (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+             x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+
+         TotalPredictiveAlerts = gcs.Count(x =>
+             x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive &&
+             (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+              x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+         //
+
+
+         //3rd
+         TruePTFailAlertCountRDPMS = gcs.Count(x =>
+                     x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+                     x.isManual == 0 &&
+                     (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+                      x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+
+         TotalActualFailAlertCount = gcs.Count(x =>
+              x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && x.isManual == 1 &&
+             (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+              x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+     })
+     .OrderBy(x => x.ZoneName)
+     .ThenBy(x => x.DivisionName)
+     .ThenBy(x => x.SiteName)
+     .ToList<dynamic>();
+    } }
+
+<style>
+    #tblPerformance thead th {
+        vertical-align: middle;
+        text-align: center;
+        white-space: normal;
+        word-wrap: break-word;
+        line-height: 1.4;
+        padding: 12px 8px;
+    }
+
+        #tblPerformance thead th:nth-child(1),
+        #tblPerformance thead th:nth-child(2),
+        #tblPerformance thead th:nth-child(3),
+        #tblPerformance thead th:nth-child(4) {
+            text-align: left;
+        }
+
+    /*.perf-download-bar {
+        display: flex;
+        justify-content: flex-end;
+        padding: 8px 4px;
+        position: relative;
+    }
+
+    .perf-dl-wrapper {
+        position: relative;
+        display: inline-block;
+    }
+
+    .perf-dl-icon-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background: var(--primary, #4f46e5);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        transition: background 0.15s;
+    }
+
+        .perf-dl-icon-btn:hover {
+            opacity: 0.88;
+        }
+
+    .perf-dl-menu {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 42px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        min-width: 130px;
+        z-index: 9999;
+        overflow: hidden;
+    }
+
+        .perf-dl-menu.open {
+            display: block;
+        }
+
+    .perf-dl-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        color: #1e293b;
+        cursor: pointer;
+        transition: background 0.1s;
+        white-space: nowrap;
+    }
+
+        .perf-dl-item:hover {
+            background: #f1f5f9;
+        }
+
+    .perf-dl-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        display: inline-block;
+        flex-shrink: 0;
+    }*/
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<div id="listView">
+    <div class="d-flex justify-content-end align-items-center btn-icon-size">
+        <div id="buttonGroupLeft"></div>
+        <!-- Download Dropdown – right corner -->
+        <div class="dropdown">
+            <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
+                    aria-haspopup="true" aria-expanded="false" title="Download">
+                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                     stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                    <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
+                </svg>
+            </button>
+            <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload" style="min-width: 130px;">
+                <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('excel')">
+                    <i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel
+                </a>
+                <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('csv')">
+                    <i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV
+                </a>
+            </div>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover" id="tblPerformance">
+            <thead class="thead-light2">
+                <tr>
+                    <th style="width: 60px; min-width: 60px;">Sr.No</th>
+                    <th style="width: 80px; min-width: 80px;">Zone</th>
+                    <th style="width: 100px; min-width: 100px;">Division</th>
+                    <th style="width: 120px; min-width: 120px;">Station</th>
+                    <th style="width: 200px; min-width: 180px;">
+                        % of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated
+                    </th>
+                    <th style="width: 200px; min-width: 180px;">
+                        % of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated
+                    </th>
+                    <th style="width: 200px; min-width: 180px;">
+                        % of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (alertSummaryReport.Count > 0)
+                {
+                    int counter = 0;
+                    foreach (var item in alertSummaryReport)
+                    {
+                        counter++;
+                        int trueCount = (int)item.TrueCount;
+                        int falseCount = (int)item.FalseCount;
+                        int ptCount = (int)item.PTCount;
+                        int failCount = (int)item.FailCount;
+                        int predictiveCount = (int)item.PredictiveCount;
+                        int totalTruePT = trueCount + ptCount + falseCount;
+
+
+
+                        //1st
+                        int TotalPTFailAlerts = item.TotalPTFailAlerts;
+                        int TotalFailAlerts = item.TotalFailAlerts;
+
+                        double FailureTotalAlertRatio = TotalFailAlerts > 0
+                        ? Math.Round((double)TotalPTFailAlerts / TotalFailAlerts * 100, 2)
+                        : 0.0;
+                        //
+
+
+                        //2nd
+                        int TotalPTPredictiveAlerts = item.TotalPTPredictiveAlerts;
+                        int TotalPredictiveAlerts = item.TotalPredictiveAlerts;
+
+                        double PredictiveTotalAlertRatio = TotalPredictiveAlerts > 0
+                        ? Math.Round((double)TotalPTPredictiveAlerts / TotalPredictiveAlerts * 100, 2)
+                        : 0.0;
+
+                        //
+
+
+
+                        //3rd
+                        int TruePTFailAlertCountRDPMS = item.TruePTFailAlertCountRDPMS;        // IsManual = 0
+                        int TotalActualFailAlertCount = item.TotalActualFailAlertCount;  // IsManual = 0 && IsManual = 1 both
+
+
+                        double RDPMSFailureTotalAlertRatio = TotalActualFailAlertCount > 0
+                         ? Math.Round((double)TruePTFailAlertCountRDPMS / TotalActualFailAlertCount * 100, 2)
+                         : 0.0;
+
+                        //3rd
+
+
+                        //
+
+
+
+
+                        //// Total denominator = system + manual
+                        //int truePtFailTotal = truePtFailAlertCount + truePtFailManualAlertCount;
+
+                        //// Percentage of system-generated (IsManual=0) out of combined total
+                        //double failPercentage = (truePtFailTotal > 0)
+                        //    ? Math.Round(((double)truePtFailAlertCount / truePtFailTotal) * 100, 2)
+                        //    : 0;
+
+
+
+
+                        // Calculate percentages
+                        int total = falseCount + predictiveCount + trueCount;
+
+                        double failPercentage = (total > 0) ? Math.Round(((double)falseCount / total) * 100, 2) : 0;
+                        double predictivePercentage = (total > 0) ? Math.Round(((double)predictiveCount / total) * 100, 2) : 0;
+                        double healthyPercentage = (total > 0) ? Math.Round(((double)trueCount / total) * 100, 2) : 0;
+                        //double failPercentage = (failCount > 0 && totalTruePT > 0) ? Math.Round(((double)falseCount / totalTruePT) * 100) : 0;
+                        //double predictivePercentage = (predictiveCount > 0 && totalTruePT > 0) ? Math.Round(((double)predictiveCount / totalTruePT) * 100) : 0;
+                        double rdpmsPercentage = 100;<!-- Data attributes for chart parsing -->
+                                            <tr data-station="@item.SiteName"
+                                                data-failure="@FailureTotalAlertRatio"
+                                                data-predictive="@PredictiveTotalAlertRatio"
+                                                data-rdpms="@RDPMSFailureTotalAlertRatio">
+                                                <td>@counter</td>
+                                                <td>@item.ZoneName</td>
+                                                <td>@item.DivisionName</td>
+                                                <td>@item.SiteName</td>
+                                                <td class="text-center">
+                                                    @if (FailureTotalAlertRatio > 0)
+                                                    {
+                                <span>@FailureTotalAlertRatio%</span> }
+                            else
+                            {
+        <span class="text-muted">-</span>}
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (PredictiveTotalAlertRatio > 0)
+                                                    {
+                                <span>@PredictiveTotalAlertRatio%</span> }
+                            else
+                            {
+        <span class="text-muted">-</span>}
+                                                </td>
+                                                <td class="text-center">
+                                                    <span>@RDPMSFailureTotalAlertRatio%</span>
+                                                </td>
+                                            </tr>
+ }
+                                    }
+                                    else
+                                    {
+                        <tr>
+                            <td colspan="7" class="text-center py-4 text-muted">
+                                <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                                No data found
+                            </td>
+                        </tr>
+}
+            </tbody>
+        </table>
+    </div>
+
+    @if (alertSummaryReport.Count > 0)
+    {<!-- Pagination -->
+                        <div class="d-flex justify-content-between align-items-center px-md-4 px-2 py-3 border-top">
+                            <div class="text-muted" id="paginationInfo" style="font-size: 13px;">
+                                Showing <strong><span id="showingFrom">1</span></strong> to
+                                <strong><span id="showingTo">10</span></strong> of
+                                <strong>@alertSummaryReport.Count</strong> records
+                            </div>
+                            <nav>
+                                <ul class="pagination mb-0" id="pager">
+                                    <li class="page-item" id="prevBtn">
+                                        <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
+                                            <i class="fas fa-chevron-left"></i> Previous
+                                        </a>
+                                    </li>
+                                    <li class="page-item" id="nextBtn">
+                                        <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
+                                            Next <i class="fas fa-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>}
+</div>
+
+<script>
+    (function () {
+        var rowsPerPage = 10;
+        var $table = $('#tblPerformance');
+        var $rows = $table.find('tbody tr');
+        var totalRows = $rows.length;
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var currentPage = 1;
+
+        // Check if we have data rows (not "no data" row)
+        if (totalRows === 1 && $rows.first().find('td[colspan]').length > 0) {
+            // No data row - hide pagination
+            $('#paginationInfo').parent().hide();
+        } else if (totalRows > 0) {
+            showPage(1);
+        }
+
+        function showPage(page) {
+            if (page < 1) page = 1;
+            if (page > totalPages) page = totalPages;
+            currentPage = page;
+
+            var start = (page - 1) * rowsPerPage;
+            var end = start + rowsPerPage;
+
+            $rows.hide();
+            $rows.slice(start, end).show();
+
+            var showEnd = Math.min(end, totalRows);
+            $('#showingFrom').text(totalRows > 0 ? start + 1 : 0);
+            $('#showingTo').text(showEnd);
+
+            renderPagination();
+        }
+
+        function renderPagination() {
+            var $pager = $('#pager');
+            $pager.find('.page-number').remove();
+
+            if (currentPage <= 1) {
+                $('#prevBtn').addClass('disabled');
+            } else {
+                $('#prevBtn').removeClass('disabled');
+            }
+
+            if (currentPage >= totalPages) {
+                $('#nextBtn').addClass('disabled');
+            } else {
+                $('#nextBtn').removeClass('disabled');
+            }
+
+            var $nextBtn = $('#nextBtn');
+            var pagesToShow = [];
+
+            if (totalPages <= 7) {
+                for (var i = 1; i <= totalPages; i++) {
+                    pagesToShow.push(i);
+                }
+            } else {
+                pagesToShow.push(1);
+                if (currentPage > 3) pagesToShow.push('...');
+                for (var i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                    if (pagesToShow.indexOf(i) === -1 && i !== '...') pagesToShow.push(i);
+                }
+                if (currentPage < totalPages - 2) pagesToShow.push('...');
+                if (pagesToShow.indexOf(totalPages) === -1) pagesToShow.push(totalPages);
+            }
+
+            for (var j = 0; j < pagesToShow.length; j++) {
+                var p = pagesToShow[j];
+                var $li;
+                if (p === '...') {
+                    $li = $('<li class="page-item page-number disabled"><span class="page-link">...</span></li>');
+                } else {
+                    var activeClass = (p === currentPage) ? 'active' : '';
+                    $li = $('<li class="page-item page-number ' + activeClass + '">' +
+                        '<a class="page-link" href="javascript:void(0);" onclick="goToPage(' + p + ')">' + p + '</a></li>');
+                }
+                $li.insertBefore($nextBtn);
+            }
+        }
+
+        window.changePage = function (direction) {
+            if (direction === 'prev' && currentPage > 1) {
+                showPage(currentPage - 1);
+            } else if (direction === 'next' && currentPage < totalPages) {
+                showPage(currentPage + 1);
+            }
+        };
+
+        window.goToPage = function (page) {
+            showPage(page);
+        };
+    })();
+
+    // ── Download dropdown toggle ──────────────────────────────────────
+    window.togglePerfDlMenu = function (e) {
+        e.stopPropagation();
+        document.getElementById('perfDlMenu').classList.toggle('open');
+    };
+    document.addEventListener('click', function () {
+        var m = document.getElementById('perfDlMenu');
+        if (m) m.classList.remove('open');
+    });
+
+    // ── Collect table data ────────────────────────────────────────────
+    function getPerfTableData() {
+        var headers = [
+            'Sr.No', 'Zone', 'Division', 'Station',
+            '% Failure Alerts (True+PT) / Total Failure',
+            '% Predictive Alerts (True+PT) / Total Predictive',
+            '% RDPMS Failure / Total Actual Failures'
+        ];
+        var rows = [];
+        $('#tblPerformance tbody tr').each(function () {
+            var tds = $(this).find('td');
+            if (tds.eq(0).attr('colspan')) return;
+            rows.push([
+                tds.eq(0).text().trim(),
+                tds.eq(1).text().trim(),
+                tds.eq(2).text().trim(),
+                tds.eq(3).text().trim(),
+                tds.eq(4).text().trim(),
+                tds.eq(5).text().trim(),
+                tds.eq(6).text().trim()
+            ]);
+        });
+        return { headers: headers, rows: rows };
+    }
+
+    // ── Main download function ────────────────────────────────────────
+    window.perfDownload = function (type) {
+        var data = getPerfTableData();
+        if (data.rows.length === 0) {
+            alert('No data to download.');
+            return;
+        }
+
+        var fileName = 'PerformanceReport_' + new Date().toISOString().split('T')[0];
+
+        if (type === 'csv') {
+            // ── CSV ──────────────────────────────────────────────────
+            var allRows = [data.headers].concat(data.rows);
+            var csv = allRows.map(function (r) {
+                return r.map(function (c) {
+                    return '"' + String(c || '').replace(/"/g, '""') + '"';
+                }).join(',');
+            }).join('\r\n');
+
+            var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            saveAs(blob, fileName + '.csv');
+
+        } else {
+            // ── Excel via ExcelJS ────────────────────────────────────
+            var workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Energy7';
+            workbook.created = new Date();
+
+            var worksheet = workbook.addWorksheet('Performance Report');
+
+            // Column widths
+            worksheet.columns = [
+                { key: 'a', width: 8 },
+                { key: 'b', width: 16 },
+                { key: 'c', width: 20 },
+                { key: 'd', width: 20 },
+                { key: 'e', width: 36 },
+                { key: 'f', width: 36 },
+                { key: 'g', width: 36 }
+            ];
+
+            // Header row
+            var headerRow = worksheet.addRow(data.headers);
+            headerRow.eachCell(function (cell) {
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2D5A' } };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = {
+                    top: { style: 'thin', color: { argb: 'FFB0B8D1' } },
+                    left: { style: 'thin', color: { argb: 'FFB0B8D1' } },
+                    bottom: { style: 'thin', color: { argb: 'FFB0B8D1' } },
+                    right: { style: 'thin', color: { argb: 'FFB0B8D1' } }
+                };
+            });
+            headerRow.height = 40;
+
+            // Data rows
+            data.rows.forEach(function (row, idx) {
+                var dataRow = worksheet.addRow(row);
+                var bgColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFF';
+                dataRow.eachCell(function (cell) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                    cell.border = {
+                        top: { style: 'thin', color: { argb: 'FFEDF0F8' } },
+                        left: { style: 'thin', color: { argb: 'FFEDF0F8' } },
+                        bottom: { style: 'thin', color: { argb: 'FFEDF0F8' } },
+                        right: { style: 'thin', color: { argb: 'FFEDF0F8' } }
+                    };
+                });
+                // Left-align text columns
+                dataRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+                dataRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'left' };
+                dataRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'left' };
+                dataRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'left' };
+                dataRow.height = 22;
+            });
+
+            workbook.xlsx.writeBuffer().then(function (buffer) {
+                var blob = new Blob([buffer], {
+                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                });
+                saveAs(blob, fileName + '.xlsx');
+            });
+        }
+    };
+</script>

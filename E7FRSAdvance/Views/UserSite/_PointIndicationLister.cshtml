@@ -1,0 +1,122 @@
+﻿
+@model Domain.MomentLister
+@{
+    int count = 0;
+    var mAssets = new List<Domain.Asset>();
+}
+<div class="row">
+    <div class="col-12">
+        @if (ViewBag.Asset != null)
+        {
+            mAssets = ViewBag.Asset as List<Domain.Asset>;
+            if (mAssets != null && mAssets.Count > 0)
+            {
+                foreach (var asset in mAssets)
+                {
+                    count++;
+                    <button class="btn btn-info btn-lg m-r-10 m-b-10" type="button" onclick="fnShowPointIndication('@asset.Id','@asset.Name')">@asset.Name</button>
+                }
+            }
+        }
+    </div>
+</div>
+
+<div class="modal fade bd-example-modal-lg" id="modal-add-PointIndication" tabindex="-1" role="dialog" aria-labelledby="modal-add-PointIndication" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span> Point Indication - </span><span id="spPointIndication"></span></h4>
+                <button type="button" class="btn btn-warning" id="btnPointIndicationRealTime">Real Time Data</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            @if (Model != null && Model.mMoments != null && Model.mMoments.Count > 0)
+                            {
+                                var mainTrack = Model.mMoments.GroupBy(x => new { x.AssetName, x.AssetId });
+                                if (mainTrack != null)
+                                {
+                                    <div class="row justify-content-around">
+                                        @foreach (var item in mainTrack)
+                                        {
+                                            <div class="table-responsive clsPointIndication" id="PointIndication_@item.Key.AssetId" style="display: none; height: 500px; overflow-y: scroll;">
+                                                <table class="table">
+                                                    <tbody>
+                                                        @foreach (var blockId in Model.mMoments.Where(x => x.AssetId == item.Key.AssetId).GroupBy(x => x.BlockId).Select(x => x.Key).ToList().OrderBy(x => x))
+                                                        {
+                                                            <tr style="background-color:#042C43;">
+                                                                <th class="text-white">Block @blockId</th>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>
+                                                                    <table style="width:100%">
+                                                                        <tr style="background-color: #259DAB !important">
+                                                                            <th class="text-white">TimeStamp</th>
+                                                                            <th class="text-white">Asset</th>
+                                                                            <th class="text-white">Aspect</th>
+                                                                            <th class="text-white">Voltage</th>
+                                                                            <th class="text-white">LockedId</th>
+                                                                        </tr>
+                                                                        @foreach (var PointIndications in Model.mMoments.Where(x => x.AssetId == item.Key.AssetId && x.BlockId == blockId))
+                                                                        {
+
+                                                                            <tr>
+                                                                                <td>@PointIndications.TimeStamp.ToLongTimeString()</td>
+                                                                                <td>@PointIndications.AssetName</td>
+                                                                                <td>@PointIndications.Aspect</td>
+                                                                                <td>@PointIndications.Voltage</td>
+                                                                                <td>@PointIndications.LockedId</td>
+                                                                            </tr>
+
+                                                                        }
+                                                                    </table>
+                                                                </td>
+                                                            </tr>
+
+                                                        }
+
+
+                                                    </tbody>
+                                                </table>
+
+
+                                            </div>
+                                        }
+
+
+                                    </div>
+
+                                }
+
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        if ('@Model.mMoments.Count' <= 0 || '@mAssets.Count' <= 0) {
+            $('#minDivPointIndication').hide();
+        } else {
+            $('#PointIndicationCount').text('(@count)');
+            $('#minDivPointIndication').show();
+        }
+    });
+
+    function fnShowPointIndication(assetId, assetName) {
+        $(".clsPointIndication").hide();
+        $("#PointIndication_" + assetId).show();
+        $("#spPointIndication").text(assetName);
+        $("#btnPointIndicationRealTime").attr('onClick', 'fnGetAssetAttribute(' + assetId + ',' + "@E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode()" + ')');
+        $("#modal-add-PointIndication").modal("show");
+    }
+</script>
+

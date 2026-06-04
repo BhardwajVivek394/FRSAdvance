@@ -1,0 +1,471 @@
+﻿@model Domain.SiteLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+
+                <div class="card-body " style="padding:15px;">
+                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                    {
+                        <div class="table-responsive">
+                            <table class="table">
+                                @if (ViewBag.Zones != null && ViewBag.Divisions != null)
+                                {
+                                    foreach (var zone in ViewBag.Zones.Items as List<Domain.Zone>)
+                                    {
+                                        if (zone.Id != 0)
+                                        {
+                                            var devision = ViewBag.Divisions.Items as List<Domain.Division>;
+                                            <thead>
+                                                <tr class="MainTh">
+                                                    <th>
+                                                        <span>
+                                                            @zone.Name
+                                                        </span>
+                                                        <span class="pull-right">
+                                                            <a href="#"><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceLogDivision('@zone.Id', this); return false;"></i></a>
+                                                        </span>
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>
+                                                        @foreach (var division in devision.Where(x => x.ZoneId == zone.Id))
+                                                        {
+                                                            <table class="table maintenaceLogDivisionByZone_@zone.Id" style="display:none">
+                                                                <thead>
+                                                                    <tr class="SubTh">
+                                                                        <th>
+                                                                            <span>
+                                                                                @division.Name
+                                                                            </span>
+                                                                            <span class="pull-right">
+                                                                                <a href="#"><i style="color: #a189f2;" class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceLogSite('@division.Id', this); return false;"></i></a>
+                                                                            </span>
+                                                                        </th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td>
+                                                                            <table class="table maintenaceLogBySite_@division.Id" style="display:none">
+                                                                                <thead class="bg-primary">
+                                                                                    <tr>
+                                                                                        <th>Id</th>
+                                                                                        <th>Site Name</th>
+                                                                                        <th>Channel</th>
+                                                                                        <th class="text-center">Http Channel Down</th>
+                                                                                        <th class="text-center">No Of MQQT Channel Down</th>
+                                                                                        <th class="text-center">No Of Rf Down</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody id="tblsites">
+
+                                                                                    @if (Model.mSites != null && Model.mSites.Count > 0)
+                                                                                    {
+                                                                                        foreach (var item in Model.mSites.Where(x => x.ZoneId == zone.Id && x.DivisionId == division.Id))
+                                                                                        {
+                                                                                            <tr class="table-light">
+
+                                                                                                <td>@item.Id</td>
+                                                                                                <td>@item.Name</td>
+                                                                                                <td id="channelList@(item.Id)">
+                                                                                                </td>
+                                                                                                <td class="text-center" id="httpDown@(item.Id)">
+                                                                                                </td>
+                                                                                                <td class="text-center" id="ch@(item.Id)" data-http="@item.IsHttpPost">
+                                                                                                </td>
+
+                                                                                                <td class="text-center" data-bs-trigger="hover" data-container="body" data-bs-toggle="popover" data-bs-placement="top" title="" data-offset="-20px -20px" data-bs-content="0" data-bs-original-title="Rf Down" id="cRf@(item.Id)">0</td>
+                                                                                            </tr>
+                                                                                        }
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        <tr>
+                                                                                            <td colspan="11" class="text-center">
+                                                                                                No record found
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    }
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        }
+
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+
+                                        }
+
+                                    }
+
+                                }
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+@{
+    Model.mSites = Model.mSites.OrderBy(x => x.Id).ToList();
+
+    var list = Model;
+
+}
+<script>
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var objectList = null;
+    var elementArray = [];
+    var channelArray = [];
+    var mQTT = null;
+    $(document).ready(function () {
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmGetSiteList").submit();
+        });
+
+        $(function () {
+            $('[data-bs-toggle="popover"]').popover()
+        })
+
+        @{
+          var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+          serializer.MaxJsonLength = Int32.MaxValue;
+        }
+        json = @Html.Raw(serializer.Serialize(list));
+          mQTT=@Html.Raw(serializer.Serialize(Model.MQTTDetail));
+        var count = 0;
+        objectList = json.mSites[0];
+        channelArray = [];
+        MqqtConnect();
+
+        setInterval(function () {
+            var id1 = "#cDown" + objectList.Id;
+            var channel = "";
+            var d = 0;
+
+            $(id1).html(d);
+            $(id1).attr("data-bs-content", channel);
+
+            if (json.mSites.length == (count + 1)) {
+                count = 0;
+            }
+            else {
+                if (json.mSites.length > 1) {
+                    count = count + 1;
+                }
+            }
+
+            objectList = json.mSites[count];
+            MqqtConnect();
+          //  fnAllSiteCheckChannelDown();
+
+        }, 5000);
+
+        fnAllSiteCheckChannelDown();
+
+        setInterval(function () {
+
+            fnAllSiteCheckChannelDown();
+
+        }, 30000);
+    });
+
+
+    function MqqtConnect() {
+
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    };
+
+
+
+function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+       // for (var i = 0; i < json.mSites.length; i++) {
+        var id = "#cRf" + objectList.Id;
+
+        $(id).text(0);
+        elementArray = [];
+        for (var j = 0; j < objectList.Channels.length; j++) {
+            if (objectList.Channels[j] != null && objectList.Channels[j] != "null" && objectList.Channels[j] != "") {
+                var cname = objectList.Channels[j].split(',');
+                 client.subscribe(objectList.MQTTBasePath + cname[0].toLowerCase());
+                }
+            }
+        //}
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+       // location.reload();
+
+        client.connect({
+            onSuccess: onConnect,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        var channeldata = message.payloadString.split(',');
+        console.log(message.destinationName)
+
+        BindData(message.destinationName, channeldata);
+
+    }
+
+    function BindData(basePath, data) {
+       // objectList = null;
+        var title = "";
+        var id = "#cRf" + objectList.Id;
+        var id1 = "#cDown" + objectList.Id;
+        if (objectList.Assets != null && objectList.Assets.length > 0) {
+            $.each(objectList.Assets, function (idx, inItem) {
+                    var str1 = basePath.toLowerCase();
+                if (inItem.ColumnName != null) {
+                        var str2 = inItem.ColumnName.toLowerCase();
+                        if (str1.indexOf(str2) != -1) {
+
+                            var infoValue = inItem.IValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+
+                                if (infoMultiplication != null) {
+                                    var mainData = parseFloat(dataValue);
+                                    var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                    if (v > 300) {
+                                       // console.log(inItem.Name)
+                                        title = inItem.Name + "," + title;
+                                        var count = parseInt($(id).text());
+                                        count = count + 1;
+                                        if ($.inArray(inItem.Name, elementArray) > -1) {
+                                            //yourElement in yourArray
+                                            //code here
+                                        }
+                                        else {
+                                            elementArray.push(inItem.Name)
+                                        }
+
+                                       // $(id).text(count);
+                                    }
+
+                                }
+                                else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1);
+                                    if (v > 300) {
+                                        title = inItem.Name + "," + title;
+                                        var count = parseInt($(id).text());
+                                        count = count + 1;
+                                        if ($.inArray(inItem.Name, elementArray) > -1) {
+                                            //yourElement in yourArray
+                                            //code here
+                                        }
+                                        else {
+                                            elementArray.push(inItem.Name)
+                                        }
+                                      //  $(id).text(count);
+                                    } else {
+                                        //var count = parseInt($(id).text());
+                                        //if (count != 0) {
+                                        //    count = count - 1;
+                                        //    $(id).text(count);
+                                        //}
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                });
+        }
+
+        $(id).html(elementArray.length);
+        var device = "";
+        $.each(elementArray, function (id, val) {
+            if (id == (elementArray.length - 1)) {
+                device += val;
+            }
+            else {
+                device = val + "," + device;
+            }
+
+        });
+        $(id).attr("data-bs-content", device);
+       // $(id1).html(channelArray.length);
+
+
+
+    }
+
+    function fnShowMaintenaceLogDivision(zoneId, $this) {
+        if (zoneId != null && zoneId != '' && zoneId != undefined) {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceLogDivisionByZone_' + zoneId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceLogDivisionByZone_' + zoneId).hide();
+            }
+        }
+    }
+
+    function fnShowMaintenaceLogSite(divisionId, $this) {
+        if (divisionId != null && divisionId != '' && divisionId != undefined) {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceLogBySite_' + divisionId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceLogBySite_' + divisionId).hide();
+            }
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetSiteList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetSiteList").submit();
+            }
+        }
+    }
+
+    function fnAllSiteCheckChannelDown() {
+        $.ajax({
+            url: '/Maintenace/AllSiteCheckChannelDown',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != "" && data != null && data.length > 0) {
+
+                    $.each(data, function (id, site) {
+                        if (site.ChannelConfigs != null && site.ChannelConfigs.length > 0) {
+                            var html = "";
+                            var htmlChannel = "";
+                            var count = 0;
+                            $.each(site.ChannelConfigs, function (i, ch) {
+
+                                var url = "http://energy7.org:7001/" + ch.MacId+"/";
+                                if ($("#ch" + site.Id).attr("data-http") == "True") {
+                                    html +="<p>N/A</p>"
+                                    htmlChannel += "<p><a href=" + url + " target='_blank'>" + ch.Channel + " - " + ch.MacId + "</a></p>";
+                                }
+                                else {
+                                    if (ch.IsDown == false) {
+                                        htmlChannel += "<p><a href=" + url+" target='_blank'>" + ch.Channel + " - " + ch.MacId + "</a></p>";
+                                        html += "<p><span class='span badge rounded-pill pill-badge-success'>" + ch.TimeStamp + "</span></p>";
+                                    }
+                                    else {
+                                        count = count + 1;
+                                        htmlChannel += "<p><a href=" + url + " target='_blank'>" + ch.Channel + " - " + ch.MacId + "</a></p>";
+                                        html += "<p><span class='span badge rounded-pill pill-badge-secondary'>Down</span> </p>";
+                                    }
+                                }
+
+                            });
+
+                            $("#ch" + site.Id).html(html);
+                            $("#channelList" + site.Id).html(htmlChannel);
+                            $("#ch" + site.Id).attr("data-bs-content", count);
+
+                        }
+                    });
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+        fnSiteCheckHttpPostChannelDown();
+    }
+
+    function fnSiteCheckHttpPostChannelDown() {
+        $.ajax({
+            url: '/Maintenace/SiteCheckHttpPostChannelDown',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != "" && data != null && data.length > 0) {
+
+                    $.each(data, function (id, site) {
+
+                        if (site.HttpPostDown != null && site.HttpPostDown.length > 0) {
+                            var htmlChannel = "";
+                            var html1 = "";
+                            var count1 = 0;
+                            $.each(site.HttpPostDown, function (i, val) {
+                                if (val.IsDown == false) {
+                                   // htmlChannel += "<p> " + val.Channel + " - " + val.MacId + "</p>";
+                                    html1 += "<p><span class='span badge rounded-pill pill-badge-success'>" + $.trim(val.TimeStamp) + "</span> </p>";
+                                }
+                                else {
+                                    count1 = count1 + 1;
+                                  //  htmlChannel += "<p> " + val.Channel + " - " + val.MacId + "</p>";
+                                    html1 += "<p><span class='span badge rounded-pill pill-badge-secondary'>Down: " + $.trim(val.TimeStamp) + "</span> </p>";
+                                }
+                            });
+                            $("#httpDown" + site.Id).html(html1);
+                            $("#httpDown" + site.Id).attr("data-bs-content", count1);
+                        }
+                    });
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>

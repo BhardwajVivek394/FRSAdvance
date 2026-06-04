@@ -1,0 +1,582 @@
+﻿@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Point Exception</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Asset Type</strong>
+                            </div>
+                            <div class="pull-left ">
+                                <p class="form-control" id="AssetTypeId">POINT MACHINE</p>
+                            </div>
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Asset</strong>
+                            </div>
+                            <div class="pull-left">
+                                <select id="AssetId" class="form-control">
+                                    <option value="0">Select</option>
+                                </select>
+                            </div>
+                            <div class="pull-left m-l-10">
+                                <button type="button" class="btn btn-success" title="View PointMachine Exception" onclick="fnViewPointException()">View</button>
+                            </div>
+                            <div class="pull-left m-l-10">
+                                <button type="button" class="btn btn-dark" title="Add PointMachine Exception" onclick="GetPointMachineEventPointExc()">Add</button>
+                            </div>
+                            <div class="pull-left m-l-10">
+                                <button type="button" class="btn btn-dark" title="Update PointMachine Exception" onclick="UpdatePointMachineEventPointExc()">Update</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="card-body">
+                    <div id="divAssetAttributePartialPointExc">
+                    </div>
+                    <div id="divPointMachineEventPartialPointExc" style="display:none">
+                    </div>
+                    <div id="divPointMachineEventListExc">
+                        @using (Ajax.BeginForm("_List", "PointException", new AjaxOptions()
+                        {
+                            HttpMethod = "POST",
+                            UpdateTargetId = "divPointExceptionList",
+                            InsertionMode = InsertionMode.Replace,
+                            LoadingElementId = "loader",
+                        }, new { id = "frmPointExceptionList" }))
+                        {
+                            <div id="divPointExceptionList">
+                                @Html.Action("_List", new Domain.PointMachineExceptionLister())
+                            </div>
+                        }
+
+                        @using (Ajax.BeginForm("Save", "PointException", new AjaxOptions()
+                        {
+                            HttpMethod = "POST",
+                            UpdateTargetId = "divPointExceptionList",
+                            InsertionMode = InsertionMode.Replace,
+                            LoadingElementId = "loader",
+                        }, new { id = "frmSavePointExceptionList" }))
+                        {
+                            <div id="divSavePointMachineException">
+                                @Html.Partial("Edit", new Domain.PointMachineException())
+                            </div>
+                        }
+                    </div>
+
+                
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-pointmachine-graph-point-exc" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h6 class="modal-title" id="myModalLabel">
+                    <span id="line1">52 2021-05-26 17:07:00 <b id="op">Normal Operation:</b></span><br />
+                    <span id="line2">- A Max / Average Current: 3.8 / 2.34</span><br />
+                    <span id="line3">- A Max / Average Voltage: 118.9 / 116.00</span><br />
+                    <span id="line4">- A Operating Time (ms): 3300</span><br />
+                    <span id="line5">B Max / Average Current: null / 0.0</span><br />
+                    <span id="line6">- B Max / Average Voltage: 0 / 0.00</span><br />
+                    <span id="line7">- B Operating Time (ms): 0</span><br />
+                </h6>
+                <button type="button" style="position:absolute;right:8px;top:8px;" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 mainclass" id="mainId">
+                        <canvas id='basicflot' style='height: 263px'></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+
+<script type="text/javascript">
+    $("#SiteId").change(function () {
+        BindAssetType();
+    });
+
+    function BindAssetType() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/PointException/GetAssestBy',
+                type: 'POST',
+                data: '{siteId:' + $("#SiteId").val() + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#AssetId").empty();
+                    $("#AssetId").append($("<option></option>").val('0').html('Select Asset'));
+                    $.each(data, function (key, value) {
+                        $("#AssetId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            //  CommonNotification("ERROR", "Please select site and asset type", "Error");
+        }
+
+    }
+
+    function GetPointMachineEventPointExc() {
+        var mAssetLister = {};
+
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $("#SiteId").val();
+        mSearchCriteria.AssetName = $("#AssetId").find(":selected").text();
+        mSearchCriteria.Id = $("#AssetId").find(":selected").val();
+        mSearchCriteria.StartDate = $("#txtpmExc_FromDate").val();
+        mSearchCriteria.EndDate = $("#txtpmExc_ToDate").val();
+
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+            $("#loader").show();
+
+            $.ajax({
+                url: '/PointException/_PointMachineEvent',
+                type: 'Post',
+                data: '{mAssetLister:' + JSON.stringify(mAssetLister) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+
+                    $("#loader").hide();
+                    if (data != null) {
+
+                        $('#divPointMachineEventListExc').hide();
+                        $('#divAssetAttributePartialPointExc').hide();
+                        $('#divPointMachineEventPartialPointExc').show();
+                        $('#divPointMachineEventPartialPointExc').empty().append(data);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function UpdatePointMachineEventPointExc() {
+
+        $.ajax({
+            url: '/PointException/UpdatePointMachineEventPoint',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    if (data.type == "success") {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnBindSignatureGraghPointExc(data, type, datevalue, direction, name) {
+        $("div").remove(".chartjs-size-monitor");
+        var j = JSON.parse(data);
+        var acg;
+        var bcg;
+        var avg;
+        var bvg;
+        if (j.A_C_AVERAGE != null) {
+            acg = parseFloat(j.A_C_AVERAGE).toFixed(2);
+        }
+        if (j.B_C_AVERAGE != null) {
+            bcg = parseFloat(j.B_C_AVERAGE).toFixed(2);
+        }
+        if (j.A_V_AVERAGE != null) {
+            avg = parseFloat(j.A_V_AVERAGE).toFixed(2);
+        }
+        if (j.B_V_AVERAGE != null) {
+            bvg = parseFloat(j.B_V_AVERAGE).toFixed(2);
+        }
+
+        $("#line1").empty().text(name + " " + datevalue);
+        $("#op").text(direction + " Operation");
+        $("#line2").empty().text("- A Max / Average Current:" + j.A_C_MAX + "/" + acg);
+        $("#line3").empty().text("-  Average Voltage:" + avg);
+        $("#line4").empty().text("- A Operating Time (ms):" + j.A_C_TIME);
+        $("#line5").empty().text("- B Max / Average Current:" + j.B_C_MAX + "/" + bcg);
+        $("#line6").empty().text("- Average Voltage:" + bvg);
+        $("#line7").empty().text("- B Operating Time (ms):" + j.B_C_TIME);
+
+        // var ctx = document.getElementById("basicflot").getContext("2d");
+        var array = [];
+        var labels = "";
+        var total = 0;
+        if (type == "CC") {
+            labels = "Combine C";
+            $.each(j.A_C, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+
+            $.each(j.B_C, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+
+        if (type == "CV") {
+            labels = "Combine V";
+            $.each(j.A_V, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+
+            $.each(j.B_V, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+
+        if (type == "AC") {
+            labels = "A End";
+            $.each(j.A_C, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+        if (type == "BC") {
+            labels = "B End";
+            $.each(j.B_C, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+
+            });
+        }
+        if (type == "AV") {
+            labels = "A End";
+            $.each(j.A_V, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+        if (type == "BV") {
+            labels = "B End";
+            $.each(j.B_V, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+
+        var marker = total / array.length;
+        var time = j.A_C_TIME;
+        var len = parseInt(j.A_C_TIME) / parseInt(1000);
+        var loop = parseInt(array.length / 2) + 1;
+
+        var label = [];
+
+        for (var i = 0; i <= array.length; i++) {
+            var xVal = (i) * (100);
+            label.push(xVal);
+        }
+
+        var pieChartContent = document.getElementById('mainId');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#mainId').append('<canvas id="basicflot"style="height: 263px"><canvas>');
+
+        // var canvas = document.getElementById('basicflot');
+        var canvas = $("#basicflot").get(0).getContext("2d");
+        // var myPieChart = new Chart(ctx).Pie(data, options);
+
+        var data = {
+            labels: label,
+            datasets: [
+                {
+                    label: labels + " Current",
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: "rgba(75,192,192,0.4)",
+                    borderColor: "rgba(75,192,192,1)",
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: "rgba(75,192,192,1)",
+                    pointBackgroundColor: "#fff",
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: "rgba(75,192,192,1)",
+                    pointHoverBorderColor: "rgba(220,220,220,1)",
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array,
+                    markLine: {
+                        data: [{
+                            type: 'average',
+                            name: '???'
+                        }]
+                    }
+                }
+            ]
+        };
+
+        var option = {
+            showLines: true,
+        };
+        var myLineChart = Chart.Line(canvas, {
+            data: data,
+            options: option
+        });
+
+        $("#modal-pointmachine-graph-point-exc").modal("show");
+    }
+
+    function SavePointMachineEventData() {
+        var mPointMachineExceptions = [];
+        $(".clspmEventDataCheck-point-exc").each(function () {
+            if ($(this).is(":checked")) {
+                var mPointMachineException = {};
+                var pointId = $(this).attr('data-PointId');
+                mPointMachineException.AssetId = $(this).attr('data-AssetId');
+                mPointMachineException.Direction = $(this).attr('data-direction');
+                mPointMachineException.ArrayData = $(this).attr('data-pmjson');
+                mPointMachineException.TsTime = $(this).attr('data-tstime');
+                mPointMachineException.TimeStamp = $(this).attr('data-timestamp');
+                mPointMachineException.Type = $(this).attr('data-type');
+
+                if (mPointMachineException.Type == "A") {
+                    mPointMachineException.Cluster = $('#txtEventDataClusterA_' + pointId).val();
+                    mPointMachineException.Remark = $('#txtEventDataRemarkA_' + pointId).val();
+                }
+                else if (mPointMachineException.Type == "B") {
+                    mPointMachineException.Cluster = $('#txtEventDataClusterB_' + pointId).val();
+                    mPointMachineException.Remark = $('#txtEventDataRemarkB_' + pointId).val();
+                }
+
+                mPointMachineExceptions.push(mPointMachineException);
+            }
+
+        });
+
+
+
+        if (mPointMachineExceptions != null && mPointMachineExceptions != undefined && mPointMachineExceptions.length > 0) {
+            if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+
+                $("#loader").show();
+                $.ajax({
+                    url: '/PointException/CreatePointMachineEvent',
+                    type: 'Post',
+                    data: '{mPointMachineExceptions:' + JSON.stringify(mPointMachineExceptions) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null) {
+                            if (data.type == "success") {
+                                CommonNotification("SUCCESS", data.result, "success");
+                            } else {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            } else {
+                CommonNotification("ERROR", "Please select site and asset.", "Error");
+            }
+
+        }
+        else {
+            $("#asset-graph").modal("hide");
+            CommonNotification("ERROR", "Please select Point Exception", "Error");
+        }
+    }
+
+    function fnShowEventDataCheck(id, type, $this) {
+        if ($($this).is(':checked')) {
+            if (type == 'A') {
+                $('#divEventDataCheckA_' + id).show();
+            } else if (type == 'B') {
+                $('#divEventDataCheckB_' + id).show();
+            }
+        } else {
+            if (type == 'A') {
+                $('#divEventDataCheckA_' + id).hide();
+            } else if (type == 'B') {
+                $('#divEventDataCheckB_' + id).hide();
+            }
+        }
+
+    }
+
+    function fnViewPointException() {
+        $('#divPointMachineEventListExc').show();
+        $('#divAssetAttributePartialPointExc').hide();
+        $('#divPointMachineEventPartialPointExc').hide();
+
+        $('#frmPointExceptionList').submit();
+    }
+
+    function fnShowPointExceptionGraph(data, direction) {
+        $("div").remove(".chartjs-size-monitor");
+        $("#op").text(direction + " Operation");
+        if (data != null && data != undefined && data != '') {
+            var j = JSON.parse(data);
+            var array = [];
+            var labels = "";
+            var total = 0;
+            $.each(j, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+
+            var label = [];
+
+            if (array.length > 90) {
+                for (var i = 0; i <= array.length; i++) {
+                    var xVal = (i) * (20);
+                    label.push(xVal);
+                }
+            } else {
+                for (var i = 0; i <= array.length; i++) {
+                    var xVal = (i) * (100);
+                    label.push(xVal);
+                }
+            }
+          
+
+            var pieChartContent = document.getElementById('mainId');
+            pieChartContent.innerHTML = '&nbsp;';
+            $('#mainId').append('<canvas id="basicflot"style="height: 263px"><canvas>');
+
+            var canvas = $("#basicflot").get(0).getContext("2d");
+
+            var data = {
+                labels: label,
+                datasets: [
+                    {
+                        label: labels + " Current",
+                        fill: false,
+                        lineTension: 0.1,
+                        backgroundColor: "rgba(75,192,192,0.4)",
+                        borderColor: "rgba(75,192,192,1)",
+                        borderCapStyle: 'butt',
+                        borderDash: [],
+                        borderDashOffset: 0.0,
+                        borderJoinStyle: 'miter',
+                        pointBorderColor: "rgba(75,192,192,1)",
+                        pointBackgroundColor: "#fff",
+                        pointBorderWidth: 0.5,
+                        pointHoverRadius: 5,
+                        pointHoverBackgroundColor: "rgba(75,192,192,1)",
+                        pointHoverBorderColor: "rgba(220,220,220,1)",
+                        pointHoverBorderWidth: 1,
+                        pointRadius: 5,
+                        pointHitRadius: 10,
+                        data: array,
+                        markLine: {
+                            data: [{
+                                type: 'average',
+                                name: '???'
+                            }]
+                        }
+                    }
+                ]
+            };
+
+            var option = {
+                showLines: true,
+            };
+            var myLineChart = Chart.Line(canvas, {
+                data: data,
+                options: option
+            });
+        }
+      
+
+        $("#modal-pointmachine-graph-point-exc").modal("show");
+    }
+</script>

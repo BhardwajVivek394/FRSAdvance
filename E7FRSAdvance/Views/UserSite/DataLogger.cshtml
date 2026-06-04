@@ -1,0 +1,239 @@
+﻿@model Domain.Site
+@{
+    ViewBag.Title = "DataLogger";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<style>
+    .card-border {
+        border: 1px solid #E6E9ED;
+    }
+
+    .daterangepicker.ltr {
+        z-index: 99999999;
+    }
+
+    .color-box {
+        height: 20px;
+        width: 20px;
+    }
+</style>
+<div class="container-fluid">
+    <div class="page-title p-b-0">
+        <div class="row">
+            <div class="col-6">
+                <label style='font-size:18px;margin-top:7px;font-weight:bold'>Site:</label>
+                <label style='font-size:16px;margin-top:7px'> @Model.Name's - Dashboard</label>
+            </div>
+            <div class="col-6">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Data Logger Dashboard</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card mb-2">
+                <div class="card-body text-white" style="padding: 15px; font-size: 18px; background-color: #0e5068; border-radius: 12px; " id="divchannel">
+                    Last Update:
+                    <span id="spnLastUpdate"></span>
+
+                    <button type="button" class="btn btn-primary pull-right m-l-10" onclick="fnGetEventLog('@Model.Id')">Event</button>
+                    <button type="button" class="btn btn-primary pull-right" onclick="fnGetJsonView('@Model.Id')">Json View</button>
+                    @*<div class="row">
+                        <div class="col-10">
+
+
+                        </div>
+                        <div class="col-1">
+
+
+                        </div>
+                        <div class="col-1">
+
+
+                        </div>
+                    </div>*@
+
+
+
+                </div>
+                
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="row" style="margin-bottom:10px">
+                    <div class="col-sm-12">
+                        @*<div class="col-sm-4">
+            @if (Model.IsHttpPost != null && Model.IsHttpPost == true)
+            {
+                <input type="hidden" id="hdnIsHttPost" value="true" />
+            }
+            else
+            {
+                <input type="hidden" id="hdnIsHttPost" value="false" />
+            }
+            <input type="hidden" id="hdnNoOfChannel" value="@Model.MQTTNoOfChannels" />
+        </div>*@
+                        @using (Ajax.BeginForm("_GetDataLoggerAssetType", "UserSite", new AjaxOptions() { UpdateTargetId = "divAssetType", InsertionMode = InsertionMode.Replace, LoadingElementId = "loader" }, new { @id = "frmAssetType", enctype = "multipart/form-data" }))
+                        {
+                            <div id="divLeftInfo">
+                                @Html.Action("_GetDataLoggerAssetType", new { siteId = Model.Id })
+                            </div>
+                        }
+
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-sm-12">
+                        @using (Ajax.BeginForm("_GetDataLoggerAssetDetails", "UserSite", new AjaxOptions() { UpdateTargetId = "divAssetDetails", InsertionMode = InsertionMode.Replace, LoadingElementId = "loader" }, new { @id = "frmAssetDetails" }))
+                        {
+                            <input type="hidden" name="SearchCriteria.SiteId" id="hdnsiteId" value="@Model.Id" />
+
+
+
+                            <input type="hidden" name="SearchCriteria.DataloggerAssetTypeId" id="hdnassetTypeId" />
+                            <input type="hidden" name="SearchCriteria.AssetTypeName" id="hdAssetTypeName" />
+                            <div class="people-list" id="divAssetDetails">
+                            </div>
+                        }
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="divDataLogger"></div>
+<div id="divDataLoggerJsonView"></div>
+<script>
+    function SearchAsset(id, name) {          
+        if (this.client && this.client.isConnected()) {
+            try {
+                this.client.disconnect();
+            } catch (err) {
+            }
+        }
+        $("#hdnassetTypeId").val(id);
+        $("#hdAssetTypeName").val(name);
+        //$("#lblAssetType").text($("#AssetName" + id).val());
+        $("#hdnSkip").val('0');
+        $(".asset-search").val("");
+        $("#frmAssetDetails").submit();
+    }
+
+    function fnGetEventLog(siteId) {
+        var strDate = '';
+        if ($('#searchDataloggerDate').val() != null && $('#searchDataloggerDate').val() != undefined) {
+            strDate = $('#searchDataloggerDate').val();
+        }
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_DataLogger',
+            type: 'Post',
+            dataType: 'html',
+            data: '{siteId:' + siteId + ',assetTypeId:' + $("#hdnassetTypeId").val() + ',searchDate:"' + strDate +'"}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#modalDataloggerLogs").modal('hide');
+                $("#divDataLogger").empty().append(data);
+                $("#modalDataloggerLogs").modal('show');
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnGetJsonView(siteId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_DataLoggerJsonView',
+            type: 'Post',
+            dataType: 'html',
+            data: '{siteId:' + siteId + ',assetTypeId:' + $("#hdnassetTypeId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divDataLoggerJsonView").empty().append(data);
+                $("#modalDataloggerJsonView").modal('show');
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    //function fnGetAssetEventLog(siteId, assetId) {
+    //    debugger;
+    //    var strDate = '';
+    //    if ($('#searchDataloggerDate').val() != null && $('#searchDataloggerDate').val() != undefined) {
+    //        strDate = $('#searchDataloggerDate').val();
+    //    }
+    //    $("#loader").show();
+    //    $.ajax({
+    //        url: '/UserSite/_DataloggerAsset',
+    //        type: 'Post',
+    //        dataType: 'html',
+    //        data: '{siteId:' + siteId + ',assetId:' + assetId + ',searchDate:"' + strDate +'"}',
+    //        contentType: 'application/json',
+    //        success: function (data) {
+    //            debugger;
+    //            $("#loader").hide();
+    //            //$("#modalDataloggerLogs").modal('hide');
+    //            $("#divDataLogger").empty().append(data);
+    //            $("#modalDataloggerLogs").modal('show');
+    //        },
+    //        error: function (response) {
+    //            CommonNotification("error", "Something went wrong!");
+    //        }
+    //    });
+    //}
+
+    function fnGetAssetEventLog(siteId, assetId, isDeadband) {
+        var strDate = '';
+        if ($('#searchDataloggerDate').val() != null && $('#searchDataloggerDate').val() != undefined) {
+            strDate = $('#searchDataloggerDate').val();
+        }
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_DataloggerAsset',
+            type: 'Post',
+            dataType: 'html',
+            data: '{siteId:' + siteId + ',assetId:' + assetId + ',searchDate:"' + strDate + '"}',
+            contentType: 'application/json',
+            success: function (data) {
+                var deadbandTable = $($.parseHTML(data)).find("#deadbandDataByDate").html();
+                debugger;
+                $("#loader").hide();
+                if (isDeadband) {
+                    $("#deadbandDataByDate").empty().append(deadbandTable);
+                }
+                else {
+                   // $("#modalDataloggerLogs").modal('hide');
+                    $("#divDataLogger").empty().append(data);
+                    $("#modalDataloggerLogs").modal('show');
+                }
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+</script>
+
+

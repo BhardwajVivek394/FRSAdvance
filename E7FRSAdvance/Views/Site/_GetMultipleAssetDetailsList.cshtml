@@ -1,0 +1,133 @@
+﻿@model Domain.AssetLister
+
+
+
+@{
+    List<Domain.AssetAttribute> mAssetAttribute = new List<Domain.AssetAttribute>();
+    foreach (var item in Model.mAssets)
+    {
+        foreach (var assetAttribute in item.assetAttributes)
+        {
+            if (mAssetAttribute.Where(x => x.Title == assetAttribute.Title).Count() == 0)
+            {
+                mAssetAttribute.Add(assetAttribute);
+            }
+        }
+    }
+}
+
+@if (Model.mAssets != null && Model.mAssets.Count > 0)
+{
+
+    foreach (var item in Model.mAssets)
+    {
+        if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+        {
+            <tr data-id="@item.Id">
+                <td>
+                    <a href="@item.HttpMisLink" target="_blank"> @item.Name</a>
+                </td>
+                @foreach (var attribute in mAssetAttribute)
+                {
+                    var attItem = item.assetAttributes.Where(x => x.Title == attribute.Title).FirstOrDefault();
+                    if (Model.SearchCriteria.AssetTypeName.ToLower() == "Earth Fault".ToLower())
+                    {
+
+                        if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                        {
+                            if (attItem != null)
+                            {
+                                <td class="hdnAttributeData@(attItem.Id)@(item.Id) fault-line">
+                                    @attItem.AttributeData
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="hdnAttributeData@(attribute.Id)@(item.Id) fault-line">
+                                    N/A
+                                </td>
+                            }
+                        }
+                        if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode())
+                        {
+                            if (attItem != null)
+                            {
+                                <td class="hdnAttributeData@(attItem.Id)@(item.Id) fault-line">
+                                    @attItem.AttributeData
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="hdnAttributeData@(attribute.Id)@(item.Id) fault-line">
+                                    N/A
+                                </td>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (attItem != null)
+                        {
+                            <td class="hdnAttributeData@(attItem.Id)@(item.Id)">
+                                @attItem.AttributeData
+                            </td>
+                        }
+                        else
+                        {
+                            <td class="hdnAttributeData@(attribute.Id)@(item.Id)">
+                                N/A
+                            </td>
+                        }
+                    }
+
+                    //foreach (var assetAttribute in item.assetAttributes)
+                    //{
+
+                    //}
+                }
+
+                @if (Model.SearchCriteria.AssetTypeName.ToLower() == "Track".ToLower())
+                {
+                    <td class="@(item.IndexScore<7?"text-danger":"")">
+                        @item.IndexScore
+                    </td>
+                    <td class="leakge">
+                    </td>
+                    <td data-id="@item.Id" class="checkHealth@(item.Id)">
+                        @if (item.IsAlarm)
+                        {
+                            <span style='cursor:pointer' onclick="GetLogByAssetId(@item.Id)" class="text-danger">Alarm</span>
+                        }
+                        else
+                        {
+                            <span class="text-success">Ok</span>
+                        }
+                    </td>
+                    <td>
+                        <span class="text-success trackoc@(item.Id)">C</span>
+                    </td>
+                    <td style="">
+                        @if (item.UnderMaintence == true)
+                        {
+                            <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                        }
+                        else
+                        {
+                            <div class="text-center">
+                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                            </div>
+                        }
+                    </td>
+                }
+
+                <td>
+                    <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id','@Json.Encode(item.mFamilyTracks)')" style="text-transform:capitalize;cursor:pointer;"> Graph </a>
+                </td>
+                <td>
+                    <a onclick="fnGetSmsLog('@item.Id')" style="text-transform:capitalize;cursor:pointer">Event log</a>
+                </td>
+            </tr>
+        }
+    }
+
+}

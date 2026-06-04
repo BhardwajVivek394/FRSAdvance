@@ -1,0 +1,649 @@
+﻿@model List<Domain.AssetGroup>
+<style>
+    .card-header-summary {
+        background-color: #0e2b42 !important;
+        padding-top: 10px !important;
+        padding-bottom: 3px !important;
+        padding-left: 30px !important;
+        color: white !important;
+    }
+
+    .card-header-main {
+        background-color: #4bacc6 !important;
+        padding-top: 10px !important;
+        padding-bottom: 3px !important;
+        padding-left: 30px !important;
+        color: white !important;
+    }
+
+    .card-body-summary {
+        padding: 15px !important;
+    }
+</style>
+
+<div class="modal fade bd-example-modal-lg" id="modalSummaryView" tabindex="-1" role="dialog" aria-labelledby="modalSummaryView" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">Summary</h4>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            @{
+                                var groupProbabilities = Model
+.SelectMany(e => e.mProbabilities)
+.GroupBy(d => d.Category).Select(x => x.Key).ToList();
+                            }
+                            @foreach (var probabilities in groupProbabilities)
+                            {
+                                string probcategory = probabilities;
+                                if (probabilities.ToLower().Contains("trainmoment"))
+                                {
+                                    probcategory = "Prone to shorting";
+                                }
+                                else if (probcategory.ToLower().Contains("tprmoment"))
+                                {
+                                    probcategory = "Fluctuation in TPR";
+                                }
+                                else if (probcategory.ToLower().Contains("pointmachinemoment"))
+                                {
+                                    probcategory = "Unstable indication voltage";
+                                }
+                                <div class="card">
+                                    <div class="card-header card-header-main">
+                                        <div class="row">
+                                            <div class="col-10">
+                                                <h5>  @probcategory</h5>
+                                            </div>
+                                            <div class="col-2">
+                                                <i class="fa fa-angle-down pull-right text-white fa-3x" onclick="fnChangeProbabilitySummaryBody(this,'@probabilities.ToLower().Replace(" ","")')"></i>
+                                            </div>
+                                        </div>
+                                      
+                                    </div>
+                                    <div class="card-body-summary divSummaryProbabilityBody_@(probabilities.ToLower().Replace(" ",""))" style="background-color:whitesmoke !important;display:none;">
+                                        @{
+                                            var checkprobabilities = Model.SelectMany(b => b.mProbabilities)
+.Where(c => c.Category == probabilities)
+.ToList();
+                                        }
+                                        @if (checkprobabilities != null && checkprobabilities.Count > 0)
+                                        {
+                                            foreach (var item in Model)
+                                            {
+                                                if (checkprobabilities.Where(x => x.AssetId == item.AssetId).Count() > 0)
+                                                {
+                                                    int totalCount = 0;
+                                                    var tempProbablity = item.mProbabilities.Where(x =>
+                                                    x.Category.ToLower() == "High Leakage".ToLower() ||
+                                                    x.Category.ToLower() == "Approaching low energization".ToLower() ||
+                                                    x.Category.ToLower() == "Battery defective".ToLower() ||
+                                                    x.Category.ToLower() == "TrainMomentLog".ToLower() ||
+                                                    x.Category.ToLower() == "GluedLog".ToLower() ||
+                                                    x.Category.ToLower() == "SignalMoment".ToLower() ||
+                                                    x.Category.ToLower() == "PointMachineMoment".ToLower() ||
+                                                    x.Category.ToLower() == "TPRMoment".ToLower()
+                                                    ).ToList();
+
+                                                    var tempProbablityNoteq = item.mProbabilities.Where(x => x.Category == probabilities &&
+                                                    x.Category.ToLower() != "High Leakage".ToLower() &&
+                                                    x.Category.ToLower() != "Approaching low energization".ToLower() &&
+                                                    x.Category.ToLower() != "Battery defective".ToLower() &&
+                                                    x.Category.ToLower() != "TrainMomentLog".ToLower() &&
+                                                    x.Category.ToLower() != "GluedLog".ToLower() &&
+                                                    x.Category.ToLower() != "SignalMoment".ToLower() &&
+                                                    x.Category.ToLower() != "PointMachineMoment".ToLower() &&
+                                                    x.Category.ToLower() != "TPRMoment".ToLower()
+                                                    ).ToList();
+
+                                                    if (tempProbablity != null && tempProbablity.Count > 0)
+                                                    {
+                                                        totalCount++;
+                                                        tempProbablity = tempProbablity.Where(x => x.Category.Trim().ToLower() == probabilities.Trim().ToLower()).ToList();
+                                                    }
+                                                    if (tempProbablityNoteq != null && tempProbablityNoteq.Count > 0)
+                                                    {
+                                                        totalCount++;
+                                                        tempProbablityNoteq = tempProbablityNoteq.Where(x => x.Category.Trim().ToLower() == probabilities.Trim().ToLower()).ToList();
+                                                    }
+
+                                                    if ((tempProbablity != null && tempProbablity.Count > 0) || (tempProbablityNoteq != null && tempProbablityNoteq.Count > 0))
+                                                    {
+                                                        <div class="card">
+                                                            <div class="card-header card-header-summary">
+                                                                <div class="row">
+                                                                    <div class="col-6">
+                                                                        <h5>@item.AssetName</h5>
+                                                                    </div>
+                                                                    <div class="col-2">
+                                                                    </div>
+                                                                    <div class="col-2 pull-right">
+                                                                        @if (item.mSMSLogs != null && item.mSMSLogs.Count > 0)
+                                                                        {
+                                                                            <button type="button" class="btn btn-success" onclick="fnShowSummaryAlertView('@item.AssetId')">A</button>
+                                                                        }
+
+                                                                        <button type="button" class="btn btn-warning" id="btnTrainRunningMomentRealTime" onclick="fnGetAssetAttribute('@item.SiteName','@item.AssetId','@item.AssetTypeId')">L</button>
+                                                                    </div>
+                                                                    <div class="col-1">
+                                                                        <h5>(@totalCount)</h5>
+                                                                    </div>
+                                                                    <div class="col-1">
+                                                                        <i class="fa fa-angle-down pull-right text-white fa-3x" onclick="fnChangeSummaryBody(this,'@item.AssetId','@probabilities.ToLower().Replace(" ","")')"></i>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="card-body divSummaryBody_@(probabilities.ToLower().Replace(" ",""))_@(item.AssetId)" style="display:none">
+                                                                @if (tempProbablity != null && tempProbablity.Count > 0)
+                                                                {
+                                                                    <table class="table">
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th>Under AI models</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            @foreach (var probablity in tempProbablity)
+                                                                            {
+                                                                                string category = string.Empty;
+                                                                                category = probablity.Category;
+                                                                                if (probablity.Category.ToLower().Contains("trainmoment"))
+                                                                                {
+                                                                                    category = "Prone to shorting";
+                                                                                }
+                                                                                else if (probablity.Category.ToLower().Contains("tprmoment"))
+                                                                                {
+                                                                                    category = "Fluctuation in TPR";
+                                                                                }
+                                                                                else if (probablity.Category.ToLower().Contains("pointmachinemoment"))
+                                                                                {
+                                                                                    category = "Unstable indication voltage";
+                                                                                }
+                                                                                <tr>
+                                                                                    <td>
+                                                                                        @if (probablity.Category.ToLower().Contains("trainmoment"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadTrainRunningMomentList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("leakage"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadLeakageList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("energization"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadEnergizationList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("tprmoment"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadTPRMomentList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("pointmachinemoment"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)">@category</a>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <span>@category</span>
+                                                                                        }
+
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        </tbody>
+                                                                    </table>
+                                                                }
+
+                                                                @if (tempProbablityNoteq != null && tempProbablityNoteq.Count > 0)
+                                                                {
+                                                                    <table class="table">
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th>Threshold violations</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            @foreach (var probablity in tempProbablityNoteq)
+                                                                            {
+                                                                                string category = string.Empty;
+                                                                                category = probablity.Category;
+                                                                                if (probablity.Category.ToLower().Contains("trainmoment"))
+                                                                                {
+                                                                                    category = "Prone to shorting";
+                                                                                }
+                                                                                else if (probablity.Category.ToLower().Contains("tprmoment"))
+                                                                                {
+                                                                                    category = "Fluctuation in TPR";
+                                                                                }
+                                                                                else if (probablity.Category.ToLower().Contains("pointmachinemoment"))
+                                                                                {
+                                                                                    category = "Unstable indication voltage";
+                                                                                }
+                                                                                <tr>
+                                                                                    <td>
+                                                                                        @if (probablity.Category.ToLower().Contains("trainmoment"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadTrainRunningMomentList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("leakage"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadLeakageList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("energization"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadEnergizationList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("tprmoment"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)" onclick="LoadTPRMomentList('@probablity.SiteId','@probablity.AssetId','@probablity.AssetName')">@category</a>
+                                                                                        }
+                                                                                        else if (probablity.Category.ToLower().Contains("pointmachinemoment"))
+                                                                                        {
+                                                                                            <a href="javascript:void(0)">@category</a>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <span>@category</span>
+                                                                                        }
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        </tbody>
+                                                                    </table>
+                                                                }
+
+                                                                @if (item.mPerformances != null && item.mPerformances.Count > 0)
+                                                                {
+                                                                    <table class="table">
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th colspan="2">Performance</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            @foreach (var performance in item.mPerformances)
+                                                                            {
+                                                                                <tr>
+                                                                                    <td>@performance.Category</td>
+                                                                                    <td>@performance.Value</td>
+                                                                                </tr>
+                                                                            }
+                                                                        </tbody>
+                                                                    </table>
+                                                                }
+                                                            </div>
+
+                                                        </div>
+                                                    }
+                                                }
+
+
+                                            }
+                                        }
+                                    </div>
+                                </div>
+
+
+
+                            }
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modalSummaryAlertView" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Alert Log</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    @foreach (var item in Model)
+                    {
+                        <table class="table clstblSummaryAlertLog" id="tblSummaryAlert_@item.AssetId" style="display:none">
+
+                            @if (item != null && item.mSMSLogs != null && item.mSMSLogs.Count > 0)
+                            {
+                                <tr>
+                                    <th>TimeStamp</th>
+                                    <th>Message</th>
+                                </tr>
+                                foreach (var smsLog in item.mSMSLogs)
+                                {
+                                    <tr>
+                                        <td>@smsLog.TimeStamp</td>
+                                        <td>@smsLog.Message</td>
+                                    </tr>
+                                }
+
+                            }
+                        </table>
+                    }
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="divTrainRunningMomentData"></div>
+<div id="divLeakageData"></div>
+<div id="divEnergizationData"></div>
+<div id="divTPRMomentData"></div>
+<div id="divSignalMomentData"></div>
+
+<script>
+
+
+    function fnChangeSummaryBody($this, assetId, category) {
+        if ($($this).hasClass('fa-angle-down')) {
+            $($this).removeClass('fa-angle-down').addClass('fa-angle-up');
+        }
+        else {
+            $($this).removeClass('fa-angle-up').addClass('fa-angle-down');
+
+        }
+        $(".divSummaryBody_" + category + "_" + assetId).slideToggle();
+    }
+
+    function fnChangeProbabilitySummaryBody($this, category) {
+        if ($($this).hasClass('fa-angle-down')) {
+            $($this).removeClass('fa-angle-down').addClass('fa-angle-up');
+        }
+        else {
+            $($this).removeClass('fa-angle-up').addClass('fa-angle-down');
+
+        }
+        $(".divSummaryProbabilityBody_" + category).slideToggle();
+    }
+
+    function fnShowSummaryAlertView(assetId) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+
+            $('.clstblSummaryAlertLog').hide();
+            $('#tblSummaryAlert_' + assetId).show();
+            $("#modalSummaryAlertView").modal('show');
+        }
+    }
+
+    function LoadGluedLogDataList() {
+        var mGluedLogDataLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = '@ViewBag.SiteId';
+        mSearchCriteria.TimeStamp = $('#txtSearchTimeStamp').val();
+        mGluedLogDataLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_GluedLogDataLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mGluedLogDataLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#divGluedLogData").empty().append(data);
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadTrainRunningMomentList(siteId, assetId, assetName) {
+        var mTrainRunningMomentLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mTrainRunningMomentLister.SearchCriteria = mSearchCriteria;
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_TrainRunningMoment',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mTrainRunningMomentLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divTrainRunningMomentData").empty().append(data);
+
+                $(".clsTrainRunningMoment").hide();
+                $(".divTrainRunningMomentLister").hide();
+                $("#TrainRunningMoment_" + assetId).show();
+                $("#spTrainRunningMoment").text(assetName);
+                $("#btnTrainRunningMomentRealTime").hide();
+                $("#modal-add-TrainRunningMoment").modal("show");
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadLeakageList(siteId, assetId, assetName) {
+        var mIndexAlertLogLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.Remarks = "Leakage";
+        mIndexAlertLogLister.SearchCriteria = mSearchCriteria;
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_IndexAlertLogLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mIndexAlertLogLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divLeakageData").empty().append(data);
+
+                $(".divIndexAlertLogLister").hide();
+                $(".cls_Leakage").hide();
+                $("#LeakageData_" + assetId).show();
+                $("#spHeader_Leakage").text(assetName);
+                $("#btnLeakageRealTime").hide();
+                $("#modal-add-Leakage").modal("show");
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadEnergizationList(siteId, assetId, assetName) {
+        var mIndexAlertLogLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.Remarks = "Energization";
+        mIndexAlertLogLister.SearchCriteria = mSearchCriteria;
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_IndexAlertLogLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mIndexAlertLogLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divEnergizationData").empty().append(data);
+
+                $(".divIndexAlertLogLister").hide();
+                $(".cls_Energization").hide();
+                $("#EnergizationData_" + assetId).show();
+                $("#spHeader_Energization").text(assetName);
+                $("#btnEnergizationRealTime").hide();
+                $("#modal-add-Energization").modal("show");
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadEarthFaultList() {
+        var mSMSLogLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = '@ViewBag.SiteId';
+        mSearchCriteria.TimeStamp = $('#txtSearchTimeStamp').val();
+        mSMSLogLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_EarthFaultLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mSMSLogLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#divEarthFaultData").empty().append(data);
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadAxleCounterList() {
+        var mWatchListLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = '@ViewBag.SiteId';
+        mSearchCriteria.TimeStamp = $('#txtSearchTimeStamp').val();
+        mWatchListLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_AxleCounterLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mWatchListLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAxleCounterData").empty().append(data);
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadSignalMomentList(siteId, assetId, assetName) {
+        var mMomentLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mMomentLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_SignalMomentLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mMomentLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSignalMomentData").empty().append(data);
+
+                $(".clsSignalMoment").hide();
+                $("#SignalMoment_" + assetId).show();
+                $("#spSignalMoment").text(assetName);
+                $("#btnSignalMomentRealTime").hide();
+                $("#modal-add-SignalMoment").modal("show");
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadTPRMomentList(siteId, assetId, assetName) {
+        var mMomentLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mMomentLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_TPRMomentLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mMomentLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divTPRMomentData").empty().append(data);
+
+                $(".clsTPRMoment").hide();
+                $(".divTPRMoment").hide();
+                $("#TPRMoment_" + assetId).show();
+                $("#spTPRMoment").text(assetName);
+                $("#btnTPRMomentRealTime").hide();
+                $("#modal-add-TPRMoment").modal("show");
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadPointIndication() {
+        var mMomentLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = '@ViewBag.SiteId';
+        mSearchCriteria.TimeStamp = $('#txtSearchTimeStamp').val();
+        mMomentLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_PointIndicationLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mMomentLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPointIndicationData").empty().append(data);
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function LoadSignalAspectOvercurrent() {
+        var mMomentLister = {};
+        var mSearchCriteria = {};
+        var alertNames = [
+            "Aspect Under current",
+            "Aspect  Under Voltage",
+            "Aspect Over current"
+        ];
+
+        mSearchCriteria.SiteId = '@ViewBag.SiteId';
+        mSearchCriteria.TimeStamp = $('#txtSearchTimeStamp').val();
+        mSearchCriteria.AlertNames = alertNames;
+
+        mMomentLister.SearchCriteria = mSearchCriteria;
+        $.ajax({
+            url: '/UserSite/_AlertLogLister',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mMomentLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSignalAspectOvercurrentData").empty().append(data);
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+</script>

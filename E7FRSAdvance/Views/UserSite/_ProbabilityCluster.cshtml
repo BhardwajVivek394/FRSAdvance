@@ -1,0 +1,220 @@
+﻿@model List<Domain.AICluster>
+
+@{
+    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+    serializer.MaxJsonLength = Int32.MaxValue;
+    var weekCount = Model.GroupBy(x => x.Week).Count();
+    var assetId = Model.Select(x => x.AssetId).FirstOrDefault();
+    var assetName = Model.Select(x => x.AssetName).FirstOrDefault();
+    var assetTypeId = Model.Select(x => x.AssetTypeId).FirstOrDefault();
+}
+<div class="modal bounceIn animated" id="modalProbabilityCluster" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Cluster - @assetName</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row modal-fixed-height">
+                    @foreach (var item in Model.GroupBy(x => x.Week).Select(x => x.Key).ToList())
+                    {
+                        <div class="col-md-6">
+                            <div id="piechart_@item"></div>
+                            <div class="row">
+                                <div class="col-md-12 text-center">
+                                    <h5>@item</h5>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="col-md-6">
+                            <div id="piechartAICluster_@item"></div>
+                            <div class="row">
+                                <div class="col-md-12 text-center">
+                                    <h5>@item - Trand</h5>
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+                    @*<div id="piechart"></div>*@
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var weekCount = parseInt("@weekCount");
+    var json = @Html.Raw(serializer.Serialize(Model));
+    var allweeks = [];
+    $(document).ready(function () {
+        var weeks = [];
+        for (var i = 1; i <= weekCount; i++) {
+            var week = {};
+            var clus = [];
+            var clusValue = [];
+            var color = [];
+            $(json).each(function (es, val) {
+                if (val.Week == "Week" + i) {
+                    var newColor = fnGetDarkColor();
+
+                    const x = allweeks.find((x) => x.Cluster == val.Cluster);
+                    if (x == null || x == undefined) {
+                        var allweek = {};
+                        allweek.Color = newColor;
+                        allweek.Cluster = val.Cluster;
+
+                        allweeks.push(allweek);
+                    } else {
+                        newColor = x.Color;
+                    }
+
+                    clus.push(val.Cluster);
+                    clusValue.push(parseFloat(val.Value));
+                    color.push(newColor);
+
+                   
+                }
+            });
+            week.Name = "Week" + i;
+            week.WeekId = i;
+            week.Cluster = clus;
+            week.ClusterValue = clusValue;
+            week.Color = color;
+            weeks.push(week);
+           // allweeks.push(week);
+        }
+
+        BindPiChart(weeks);
+
+        fnLoadProbabilityClusterCount('@assetTypeId','@assetId');
+    });
+
+
+
+    function BindPiChart(weeks) {
+        $(weeks).each(function (we, weekData) {
+            var options8 = {
+                chart: {
+                    width: 380,
+                    type: "pie",
+                    events: {
+                        click: function (event, chartContext, config) {
+                            var index = event.target.parentElement.getAttribute("data:realIndex");
+                            fnLoadProbabilityMain('@assetId',@assetTypeId, chartContext.w.globals.labels[index], weekData.WeekId);
+                        }
+                    }
+                },
+                labels: weekData.Cluster,
+                series: weekData.ClusterValue,
+                responsive: [
+                    {
+                        breakpoint: 480,
+                        options: {
+                            chart: {
+                                width: 200,
+                            },
+                            legend: {
+                                show: false,
+                            },
+                        },
+                    },
+                ],
+                colors: weekData.Color,
+            };
+
+            var chart8 = new ApexCharts(document.querySelector("#piechart_" + weekData.Name), options8);
+
+            chart8.render();
+
+        });
+
+    }
+
+    function BindPiClusterCount(mAIClusterCount) {
+
+        var weeks = PreparePiClusterCount(mAIClusterCount);
+        $(weeks).each(function (we, weekData) {
+            var options8 = {
+                chart: {
+                    width: 380,
+                    type: "pie",
+                },
+                labels: weekData.Cluster,
+                series: weekData.ClusterValue,
+                responsive: [
+                    {
+                        breakpoint: 480,
+                        options: {
+                            chart: {
+                                width: 200,
+                            },
+                            legend: {
+                                show: false,
+                            },
+                        },
+                    },
+                ],
+                colors: weekData.Color,
+            };
+
+            var chart8 = new ApexCharts(document.querySelector("#piechartAICluster_" + weekData.Name), options8);
+
+            chart8.render();
+
+        });
+
+    }
+
+    function PreparePiClusterCount(mAIClusterCount) {
+        var weeks = [];
+        for (var i = 1; i <= weekCount; i++) {
+            var week = {};
+            var clus = [];
+            var clusValue = [];
+            var color = [];
+
+            $(mAIClusterCount).each(function (es, val) {
+                if (val.Week == "Week" + i) {
+                    var darkColor = fnGetDarkColor();
+                    const x = allweeks.find((x) => x.Cluster == val.Cluster);
+                    if (x != null && x != undefined) {
+                        darkColor = x.Color;
+                    }
+                    clus.push(val.Cluster);
+                    clusValue.push(parseFloat(val.Percentage));
+                    color.push(darkColor);
+                }
+            });
+            week.Name = "Week" + i;
+            week.WeekId = i;
+            week.Cluster = clus;
+            week.ClusterValue = clusValue;
+            week.Color = color;
+            weeks.push(week);
+        }
+
+        return weeks;
+    }
+
+
+    function fnGetDarkColor() {
+        var allowed = "ABCDEF0123456789", S = "#";
+
+        while (S.length < 7) {
+            S += allowed.charAt(Math.floor((Math.random() * 16) + 1));
+        }
+        return S;
+    }
+
+    function genresHandler(movieId) {
+        const movie = movieGen.find((movie) => movie.id === movieId);
+        return movie ? movie.name : null;
+    }
+</script>

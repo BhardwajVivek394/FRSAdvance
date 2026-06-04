@@ -1,0 +1,163 @@
+﻿@model Domain.SearchCriteria
+
+@{
+    ViewBag.Title = "AlertAnalysisAudit";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<style>
+    .rounded-pill1 {
+        border-radius: 55rem !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"><i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Alert Analysis Audit</li>
+                </ol>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <div class="email-wrap email-main-wrapper">
+                <div class="col-xl-12">
+                    <div class="row">
+                        <div class="col-xl-2 col-lg-3 col-md-3 col-sm-6">
+                            <strong style="margin-top:5px;">Start Date</strong>
+                            <input type="text" id="txtStartDate" class="form-control" value="@Model.StartDate.ToShortDateString()" />
+                        </div>
+                        <div class="col-xl-2 col-lg-3 col-md-3 col-sm-6">
+                            <strong style="margin-top:5px;">End Date</strong>
+                            <input type="text" id="txtEndDate" class="form-control" value="@Model.EndDate.ToShortDateString()" />
+                        </div>
+                        <div class="col-xl-2 col-lg-3 col-md-3 col-sm-6">
+                            <strong style="margin-top:5px;">Is Alert</strong>
+                            @Html.DropDownList("drpIsAlert", new List<SelectListItem>
+                            {
+                            new SelectListItem { Text = "False", Value = "1"},
+                            new SelectListItem { Text = "True", Value = "2"}
+                            }, new { @class = "form-control" })
+                        </div>
+
+                        <div class="col-xl-4 col-lg-3 col-md-3 col-sm-6 mt-4">
+                            <button type="button" class="btn btn-success" onclick="fnSearchRemark()">Search</button>
+                           
+                            <a class="btn btn-info" href="javascript:void(0)" onclick="fnDownloadFRSAlert()">Download</a>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            @using (Ajax.BeginForm("_FRSAlertAnalysisAuditList", "AlertAnalysis", new AjaxOptions()
+            {
+                HttpMethod = "POST",
+                UpdateTargetId = "divAlertAnalysisAuditList",
+                InsertionMode = InsertionMode.Replace,
+                LoadingElementId = "loader"
+            }, new { id = "frmAlertAnalysisAuditList" }))
+            {
+                <input type="hidden" value="@Model.StartDate" id="hdnStartDate" name="StartDate" />
+                <input type="hidden" value="@Model.EndDate" id="hdnEndDate" name="EndDate" />
+
+                <div id="divAlertAnalysisAuditList">
+                    @Html.Action("_FRSAlertAnalysisAuditList", Model)
+                </div>
+            }
+
+            @using (Ajax.BeginForm("UpdateAlertAnalysisAudit", "AlertAnalysis", new AjaxOptions()
+            {
+                HttpMethod = "POST",
+                UpdateTargetId = "divUpdateAlertAnalysisAudit",
+                InsertionMode = InsertionMode.Replace,
+                LoadingElementId = "loader",
+            }, new { id = "frmAlertAnalysisAudit" }))
+            {
+                <div id="divUpdateAlertAnalysisAudit">
+
+                </div>
+            }
+
+        </div>
+    </div>
+    <div class="row">
+
+    </div>
+</div>
+<div id="divAlertViewList"></div>
+<script>
+
+    $(document).ready(function () {
+        $('#txtStartDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#txtEndDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+    });
+
+    function fnSearchRemark() {
+        var mSearchCriteria = {};
+        mSearchCriteria.StartDate = $('#txtStartDate').val();
+        mSearchCriteria.EndDate = $('#txtEndDate').val();
+        if ($('#drpIsAlert').val() == 2) {
+            mSearchCriteria.IsAlert = true;
+        } else {
+            mSearchCriteria.IsAlert = false;
+        }
+        $("#loader").show();
+        $.ajax({
+            url: '/AlertAnalysis/_FRSAlertAnalysisAuditList',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mSearchCriteria),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertAnalysisAuditList").empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    function fnDownloadFRSAlert() {
+        if ($('#txtStartDate').val() != null && $('#txtStartDate').val() != undefined && $('#txtStartDate').val() != '' && $('#txtEndDate').val() != null && $('#txtEndDate').val() != undefined && $('#txtEndDate').val() != '') {
+
+            var isAlert = false;
+            if ($('#drpIsAlert').val() == 2) {
+                isAlert = true;
+            } else {
+                isAlert = false;
+            }
+
+            window.location.href = "@Url.Action("DownloadFRSAlert", "AlertAnalysis")?StartDate=" + $('#txtStartDate').val() + "&EndDate=" + $('#txtEndDate').val() + "&IsAlert=" + isAlert;
+
+        } else {
+            CommonNotification("error", "Please select start date and end date");
+        }
+    }
+
+</script>

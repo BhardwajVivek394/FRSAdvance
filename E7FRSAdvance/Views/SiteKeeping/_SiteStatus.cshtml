@@ -1,0 +1,359 @@
+﻿@model Domain.SiteStatusLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-10">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                            <a class="btn btn-success" href="@Url.Action("DownloadSiteStatus")">Download</a>                         
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSiteSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "form-control", id = "drpSitePageSize" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+
+                            <button type="button" class="btn btn-outline-dark" onclick="GetSitePagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetSitePagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.mSiteStatus.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                    <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Site Status</span>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        <table class="table">
+                            <thead class="bg-primary">
+                                <tr>
+                                    <th data-sortcolumn="SiteName" class="sorting" id="thSiteName" onclick="SortList('SiteName');">SiteName</th>
+                                    <th data-sortcolumn="SiteId" class="sorting" id="thSiteId" onclick="SortList('SiteId');">SiteId</th>
+                                    <th data-sortcolumn="Channel" class="sorting" id="thChannel" onclick="SortList('Channel');">Channel</th>
+                                    <th data-sortcolumn="Mac" class="sorting" id="thMac" onclick="SortList('Mac');">Mac</th>
+                                    <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">TimeStamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.mSiteStatus != null && Model.mSiteStatus.Count > 0)
+                                {
+                                    foreach (var item in Model.mSiteStatus)
+                                    {
+                                        <tr class="table-light">
+                                            <td>@item.SiteName</td>
+                                            <td>@item.SiteId</td>
+                                            <td>@item.Channel</td>
+                                            <td>@item.Mac</td>
+                                            <td>@item.TimeStamp.ToString()</td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-2 xl-40">
+            <div class="row">
+                <div class="col-xl-12 default-according style-1 faq-accordion job-accordion">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <a class="btn btn-link">Search Site Status</a>
+                            </h5>
+                        </div>
+                        <div class="card-body filter-cards-view animate-chk">
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">TimeStamp:</label>
+
+                                <input type="text" class="form-control" id="txtSiteSearchTimeStamp" name="SearchCriteria.TimeStamp" value="@Model.SearchCriteria.TimeStamp.ToShortDateString()" />
+
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Hours:</label>
+
+                                <select class="form-control" name="SearchCriteria.Hours">
+                                    <option value="">All</option>
+                                    @if (Model.SearchCriteria.HoursList != null)
+                                    {
+                                        foreach (var item in Model.SearchCriteria.HoursList)
+                                        {
+                                            if (!string.IsNullOrEmpty(Model.SearchCriteria.Hours) && Model.SearchCriteria.Hours == item)
+                                            {
+                                                <option value="@item" selected>@item</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@item">@item</option>
+                                            }
+                                        }
+                                    }
+
+                                </select>
+
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Zone:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", id = "SiteStatusZone", tabindex = 1 })
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Division:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "SiteStatusDivision", tabindex = 1 })
+                                @*<select class="form-control" id=""></select>*@
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Site:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select Site", new { @class = "form-control", id = "SiteStatusSiteId", tabindex = 1 })
+                            </div>
+                            <div class="form-group">
+                                <div class="row">
+                                    <div class="col-sm-6">
+                                        <a class="btn btn-success" onclick="SearchSiteStatus()">Search</a>
+                                    </div>
+                                    @*<div class="col-sm-6">
+                    <a class="btn btn-default btn-quirk btn-block" onclick="Clear()">Clear</a>
+                </div>*@
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+
+        $('#drpSitePageSize').change(function (e) {
+            $("#hdnSiteSkip").val('0');
+            $("#frmSiteStatus").submit();
+        });
+
+        $("#txtSiteSearchTimeStamp").keyup(function (e) {
+            e.preventDefault();
+            if (e.keyCode === 13) {
+                if ($.trim($("#txtSearchTitle").val()) !== "") {
+                    $("#hdnSiteSkip").val('0');
+                    $("#frmSiteStatus").submit();
+                }
+                else {
+                    $("#hdnTake").val(parseInt($("#drpSitePageSize").val()));
+                    $("#frmSiteStatus").submit();
+                }
+            }
+        });
+
+        $('#txtSiteSearchTimeStamp').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtSiteSearchTimeStamp').val() == "@DateTime.MinValue") {
+            $('#txtSiteSearchTimeStamp').val('');
+        }
+
+        $('#txtSiteSearchTimeStamp').change(function () {
+            $("#frmSiteStatus").submit();
+        });
+
+        $("#SiteStatusZone").change(function () {
+            GetSiteStatusDivisionByZone($(this).val());
+        });
+
+        $("#SiteStatusDivision").change(function () {
+            fnSiteStatusGetAllSites($("#SiteStatusZone").val(), $(this).val());
+        });
+
+        GetSiteStatusDivisionByZone($("#SiteStatusZone").val());
+
+        fnSiteStatusGetAllSites($("#SiteStatusZone").val(), $("#SiteStatusDivision").val());
+    });
+
+    function GetSitePagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSiteSkip = $("#hdnSiteSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSiteSkip) + parseInt(pageSize);
+                $("#hdnSiteSkip").val(skip);
+                $("#frmSiteStatus").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSiteSkip").val(skip);
+                $("#frmSiteStatus").submit();
+            }
+        }
+    }
+    function PageSize() {
+        $("#hdnSiteSkip").val('0');
+        $("#frmSiteStatus").submit();
+    }
+
+    function SearchSiteStatus() {
+        $("#hdnSiteSkip").val('0');
+        $("#frmSiteStatus").submit();
+    }
+
+
+    function SortList(columnName) {
+        $("#hdnColumnName").val(columnName);
+        if ($("#th" + columnName).hasClass("sorting")) {
+            $("#hdnSortDirection").val("ASC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_desc');
+        }
+        else if ($("#th" + columnName).hasClass("sorting_desc")) {
+            $("#hdnSortDirection").val("DESC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_asc');
+        }
+        else if ($("#th" + columnName).hasClass("sorting_asc")) {
+            $("#hdnSortDirection").val("ASC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_desc');
+        }
+        $("#frmSiteStatus").submit();
+    }
+
+    function GetSiteStatusDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/SiteKeeping/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SiteStatusDivision").empty();
+                    $("#SiteStatusDivision").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        if ('@Model.SearchCriteria.DivisionId' != '0' && '@Model.SearchCriteria.DivisionId' == value.Id) {
+                            $("#SiteStatusDivision").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SiteStatusDivision").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnSiteStatusGetAllSites(zoneId, divisionId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '' && divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/SiteKeeping/GetSites',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + ',divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SiteStatusSiteId").empty();
+                    $("#SiteStatusSiteId").append($("<option></option>").val('0').html('Select Sites'));
+                    $.each(data, function (key, value) {
+                        if ('@Model.SearchCriteria.SiteId' != '0' && '@Model.SearchCriteria.SiteId' == value.Id) {
+                            $("#SiteStatusSiteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SiteStatusSiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+</script>

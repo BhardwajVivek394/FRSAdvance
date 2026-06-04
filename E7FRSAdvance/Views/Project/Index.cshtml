@@ -1,0 +1,307 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Project</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+
+    @using (Ajax.BeginForm("List", "Project", new AjaxOptions()
+    {
+        HttpMethod = "POST",
+        UpdateTargetId = "divProjectList",
+        InsertionMode = InsertionMode.Replace,
+        LoadingElementId = "loader"
+    }, new { id = "frmProjectList" }))
+    {
+        { HtmlHelper.ClientValidationEnabled = false; }
+        <div id="divProjectList">
+            @Html.Action("List")
+        </div>
+    }
+</div>
+
+<div>
+
+    @using (Ajax.BeginForm("Create", "Project", new AjaxOptions()
+    {
+        HttpMethod = "POST",
+        UpdateTargetId = "divAddProject",
+        InsertionMode = InsertionMode.Replace,
+        LoadingElementId = "loader"
+    }, new { id = "frmAddProject" }))
+    {
+        <div id="divAddProject" >
+            @Html.Partial("Add", new Domain.Project())
+        </div>
+    }
+</div>
+  
+
+<script>
+    function fnShowProject(projectId, $this) {
+        if ($($this).hasClass("fa-angle-up")) {
+            $("#loader").show();
+            $($this).removeClass("fa-angle-up").addClass("fa-angle-down");
+            $.ajax({
+                url: '/Project/AssetAttributeMapping',
+                type: 'Post',
+                data: '{id:' + projectId + '}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $(".divProject_" + projectId).empty().append(data);
+                    $(".divProject_" + projectId).show();
+                },
+                error: function (response) {
+                    $(".divProject_" + projectId).hide();
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+
+        } else {
+            $($this).removeClass("fa-angle-down").addClass("fa-angle-up");
+            $(".divProject_" + projectId).hide();
+        }
+    }
+
+    function fnAddProject() {
+        $("#loader").show();
+        $.ajax({
+            url: '/Project/Add',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddProject").empty().append(data);
+                $("#modal-add-project").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnBindSite(divisionId) {
+        $.ajax({
+            url: '/Project/GetSiteByDivisionId',
+            type: 'Post',
+            data: '{divisionId:' + divisionId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                var siteDropdown = '';
+                var divisionName = '';
+                if (data != null && data != undefined && data != '') {
+                    $(data).each(function (index, val) {
+                        divisionName = val.DivisionName
+                        var selectedSiteId = $('#hdnProjectSelectedSite_' + val.Id).val();
+                        if (selectedSiteId != null && selectedSiteId != undefined && selectedSiteId != '') {
+                            siteDropdown += '<li style="margin-left: 3px;"><input name="sitecheckbox" type="checkbox" class="chkclspmEvent_' + divisionId + '" id="checkboxesEventFilter_' + val.Id + '" value="' + val.Id + '" checked><label style="margin-left: 0.5rem;" for="checkboxesEventFilter_' + val.Id + '">' + val.Name + '</label></li>';
+                        } else {
+                            siteDropdown += '<li style="margin-left: 3px;"><input name="sitecheckbox" type="checkbox" class="chkclspmEvent_' + divisionId + '" id="checkboxesEventFilter_' + val.Id + '" value="' + val.Id + '" ><label style="margin-left: 0.5rem;" for="checkboxesEventFilter_' + val.Id + '">' + val.Name + '</label></li>';
+                        }
+                    });
+                    $(".divProjectSite").append('<div class="col-sm-6 mb-2" ><div class="dropdown"><button style="width:100%" class="btn btn-primary dropdown-toggle" type="button" id="multiSelectDropdown" data-bs-toggle="dropdown" aria-expanded="false">' + divisionName + '</button><ul style="width:100%" id="checklegendsboxes_' + divisionId + '" class="dropdown-menu" aria-labelledby="multiSelectDropdown">' + siteDropdown + '</ul></div></div>');
+                }
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+            }
+        });
+    }
+
+    function fnSave() {
+        if (Valid()) {
+            var mProject = {};
+            var mProjectDivisions = [];
+            var siteIds = [];
+            $('input[name="sitecheckbox"]:checked').each(function () {
+                siteIds.push($(this).val());
+            });
+            var divisionIds = $("#drpProjectDivision").val();
+            var projectId = $('#hdnProjectId').val();
+            if (projectId != null && projectId != undefined && projectId != '') {
+                mProject.Id = projectId;
+            }
+            mProject.Name = $("#Name").val();
+            mProject.ContractNumber = $("#ContractNumber").val();
+            if (divisionIds != null && divisionIds.length > 0) {
+                $(divisionIds).each(function (d, val) {
+                    var mProjectSites = [];
+                    var mProjectDivision = {};
+                    mProjectDivision.DivisionId = val;
+
+                    $('.chkclspmEvent_' + val).each(function () {
+
+                        if ($(this).prop('checked') == true) {
+                            //do something
+                            var mProjectSite = {};
+                            mProjectSite.SiteId = $(this).val();
+                            mProjectSites.push(mProjectSite);
+                        }
+
+                    });
+                    mProjectDivision.ProjectSites = mProjectSites;
+                    mProjectDivisions.push(mProjectDivision);
+
+                });
+            }
+            mProject.ProjectDivisions = mProjectDivisions;
+            $("#loader").show();
+            $.ajax({
+                url: '/Project/Create',
+                type: 'Post',
+                data: '{mProject:' + JSON.stringify(mProject) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#modal-add-project").modal('hide');
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                            $("#frmProjectList").submit();
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                    $("#loader").hide();
+                }
+            });
+        }
+    }
+
+    function Valid() {
+        var isValid = true;
+
+        if ($.trim($("#Name").val()).length == 0) {
+            $("#Name").next("span").html("Name is required");
+            isValid = false;
+        }
+        else {
+            $("#Name").next("span").html("");
+        }
+        if ($.trim($("#ContractNumber").val()).length == 0) {
+            $("#ContractNumber").next("span").html("Contract Number is required");
+            isValid = false;
+        }
+        else {
+            $("#ContractNumber").next("span").html("");
+        }
+        return isValid;
+    }
+
+    function GetAssestAttributes(projectId, assetTypeId, $this) {
+        if ($($this).hasClass("fa-plus")) {
+            $($this).removeClass("fa-plus").addClass("fa-minus");
+
+            $.ajax({
+                url: '/Project/GetAssetAttributesBy',
+                type: 'Post',
+                data: '{assetTypeId:' + assetTypeId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var html = '<td colspan=2>';
+                    if (data != null && data != undefined) {
+                        html += '<div class="row">';                          
+                       
+                        $(data).each(function (v, d) {
+                            html += '<div class="col-lg-3">';
+                            html += '<input type="checkbox" id="chkProjectAttr_' + d.Id + '" onchange="fnCreateAttribute(' + projectId +',' + d.Id +')"/>';
+                            html += '<label class="m-l-10" for="chkProjectAttr_' + d.Id +'">' + d.Title +'</label>';
+                            html += '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    html += '<td>';
+                    $("#trAssestTypes" + assetTypeId).empty().append(html);
+                    $("#trAssestTypes" + assetTypeId).show();
+                },
+                error: function (response) {
+                    $("#trAssestTypes" + assetTypeId).hide();
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+
+        } else {
+            $($this).removeClass("fa-minus").addClass("fa-plus");
+            $("#trAssestTypes" + assetTypeId).hide();
+            $("#trAssestTypes" + assetTypeId).empty();
+        }
+    }
+
+    function fnEditProject(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/Project/GetProjectById',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddProject").empty().append(data);
+                $("#modal-add-project").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnCreateAttribute(projectId, attributeId) {
+        debugger;
+        var mProjectAttribute = {};
+        mProjectAttribute.ProjectId = projectId;
+        mProjectAttribute.AttributeId = attributeId;
+        $("#loader").show();
+        $.ajax({
+            url: '/Project/CreateAttribute',
+            type: 'Post',
+            data: '{mProjectAttribute:' + JSON.stringify(mProjectAttribute) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    if (data.type == "success") {
+                      //  CommonNotification("SUCCESS", data.result, "success");
+                       // $("#frmProjectList").submit();
+                    }
+                    else if (data.type == "error") {
+                      //  CommonNotification("ERROR", data.result, "error");
+                    }
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Internal server error.", "error");
+                $("#loader").hide();
+            }
+        });
+    }
+</script>

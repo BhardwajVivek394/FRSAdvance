@@ -1,0 +1,102 @@
+﻿@model  List<Domain.FRSAlertAudit>
+
+@{
+    int totalTrue = 0;
+    int totalaudit = 0;
+    int totalalert = 0;
+    var enumData = from E7FRSAdvance.Utility.Utility.FRSAlertIssue e in Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.FRSAlertIssue))
+                   select new
+                   {
+                       Id = (int)e,
+                       Name = e.ToString().Replace("_", " ")
+                   };
+
+    Dictionary<int, int> totalCount = new Dictionary<int, int>();
+}
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th class="text-center">Number of alerts</th>
+                <th class="text-center">Number of UnAttempted</th>
+                <th class="text-center">Number of audit</th>
+
+                @foreach (var item in enumData)
+                {
+                    <th class="text-center">@item.Name</th>
+                }
+                <th class="text-center">True</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model != null)
+            {
+                for (DateTime dateTime = Convert.ToDateTime(ViewBag.StartDate); dateTime <= Convert.ToDateTime(ViewBag.EndDate); dateTime += TimeSpan.FromDays(1))
+                {
+                    var thisDateData = Model.Where(x => x.TimeStamp != null && x.TimeStamp.Value.Date == dateTime.Date).ToList();
+                    totalTrue += thisDateData.Where(x => x.IsAlert).Count();
+                    totalaudit += thisDateData.Count();
+                    int frsCount = 0;
+                    if (ViewBag.FRSAlerts != null)
+                    {
+                        var mFRSAlerts = ViewBag.FRSAlerts as Dictionary<DateTime, int>;
+                        if (mFRSAlerts != null && mFRSAlerts.Count > 0)
+                        {
+                            frsCount = mFRSAlerts.Where(x => x.Key == dateTime.Date).FirstOrDefault().Value;
+
+                            totalalert += frsCount;
+                        }
+                    }
+                    <tr>
+                        <th>@dateTime.ToString("dd/MM/yyyy")</th>
+                        <th class="text-center">@frsCount</th>
+                        <th class="text-center">@(frsCount - thisDateData.Count())</th>
+                        <th class="text-center">@thisDateData.Count()</th>
+                        @foreach (var item in enumData)
+                        {
+                            <th class="text-center">@thisDateData.Where(x => x.IssueTypeId != null && x.IssueTypeId == item.Id).Count()</th>
+
+                            if (totalCount.Where(x => x.Key == item.Id).Count() > 0)
+                            {
+                                var count = thisDateData.Where(x => x.IssueTypeId != null && x.IssueTypeId == item.Id).Count();
+                                var lastCount = totalCount.Where(x => x.Key == item.Id).FirstOrDefault().Value;
+
+                                totalCount[item.Id] = lastCount + count;
+                            }
+                            else
+                            {
+                                totalCount.Add(item.Id, thisDateData.Where(x => x.IssueTypeId != null && x.IssueTypeId == item.Id).Count());
+
+                            }
+                        }
+                        <th class="text-center">@thisDateData.Where(x => x.IsAlert).Count()</th>
+                    </tr>
+                }
+
+                <tr>
+                    <th><h6>Total</h6></th>
+                    <th class="text-center"><h6>@totalalert</h6></th>
+                    <th class="text-center"><h6>@(totalalert - totalaudit)</h6></th>
+                    <th class="text-center"><h6>@totalaudit</h6></th>
+                    @foreach (var item in enumData)
+                    {
+                        if (totalCount.Where(x => x.Key == item.Id).Count() > 0)
+                        {
+                            var lastCount = totalCount.Where(x => x.Key == item.Id).FirstOrDefault().Value;
+                            <th class="text-center"><h6>@lastCount</h6></th>
+                        }
+                        else
+                        {
+                            <th class="text-center"><h6>0</h6></th>
+                        }
+                    }
+                    <th class="text-center"><h6>@totalTrue</h6></th>
+                </tr>
+            }
+
+        </tbody>
+    </table>
+</div>
+
+

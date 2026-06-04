@@ -1,0 +1,576 @@
+﻿
+@{
+    if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+    {
+        ViewBag.Title = "Index";
+    }
+    else
+    {
+        ViewBag.Title = "Data Logger";
+    }
+
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<script src="~/assets/js/paho-mqtt.js"></script>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Datalogger</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                            {
+                                <div class="pull-left" style="margin-left:10px;">
+                                    <input type="file" class="form-control" id="uploadDataLogger" onchange="fnUploadDataLogger(this)" accept=".csv" />
+                                    <a href="~/Upload/Temp/DLSampleNew.csv">Download Template Sheet</a>
+
+                                </div>
+                            }
+
+                            <div class="pull-left" style="margin-left:10px;">
+                                <button class="btn btn-primary" type="button" onclick="SearchDatalogger()">Search</button>
+                            </div>
+
+                            <div class="pull-left divCreateAsset" style="margin-left:10px;display:none">
+                                <button class="btn btn-info" type="button" onclick="CreateAsset()">Upload</button>
+                            </div>
+
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-info" href="javascript:void(0)" onclick="DownloadAsset()">Download</a>
+                            </div>
+
+                            <div style="margin-left:10px;">
+                                <button class="btn btn-success btn-download-datalogger m-l-10" type="button" onclick="fnGetEventLog()">Event</button>
+                            </div>
+
+
+
+                        </div>
+
+
+                    </div>
+
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-xl-12">
+                            <div class="divDataloggerList">
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="divDataloggerAsset">
+    </div>
+    <div id="divDataLogger"></div>
+</div>
+
+
+
+<div id="divSearchDataLogger"></div>
+
+
+<script>
+
+    function fnUploadDataLogger($this) {
+        if (fnValidateFile()) {
+
+            if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+                var fileUpload = $($this).get(0);
+                var files = fileUpload.files;
+                var fileData = new FormData();
+                fileData.append("siteId", $('#SiteId').val());
+                fileData.append(files[0].name, files[0]);
+                $("#loader").show();
+                $.ajax({
+                    url: "/Datalogger/UploadDataLogger",
+                    type: "POST",
+                    contentType: false,
+                    processData: false,
+                    data: fileData,
+                    async: true,
+                    success: function (data) {
+                        debugger;
+
+                        $("#loader").hide();
+                        if (data != null && data != undefined && data != '') {
+                            if (data.type == 'success') {
+                                $('.divCreateAsset').show();
+
+                                var lbl = '<table class="table">';
+                                lbl += '<thead>';
+                                lbl += '<tr>';
+                                lbl += '<th></th>';
+                                lbl += '<th>SrNo</th>';
+                                lbl += '<th>Relay Name</th>';
+                                lbl += '<th>Relay Type</th>';
+                                lbl += '<th>Contact Type</th>';
+                                lbl += '</tr>';
+                                lbl += '</thead>';
+                                if (data.result != null && data.result.length > 0) {
+                                    lbl += "<tbody id='tblImportRecord'>";
+                                    $(data.result).each(function (val, dat) {
+                                        lbl += '<tr>';
+                                        lbl += '<td></td>';
+                                        lbl += '<td>' + dat.SrNo + '</td>';
+                                        lbl += '<td>' + dat.RelayName + '</td>';
+                                        lbl += '<td>' + dat.RelayType + '</td>';
+                                        lbl += '<td>' + dat.ContactType + '</td>';
+                                        lbl += '</tr>';
+                                    });
+                                    lbl += "</tbody>";
+                                }
+
+                                $('.divDataloggerList').empty().append(lbl);
+                            } else if (data.type == 'error') {
+                                CommonNotification("ERROR", data.result, "Error");
+                            }
+
+                        }
+                    },
+                    error: function (xhr, error, status) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Internal server error.", "Error");
+                    }
+                });
+            }
+            else {
+                CommonNotification("ERROR", "Please select site.", "Error");
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select only csv file!", "Error");
+        }
+
+    }
+
+    function SearchDatalogger() {
+        $('.divCreateAsset').hide();
+
+        try {
+            DisconnectClient();
+
+        }
+        catch (err) {
+
+        }
+
+
+        fnBindDatalogger();
+    }
+
+    function DownloadAsset() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+
+            window.location.href = "@Url.Action("Download")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+    }
+
+    function fnBindDatalogger() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+            $("#loader").show();
+
+            $.ajax({
+                url: '/Datalogger/_DataloggerFileFormatPartial',
+                type: 'Post',
+                data: '{siteId:' + $('#SiteId').val() + '}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('.divCreateAsset').hide();
+                    $(".divDataloggerList").empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+    }
+
+    function fnBindAssetType() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+            $.ajax({
+                url: '/Datalogger/GetAssetType',
+                type: 'Post',
+                data: '{siteId:' + $('#SiteId').val() + '}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $(".divDataloggerAssetTypeList").empty().append(data);
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+    }
+
+    function GetAssetById(assetId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/Datalogger/GetAsset',
+            type: 'Post',
+            data: '{assetId:' + assetId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+
+                $("#divDataloggerAsset").empty().append(data);
+                $("#modal-add-asset").modal("show");
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    function CreateAsset() {
+        isImportFile = false;
+        var totalRecord = $("#tblImportRecord tr").length;
+        if (totalRecord != null && totalRecord != undefined && totalRecord > 0) {
+            setTimeout(function () {
+                var cnt = 0;
+                if (totalRecord != null && totalRecord != undefined && totalRecord > 0) {
+                    $("#loader").show();
+                    $("#tblImportRecord tr").each(function (index, ele) {
+
+                        var mDataloggerFileFormat = {};
+                        var statusId = $('td:eq(0)', this);
+                        $(statusId).html("<img src='/assets/images/loader.gif' style='max-width:50px;height:40px;'>");
+                        mDataloggerFileFormat.SiteId = $('#SiteId').val();
+                        mDataloggerFileFormat.SrNo = $('td:eq(1)', this).html();
+                        mDataloggerFileFormat.RelayName = $.trim($('td:eq(2)', this).html());
+                        mDataloggerFileFormat.RelayType = $.trim($('td:eq(3)', this).html());
+                        mDataloggerFileFormat.ContactType = $.trim($('td:eq(4)', this).html());
+
+
+                        $.ajax({
+                            url: "/Datalogger/CreateAsset",
+                            type: "POST",
+                            contentType: "application/json; charset=utf-8",
+                            datatype: "json",
+                            async: true,
+                            data: '{mDataloggerFileFormat:' + JSON.stringify(mDataloggerFileFormat) + '}',
+                            success: function (data) {
+                                cnt = cnt + 1;
+                                if (data != null) {
+                                    if (data.type == "success") {
+                                        if (data.result == "Accepted") {
+                                            $(statusId).addClass('alert alert-success');
+                                        }
+                                        else {
+                                            $(statusId).removeClass('alert alert-success').addClass('alert alert-danger');
+                                        }
+                                        $(statusId).html($.trim(data.result));
+                                    }
+                                    else {
+                                        $(statusId).removeClass('alert alert-success').addClass('alert alert-danger');
+                                        if (data.result != null && data.result != "" && data.result != undefined) {
+                                            $(statusId).html($.trim(data.result));
+                                            if ($.trim(data.result).toLowerCase() == "duplicate request") {
+                                            } else {
+                                            }
+                                        } else {
+                                            $(statusId).html($.trim("Bad request"));
+                                        }
+                                    }
+                                }
+
+                                if (cnt == totalRecord) {
+                                    $("#loader").hide();
+                                }
+                            },
+                            error: function (err) {
+                                debugger;
+                                cnt = cnt + 1;
+                                if (cnt == totalRecord) {
+                                    $("#loader").hide();
+                                }
+                            }
+                        });
+
+                    });
+                }
+
+            }, 3000)
+        }
+
+    }
+
+    function ValidAsset(mDataloggerAsset) {
+
+        var isValid = true;
+        if (mDataloggerAsset != null) {
+
+            if (mDataloggerAsset.SiteId == null || mDataloggerAsset.SiteId == undefined || mDataloggerAsset.SiteId == '' || mDataloggerAsset.SiteId == '0') {
+                isValid = false;
+            }
+
+            if (mDataloggerAsset.DataloggerAssetTypeId == null || mDataloggerAsset.DataloggerAssetTypeId == undefined || mDataloggerAsset.DataloggerAssetTypeId == '' || mDataloggerAsset.DataloggerAssetTypeId == '0') {
+                isValid = false;
+            }
+
+            if (mDataloggerAsset.Name == null || mDataloggerAsset.Name == undefined || mDataloggerAsset.Name == '') {
+                isValid = false;
+            }
+        }
+
+        return isValid;
+    }
+
+
+    function fnValidateFile() {
+        var result = true;
+        var fileInput = document.getElementById("uploadDataLogger");
+        var filePath = fileInput.value;
+
+        // Allowing file type
+        var allowedExtensions = /(\.csv)$/i;
+
+        if (!allowedExtensions.exec(filePath)) {
+            fileInput.value = '';
+            result = false;
+        }
+
+        return result;
+    }
+
+    function fnDownloadNullRecord() {
+        var nullDataArray = [];
+
+        $("table > tbody > tr").each(function (index, value) {
+            if (value.classList[0] != 'edit-row-' + value.cells[1].innerText) {
+
+                if (value.cells[6].innerText == null || value.cells[6].innerText == "" || value.cells[6].innerText == undefined &&
+                    value.cells[7].innerText == null || value.cells[7].innerText == "" || value.cells[7].innerText == undefined &&
+                    value.cells[8].innerText == null || value.cells[8].innerText == "" || value.cells[8].innerText == undefined) {
+
+                    nullDataArray.push($.trim(value.cells[3].innerText));
+                    nullDataArray.push($.trim(value.cells[4].innerText));
+                    nullDataArray.push($.trim(value.cells[5].innerText));
+                }
+            }
+        })
+
+        var titles = ["SNO", "RELAY NAME", "CONTACT TYPE"];
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(nullDataArray, titles.length, csvString);
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+
+        downloadLink.href = url;
+        downloadLink.download = "PendingDataLogger.csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function fnGetEventLog() {
+        var siteId = $('#SiteId').val();
+        var searchCriteria = {};
+
+        searchCriteria.SiteId = siteId;
+        searchCriteria.StartTime = $('#tpDataloggerFrom').val();
+        searchCriteria.EndTime = $('#tpDataloggerTo').val();
+
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Datalogger/_DataLoggerEvent',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(searchCriteria),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#modalDataloggerLogs").modal('hide');
+                    $("#divDataLogger").empty().append(data);
+                    $("#modalDataloggerLogs").modal('show');
+                    //fnGetDataLoggerAllEvent();
+                },
+                error: function (response) {
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+
+    }
+
+    function fnGetDataLoggerAllEvent() {
+        var siteId = $('#SiteId').val();
+
+        var searchCriteria = {};
+
+        searchCriteria.SiteId = siteId;
+        if ($('#tpDataloggerSearchDate').val() != null && $('#tpDataloggerSearchDate').val() != undefined) {
+            searchCriteria.SearchDate = $('#tpDataloggerSearchDate').val();
+        }
+
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            // $("#loader").show();
+            $.ajax({
+                url: '/Datalogger/GetDataLoggerAllEvent',
+                type: 'Post',
+                data: JSON.stringify(searchCriteria),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        var tbl = '';
+                        $(data).each(function (v, val) {
+                            tbl += '<tr>';
+                            tbl += '<td>' + val.SrNo + '</td>';
+                            tbl += '<td>' + val.AssetName + '</td>';
+                            if (val.CurrentValue == 'Pickup') {
+                                tbl += "<td><span class='badge badge-success'>Pickup</span></td>";
+                            } else {
+                                tbl += "<td><span class='badge badge-warning'>DROP</span></td>";
+                            }
+                            tbl += '<td>' + val.Timestamp + '</td>';
+                            tbl += '</tr>';
+                        });
+                        $('#tbodyJsonView').append(tbl);
+                    }
+                },
+                error: function (response) {
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+
+    }
+
+    function fnGetSearchEventLog() {
+        var siteId = $('#SiteId').val();
+        var strSearchSRNo = [];
+        var strSearchRelayNames = [];
+
+        var searchCriteria = {};
+        if ($('#tpDataloggerSearchDate').val() != null && $('#tpDataloggerSearchDate').val() != undefined) {
+            searchCriteria.SearchDate = $('#tpDataloggerSearchDate').val();
+        }
+        searchCriteria.SiteId = siteId;
+        searchCriteria.StartTime = $('#tpDataloggerFrom').val();
+        searchCriteria.EndTime = $('#tpDataloggerTo').val();
+
+        $('#tbodySearchSRNo tr').each(function () {
+            var srno = $.trim($(this).find("td").eq(0).html());
+            if (srno != null && srno != '' && srno != undefined) {
+                strSearchSRNo.push(srno);
+            }
+
+        });
+        searchCriteria.SrNumbers = strSearchSRNo;
+
+
+        $('#tbodySearchAssetName tr').each(function () {
+            var relayName = $.trim($(this).find("td").eq(0).html());
+            if (relayName != null && relayName != '' && relayName != undefined) {
+                strSearchRelayNames.push(relayName);
+            }
+        });
+        searchCriteria.RelayNames = strSearchRelayNames;
+
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Datalogger/_EventGraphDeadband',
+                type: 'Post',
+                // dataType: 'html',
+                data: JSON.stringify(searchCriteria),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#deadbandDataByDate").empty().append(data);
+                    $("#modelSearchDataLogger").modal('hide');
+                },
+                error: function (response) {
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+
+    }
+
+    function fnAddSRNo() {
+        var siteId = $('#SiteId').val();
+        $("#loader").show();
+        $.ajax({
+            url: '/Datalogger/_SeachEventGraphDeadband',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSearchDataLogger").empty().append(data);
+                $('#modelSearchDataLogger').modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnAddSearch(txtId, tbodyId) {
+        var inputId = $('#' + txtId).val();
+        if (inputId != null && inputId != undefined && inputId != '') {
+            $('#' + txtId).val('');
+
+            var tbl = '<tr>';
+            tbl += '<td>' + inputId + '</td>';
+            tbl += '<td><button type="button" onclick="fnRemoveSearch(this)" class="btn btn-success"><i class="fa fa-minus"></i></button></td>';
+            tbl += '</tr>';
+            $('#' + tbodyId).append(tbl);
+        }
+    }
+
+    function fnRemoveSearch(row) {
+        $(row).closest('tr').remove();
+    }
+</script>

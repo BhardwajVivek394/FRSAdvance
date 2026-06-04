@@ -1,0 +1,710 @@
+﻿@model Domain.Division
+@{
+    ViewBag.Title = "SipView1";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link href="~/assets/sip/css/rappid.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.css" rel="stylesheet" />
+<link href="~/assets/sip/css/theme-picker.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.dark.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.material.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.modern.css" rel="stylesheet" />
+<link href="~/assets/sip/css/diagram.css" rel="stylesheet" />
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+<style>
+
+    #app {
+        height: 800px
+    }
+
+    .card-fullscreen {
+        z-index: 99;
+        position: fixed;
+        width: 100% !important;
+        height: 100% !important;
+        top: 0;
+        right: 0;
+        left: 0;
+        bottom: 0;
+        background-color: white;
+    }
+
+    .joint-paper-background, .joint-paper-grid, .joint-paper > svg {
+        background-color: #010300;
+    }
+
+    .handle {
+        display: none !important;
+    }
+
+    .site {
+        background-color: black;
+        color: white;
+        padding: 20px 20px 40px;
+    }
+
+    .circle {
+        border: 2px solid Whitesmoke;
+        border-radius: 50%;
+        height: 100px;
+        width: 100px;
+        text-align: right;
+    }
+
+    .card .card-header-sitelist {
+        background-color: #08495e !important;
+        color: white !important;
+    }
+
+    .cardRed {
+        box-shadow: 1px 1px 5px 1px #ff4d4f !important;
+    }
+
+        .cardRed:hover {
+            box-shadow: 2px 2px 15px 2px #ff4d4f !important;
+        }
+
+    .cardGreen {
+        box-shadow: 1px 1px 5px 1px #51bb25 !important;
+    }
+
+        .cardGreen:hover {
+            box-shadow: 2px 2px 15px 2px #51bb25 !important;
+        }
+
+    .card-body {
+        padding: 25px !important;
+    }
+
+    .card-footer {
+        padding: 25px !important;
+    }
+
+    .modal-backdrop {
+        opacity: 0.5 !important;
+    }
+
+    .paper-container {
+        background-color:black;
+    }
+</style>
+<div class="container-fluid">
+
+    <input type="hidden" id="hdnId" value="0" />
+    <input type="hidden" id="hdnDivisionId" value="@Model.Id" />
+    <br />
+    <div class="card">
+        <div class="card-body">
+            <div id="app" class="card-fullscreen">
+                <div class="app-header">
+                    <div class="app-title" style="background-color:white;">
+
+                        @Html.DropDownListFor(m => m.Id, (IEnumerable<SelectListItem>)ViewBag.Division, new { @class = "form-control", tabindex = 1, @id = "drpDivision" })
+                    </div>
+                    <div class="toolbar-container"></div>
+                </div>
+                <div class="site mt-2">
+                    <div class="pull-left">
+                        <img src="~/assets/images/cmenu.png" />
+                    </div>
+                    <div class="row">
+                        <div class="col-auto">
+                            <a class="nav-link text-white" style="font-size:16px;font-weight:500;background:#4bacc6; border-radius:10px;">Remote Diagnostic </a>
+                        </div>
+                        <div class="col-auto" style="margin-left:-15px;">
+                            <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #215968; border-radius: 10px;">And</a>
+                        </div>
+                        <div class="col-auto" style="margin-left:-15px;">
+                            <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #484640; border-radius: 10px;">Predictive Maintenance System </a>
+                        </div>
+                        <div class="col-auto" style="margin-left:-15px;">
+                            <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #4bacc6; border-radius: 10px;">
+                                Division Name: @Model.Name
+                            </a>
+                        </div>
+                        <div class="col-auto" style="margin-left:-15px;">
+                            <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #484640; border-radius: 10px;">Division View </a>
+                        </div>
+                    </div>
+                  
+                </div>
+                <div class="app-body ">
+                    <div class="stencil-container" style="display:none"></div>
+                    <div class="paper-container" style="left:0px;right:0"></div>
+                    <div class="inspector-container" style="display:none"></div>
+                    <div class="navigator-container" style="display:none"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+<div class="modal bounceIn animated" id="modal-add-asset" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-add-asset" style="overflow-y:hidden">
+    <div class="modal-dialog" style="max-width:98%;">
+        <div class="modal-content bradius4 modal-lg" style="max-width:98%;">
+
+            <div class="modal-header">
+                <h5 class="modal-title isEdit " style="width:400px;" id="myModalLabel"><span id="spHeader"></span></h5>
+                <h6 class="btn btn-primary" id="prevM"></h6>
+                <h6 class="btn btn-success" id="nextM" style="margin-left:10px;"></h6>
+                <button type="button" style="position:absolute;right:80px;" id="indexScore"></button>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <ul class="nav nav-tabs" id="myTab" role="tablist">
+                            <li class="nav-item"><a class="nav-link active" id="home-tab" data-bs-toggle="tab" href="#home" role="tab" aria-controls="home" aria-selected="true">Live</a></li>
+                            <li class="nav-item"><a class="nav-link" id="profile-tabs" data-bs-toggle="tab" href="#profile" role="tab" aria-controls="profile" aria-selected="false">Alert Analytics</a></li>
+                            <li class="nav-item">
+                                <a class="nav-link" id="contact-tab"
+                                   data-bs-toggle="tab" href="#contact" role="tab" aria-controls="contact" aria-selected="false" onclick="fnGetGraph()">Graph</a>
+                            </li>
+                            <li class="nav-item"><a class="nav-link" id="event-tab" data-bs-toggle="tab" href="#event" role="tab" aria-controls="event" aria-selected="false">Event Log</a></li>
+                            <li class="nav-item"><a class="nav-link text-white" id="alertLog-tab" data-bs-toggle="tab" href="#alertLog" role="tab" aria-controls="alertLog" aria-selected="false">Alarm</a></li>
+                            <li class="nav-item error-code" style="display:none"><a class="nav-link" id="error-tab" data-bs-toggle="tab" href="#error" role="tab" aria-controls="error" aria-selected="false">Error Code</a></li>
+                        </ul>
+                        <div class="tab-content" id="myTabContent">
+                            <div class="tab-pane fade active show" id="home" role="tabpanel" aria-labelledby="home-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-12" id="divT">
+                                        <div class="card card-border ">
+                                            <div class="card-header bg-primary">
+                                                <h6 id="assetName" style="float:left">
+                                                </h6>
+                                                <div id="bell-icon" class="text-center bg-dark" style="border-top-right-radius: 15px;position:absolute;right:0;height:100%;line-height:4;width:50px;top:0">
+                                                </div>
+                                            </div>
+                                            <div class="card-body" style="padding:5px;">
+                                                <div class="tblAssetData">
+                                                    <table class="table table-striped">
+                                                        <tbody id="tblAttributeData31" class="tblAttributes tblAttributeData">
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-12" id="divP" style="display:none;max-height:600px;overflow-y:auto">
+
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="tab-pane fade" id="profile" role="tabpanel" aria-labelledby="profile-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-2">
+                                        <label>From Date</label>
+                                    </div>
+                                    <div class="col-sm-4">
+
+                                        <div class="input-group">
+                                            <input type="text" class="datepicker-here form-control digits" data-language="en" id="alert-from-date">
+                                            <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+                                        </div>
+
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <label>To Date</label>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <div class="input-group">
+                                            <input type="text" class="datepicker-here form-control digits" data-language="en" id="alert-to-date">
+                                            <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="row" id="assetCount" style="margin-top:10px;">
+
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="contact" role="tabpanel" aria-labelledby="contact-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-12">
+                                        <div class="pull-right" style="display:inline-flex;">
+                                            <input type="hidden" id="hdnAssetId" value="0" />
+                                            <input type="hidden" id="hdnSiteId" value="0" />
+                                            <input type="hidden" id="selDatabase" value="MQTT" />
+                                            <div class="btn-group btn-bar-rad">
+                                                <button class="btn btn-outline-primary db1 active" id="mqtt" onclick="fnDBChanges(this,'MQTT')" data-name="MQTT" type="button">MQTT Db</button>
+                                                <button class="btn btn-outline-primary db1" id="http" onclick="fnDBChanges(this,'HTTP')" data-name="HTTP" type="button">PLC LOG</button>
+                                            </div>
+                                            <div class="input-group mt20" id="fTime" style="width:200px;">
+                                                <input id="tpFrom" type="text" class="form-control" />
+                                                <span class="input-group-text"><i class="fa fa-calendar-times-o"></i></span>
+                                            </div>
+                                            <div class="input-group mt20" id="tTime" style="width:200px;">
+                                                <input id="tpTo" type="text" class="form-control" />
+                                                <span class="input-group-text"><i class="fa fa-calendar-times-o"></i></span>
+                                            </div>
+                                            <div class="theme-form">
+
+                                                <div>
+                                                    <input class="form-control" type="text" id="txtRange" name="daterange">
+                                                </div>
+                                            </div>
+                                            <select class="form-control" style="width:200px;margin-right:10px;" id="sel" onchange="fnChange()">
+                                                <option value="0">Today</option>
+                                                <option value="-1">Yesterday</option>
+                                                <option value="-7">Last 7 Day</option>
+                                                <option value="-30">Last 30 Day</option>
+                                                <option value="1">This Month</option>
+                                                <option value="-60">Last Month</option>
+                                            </select>
+                                            @*<a  style="line-height:2;" class="text-white btn  btn btn-success" onclick="fnSearchGraph()">Search</a>*@
+
+                                            <a id="btn-download-csv" onclick="GetDownloadCsv()" style="line-height:2;" title="download csv" class="text-white btn btn-dark m-r-10 "><i class="fa fa-upload"></i></a>
+                                            <a id="btn-download" style="line-height:2;" href="#" class="text-white btn  btn btn-dark" download=""><i class="fa fa-camera"></i></a>
+
+                                        </div>
+
+
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <div class="apache-cotainer" id="area-echart" style="margin-top:60px;">
+
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="tab-pane fade" id="event" role="tabpanel" aria-labelledby="event-tab" style="margin-top:10px;">
+                                <div id="eventlog">
+
+                                </div>
+                            </div>
+                            <div id="alertLog" class="tab-pane fade" role="tabpanel" aria-labelledby="alertLog-tab" style="margin-top:10px;">
+
+                            </div>
+                            <div class="tab-pane fade error-code" id="error" role="tabpanel" aria-labelledby="error-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-3 mb10">
+                                        <label>From Date</label>
+                                        <input type="text" class="form-control" data-language="en" id="txtFromDate" />
+                                    </div>
+                                    <div class="col-sm-3 mb10">
+                                        <label>To Date</label>
+                                        <input type="text" class="form-control" data-language="en" id="txtToDate" />
+                                    </div>
+                                    <div class="col-sm-3 mb10 m-t-30">
+                                        <a class="btn btn-success" onclick="Search()">Search</a>
+                                    </div>
+                                    <div class="col-sm-12" id="errorcode">
+
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modalSmslogs" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">SMS Log</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 text-end mb-2">
+                        <a class="btn btn-outline-dark-2x" onclick="DownloadChildCsvFile()">Download</a>
+                    </div>
+                    <div class="col-sm-12" id="model-div">
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modalSiteSelectPartial" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-width modal-xl modal-dialog-centered">
+        <div class="modal-content bradius4" style="background-color: transparent; transition: background-color 0.3s ease-in-out; ">
+            @*<div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Division</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>*@
+            <div class="modal-body">
+                <input type="hidden" id="hdnSiteSelectId" />
+                <canvas id="myCanvasSiteSelect" width="500" height="500">
+                  
+                </canvas>
+                @*<div class="container">
+            <h4 class="level-1 rectangle">@Model.Name</h4>
+            <ol class="level-2-wrapper" style="padding-left: 0rem !important;">
+                <li style="padding-left: 0rem !important;">
+                    <h4 class="level-2 rectangle" onclick="GetSitePartial()">RDPMS</h4>
+
+                </li>
+                <li style="padding-left: 0rem !important;">
+                    <h4 class="level-2 rectangle" style="padding:65px !important" onclick="GetMISSitePartial()">MIS</h4>
+
+                </li>
+            </ol>
+        </div>*@
+
+                @*<div class="row">
+            <div class="col-sm-4">
+                <div class="circle">
+                    <p style="text-align:center;margin-top:20px;">
+                        <a href="javascript:void(0)" onclick="GetSitePartial()">RDPMS</a>
+                    </p>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="circle">
+                    <p style="text-align:center;margin-top:20px;">
+                        <a href="javascript:void(0)" onclick="GetMISSitePartial()">MIS</a>
+                    </p>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="circle">
+                    <p style="text-align:center;margin-top:20px;">
+                        <a href="javascript:void(0)">DATA LOGGER</a>
+                    </p>
+                </div>
+            </div>
+        </div>*@
+            </div>
+            @*<div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>*@
+        </div>
+    </div>
+</div>
+
+
+<div id="divSitePartial">
+    @Html.Partial("_SitePartial", new Domain.Site())
+</div>
+
+<div id="divMISSitePartial">
+    @Html.Partial("_MISSitePartial", new Domain.Site())
+</div>
+
+
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<script>
+    var assetNames = null;
+    var isInteractive = false;
+
+    function fnReset($this) {
+        if ($("#app").hasClass("card-fullscreen")) {
+            $("#app").removeClass("card-fullscreen");
+            $($this).text("Full View")
+        }
+        else {
+            $("#app").addClass("card-fullscreen");
+            $($this).text("Reset")
+        }
+    }
+</script>
+
+
+
+<script src="~/assets/sip/js/lodash.js"></script>
+<script src="~/assets/sip/js/backbone.js"></script>
+<script src="~/assets/sip/js/graphlib.core.js"></script>
+<script src="~/assets/sip/js/dagre.core.js"></script>
+@*<script src="~/assets/sip/js/rappid.js"></script>*@
+<script src="~/assets/sip/js/JavaScript.js"></script>
+
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<!-- Application files:  -->
+<script src="~/assets/divisionlayout/js/halo.js"></script>
+<script src="~/assets/divisionlayout/js/selection.js"></script>
+<script src="~/assets/divisionlayout/js/inspector.js"></script>
+<script src="~/assets/divisionlayout/js/stencil.js"></script>
+@*<script src="~/assets/sip/js/toolbar.js"></script>*@
+<script src="~/assets/divisionlayout/js/toolbar-main.js"></script>
+@*<script src="~/assets/sip/js/sample-graphs.js"></script>*@
+<script src="~/assets/divisionlayout/js/main.js"></script>
+<script src="~/assets/divisionlayout/js/theme-picker.js"></script>
+<script src="~/assets/divisionlayout/js/joint.shapes.app.js"></script>
+<script src="~/assets/divisionlayout/js/navigator.js"></script>
+
+<script>
+    var app = null;
+    var parseJson = null;
+    $(document).ready(function () {
+        debugger;
+        $('#drpDivision').change(function () {
+            window.location.href = "Index?divisionId=" + $(this).val();
+            //$('#frmGetAssetDetails').submit();
+        });
+        app = new App.MainView({ el: '#app' });
+        themePicker = new App.ThemePicker({ mainView: app });
+        themePicker.render().$el.appendTo(document.body);
+
+
+        app.paper.on('cell:pointerdown', function (ele) {
+            if ('label' in ele.model.attributes.attrs && 'text' in ele.model.attributes.attrs.label) {
+                if (ele.model.attributes.attrs.label.text != undefined && ele.model.attributes.attrs.label.text != "") {
+                    debugger;
+                    var sitename = ele.model.attributes.attrs.label.text;
+                    if (sitename != null && sitename != '' && sitename != undefined) {
+                        $("#loader").show();
+                        $.ajax({
+                            url: '/DivisionView/GetSite',
+                            type: 'Post',
+                            data: '{siteName:"' + sitename + '"}',
+                            success: function (data) {
+                                $("#loader").hide();
+                                $("#hdnSiteSelectId").val(sitename);
+                                $("#modalSiteSelectPartial").modal('show');
+
+                                var c = document.getElementById("myCanvasSiteSelect");
+                                var ctx = c.getContext("2d");
+                                ctx.moveTo(0, 200);
+                                ctx.strokeStyle = 'white';
+                                ctx.lineTo(250, 200);
+                                ctx.stroke();
+
+                                ctx.moveTo(0, 200);
+                                ctx.lineTo(250, 50);
+                                ctx.stroke();
+
+                                ctx.moveTo(0, 200);
+                                ctx.lineTo(250, 350);
+                                ctx.stroke();
+
+                                //ctx.fillStyle = "#f5cc7f";
+                                //ctx.beginPath();
+                                //ctx.shadowColor = 'white';
+                                //ctx.strokeStyle = "rgba(0,0,0,1)";
+                                //ctx.shadowBlur = 15;
+                                //ctx.shadowOffsetX = 0;
+                                //ctx.shadowOffsetY = 0;
+                                //ctx.arc(300, 200, 50, 0, 2 * Math.PI, true);
+                                //ctx.closePath();
+                                //ctx.fill();
+
+                                //ctx.fillStyle = "#f5cc7f";
+                                //ctx.beginPath();
+                                //ctx.arc(300, 350, 50, 0, 2 * Math.PI);
+                                //ctx.closePath();
+                                //ctx.fill();
+
+                                //ctx.fillStyle = "#f5cc7f";
+                                //ctx.beginPath();
+                                //ctx.arc(300, 50, 50, 0, 2 * Math.PI);
+                                //ctx.closePath();
+                                //ctx.fill();
+
+                                const circle = new Path2D();
+                                circle.arc(300, 200, 50, 0, 2 * Math.PI, true);
+                                ctx.fillStyle = "#f5cc7f";
+                                ctx.beginPath();
+                                ctx.shadowColor = 'white';
+                                ctx.strokeStyle = "rgba(0,0,0,1)";
+                                ctx.shadowBlur = 15;
+                                ctx.shadowOffsetX = 0;
+                                ctx.shadowOffsetY = 0;
+                                ctx.arc(300, 200, 50, 0, 2 * Math.PI, true);
+                                ctx.closePath();
+                                ctx.fill(circle);
+
+                                const circletwo = new Path2D();
+                                circletwo.arc(300, 350, 50, 0, 2 * Math.PI);
+                                ctx.fillStyle = "#f5cc7f";
+                                ctx.beginPath();
+                                ctx.closePath();
+                                ctx.fill(circletwo);
+
+                                const circlethree = new Path2D();
+                                circlethree.arc(300, 50, 50, 0, 2 * Math.PI);
+                                ctx.fillStyle = "#f5cc7f";
+                                ctx.beginPath();
+                                ctx.closePath();
+                                ctx.fill(circlethree);
+
+                                //const circlefour = new Path2D();
+                                //circlefour.arc(20, 200, 50, 0, 2 * Math.PI);
+                                //ctx.fillStyle = "#f5cc7f";
+                                //ctx.beginPath();
+                                //ctx.closePath();
+                                //ctx.fill(circlefour);
+
+                                ctx.font = "15px Arial";
+                                ctx.fillStyle = "black";
+                                ctx.fillText("RDPMS", 270, 50);
+
+                                ctx.font = "15px Arial";
+                                ctx.fillText("MIS", 275, 200);
+
+                                ctx.font = "15px Arial";
+                                ctx.fillText("Data", 280, 350);
+
+                                c.addEventListener('click', function (event) {
+
+                                    if (ctx.isPointInPath(circle, event.offsetX, event.offsetY)) {
+                                        GetMISSitePartial();
+                                    }
+                                    if (ctx.isPointInPath(circlethree, event.offsetX, event.offsetY)) {
+                                        GetSitePartial()
+                                    }
+                                }, false);
+                            },
+                            error: function (response) {
+                                /*CommonNotification("ERROR", "Something went wrong!", "Error");*/
+                            }
+                        });
+                    }
+
+                }
+            }
+
+        });
+
+
+        GetSipView();
+
+    });
+
+    function handleMouseDown(event) {
+        // get canvasXY of click
+        debugger;
+        var canvasOffset = document.querySelector("myCanvasSiteSelect");
+        let rect = canvasOffset.getBoundingClientRect();
+        let x = event.clientX - rect.left;
+        let y = event.clientY - rect.top;
+        console.log("Coordinate x: " + x,
+            "Coordinate y: " + y);
+    }
+
+    function GetSitePartial() {
+        $("#loader").show();
+        $.ajax({
+            url: '/DivisionView/_SitePartial',
+            type: 'Post',
+            data: '{siteName:"' + $("#hdnSiteSelectId").val() + '"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSitePartial").empty().append(data);
+                $("#modalSitePartial").modal('show');
+            },
+            error: function (response) {
+                //CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function GetMISSitePartial() {
+        $("#loader").show();
+        $.ajax({
+            url: '/DivisionView/_MISSitePartial',
+            type: 'Post',
+            data: '{siteName:"' + $("#hdnSiteSelectId").val() + '"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divMISSitePartial").empty().append(data);
+                $("#modalMISSitePartial").modal('show');
+            },
+            error: function (response) {
+                //CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    function GetSipView() {
+        $.ajax({
+            url: '/DivisionView/GetDivisionView',
+            type: 'Post',
+            data: '{divisionId:' + $("#hdnDivisionId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.Id > 0 && data.DivisionView1 != null && data.DivisionView1 != undefined && data.DivisionView1 != '') {
+                    parseJson = JSON.parse(data.DivisionView1);
+                    app.graph.fromJSON(parseJson);
+                    //loadColor();
+                    BindAlertSimulation();
+                }
+                else {
+                    //CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function (response) {
+                //CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function loadColor() {
+        $("[joint-selector='label']").attr('storke', '#fff');
+    }
+
+    function BindAlertSimulation() {
+        var smsLog = {};
+        $.ajax({
+            url: '/SMSLog/GetTodayActiveAlerts',
+            type: 'Post',
+            data: '{mSmsLog:' + JSON.stringify(smsLog) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $.each(parseJson.cells, function (id, val) {
+                    if (val.type == "examples.site") {
+                        /*  val.attrs.label.fill = "#228B22";*/
+
+                        if (data != null && data.mSMSLogs != null && data.mSMSLogs.length > 0) {
+                            $.each(data.mSMSLogs, function (id, smsLog) {
+                                if ($.trim(val.attrs.label.text) == $.trim(smsLog.SiteName)) {
+                                    val.attrs.circle1.fill = "#ff0000";
+                                    val.attrs.circle1.stroke = "#ff0000";
+
+                                }
+                            });
+                        }
+
+                    }
+                });
+                app.graph.fromJSON(parseJson);
+
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                //CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    function fnGetActiveAlerts(item) {
+
+
+    }
+</script>

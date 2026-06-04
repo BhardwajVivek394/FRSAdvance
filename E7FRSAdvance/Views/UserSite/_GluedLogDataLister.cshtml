@@ -1,0 +1,137 @@
+﻿@model Domain.GluedLogDataLister
+@{
+    int count = 0;
+    var mFamilyTracksCount = new List<int>();
+
+    var mAssets = new List<Domain.Asset>();
+}
+<div class="row">
+    <div class="col-12 divGluedLogDataLister">
+
+        @if (ViewBag.Asset != null && Model != null && Model.GluedLogDatas != null && Model.GluedLogDatas.Count > 0)
+        {
+            mAssets = ViewBag.Asset as List<Domain.Asset>;
+
+
+            var mainTrack = Model.GluedLogDatas.GroupBy(x => new { x.MainTrack, x.MainTrackId });
+            if (mainTrack != null)
+            {
+                foreach (var assetId in mainTrack)
+                {
+                    count++;
+                    var mGluedLogDatas = Model.GluedLogDatas.Where(x => x.MainTrackId == assetId.Key.MainTrackId && x.LokedRecord == "1").ToList();
+                    if (mGluedLogDatas != null && mGluedLogDatas.Count > 0)
+                    {
+                        mFamilyTracksCount = mGluedLogDatas.GroupBy(x => x.FamilyTrack).Select(lg => lg.Count()).ToList();
+                    }
+
+                    var lokedRecordCount = Model.GluedLogDatas.Where(x => x.MainTrackId == assetId.Key.MainTrackId && x.LokedRecord == "1").Count();
+                    if (mAssets.Where(x => x.Id == assetId.Key.MainTrackId).Count() > 0)
+                    {
+                        if (mFamilyTracksCount != null && mFamilyTracksCount.Count > 0)
+                        {
+                            <button class="btn btn-info btn-lg m-r-10 m-b-10" type="button" onclick="fnShowGluedLogData('@assetId.Key.MainTrackId','@assetId.Key.MainTrack')">@assetId.Key.MainTrack (@string.Join("/", mFamilyTracksCount))</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-info btn-lg m-r-10 m-b-10" type="button" onclick="fnShowGluedLogData('@assetId.Key.MainTrackId','@assetId.Key.MainTrack')">@assetId.Key.MainTrack (@lokedRecordCount)</button>
+                        }
+                    }
+
+                }
+            }
+        }
+    </div>
+</div>
+
+<div class="modal fade bd-example-modal-lg" id="modal-add-GluedLogData" tabindex="-1" role="dialog" aria-labelledby="modal-add-GluedLogData" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span> Glued - </span><span id="spGluedHeader"></span></h4>
+                <button type="button" class="btn btn-warning" id="btnGluedRealTime">Real Time Data</button>
+                @*<button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>*@
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            @if (Model != null && Model.GluedLogDatas != null && Model.GluedLogDatas.Count > 0)
+                            {
+                                var mainTrack = Model.GluedLogDatas.GroupBy(x => new { x.MainTrack, x.MainTrackId });
+                                if (mainTrack != null)
+                                {
+                                    <div class="row justify-content-around">
+                                        @foreach (var item in mainTrack)
+                                        {
+                                            <div class="table-responsive clsGluedLogData" id="GluedLogData_@item.Key.MainTrackId" style="display:none">
+                                                <table class="table">
+                                                    <thead style="background-color:#042C43;">
+                                                        <tr>
+                                                            <th class="text-white">TimeStamp</th>
+                                                            <th class="text-white">MainTrack Value</th>
+                                                            <th class="text-white">Family Track</th>
+                                                            <th class="text-white">FamilyTrack Value</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var gluedlog in Model.GluedLogDatas.Where(x => x.MainTrackId == item.Key.MainTrackId))
+                                                        {
+                                                            string colorClass = string.Empty;
+                                                            if (gluedlog.LokedRecord == "1")
+                                                            {
+                                                                colorClass = "tblRed";
+                                                            }
+                                                            <tr>
+                                                                <td class="@colorClass">@gluedlog.TimeStamp.ToShortDateString()</td>
+                                                                <td class="@colorClass">@gluedlog.MainTrackValue</td>
+                                                                <td class="@colorClass">@gluedlog.FamilyTrack</td>
+                                                                <td class="@colorClass">@gluedlog.FamilyTrackValue</td>
+                                                            </tr>
+
+                                                        }
+
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+
+
+                                    </div>
+
+                                }
+
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                @*<button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()" id="btnSave">Save</button>*@
+            </div>
+
+            <!-- Modal -->
+
+
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        if ('@Model.GluedLogDatas.Count' <= 0 || '@mAssets.Count' <= 0) {
+            $('#minDivGlued').hide();
+        } else {
+            $('#GluedCount').text('(@count)');
+            $('#minDivGlued').show();
+        }
+    });
+    function fnShowGluedLogData(assetId, assetName) {
+        $(".clsGluedLogData").hide();
+        $("#GluedLogData_" + assetId).show();
+        $("#spGluedHeader").text(assetName);
+        $("#btnGluedRealTime").attr('onClick', 'fnGetAssetAttribute(' + assetId + ',' + "@E7FRSAdvance.Utility.Utility.AssetType.TRACK.GetHashCode()" +')');
+        $("#modal-add-GluedLogData").modal("show");
+    }
+</script>

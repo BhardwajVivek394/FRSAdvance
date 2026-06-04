@@ -1,0 +1,1681 @@
+﻿@model Domain.MaintenaceOperationLister
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-xl-12">
+                            <div class="row">
+                                <div class="col-lg-2">
+                                    <strong style="margin-top:10px;">Zone</strong>
+                                    @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", id = "zoneAdd1", tabindex = 1 })
+                                </div>
+                                <div class="col-lg-2">
+                                    <strong style="margin-top:10px;">Division</strong>
+                                    <input type="hidden" id="hdnSearchDivisionId" value="@Model.SearchCriteria.DivisionId" />
+                                    @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "divisions", tabindex = 1 })
+                                </div>
+                                <div class="col-lg-8">
+                                    <a class="btn btn-success btn-quirk mt-4" onclick="fnSearch()">Search</a>
+                                    <a class="btn btn-success btn-quirk mt-4" onclick="fnGetExcludeSite()">Include Site</a>
+                                    <a class="btn btn-info btn-quirk mt-4" href="@Url.Action("Index","JobCardMaster")" target="_blank">Job Card</a>
+                                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                    {
+                                        <a class="btn btn-info btn-quirk mt-4" href="@Url.Action("QualityAssurance","JobCard")" target="_blank">Q/A</a>
+                                    }
+                                    <a class="btn btn-info btn-quirk mt-4" href="@Url.Action("Index","DivisionDashboard")" target="_blank">Division Dashboard</a>
+                                    <a class="btn btn-info btn-quirk mt-4" href="@Url.Action("Index","AlertAnalysis")" target="_blank">Alert Analysis</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive tableFixHead">
+                        <table id="myTable" class="table">
+                            <thead>
+                                <tr>
+                                    <th style="background-color:#215968;color:white;"></th>
+                                    <th style="background-color:#215968;color:white;"></th>
+                                    <th style="background-color:#215968;color:white;"></th>
+                                    <th style="background-color:#215968;color:white;"></th>
+                                    <th style="background-color:#4bacc6;color:white;" class="th-count">Site Name</th>
+                                    <th style="background-color:#215968;color:white;" class="th-count">Status</th>
+                                    <th style="background-color:#4bacc6;color:white;" onclick="sortTable(6)">Point Last Update</th>
+                                    <th style="background-color:#215968;color:white;" onclick="sortTable(7)">MqttLog</th>
+                                    <th style="background-color:#4bacc6;color:white;" onclick="sortTable(8)">PLClog</th>
+                                    <th style="background-color:#215968;color:white;" width="300">A10 Cal</th>
+                                    <th style="background-color:#4bacc6;color:white;" width="300">Backup</th>
+                                    <th style="background-color: #215968; color: white; " class="th-count text-center">A10 Status</th>
+                                    <th style="background-color: #4bacc6; color: white;" class="th-count text-center">Watchlist</th>
+                                    <th style="background-color: #215968; color: white;" class="th-count text-center">Manually Watchlist</th>
+                                    <th style="background-color: #4bacc6; color: white;" class="th-count text-center">FRS Watchlist</th>
+                                    <th style="background-color: #215968; color: white;" class="th-count text-center">FRS True Alert</th>
+                                    <th style="background-color: #4bacc6; color: white;" class="th-count text-center">Previous day alert count</th>
+                                    <th style="background-color: #215968; color: white;" class="th-count text-center">Previous day Reboot Total</th>
+                                    <th style="background-color: #4bacc6; color: white;" class="th-count text-center">Previous Day Division Count</th>
+                                    <th style="background-color: #215968; color: white;" class="text-center">User Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model != null && Model.mMaintenaceOperations != null && Model.mMaintenaceOperations.Count > 0)
+                                {
+                                    foreach (var item in Model.mMaintenaceOperations)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <a href="javascript:void(0)" title="Exclude" onclick="fnExcludeSite('@item.SiteId')"><i class="fa fa-minus"></i></a>
+                                            </td>
+                                            <td>
+                                                <a href="@Url.Action("Index", "JobCard", new {siteId = item.SiteId})" title="Job Card" target="_blank"><i class="fa fa-file"></i></a>
+                                            </td>
+                                            <td>
+                                                <img src="~/assets/images/combine.jpg" height="20" title="Combine Watchlist" onclick="fnShowCombineWatchlist('@item.SiteId')"/>
+                                                @*<a href="javascript:void(0)" title="Combine Watchlist" onclick="fnShowCombineWatchlist('@item.SiteId')"><i class="fa fa-file text-info"></i></a>*@
+                                            </td>
+                                            <td>
+                                                @if (item.JobCardStatus == 1)
+                                                {
+                                                    <img src="@Url.Content("~/assets/images/JobCard/Lock_green.png")" style="height:18px" />
+                                                }
+                                                else if (item.JobCardStatus == 2)
+                                                {
+                                                    <img src="@Url.Content("~/assets/images/JobCard/Unlock_Yellow.png")" style="height: 18px" />
+                                                }
+                                                else if (item.JobCardStatus == 3)
+                                                {
+                                                    <img src="@Url.Content("~/assets/images/JobCard/Unlock_blue.png")" style="height: 18px" />
+                                                }
+                                            </td>
+                                            <td>
+                                                <span>
+                                                    @if (!string.IsNullOrEmpty(item.MacId))
+                                                    {
+                                                        <a href="http://energy7.org:7001/@(item.MacId)/" target="_blank">@item.SiteName</a>
+                                                    }
+                                                    else
+                                                    {
+                                                        @item.SiteName
+                                                    }
+                                                </span>
+                                                @if (!string.IsNullOrEmpty(item.RouterId) || !string.IsNullOrEmpty(item.MobileNumber))
+                                                {
+                                                    <h5><i class="fa fa-info-circle" aria-hidden="true" data-bs-trigger="hover" data-container="body" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="top" data-bs-original-title="Site Data" data-bs-content="<p>Router: @item.RouterId</p><p>MobileNumber: @item.MobileNumber</p>"></i></h5>
+                                                }
+                                                <input type="hidden" value="@item.SiteName" />
+                                            </td>
+
+                                            <td>
+                                                @if (item.SiteStatus)
+                                                {
+                                                    @*<span>Active</span>*@
+                                                    <h5><i class="fa fa-check-circle text-success" aria-hidden="true"></i></h5>
+                                                    <input type="hidden" value="1" />
+                                                }
+                                                else
+                                                {
+                                                    <h5><i class="fa fa-exclamation-triangle text-danger" aria-hidden="true" data-bs-trigger="hover" data-container="body" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="top" data-bs-original-title="Rf Down"></i></h5>
+                                                    <input type="hidden" value="0" />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (item.PointLastUpdate != null && item.PointLastUpdate != DateTime.MinValue)
+                                                {
+                                                    <span>@item.PointLastUpdate.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                                }
+
+                                            </td>
+
+
+                                            <td>
+                                                @if (item.MqttLog != null && item.MqttLog != DateTime.MinValue)
+                                                {
+                                                    <span>@item.MqttLog.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                                }
+
+                                            </td>
+                                            <td>
+                                                @if (item.PLClog != null && item.PLClog != DateTime.MinValue)
+                                                {
+                                                    <span>@item.PLClog.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @item.A10CalibrationLastUpdate
+                                            </td>
+                                            <td>
+                                                @item.A10BackupLastUpdate
+                                            </td>
+                                            @*<td class="text-center">
+            <a href="javascript:void(0)" onclick="fnShowRFStatus('@item.SiteId')">@item.LinkIssueCount</a>
+            <input type="hidden" value="@item.LinkIssueCount" />
+        </td>*@
+                                            <td class="text-center">
+                                                <a id="spnLinkIssue_@(item.MQTTBasePath.Replace(" ","").Replace("/",""))a10" href="javascript:void(0)" onclick="fnShowA10Status('@(item.MQTTBasePath.Replace(" ","").Replace("/",""))','@item.SiteName','@item.SiteId')"></a>
+                                                <input type="hidden" id="hdnLinkIssue_@(item.MQTTBasePath.Replace(" ","").Replace("/",""))a10" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnShowWatchList('@item.SiteId')">
+                                                    @item.WatchlistCount
+                                                </a>
+                                                <input type="hidden" value="@item.WatchlistCount" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnShowUserWatchList('@item.SiteId')">
+                                                    @item.WatchlistUserCount
+                                                </a>
+                                                <input type="hidden" value="@item.WatchlistUserCount" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnShowFRSWatchList('@item.SiteId')">
+                                                    @item.FRSWatchListCount
+                                                </a>
+                                                <input type="hidden" value="@item.FRSWatchListCount" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnShowFRSWatchTrueList('@item.SiteId')">
+                                                    @item.FRSWatchListTrueCount
+                                                </a>
+                                                <input type="hidden" value="@item.FRSWatchListTrueCount" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnLoadAlert('@item.SiteId')">
+                                                    @item.PreviousDayAlertCount
+                                                </a>
+                                                <input type="hidden" value="@item.PreviousDayAlertCount" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnShowRebootTotal('@item.SiteId')">
+                                                    @item.PreviousDayRebootTotal
+                                                </a>
+                                                <input type="hidden" value="@item.PreviousDayRebootTotal" />
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="javascript:void(0)" onclick="fnShowPreviousDayDivisionCount('@item.DivisionId','@item.SiteId')">
+                                                    @item.PreviousDayDivisionCount
+                                                </a>
+                                                <input type="hidden" value="@item.PreviousDayDivisionCount" />
+                                            </td>
+                                            @*<td class="text-center">@item.Past30DaysDivisonPDFCount</td>*@
+                                            <td class="text-center"></td>
+                                        </tr>
+                                    }
+                                }
+
+                            </tbody>
+
+
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-A10Status" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title">A10 Status - <span id="A10Statusheader"></span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div>
+                    <h5>
+                        Last Update :  <span id="A10StatusheaderTime"></span>
+                    </h5>
+
+                </div>
+                <div id="divModalA10Status" class="mt-2 tablemodalFixHead table-responsive">
+
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-A10-graph" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-graph" style="overflow-y:hidden">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4>
+                    Graph
+                </h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-lg-2">
+                        <label style="margin-top:7px;font-weight:bold">Search Date:</label>
+                        <input type="text" class="form-control" id="searchA10Date" />
+                        <input type="hidden" class="form-control" id="hdnA10Id" />
+                        <input type="hidden" class="form-control" id="hdnA10SiteId" />
+                    </div>
+                    <div class="col-lg-10">
+                        <button type="button" class="btn btn-success pull-left mt-4" onclick="fnShowA10Graph()">Search</button>
+
+                    </div>
+                    <div class="col-lg-12 mt-5">
+                        <div class="apache-cotainer" id="area-current-graph-echart">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-modem-history" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-graph" style="overflow-y:hidden">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4>
+                    Modem History
+                </h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div id="divModemHistory"></div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+
+<script>
+    var mQQTPaths = [];
+    var sites = [];
+    var mQTT = null;
+    var pmchart;
+    var productData = [];
+    $(document).ready(function () {
+
+        $('#searchA10Date').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('[data-bs-toggle="popover"]').popover();
+
+        GetDivisionByZone($("#zoneAdd1").val());
+
+        $("#zoneAdd1").change(function () {
+            GetDivisionByZone($(this).val());
+
+            //$("#frmMaintenaceOperationList").submit();
+        });
+
+        $('.th-count').click(function () {
+            var table = $(this).parents('table').eq(0)
+            var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
+            this.asc = !this.asc
+            if (!this.asc) { rows = rows.reverse() }
+            var th = $(this);
+            th.siblings().find(".sort-symbol").remove();
+            th.find('.sort-symbol').remove();
+            th.append(`<span class="sort-symbol">${this.asc ? '▲' : '▼'}</span>`);
+            for (var i = 0; i < rows.length; i++) { table.append(rows[i]) }
+        })
+
+        json = @Html.Raw(Json.Encode(Model));
+
+        mQTT = @Html.Raw(Json.Encode(ViewBag.MQTTDetail));
+
+        if (json != null && json.mMaintenaceOperations != null && json.mMaintenaceOperations != undefined) {
+            $(json.mMaintenaceOperations).each(function (v, text) {
+                mQQTPaths.push(text.MQTTBasePath);
+                sites.push(text.SiteName);
+            });
+
+        }
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    });
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        //client.subscribe('/WR/Mumbai/Surat/a10');
+        for (var i = 0; i < mQQTPaths.length; i++) {
+            if (mQQTPaths[i] != null && mQQTPaths[i] != "null" && mQQTPaths[i] != "") {
+                client.subscribe(mQQTPaths[i] + 'a10');
+
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+        client.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        if (message.payloadString.includes("devices")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['devices'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindA10Data(message.destinationName, array);
+                }
+            }
+        }
+
+        //var d = new Date();
+        //var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        //$("#c0").html(time);
+
+    }
+
+    function BindA10Data(basePath, data) {
+        if (data != null && data.length > 0) {
+            var count = 0;
+            var table = '<table class="table">';
+            table += '<tr>';
+            table += '<thead class="bg-primary">';
+            table += '<th style="background-color:#215968;color:white;">id</th>';
+            table += '<th style="background-color:#215968;color:white;">name</th>';
+            table += '<th style="background-color:#215968;color:white;">last_response</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">status</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">exceptions</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">poll_time</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">params</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">type</th>';
+
+            table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Status</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Id</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Name</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">Sim Number</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">F/W Version</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">Connector Status</th>';
+
+            table += '</tr>';
+            table += '</thead>';
+            table += '<tbody>';
+
+            $(data).each(function (id, item) {
+
+                var seconds = parseFloat(item.last_response);       
+               
+                if (parseInt(item.id) > 0 && (seconds > 50 || seconds < 0)) {
+                    count++;
+
+                    table += '<tr>';
+                    table += '<td>' + item.id + '</td>';
+                    table += '<td>' + item.name + '</td>';
+                    table += '<td class="text-danger" onclick="fnShowA10Graph(' + item.id + ')">' + seconds + '</td>';
+                    table += '<td class="text-danger text-center">Error</td>';
+                    table += '<td class="text-center">' + item.exceptions + '</td>';
+                    table += '<td class="text-center">' + item.poll_time + '</td>';
+
+
+                    var param = parseInt(item.params);
+                    var minusparam = param - 1;
+                    if (param == 0) {
+                        table += '<td class="text-center">Wm1</td>';
+                    } else if (param == 1) {
+                        table += '<td class="text-center">Wm2</td>';
+                    } else if (param > 1) {
+                        table += '<td class="text-center">TCP' + minusparam + '</td>';
+                    }
+
+                    if (item.type != null && item.type != undefined && item.type != '') {
+                        table += '<td class="text-center">' + item.type + '</td>';
+                    } else {
+                        table += '<td class="text-center"></td>';
+                    }
+
+
+                    var isInclude = false;
+                    if (productData != null && productData.length > 0) {
+                        $(productData).each(function (d, val) {
+                            if (item.name.indexOf(val.ClusterName) != -1) {
+                                isInclude = true;
+                                if (val.Status != null) {
+                                    if (val.Status == true) {
+                                        table += '<td class="text-center"><span class="zheng_status_online" onclick="fnGetProductStatus(' + val.DeviceID +')">online</span></td>';
+                                    } else if (val.Status == false) {
+                                        table += '<td class="text-center"><span class="zheng_status_offline" onclick="fnGetProductStatus(' + val.DeviceID +')">offline</span></td>';
+                                    }
+                                } else {
+                                    table += '<td class="text-center"></td>';
+                                }
+                                table += '<td class="text-center">' + val.DeviceID + '</td>';
+                                table += '<td class="text-center">' + val.Name + '</td>';
+                                if (val.SimNumber != null && val.SimNumber != undefined) {
+                                    table += '<td class="text-center">' + val.SimNumber + '</td>';
+                                } else {
+                                    table += '<td class="text-center"></td>';
+                                }
+                                table += '<td class="text-center">' + val.Firmwareversion + '</td>';
+                                if (val.ConnectorStatus != null && val.ConnectorStatus != undefined) {
+                                    table += '<td class="text-center">' + val.ConnectorStatus + '</td>';
+                                } else {
+                                    table += '<td class="text-center"></td>';
+                                }
+
+
+
+                                return false;
+                            }
+
+                        });
+
+                    }
+                    if (!isInclude) {
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                    }
+
+                    table += '</tr>';
+
+                    BindRFStatusLive(item);
+                }
+            });
+
+            table += '</tbody>';
+            table += '</table>';
+
+            if ($('#divModalA10Status_' + basePath.replaceAll(" ", "").replaceAll("/", "")).length > 0) {
+                $('#divModalA10Status_' + basePath.replaceAll(" ", "").replaceAll("/", "")).empty().append(table);
+
+                var d = new Date();
+                var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                $("#A10StatusheaderTime").html(time);
+            }
+            $('#spnLinkIssue_' + basePath.replaceAll(" ", "").replaceAll("/", "")).text(count);
+            $('#hdnLinkIssue_' + basePath.replaceAll(" ", "").replaceAll("/", "")).val(count);
+
+
+        }
+
+    }
+
+    function BindRFStatusLive(item) {
+        $('.tbodyRFStatus tr').each(function () {
+            //$(this).find("td").eq(0).html('');
+            var clusterName = $.trim($(this).find("td").eq(2).html());
+            if (clusterName != null && clusterName != undefined && clusterName != '') {
+                var clsname = item.name.replaceAll('/', '_');
+                if (clsname == clusterName) {
+                    $(this).find("td").eq(0).html('<img src="/assets/images/Live.png" />');
+
+                } else {
+                    //$(this).find("td").eq(0).html('');
+                }
+            }
+
+
+        });
+    }
+
+    function fnSearch() {
+        $("#frmMaintenaceOperationList").submit();
+    }
+
+    function fnLoadAlert(siteId) {
+        var mSMSLogLister = {};
+        var searchCriteria = {};
+
+        searchCriteria.SiteId = siteId;
+        mSMSLogLister.SearchCriteria = searchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: "/MaintenaceOperation/_AlertList",
+            type: "POST",
+            data: '{mSMSLogLister:' + JSON.stringify(mSMSLogLister) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDaySMSLog").empty().append(data);
+                $("#modalProbabilityAlert").modal("show");
+
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+
+
+    }
+
+    function fnLoadLast30Alert(siteId) {
+        var mSMSLogLister = {};
+        var searchCriteria = {};
+
+        searchCriteria.SiteId = siteId;
+        mSMSLogLister.SearchCriteria = searchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: "/MaintenaceOperation/_Last30AlertList",
+            type: "POST",
+            data: '{mSMSLogLister:' + JSON.stringify(mSMSLogLister) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDaySMSLog").empty().append(data);
+                $("#modalProbabilityAlert").modal("show");
+
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+
+
+    }
+
+    function fnShowWatchList(siteId) {
+        var mWatchListLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        // mSearchCriteria.StartDate = $("#txtWatchlistFromDate").val();
+        // mSearchCriteria.EndDate = $("#txtWatchlistToDate").val();
+
+        mWatchListLister.SearchCriteria = mSearchCriteria;
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_WatchList',
+            type: 'Post',
+            data: '{mWatchListLister:' + JSON.stringify(mWatchListLister) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divViewWatchListDetail").empty().append(data);
+                $("#modal-view-WatchList").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowUserWatchList(siteId) {
+        var mWatchListLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+
+        mWatchListLister.SearchCriteria = mSearchCriteria;
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_UserWatchList',
+            type: 'Post',
+            data: '{mWatchListLister:' + JSON.stringify(mWatchListLister) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divViewWatchListDetail").empty().append(data);
+                $("#modal-view-WatchList").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowFRSWatchList(siteId) {
+
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetFRSWatchList',
+            type: 'Post',
+            dataType: 'html',
+            data: '{siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divViewFRSAlertWatchListDetail").empty().append(data);
+                $("#modal-view-FRSWatchList").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowFRSWatchTrueList(siteId) {
+
+      $("#loader").show();
+      $.ajax({
+          url: '/MaintenaceOperation/GetFRSWatchTrueList',
+          type: 'Post',
+          dataType: 'html',
+          data: '{siteId:' + siteId + '}',
+          contentType: 'application/json',
+          success: function (data) {
+              $("#loader").hide();
+              $("#divViewFRSAlertWatchListDetail").empty().append(data);
+              $("#modal-view-FRSWatchTrueList").modal('show');
+
+          },
+          error: function (response) {
+              $("#loader").hide();
+              CommonNotification("ERROR", "Something went wrong!", "Error");
+          }
+      });
+  }
+
+    function fnUpdateFRSWatch() {
+        var mFRSWatchLists = [];
+        $("#tbodyFRSWatchList tr").each(function (t, trData) {
+            var assetId = $(this).data('assetid');
+            var alertinfoid = $(this).data('alertinfoid');
+
+            var chkinput = $(this).find("td").eq(5).children("input");
+            var txtRemark = $(this).find("td").eq(6).children("textarea").val();
+            var mFRSWatchList = {};
+            mFRSWatchList.Id = $(this).data('id');
+            mFRSWatchList.AssetId = assetId;
+            mFRSWatchList.AlertInfoId = alertinfoid;
+
+            if ($(chkinput).prop('checked') == true) {
+                //do something
+                mFRSWatchList.IsSet = true
+            } else {
+                mFRSWatchList.IsSet = false;
+            }
+            mFRSWatchList.Remark = txtRemark;
+            mFRSWatchLists.push(mFRSWatchList);
+
+        });
+
+        if (mFRSWatchLists != null && mFRSWatchLists != undefined && mFRSWatchLists.length > 0) {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/UpdateFRSWatch',
+                type: 'Post',
+                data: '{mFRSWatchLists:' + JSON.stringify(mFRSWatchLists) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+
+                        alert(data.result);
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    alert("Something went wrong!");
+                }
+            });
+
+        }
+        else {
+            alert("FRS Watch List is empty!");
+        }
+    }
+
+    function fnUpdateFRSTrueWatchList() {
+        var mFRSAlertAudits = [];
+
+        $("#tbodyFRSTrueWatchList tr").each(function (t, trData) {
+            var chkTrueFalse = $(this).find("td").eq(5).children("select").val();
+            var txtRemark = $(this).find("td").eq(6).children("textarea").val();
+            var mFRSAlertAudit = {};
+            mFRSAlertAudit.Id = $(this).data('id');
+            mFRSAlertAudit.RailwayRemark = txtRemark;
+            if (chkTrueFalse != null && chkTrueFalse != undefined && chkTrueFalse != '') {
+                if (chkTrueFalse == "True") {
+                    mFRSAlertAudit.IsRailwayAlert = true;
+                }
+                else if (chkTrueFalse == "False") {
+                    mFRSAlertAudit.IsRailwayAlert = false;
+                }
+                mFRSAlertAudits.push(mFRSAlertAudit);
+
+            }
+
+
+        });
+
+        if (mFRSAlertAudits != null && mFRSAlertAudits != undefined && mFRSAlertAudits.length > 0) {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/UpdateFRSAlertAudit',
+                type: 'Post',
+                data: '{mFRSAlertAudits:' + JSON.stringify(mFRSAlertAudits) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        alert("Record has been updated.");
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    alert("Something went wrong!");
+                }
+            });
+
+        }
+        else {
+            alert("Select any one railway type!");
+        }
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divisions").empty();
+                    $("#divisions").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#divisions").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#divisions").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnShowRFStatus(siteId) {
+        var mRFStatusLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+
+        if ($('#txtRFStatusFromDate').val() != null && $('#txtRFStatusFromDate').val() != undefined && $('#txtRFStatusFromDate').val() != '') {
+            mSearchCriteria.StartDate = $('#txtRFStatusFromDate').val();
+        }
+        if ($('#txtRFStatusEndDate').val() != null && $('#txtRFStatusEndDate').val() != undefined && $('#txtRFStatusEndDate').val() != '') {
+            mSearchCriteria.EndDate = $('#txtRFStatusEndDate').val();
+        }
+
+        mRFStatusLister.SearchCriteria = mSearchCriteria;
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_RFStatus',
+            type: 'Post',
+            data: '{mRFStatusLister:' + JSON.stringify(mRFStatusLister) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#modal-RFStatus").modal('hide');
+                $("#loader").hide();
+                $("#divViewRFStatusDetail").empty().append(data);
+                $("#modal-RFStatus").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowRebootTotal(siteId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetSiteReboot',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divRebootTotal").empty().append(data);
+                $("#modal-SiteReboot").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowPreviousDayDivisionCount(divisionId, siteId) {
+        var mDivisionReportModelLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.DivisionId = divisionId;
+        mSearchCriteria.SiteId = siteId;
+
+        mDivisionReportModelLister.SearchCriteria = mSearchCriteria;
+
+
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_DivisionReport',
+            type: 'Post',
+            data: '{mDivisionReportModelLister:' + JSON.stringify(mDivisionReportModelLister) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDayDivisionReport").empty().append(data);
+                $("#modal-division-report-model").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowA10Status(mqttpath, siteName, siteId) {
+        $('#divModalA10Status').empty().append('<div id="divModalA10Status_' + mqttpath + 'a10"></div>');
+        $('#A10Statusheader').text(siteName);
+
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetA10Status',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+
+                productData = fnGetA10Product(siteId);
+                var table = '<table class="table">';
+                table += '<tr>';
+                table += '<thead class="bg-primary">';
+                table += '<th style="background-color:#215968;color:white;">id</th>';
+                table += '<th style="background-color:#215968;color:white;">name</th>';
+                table += '<th style="background-color:#215968;color:white;">last_response</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">status</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">exceptions</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">poll_time</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">params</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">type</th>';
+
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Status</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Id</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Name</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Sim Number</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">F/W Version</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Connector Status</th>';
+
+                table += '</tr>';
+                table += '</thead>';
+                table += '<tbody>';
+                var time = '';
+                $(data).each(function (id, item) {
+                    var seconds = parseFloat(item.last_response);
+                    if (parseInt(item.id) > 0 && (seconds > 50 || seconds < 0)) {
+
+                        if (item.timestamp != null && item.timestamp != undefined && item.timestamp != '') {
+                            var mqttDate = new Date(item.timestamp);
+                            time = mqttDate.getHours() + ":" + mqttDate.getMinutes() + ":" + mqttDate.getSeconds();
+                        }
+
+
+                        table += '<tr>';
+                        table += '<td>' + item.id + '</td>';
+                        table += '<td>' + item.name + '</td>';
+                        table += '<td class="text-danger" onclick="fnShowA10Graph(' + item.id + ',' + siteId +')">' + seconds + '</td>';
+                        table += '<td class="text-danger text-center">Error</td>';
+                        table += '<td class="text-center">' + item.exceptions + '</td>';
+                        table += '<td class="text-center">' + item.poll_time + '</td>';
+
+                        table += '<td class="text-center">' + item.paramsvalue + '</td>';
+                        if (item.type != null && item.type != undefined && item.type != '') {
+                            table += '<td class="text-center">' + item.type + '</td>';
+                        } else {
+                            table += '<td class="text-center"></td>';
+                        }
+
+                        var isInclude = false;
+                        if (productData != null && productData.length > 0) {
+                            $(productData).each(function (d, val) {
+
+                                if (item.name.indexOf(val.ClusterName) != -1) {
+                                    isInclude = true;
+                                    if (val.Status != null) {
+                                        if (val.Status == true) {
+                                            table += '<td class="text-center"><span class="zheng_status_online" onclick="fnGetProductStatus(' + val.DeviceID +')">online</span></td>';
+                                        } else if (val.Status == false) {
+                                            table += '<td class="text-center"><span class="zheng_status_offline" onclick="fnGetProductStatus(' + val.DeviceID +')">offline</span></td>';
+                                        }
+                                    } else {
+                                        table += '<td class="text-center"></td>';
+                                    }
+                                    table += '<td class="text-center">' + val.DeviceID + '</td>';
+                                    table += '<td class="text-center">' + val.Name + '</td>';
+
+                                    if (val.SimNumber != null && val.SimNumber != undefined) {
+                                        table += '<td class="text-center">' + val.SimNumber + '</td>';
+                                    } else {
+                                        table += '<td class="text-center"></td>';
+                                    }
+
+                                    table += '<td class="text-center">' + val.Firmwareversion + '</td>';
+                                    if (val.ConnectorStatus != null && val.ConnectorStatus != undefined) {
+                                        table += '<td class="text-center">' + val.ConnectorStatus + '</td>';
+                                    } else {
+                                        table += '<td class="text-center"></td>';
+                                    }
+
+                                    return false;
+                                }
+
+                            });
+
+                        }
+                        if (!isInclude) {
+                            table += '<td class="text-center"></td>';
+                            table += '<td class="text-center"></td>';
+                            table += '<td class="text-center"></td>';
+                            table += '<td class="text-center"></td>';
+                            table += '<td class="text-center"></td>';
+                            table += '<td class="text-center"></td>';
+                        }
+
+
+
+                        table += '</tr>';
+                        BindRFStatusLive(item);
+                    }
+                });
+
+                table += '</tbody>';
+                table += '</table>';
+                $('#divModalA10Status_' + mqttpath.replaceAll(" ", "").replaceAll("/", "") + 'a10').empty().append(table);
+
+                $("#A10StatusheaderTime").html(time);
+                $('#hdnA10SiteId').val(siteId);
+
+                $("#modal-A10Status").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+
+    }
+
+    function fnShowA10Graph(a10Id, siteId) {
+        var date = $('#searchA10Date').val();
+        if (a10Id == null || a10Id == undefined || a10Id == '') {
+            a10Id = $('#hdnA10Id').val();
+        } else {
+            $('#hdnA10Id').val(a10Id);
+        }
+
+        if (siteId == null || siteId == undefined || siteId == '') {
+            siteId = $('#hdnA10SiteId').val();
+        } else {
+            $('#hdnA10SiteId').val(siteId);
+        }
+
+        if (siteId != null && siteId != undefined && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/GetA10Graph',
+                data: '{siteId:' + siteId + ',date:"' + date + '",a10Id:"' + a10Id + '"}',
+                type: 'POST',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var DataSeriaes = [];
+                    var DataColor = [];
+                    var maxV = 0;
+                    var legends = [];
+                    var macLeft = 0;
+                    var lary = [];
+                    var xValue = [];
+
+                    if (data != null) {
+                        $.each(data, function (index, value) {
+                            legends.push(index);
+                            var lineColor = fnGetDarkColor();
+                            DataColor.push(lineColor);
+                            if (data != null && data != undefined && data != '') {
+
+                                var attr = {};
+                                attr.name = index;
+                                attr.type = 'line';
+                                attr.notShowSymbol = true;
+                                attr.sampling = sampling;
+                                attr.hoverAnimation = false;
+                                attr.clip = true;
+
+                                attr.data = [];
+                                var values = [];
+                                $.each(value, function (index2, value2) {
+
+                                    const d = new Date(value2.timestamp);
+                                    var dateString = d.getDate() + "-" + (d.getMonth() + 1) + " " + d.getHours() + ":" + d.getMinutes() + "";
+
+                                    if ($.inArray(dateString, xValue) != -1) {
+                                    } else {
+                                        xValue.push(dateString);
+                                    }
+                                    values.push(parseFloat(value2.last_response).toFixed(2));
+                                });
+                                $.each(values, function (i, j) {
+                                    var d = parseFloat(j);
+                                    if (d > maxV) {
+                                        maxV = d;
+                                    }
+                                });
+
+                                var yLeft = Math.max.apply(Math, values); // 3
+                                if (yLeft >= macLeft) {
+                                    macLeft = yLeft;
+                                }
+
+                                attr.connectNulls = true;
+                                attr.data = values;
+                                attr.datasetIndex = 0;
+                                DataSeriaes.push(attr);
+
+                            }
+
+                        });
+
+                        $("#modal-A10-graph").modal("show");
+
+                        if (pmchart != null && pmchart != "" && pmchart != undefined) {
+                            pmchart.dispose();
+                        }
+                        pmchart = echarts.init(document.getElementById('area-current-graph-echart'));
+                        var sampling = 'none';
+                        pmchart.setOption({
+                            tooltip: {
+                                trigger: 'axis',
+                                axisPointer: {
+                                    type: 'cross',
+                                    label: {
+                                        backgroundColor: '#6a7985'
+                                    }
+                                }
+                            },
+                            legend: {
+                                data: legends,
+                                x: 'left'
+
+                            },
+                            toolbox: {
+                                show: true,
+                                feature: {
+                                    mark: { show: true },
+                                    dataView: { show: true, readOnly: false },
+                                    magicType: { show: true, type: ['line', 'bar'] },
+                                    restore: { show: true },
+                                    saveAsImage: { show: true }
+                                }
+                            },
+                            grid: {
+                                left: '3%',
+                                right: '4%',
+                                bottom: '3%',
+                                containLabel: true
+                            },
+                            xAxis: [
+                                {
+                                    type: 'category',
+                                    boundaryGap: false,
+                                    axisLine: { onZero: false },
+                                    interval: 50,
+                                    data: xValue,
+                                }
+                            ],
+                            yAxis: [
+                                {
+                                    type: 'value',
+                                    min: 0,
+                                    max: macLeft,
+                                    data: lary
+                                }
+                            ],
+                            height: 250,
+                            dataZoom: [{
+                                type: 'slider',
+                                height: 40,
+                                start: 0,
+                                end: 100,
+                                bottom: 0
+                            }],
+                            color: DataColor,
+
+                            series: DataSeriaes
+                        });
+
+
+                        window.onresize = pmchart.resize;
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnGetA10Product(siteId) {
+        var jsonData = null;
+        if (siteId == null || siteId == undefined || siteId == '') {
+            siteId = $('#hdnA10SiteId').val();
+        } else {
+            $('#hdnA10SiteId').val(siteId);
+        }
+
+        if (siteId != null && siteId != undefined && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/GetA10Product',
+                type: 'Post',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                async: false,
+                success: function (data) {
+                    $("#loader").hide();
+                    jsonData = data;
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+        return jsonData;
+    }
+
+    function fnGetProductStatus(deviceId) {
+
+        if (deviceId != null && deviceId != undefined && deviceId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/GetProductStatus',
+                type: 'Post',
+                data: '{deviceId:"' + deviceId + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var table = '';
+                    table += '<table class="table">';
+                    table += '<tr>';
+                    table += '<thead class="bg-primary">';
+                    table += '<th style="background-color:#215968;color:white;" class="text-center">Device ID</th>';
+                    table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Status</th>';
+                    table += '<th style="background-color:#215968;color:white;" class="text-center">Timestamp</th>';
+
+                    table += '</tr>';
+                    table += '</thead>';
+                    if (data != null && data.length > 0) {
+                        table += '<tbody>';
+                        $(data).each(function (d, val) {
+                            table += '<tr>';
+                            table += '<td class="text-center">' + val.DeviceID +'</td>';
+
+                            if (val.Status == true) {
+                                table += '<td class="text-center"><span class="zheng_status_online">online</span></td>';
+                            } else if (val.Status == false) {
+                                table += '<td class="text-center"><span class="zheng_status_offline">offline</span></td>';
+                            }
+
+                            table += '<td class="text-center">' + val.TimeStamp + '</td>';
+
+                            table += '</tr>';
+                        });
+                        table += '</tbody>';
+                    }
+                    table += '</table>';
+
+                    $('#divModemHistory').empty().append(table);
+                    $('#modal-modem-history').modal('show');
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnShowCombineWatchlist(siteId, type) {
+        if (type != null && type != undefined && type != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/_CombineWatchlist',
+                type: 'Post',
+                dataType: 'html',
+                data: '{siteId:' + siteId + ',type:"' + type + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divCombineWatchlist").empty().append(data);
+                    $("[class*='modal-backdrop']").remove();
+                    $("#modal-combine-watchlist").modal('hide');
+                    $("#modal-combine-watchlist").modal('show');
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/_CombineWatchlist',
+                type: 'Post',
+                dataType: 'html',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divCombineWatchlist").empty().append(data);
+                    $("#modal-combine-watchlist").modal('show');
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+     
+    }
+
+    function fnGetDarkColor() {
+        var allowed = "ABCDEF0123456789", S = "#";
+
+        while (S.length < 7) {
+            S += allowed.charAt(Math.floor((Math.random() * 16) + 1));
+        }
+        return S;
+    }
+
+    function parseJsonDate(jsonDateString) {
+        return moment(jsonDateString).format("HH:MM:SS").toUpperCase();
+    }
+
+    function parseDate(dateString) {
+        if (!dateString) return new Date(0);
+
+        var [date, time] = dateString.split(' ');
+        if (!time) {
+            time = "00:00:00";
+        }
+        var [month, day, year] = date.split('/');
+        var [hours, minutes, seconds] = time.split(':');
+        if (isNaN(month) || isNaN(day) || isNaN(year) || isNaN(hours) || isNaN(minutes) || isNaN(seconds)) {
+            return new Date(0);
+        }
+        return new Date(year, month - 1, day, hours, minutes, seconds);
+    }
+
+    function sortTable(columnIndex) {
+        var table = $("#myTable");
+        var rows = table.find("tbody tr").get();
+        var isAscending = table.hasClass("ascending");
+        rows.sort(function (a, b) {
+            var dateA = parseDate($(a).find("td").eq(columnIndex).text().trim());
+            var dateB = parseDate($(b).find("td").eq(columnIndex).text().trim());
+            return isAscending ? dateA - dateB : dateB - dateA;
+        });
+        $.each(rows, function (index, row) {
+            table.find("tbody").append(row);
+        });
+
+
+        table.toggleClass("ascending", !isAscending);
+    }
+
+    function comparer(index) {
+        return function (a, b) {
+            var valA = getCellValue(a, index), valB = getCellValue(b, index)
+            return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
+        }
+    }
+
+    function getCellValue(row, index)
+    {
+        return $(row).children('td').eq(index).find('input[type=hidden]').val();
+    }
+
+    function fnExcludeSite(siteId) {
+        $("#loader").show();
+
+        $.ajax({
+            url: '/MaintenaceOperation/ExcludeSite',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    CommonNotification("SUCCESS", data.result, "success");
+                    $('#frmMaintenaceOperationList').submit();
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnGetExcludeSite() {
+        $("#loader").show();
+
+        $.ajax({
+            url: '/MaintenaceOperation/GetExcludeSite',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divExcludeSite").empty().append(data);
+                $("#modal-Exclude-Site").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnDownloadWatchList(siteId) {
+        var startDate = $("#txtWatchlistFromDate").val();
+        var endDate = $("#txtWatchlistToDate").val();
+        var type = $('#drpWatchListType').val();
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            window.location.href = "@Url.Action("DownloadWatchList", "MaintenaceOperation")?siteId=" + siteId + "&startdate=" + startDate + "&endDate=" + endDate + "&type=" + type;
+
+        }
+    }
+
+    function fnDownloadUserWatchList(siteId) {
+        var startDate = $("#txtWatchlistFromDate").val();
+        var endDate = $("#txtWatchlistToDate").val();
+        var type = $('#drpWatchListType').val();
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            window.location.href = "@Url.Action("DownloadUserWatchList", "MaintenaceOperation")?siteId=" + siteId + "&startdate=" + startDate + "&endDate=" + endDate + "&type=" + type;
+
+        }
+    }
+
+    function fnDownloadFRSWatchList(siteId) {
+            window.location.href = "@Url.Action("DownloadFRSWatchList", "MaintenaceOperation")";
+
+    }
+
+    function fnConvertUTCDate(currentdate) {
+
+        return "" + (currentdate.getUTCMonth() + 1) + "/"
+            + currentdate.getUTCDate() + "/"
+            + currentdate.getUTCFullYear() + " "
+            + currentdate.getUTCHours() + ":"
+            + currentdate.getUTCMinutes() + ":"
+            + currentdate.getUTCSeconds();
+    }
+
+    function parseDate(dateString) {
+        if (!dateString) return new Date(0);
+
+        var [date, time] = dateString.split(' ');
+        if (!time) {
+            time = "00:00:00";
+        }
+        var [month, day, year] = date.split('/');
+        var [hours, minutes, seconds] = time.split(':');
+        if (isNaN(month) || isNaN(day) || isNaN(year) || isNaN(hours) || isNaN(minutes) || isNaN(seconds)) {
+            return new Date(0);
+        }
+        return new Date(year, month - 1, day, hours, minutes, seconds);
+    }
+
+    function fnGetLiveData(siteName, assetId, assetTypeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + siteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnUpdateTabulationRemark(siteId, assetId, alertId) {
+        var AlertAudit = {};
+        var isValid = true;
+        AlertAudit.SiteId = siteId
+        AlertAudit.AssetId = assetId
+        AlertAudit.AlertId = alertId;
+        AlertAudit.Remark = $('#txtAlertRemark' + assetId + alertId).val();
+        if ($("#drpAlertType" + assetId + alertId).val() == 'True') {
+            AlertAudit.IsAlert = true;
+            AlertAudit.Remark = '';
+        } else {
+            AlertAudit.IsAlert = false;
+        }
+        AlertAudit.IsOpenClose = true;
+
+
+        if (!AlertAudit.IsAlert && (AlertAudit.Remark == null || AlertAudit.Remark == undefined || AlertAudit.Remark == '')) {
+            isValid = false;
+            alert('Remark is required!')
+        }
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/UpdateTabulationAlertRemark',
+                type: 'Post',
+                data: '{mAlertAudit:' + JSON.stringify(AlertAudit) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            //CommonNotification("SUCCESS", data.result, "success");
+                            $('#txtAlertRemark' + assetId + alertId).val('')
+                            alert(data.result)
+                        } else {
+                            alert(data.result)
+                            //CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnUpdateAllTabulationRemark() {
+        var mAlertAudits = [];
+        $('.clsDrpAlertType').each(function () {
+            var isValid = true;
+            var siteid = $(this).data('siteid');
+            var alertTypeId = $(this).data('alerttypeid');
+            var assetId = $(this).data('assetid');
+
+            var AlertAudit = {};
+            AlertAudit.SiteId = siteid
+            AlertAudit.AssetId = assetId
+            AlertAudit.AlertId = alertTypeId;
+            AlertAudit.Remark = $('#txtAlertRemark' + assetId + alertTypeId).val();
+
+            if ($("#drpAlertType" + assetId + alertTypeId).val() == 'True') {
+                AlertAudit.IsAlert = true;
+                AlertAudit.Remark = '';
+            } else {
+                AlertAudit.IsAlert = false;
+            }
+            AlertAudit.IsOpenClose = true;
+
+            if ($("#drpAlertType" + assetId + alertTypeId).val() == 'False') {
+                if (AlertAudit.Remark == null || AlertAudit.Remark == undefined || AlertAudit.Remark == '') {
+                    isValid = false;
+                }
+            }
+            if (isValid) {
+                mAlertAudits.push(AlertAudit);
+            }
+        });
+
+        if (mAlertAudits != null && mAlertAudits.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/UpdateAllTabulationAlertRemark',
+                type: 'Post',
+                data: '{mAlertAudits:' + JSON.stringify(mAlertAudits) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        $('#modalProbabilityAlert').modal('hide');
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        } else {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            alert('Select at least one remark.')
+        }
+    }
+
+    function fnChangeAlertType($this, assetId, alertTypeId) {
+        if ($($this).val() == 'True') {
+            $('#txtAlertRemark' + assetId + alertTypeId).attr("disabled", "disabled");
+            $('#txtAlertRemark' + assetId + alertTypeId).val('')
+        } else {
+            $('#txtAlertRemark' + assetId + alertTypeId).removeAttr("disabled");
+        }
+    }
+
+
+    function fnShowWatchListFRSAlertInstance(assetId, alertInfoId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetWatchListFRSAlertInstance',
+            type: 'Post',
+            data: '{assetId:' + assetId + ',alertInfoId:' + alertInfoId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divWatchListFRSAlertInstance").empty().append(data);
+                $("#modal-WatchList-FRSAlert-Instance").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnShowWatchListInstance(assetId, attributeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetWatchListInstance',
+            type: 'Post',
+            data: '{assetId:' + assetId + ',attributeId:' + attributeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divWatchListInstance").empty().append(data);
+                $("#modal-WatchList-Instance").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+</script>

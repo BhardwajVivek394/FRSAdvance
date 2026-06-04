@@ -1,0 +1,1918 @@
+﻿@model Domain.Site
+
+@{
+    var clusters = new List<string>();
+    var watchLists = new List<Domain.WatchList>();
+    var mA10Status = new List<Domain.A10Status>();
+    if (ViewBag.WatchLists != null)
+    {
+        watchLists = ViewBag.WatchLists as List<Domain.WatchList>;
+        foreach (var watchList in watchLists)
+        {
+            if (!string.IsNullOrEmpty(watchList.ClusterName) && !clusters.Any(s => watchList.ClusterName.Contains(s)))
+            {
+                clusters.Add(watchList.ClusterName);
+            }
+        }
+    }
+
+    if (ViewBag.RFStatus != null)
+    {
+        mA10Status = ViewBag.RFStatus as List<Domain.A10Status>;
+        if (mA10Status != null && mA10Status.Count > 0)
+        {
+            foreach (var a10Status in mA10Status)
+            {
+                string pattern = @"(_\d)$";
+                string resulta10 = System.Text.RegularExpressions.Regex.Replace(a10Status.name, pattern, string.Empty);
+
+
+                if (!string.IsNullOrEmpty(resulta10) && !clusters.Contains(resulta10))
+                {
+                    clusters.Add(resulta10);
+                }
+
+
+            }
+        }
+    }
+}
+
+<style>
+    .expand-btn {
+        cursor: pointer;
+        transition: transform 0.3s;
+    }
+
+    .nested-table {
+        background: #f8f9fa;
+        border-radius: 6px;
+    }
+
+    .tr-bg {
+        background-color: #0e5068 !important;
+        color: white !important;
+    }
+
+    .td-w {
+        width: 50px;
+    }
+
+    .p-0 {
+        padding: 0px !important;
+    }
+
+    .m-0 {
+        margin: 0px;
+    }
+
+    .ml-12 {
+        margin-left: 12px !important;
+    }
+
+    .border-b {
+        border-color: inherit;
+        border-bottom: solid 1px #ccc !important;
+    }
+
+    .dateText {
+        font-size: 1.1rem;
+        color: #4c4c4c;
+        font-weight: 400;
+    }
+
+    .bd-table {
+        border: 1px solid #ccc;
+        padding: 14px !important;
+        border-radius: 5px;
+    }
+
+    #table-combine thead tr th {
+        font-size: 15px;
+        font-weight: 400;
+        white-space: nowrap;
+    }
+
+    #table-combine tbody tr td {
+        font-size: 13px;
+        font-weight: 400;
+        color: #272727;
+        background-color: white !important;
+    }
+
+    #table-combine th, #table-combine td {
+        padding: -0.1rem 2rem !important;
+    }
+
+    .textareaK {
+        min-height: 12px !important;
+        padding: 2px;
+        border-radius: 0;
+        width: 70px;
+    }
+
+    .bi {
+        font-size: 20px;
+    }
+
+    .ww-100 {
+        width: 100px;
+    }
+
+    .yesno-red {
+        background-color: #fff0f0;
+        border: 1px solid #ff4848;
+        color: #ff4848;
+        width: 50px;
+        height: 20px;
+        font-size: 11px;
+        display: block;
+        text-align: center;
+        border-radius: 40px;
+    }
+
+    .yesno-green {
+        background-color: #effef5;
+        border: 1px solid #08b759;
+        color: #08b759;
+        width: 50px;
+        height: 20px;
+        font-size: 11px;
+        display: block;
+        text-align: center;
+        border-radius: 40px;
+    }
+
+    .yesno-drop-red {
+        position: relative;
+        background-color: #fff0f0;
+        border: 1px solid #ff4848;
+        color: #ff4848;
+        width: 60px;
+        height: 20px;
+        font-size: 11px;
+        display: block;
+        text-align: center;
+        border-radius: 40px;
+    }
+
+    .yesno-drop-green {
+        background-color: #effef5;
+        border: 1px solid #08b759;
+        color: #08b759;
+        width: 60px;
+        height: 20px;
+        font-size: 11px;
+        display: block;
+        text-align: center;
+        border-radius: 40px;
+    }
+
+    .bottonCenter {
+        margin: 0;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        -ms-transform: translate(-50%, -50%);
+        transform: translate(-50%, -50%);
+    }
+</style>
+
+<div class="modal fade" id="modal-combine-watchlist" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header" style="padding: 15px 34px">
+
+                <h5 class="modal-title" id="exampleModalLabel">
+                    <span id="spHeader">@Model.Name</span>
+                    <select class="form-select form-select-sm rounded-0 ww-100" onchange="fnChangeCombineWatchlistType(this,'@ViewBag.SiteId')">
+                        @if (ViewBag.Type != null && ViewBag.Type == "List")
+                        {
+                            <option>Cluster Wise</option>
+                            <option value="List" selected>List</option>
+                            <option value="AssetType">Asset Type</option>
+                        }
+                        else if (ViewBag.Type != null && ViewBag.Type == "AssetType")
+                        {
+                            <option>Cluster Wise</option>
+                            <option value="List">List</option>
+                            <option value="AssetType" selected>Asset Type</option>
+                        }
+                        else
+                        {
+                            <option selected>Cluster Wise</option>
+                            <option value="List">List</option>
+                            <option value="AssetType">Asset Type</option>
+                        }
+                    </select>
+                </h5>
+
+                <h5 class="modal-title ms-auto" id="exampleModalToggleLabel">                     
+                    <a href="@Url.Action("DownloadCombineWatchlist", new {SiteId = ViewBag.SiteId})" class="btn btn-primary" target="_blank">Download</a>
+                    <a href="@Url.Action("CombineWatchlistPending", new {SiteId = ViewBag.SiteId})" class="btn btn-success" target="_blank">Pending</a>
+                    <a href="@Url.Action("CombineWatchlistClear", new {SiteId = ViewBag.SiteId})" class="btn btn-info" target="_blank">Clear</a>
+                    <span class="dateText">Creation @System.DateTime.Now.ToShortDateString()</span>
+                    / @E7FRSAdvance.Utility.ClsHttpContent.LoginUser.FirstName @E7FRSAdvance.Utility.ClsHttpContent.LoginUser.LastName
+                </h5>
+                <button type="button" class="btn-close ml-12" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body">
+                        <div class="row">
+
+                            <div class="col-12 mb-3">
+                                @if (clusters != null && clusters.Count > 0)
+                                {
+                                    int watchlistTotalCount = 0;
+                                    int mannualWatchlistTotalCount = 0;
+                                    int frsWatchlistTotalCount = 0;
+                                    int linkIssueTotalCount = 0;
+
+                                    if (watchLists != null && watchLists.Count() > 0)
+                                    {
+                                        watchlistTotalCount = watchLists.Where(x => x.ClusterName != null && x.GeneratedFrom == "WatchList").Count();
+                                        frsWatchlistTotalCount = watchLists.Where(x => x.ClusterName != null && x.GeneratedFrom == "FRSWatchList").Count();
+                                        mannualWatchlistTotalCount = watchLists.Where(x => x.ClusterName != null && x.GeneratedFrom == "Mannual").Count();
+                                        linkIssueTotalCount = mA10Status.Count();
+                                    }
+                                    <span class="pull-right">Watchlist - @watchlistTotalCount | FRS Watchlist - @frsWatchlistTotalCount | Mannual Watchlist - @mannualWatchlistTotalCount | Link Issue - @linkIssueTotalCount </span>
+                                }
+                            </div>
+
+                            @if (ViewBag.Type != null && ViewBag.Type == "List")
+                            {
+                                <div class="col-12">
+                                    @{
+                                        int listcounter = 0;
+                                    }
+                                    <table class="table table-responsive" id="table-combine">
+                                        <thead>
+                                            <tr>
+                                                <th width="3%" class="tr-bg" scope="col"></th>
+                                                <th width="3%" class="tr-bg" scope="col">S.No</th>
+                                                <th width="3%" class="tr-bg" scope="col">AssetType</th>
+                                                <th width="3%" class="tr-bg" scope="col">Asset</th>
+                                                <th width="3%" class="tr-bg" scope="col">Card</th>
+                                                <th width="3%" class="tr-bg" scope="col">ADC</th>
+                                                <th width="3%" class="tr-bg" scope="col">Pin</th>
+                                                <th width="3%" class="tr-bg" scope="col">Attribute</th>
+                                                <th width="3%" class="tr-bg" scope="col">Value</th>
+                                                <th width="3%" class="tr-bg" scope="col">Cause</th>
+                                                <th width="3%" class="tr-bg text-center" scope="col">Replaced</th>
+                                                <th width="3%" class="tr-bg" scope="col">Issue Type</th>
+                                                <th width="3%" class="tr-bg" scope="col">Reason</th>
+                                                <th width="3%" class="tr-bg" scope="col">Code</th>
+                                                <th width="3%" class="tr-bg" scope="col">Ground Staff</th>
+                                                <th width="3%" class="tr-bg text-center" scope="col">Validate</th>
+                                                <th width="3%" class="tr-bg text-center" scope="col">History</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (watchLists != null && watchLists.Count > 0)
+                                            {
+                                                foreach (var adc in watchLists.Where(x => x.ClusterName != null).GroupBy(x => x.ADCName).Select(x => x.Key).ToList())
+                                                {
+                                                    foreach (var item in watchLists.Where(x => x.ClusterName != null && x.ADCName == adc))
+                                                    {
+                                                        var idCluster = System.Text.RegularExpressions.Regex.Replace(item.ClusterName, @"[^\w\d]", "");
+                                                        listcounter++;
+                                                        <tr>
+                                                            <td>
+
+                                                                <h5><i class="fa fa-info-circle" aria-hidden="true" data-bs-trigger="hover" data-container="body" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="top" data-bs-original-title="Site Data" data-bs-content="<p>Date: @item.CreatedDate</p><p>Generated From: @item.GeneratedFrom</p>"></i></h5>
+                                                            </td>
+                                                            <td>
+                                                                @listcounter
+                                                            </td>
+                                                            <td>@item.AssetTypeName</td>
+                                                            <td>
+                                                                <a href="javascript:void(0)" onclick="fnGetLiveData('@item.SiteName','@item.AssetId','@item.AssetTypeId')">@item.AssetName</a>
+                                                            </td>
+                                                            <td>@item.CardName</td>
+                                                            <td>@item.ADCName</td>
+                                                            <td>@item.Pin</td>
+                                                            <td>@item.AttributeName</td>
+                                                            <td>@item.AttributeValue</td>
+                                                            <td>@item.Cause</td>
+                                                            <td class="text-center">
+                                                                <select class="form-control" id="drpReplaced@(idCluster)@(listcounter)">
+                                                                    <option value="">Select</option>
+                                                                    @if (!string.IsNullOrEmpty(item.MatrialCode))
+                                                                    {
+                                                                        <option value="Yes" selected>Yes</option>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <option value="Yes">Yes</option>
+                                                                    }
+
+                                                                    @if (string.IsNullOrEmpty(item.MatrialCode) && item.IsResolved != null)
+                                                                    {
+                                                                        <option value="No" selected>No</option>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <option value="No">No</option>
+                                                                    }
+
+
+
+                                                                </select>
+                                                            </td>
+                                                            <td>
+                                                                <select class="form-control" style="width:80px" id="drpIssueType@(idCluster)@(listcounter)">
+                                                                    @if (ViewBag.IssueTypes != null)
+                                                                    {
+                                                                        <option value="">Select</option>
+                                                                        foreach (var issueType in ViewBag.IssueTypes)
+                                                                        {
+                                                                            if (item.IssueType != null && item.IssueType == issueType)
+                                                                            {
+                                                                                <option value="@issueType" selected>@issueType</option>
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <option value="@issueType">@issueType</option>
+                                                                            }
+
+                                                                        }
+                                                                    }
+
+                                                                </select>
+                                                            </td>
+                                                            <td>
+                                                                @if (item.Reason != null)
+                                                                {
+                                                                    <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(listcounter)">@item.Reason</textarea>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(listcounter)"></textarea>
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                @if (item.MatrialCode != null)
+                                                                {
+                                                                    <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(listcounter)" value="@item.MatrialCode">
+                                                                }
+                                                                else
+                                                                {
+                                                                    <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(listcounter)">
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                <select class="form-control form-select-sm rounded-0 ww-100" id="drpMaintainerUsers@(idCluster)@(listcounter)" aria-label=".form-select-sm example">
+                                                                    <option value="">Select</option>
+                                                                    @if (ViewBag.MaintainerUsers != null)
+                                                                    {
+                                                                        foreach (var maintainerUsers in ViewBag.MaintainerUsers as List<Domain.MaintainerUser>)
+                                                                        {
+                                                                            if (item.MaintainerUserId != null && item.MaintainerUserId == maintainerUsers.Id)
+                                                                            {
+                                                                                <option value="@maintainerUsers.Id" selected>@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <option value="@maintainerUsers.Id">@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                </select>
+                                                            </td>
+
+                                                            <td class="text-center">
+                                                                @if (item.IsResolved != null)
+                                                                {
+                                                                    if (item.IsResolved.Value)
+                                                                    {
+                                                                        <img src="~/assets/images/validateIcon2.png" />
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <img src="~/assets/images/Warning.png" />
+                                                                    }
+                                                                }
+                                                                else
+                                                                {
+                                                                    <img src="~/assets/images/validateIcon1.png" onclick="fnValidateCombineWatch('@ViewBag.SiteId','@item.AssetId','@item.AttributeId','@item.AssetTypeId','@item.GeneratedFrom','@item.Cause','@item.Id','@idCluster','@listcounter', this)" />
+                                                                }
+                                                                <span class="f-12"></span>
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <img src="~/assets/images/historyIcon.png" onclick="fnShowCombineWatchListHistory('@item.AssetId','@item.AttributeId','@item.ADCName')" />
+                                                            </td>
+
+                                                        </tr>
+                                                    }
+
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr>
+                                                    <td colspan="15"></td>
+                                                </tr>
+                                            }
+
+                                        </tbody>
+                                    </table>
+
+                                    <table class="table table-lg" id="table-combine">
+                                        <thead>
+                                            <tr>
+                                                <th class="tr-bg" scope="col">S. No</th>
+                                                <th class="tr-bg" scope="col">ID</th>
+                                                <th class="tr-bg" scope="col">Cluster</th>
+                                                <th class="tr-bg" scope="col">Status</th>
+                                                <th class="tr-bg" scope="col">TCP</th>
+                                                <th class="tr-bg" scope="col">A10 Type</th>
+                                                <th class="tr-bg" scope="col">Modem</th>
+                                                <th class="tr-bg" scope="col">Modem Number</th>
+                                                <th class="tr-bg" scope="col">Connector status</th>
+                                                <th class="tr-bg" scope="col">Replaced</th>
+                                                <th class="tr-bg" scope="col">Reason</th>
+                                                <th class="tr-bg" scope="col">Code</th>
+                                                <th class="tr-bg" scope="col">Ground Staff</th>
+                                                <th class="tr-bg" scope="col">Validate</th>
+                                                <th class="tr-bg" scope="col">History</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+
+                                            @if (mA10Status != null && mA10Status.Count > 0)
+                                            {
+                                                foreach (var a10Status in mA10Status)
+                                                {
+                                                    var idCluster = System.Text.RegularExpressions.Regex.Replace(a10Status.name, @"[^\w\d]", "");
+                                                    listcounter++;
+
+                                                    <tr>
+                                                        <td>@listcounter</td>
+                                                        <td>@a10Status.id</td>
+                                                        <td>@a10Status.name</td>
+                                                        <td>@a10Status.status</td>
+                                                        <td>@a10Status.paramsvalue</td>
+
+                                                        <td>@a10Status.type</td>
+                                                        <td>
+                                                            @if (a10Status.mProduct != null && a10Status.mProduct.Status != null)
+                                                            {
+                                                                if (a10Status.mProduct.Status.Value)
+                                                                {
+                                                                    <span class="yesno-green">online</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="yesno-red">offline</span>
+                                                                }
+                                                            }
+
+                                                        </td>
+                                                        <td>
+                                                            @if (a10Status.mProduct != null && a10Status.mProduct.DeviceID != null)
+                                                            {
+                                                                <span>@a10Status.mProduct.DeviceID</span>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            @if (a10Status.mProduct != null)
+                                                            {
+                                                                if (!string.IsNullOrEmpty(a10Status.mProduct.ConnectorStatus))
+                                                                {
+                                                                    if (a10Status.mProduct.ConnectorStatus.Trim().ToLower() == "yes")
+                                                                    {
+                                                                        <span class="yesno-green">@a10Status.mProduct.ConnectorStatus</span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <span class="yesno-red">@a10Status.mProduct.ConnectorStatus</span>
+                                                                    }
+                                                                }
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <select class="form-control" id="drpReplaced@(idCluster)@(listcounter)">
+                                                                <option value="">Select</option>
+                                                                @if (!string.IsNullOrEmpty(a10Status.MatrialCode))
+                                                                {
+                                                                    <option value="Yes" selected>Yes</option>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <option value="Yes">Yes</option>
+                                                                }
+
+                                                                @if (string.IsNullOrEmpty(a10Status.MatrialCode) && a10Status.IsResolved != null)
+                                                                {
+                                                                    <option value="No" selected>No</option>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <option value="No">No</option>
+                                                                }
+                                                            </select>
+                                                        </td>
+                                                        <td>
+                                                            @if (a10Status.Reason != null)
+                                                            {
+                                                                <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(listcounter)">@a10Status.Reason</textarea>
+                                                            }
+                                                            else
+                                                            {
+                                                                <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(listcounter)"></textarea>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            @if (a10Status.MatrialCode != null)
+                                                            {
+                                                                <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(listcounter)" value="@a10Status.MatrialCode">
+                                                            }
+                                                            else
+                                                            {
+                                                                <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(listcounter)">
+                                                            }
+                                                        </td>
+
+
+                                                        <td>
+                                                            <select class="form-select form-select-sm rounded-0 ww-100" id="drpMaintainerUsers@(idCluster)@(listcounter)" aria-label=".form-select-sm example">
+                                                                <option value="">Select</option>
+                                                                @if (ViewBag.MaintainerUsers != null)
+                                                                {
+                                                                    foreach (var maintainerUsers in ViewBag.MaintainerUsers as List<Domain.MaintainerUser>)
+                                                                    {
+                                                                        if (a10Status.MaintainerUserId != null && a10Status.MaintainerUserId == maintainerUsers.Id)
+                                                                        {
+                                                                            <option value="@maintainerUsers.Id" selected>@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <option value="@maintainerUsers.Id">@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                        }
+                                                                    }
+                                                                }
+                                                            </select>
+                                                        </td>
+
+                                                        <td>
+                                                            @if (a10Status.IsResolved != null)
+                                                            {
+                                                                if (a10Status.IsResolved.Value)
+                                                                {
+                                                                    <img src="~/assets/images/validateIcon2.png" />
+                                                                }
+                                                                else
+                                                                {
+                                                                    <img src="~/assets/images/Warning.png" />
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                <img src="~/assets/images/validateIcon1.png" onclick="fnValidateCombineLinkIssue('@ViewBag.SiteId','@a10Status.id','@a10Status.name','@idCluster','@listcounter', this)" />
+
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            <img src="~/assets/images/historyIcon.png" onclick="fnShowCombineLiskIssueHistory('@a10Status.id','@ViewBag.SiteId')"/>
+                                                        </td>
+
+                                                    </tr>
+
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr>
+                                                    <td colspan="15"></td>
+                                                </tr>
+                                            }
+
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else if (ViewBag.Type != null && ViewBag.Type == "AssetType")
+                            {
+                                <div class="col-12">
+                                    <table class="table align-middle  m-0">
+                                        <tbody>
+                                            @if (clusters != null && clusters.Count > 0)
+                                            {
+                                                var assetTypes = watchLists.Where(x => x.ClusterName != null).GroupBy(x => new { x.AssetTypeId, x.AssetTypeName }).Select(x => x.Key).ToList();
+                                                foreach (var assetType in assetTypes)
+                                                {
+
+                                                    int counter = 0;
+
+                                                    <tr>
+                                                        <td class="tr-bg td-w">
+                                                            <i class="fa fa-plus expand-btn" onclick="fnShowCombineAssetTypeList('@(assetType.AssetTypeId)',this)"></i>
+                                                        </td>
+                                                        <td class="tr-bg" colspan="4">
+                                                            <span class="pull-left">@assetType.AssetTypeName</span>
+
+                                                        </td>
+                                                    </tr>
+                                                    <tr class="display-none p-0 trCombineAssetType_@(assetType.AssetTypeId)">
+                                                        <td colspan="5" class="p-0 Nothover">
+                                                            <div class="p-2 bd-table innerTable-w">
+                                                                <table class="table table-responsive" id="table-combine">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th width="3%" class="tr-bg" scope="col"></th>
+                                                                            <th width="3%" class="tr-bg" scope="col">S.No</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">AssetType</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Asset</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Card</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">ADC</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Pin</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Attribute</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Value</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Cause</th>
+                                                                            <th width="3%" class="tr-bg text-center" scope="col">Replaced</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Issue Type</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Reason</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Code</th>
+                                                                            <th width="3%" class="tr-bg" scope="col">Ground Staff</th>
+                                                                            <th width="3%" class="tr-bg text-center" scope="col">Validate</th>
+                                                                            <th width="3%" class="tr-bg text-center" scope="col">History</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        @if (watchLists != null && watchLists.Count > 0)
+                                                                        {
+                                                                            foreach (var item in watchLists.Where(x => x.ClusterName != null && x.AssetTypeId == assetType.AssetTypeId))
+                                                                            {
+                                                                                var idCluster = System.Text.RegularExpressions.Regex.Replace(item.ClusterName, @"[^\w\d]", "");
+                                                                                counter++;
+                                                                                <tr>
+                                                                                    <td>
+
+                                                                                        <h5><i class="fa fa-info-circle" aria-hidden="true" data-bs-trigger="hover" data-container="body" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="top" data-bs-original-title="Site Data" data-bs-content="<p>Date: @item.CreatedDate</p><p>Generated From: @item.GeneratedFrom</p>"></i></h5>
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @counter
+                                                                                    </td>
+                                                                                    <td>@item.AssetTypeName</td>
+                                                                                    <td>
+                                                                                        <a href="javascript:void(0)" onclick="fnGetLiveData('@item.SiteName','@item.AssetId','@item.AssetTypeId')">@item.AssetName</a>
+                                                                                    </td>
+                                                                                    <td>@item.CardName</td>
+                                                                                    <td>@item.ADCName</td>
+                                                                                    <td>@item.Pin</td>
+                                                                                    <td>@item.AttributeName</td>
+                                                                                    <td>@item.AttributeValue</td>
+                                                                                    <td>@item.Cause</td>
+                                                                                    <td class="text-center">
+                                                                                        <select class="form-control" id="drpReplaced@(idCluster)@(counter)">
+                                                                                            <option value="">Select</option>
+                                                                                            @if (!string.IsNullOrEmpty(item.MatrialCode))
+                                                                                            {
+                                                                                                <option value="Yes" selected>Yes</option>
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <option value="Yes">Yes</option>
+                                                                                            }
+
+                                                                                            @if (string.IsNullOrEmpty(item.MatrialCode) && item.IsResolved != null)
+                                                                                            {
+                                                                                                <option value="No" selected>No</option>
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <option value="No">No</option>
+                                                                                            }
+
+
+
+                                                                                        </select>
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        <select class="form-control" style="width:80px" id="drpIssueType@(idCluster)@(counter)">
+                                                                                            @if (ViewBag.IssueTypes != null)
+                                                                                            {
+                                                                                                <option value="">Select</option>
+                                                                                                foreach (var issueType in ViewBag.IssueTypes)
+                                                                                                {
+                                                                                                    if (item.IssueType != null && item.IssueType == issueType)
+                                                                                                    {
+                                                                                                        <option value="@issueType" selected>@issueType</option>
+                                                                                                    }
+                                                                                                    else
+                                                                                                    {
+                                                                                                        <option value="@issueType">@issueType</option>
+                                                                                                    }
+
+                                                                                                }
+                                                                                            }
+
+                                                                                        </select>
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @if (item.Reason != null)
+                                                                                        {
+                                                                                            <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)">@item.Reason</textarea>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)"></textarea>
+                                                                                        }
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @if (item.MatrialCode != null)
+                                                                                        {
+                                                                                            <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)" value="@item.MatrialCode">
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)">
+                                                                                        }
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        <select class="form-control form-select-sm rounded-0 ww-100" id="drpMaintainerUsers@(idCluster)@(counter)" aria-label=".form-select-sm example">
+                                                                                            <option value="">Select</option>
+                                                                                            @if (ViewBag.MaintainerUsers != null)
+                                                                                            {
+                                                                                                foreach (var maintainerUsers in ViewBag.MaintainerUsers as List<Domain.MaintainerUser>)
+                                                                                                {
+                                                                                                    if (item.MaintainerUserId != null && item.MaintainerUserId == maintainerUsers.Id)
+                                                                                                    {
+                                                                                                        <option value="@maintainerUsers.Id" selected>@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                    }
+                                                                                                    else
+                                                                                                    {
+                                                                                                        <option value="@maintainerUsers.Id">@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                    }
+                                                                                                }
+                                                                                            }
+                                                                                        </select>
+                                                                                    </td>
+
+                                                                                    <td class="text-center">
+                                                                                        @if (item.IsResolved != null)
+                                                                                        {
+                                                                                            if (item.IsResolved.Value)
+                                                                                            {
+                                                                                                <img src="~/assets/images/validateIcon2.png" />
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <img src="~/assets/images/Warning.png" />
+                                                                                            }
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <img src="~/assets/images/validateIcon1.png" onclick="fnValidateCombineWatch('@ViewBag.SiteId','@item.AssetId','@item.AttributeId','@item.AssetTypeId','@item.GeneratedFrom','@item.Cause','@item.Id','@idCluster','@counter', this)" />
+                                                                                        }
+                                                                                        <span class="f-12"></span>
+                                                                                    </td>
+                                                                                    <td class="text-center">
+                                                                                        <img src="~/assets/images/historyIcon.png" onclick="fnShowCombineWatchListHistory('@item.AssetId','@item.AttributeId','@item.ADCName')" />
+                                                                                    </td>
+
+                                                                                </tr>
+                                                                            }
+
+
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <tr>
+                                                                                <td colspan="15"></td>
+                                                                            </tr>
+                                                                        }
+
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                }
+
+                                                if (mA10Status != null && mA10Status.Count > 0)
+                                                {
+                                                    <tr>
+                                                        <td class="td-w tr-bg">
+                                                            <i class="fa fa-plus expand-btn" onclick="fnShowCombineInnerList('assetTypeGroup','LinkIssue',this)"></i>
+                                                        </td>
+                                                        <td class="tr-bg">Link Issue</td>
+                                                    </tr>
+                                                    <tr class="display-none trCombineInnerList_assetTypeGroupLinkIssue">
+                                                        <td colspan="4">
+                                                            <div class="p-2 bd-table innerTable-w table-responsive">
+
+                                                                <table class="table table-lg" id="table-combine">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th class="tr-bg" scope="col">S. No</th>
+                                                                            <th class="tr-bg" scope="col">ID</th>
+                                                                            <th class="tr-bg" scope="col">Cluster</th>
+                                                                            <th class="tr-bg" scope="col">Status</th>
+                                                                            <th class="tr-bg" scope="col">TCP</th>
+                                                                            <th class="tr-bg" scope="col">A10 Type</th>
+                                                                            <th class="tr-bg" scope="col">Modem</th>
+                                                                            <th class="tr-bg" scope="col">Modem Number</th>
+                                                                            <th class="tr-bg" scope="col">Connector status</th>
+                                                                            <th class="tr-bg" scope="col">Replaced</th>
+                                                                            <th class="tr-bg" scope="col">Reason</th>
+                                                                            <th class="tr-bg" scope="col">Code</th>
+                                                                            <th class="tr-bg" scope="col">Ground Staff</th>
+                                                                            <th class="tr-bg" scope="col">Validate</th>
+                                                                            <th class="tr-bg" scope="col">History</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                        @if (mA10Status != null && mA10Status.Count > 0)
+                                                                        {
+                                                                            int counter = 0;
+                                                                            foreach (var a10Status in mA10Status)
+                                                                            {
+                                                                                var idCluster = System.Text.RegularExpressions.Regex.Replace(a10Status.name, @"[^\w\d]", "");
+                                                                                counter++;
+
+                                                                                <tr>
+                                                                                    <td>@counter</td>
+                                                                                    <td>@a10Status.id</td>
+                                                                                    <td>@a10Status.name</td>
+                                                                                    <td>@a10Status.status</td>
+                                                                                    <td>@a10Status.paramsvalue</td>
+
+                                                                                    <td>@a10Status.type</td>
+                                                                                    <td>
+                                                                                        @if (a10Status.mProduct != null && a10Status.mProduct.Status != null)
+                                                                                        {
+                                                                                            if (a10Status.mProduct.Status.Value)
+                                                                                            {
+                                                                                                <span class="yesno-green">online</span>
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <span class="yesno-red">offline</span>
+                                                                                            }
+                                                                                        }
+
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @if (a10Status.mProduct != null && a10Status.mProduct.DeviceID != null)
+                                                                                        {
+                                                                                            <span>@a10Status.mProduct.DeviceID</span>
+                                                                                        }
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @if (a10Status.mProduct != null)
+                                                                                        {
+                                                                                            if (!string.IsNullOrEmpty(a10Status.mProduct.ConnectorStatus))
+                                                                                            {
+                                                                                                if (a10Status.mProduct.ConnectorStatus.Trim().ToLower() == "yes")
+                                                                                                {
+                                                                                                    <span class="yesno-green">@a10Status.mProduct.ConnectorStatus</span>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <span class="yesno-red">@a10Status.mProduct.ConnectorStatus</span>
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        <select class="form-control" id="drpReplaced@(idCluster)@(counter)">
+                                                                                            <option value="">Select</option>
+                                                                                            @if (!string.IsNullOrEmpty(a10Status.MatrialCode))
+                                                                                            {
+                                                                                                <option value="Yes" selected>Yes</option>
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <option value="Yes">Yes</option>
+                                                                                            }
+
+                                                                                            @if (string.IsNullOrEmpty(a10Status.MatrialCode) && a10Status.IsResolved != null)
+                                                                                            {
+                                                                                                <option value="No" selected>No</option>
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <option value="No">No</option>
+                                                                                            }
+                                                                                        </select>
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @if (a10Status.Reason != null)
+                                                                                        {
+                                                                                            <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)">@a10Status.Reason</textarea>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)"></textarea>
+                                                                                        }
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        @if (a10Status.MatrialCode != null)
+                                                                                        {
+                                                                                            <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)" value="@a10Status.MatrialCode">
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)">
+                                                                                        }
+                                                                                    </td>
+
+
+                                                                                    <td>
+                                                                                        <select class="form-select form-select-sm rounded-0 ww-100" id="drpMaintainerUsers@(idCluster)@(counter)" aria-label=".form-select-sm example">
+                                                                                            <option value="">Select</option>
+                                                                                            @if (ViewBag.MaintainerUsers != null)
+                                                                                            {
+                                                                                                foreach (var maintainerUsers in ViewBag.MaintainerUsers as List<Domain.MaintainerUser>)
+                                                                                                {
+                                                                                                    if (a10Status.MaintainerUserId != null && a10Status.MaintainerUserId == maintainerUsers.Id)
+                                                                                                    {
+                                                                                                        <option value="@maintainerUsers.Id" selected>@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                    }
+                                                                                                    else
+                                                                                                    {
+                                                                                                        <option value="@maintainerUsers.Id">@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                    }
+                                                                                                }
+                                                                                            }
+                                                                                        </select>
+                                                                                    </td>
+
+                                                                                    <td>
+                                                                                        @if (a10Status.IsResolved != null)
+                                                                                        {
+                                                                                            if (a10Status.IsResolved.Value)
+                                                                                            {
+                                                                                                <img src="~/assets/images/validateIcon2.png" />
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <img src="~/assets/images/Warning.png" />
+                                                                                            }
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <img src="~/assets/images/validateIcon1.png" onclick="fnValidateCombineLinkIssue('@ViewBag.SiteId','@a10Status.id','@a10Status.name','@idCluster','@counter', this)" />
+
+                                                                                        }
+                                                                                    </td>
+                                                                                    <td>
+                                                                                        <img src="~/assets/images/historyIcon.png" onclick="fnShowCombineLiskIssueHistory('@a10Status.id','@ViewBag.SiteId')" />
+                                                                                    </td>
+
+                                                                                </tr>
+
+                                                                            }
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <tr>
+                                                                                <td colspan="15"></td>
+                                                                            </tr>
+                                                                        }
+
+
+
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+
+                                                }
+
+                                            }
+
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="col-12">
+                                    <table class="table align-middle  m-0">
+                                        <tbody>
+                                            @if (clusters != null && clusters.Count > 0)
+                                            {
+                                                foreach (var cluster in clusters)
+                                                {
+                                                    var idCluster = System.Text.RegularExpressions.Regex.Replace(cluster, @"[^\w\d]", "");
+                                                    int counter = 0;
+
+                                                    int watchlistCount = 0;
+                                                    int mannualWatchlistCount = 0;
+                                                    int frsWatchlistCount = 0;
+                                                    int linkIssueCount = 0;
+                                                    if (watchLists != null && watchLists.Count > 0 && watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower()).Count() > 0)
+                                                    {
+                                                        watchlistCount = watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower() && x.GeneratedFrom == "WatchList").Count();
+                                                        frsWatchlistCount = watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower() && x.GeneratedFrom == "FRSWatchList").Count();
+                                                        mannualWatchlistCount = watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower() && x.GeneratedFrom == "Mannual").Count();
+                                                    }
+
+                                                    if (mA10Status != null && mA10Status.Count > 0 && mA10Status.Where(x => x.name.Trim().ToLower().Contains(cluster.Trim().ToLower())).Count() > 0)
+                                                    {
+                                                        linkIssueCount = mA10Status.Where(x => x.name.Trim().ToLower().Contains(cluster.Trim().ToLower())).Count();
+
+                                                    }
+                                                    <tr>
+                                                        <td class="tr-bg td-w">
+                                                            <i class="fa fa-plus expand-btn" onclick="fnShowCombineList('@(idCluster)',this)"></i>
+                                                        </td>
+                                                        <td class="tr-bg" colspan="4">
+                                                            <span class="pull-left">@cluster</span>
+                                                            <span class="pull-right">Watchlist - @watchlistCount | FRS Watchlist - @frsWatchlistCount | Mannual Watchlist - @mannualWatchlistCount | Link Issue - @linkIssueCount</span>
+
+                                                        </td>
+                                                    </tr>
+                                                    <tr class="display-none p-0 trCombine_@(idCluster)">
+                                                        <td colspan="5" class="p-0 Nothover">
+                                                            <div class="nested-table p-0">
+                                                                <table class="table table-lg m-0">
+                                                                    <tbody>
+                                                                        @if (watchLists != null && watchLists.Count > 0 && watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower()).Count() > 0)
+                                                                        {
+                                                                            <tr>
+                                                                                <td class="td-w">
+                                                                                    <i class="fa fa-plus expand-btn" onclick="fnShowCombineInnerList('@idCluster','WatchList',this)"></i>
+                                                                                </td>
+                                                                                <td>WatchList</td>
+                                                                            </tr>
+                                                                            <tr class="display-none trCombineInnerList_@(idCluster)WatchList">
+                                                                                <td colspan="4">
+                                                                                    <div class="p-2 bd-table innerTable-w">
+                                                                                        <table class="table table-responsive" id="table-combine">
+                                                                                            <thead>
+                                                                                                <tr>
+                                                                                                    <th width="3%" class="tr-bg" scope="col"></th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">S.No</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">AssetType</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Asset</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Card</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">ADC</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Pin</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Attribute</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Value</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Cause</th>
+                                                                                                    <th width="3%" class="tr-bg text-center" scope="col">Replaced</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Issue Type</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Reason</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Code</th>
+                                                                                                    <th width="3%" class="tr-bg" scope="col">Ground Staff</th>
+                                                                                                    <th width="3%" class="tr-bg text-center" scope="col">Validate</th>
+                                                                                                    <th width="3%" class="tr-bg text-center" scope="col">History</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+                                                                                                @if (watchLists != null && watchLists.Count > 0)
+                                                                                                {
+                                                                                                    foreach (var adc in watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower()).GroupBy(x => x.ADCName).Select(x => x.Key).ToList())
+                                                                                                    {
+                                                                                                        foreach (var item in watchLists.Where(x => x.ClusterName != null && x.ClusterName.Trim().ToLower() == cluster.Trim().ToLower() && x.ADCName == adc))
+                                                                                                        {
+                                                                                                            counter++;
+                                                                                                            <tr>
+                                                                                                                <td>
+
+                                                                                                                    <h5><i class="fa fa-info-circle" aria-hidden="true" data-bs-trigger="hover" data-container="body" data-bs-toggle="popover" data-bs-html="true" data-bs-placement="top" data-bs-original-title="Site Data" data-bs-content="<p>Date: @item.CreatedDate</p><p>Generated From: @item.GeneratedFrom</p>"></i></h5>
+                                                                                                                </td>
+                                                                                                                <td>
+                                                                                                                    @counter
+                                                                                                                </td>
+                                                                                                                <td>@item.AssetTypeName</td>
+                                                                                                                <td>
+                                                                                                                    <a href="javascript:void(0)" onclick="fnGetLiveData('@item.SiteName','@item.AssetId','@item.AssetTypeId')">@item.AssetName</a>
+                                                                                                                </td>
+                                                                                                                <td>@item.CardName</td>
+                                                                                                                <td>@item.ADCName</td>
+                                                                                                                <td>@item.Pin</td>
+                                                                                                                <td>@item.AttributeName</td>
+                                                                                                                <td>@item.AttributeValue</td>
+                                                                                                                <td>@item.Cause</td>
+                                                                                                                <td class="text-center">
+                                                                                                                    <select class="form-control" id="drpReplaced@(idCluster)@(counter)">
+                                                                                                                        <option value="">Select</option>
+                                                                                                                        @if (!string.IsNullOrEmpty(item.MatrialCode))
+                                                                                                                        {
+                                                                                                                            <option value="Yes" selected>Yes</option>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <option value="Yes">Yes</option>
+                                                                                                                        }
+
+                                                                                                                        @if (string.IsNullOrEmpty(item.MatrialCode) && item.IsResolved != null)
+                                                                                                                        {
+                                                                                                                            <option value="No" selected>No</option>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <option value="No">No</option>
+                                                                                                                        }
+
+
+
+                                                                                                                    </select>
+                                                                                                                </td>
+                                                                                                                <td>
+                                                                                                                    <select class="form-control" style="width:80px" id="drpIssueType@(idCluster)@(counter)">
+                                                                                                                        @if (ViewBag.IssueTypes != null)
+                                                                                                                        {
+                                                                                                                            <option value="">Select</option>
+                                                                                                                            foreach (var issueType in ViewBag.IssueTypes)
+                                                                                                                            {
+                                                                                                                                if (item.IssueType != null && item.IssueType == issueType)
+                                                                                                                                {
+                                                                                                                                    <option value="@issueType" selected>@issueType</option>
+                                                                                                                                }
+                                                                                                                                else
+                                                                                                                                {
+                                                                                                                                    <option value="@issueType">@issueType</option>
+                                                                                                                                }
+
+                                                                                                                            }
+                                                                                                                        }
+
+                                                                                                                    </select>
+                                                                                                                </td>
+                                                                                                                <td>
+                                                                                                                    @if (item.Reason != null)
+                                                                                                                    {
+                                                                                                                        <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)">@item.Reason</textarea>
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)"></textarea>
+                                                                                                                    }
+                                                                                                                </td>
+                                                                                                                <td>
+                                                                                                                    @if (item.MatrialCode != null)
+                                                                                                                    {
+                                                                                                                        <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)" value="@item.MatrialCode">
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)">
+                                                                                                                    }
+                                                                                                                </td>
+                                                                                                                <td>
+                                                                                                                    <select class="form-control form-select-sm rounded-0 ww-100" id="drpMaintainerUsers@(idCluster)@(counter)" aria-label=".form-select-sm example">
+                                                                                                                        <option value="">Select</option>
+                                                                                                                        @if (ViewBag.MaintainerUsers != null)
+                                                                                                                        {
+                                                                                                                            foreach (var maintainerUsers in ViewBag.MaintainerUsers as List<Domain.MaintainerUser>)
+                                                                                                                            {
+                                                                                                                                if (item.MaintainerUserId != null && item.MaintainerUserId == maintainerUsers.Id)
+                                                                                                                                {
+                                                                                                                                    <option value="@maintainerUsers.Id" selected>@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                                                }
+                                                                                                                                else
+                                                                                                                                {
+                                                                                                                                    <option value="@maintainerUsers.Id">@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                                                }
+                                                                                                                            }
+                                                                                                                        }
+                                                                                                                    </select>
+                                                                                                                </td>
+
+                                                                                                                <td class="text-center">
+                                                                                                                    @if (item.IsResolved != null)
+                                                                                                                    {
+                                                                                                                        if (item.IsResolved.Value)
+                                                                                                                        {
+                                                                                                                            <img src="~/assets/images/validateIcon2.png" />
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <img src="~/assets/images/Warning.png" />
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <img src="~/assets/images/validateIcon1.png" onclick="fnValidateCombineWatch('@ViewBag.SiteId','@item.AssetId','@item.AttributeId','@item.AssetTypeId','@item.GeneratedFrom','@item.Cause','@item.Id','@idCluster','@counter', this)" />
+                                                                                                                    }
+                                                                                                                    <span class="f-12"></span>
+                                                                                                                </td>
+                                                                                                                <td class="text-center">
+                                                                                                                    <img src="~/assets/images/historyIcon.png" onclick="fnShowCombineWatchListHistory('@item.AssetId','@item.AttributeId','@item.ADCName')" />
+                                                                                                                </td>
+
+                                                                                                            </tr>
+                                                                                                        }
+
+                                                                                                    }
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <tr>
+                                                                                                        <td colspan="15"></td>
+                                                                                                    </tr>
+                                                                                                }
+
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+
+
+                                                                        @if (mA10Status != null && mA10Status.Count > 0 && mA10Status.Where(x => x.name.Trim().ToLower().Contains(cluster.Trim().ToLower())).Count() > 0)
+                                                                        {
+                                                                            <tr>
+                                                                                <td class="td-w">
+                                                                                    <i class="fa fa-plus expand-btn" onclick="fnShowCombineInnerList('@idCluster','LinkIssue',this)"></i>
+                                                                                </td>
+                                                                                <td>Link Issue</td>
+                                                                            </tr>
+                                                                            <tr class="display-none trCombineInnerList_@(idCluster)LinkIssue">
+                                                                                <td colspan="4">
+                                                                                    <div class="p-2 bd-table innerTable-w table-responsive">
+                                                                                        @{
+                                                                                            int clusterADCCount = 0;
+                                                                                            int linkissueCount = mA10Status.Where(x => x.name.Trim().ToLower().Contains(cluster.Trim().ToLower())).Count();
+                                                                                            if (ViewBag.CardLines != null)
+                                                                                            {
+                                                                                                var mCardLines = ViewBag.CardLines as List<Domain.CardLine>;
+                                                                                                if (mCardLines != null && mCardLines.Count > 0)
+                                                                                                {
+                                                                                                    var clusterCards = mCardLines.Where(x => x.ClusterName.Trim().ToLower().Contains(cluster.Trim().ToLower())).ToList();
+                                                                                                    if (clusterCards != null && clusterCards.Count > 0)
+                                                                                                    {
+                                                                                                        clusterADCCount = clusterCards.Where(x => x.ADCNumber != null).GroupBy(x => x.ADCNumber).Select(x => x.Key).Count();
+                                                                                                    }
+
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                        <table class="table table-lg" id="table-combine">
+                                                                                            <thead>
+                                                                                                <tr>
+                                                                                                    <th class="tr-bg" scope="col">S. No</th>
+                                                                                                    <th class="tr-bg" scope="col">ID</th>
+                                                                                                    @if (clusterADCCount > 0)
+                                                                                                    {
+                                                                                                        <th class="tr-bg" scope="col">Cluster <a href="javascript:void(0)" onclick="fnShowADCLinkIssue('@ViewBag.SiteId','@cluster')">@linkissueCount/@clusterADCCount</a></th>
+                                                                                                    }
+                                                                                                    else
+                                                                                                    {
+                                                                                                        <th class="tr-bg" scope="col">Cluster</th>
+                                                                                                    }
+                                                                                                    <th class="tr-bg" scope="col">Status</th>
+                                                                                                    <th class="tr-bg" scope="col">TCP</th>
+                                                                                                    <th class="tr-bg" scope="col">A10 Type</th>
+                                                                                                    <th class="tr-bg" scope="col">Modem</th>
+                                                                                                    <th class="tr-bg" scope="col">Modem Number</th>
+                                                                                                    <th class="tr-bg" scope="col">Connector status</th>
+                                                                                                    <th class="tr-bg" scope="col">Replaced</th>
+                                                                                                    <th class="tr-bg" scope="col">Reason</th>
+                                                                                                    <th class="tr-bg" scope="col">Code</th>
+                                                                                                    <th class="tr-bg" scope="col">Ground Staff</th>
+                                                                                                    <th class="tr-bg" scope="col">Validate</th>
+                                                                                                    <th class="tr-bg" scope="col">History</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+
+                                                                                                @if (mA10Status != null && mA10Status.Count > 0)
+                                                                                                {
+                                                                                                    foreach (var a10Status in mA10Status.Where(x => x.name.Trim().ToLower().Contains(cluster.Trim().ToLower())))
+                                                                                                    {
+                                                                                                        counter++;
+
+                                                                                                        <tr>
+                                                                                                            <td>@counter</td>
+                                                                                                            <td>@a10Status.id</td>
+                                                                                                            <td>@a10Status.name</td>
+                                                                                                            <td>@a10Status.status</td>
+                                                                                                            <td>@a10Status.paramsvalue</td>
+
+                                                                                                            <td>@a10Status.type</td>
+                                                                                                            <td>
+                                                                                                                @if (a10Status.mProduct != null && a10Status.mProduct.Status != null)
+                                                                                                                {
+                                                                                                                    if (a10Status.mProduct.Status.Value)
+                                                                                                                    {
+                                                                                                                        <span class="yesno-green">online</span>
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <span class="yesno-red">offline</span>
+                                                                                                                    }
+                                                                                                                }
+
+                                                                                                            </td>
+                                                                                                            <td>
+                                                                                                                @if (a10Status.mProduct != null && a10Status.mProduct.DeviceID != null)
+                                                                                                                {
+                                                                                                                    <span>@a10Status.mProduct.DeviceID</span>
+                                                                                                                }
+                                                                                                            </td>
+                                                                                                            <td>
+                                                                                                                @if (a10Status.mProduct != null)
+                                                                                                                {
+                                                                                                                    if (!string.IsNullOrEmpty(a10Status.mProduct.ConnectorStatus))
+                                                                                                                    {
+                                                                                                                        if (a10Status.mProduct.ConnectorStatus.Trim().ToLower() == "yes")
+                                                                                                                        {
+                                                                                                                            <span class="yesno-green">@a10Status.mProduct.ConnectorStatus</span>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <span class="yesno-red">@a10Status.mProduct.ConnectorStatus</span>
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                }
+                                                                                                            </td>
+                                                                                                            <td>
+                                                                                                                <select class="form-control" id="drpReplaced@(idCluster)@(counter)">
+                                                                                                                    <option value="">Select</option>
+                                                                                                                    @if (!string.IsNullOrEmpty(a10Status.MatrialCode))
+                                                                                                                    {
+                                                                                                                        <option value="Yes" selected>Yes</option>
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <option value="Yes">Yes</option>
+                                                                                                                    }
+
+                                                                                                                    @if (string.IsNullOrEmpty(a10Status.MatrialCode) && a10Status.IsResolved != null)
+                                                                                                                    {
+                                                                                                                        <option value="No" selected>No</option>
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <option value="No">No</option>
+                                                                                                                    }
+                                                                                                                </select>
+                                                                                                            </td>
+                                                                                                            <td>
+                                                                                                                @if (a10Status.Reason != null)
+                                                                                                                {
+                                                                                                                    <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)">@a10Status.Reason</textarea>
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <textarea rows="3" cols="8" class="form-control textareaK" id="txtReson@(idCluster)@(counter)"></textarea>
+                                                                                                                }
+                                                                                                            </td>
+                                                                                                            <td>
+                                                                                                                @if (a10Status.MatrialCode != null)
+                                                                                                                {
+                                                                                                                    <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)" value="@a10Status.MatrialCode">
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <input type="text" class="form-control textareaK" id="txtCode@(idCluster)@(counter)">
+                                                                                                                }
+                                                                                                            </td>
+
+
+                                                                                                            <td>
+                                                                                                                <select class="form-select form-select-sm rounded-0 ww-100" id="drpMaintainerUsers@(idCluster)@(counter)" aria-label=".form-select-sm example">
+                                                                                                                    <option value="">Select</option>
+                                                                                                                    @if (ViewBag.MaintainerUsers != null)
+                                                                                                                    {
+                                                                                                                        foreach (var maintainerUsers in ViewBag.MaintainerUsers as List<Domain.MaintainerUser>)
+                                                                                                                        {
+                                                                                                                            if (a10Status.MaintainerUserId != null && a10Status.MaintainerUserId == maintainerUsers.Id)
+                                                                                                                            {
+                                                                                                                                <option value="@maintainerUsers.Id" selected>@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                                            }
+                                                                                                                            else
+                                                                                                                            {
+                                                                                                                                <option value="@maintainerUsers.Id">@maintainerUsers.FirstName @maintainerUsers.LastName</option>
+                                                                                                                            }
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                </select>
+                                                                                                            </td>
+
+                                                                                                            <td>
+                                                                                                                @if (a10Status.IsResolved != null)
+                                                                                                                {
+                                                                                                                    if (a10Status.IsResolved.Value)
+                                                                                                                    {
+                                                                                                                        <img src="~/assets/images/validateIcon2.png" />
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <img src="~/assets/images/Warning.png" />
+                                                                                                                    }
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <img src="~/assets/images/validateIcon1.png" onclick="fnValidateCombineLinkIssue('@ViewBag.SiteId','@a10Status.id','@a10Status.name','@idCluster','@counter', this)" />
+
+                                                                                                                }
+                                                                                                            </td>
+                                                                                                            <td>
+                                                                                                                <img src="~/assets/images/historyIcon.png" onclick="fnShowCombineLiskIssueHistory('@a10Status.id','@ViewBag.SiteId')"/>
+                                                                                                            </td>
+
+                                                                                                        </tr>
+
+                                                                                                    }
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <tr>
+                                                                                                        <td colspan="15"></td>
+                                                                                                    </tr>
+                                                                                                }
+
+
+
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+
+                                                                        }
+
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+
+
+
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+
+
+                        </div>
+                    </div>
+                </div>
+
+
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-linkissue-adc-A10Status" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title">A10 Status</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mt-2 table-responsive" id="tablelinkissueadcA10Status">
+
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+
+    $(document).ready(function () {
+        $('[data-bs-toggle="popover"]').popover();
+                                        });
+
+    function fnShowCombineList(cluster, $this) {
+        if (cluster != null && cluster != '' && cluster != undefined) {
+            if ($($this).hasClass("fa fa-plus")) {
+                $($this).removeClass("fa fa-plus").addClass("fa fa-minus");
+                $('.trCombine_' + cluster).removeClass("display-none");
+            } else {
+                $($this).removeClass("fa fa-minus").addClass("fa fa-plus");
+                $('.trCombine_' + cluster).addClass("display-none");
+            }
+        }
+    }
+
+    function fnShowCombineAssetTypeList(cluster, $this) {
+        if (cluster != null && cluster != '' && cluster != undefined) {
+            if ($($this).hasClass("fa fa-plus")) {
+                $($this).removeClass("fa fa-plus").addClass("fa fa-minus");
+                $('.trCombineAssetType_' + cluster).removeClass("display-none");
+            } else {
+                $($this).removeClass("fa fa-minus").addClass("fa fa-plus");
+                $('.trCombineAssetType_' + cluster).addClass("display-none");
+            }
+        }
+    }
+
+    function fnShowCombineInnerList(cluster, type, $this) {
+        if (cluster != null && cluster != '' && cluster != undefined && type != null && type != '' && type != undefined) {
+            if ($($this).hasClass("fa fa-plus")) {
+                $($this).removeClass("fa fa-plus").addClass("fa fa-minus");
+                $('.trCombineInnerList_' + cluster + type).removeClass("display-none");
+            } else {
+                $($this).removeClass("fa fa-minus").addClass("fa fa-plus");
+                $('.trCombineInnerList_' + cluster + type).addClass("display-none");
+            }
+        }
+    }
+
+    function fnValidateCombineWatch(siteId, assetId, attributeId, assetTypeId, type, cause, id, clsterId, counter, $this) {
+        var isValid = true;
+        var mCombineOverallTarget = {};
+        mCombineOverallTarget.SiteId = siteId
+        mCombineOverallTarget.AssetId = assetId
+        mCombineOverallTarget.AttributeId = attributeId;
+        mCombineOverallTarget.AssetTypeId = assetTypeId;
+        mCombineOverallTarget.Type = type;
+        mCombineOverallTarget.Cause = cause;
+        if (type == 'WatchList') {
+            mCombineOverallTarget.WatchListId = id;
+            mCombineOverallTarget.TypeId = '@E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.WatchLists.GetHashCode()';
+        }
+        if (type == 'FRSWatchList') {
+            mCombineOverallTarget.FRSWatchListId = id;
+            mCombineOverallTarget.TypeId = '@E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.FRSWatchList.GetHashCode()';
+        }
+
+
+        var drpReplaced = $('#drpReplaced' + clsterId + counter).val();
+        mCombineOverallTarget.IssueType = $('#drpIssueType' + clsterId + counter).val();
+        mCombineOverallTarget.Reason = $('#txtReson' + clsterId + counter).val();
+        mCombineOverallTarget.MatrialCode = $('#txtCode' + clsterId + counter).val();
+        mCombineOverallTarget.MaintainerUserId = $('#drpMaintainerUsers' + clsterId + counter).val();
+        if (drpReplaced == "Yes") {
+            if (mCombineOverallTarget.MatrialCode == null || mCombineOverallTarget.MatrialCode == undefined || mCombineOverallTarget.MatrialCode == '') {
+                isValid = false;
+                alert('Code is required');
+            }
+            else if (mCombineOverallTarget.IssueType == null || mCombineOverallTarget.IssueType == undefined || mCombineOverallTarget.IssueType == '') {
+                isValid = false;
+                alert('Issue Type is required');
+            }
+        }
+
+        if (mCombineOverallTarget.Reason == null || mCombineOverallTarget.Reason == undefined || mCombineOverallTarget.Reason == '') {
+            isValid = false;
+            alert('Reason is required');
+        }
+        else if (mCombineOverallTarget.MaintainerUserId == null || mCombineOverallTarget.MaintainerUserId == undefined || mCombineOverallTarget.MaintainerUserId == '') {
+            isValid = false;
+            alert('Ground Staff is required');
+        }
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/CheckCombineWatchlist',
+                type: 'Post',
+                data: '{mCombineOverallTarget:' + JSON.stringify(mCombineOverallTarget) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+
+                        var type = '';
+                        var msg = '';
+                        $(data).each(function (t, data) {
+                            if (data.Key == "type") {
+                                type = data.Value
+                            }
+                            else if (data.Key == "result") {
+                                msg = data.Value
+                            }
+                        });
+                        if (type == "success") {
+                            //$($this).next().addClass("text-success");
+                            //$($this).next().removeClass("text-danger");
+                            //$($this).next().text(msg);
+                            alert(msg);
+                            $($this).attr("src", "/assets/images/validateIcon2.png");
+                            $($this).removeAttr('onclick');
+                        }
+                        else if (type == "pending") {
+                            //$($this).next().addClass("text-success");
+                            //$($this).next().removeClass("text-danger");
+                            //$($this).next().text(msg);
+                            alert(msg);
+                            $($this).attr("src", "/assets/images/Warning.png");
+                            $($this).removeAttr('onclick');
+                        }
+                        else if (type == "error") {
+                            //$($this).next().removeClass("text-success");
+                            //$($this).next().addClass("text-danger");
+                            alert(msg);
+                            // $($this).next().text(msg);
+                        }
+                        else {
+                            alert("Logic not set");
+                        }
+
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnValidateCombineLinkIssue(siteId, a10Id, clustername, clsterId, counter, $this) {
+        debugger;
+        var isValid = true;
+        var mCombineOverallTarget = {};
+        mCombineOverallTarget.SiteId = siteId;
+        mCombineOverallTarget.A10Id = a10Id;
+        mCombineOverallTarget.ClusterName = clustername;
+        mCombineOverallTarget.TypeId = '@E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.LinkIssue.GetHashCode()';
+
+        var drpReplaced = $('#drpReplaced' + clsterId + counter).val();
+        mCombineOverallTarget.Reason = $('#txtReson' + clsterId + counter).val();
+        mCombineOverallTarget.MatrialCode = $('#txtCode' + clsterId + counter).val();
+        mCombineOverallTarget.MaintainerUserId = $('#drpMaintainerUsers' + clsterId + counter).val();
+        if (drpReplaced == "Yes") {
+            if (mCombineOverallTarget.MatrialCode == null || mCombineOverallTarget.MatrialCode == undefined || mCombineOverallTarget.MatrialCode == '') {
+                isValid = false;
+                alert('Code is required');
+            }
+        }
+
+        if (mCombineOverallTarget.Reason == null || mCombineOverallTarget.Reason == undefined || mCombineOverallTarget.Reason == '') {
+            isValid = false;
+            alert('Reason is required');
+        }
+        else if (mCombineOverallTarget.MaintainerUserId == null || mCombineOverallTarget.MaintainerUserId == undefined || mCombineOverallTarget.MaintainerUserId == '') {
+            isValid = false;
+            alert('Ground Staff is required');
+        }
+
+
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/MaintenaceOperation/CheckCombineWatchlist',
+                type: 'Post',
+                data: '{mCombineOverallTarget:' + JSON.stringify(mCombineOverallTarget) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    debugger;
+                    if (data != null) {
+                        var type = '';
+                        var msg = '';
+                        $(data).each(function (t, data) {
+
+                            if (data.Key == "type") {
+                                type = data.Value
+                            }
+                            else if (data.Key == "result") {
+                                msg = data.Value
+                            }
+
+                        });
+                        if (type == "success") {
+                            //$($this).next().addClass("text-success");
+                            //$($this).next().removeClass("text-danger");
+                            //$($this).next().text(msg);
+                            alert(msg);
+                            $($this).attr("src", "/assets/images/validateIcon2.png");
+                            $($this).removeAttr('onclick');
+                        }
+                        else if (type == "pending") {
+                            //$($this).next().addClass("text-success");
+                            //$($this).next().removeClass("text-danger");
+                            //$($this).next().text(msg);
+                            alert(msg);
+                            $($this).attr("src", "/assets/images/Warning.png");
+                            $($this).removeAttr('onclick');
+                        }
+                        else if (type == "error") {
+                            //$($this).next().removeClass("text-success");
+                            //$($this).next().addClass("text-danger");
+                            alert(msg);
+                            // $($this).next().text(msg);
+                        }
+                        else {
+                            alert("Logic not set");
+                        }
+
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnShowADCLinkIssue(siteId, cluster) {
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetA10ADCLinkIssue',
+            type: 'Post',
+            data: '{siteId:' + siteId + ',clusterName:"' + cluster +'"}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+
+                var productData = fnGetA10Product(siteId);
+                var table = '<table class="table">';
+                table += '<tr>';
+                table += '<thead class="bg-primary">';
+                table += '<th style="background-color:#215968;color:white;">id</th>';
+                table += '<th style="background-color:#215968;color:white;">name</th>';
+                table += '<th style="background-color:#215968;color:white;">last_response</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">exceptions</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">poll_time</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">params</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">type</th>';
+
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Status</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Id</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Modem Name</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Sim Number</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">F/W Version</th>';
+                table += '<th style="background-color:#215968;color:white;" class="text-center">Connector Status</th>';
+
+                table += '</tr>';
+                table += '</thead>';
+                table += '<tbody>';
+                var time = '';
+                var currentDate = new Date();
+                $(data).each(function (id, item) {
+                    table += '<tr>';
+                    table += '<td>' + item.id + '</td>';
+                    table += '<td>' + item.name + '</td>';
+
+
+                    if (item.last_response < 0) {
+                        table += '<td class="text-danger">' + item.last_response + '</td>';
+                    }
+                    else if (item.last_response <= 15) {
+                        table += '<td class="text-success">' + item.last_response + '</td>';
+                    } else if (item.last_response > 15 && item.last_response < 50) {
+                        table += '<td class="text-warning">' + item.last_response + '</td>';
+                    } else if (item.last_response > 50) {
+                        table += '<td class="text-danger">' + item.last_response + '</td>';
+                    }
+
+                    table += '<td class="text-center">' + item.exceptions + '</td>';
+                    table += '<td class="text-center">' + item.poll_time + '</td>';
+
+                    table += '<td class="text-center">' + item.paramsvalue + '</td>';
+                    if (item.type != null && item.type != undefined && item.type != '') {
+                        table += '<td class="text-center">' + item.type + '</td>';
+                    } else {
+                        table += '<td class="text-center"></td>';
+                    }
+
+                    var isInclude = false;
+                    if (productData != null && productData.length > 0) {
+                        $(productData).each(function (d, val) {
+
+                            if (item.name.indexOf(val.ClusterName) != -1) {
+                                isInclude = true;
+                                if (val.Status != null) {
+                                    if (val.Status == true) {
+                                        table += '<td class="text-center"><span class="zheng_status_online" onclick="fnGetProductStatus(' + val.DeviceID + ')">online</span></td>';
+                                    } else if (val.Status == false) {
+                                        table += '<td class="text-center"><span class="zheng_status_offline" onclick="fnGetProductStatus(' + val.DeviceID + ')">offline</span></td>';
+                                    }
+                                } else {
+                                    table += '<td class="text-center"></td>';
+                                }
+                                table += '<td class="text-center">' + val.DeviceID + '</td>';
+                                table += '<td class="text-center">' + val.Name + '</td>';
+
+                                if (val.SimNumber != null && val.SimNumber != undefined) {
+                                    table += '<td class="text-center">' + val.SimNumber + '</td>';
+                                } else {
+                                    table += '<td class="text-center"></td>';
+                                }
+
+                                table += '<td class="text-center">' + val.Firmwareversion + '</td>';
+                                if (val.ConnectorStatus != null && val.ConnectorStatus != undefined) {
+                                    table += '<td class="text-center">' + val.ConnectorStatus + '</td>';
+                                } else {
+                                    table += '<td class="text-center"></td>';
+                                }
+
+                                return false;
+                            }
+
+                        });
+
+                    }
+                    if (!isInclude) {
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                        table += '<td class="text-center"></td>';
+                    }
+
+
+
+                    table += '</tr>';
+
+                });
+                table += '</tbody>';
+                table += '</table>';
+                $('#tablelinkissueadcA10Status').empty().append(table);
+                $("#modal-linkissue-adc-A10Status").modal('show');
+
+                //$("#A10StatusheaderTime").html(time);
+                //$('#hdnA10SiteId').val(siteId);
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowCombineWatchListHistory(assetId, attributeId, a10Id) {
+        var mSearchCriteria = {};
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.SiteId = '@ViewBag.SiteId';
+        mSearchCriteria.AssetAttributeId = attributeId;
+        mSearchCriteria.A10Id = a10Id;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_CombineWatchListHistory',
+            type: 'Post',
+            data: JSON.stringify(mSearchCriteria),
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divCombineWatchListHistory").empty().append(data);
+                $('#modal-combine-WatchList-history').modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnDownloadCombineHistory(siteId, assetId, attributeId, a10Id) {
+        //var mSearchCriteria = {};
+        //mSearchCriteria.AssetId = assetId;
+        //mSearchCriteria.AssetAttributeId = attributeId;
+        //mSearchCriteria.A10Id = a10Id;
+        debugger;
+
+        window.location.href = "/MaintenaceOperation/DownloadCombineWatchListHistory?siteId=" + siteId +"&AssetId=" + assetId + "&AssetAttributeId=" + attributeId + "&A10Id=" + a10Id;
+    }
+
+    function fnShowCombineLiskIssueHistory(a10Id, siteId) {
+        var mSearchCriteria = {};
+        mSearchCriteria.A10Id = a10Id;
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.TypeId = '@E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.LinkIssue.GetHashCode()';
+
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_CombineLiskIssueHistory',
+            type: 'Post',
+            data: JSON.stringify(mSearchCriteria),
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divCombineWatchListHistory").empty().append(data);
+                $('#modal-combine-WatchList-history').modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnChangeCombineWatchlistType($this, siteId) {
+        fnShowCombineWatchlist(siteId, $($this).val());
+    }
+</script>

@@ -1,0 +1,211 @@
+﻿
+@{
+    ViewBag.Title = "Health Live";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+<!-- layout -->
+<div class="donut-wrap">
+    <div class="donut-area">
+        <canvas id="pointStatus"></canvas>
+        <div id="donutCenter" class="donut-center">0</div>
+
+        <!-- callout labels (will be positioned by JS) -->
+        <div class="callout" id="lblHealthy">
+            <div class="title">Healthy</div>
+            <div class="sub" id="subHealthy"></div>
+        </div>
+        <div class="callout" id="lblPredictive">
+            <div class="title">Predictive</div>
+            <div class="sub" id="subPredictive"></div>
+        </div>
+        <div class="callout" id="lblFailure">
+            <div class="title">Failure</div>
+            <div class="sub danger" id="subFailure"></div>
+        </div>
+    </div>
+
+    <ul class="donut-legend" id="pointLegend"></ul>
+</div>
+
+<!-- libs -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+
+<style>
+    .donut-wrap {
+        display: flex;
+        align-items: center;
+        gap: 24px
+    }
+
+    .donut-area {
+        position: relative;
+        width: 320px;
+        height: 320px
+    }
+
+    #pointStatus {
+        width: 100% !important;
+        height: 100% !important
+    }
+
+    /* center number */
+    .donut-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 28px;
+        color: #0d1530;
+        pointer-events: none
+    }
+
+    /* legend on right */
+    .donut-legend {
+        list-style: none;
+        padding: 0;
+        margin: 0
+    }
+
+        .donut-legend li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0
+        }
+
+        .donut-legend .sw {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%
+        }
+
+    /* callouts (outside labels) */
+    .callout {
+        position: absolute;
+        transform: translate(-50%,-50%);
+        text-align: left;
+        white-space: nowrap
+    }
+
+        .callout .title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #2c2c2c
+        }
+
+        .callout .sub {
+            font-size: 12px;
+            color: #6d6d6d;
+            margin-top: 2px;
+            border-bottom: 2px solid #e8e8e8;
+            display: inline-block
+        }
+
+            .callout .sub.danger {
+                color: #ff6e6e;
+                border-bottom-color: #ff6e6e
+            }
+</style>
+
+<script>
+$(function () {
+  // ---- your numbers here ----
+  const healthy = 4056;
+  const predictive = 67;
+  const failure = 1;
+  const total = healthy + predictive + failure;     // 4124 (sample)
+  const totalAssets = 4724;                          // for "x/4724" display
+  const centerValue = 508.22;                        // the big number in the middle
+
+  // chart inputs (labels + colors)
+  const labels = ["Healthy","Predictive","Failure"];
+  const values = [healthy, predictive, failure];
+  const colors = ["#98d8aa","#f7d060","#ff928a"];
+
+  // set center text
+  $("#donutCenter").text(centerValue);
+
+  // build legend with jQuery
+  const $legend = $("#pointLegend").empty();
+  labels.forEach((name,i)=>{
+    $legend.append(
+      `<li><span class="sw" style="background:${colors[i]}"></span>${name}</li>`
+    );
+  });
+
+  // draw chart
+  const ctx = document.getElementById("pointStatus").getContext("2d");
+  const chart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: labels,
+      datasets: [{
+        data: values,
+        backgroundColor: colors,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "64%",                 // thickness (adjust to taste)
+      plugins: { legend: { display:false }, tooltip: { enabled:false } }
+    }
+  });
+
+  // helper: place callout near arc midpoint
+  function placeCallout(sliceIndex, elId, yOffset = 0, xBias = 0) {
+    const meta = chart.getDatasetMeta(0);
+    const arc = meta.data[sliceIndex];
+    if (!arc) return;
+
+    // get the angle mid-point of the arc
+    const angle = (arc.startAngle + arc.endAngle) / 2;
+
+    // radius where we want to place the label (slightly outside the ring)
+    const outerR = arc.outerRadius;
+    const labelR = outerR + 16; // px outside
+
+    // compute canvas coords
+    const cx = arc.x;
+    const cy = arc.y;
+    const x = cx + Math.cos(angle) * labelR + xBias;
+    const y = cy + Math.sin(angle) * labelR + yOffset;
+
+    // convert to DOM coords for absolutely positioned element
+    const $area = $(".donut-area");
+    const rect = $area[0].getBoundingClientRect();
+
+    // position element
+    const $el = $("#"+elId);
+    // percent to container (so it scales)
+    const leftPct = (x / rect.width) * 100;
+    const topPct  = (y / rect.height) * 100;
+    $el.css({ left: leftPct + "%", top: topPct + "%" });
+  }
+
+  // set outside label texts "xx/totalAssets"
+  $("#subHealthy").text(`${healthy}/${totalAssets}`);
+  $("#subPredictive").text(`${predictive}/${totalAssets}`);
+  $("#subFailure").text(`${failure}/${totalAssets}`);
+
+  // initial placement (after first draw)
+  function placeAll(){
+    placeCallout(0, "lblHealthy", 0, -10);     // Healthy (left)
+    placeCallout(1, "lblPredictive", -6, 6);   // Predictive (top-right)
+    placeCallout(2, "lblFailure",  10,  8);    // Failure (bottom-right)
+  }
+  chart.once("render", placeAll);
+  // fallback if 'render' not fired:
+  setTimeout(placeAll, 0);
+
+  // re-place on resize
+  new ResizeObserver(()=>placeAll()).observe(document.querySelector(".donut-area"));
+});
+</script>
+
+

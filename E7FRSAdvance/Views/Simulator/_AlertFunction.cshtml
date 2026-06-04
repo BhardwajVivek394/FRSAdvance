@@ -1,0 +1,248 @@
+﻿
+
+<div class="modal bounceIn animated" id="modal-add-alert-function" tabindex="-1" aria-labelledby="modal-add-alert-function" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title">Add Alert function</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <input type="hidden" value="@ViewBag.SiteId" id="SiteId" />
+                <div class="row">
+                    <div class="col-lg-12">
+                        <span>Asset Type</span>
+                        @Html.DropDownList("drpAlertAssetType", (IEnumerable<SelectListItem>)ViewBag.AlertAssetType, "Select ", new { @class = "form-control", tabindex = 1 })
+                        <span class="text-danger"></span>
+                    </div>
+                    <div class="col-lg-12 mt-2">
+                        <span>Asset</span>
+                        <select id="drpAlertAsset" class="form-control">
+                            <option value="0">Select</option>
+                        </select>
+                        <span class="text-danger"></span>
+                    </div>
+                    <div class="col-lg-12 mt-2">
+                        <span>Alert Type</span>
+                        @Html.DropDownList("drpAlertType", Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.AlertType)).Cast<E7FRSAdvance.Utility.Utility.AlertType>().Select(x => new SelectListItem { Text = x.ToString(), Value = ((int)x).ToString() }), "Select", new { @class = "form-control", tabindex = 2 })
+                        <span class="text-danger"></span>
+                    </div>
+                    <div class="col-lg-12 mt-2" id="CauseCode">
+                        <span>Cause Code</span>
+                        <select id="drpAlertCauseCode" class="form-control">
+                            <option value="0">Select</option>
+                        </select>
+                        <span class="text-danger"></span>
+                    </div>
+                    <div class="col-lg-12 mt-2">
+                        <span>Condition Type</span>
+                        @Html.DropDownList("drpConditionType", Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.ConditionType)).Cast<E7FRSAdvance.Utility.Utility.ConditionType>().Select(x => new SelectListItem { Text = x.ToString(), Value = ((int)x).ToString() }), "Select", new { @class = "form-control", tabindex = 3 })
+                        <span class="text-danger"></span>
+                    </div>
+
+                    <div id="divAlertMessage" class="text-danger mt-2">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-success" onclick="fnUpdateAlertFunction()">Update</button>
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(document).ready(function () {
+
+        $("#drpAlertAssetType").change(function () {
+            GetAlertAssestByAssetType($(this).val(), $("#SiteId").val(), $("#drpAlertAsset"));
+            GetCauseCodeByAssetType($(this).val(), $("#drpAlertType").val());
+        });
+
+        $("#drpAlertType").change(function () {
+            GetCauseCodeByAssetType($("#drpAlertAssetType").val(), $(this).val());
+        });
+
+        $("#drpAlertCauseCode").change(function () {
+            fnGetAlertLiveStatus($(this).val());
+        });
+    });
+
+    function GetAlertAssestByAssetType(assetTypeId, siteId, AssetId) {
+        if (assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Simulator/GetAssetByAssetTypeId',
+                type: 'POST',
+                data: '{assetTypeId:' + assetTypeId + ',siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $(AssetId).empty();
+                    $(AssetId).append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $(AssetId).append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetCauseCodeByAssetType(AssetTypeId, AlertTypeId) {
+        if (AssetTypeId != null && AssetTypeId != undefined && AssetTypeId != '' && AlertTypeId != null && AlertTypeId != undefined && AlertTypeId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Simulator/GetCauseCodeByAssetType',
+                type: 'POST',
+                data: '{assetTypeId:' + AssetTypeId + ',alertTypeId:' + AlertTypeId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#drpAlertCauseCode').empty();
+                    $('#drpAlertCauseCode').append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $('#drpAlertCauseCode').append($("<option></option>").val(value.Name).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnUpdateAlertFunction() {
+        var mDefaultValue = {};
+        mDefaultValue.CauseCode = $('#drpAlertCauseCode').val();
+        mDefaultValue.AssetId = $('#drpAlertAsset :selected').val();
+        mDefaultValue.AssetTypeId = $('#drpAlertAssetType :selected').val();
+        mDefaultValue.AlertTypeId = $('#drpAlertType :selected').val();
+        mDefaultValue.SiteId = $('#hdnsiteId').val();
+        mDefaultValue.ConditionTypeId = $('#drpConditionType').val();
+
+        if (ValidateAlertFunction()) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Simulator/UpdateDefaultValue',
+                type: 'Post',
+                data: '{mDefaultValue:' + JSON.stringify(mDefaultValue) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data.type == 'success') {
+                        CommonNotification("SUCCESS", data.result, "success");
+
+                        $("#hdnSkip").val('0');
+                        $("#frmAssetDetails").submit();
+                    }
+                    else {
+                        CommonNotification("ERROR", data.result, "Error");
+                    }
+                    $('#modal-add-alert-function').modal('hide');
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+
+
+
+    }
+
+    function fnGetAlertLiveStatus(CauseCode) {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#hdnsiteId').val();
+        mSearchCriteria.AssetTypeId = $('#drpAlertAssetType :selected').val();
+        mSearchCriteria.AlertTypeId = $('#drpAlertType :selected').val();
+        mSearchCriteria.AssetId = $('#drpAlertAsset :selected').val();
+        mSearchCriteria.AlertStatus = 2;
+        mSearchCriteria.CauseCode = CauseCode;
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/Simulator/_AlertList',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data != undefined && data.mFRSAlerts != null && data.mFRSAlerts != undefined && data.mFRSAlerts.length > 0) {
+                    $('#drpConditionType').val(2);
+                    $('#drpConditionType').prop("disabled", true);
+                    $(data.mFRSAlerts).each(function (v, msg) {
+                        $('#divAlertMessage').empty().append('<span>Alert Message - ' + msg.SetAlertMessage + '</span>');
+
+                    });
+                } else {
+                    $('#divAlertMessage').empty();
+                    $('#drpConditionType').val(1);
+                    $('#drpConditionType').prop("disabled", false);
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function ValidateAlertFunction() {
+        var result = true;
+
+        if ($.trim($("#drpAlertAssetType").val()).length == 0 || $("#drpAlertAssetType").val() == "0") {
+            $("#drpAlertAssetType").next("span").html("Asset Type is required");
+            result = false;
+        }
+        else {
+            $("#drpAlertAssetType").next("span").html("");
+        }
+
+        if ($.trim($("#drpAlertAsset").val()).length == 0 || $("#drpAlertAsset").val() == "0") {
+            $("#drpAlertAsset").next("span").html("Asset is required");
+            result = false;
+        }
+        else {
+            $("#drpAlertAsset").next("span").html("");
+        }
+
+        if ($.trim($("#drpAlertType").val()).length == 0 || $("#drpAlertType").val() == "0") {
+            $("#drpAlertType").next("span").html("Alert Type is required");
+            result = false;
+        }
+        else {
+            $("#drpAlertType").next("span").html("");
+        }
+
+        if ($.trim($("#drpAlertCauseCode").val()).length == 0 || $("#drpAlertCauseCode").val() == "0") {
+            $("#drpAlertCauseCode").next("span").html("Cause Code is required");
+            result = false;
+        }
+        else {
+            $("#drpAlertCauseCode").next("span").html("");
+        }
+
+        if ($.trim($("#drpConditionType").val()).length == 0 || $("#drpConditionType").val() == "0") {
+            $("#drpConditionType").next("span").html("Condition Type is required");
+            result = false;
+        }
+        else {
+            $("#drpConditionType").next("span").html("");
+        }
+
+        return result;
+    }
+
+</script>
+

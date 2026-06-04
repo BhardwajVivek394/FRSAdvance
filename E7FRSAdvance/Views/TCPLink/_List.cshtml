@@ -1,0 +1,254 @@
+﻿@model Domain.TCPLinkLister
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-lg-2 col-md-3">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zones</strong>
+                                @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="col-lg-2 col-md-3">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Divisions</strong>
+                                @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control drpSearch", tabindex = 1 })
+                            </div>
+                            <div class="col-lg-2 col-md-3">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                                @Html.DropDownListFor(x => x.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control drpSearch", tabindex = 1 })
+                            </div>
+                            <div class="col-lg-2 col-md-3 mt-4">
+                                <button class="btn btn-success m-l-10" type="button" onclick="fnSearch()">Search</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="people-options clearfix">
+
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.TCPLinks.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> TCP Link </span>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card-body " style="padding:15px;">
+                        <div class="table-responsive" style="max-height: 620px;">
+                            <table class="table">
+                                <thead class="bg-primary">
+                                    <tr>
+                                        <th>Zone</th>
+                                        <th>Division</th>
+                                        <th>Site</th>
+                                        <th>Cluster Name</th>
+                                        <th class="text-center">Status</th>
+                                        <th>Request Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.TCPLinks != null && Model.TCPLinks.Count > 0)
+                                    {
+                                        foreach (var item in Model.TCPLinks)
+                                        {
+                                            <tr class="table-light">
+
+                                                <td>@item.Zone</td>
+                                                <td>@item.Division</td>
+                                                <td>@item.Site</td>
+                                                <td>@item.ClientValue</td>
+                                                <td class="text-center">
+
+                                                    @if (item.Status == "Connected")
+                                                    {
+                                                        <img src="~/assets/images/Icons_Connected.png" />
+                                                    }
+                                                    else if (item.Status == "Disconnected")
+                                                    {
+                                                        <img src="~/assets/images/Icons_Disconnect.png" />
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (item.TimeStamp != null && item.TimeStamp != DateTime.MinValue)
+                                                    {
+                                                        <span>@item.TimeStamp.ToString()</span>
+                                                    }
+
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="6" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+<script>
+
+    $(document).ready(function () {
+        $('.drpSearch').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmTCPLink").submit();
+        });
+
+        GetDivisionByZone($("#SearchCriteria_ZoneId").val());
+
+        $("#SearchCriteria_ZoneId").change(function () {
+            GetDivisionByZone($(this).val());
+
+            $("#frmTCPLink").submit();
+        });
+
+        GetSiteByDivisionId($("#SearchCriteria_DivisionId").val());
+
+        $("#SearchCriteria_DivisionId").change(function () {
+            GetSiteByDivisionId($(this).val());
+
+            $("#frmTCPLink").submit();
+        });
+
+        if ($('#hdnCatListType').val() == 'Success') {
+            CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+        }
+        else if ($('#hdnCatListType').val() == 'Error') {
+            if ($('#hdnCatListMessage').val() == 'Forbidden!') {
+                window.location.href = "/Login/Index";
+            } else {
+                CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+            }
+        }
+    });
+
+    function fnSearch() {
+        $("#hdnSkip").val('0');
+        $("#frmTCPLink").submit();
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/TCPLink/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_DivisionId").empty();
+                    $("#SearchCriteria_DivisionId").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#SearchCriteria_DivisionId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SearchCriteria_DivisionId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/TCPLink/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_SiteId").empty();
+                    $("#SearchCriteria_SiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchSiteId').val() != '0' && $('#hdnSearchSiteId').val() == value.Id) {
+                            $("#SearchCriteria_SiteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SearchCriteria_SiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmTCPLink").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmTCPLink").submit();
+            }
+        }
+    }
+</script>

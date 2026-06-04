@@ -1,0 +1,266 @@
+﻿
+@model Domain.SMSLogLister
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<input type="hidden" id="hdnAssetTypeId"/>
+
+<div class="container-fluid">
+    <div class="email-wrap email-main-wrapper">
+        <div class="row">
+            <div class="col-xxl-12 col-xl-12 box-col-12">
+                <div class="email-right-aside">
+                    <div class="card email-body email-list">
+                        <div class="mail-header-wrapper">
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="row">
+                                        <div class="col-lg-3">
+                                            <div class="form-group mb-3">
+                                                <label class="control-label center-block">From Date:</label>
+                                                @Html.TextBoxFor(m => m.SearchCriteria.FromDate, "{0:d}", new { id = "txtFromDate", @class = "form-control" })
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-3">
+                                            <div class="form-group mb-3">
+                                                <label class="control-label center-block">To Date:</label>
+                                                @Html.TextBoxFor(m => m.SearchCriteria.ToDate, "{0:d}", new { id = "txtToDate", @class = "form-control" })
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-3">
+                                            <div class="form-group mb-3">
+                                                <label class="control-label center-block">Site:</label>
+                                                @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", tabindex = 1 })
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-3 mt-4">
+                                            <a class="btn btn-success btn-quirk mt-1" onclick="fnSearchFRSAlert()" data-bs-original-title="" title="Search"><i class="fa fa-search"></i></a>
+                                            <a class="btn btn-primary btn-quirk mt-1" href="#" onclick="fnDownloadFailureAlertList()" data-bs-original-title="" title="Download csv"><i class="fa fa-download"></i></a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+{
+    <div class="container-fluid">
+        <div class="email-wrap email-main-wrapper">
+            <div class="row">
+                <div class="col-xxl-12 col-xl-12 box-col-12">
+                    <div class="email-right-aside">
+                        <div class="card email-body email-list">
+                            <div class="mail-header-wrapper" style="background-color:#215968; color:white; border-top-left-radius: 15px; border-top-right-radius:15px;">
+                                <div class="col-xl-12">
+                                    <div class="mail-header">
+                                        <div class="form-check form-check-inline">
+                                            @*<input class="form-check-input checkbox-primary" id="allSelectCheckbox" type="checkbox" value="@Model.AssetTypes.FirstOrDefault().Name.Replace(" ","")">
+                                                <label class="form-check-label" for="allSelectCheckbox"></label>*@
+                                            <ul class="email-tabs nav" role="tablist">
+                                                <li class="nav-item">
+
+                                                    <a class="nav-link active" id="All-pill-tab" data-bs-toggle="pill" href="#All-pill" role="tab" aria-controls="All-pill" aria-selected="false" onclick="fnChangeTab('0')" style="color:white;">
+                                                        <div>All</div>
+                                                        <span class="span badge rounded-pill pill-badge-primary">@Model.mSMSLogs.Count()</span>
+                                                    </a>
+                                                </li>
+
+                                                @foreach (var item in Model.AssetTypes)
+                                                {
+                                                    <li class="nav-item">
+                                                        
+                                                        <a class="nav-link" id="@item.Name.Replace(" ","")-pill-tab" data-bs-toggle="pill" href="#@item.Name.Replace(" ","")-pill" role="tab" aria-controls="@item.Name.Replace(" ","")-pill" aria-selected="false" style="color:white;" onclick="fnChangeTab('@item.Id')">
+                                                            <div>@item.Name</div>
+                                                            <span class="span badge rounded-pill pill-badge-primary">@Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id).Count()</span>
+                                                        </a>
+                                                    </li>
+                                                }
+
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tab-content" id="email-pills-tabContent">
+                                <div class="tab-pane fade show active" id="All-pill" role="tabpanel" aria-labelledby="All-pill-tab">
+                                    <div class="mail-body-wrapper">
+                                        <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                            @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                            {
+                                                foreach (var smsLog in Model.mSMSLogs.ToList())
+                                                {
+                                                    <li class="inbox-data  maintenaceALertLogByAsset">
+                                                        <div class="inbox-user">
+                                                            <div class="form-check form-check-inline m-0">
+                                                                @*<input class="form-check-input checkbox-primary clsSelectAlltype clsSelectCheckbox_@item.Name.Replace(" ","")" id="smsCheckbox" type="checkbox" name="chkSMSLogDelete" value="@smsLog.Id">
+                                        <label class="form-check-label" for="emailCheckboxB"></label>*@
+                                                            </div>
+                                                            <p>@smsLog.SiteName</p>
+                                                        </div>
+                                                        <div class="inbox-message">
+                                                            <div class="email-data">
+                                                                <span>@smsLog.Message</span>
+                                                                @if (smsLog.IsSmsLogActive == true)
+                                                                {
+                                                                    <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                }
+                                                                <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                @if (smsLog.AssetTypeName == "TRACK" && smsLog.Message.Contains("trk " + smsLog.AssetName + " Failed"))
+                                                                {
+                                                                    <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+
+                                                                    <a href="@Url.Action("DownloadTrainOnTrack","SMSLog",new { assetId = smsLog.AssetId, date = smsLog.TimeStamp.ToString("d-M-yyyy")})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-info" data-original-title="Debug">Debug Block <i class="fa fa-download"></i></a>
+                                                                }
+
+
+                                                            </div>
+                                                            <div class="email-timing"><span>@smsLog.TimeStamp.ToString()</span></div>
+                                                            <div class="email-options">
+                                                                <button type="button" class="btn btn-primary" title="Live Data" onclick="fnGetAssetAttribute('@smsLog.SiteName','@smsLog.AssetId','@smsLog.AssetTypeId')">L</button>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                }
+                                            }
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                @foreach (var item in Model.AssetTypes)
+                                {
+                                    //var isActive = "";
+                                    //if (item == Model.AssetTypes.FirstOrDefault())
+                                    //{
+                                    //    isActive = "show active";
+                                    //}
+                                    <div class="tab-pane fade" id="@item.Name.Replace(" ","")-pill" role="tabpanel" aria-labelledby="@item.Name.Replace(" ","")-pill-tab">
+                                        <div class="mail-body-wrapper">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                                {
+                                                    foreach (var smsLog in Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id).ToList())
+                                                    {
+                                                        <li class="inbox-data  maintenaceALertLogByAsset">
+                                                            <div class="inbox-user">
+                                                                <div class="form-check form-check-inline m-0">
+                                                                    @*<input class="form-check-input checkbox-primary clsSelectAlltype clsSelectCheckbox_@item.Name.Replace(" ","")" id="smsCheckbox" type="checkbox" name="chkSMSLogDelete" value="@smsLog.Id">
+                                            <label class="form-check-label" for="emailCheckboxB"></label>*@
+                                                                </div>
+                                                                <p>@smsLog.SiteName</p>
+                                                            </div>
+                                                            <div class="inbox-message">
+                                                                <div class="email-data">
+                                                                    <span>@smsLog.Message</span>
+                                                                    @if (smsLog.IsSmsLogActive == true)
+                                                                    {
+                                                                        <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                    }
+                                                                    <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                    @if (smsLog.AssetTypeName == "TRACK" && smsLog.Message.Contains("trk " + smsLog.AssetName + " Failed"))
+                                                                    {
+                                                                        <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+
+                                                                        <a href="@Url.Action("DownloadTrainOnTrack","SMSLog",new { assetId = smsLog.AssetId, date = smsLog.TimeStamp.ToString("d-M-yyyy")})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-info" data-original-title="Debug">Debug Block <i class="fa fa-download"></i></a>
+                                                                    }
+
+
+                                                                </div>
+                                                                <div class="email-timing"><span>@smsLog.TimeStamp.ToString()</span></div>
+                                                                <div class="email-options">
+                                                                    <button type="button" class="btn btn-primary" title="Live Data" onclick="fnGetAssetAttribute('@smsLog.SiteName','@smsLog.AssetId','@smsLog.AssetTypeId')">L</button>
+                                                                </div>
+                                                            </div>
+                                                        </li>
+                                                    }
+                                                }
+                                            </ul>
+                                        </div>
+                                    </div>
+                                }
+
+
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+<script>
+    $(document).ready(function () {
+        $('#txtFromDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+        $('#txtToDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+        if ($('#txtFromDate').val() == "@DateTime.MinValue") {
+            $('#txtFromDate').val('');
+        }
+
+        if ($('#txtToDate').val() == "@DateTime.MinValue") {
+            $('#txtToDate').val('');
+        }
+    });
+
+    function fnSearchFRSAlert() {
+        $("#frmFailureAlertList").submit();
+    }
+
+    function fnGetAssetAttribute(SiteName, assetId, assetTypeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + SiteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnChangeTab(id) {
+
+        $('#hdnAssetTypeId').val(id);
+    }
+
+    function fnDownloadFailureAlertList() {
+        debugger;
+        var val = $('#hdnAssetTypeId').val();
+        window.location.href = '/SMSLog/DownloadFailureAlertList?assetTypeId=' + val;
+    }
+</script>
+

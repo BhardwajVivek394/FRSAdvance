@@ -1,0 +1,264 @@
+﻿
+@{
+    ViewBag.Title = "My Daily";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">My Daily</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                        </div>
+                        <div class="pull-left">
+                            @Html.DropDownList("ZoneId", (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                            <span class="text-danger"></span>
+                        </div>
+                        <div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                        </div>
+                        <div class="pull-left" style="margin-left:10px;">
+                            @Html.DropDownList("DivisionId", (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "divisions", tabindex = 1 })
+                            <span class="text-danger"></span>
+                        </div>
+                        <div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Search Date</strong>
+                        </div>
+                        <div class="pull-left" style="margin-left:10px;">
+                            <input type="text" class="form-control" id="txtSearchTimeStamp" placeholder="Search Date" />
+                            <span class="text-danger"></span>
+                        </div>
+                        <div class="pull-left" style="margin-left:10px;">
+                            <a class="btn btn-success btn-quirk" onclick="fnGeneratePDF()">Download</a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="row" id="divSites">
+                            <div class="col-12">
+                                <strong style="margin-top:10px;">Sites</strong>
+                            </div>
+                            <div class="col-12">
+                                <br />
+                            </div>
+                            @if (ViewBag.Sites != null)
+                            {
+                                foreach (var item in ViewBag.Sites as List<Domain.Site>)
+                                {
+                                    <div class="col-3">
+                                        <input type="checkbox" class="clsSites" Id="chk_@item.Id" value="@item.Id" /><label for="chk_@item.Id">@item.Name</label>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#ZoneId').change(function () {
+            GetDivisionByZone($(this).val())
+            fnGetAllSites($('#ZoneId').val(), $('#divisions').val());
+        });
+
+        $('#divisions').change(function () {
+            fnGetAllSites($('#ZoneId').val(), $(this).val());
+        });
+
+        $('#txtSearchTimeStamp').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        fnGetAllSites($('#ZoneId').val(), $('#divisions').val());
+    });
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/MyDaily/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divisions").empty();
+                    $("#divisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#divisions").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#divisions").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnGetAllSites(zoneId, divisionId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '' && parseInt(zoneId) > 0 && divisionId != null && divisionId != undefined && divisionId != '' && parseInt(divisionId) > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/MyDaily/GetSites',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + ',divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divSites").empty();
+                    var strSites = '';
+                    //$("#siteId").append($("<option></option>").val('0').html('Select Sites'));
+                    $.each(data, function (key, value) {
+                        strSites += "<div class='col-3'>"
+                        strSites += '<input type="checkbox" class="clsSites" Id="chk_' + value.Id + '" value="' + value.Id + '" /><label for="chk_' + value.Id + '">' + value.Name + '</label>';
+                        strSites += "</div>"
+                        /* $("#siteId").append($("<option></option>").val(value.Id).html(value.Name));*/
+                    });
+
+                    $("#divSites").append(strSites);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            $("#loader").show();
+            $.ajax({
+                url: '/MyDaily/GetAllSites',
+                type: 'POST',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divSites").empty();
+                    var strSites = '';
+                    $.each(data, function (key, value) {
+                        strSites += "<div class='col-3'>"
+                        strSites += '<input type="checkbox" class="clsSites" Id="chk_' + value.Id + '" value="' + value.Id + '" /><label for="chk_' + value.Id + '">' + value.Name + '</label>';
+                        strSites += "</div>"
+                    });
+
+                    $("#divSites").append(strSites);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnGeneratePDF() {
+        if (IsValid()) {
+            var mSearchCriteria = {};
+            mSearchCriteria.ZoneId = $('#ZoneId').val();
+            mSearchCriteria.DivisionId = $('#divisions').val();
+            mSearchCriteria.TodayDate = $('#txtSearchTimeStamp').val();
+
+            var siteIds = [];
+            $('.clsSites').each(function () {
+                if ($(this).is(':checked')) {
+                    siteIds.push($(this).val());
+                }
+            });
+            mSearchCriteria.SiteIds = siteIds;
+
+            $("#loader").show();
+            $.ajax({
+                url: '/MyDaily/GeneratePDF',
+                type: 'POST',
+                data: JSON.stringify(mSearchCriteria),
+                contentType: 'application/json',
+                success: function (resultData) {
+                    $("#loader").hide();
+                    if (resultData != null && resultData != undefined && resultData != '') {
+                        var link = document.createElement("a");
+                        link.href = 'data:application/pdf;base64,' + resultData;
+                        link.download = 'MyDaily.pdf';
+                        link.target = '_blank'
+                        link.click();
+                        link.remove();
+                    }
+            
+                },
+                error: function (err) {
+                    $('#loader').hide();
+                    CommonNotification(err.responseText, "danger");
+                }
+            });
+        }
+       
+    }
+
+    function IsValid() {
+        var result = true;
+
+        //if ($("#ZoneId").val() == 0 || $("#ZoneId").val() == undefined || $("#ZoneId").val() == null) {
+        //    $("#ZoneId").next("span").html("Zone is required");
+        //    result = false;
+        //} else {
+        //    $("#ZoneId").next("span").html("");
+        //}
+
+        //if ($("#divisions").val() == 0 || $("#divisions").val() == undefined || $("#divisions").val() == null) {
+        //    $("#divisions").next("span").html("Division is required");
+        //    result = false;
+        //}
+        //else {
+        //    $("#divisions").next("span").html("");
+        //}
+
+        if ($("#txtSearchTimeStamp").val() == '' || $("#txtSearchTimeStamp").val() == undefined || $("#txtSearchTimeStamp").val() == null) {
+            $("#txtSearchTimeStamp").next("span").html("Search Date is required");
+            result = false;
+        } else {
+            $("#txtSearchTimeStamp").next("span").html("");
+        }
+
+        if ($('.clsSites:checked').length <= 0) {
+            alert("Please Select sites")
+            result = false;
+        }
+        //mSearchCriteria.ZoneId = $('#ZoneId').val();
+        //mSearchCriteria.DivisionId = $('#divisions').val();
+        //mSearchCriteria.TodayDate = $('#txtSearchTimeStamp').val();
+
+        return result;
+    }
+</script>

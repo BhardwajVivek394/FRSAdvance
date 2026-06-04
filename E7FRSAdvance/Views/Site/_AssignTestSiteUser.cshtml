@@ -1,0 +1,205 @@
+﻿@model List<Domain.UserSite>
+
+<div class="row mt10">
+    <div class="col-sm-12">
+        <div class="row">
+            <div class="col-sm-6">
+                <div class="text-center">
+                    Users
+                </div>
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table table-bordered">
+                        <tbody id="siteNumberBody">
+                            @if (Model != null && Model.Count > 0)
+                            {
+                                int i = 1;
+                                foreach (var item in Model)
+                                {
+                                    <tr data-rowId="@i">
+                                        <td class="text-center">
+                                            <input type="checkbox" id="chkTestUser_@item.UserId" onclick="fnAssignTestSiteUser(this)" data-userId="@item.UserId" data-siteId="@item.SiteId" />
+                                        </td>
+                                        <td>
+                                            @item.UserName
+                                        </td>
+                                    </tr>
+                                    i++;
+                                }
+                            }
+
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="text-center">
+                    Utility Logs
+                </div>
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table table-bordered">
+                        <tbody id="siteNumberBody">
+                            @if (ViewBag.Utilities != null)
+                            {
+                                int i = 1;
+                                foreach (var item in ViewBag.Utilities as List<Domain.TypeViewModel>)
+                                {
+                                    <tr data-rowId="@i">
+                                        <td class="text-center">
+                                            <input type="checkbox" id="chkTestUtilityLogs_@item.Id" onclick="fnAssignUtilityLog(this)" data-siteId="@ViewBag.SiteId" data-id="@item.Id" />
+                                        </td>
+                                        <td>
+                                            @item.Name
+                                        </td>
+                                    </tr>
+                                    i++;
+                                }
+                            }
+
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        @*<ul class="nav nav-tabs border-tab nav-primary" id="info-tab" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="Numbers-tab" data-bs-toggle="tab" href="#Numbers" role="tab" aria-controls="Numbers" aria-selected="true" data-bs-original-title="" title="">
+                    <i class="fa fa-home"></i>Numbers
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="Test-tab" data-bs-toggle="tab" href="#tabTestConfig" role="tab" aria-controls="TestConfig" aria-selected="false" data-bs-original-title="" title="" style="display:none">
+                    <i class="fa fa-bell"></i>Test
+                </a>
+            </li>
+        </ul>*@
+       
+
+       
+
+      
+    </div>
+    </div>
+<script>
+    $(document).ready(function () {
+        GetAssignTestSiteUser($("#hdnSiteId").val());
+        GetAssignUtilityLog($("#hdnSiteId").val());
+    });
+
+    function fnAssignTestSiteUser($this) {
+        var mUserSiteTest = {};
+        mUserSiteTest.SiteId = $($this).attr("data-siteId");
+        mUserSiteTest.UserId = $($this).attr("data-userId");
+        mUserSiteTest.IsTest = $($this).is(":checked");
+        $.ajax({
+            url: '/Site/SaveAssignUserSiteTest',
+            type: 'Post',
+            data: '{mUserSiteTest:' + JSON.stringify(mUserSiteTest) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.Id > 0) {
+                    CommonNotification("SUCCESS", "Record has been saved.", "success");
+                    $("#frmTestConfig").submit();
+                }
+                else {
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function GetAssignTestSiteUser(siteId) {
+        if ($("#IsTest").prop('checked') == true) {
+            $.ajax({
+                url: '/Site/GetAssignTestSiteUser',
+                type: 'Post',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        $.each(data, function (key, val) {
+                            if (val != null && val != undefined) {
+                                if (val.IsTest) {
+                                    $('#chkTestUser_' + val.UserId).prop('checked', true);
+                                }
+                            }
+
+                        });
+                        //CommonNotification("SUCCESS", "Record has been saved.", "success");
+                        //$("#frmTestConfig").submit();
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+        
+    }
+
+    function GetAssignUtilityLog(siteId) {
+        if ($("#IsTest").prop('checked') == true) {
+            $.ajax({
+                url: '/Site/GetAssignUtilityLogTest',
+                type: 'Post',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        $.each(data, function (key, val) {
+                            if (val != null && val != undefined) {
+                                if (val.IsChecked) {
+                                    $('#chkTestUtilityLogs_' + val.UtilityId).prop('checked', true);
+                                }
+                            }
+
+                        });
+                        //CommonNotification("SUCCESS", "Record has been saved.", "success");
+                        //$("#frmTestConfig").submit();
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+
+    }
+
+    function fnAssignUtilityLog($this) {
+        var mUtilityLogTest = {};
+        mUtilityLogTest.SiteId = $($this).attr("data-siteId");
+        mUtilityLogTest.UtilityId = $($this).attr("data-id");
+        mUtilityLogTest.IsChecked = $($this).is(":checked");
+        $.ajax({
+            url: '/Site/SaveAssignUtilityLogTest',
+            type: 'Post',
+            data: '{mUtilityLogTest:' + JSON.stringify(mUtilityLogTest) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.Id > 0) {
+                    CommonNotification("SUCCESS", "Record has been saved.", "success");
+                    $("#frmTestConfig").submit();
+                }
+                else {
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+</script>

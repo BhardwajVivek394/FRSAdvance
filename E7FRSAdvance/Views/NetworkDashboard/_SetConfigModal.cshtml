@@ -1,0 +1,1514 @@
+﻿@* ============================================================
+    SET CONFIG MODAL - Mode & Threshold from Database (Read-Only)
+    Uses Paho MQTT JavaScript for direct MQTT communication
+    Auto-connects to MQTT when modal opens
+    Ports: 8083 (WS) / 8084 (WSS)
+    ============================================================ *@
+
+<!-- Paho MQTT JavaScript Library -->
+<script src="~/assets/js/paho-mqtt.js"></script>
+
+<!-- Set Config Modal -->
+<div class="modal fade" id="setConfigModal" tabindex="-1" aria-labelledby="setConfigModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content set-config-modal">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="config-icon">
+                        <i class="bi bi-gear-fill"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title" id="setConfigModalLabel">ADC Channel Configuration</h5>
+                        <small class="scm-text-muted" id="scmConfigContextInfo">Loading...</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body p-0">
+                <!-- Top Action Bar -->
+                <div class="config-action-bar p-3">
+                    <div class="row align-items-center g-3">
+                        <div class="col-auto">
+                            <div class="mqtt-status-indicator">
+                                <span class="mqtt-dot" id="scmMqttStatusDot"></span>
+                                <span class="mqtt-label" id="scmMqttStatusLabel">Disconnected</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="scmReconnectMqtt()" id="scmBtnMqttReconnect" title="Reconnect MQTT">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-warning btn-sm" onclick="scmSendSelectedToDevice()" id="scmBtnSendSelected">
+                                <i class="bi bi-send me-1"></i> Send Selected
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-info btn-sm" onclick="scmGetSelectedFromDevice()" id="scmBtnGetSelected">
+                                <i class="bi bi-download me-1"></i> Get Selected
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-danger btn-sm" onclick="scmSendAllToDevice()" id="scmBtnSendAll">
+                                <i class="bi bi-lightning me-1"></i> Send All
+                            </button>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="scmShowCommandLog()">
+                                <i class="bi bi-terminal me-1"></i> Log
+                            </button>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <span class="badge bg-info" id="scmSelectedCount">0 selected</span>
+                            <span class="badge bg-secondary ms-1" id="scmSendableCount">0 sendable</span>
+                        </div>
+                    </div>
+                    <div class="mode-legend mt-2">
+                        <small>Mode: 0=Normal, 1=Normal, 2=Max, 3=Capture, 4=One-shot, 5=Digital | Values from Database | N/A = Not configured</small>
+                    </div>
+                </div>
+
+                <!-- Loading State -->
+                <div id="scmConfigLoading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="mt-2 small scm-text-muted">Loading configuration from database...</div>
+                </div>
+
+                <!-- Config Content -->
+                <div id="scmConfigContent" style="display: none;"></div>
+
+                <!-- Error State -->
+                <div id="scmConfigError" class="text-center py-5" style="display: none;">
+                    <i class="bi bi-exclamation-triangle text-danger fs-1"></i>
+                    <div class="mt-2 scm-text-muted" id="scmConfigErrorMsg">Failed to load configuration</div>
+                    <button class="btn btn-sm btn-outline-primary mt-2" onclick="scmRetryLoadConfig()">Retry</button>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <div class="d-flex align-items-center gap-2 me-auto">
+                    <span class="badge bg-secondary" id="scmCommandStatus">Ready</span>
+                    <small class="scm-text-muted" id="scmLastCommandInfo"></small>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Command Log Modal -->
+<div class="modal fade" id="scmCommandLogModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content set-config-modal">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-terminal me-2"></i>Command Log (MQTT Terminal)</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="scmCommandLogEntries" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-outline-secondary" onclick="scmClearCommandLog()">Clear Log</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Channel Info Modal (for Get response) -->
+<div class="modal fade" id="scmChannelInfoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content set-config-modal">
+            <div class="modal-header">
+                <h6 class="modal-title"><i class="bi bi-info-circle me-2"></i>Channel Configuration (Device)</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="scmChannelInfoContent">
+                    <div class="channel-info-grid">
+                        <div class="info-item">
+                            <span class="info-label">ADC ID:</span>
+                            <span class="info-value" id="scmInfoAdcId">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Channel:</span>
+                            <span class="info-value" id="scmInfoChannel">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Mode:</span>
+                            <span class="info-value" id="scmInfoMode">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Threshold:</span>
+                            <span class="info-value" id="scmInfoThreshold">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Offset:</span>
+                            <span class="info-value" id="scmInfoOffset">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Div:</span>
+                            <span class="info-value" id="scmInfoDiv">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Mul:</span>
+                            <span class="info-value" id="scmInfoMul">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Timestamp:</span>
+                            <span class="info-value" id="scmInfoTimestamp">-</span>
+                        </div>
+                        <div class="info-item full-width">
+                            <span class="info-label">Response:</span>
+                            <span class="info-value" id="scmInfoResponse">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Dark Theme (Default) */
+    .set-config-modal {
+        --scm-bg-primary: #0a0f1a;
+        --scm-bg-secondary: #111827;
+        --scm-bg-tertiary: #1e293b;
+        --scm-bg-hover: #2d3a4f;
+        --scm-bg-card: #0f172a;
+        --scm-border-primary: #1f2937;
+        --scm-border-secondary: #334155;
+        --scm-text-primary: #e2e8f0;
+        --scm-text-secondary: #94a3b8;
+        --scm-text-muted: #64748b;
+        --scm-text-highlight: #f1f5f9;
+        --scm-accent-blue: #3b82f6;
+        --scm-accent-cyan: #22d3ee;
+        --scm-accent-purple: #a78bfa;
+        --scm-accent-yellow: #fbbf24;
+        --scm-accent-green: #22c55e;
+        --scm-accent-red: #ef4444;
+        --scm-accent-orange: #f59e0b;
+        --scm-btn-bg: #374151;
+        --scm-btn-text: #e2e8f0;
+        --scm-btn-hover: #0ea5e9;
+        --scm-btn-disabled: #1f2937;
+        --scm-badge-blue-bg: rgba(59, 130, 246, 0.2);
+        --scm-badge-cyan-bg: rgba(6, 182, 212, 0.2);
+        --scm-log-send-bg: #0c1929;
+        --scm-log-recv-bg: #091c09;
+        --scm-scrollbar-track: #0f172a;
+        --scm-scrollbar-thumb: #334155;
+        --scm-scrollbar-thumb-hover: #475569;
+        --scm-close-filter: invert(1);
+        --scm-row-selected: rgba(59, 130, 246, 0.1);
+        --scm-row-hover: rgba(59, 130, 246, 0.05);
+        --scm-input-bg: #1e293b;
+        --scm-input-border: #374151;
+    }
+
+        /* Light Theme */
+        .set-config-modal.light-theme {
+            --scm-bg-primary: #ffffff;
+            --scm-bg-secondary: #f8fafc;
+            --scm-bg-tertiary: #f1f5f9;
+            --scm-bg-hover: #e2e8f0;
+            --scm-bg-card: #ffffff;
+            --scm-border-primary: #e2e8f0;
+            --scm-border-secondary: #cbd5e1;
+            --scm-text-primary: #1e293b;
+            --scm-text-secondary: #475569;
+            --scm-text-muted: #64748b;
+            --scm-text-highlight: #0f172a;
+            --scm-accent-blue: #2563eb;
+            --scm-accent-cyan: #0891b2;
+            --scm-accent-purple: #7c3aed;
+            --scm-accent-yellow: #b45309;
+            --scm-accent-green: #16a34a;
+            --scm-accent-red: #dc2626;
+            --scm-accent-orange: #ea580c;
+            --scm-btn-bg: #e2e8f0;
+            --scm-btn-text: #1e293b;
+            --scm-btn-hover: #0284c7;
+            --scm-btn-disabled: #f1f5f9;
+            --scm-badge-blue-bg: rgba(37, 99, 235, 0.15);
+            --scm-badge-cyan-bg: rgba(8, 145, 178, 0.15);
+            --scm-log-send-bg: #eff6ff;
+            --scm-log-recv-bg: #f0fdf4;
+            --scm-scrollbar-track: #f1f5f9;
+            --scm-scrollbar-thumb: #cbd5e1;
+            --scm-scrollbar-thumb-hover: #94a3b8;
+            --scm-close-filter: none;
+            --scm-row-selected: rgba(37, 99, 235, 0.1);
+            --scm-row-hover: rgba(37, 99, 235, 0.05);
+            --scm-input-bg: #ffffff;
+            --scm-input-border: #cbd5e1;
+        }
+
+    /* MQTT Status Indicator */
+    .mqtt-status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background-color: var(--scm-bg-secondary);
+        border-radius: 20px;
+        border: 1px solid var(--scm-border-secondary);
+    }
+
+    .mqtt-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: var(--scm-accent-red);
+    }
+
+        .mqtt-dot.connected {
+            background-color: var(--scm-accent-green);
+            animation: scmPulse 2s infinite;
+        }
+
+        .mqtt-dot.connecting {
+            background-color: var(--scm-accent-orange);
+            animation: scmBlink 0.5s infinite;
+        }
+
+    .mqtt-label {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--scm-text-secondary);
+    }
+
+    @@keyframes scmPulse {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.5;
+        }
+    }
+
+    @@keyframes scmBlink {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.3;
+        }
+    }
+
+    /* Modal Base */
+    .set-config-modal {
+        background-color: var(--scm-bg-primary) !important;
+        color: var(--scm-text-primary) !important;
+        border: 1px solid var(--scm-border-primary) !important;
+    }
+
+        .set-config-modal .modal-header {
+            background-color: var(--scm-bg-secondary) !important;
+            border-bottom: 1px solid var(--scm-border-primary) !important;
+        }
+
+        .set-config-modal .modal-footer {
+            background-color: var(--scm-bg-secondary) !important;
+            border-top: 1px solid var(--scm-border-primary) !important;
+        }
+
+        .set-config-modal .config-icon {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #f97316, #dc2626);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #ffffff !important;
+        }
+
+        .set-config-modal .modal-title {
+            color: var(--scm-text-primary) !important;
+            font-weight: 600;
+        }
+
+        .set-config-modal .btn-close {
+            filter: var(--scm-close-filter);
+        }
+
+        .set-config-modal .scm-text-muted {
+            color: var(--scm-text-muted) !important;
+        }
+
+    /* Action Bar */
+    .config-action-bar {
+        background-color: var(--scm-bg-tertiary) !important;
+        border-bottom: 1px solid var(--scm-border-secondary) !important;
+    }
+
+    .mode-legend {
+        font-size: 0.7rem;
+        color: var(--scm-text-muted) !important;
+    }
+
+        .mode-legend small {
+            color: var(--scm-text-muted) !important;
+        }
+
+    /* Cluster Card */
+    .cluster-card {
+        background-color: var(--scm-bg-secondary) !important;
+        border: 1px solid var(--scm-border-secondary) !important;
+        border-radius: 8px;
+        margin: 12px;
+        overflow: hidden;
+    }
+
+    .cluster-header {
+        background-color: var(--scm-bg-tertiary) !important;
+        padding: 12px 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+        .cluster-header:hover {
+            background-color: var(--scm-bg-hover) !important;
+        }
+
+        .cluster-header .cluster-icon {
+            width: 36px;
+            height: 36px;
+            background-color: var(--scm-badge-blue-bg) !important;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--scm-accent-blue) !important;
+        }
+
+        .cluster-header .cluster-name {
+            font-weight: 600;
+            color: var(--scm-text-primary) !important;
+        }
+
+        .cluster-header .cluster-info {
+            font-size: 0.7rem;
+            color: var(--scm-text-muted) !important;
+        }
+
+        .cluster-header .arrow {
+            color: var(--scm-text-muted) !important;
+            transition: transform 0.2s;
+        }
+
+            .cluster-header .arrow.expanded {
+                transform: rotate(90deg);
+            }
+
+        .cluster-header .select-all-btn {
+            font-size: 0.65rem;
+            padding: 4px 10px;
+        }
+
+    /* ADC Card */
+    .adc-card {
+        background-color: var(--scm-bg-card) !important;
+        border: 1px solid var(--scm-border-primary) !important;
+        border-radius: 6px;
+        margin: 8px 12px;
+        overflow: hidden;
+    }
+
+    .adc-header {
+        background-color: var(--scm-bg-tertiary) !important;
+        padding: 10px 14px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .adc-header:hover {
+            background-color: var(--scm-bg-hover) !important;
+        }
+
+        .adc-header .adc-icon {
+            width: 30px;
+            height: 30px;
+            background-color: var(--scm-badge-cyan-bg) !important;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--scm-accent-cyan) !important;
+            font-size: 0.8rem;
+        }
+
+        .adc-header .adc-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--scm-text-primary) !important;
+        }
+
+        .adc-header .adc-info {
+            font-size: 0.65rem;
+            color: var(--scm-text-muted) !important;
+        }
+
+    /* Pin Table */
+    .pin-table-container {
+        padding: 12px;
+        background-color: var(--scm-bg-primary) !important;
+    }
+
+    .pin-table-header {
+        display: grid;
+        grid-template-columns: 40px 50px 120px 70px 90px 130px;
+        gap: 8px;
+        padding: 8px 12px;
+        font-size: 0.65rem;
+        color: var(--scm-text-muted) !important;
+        font-weight: 600;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--scm-border-secondary) !important;
+        background-color: var(--scm-bg-tertiary) !important;
+        border-radius: 4px 4px 0 0;
+    }
+
+    .pin-row {
+        display: grid;
+        grid-template-columns: 40px 50px 120px 70px 90px 130px;
+        gap: 8px;
+        padding: 8px 12px;
+        align-items: center;
+        border-bottom: 1px solid var(--scm-border-primary) !important;
+    }
+
+        .pin-row:hover {
+            background-color: var(--scm-row-hover) !important;
+        }
+
+        .pin-row.selected {
+            background-color: var(--scm-row-selected) !important;
+        }
+
+        .pin-row .pin-checkbox {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--scm-accent-blue);
+            cursor: pointer;
+        }
+
+        .pin-row .pin-num {
+            font-weight: 700;
+            color: var(--scm-text-highlight) !important;
+        }
+
+        .pin-row .pin-attr {
+            color: var(--scm-accent-cyan) !important;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .pin-row .pin-mode {
+            color: var(--scm-accent-purple) !important;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+            .pin-row .pin-mode.na {
+                color: var(--scm-text-muted) !important;
+                font-style: italic;
+            }
+
+        .pin-row .pin-thresholdValue {
+            color: var(--scm-accent-yellow) !important;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .pin-row .pin-thresholdValue.na {
+            color: var(--scm-text-muted) !important;
+            font-style: italic;
+        }
+
+        .pin-row .btn-group-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .pin-row .btn-send, .pin-row .btn-get {
+            padding: 4px 8px;
+            font-size: 0.6rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            min-width: 45px;
+        }
+
+        .pin-row .btn-send {
+            background-color: var(--scm-btn-bg) !important;
+            color: var(--scm-btn-text) !important;
+        }
+
+        .pin-row .btn-get {
+            background-color: var(--scm-badge-cyan-bg) !important;
+            color: var(--scm-accent-cyan) !important;
+            border: 1px solid var(--scm-accent-cyan) !important;
+        }
+
+        .pin-row .btn-send:hover:not(:disabled) {
+            background-color: var(--scm-btn-hover) !important;
+            color: #ffffff !important;
+        }
+
+        .pin-row .btn-get:hover:not(:disabled) {
+            background-color: var(--scm-accent-cyan) !important;
+            color: #ffffff !important;
+        }
+
+        .pin-row .btn-send:disabled, .pin-row .btn-get:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .pin-row .btn-send.sending, .pin-row .btn-get.getting {
+            background-color: var(--scm-accent-orange) !important;
+            color: #ffffff !important;
+        }
+
+        .pin-row .btn-send.success, .pin-row .btn-get.success {
+            background-color: var(--scm-accent-green) !important;
+            color: #ffffff !important;
+        }
+
+        .pin-row .btn-send.error, .pin-row .btn-get.error {
+            background-color: var(--scm-accent-red) !important;
+            color: #ffffff !important;
+        }
+
+    /* Channel Info */
+    .channel-info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+        .channel-info-grid .info-item {
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            background-color: var(--scm-bg-tertiary);
+            border-radius: 6px;
+            border: 1px solid var(--scm-border-secondary);
+        }
+
+            .channel-info-grid .info-item.full-width {
+                grid-column: 1 / -1;
+            }
+
+        .channel-info-grid .info-label {
+            font-size: 0.7rem;
+            color: var(--scm-text-muted);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .channel-info-grid .info-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--scm-accent-cyan);
+        }
+
+    /* Badges */
+    .badge-cluster-count {
+        background-color: var(--scm-badge-blue-bg) !important;
+        color: var(--scm-accent-blue) !important;
+    }
+
+    .badge-adc-count {
+        background-color: var(--scm-badge-cyan-bg) !important;
+        color: var(--scm-accent-cyan) !important;
+    }
+
+    /* Collapse */
+    .cluster-content, .adc-content {
+        display: none;
+    }
+
+        .cluster-content.show, .adc-content.show {
+            display: block;
+        }
+
+    /* Command Log */
+    .command-log-entry {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--scm-border-primary) !important;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.75rem;
+    }
+
+        .command-log-entry.send {
+            background-color: var(--scm-log-send-bg) !important;
+        }
+
+        .command-log-entry.recv {
+            background-color: var(--scm-log-recv-bg) !important;
+        }
+
+        .command-log-entry.error {
+            background-color: rgba(239, 68, 68, 0.1) !important;
+        }
+
+        .command-log-entry.info {
+            background-color: rgba(59, 130, 246, 0.1) !important;
+        }
+
+        .command-log-entry .log-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            color: #ffffff !important;
+        }
+
+            .command-log-entry .log-badge.send {
+                background-color: #1d4ed8 !important;
+            }
+
+            .command-log-entry .log-badge.recv {
+                background-color: #15803d !important;
+            }
+
+            .command-log-entry .log-badge.error {
+                background-color: #dc2626 !important;
+            }
+
+            .command-log-entry .log-badge.info {
+                background-color: #0891b2 !important;
+            }
+
+        .command-log-entry .log-topic {
+            color: var(--scm-text-muted) !important;
+        }
+
+        .command-log-entry .log-timestamp {
+            color: var(--scm-text-muted) !important;
+        }
+
+        .command-log-entry .log-payload {
+            background-color: var(--scm-bg-primary) !important;
+            padding: 6px 10px;
+            border-radius: 4px;
+            color: var(--scm-accent-yellow) !important;
+            margin-top: 6px;
+            word-break: break-all;
+            border: 1px solid var(--scm-border-primary) !important;
+        }
+
+    /* Scrollbar */
+    .set-config-modal ::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .set-config-modal ::-webkit-scrollbar-track {
+        background: var(--scm-scrollbar-track);
+    }
+
+    .set-config-modal ::-webkit-scrollbar-thumb {
+        background: var(--scm-scrollbar-thumb);
+        border-radius: 4px;
+    }
+
+        .set-config-modal ::-webkit-scrollbar-thumb:hover {
+            background: var(--scm-scrollbar-thumb-hover);
+        }
+
+    .set-config-modal .form-check-input {
+        background-color: var(--scm-input-bg) !important;
+        border-color: var(--scm-input-border) !important;
+    }
+
+        .set-config-modal .form-check-input:checked {
+            background-color: var(--scm-accent-blue) !important;
+            border-color: var(--scm-accent-blue) !important;
+        }
+
+    .set-config-modal .no-data-text {
+        color: var(--scm-text-muted) !important;
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .pin-table-header, .pin-row {
+            grid-template-columns: 35px 40px 80px 50px 60px 100px;
+            gap: 4px;
+            padding: 6px 8px;
+            font-size: 0.6rem;
+        }
+
+            .pin-row .btn-send, .pin-row .btn-get {
+                padding: 3px 5px;
+                font-size: 0.55rem;
+                min-width: 35px;
+            }
+
+        .channel-info-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+    // ============================================================
+    // SET CONFIG MODAL - MQTT Configuration
+    // Uses Paho MQTT with ports 8083 (WS) / 8883 (WSS)
+    // Prefixed with 'scm' to avoid conflicts
+    // ============================================================
+
+    var scmData = {
+        siteId: null, clusterId: null, adcNumber: null, level: null,
+        rawData: [], groupedData: {}, commandLog: [], theme: 'dark', mqttBasePath: null
+    };
+
+    // MQTT Config - Matching your existing implementation
+    var SCM_MQTT_CONFIG = {
+        host: 'energy7.in',
+        portWS: 8083,
+        portWSS: 8883,
+        username: 'energy7.in',
+        password: 'k3806557',
+        commandTimeout: 10000,
+        reconnectDelay: 3000
+    };
+
+    var scmMqttClient = null;
+    var scmMqttConnected = false;
+    var scmMqttConnecting = false;
+    var scmSubscribedTopics = {};
+    var scmPendingCallbacks = {};
+
+    // ============================================================
+    // MQTT CONNECTION
+    // ============================================================
+
+    function scmConnectMqtt(callback) {
+        if (scmMqttConnected) { if (callback) callback(true); return; }
+        if (scmMqttConnecting) {
+            var chk = setInterval(function () { if (!scmMqttConnecting) { clearInterval(chk); if (callback) callback(scmMqttConnected); } }, 100);
+            return;
+        }
+
+        scmMqttConnecting = true;
+        scmUpdateMqttStatus('connecting');
+        scmLogCommand('INFO', '', 'Connecting to MQTT broker...');
+
+        var isSecure = window.location.protocol === "https:";
+        var clientId = "SCM_" + Math.random().toString(36).substring(2, 15) + "_" + Date.now();
+
+        try {
+            scmMqttClient = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, clientId);
+            scmMqttClient.onConnectionLost = scmOnConnectionLost;
+            scmMqttClient.onMessageArrived = scmOnMessageArrived;
+
+            scmMqttClient.connect({
+                onSuccess: function () {
+                    scmMqttConnected = true; scmMqttConnecting = false;
+                    scmUpdateMqttStatus('connected');
+                    scmLogCommand('INFO', '', 'Connected successfully');
+                    if (callback) callback(true);
+                },
+                onFailure: function (error) {
+                    scmMqttConnected = false; scmMqttConnecting = false;
+                    scmUpdateMqttStatus('disconnected');
+                    scmLogCommand('ERROR', '', 'Connection failed: ' + error.errorMessage);
+                    if (callback) callback(false, error.errorMessage);
+                },
+                useSSL: isSecure,
+                userName: mQTT.MQTTUsername,
+                password: mQTT.MQTTPassword,
+                cleanSession: true,
+                timeout: 30,
+                keepAliveInterval: 60
+            });
+        } catch (e) {
+            scmMqttConnecting = false;
+            scmUpdateMqttStatus('disconnected');
+            scmLogCommand('ERROR', '', 'Connection error: ' + e.message);
+            if (callback) callback(false, e.message);
+            if (callback) callback(false, e.message);
+        }
+    }
+
+    //function scmConnectMqtt(callback) {
+    //    debugger;
+    //    if (scmMqttConnected) { if (callback) callback(true); return; }
+    //    if (scmMqttConnecting) {
+    //        var chk = setInterval(function () { if (!scmMqttConnecting) { clearInterval(chk); if (callback) callback(scmMqttConnected); } }, 100);
+    //        return;
+    //    }
+
+    //    scmMqttConnecting = true;
+    //    scmUpdateMqttStatus('connecting');
+    //    scmLogCommand('INFO', '', 'Connecting to MQTT broker...');
+
+    //    var isSecure = window.location.protocol === "https:";
+    //    var port = isSecure ? mQTT.MQTTPort : mQTT.MQTTPort;
+    //    var clientId = "SCM_" + Math.random().toString(36).substring(2, 15) + "_" + Date.now();
+
+    //    try {
+    //        scmMqttClient = new Paho.Client(mQTT.MQTTUri, port, clientId); 
+    //        scmMqttClient.onConnectionLost = scmOnConnectionLost;
+    //        scmMqttClient.onMessageArrived = scmOnMessageArrived;
+
+    //        scmMqttClient.connect({
+    //            onSuccess: function () {
+    //                scmMqttConnected = true; scmMqttConnecting = false;
+    //                scmUpdateMqttStatus('connected');
+    //                scmLogCommand('INFO', '', 'Connected successfully');
+    //                if (callback) callback(true);
+    //            },
+    //            onFailure: function (error) {
+    //                scmMqttConnected = false; scmMqttConnecting = false;
+    //                scmUpdateMqttStatus('disconnected');
+    //                scmLogCommand('ERROR', '', 'Connection failed: ' + error.errorMessage);
+    //                if (callback) callback(false, error.errorMessage);
+    //            },
+    //            useSSL: isSecure,
+    //            userName: mQTT.username,
+    //            password: mQTT.password,
+    //            cleanSession: true,
+    //            timeout: 30,
+    //            keepAliveInterval: 60
+    //        });
+    //    } catch (e) {
+    //        scmMqttConnecting = false;
+    //        scmUpdateMqttStatus('disconnected');
+    //        scmLogCommand('ERROR', '', 'Connection error: ' + e.message);
+    //        if (callback) callback(false, e.message);
+    //    }
+    //}
+
+    function scmDisconnectMqtt() {
+        if (scmMqttClient && scmMqttConnected) { try { scmMqttClient.disconnect(); } catch (e) { } }
+        scmMqttConnected = false; scmMqttConnecting = false; scmSubscribedTopics = {};
+        scmUpdateMqttStatus('disconnected');
+    }
+
+    function scmReconnectMqtt() {
+        scmDisconnectMqtt();
+        setTimeout(function () { scmConnectMqtt(); }, 500);
+    }
+
+    function scmOnConnectionLost(resp) {
+        scmMqttConnected = false; scmSubscribedTopics = {};
+        scmUpdateMqttStatus('disconnected');
+        if (resp.errorCode !== 0) scmLogCommand('ERROR', '', 'Connection lost: ' + resp.errorMessage);
+        for (var k in scmPendingCallbacks) { if (scmPendingCallbacks[k].callback) scmPendingCallbacks[k].callback(false, 'Connection lost'); }
+        scmPendingCallbacks = {};
+        setTimeout(function () {
+            if (!scmMqttConnected && document.getElementById('setConfigModal').classList.contains('show')) {
+                scmLogCommand('INFO', '', 'Reconnecting...');
+                scmConnectMqtt();
+            }
+        }, SCM_MQTT_CONFIG.reconnectDelay);
+    }
+
+    function scmOnMessageArrived(message) {
+        var topic = message.destinationName;
+        var payload = message.payloadString;
+        scmLogCommand('RECV', topic, payload);
+
+        try {
+            var response = JSON.parse(payload);
+            var responseId = response.id;
+            for (var key in scmPendingCallbacks) {
+                var pending = scmPendingCallbacks[key];
+                if (pending.responseTopic === topic && pending.expectedId === responseId) {
+                    if (scmValidateResponse(response, pending.commandType)) {
+                        clearTimeout(pending.timeoutId);
+                        delete scmPendingCallbacks[key];
+                        if (pending.callback) pending.callback(true, response);
+                        return;
+                    }
+                }
+            }
+        } catch (e) { scmLogCommand('ERROR', topic, 'Parse error: ' + e.message); }
+    }
+
+    function scmValidateResponse(response, commandType) {
+        if (!response || response.id === undefined) return false;
+        var r = response.response || null;
+        if (commandType === 'channel_set') return r === 'channel_set_ok';
+        if (commandType === 'channel_get') return r === 'channel_get_ok' || response.mode !== undefined;
+        return true;
+    }
+
+    function scmUpdateMqttStatus(status) {
+        var dot = document.getElementById('scmMqttStatusDot');
+        var label = document.getElementById('scmMqttStatusLabel');
+        if (!dot || !label) return;
+        dot.className = 'mqtt-dot';
+        if (status === 'connected') { dot.classList.add('connected'); label.textContent = 'Connected'; }
+        else if (status === 'connecting') { dot.classList.add('connecting'); label.textContent = 'Connecting...'; }
+        else { label.textContent = 'Disconnected'; }
+    }
+
+    function scmSubscribeToTopic(topic, callback) {
+        if (scmSubscribedTopics[topic]) { if (callback) callback(true); return; }
+        if (!scmMqttConnected || !scmMqttClient) { if (callback) callback(false, 'Not connected'); return; }
+        scmMqttClient.subscribe(topic, {
+            qos: 1,
+            onSuccess: function () { scmSubscribedTopics[topic] = true; if (callback) callback(true); },
+            onFailure: function (err) { scmLogCommand('ERROR', topic, 'Subscribe failed'); if (callback) callback(false); }
+        });
+    }
+
+    function scmPublishMessage(topic, payload) {
+        if (!scmMqttConnected || !scmMqttClient) return false;
+        try {
+            var msg = new Paho.Message(payload);
+            msg.destinationName = topic;
+            msg.qos = 1;
+            scmMqttClient.send(msg);
+            scmLogCommand('SEND', topic, payload);
+            return true;
+        } catch (e) { scmLogCommand('ERROR', topic, 'Publish error'); return false; }
+    }
+
+    function scmSendMqttCommand(clusterName, mqttBasePath, command, commandType, callback) {
+        if (!scmMqttConnected) {
+            scmConnectMqtt(function (connected) {
+                if (connected) scmSendMqttCommandInternal(clusterName, mqttBasePath, command, commandType, callback);
+                else callback(false, 'Not connected');
+            });
+            return;
+        }
+        scmSendMqttCommandInternal(clusterName, mqttBasePath, command, commandType, callback);
+    }
+
+    function scmSendMqttCommandInternal(clusterName, mqttBasePath, command, commandType, callback) {
+        var basePath = mqttBasePath.replace(/\/+$/, '');
+        var cleanCluster = clusterName.replace(/\s+/g, '');
+        var responseTopic = basePath + "/" + cleanCluster + "/P";
+        var commandTopic = basePath + "/" + cleanCluster + "/S";
+
+        scmSubscribeToTopic(responseTopic, function (success) {
+            if (!success) { callback(false, 'Subscribe failed'); return; }
+            var cmdStr = JSON.stringify(command);
+            var callbackKey = responseTopic + '_' + command.id + '_' + Date.now();
+            var timeoutId = setTimeout(function () {
+                if (scmPendingCallbacks[callbackKey]) { delete scmPendingCallbacks[callbackKey]; callback(false, 'Timeout'); }
+            }, SCM_MQTT_CONFIG.commandTimeout);
+            scmPendingCallbacks[callbackKey] = { callback: callback, responseTopic: responseTopic, expectedId: command.id, commandType: commandType, timeoutId: timeoutId };
+            if (!scmPublishMessage(commandTopic, cmdStr)) { clearTimeout(timeoutId); delete scmPendingCallbacks[callbackKey]; callback(false, 'Publish failed'); }
+        });
+    }
+
+    // ============================================================
+    // THEME MANAGEMENT (Enhanced - Fixed for all scenarios)
+    // ============================================================
+
+    function scmDetectPageTheme() {
+        // 1. Check localStorage first - dashboard-theme is your app's key
+        var storedTheme = localStorage.getItem('dashboard-theme') ||
+            localStorage.getItem('theme') ||
+            localStorage.getItem('data-bs-theme') ||
+            localStorage.getItem('color-theme') ||
+            localStorage.getItem('selectedTheme') ||
+            localStorage.getItem('hs_theme');
+
+        if (storedTheme === 'light') return 'light';
+        if (storedTheme === 'dark') return 'dark';
+
+        // 2. Check #networkDashboard (your app's main container)
+        var dashboard = document.getElementById('networkDashboard');
+        if (dashboard) {
+            var dashTheme = dashboard.getAttribute('data-theme');
+            if (dashTheme === 'light') return 'light';
+            if (dashTheme === 'dark') return 'dark';
+        }
+
+        // 3. Check document.documentElement (html) classes and attributes
+        var html = document.documentElement;
+        if (html.classList.contains('light-theme') ||
+            html.classList.contains('light') ||
+            html.classList.contains('theme-light')) {
+            return 'light';
+        }
+        if (html.getAttribute('data-theme') === 'light' ||
+            html.getAttribute('data-bs-theme') === 'light' ||
+            html.getAttribute('data-mode') === 'light') {
+            return 'light';
+        }
+
+        // 4. Check body classes and attributes
+        var body = document.body;
+        if (body.classList.contains('light-theme') ||
+            body.classList.contains('light') ||
+            body.classList.contains('theme-light')) {
+            return 'light';
+        }
+        if (body.getAttribute('data-theme') === 'light' ||
+            body.getAttribute('data-bs-theme') === 'light' ||
+            body.getAttribute('data-mode') === 'light') {
+            return 'light';
+        }
+
+        // 5. Check CSS variable
+        var rootStyle = getComputedStyle(document.documentElement);
+        var themeVar = rootStyle.getPropertyValue('--theme-mode') ||
+            rootStyle.getPropertyValue('--bs-theme') ||
+            rootStyle.getPropertyValue('--color-scheme');
+        if (themeVar && themeVar.trim().toLowerCase() === 'light') {
+            return 'light';
+        }
+
+        // 6. Default to dark
+        return 'dark';
+    }
+    function scmApplyTheme(theme) {
+        scmData.theme = theme;
+        document.querySelectorAll('.set-config-modal').forEach(function (m) {
+            if (theme === 'light') {
+                m.classList.add('light-theme');
+                m.classList.remove('dark-theme');
+            } else {
+                m.classList.remove('light-theme');
+                m.classList.add('dark-theme');
+            }
+        });
+    }
+
+    function scmSyncTheme() {
+        var detectedTheme = scmDetectPageTheme();
+        if (detectedTheme !== scmData.theme) {
+            scmApplyTheme(detectedTheme);
+        }
+    }
+
+    function scmSetupThemeObserver() {
+        // 1. MutationObserver for DOM attribute changes
+        var observerCallback = function (mutations) {
+            mutations.forEach(function (mutation) {
+                if (mutation.type === 'attributes') {
+                    scmSyncTheme();
+                }
+            });
+        };
+
+        var observer = new MutationObserver(observerCallback);
+        var observeConfig = {
+            attributes: true,
+            attributeFilter: ['class', 'data-theme', 'data-bs-theme', 'data-mode', 'data-color-scheme']
+        };
+
+        observer.observe(document.documentElement, observeConfig);
+        observer.observe(document.body, observeConfig);
+
+        // 2. Listen for localStorage changes (cross-tab sync & some theme systems)
+        window.addEventListener('storage', function (e) {
+            if (e.key === 'theme' || e.key === 'data-bs-theme' ||
+                e.key === 'color-theme' || e.key === 'selectedTheme' || e.key === 'hs_theme') {
+                scmSyncTheme();
+            }
+        });
+
+        // 3. Listen for custom theme events (many libraries dispatch these)
+        var themeEventHandler = function () { scmSyncTheme(); };
+        window.addEventListener('themeChanged', themeEventHandler);
+        window.addEventListener('theme-changed', themeEventHandler);
+        window.addEventListener('colorSchemeChange', themeEventHandler);
+        document.addEventListener('themeChanged', themeEventHandler);
+        document.addEventListener('theme-changed', themeEventHandler);
+
+        // 4. Listen for Bootstrap theme toggle clicks
+        document.querySelectorAll('[data-bs-theme-value], [data-theme-toggle], .theme-toggle, .dark-mode-toggle').forEach(function (toggle) {
+            toggle.addEventListener('click', function () {
+                setTimeout(scmSyncTheme, 50);
+                setTimeout(scmSyncTheme, 150);
+            });
+        });
+
+        // 5. System preference change listener
+        if (window.matchMedia) {
+            var darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            if (darkModeQuery.addEventListener) {
+                darkModeQuery.addEventListener('change', scmSyncTheme);
+            } else if (darkModeQuery.addListener) {
+                darkModeQuery.addListener(scmSyncTheme);
+            }
+        }
+
+        // 6. Periodic check as fallback (catches localStorage-only changes)
+        setInterval(function () {
+            var modal = document.getElementById('setConfigModal');
+            if (modal && modal.classList.contains('show')) {
+                scmSyncTheme();
+            }
+        }, 500);
+    }
+
+    // ============================================================
+    // MODAL FUNCTIONS
+    // ============================================================
+
+    function openSetConfigModal(contextName, level, siteId, clusterId, adcNumber, mqttBasePath) {
+        debugger;
+        var cleanAdcNumber = adcNumber;
+        if (adcNumber != null && typeof adcNumber === 'string') cleanAdcNumber = adcNumber.replace('A10-', '').replace('a10-', '');
+
+        scmData.level = level; scmData.siteId = siteId; scmData.clusterId = clusterId; scmData.adcNumber = cleanAdcNumber;
+        if (mqttBasePath) scmData.mqttBasePath = mqttBasePath;
+
+        var contextText = '';
+        if (level === 'site') contextText = 'Site: ' + contextName + ' (All Clusters & ADCs)';
+        else if (level === 'cluster') contextText = 'Cluster: ' + contextName + ' (All ADCs)';
+        else if (level === 'adc') contextText = 'ADC-' + adcNumber;
+        document.getElementById('scmConfigContextInfo').textContent = contextText;
+
+        // Force theme sync before showing modal
+        scmApplyTheme(scmDetectPageTheme());
+
+        var modal = new bootstrap.Modal(document.getElementById('setConfigModal'));
+        modal.show();
+
+        // Auto-connect MQTT
+        scmConnectMqtt();
+        scmLoadConfigData();
+    }
+
+    function scmLoadConfigData() {
+        document.getElementById('scmConfigLoading').style.display = 'block';
+        document.getElementById('scmConfigContent').style.display = 'none';
+        document.getElementById('scmConfigError').style.display = 'none';
+
+        $.ajax({
+            url: '/NetworkDashboard/SiteId/' + scmData.siteId,
+            type: 'GET',
+            dataType: 'json',
+            success: function (response) {
+                if (response && Array.isArray(response) && response.length > 0) {
+                    scmData.rawData = response;
+                    scmProcessData();
+                    scmRenderContent();
+                } else {
+                    scmShowError('No configuration data found');
+                }
+            },
+            error: function (xhr, status, error) { scmShowError('Error: ' + error); }
+        });
+    }
+
+    function scmProcessData() {
+        scmData.groupedData = {};
+        scmData.rawData.forEach(function (item) {
+            var clusterId = item.ClusterId, clusterName = item.ClusterName || 'Unknown', adcNumber = item.ADCNumber;
+
+            if (scmData.level === 'cluster' && clusterId != scmData.clusterId) return;
+            if (scmData.level === 'adc' && (clusterId != scmData.clusterId || adcNumber != scmData.adcNumber)) return;
+
+            if (!scmData.groupedData[clusterId]) {
+                scmData.groupedData[clusterId] = { clusterId: clusterId, clusterName: clusterName, modemId: item.ModemId || '', adcs: {} };
+            }
+            if (!scmData.groupedData[clusterId].adcs[adcNumber]) {
+                scmData.groupedData[clusterId].adcs[adcNumber] = { adcNumber: adcNumber, adcTypeId: item.ADCTypeId, pins: [] };
+            }
+
+            var attrName = '';
+            if (item.AssetName && item.AttributeName) {
+                var attrParts = item.AttributeName.split(' ');
+                attrName = item.AssetName + '-' + (attrParts[0] || '');
+            }
+
+            var isModeValid = item.Mode !== undefined && item.Mode !== null;
+            var isThresholdValid = item.ThresholdValue !== undefined && item.ThresholdValue !== null;
+            var canSend = isModeValid && isThresholdValid;
+
+            scmData.groupedData[clusterId].adcs[adcNumber].pins.push({
+                pin: item.Pin, attr: attrName, assetTypeName: item.AssetTypeName || '', assetName: item.AssetName || '', attributeName: item.AttributeName || '',
+                mode: isModeValid ? item.Mode : 0, thresholdValue: isThresholdValid ? item.ThresholdValue : 100,
+                modeDisplay: isModeValid ? item.Mode : 'N/A', thresholdDisplay: isThresholdValid ? item.ThresholdValue : 'N/A',
+                canSend: canSend
+            });
+        });
+
+        // Sort pins
+        for (var cId in scmData.groupedData) {
+            for (var aNum in scmData.groupedData[cId].adcs) {
+                scmData.groupedData[cId].adcs[aNum].pins.sort(function (a, b) { return a.pin - b.pin; });
+            }
+        }
+    }
+
+    function scmShowError(msg) {
+        document.getElementById('scmConfigLoading').style.display = 'none';
+        document.getElementById('scmConfigContent').style.display = 'none';
+        document.getElementById('scmConfigError').style.display = 'block';
+        document.getElementById('scmConfigErrorMsg').textContent = msg;
+    }
+
+    function scmRetryLoadConfig() { scmLoadConfigData(); }
+
+    function scmRenderContent() {
+        document.getElementById('scmConfigLoading').style.display = 'none';
+        document.getElementById('scmConfigError').style.display = 'none';
+        document.getElementById('scmConfigContent').style.display = 'block';
+
+        var html = '';
+        var clusterIds = Object.keys(scmData.groupedData);
+        if (clusterIds.length === 0) { html = '<div class="text-center py-5 no-data-text">No data found</div>'; }
+        else { clusterIds.forEach(function (cId, i) { html += scmRenderCluster(scmData.groupedData[cId], i); }); }
+
+        document.getElementById('scmConfigContent').innerHTML = html;
+
+        if (scmData.level === 'cluster' || scmData.level === 'adc') {
+            setTimeout(function () {
+                var fc = document.querySelector('.cluster-content'); if (fc) { fc.classList.add('show'); var a = fc.previousElementSibling.querySelector('.arrow'); if (a) a.classList.add('expanded'); }
+                if (scmData.level === 'adc') { var fa = document.querySelector('.adc-content'); if (fa) { fa.classList.add('show'); var aa = fa.previousElementSibling.querySelector('.arrow'); if (aa) aa.classList.add('expanded'); } }
+            }, 100);
+        }
+        scmUpdateSelectedCount();
+    }
+
+    function scmRenderCluster(cluster, index) {
+        var adcNums = Object.keys(cluster.adcs), adcCount = adcNums.length, pinCount = 0, sendableCount = 0;
+        adcNums.forEach(function (an) { var pins = cluster.adcs[an].pins; pinCount += pins.length; pins.forEach(function (p) { if (p.canSend) sendableCount++; }); });
+
+        var html = '<div class="cluster-card" data-cluster-name="' + cluster.clusterName + '">' +
+            '<div class="cluster-header" onclick="scmToggleCluster(' + index + ')">' +
+            '<input type="checkbox" class="form-check-input cluster-checkbox" onclick="scmToggleClusterSel(' + index + ', event)">' +
+            '<div class="cluster-icon"><i class="bi bi-router"></i></div>' +
+            '<div class="flex-grow-1"><div class="cluster-name">' + cluster.clusterName + '</div><div class="cluster-info">Modem: ' + cluster.modemId + '</div></div>' +
+            '<span class="badge badge-adc-count me-2">' + adcCount + ' ADCs</span>' +
+            '<span class="badge badge-cluster-count me-2">' + pinCount + ' Pins (' + sendableCount + ' sendable)</span>' +
+            '<button class="btn btn-outline-primary btn-sm select-all-btn" onclick="scmSelectAllCluster(' + index + ', event)">Select All</button>' +
+            '<span class="arrow ms-2">▶</span></div>' +
+            '<div class="cluster-content" id="scmCluster_' + index + '">';
+
+        adcNums.forEach(function (an, ai) { html += scmRenderAdc(cluster.adcs[an], index, ai, cluster); });
+        html += '</div></div>';
+        return html;
+    }
+
+    function scmRenderAdc(adc, ci, ai, cluster) {
+        var pinCount = adc.pins.length, sendableCount = adc.pins.filter(function (p) { return p.canSend; }).length;
+
+        var html = '<div class="adc-card" data-adc-number="' + adc.adcNumber + '">' +
+            '<div class="adc-header" onclick="scmToggleAdc(' + ci + ', ' + ai + ')">' +
+            '<input type="checkbox" class="form-check-input adc-checkbox" onclick="scmToggleAdcSel(' + ci + ', ' + ai + ', event)">' +
+            '<div class="adc-icon"><i class="bi bi-cpu"></i></div>' +
+            '<div class="flex-grow-1"><div class="adc-name">ADC-' + adc.adcNumber + '</div><div class="adc-info">Type: ' + (adc.adcTypeId || '-') + '</div></div>' +
+            '<span class="badge badge-cluster-count me-2">' + pinCount + ' Pins (' + sendableCount + ' sendable)</span>' +
+            '<button class="btn btn-outline-info btn-sm select-all-btn" onclick="scmSelectAllAdc(' + ci + ', ' + ai + ', event)">Select All</button>' +
+            '<span class="arrow ms-2">▶</span></div>' +
+            '<div class="adc-content" id="scmAdc_' + ci + '_' + ai + '">' +
+            '<div class="pin-table-container"><div class="pin-table-header"><div></div><div>PIN</div><div>ATTR</div><div>MODE</div><div>THRESHOLD</div><div>ACTIONS</div></div>';
+
+        adc.pins.forEach(function (pin, pi) { html += scmRenderPin(pin, ci, ai, pi, adc.adcNumber, cluster); });
+        html += '</div></div></div>';
+        return html;
+    }
+
+    function scmRenderPin(pin, ci, ai, pi, adcNum, cluster) {
+        
+        var pinId = 'scmPin_' + ci + '_' + ai + '_' + pi;
+        var sendDis = pin.canSend ? '' : ' disabled title="Mode or Threshold not configured"';
+        var modeClass = 'pin-mode' + (pin.modeDisplay === 'N/A' ? ' na' : '');
+        var threshClass = 'pin-thresholdValue' + (pin.thresholdDisplay === 'N/A' ? ' na' : '');
+
+        return '<div class="pin-row" id="' + pinId + '" data-pin-number="' + pin.pin + '" data-adc-number="' + adcNum + '" data-cluster-name="' + cluster.clusterName + '" data-mqtt-base="' + (scmData.mqttBasePath || '') + '" data-mode="' + pin.mode + '" data-thresholdValue="' + pin.thresholdValue + '" data-can-send="' + pin.canSend + '">' +
+            '<div><input type="checkbox" class="pin-checkbox" onchange="scmPinCheck(this)"></div>' +
+            '<div class="pin-num">' + pin.pin + '</div>' +
+            '<div class="pin-attr" title="' + pin.assetTypeName + ': ' + pin.assetName + ' - ' + pin.attributeName + '">' + pin.attr + '</div>' +
+            '<div class="' + modeClass + '" id="scmMode_' + pinId + '">' + pin.modeDisplay + '</div>' +
+            '<div class="' + threshClass + '" id="scmThresh_' + pinId + '">' + pin.thresholdDisplay + '</div>' +
+            '<div class="btn-group-actions">' +
+            '<button class="btn-send" id="scmBtnSend_' + pinId + '"' + sendDis + ' onclick="scmSendPin(\'' + pinId + '\')">Send</button>' +
+            '<button class="btn-get" id="scmBtnGet_' + pinId + '" onclick="scmGetPin(\'' + pinId + '\')">Get</button>' +
+            '</div></div>';
+    }
+
+    // Toggle & Selection
+    function scmToggleCluster(i) { var c = document.getElementById('scmCluster_' + i); c.classList.toggle('show'); c.previousElementSibling.querySelector('.arrow').classList.toggle('expanded'); }
+    function scmToggleAdc(ci, ai) { var c = document.getElementById('scmAdc_' + ci + '_' + ai); c.classList.toggle('show'); c.previousElementSibling.querySelector('.arrow').classList.toggle('expanded'); }
+    function scmToggleClusterSel(i, e) { e.stopPropagation(); var chk = e.target.checked; var card = e.target.closest('.cluster-card'); card.querySelectorAll('.adc-checkbox').forEach(function (c) { c.checked = chk; }); card.querySelectorAll('.pin-checkbox').forEach(function (c) { c.checked = chk; c.closest('.pin-row').classList.toggle('selected', chk); }); scmUpdateSelectedCount(); }
+    function scmToggleAdcSel(ci, ai, e) { e.stopPropagation(); var chk = e.target.checked; e.target.closest('.adc-card').querySelectorAll('.pin-checkbox').forEach(function (c) { c.checked = chk; c.closest('.pin-row').classList.toggle('selected', chk); }); scmUpdateSelectedCount(); }
+    function scmPinCheck(cb) { cb.closest('.pin-row').classList.toggle('selected', cb.checked); scmUpdateSelectedCount(); }
+    function scmSelectAllCluster(i, e) { e.stopPropagation(); var card = e.target.closest('.cluster-card'); card.querySelector('.cluster-checkbox').checked = true; card.querySelectorAll('.adc-checkbox').forEach(function (c) { c.checked = true; }); card.querySelectorAll('.pin-checkbox').forEach(function (c) { c.checked = true; c.closest('.pin-row').classList.add('selected'); }); scmUpdateSelectedCount(); }
+    function scmSelectAllAdc(ci, ai, e) { e.stopPropagation(); var card = e.target.closest('.adc-card'); card.querySelector('.adc-checkbox').checked = true; card.querySelectorAll('.pin-checkbox').forEach(function (c) { c.checked = true; c.closest('.pin-row').classList.add('selected'); }); scmUpdateSelectedCount(); }
+    function scmUpdateSelectedCount() {
+        var sel = document.querySelectorAll('#scmConfigContent .pin-checkbox:checked').length;
+        var sendable = document.querySelectorAll('#scmConfigContent .pin-row[data-can-send="true"]').length;
+        document.getElementById('scmSelectedCount').textContent = sel + ' selected';
+        document.getElementById('scmSendableCount').textContent = sendable + ' sendable';
+    }
+
+    // Send/Get Pin
+    function scmSendPin(pinId) {
+        
+        var row = document.getElementById(pinId), btn = document.getElementById('scmBtnSend_' + pinId);
+        if (!scmMqttConnected) { alert('Connecting...'); scmConnectMqtt(function (ok) { if (ok) scmSendPin(pinId); }); return; }
+        if (row.getAttribute('data-can-send') !== 'true') { alert('Mode or Threshold not configured'); return; }
+
+        var cmd = { id: parseInt(row.getAttribute('data-adc-number')), channel_set: parseInt(row.getAttribute('data-pin-number')), mode: parseInt(row.getAttribute('data-mode')) || 0, threshold: parseInt(row.getAttribute('data-thresholdValue')) || 0 };
+        btn.classList.add('sending'); btn.textContent = '...';
+
+        scmSendMqttCommand(row.getAttribute('data-cluster-name'), row.getAttribute('data-mqtt-base') || scmData.mqttBasePath, cmd, 'channel_set', function (ok) {
+            btn.classList.remove('sending'); btn.classList.add(ok ? 'success' : 'error'); btn.textContent = ok ? '✓' : '✗';
+            setTimeout(function () { btn.classList.remove('success', 'error'); btn.textContent = 'Send'; }, 2000);
+        });
+    }
+
+    function scmGetPin(pinId) {
+        debugger;
+        var row = document.getElementById(pinId), btn = document.getElementById('scmBtnGet_' + pinId);
+        if (!scmMqttConnected) { alert('Connecting...'); scmConnectMqtt(function (ok) { if (ok) scmGetPin(pinId); }); return; }
+
+        var cmd = { id: parseInt(row.getAttribute('data-adc-number')), channel_get: parseInt(row.getAttribute('data-pin-number')) };
+        btn.classList.add('getting'); btn.textContent = '...';
+
+        scmSendMqttCommand(row.getAttribute('data-cluster-name'), row.getAttribute('data-mqtt-base') || scmData.mqttBasePath, cmd, 'channel_get', function (ok, resp) {
+            btn.classList.remove('getting'); btn.classList.add(ok ? 'success' : 'error'); btn.textContent = ok ? '✓' : '✗';
+            if (ok && resp) {
+                var modeEl = document.getElementById('scmMode_' + pinId), threshEl = document.getElementById('scmThresh_' + pinId);
+                if (resp.mode !== undefined && modeEl) { modeEl.textContent = resp.mode; modeEl.classList.remove('na'); row.setAttribute('data-mode', resp.mode); }
+                if (resp.thresholdValue !== undefined && threshEl) { threshEl.textContent = resp.thresholdValue; threshEl.classList.remove('na'); row.setAttribute('data-thresholdValue', resp.thresholdValue); }
+                scmShowChannelInfo(row.getAttribute('data-adc-number'), row.getAttribute('data-pin-number'), resp);
+            }
+            setTimeout(function () { btn.classList.remove('success', 'error'); btn.textContent = 'Get'; }, 2000);
+        });
+    }
+
+    function scmFormatTimestamp(ts) {
+        if (!ts) return '-';
+        var tsMs = (ts < 1e12) ? ts * 1000 : ts;
+        var d = new Date(tsMs);
+        if (isNaN(d.getTime())) return 'Invalid (' + ts + ')';
+        var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+        return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) +
+            ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+    }
+
+    function scmShowChannelInfo(adcId, ch, resp) {
+        document.getElementById('scmInfoAdcId').textContent = adcId;
+        document.getElementById('scmInfoChannel').textContent = ch;
+        document.getElementById('scmInfoMode').textContent = resp.mode !== undefined ? resp.mode : '-';
+        var threshVal = resp.thresholdValue !== undefined ? resp.thresholdValue : (resp.threshold !== undefined ? resp.threshold : '-');
+        document.getElementById('scmInfoThreshold').textContent = threshVal;
+        document.getElementById('scmInfoOffset').textContent = resp.offset !== undefined ? resp.offset : '-';
+        document.getElementById('scmInfoDiv').textContent = resp.div !== undefined ? resp.div : '-';
+        document.getElementById('scmInfoMul').textContent = resp.mul !== undefined ? resp.mul : '-';
+        document.getElementById('scmInfoTimestamp').textContent = scmFormatTimestamp(resp.ts);
+        document.getElementById('scmInfoResponse').textContent = resp.response || '-';
+        scmApplyTheme(scmDetectPageTheme());
+        new bootstrap.Modal(document.getElementById('scmChannelInfoModal')).show();
+    }
+
+    // Bulk Operations
+    function scmSendSelectedToDevice() {
+        if (!scmMqttConnected) { alert('Connecting...'); scmConnectMqtt(); return; }
+        var rows = []; document.querySelectorAll('#scmConfigContent .pin-checkbox:checked').forEach(function (cb) { var r = cb.closest('.pin-row'); if (r.getAttribute('data-can-send') === 'true') rows.push(r); });
+        if (rows.length === 0) { alert('No sendable pins selected'); return; }
+        scmBulkSend(rows, 0, 'set');
+    }
+
+    function scmGetSelectedFromDevice() {
+        if (!scmMqttConnected) { alert('Connecting...'); scmConnectMqtt(); return; }
+        var rows = []; document.querySelectorAll('#scmConfigContent .pin-checkbox:checked').forEach(function (cb) { rows.push(cb.closest('.pin-row')); });
+        if (rows.length === 0) { alert('No pins selected'); return; }
+        scmBulkSend(rows, 0, 'get');
+    }
+
+    function scmSendAllToDevice() {
+        if (!scmMqttConnected) { alert('Connecting...'); scmConnectMqtt(); return; }
+        var rows = []; document.querySelectorAll('#scmConfigContent .pin-row[data-can-send="true"]').forEach(function (r) { rows.push(r); });
+        if (rows.length === 0) { alert('No sendable pins'); return; }
+        if (!confirm('Send to ' + rows.length + ' pin(s)?')) return;
+        scmBulkSend(rows, 0, 'set');
+    }
+
+    function scmBulkSend(rows, i, type) {
+        
+        if (i >= rows.length) { document.getElementById('scmCommandStatus').textContent = 'Done'; document.getElementById('scmCommandStatus').className = 'badge bg-success'; return; }
+        document.getElementById('scmCommandStatus').textContent = (type === 'get' ? 'Getting' : 'Sending') + ' ' + (i + 1) + '/' + rows.length;
+        document.getElementById('scmCommandStatus').className = 'badge bg-warning';
+
+        var row = rows[i], pinId = row.id, adcNum = row.getAttribute('data-adc-number'), pinNum = row.getAttribute('data-pin-number'), cluster = row.getAttribute('data-cluster-name'), mqttBasePath = row.getAttribute('data-mqtt-base');
+        var cmd, cmdType, btn;
+
+        if (type === 'set') {
+            cmd = { id: parseInt(adcNum), channel_set: parseInt(pinNum), mode: parseInt(row.getAttribute('data-mode')) || 0, threshold: parseInt(row.getAttribute('data-thresholdValue')) || 0 };
+            cmdType = 'channel_set'; btn = document.getElementById('scmBtnSend_' + pinId);
+        } else {
+            cmd = { id: parseInt(adcNum), channel_get: parseInt(pinNum) };
+            cmdType = 'channel_get'; btn = document.getElementById('scmBtnGet_' + pinId);
+        }
+
+        if (btn) { btn.classList.add(type === 'set' ? 'sending' : 'getting'); btn.textContent = '...'; }
+
+        scmSendMqttCommand(cluster, mqttBasePath, cmd, cmdType, function (ok, resp) {
+            if (btn) {
+                btn.classList.remove('sending', 'getting'); btn.classList.add(ok ? 'success' : 'error'); btn.textContent = ok ? '✓' : '✗';
+                if (ok && type === 'get' && resp) {
+                    var modeEl = document.getElementById('scmMode_' + pinId), threshEl = document.getElementById('scmThresh_' + pinId);
+                    if (resp.mode !== undefined && modeEl) { modeEl.textContent = resp.mode; modeEl.classList.remove('na'); }
+                    if (resp.thresholdValue !== undefined && threshEl) { threshEl.textContent = resp.thresholdValue; threshEl.classList.remove('na'); }
+                }
+                setTimeout(function () { btn.classList.remove('success', 'error'); btn.textContent = type === 'set' ? 'Send' : 'Get'; }, 1000);
+            }
+            setTimeout(function () { scmBulkSend(rows, i + 1, type); }, 200);
+        });
+    }
+
+    // Log
+    function scmLogCommand(type, topic, payload) {
+        scmData.commandLog.unshift({ type: type, topic: topic, payload: payload, timestamp: new Date().toLocaleTimeString() });
+        if (scmData.commandLog.length > 100) scmData.commandLog.pop();
+        var info = document.getElementById('scmLastCommandInfo'); if (info) info.textContent = type + ': ' + (topic ? topic.substr(-30) : (payload || '').substr(0, 30));
+        if (document.getElementById('scmCommandLogModal') && document.getElementById('scmCommandLogModal').classList.contains('show')) scmRenderLog();
+    }
+
+    function scmRenderLog() {
+        var html = '';
+        scmData.commandLog.slice(0, 50).forEach(function (e) {
+            var badgeText = { 'SEND': '→ TX', 'RECV': '← RX', 'ERROR': '✗ ERR', 'INFO': 'ℹ INFO' }[e.type] || e.type;
+            html += '<div class="command-log-entry ' + e.type.toLowerCase() + '"><div class="d-flex justify-content-between"><span class="log-badge ' + e.type.toLowerCase() + '">' + badgeText + '</span><small class="log-timestamp">' + e.timestamp + '</small></div>' + (e.topic ? '<small class="log-topic d-block mt-1">' + e.topic + '</small>' : '') + '<div class="log-payload">' + e.payload + '</div></div>';
+        });
+        document.getElementById('scmCommandLogEntries').innerHTML = html || '<div class="text-center py-4 no-data-text">No commands yet</div>';
+    }
+
+    function scmShowCommandLog() {
+        // Force theme sync before showing modal
+        scmApplyTheme(scmDetectPageTheme());
+        scmRenderLog();
+        new bootstrap.Modal(document.getElementById('scmCommandLogModal')).show();
+    }
+    function scmClearCommandLog() { scmData.commandLog = []; scmRenderLog(); }
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+    $(document).ready(function () {
+        // Initialize theme observer
+        scmSetupThemeObserver();
+
+        // Initial theme sync
+        scmApplyTheme(scmDetectPageTheme());
+    });
+
+    $(window).on('beforeunload', function () { if (scmMqttClient && scmMqttConnected) try { scmMqttClient.disconnect(); } catch (e) { } });
+</script>

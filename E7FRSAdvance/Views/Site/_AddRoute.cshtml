@@ -1,0 +1,392 @@
+﻿@model Domain.RouteSiteLister
+<div class="row">
+    <div class="col-sm-12 text-right">
+        <a id="btnAddRoute" class="btn btn-success btn-sm btn-quirk" onclick="AddRow()"><span class="fa fa-plus"></span> Add Route</a>
+    </div>
+</div>
+<div class="row mt10">
+    <div class="col-sm-12">
+        <div class="table-responsive" style="max-height: 620px;">
+            <table class="table table-bordered">
+                <tbody id="routeBody">
+                    @if (Model.RouteSites != null && Model.RouteSites.Count > 0)
+                    {
+                        int i = 1;
+                        foreach (var item in Model.RouteSites)
+                        {
+                            <tr data-rowId="@i">
+                                <input type="hidden" id="hdnRoute@(i)" value="@item.Id" />
+                                <td class="text-center width60" style="vertical-align:middle">
+                                    <a style="cursor:pointer"><i class="fa fa-plus text-vision RouteTracks" data-Id="@item.Id" onclick="GetRouteTracks('@item.Id',this)"></i></a>
+                                </td>
+                                <td class="text-center width60" style="vertical-align:middle">
+                                    <a data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete" style="cursor:pointer"><i class="glyphicon glyphicon-trash text-danger" onclick="DeleteRouteById('@item.Id', this)"></i></a>
+                                </td>
+                                <td>
+                                    <input type="text" id="routeName@(i)" class="form-control" value="@item.RouteName" placeholder="Route Name" />
+                                </td>
+                                @*<td>
+                                        <select id="routeTrack@(i)" class="form-control routeTrack" style="width: 100%" data-placeholder="Choose Track..." multiple>
+                                            @if (Model.SearchCriteria.Assets != null && Model.SearchCriteria.Assets.Count > 0)
+                                            {
+                                                foreach (var asset in Model.SearchCriteria.Assets)
+                                                {
+                                                    if (item.RouteTracks.Where(x => x.AssetId == asset.Id).Count() > 0)
+                                                    {
+                                                        <option value="@asset.Id" selected>@asset.Name</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="@asset.Id">@asset.Name</option>
+                                                    }
+                                                }
+                                            }
+                                        </select>
+                                    </td>*@
+                                <td class="text-center width60">
+                                    <button type="button" onclick="fnSaveRoute('@i')" class="btn btn-success btn-quirk">Add</button>
+                                </td>
+                            </tr>
+                            <tr id="trRouteTracks@(item.Id)" style="display:none;">
+                            </tr>
+                            i++;
+                        }
+                    }
+                    else
+                    {
+                        <tr data-rowId="0">
+                            <input type="hidden" id="hdnRoute0" value="0" />
+                            <td class="text-center width60" style="vertical-align:middle">
+                                <a style="cursor:pointer"><i class="fa fa-plus text-vision RouteTracks" data-Id="0" onclick="GetRouteTracks('0',this)"></i></a>
+                            </td>
+                            <td class="text-center width60" style="vertical-align:middle">
+                                <a data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete" style="cursor:pointer"><i class="glyphicon glyphicon-trash text-danger" onclick="DeleteRouteById('0',this)"></i></a>
+                            </td>
+                            <td>
+                                <input type="text" id="routeName0" class="form-control" placeholder="Route Name" />
+                            </td>
+                            @*<td>
+                                    <select id="routeTrack0" class="form-control routeTrack" style="width: 100%" data-placeholder="Choose Track..." multiple>
+                                        @if (Model.SearchCriteria.Assets != null && Model.SearchCriteria.Assets.Count > 0)
+                                        {
+                                            foreach (var item in Model.SearchCriteria.Assets)
+                                            {
+                                                <option value="@item.Id">@item.Name</option>
+                                            }
+                                        }
+                                    </select>
+                                </td>*@
+                            <td class="text-center width60">
+                                <button type="button" onclick="fnSaveRoute('0')" class="btn btn-success btn-quirk">Add</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+        //$(".routeTrack").select2({ tags: true });
+    });
+
+    function fnSaveRoute(rowId) {
+        var RouteSite = {};
+        RouteSite.Id = $("#hdnRoute" + rowId).val();
+        RouteSite.SiteId = $("#hdnSiteId").val();
+        RouteSite.RouteName = $("#routeName" + rowId).val();
+        //RouteSite.RouteTrack = $("#routeTrack" + rowId).val();
+        if (RouteSite.RouteName == null || RouteSite.RouteName == undefined || RouteSite.RouteName == "") {
+            CommonNotification("ERROR", "Please enter route name!", "error");
+        } else {
+            $.ajax({
+                url: '/Site/SaveRouteSite',
+                type: 'Post',
+                data: '{mRouteSite:' + JSON.stringify(RouteSite) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Route site has been saved.", "success");
+                        $("#frmRoute").submit();
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+
+    function AddRow() {
+        //var siteId = $("#hdnSiteId").val();
+        var rowId = 0;
+        $('#routeBody tr').each(function (id, val) {
+            if (parseInt($(this).attr("data-rowId")) > rowId) {
+                rowId = parseInt($(this).attr("data-rowId"));
+            }
+        });
+        rowId = parseInt(rowId) + 1;
+        var temp = '';
+        temp += "<tr data-rowId=" + rowId + ">";
+        temp += "<input type='hidden' id='hdnRoute" + rowId + "' value='0' />";
+        temp += "<td class='text-center width60' style='vertical-align:middle'>";
+        temp += "<a style='cursor: pointer'><i class='fa fa-plus text-vision RouteTracks' data-Id='0' onclick='GetRouteTracks(" + 0 + ",this)'></i></a>";
+        temp += "</td>";
+        temp += "<td class='text-center width60' style='vertical-align:middle'>";
+        temp += "<a data-placement='top' data-toggle='tooltip' class='tooltips' data-original-title='Delete' style='cursor: pointer'><i class='glyphicon glyphicon-trash text-danger' onclick='DeleteRouteById(" + 0 + ",this)'></i></a>";
+        temp += "</td>";
+        temp += "<td><input type='text' id='routeName" + rowId + "' class='form-control' placeholder='Route Name' /></td>";
+        temp += "<td class='text-center width60'>";
+        temp += "<button type='button' onclick='fnSaveRoute(" + rowId + ")' class='btn btn-success btn-quirk'>Add</button>";
+        temp += "</td>";
+        temp += "</tr>";
+        $("#routeBody").append(temp);
+
+        //$.ajax({
+        //    url: '/Site/GetAsset',
+        //    type: 'Post',
+        //    data: '{siteId:' + siteId + '}',
+        //    contentType: 'application/json',
+        //    success: function (data) {
+        //        $("#loader").hide();
+        //        if (data != null && data.length > 0) {
+        //            var temp = '';
+        //            temp += "<tr data-rowId=" + rowId + ">";
+        //            temp += "<input type='hidden' id='hdnRoute" + rowId + "' value='0' />";
+        //            temp += "<td class='text-center width60' style='vertical-align:middle'>";
+        //            temp += "<a data-placement='top' data-toggle='tooltip' class='tooltips' data-original-title='Delete' style='cursor: pointer'><i class='glyphicon glyphicon-trash text-danger' onclick='DeleteRouteById(" + 0 + ",this)'></i></a>";
+        //            temp += "</td>";
+        //            temp += "<td style='width:250px'><input type='text' id='routeName" + rowId + "' class='form-control' placeholder='Route Name' /></td>";
+        //            temp += "<td>";
+        //            temp += "<select id='routeTrack" + rowId + "' class='form-control routeTrack' style='width:100%' data-placeholder='Choose Track...' multiple>";
+        //            $.each(data, function (id, val) {
+        //                temp += "<option value=" + val.Id + ">" + val.Name + "</option>";
+        //            });
+        //            temp += "</select>";
+        //            temp += "</td>";
+        //            temp += "<td class='text-center width60'>";
+        //            temp += "<button type='button' onclick='fnSaveRoute(" + rowId + ")' class='btn btn-success btn-quirk'>Add</button>";
+        //            temp += "</td>";
+        //            temp += "</tr>";
+        //            $("#routeBody").append(temp);
+        //            $(".routeTrack").select2({ tags: true })
+        //        }
+        //    },
+        //    error: function (response) {
+        //        $("#loader").hide();
+        //        CommonNotification("ERROR", "Internal server error.", "error");
+        //    }
+        //});
+    }
+
+    function DeleteRouteById(id, $this) {
+        var rowCount = $('#routeBody tr').length;
+        $("#loader").show();
+        if (id > 0 && rowCount > 1) {
+            $.ajax({
+                url: '/Site/DeleteRouteById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Route site has been deleted.", "success");
+                        $("#frmRoute").submit();
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        } else if (rowCount > 1 && id == 0) {
+            $("#loader").hide();
+            $($this).parent().parent().parent().remove();
+        }
+        else {
+            $("#loader").hide();
+            CommonNotification("ERROR", "Can not delete last row", "error");
+        }
+    }
+
+    function GetRouteTracks(id, $this) {
+        //$("#loader").show();
+        if (id > 0) {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                var html = "";
+                html += "<td colspan='10'>";
+                html += "<div class='panel panel-inverse' style='padding:10px;'>";
+                html += "<div class='panel-heading'>";
+                html += "<h3 class='panel-title'>Route Tracks</h3>";
+                html += "</div>";
+                html += "<div class='panel-body'>";
+                html += "<div class='row'>";
+                html += "<div class='col-lg-4 col-sm-6 col-xs-6 pull-right' style='margin-bottom:14px'>";
+                html += "<a class='btn btn-success btn-sm btn-quirk' id='btnAddRouteTracks" + id + "' data-Id=" + id + " onclick='AddTrackRow(" + id + ")' style='width:100%'>";
+                html += "Add Route Tracks";
+                html += "</a>";
+                html += "</div>";
+                html += "</div>";
+                html += "<div class='table-responsive'>";
+                html += "<table class='table table-bordered'>";
+                html += "<tbody style='background:#f0f1f4' id='tracks" + id + "'>";
+                html += "</tbody>";
+                html += "</table>";
+                html += "</div>";
+                html += "</div>";
+                html += "</td>";
+                $("#trRouteTracks" + id).empty().append(html);
+                $("#trRouteTracks" + id).show();
+                fnGetRouteTracks(id);
+            } else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $("#trRouteTracks" + id).hide();
+                $("#trRouteTracks" + id).empty();
+            }
+        } else {
+            $("#loader").hide();
+            CommonNotification("ERROR", "Please add route first!", "error");
+        }
+    }
+
+    function AddTrackRow(id) {
+        var routeId = id;
+        var siteId = $("#hdnSiteId").val();
+        var rowId = 0;
+        $("#tracks" + id + " tr").each(function (id, val) {
+            if (parseInt($(this).attr("data-rowId")) > rowId) {
+                rowId = parseInt($(this).attr("data-rowId"));
+            }
+        });
+        rowId = parseInt(rowId) + 1;
+        $.ajax({
+            url: '/Site/GetAsset',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.length > 0) {
+                    var temp = '';
+                    temp += "<tr data-rowId=" + rowId + ">";
+                    temp += "<input type='hidden' id='hdnRouteId" + routeId + "' value='" + routeId + "' />";
+                    temp += "<input type='hidden' id='hdnRouteTrack" + rowId + "' value='0' />";
+                    temp += "<td class='text-center width60' style='vertical-align:middle'>";
+                    temp += "<a data-placement='top' data-toggle='tooltip' class='tooltips' data-original-title='Delete' style='cursor: pointer'><i class='glyphicon glyphicon-trash text-danger' onclick='DeleteRouteTrackById(" + 0 + "," + routeId + ",this)'></i></a>";
+                    temp += "</td>";
+                    temp += "<td style='width: 250px'>";
+                    temp += "<select name='AssetId' class='routeTracks' id='drpRouteTrack" + rowId + "" + routeId + "'>";
+                    $.each(data, function (id, val) {
+                        temp += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                    });
+                    temp += "</select>";
+                    temp += "</td>";
+                    temp += "<td style='width:250px'><input type='text' id='sequenceNumber" + rowId + "" + routeId + "' class='form-control' placeholder='Sequence number' /></td>";
+                    temp += "<td class='text-center width60'>";
+                    temp += "<button type='button' onclick='fnSaveRouteTrack(" + rowId + "," + routeId + ")' class='btn btn-success btn-quirk'>Add</button>";
+                    temp += "</td>";
+                    temp += "</tr>";
+                    $("#tracks" + routeId).append(temp);
+                    $('.routeTracks').select2({ minimumResultsForSearch: Infinity, width: '100%' });
+                    $('.sequenceNumber').mask('00000 00000');
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnGetRouteTracks(id) {
+        var siteId = $("#hdnSiteId").val();
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetRouteTrack',
+            type: 'Post',
+            data: '{routeId:' + id + ',siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#tracks" + id).empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnSaveRouteTrack(rowId, routeId) {
+        var RouteTrack = {};
+        RouteTrack.Id = $("#hdnRouteTrack" + rowId).val();
+        RouteTrack.RouteId = routeId;
+        RouteTrack.AssetId = $("#drpRouteTrack" + rowId + routeId).val();
+        RouteTrack.SequenceNumber = $("#sequenceNumber" + rowId + routeId).val();
+        if (RouteTrack.SequenceNumber == null || RouteTrack.SequenceNumber == undefined || RouteTrack.SequenceNumber == "") {
+            CommonNotification("ERROR", "Please enter sequence number!", "error");
+        } else {
+            $.ajax({
+                url: '/Site/SaveRouteTrack',
+                type: 'Post',
+                data: '{mRouteTrack:' + JSON.stringify(RouteTrack) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Route track has been saved.", "success");
+                        fnGetRouteTracks(routeId);
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+
+    function DeleteRouteTrackById(id, routeId, $this) {
+        var rowCount = $("#tracks" + routeId + " tr").length;
+        $("#loader").show();
+        if (id > 0 && rowCount > 1) {
+            $.ajax({
+                url: '/Site/DeleteRouteTrackById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Route track has been deleted.", "success");
+                        fnGetRouteTracks(routeId);
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        } else if (rowCount > 1 && id == 0) {
+            $("#loader").hide();
+            $($this).parent().parent().parent().remove();
+        }
+        else {
+            $("#loader").hide();
+            CommonNotification("ERROR", "Can not delete last row", "error");
+        }
+    }
+</script>

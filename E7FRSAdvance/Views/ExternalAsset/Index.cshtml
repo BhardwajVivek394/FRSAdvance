@@ -1,0 +1,386 @@
+﻿@model Domain.Asset
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+
+<html>
+<head>
+    <meta name="viewport" content="width=device-width" />
+    <title>Asset Details</title>
+    <link href="~/Content/lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="~/Content/lib/jquery-ui/jquery-ui.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-confirm/3.3.2/jquery-confirm.min.css">
+    <link rel="stylesheet" href="~/Content/lib/Hover/hover.css" />
+    <link rel="stylesheet" href="~/Content/lib/fontawesome/css/font-awesome.css" />
+    <link rel="stylesheet" href="~/Content/lib/weather-icons/css/weather-icons.css" />
+    <link rel="stylesheet" href="~/Content/lib/ionicons/css/ionicons.css" />
+    <link rel="stylesheet" href="~/Content/lib/jquery-toggles/toggles-full.css" />
+    <link rel="stylesheet" href="~/Content/lib/morrisjs/morris.css" />
+    <link rel="stylesheet" href="~/Content/lib/jquery-toggles/toggles-full.css" />
+    <link rel="stylesheet" href="~/Content/lib/datatables-plugins/integration/bootstrap/3/dataTables.bootstrap.css" />
+    <link rel="stylesheet" href="~/Content/lib/select2/select2.css" />
+    <link rel="stylesheet" href="~/Content/lib/jquery.gritter/jquery.gritter.css" />
+    <link href="~/Content/lib/timepicker/jquery.timepicker.css" rel="stylesheet" />
+    <link rel="stylesheet" href="~/Content/lib/animate.css/animate.css" />
+    <link href="~/Content/lib/pnotify/pnotify.custom.min.css" rel="stylesheet" />
+    <link href="~/Content/lib/dropzone/dropzone.css" rel="stylesheet" />
+    <link rel="stylesheet" href="~/Content/css/quirk.css" />
+    <script src="~/Content/lib/modernizr/modernizr.js"></script>
+    <style>
+        body {
+            background-image: url('/Content/images/LoginBackground.jpg');
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-size: 100% 100%;
+        }
+
+        .overlay {
+            height: 100%;
+            width: 100%;
+            position: fixed;
+            z-index: 999999999999999999999999999999999;
+            top: 0;
+            left: 0;
+            /*background-color: rgb(0,0,0);
+                      background-color: rgba(176, 176, 176, 0.9);*/
+            overflow-x: hidden;
+            transition: 0.5s;
+        }
+
+        .overlay-content {
+            position: relative;
+            top: 35%;
+            width: 100%;
+            text-align: center;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="contentpanel">
+        <div id="loader" class="overlay" style="display: none; text-align: center;">
+            <div class="overlay-content">
+                <div style="height: 150px; width: 150px;display: inline-block;border-radius:20px;">
+                    <img src="@Url.Content("~/Content/images/load.gif")" style="height: 100px; width: 100px; margin-top: 15px;" />
+                </div>
+            </div>
+        </div>
+        @if (Model != null && Model.Id > 0)
+        {
+            @Html.HiddenFor(m => m.Id, new { id = "hdnId" })
+            @Html.HiddenFor(m => m.SiteId, new { id = "hdnsiteId" })
+            @Html.HiddenFor(m => m.AssetTypeId, new { id = "hdnassetTypeId" })
+            <div class="row mt20">
+                <div class="col-sm-4"></div>
+                <div class="col-sm-4">
+                    <div class="panel panel-profile list-view bgSkyBlue">
+                        <div class="panel-body">
+                            <div class="row mb10">
+                                <div class="col-sm-12">
+                                    <h3>Site: @Model.SiteName's</h3>
+                                </div>
+                            </div>
+                            <div class="row mb20">
+                                <div class="col-sm-6">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" placeholder="mm/dd/yyyy" id="startDate">
+                                        <span class="input-group-addon"><i class="glyphicon glyphicon-calendar"></i></span>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" placeholder="mm/dd/yyyy" id="endDate">
+                                        <span class="input-group-addon"><i class="glyphicon glyphicon-calendar"></i></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="panel panel-success" style="border:2px solid #0085ca;" id="panel@(Model.Id)">
+                                <div class="panel-heading" style="background:#0085ca">
+                                    <h3 class="panel-title">
+                                        @Model.AssetTypeName : @Model.Name
+                                        <span class="pull-right" style="color:white">
+                                            <button class="btn-warning" type="button" id="btnAssetInfo@(Model.Id)" data-assettypeid="@Model.AssetTypeId" data-assetname="@Model.Name" onclick="GetAssetInfo('@Model.Id')">Asset Info</button>
+                                        </span>
+                                    </h3>
+                                    @if (Model.DateList != null && Model.DateList.Count > 0)
+                                    {
+                                        int count = Model.DateList.Count;
+                                        int i = 1;
+                                        <div class="mt20">
+                                            <select onchange="dateList(this)" data-assetid="@Model.Id" class="dropDownList" style="width:100%">
+                                                @foreach (var dateList in Model.DateList)
+                                                {
+                                                    if (i == count)
+                                                    {
+                                                        <option value="@dateList" selected>@dateList</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="@dateList">@dateList</option>
+                                                    }
+                                                    i++;
+                                                }
+                                            </select>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="panel-body" style="padding:5px;margin-bottom:-15px">
+                                    <div class="table-responsive width100p">
+                                        <table class="table table-bordered table-striped">
+                                            <tbody id="tblAttributeData@(Model.Id)">
+                                                @if (Model.assetAttributes != null && Model.assetAttributes.Count > 0)
+                                                {
+                                                    foreach (var assetAttribute in Model.assetAttributes)
+                                                    {
+                                                        if (assetAttribute.IsInfo == false)
+                                                        {
+                                                            <tr>
+                                                                <td style="width:50%">@assetAttribute.Title</td>
+                                                                <td style="width:50%">@assetAttribute.AttributeData</td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <tr>
+                                                        <td class="text-center" colspan="2">No attributes found!</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-4"></div>
+            </div>
+        }
+        else
+        {
+            <div class="row mt20">
+                <div class="col-sm-4"></div>
+                <div class="col-sm-4">
+                    <div class="panel panel-profile list-view bgSkyBlue">
+                        <div class="panel-body">
+                            <div style="text-align:center">
+                                <h3>404!</h3>
+                                <h4>The asset you are looking for has not been found!</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        <div class="modal bounceIn animated" id="modal-add-assetInfo" tabindex="-1" role="dialog" data-backdrop="static">
+            <div class="modal-dialog modal-width">
+                <div class="modal-content bradius4">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                        <h4 class="modal-title" id="myModalLabel"><span id="spHeader"></span></h4>
+                    </div>
+                    <div class="modal-body">
+                        <div id="divAssetInfo">
+
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <a class="btn btn-default" data-dismiss="modal" id="btnClose">Close</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="~/Content/lib/jquery/jquery.js"></script>
+    <script src="~/Content/lib/jquery-ui/jquery-ui.js"></script>
+    <script src="~/Content/lib/bootstrap/js/bootstrap.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-confirm/3.3.2/jquery-confirm.min.js"></script>
+    <script src="~/Content/lib/jquery-toggles/toggles.js"></script>
+    <script src="~/Content/lib/morrisjs/morris.js"></script>
+    <script src="~/Content/lib/raphael/raphael.js"></script>
+    <script src="~/Content/lib/flot/jquery.flot.js"></script>
+    <script src="~/Content/lib/flot/jquery.flot.resize.js"></script>
+    <script src="~/Content/lib/flot-spline/jquery.flot.spline.js"></script>
+    <script src="~/Content/lib/jquery-knob/jquery.knob.js"></script>
+    <script src="~/Content/lib/datatables/jquery.dataTables.js"></script>
+    <script src="~/Scripts/jquery.validate.min.js"></script>
+    <script src="~/Content/lib/timepicker/jquery.timepicker.js"></script>
+    <script src="~/Content/js/jquery.unobtrusive-ajax.min.js"></script>
+    <script src="~/Content/lib/datatables-plugins/integration/bootstrap/3/dataTables.bootstrap.js"></script>
+    <script src="~/Content/lib/select2/select2.js"></script>
+    <script src="~/Content/lib/pnotify/pnotify.custom.min.js"></script>
+    <script src="~/Content/lib/jquery.gritter/jquery.gritter.js"></script>
+    <script src="~/Content/js/quirk.js"></script>
+    <script>
+        $(document).ready(function () {
+            var date = new Date();
+            var startaDate = date.getMonth() + "/" + date.getDate() + "/" + date.getFullYear();
+            $('#startDate').datepicker().datepicker("setDate", new Date(startaDate));
+            $('#endDate').datepicker().datepicker("setDate", new Date());
+            $("#startDate").change(function () {
+                GetAssetAttributesData();
+            });
+            $("#endDate").change(function () {
+                GetAssetAttributesData();
+            });
+            $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        });
+
+        function GetAssetAttributesData() {
+            var startDate = $("#startDate").val();
+            var endDate = $("#endDate").val();
+            var assetId = $("#hdnId").val();
+            var siteId = $("#hdnsiteId").val();
+            var assetTypeId = $("#hdnassetTypeId").val();
+            $("#loader").show();
+            $.ajax({
+                url: '/ExternalAsset/GetAssetAttributesData',
+                type: 'Post',
+                data: '{assetId:' + assetId + ',assetTypeId:' + assetTypeId + ',siteId:' + siteId + ',startDate:"' + startDate + '",endDate:"' + endDate + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.Id > 0) {
+                        var html = "";
+                        html += "<div class='panel-heading' style='background:#0085ca'>";
+                        html += "<h3 class='panel-title'>";
+                        html += data.AssetTypeName + " : " + data.Name;
+                        html += "<span class='pull-right' style='color:white'>";
+                        html += "<button class='btn-warning' type='button' id='btnAssetInfo" + data.Id + "' data-assettypeid=" + data.AssetTypeId + " data-assetname='" + data.Name + "' onclick='GetAssetInfo(" + data.Id + ")'>Asset Info</button>";
+                        html += "</span>";
+                        html += "</h3 >";
+                        if (data.DateList != null && data.DateList.length > 0) {
+                            var count = data.DateList.length;
+                            var i = 1;
+                            html += "<div class='mt20'>";
+                            html += "<select onchange='dateList(this)' data-assetid='" + data.Id + "' class='dropDownList' style='width:100%'>";
+                            $.each(data.DateList, function (ids, val) {
+                                if (i == count) {
+                                    html += "<option value='" + val + "' selected>" + val + "</option>";
+                                } else {
+                                    html += "<option value='" + val + "'>" + val + "</option>";
+                                }
+                                i++;
+                            })
+                            html += "</select>";
+                            html += "</div >";
+                        }
+                        html += "</div >";
+                        html += "<div class='panel-body' style='padding:5px;margin-bottom:-15px;margin-top:-17px'>";
+                        html += "<div class='table-responsive width100p'>";
+                        html += "<table class='table table-bordered table-striped'>";
+                        html += "<table class='table table-bordered table-striped'>";
+                        html += "<tbody id='tblAttributeData" + data.Id + "'>";
+                        if (data.assetAttributes != null && data.assetAttributes.length > 0) {
+                            $.each(data.assetAttributes, function (ids, val) {
+                                if (val.IsInfo == false) {
+                                    html += "<tr>"
+                                    html += "<td style='width:50%'>" + val.Title + "</td>";
+                                    if (val.AttributeData != null) {
+                                        html += "<td style='width:50%'>" + val.AttributeData + "</td>";
+                                    } else {
+                                        html += "<td style='width:50%'></td>";
+                                    }
+                                    html += "</tr>";
+                                }
+                            });
+                        } else {
+                            html += "<tr>";
+                            html += "<td class='text-center' colspan='2'>No attributes found!</td>";
+                            html += "</tr>";
+                        }
+                        html += "</tbody>";
+                        html += "</table>";
+                        html += "</div>";
+                        html += "</div>";
+                        html += "</div>";
+                        $("#panel" + assetId).empty().append(html);
+                        $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+        function GetAssetInfo(id) {
+            var assetName = $("#btnAssetInfo" + id).attr("data-assetname");
+            var assetTypeId = $("#btnAssetInfo" + id).attr("data-assettypeid");
+            $("#loader").show();
+            $.ajax({
+                url: '/ExternalAsset/GetAssetInfo',
+                type: 'Post',
+                data: '{id:' + id + ',assetTypeId:' + assetTypeId + '}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divAssetInfo").empty().append(data);
+                    $("#modal-add-assetInfo").modal('show');
+                    $("#spHeader").text("Asset Info: " + assetName);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+        function dateList($this) {
+            var date = $($this).val();
+            var assetId = $($this).attr("data-assetid");
+            var siteId = $("#hdnsiteId").val();
+            var assetTypeId = $("#hdnassetTypeId").val();
+
+            $("#loader").show();
+            $.ajax({
+                url: '/ExternalAsset/GetAssetAttribute',
+                type: 'Post',
+                data: '{assetId:' + assetId + ',siteId:' + siteId + ',assetTypeId:' + assetTypeId + ',date:"' + date + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        var html = "";
+                        $.each(data, function (ids, val) {
+                            html += "<tr>";
+                            html += "<td class='width100'>" + val.Title + "</td>";
+                            if (val.AttributeData != null) {
+                                html += "<td class='width100'>" + val.AttributeData + "</td>";
+                            } else {
+                                html += "<td class='width100'></td>";
+                            }
+                            html += "</tr>";
+                        });
+                        $("#tblAttributeData" + assetId).empty().append(html);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+
+        function CommonNotification(NotificationTitle, NotificationText, NotificationType) {
+            NoType = NotificationType.toLowerCase();
+            new PNotify({
+                title: NotificationTitle,
+                text: NotificationText,
+                type: NoType,
+                delay: 10000,
+                buttons: {
+                    sticker: false
+                },
+            });
+        }
+    </script>
+</body>
+</html>

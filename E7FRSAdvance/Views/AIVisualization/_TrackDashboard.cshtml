@@ -1,0 +1,290 @@
+﻿@model Domain.TrackDataLister
+
+
+@*@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+    @Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })*@
+<script src="~/assets/js/paho-mqtt.js"></script>
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.TrackDatas.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Remarks </span>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card-header">
+                        <div class="people-options clearfix">
+                            <div class="pull-left" style="margin-left:10px;">
+                                @Html.DropDownListFor(m => m.SearchCriteria.SiteName, new SelectList(Model.SearchCriteria.SiteNames), "Select Site", new { @class = "form-control" })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                @Html.DropDownListFor(m => m.SearchCriteria.AssetName, new SelectList(Model.SearchCriteria.AssetNames), "Select Asset", new { @class = "form-control" })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+
+                                @Html.DropDownListFor(m => m.SearchCriteria.Cluster, new SelectList(Model.SearchCriteria.Clusters), "Select Cluste", new { @class = "form-control" })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+
+                                @Html.DropDownListFor(m => m.SearchCriteria.OutlierCluster, new SelectList(Model.SearchCriteria.OutlierClusters), "Select Outlier Cluster", new { @class = "form-control" })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-success btn-quirk" onclick="SearchTrack()">Search</a>
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-info btn-quirk" href="@Url.Action("DownloadTrack")">Download</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body " style="padding:15px;">
+                        <div class="table-responsive" style="max-height: 620px;">
+                            <table class="table">
+                                <thead class="bg-primary">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Site Name</th>
+                                        <th>Asset Name</th>
+                                        <th>If mA</th>
+                                        <th>Ir mA</th>
+                                        <th>Vr</th>
+                                        <th>Choke V</th>
+                                        <th>Charger mA</th>
+                                        <th>TPR V</th>
+                                        <th>AI Cluster</th>
+                                        <th>Outlier Cluster</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.TrackDatas != null && Model.TrackDatas.Count > 0)
+                                    {
+                                        foreach (var item in Model.TrackDatas)
+                                        {
+                                            <tr class="table-light">
+
+                                                <td>@item.Date</td>
+                                                <td>@item.SiteName</td>
+                                                <td><a href="javascript:void(0)" onclick="fnGetAssetAttribute('@item.SiteName','@item.AssetId','@E7FRSAdvance.Utility.Utility.AssetType.TRACK.GetHashCode()')">@item.AssetName</a></td>
+                                                <td>@item.IfmA</td>
+                                                <td>@item.IrmA</td>
+                                                <td>@item.Vr</td>
+                                                <td>@item.ChokeV</td>
+                                                <td>@item.ChargermA</td>
+                                                <td>@item.TPRV</td>
+                                                <td>@item.Cluster</td>
+                                                <td>@item.OutlierCluster</td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="9" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="divAssetAttributePartial"></div>
+<script>
+    function SearchTrack() {
+        $("#hdnSkip").val('0');
+        $("#frmTrack").submit();
+    }
+
+    function DownloadTrack() {
+       
+    }
+        $(document).ready(function () {
+            $('#drpPageSize').change(function (e) {
+                $("#hdnSkip").val('0');
+                $("#frmTrack").submit();
+            });
+
+        });
+
+        function GetPagerButtonClick(btn) {
+            if (btn == "Next") {
+                if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                    var hdnSkip = $("#hdnSkip").val();
+                    var pageSize = @Model.Pager.PageSize;
+                    var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                    $("#hdnSkip").val(skip);
+                    $("#frmTrack").submit();
+                }
+            }
+            else if (btn == "Previous") {
+                if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+                {
+                    var skip =@Model.Pager.Skip;
+                    skip = skip - @Model.Pager.PageSize;
+                    $("#hdnSkip").val(skip);
+                    $("#frmTrack").submit();
+                }
+            }
+    }
+
+    function fnGetAssetAttribute(siteName, assetId, assetTypeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + siteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+</script>
+
+
+@*<div class="col-12">
+
+        <div class="col-sm-12 col-md-12 col-lg-12">
+            <div class="row">
+                <div class="col-sm-2 mb-1">
+                    <label>Asset Name</label>
+                    <input type="text" class="form-control" id="txtTrackAssetName" />
+                </div>
+                <div class="col-sm-2 mt-4">
+                    <button class="btn btn-success" type="button" onclick="fnFilterTrack()">Search</button>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="card-body " style="padding:15px;">
+            <div class="table-responsive">
+                @if (Model.TrackDatas != null && Model.TrackDatas.Count > 0)
+                {
+                    <table class="table mb-2" style="border-collapse: separate;border-spacing: 0 15px; ">
+
+                        @foreach (var assetName in Model.TrackDatas.GroupBy(x => x.AssetName).ToList())
+                        {
+                            <thead>
+                                <tr class="MainTh">
+                                    <th width="100"><a href="javascript:void(0)"><i class="fa fa-plus" onclick="fnGetTrackData('@assetName.Key', this)"></i></a></th>
+                                    <th>@assetName.Key</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="trTrackAsset_@assetName.Key" style="display:none">
+                                    <td colspan="2">
+                                        <div class="tableFixHead">
+                                            <table class="table">
+                                                <thead class="bg-primary">
+                                                    <tr>
+                                                        <th>Date</th>
+                                                        <th>Asset Name</th>
+                                                        <th>If mA</th>
+                                                        <th>Ir mA</th>
+                                                        <th>Vr</th>
+                                                        <th>Choke V</th>
+                                                        <th>Charger mA</th>
+                                                        <th>TPR V</th>
+                                                        <th>AI Cluster</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+
+                                                    @foreach (var item in Model.TrackDatas.Where(x => x.AssetName.Trim().ToLower() == assetName.Key.Trim().ToLower()))
+                                                    {
+                                                        <tr class="SubTh">
+
+                                                            <td>@item.Date</td>
+                                                            <td>@item.AssetName</td>
+                                                            <td>@item.IfmA</td>
+                                                            <td>@item.IrmA</td>
+                                                            <td>@item.Vr</td>
+                                                            <td>@item.ChokeV</td>
+                                                            <td>@item.ChargermA</td>
+                                                            <td>@item.TPRV</td>
+                                                            <td>@item.AI_cluster</td>
+                                                        </tr>
+                                                    }
+
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                    </td>
+                                </tr>
+                            </tbody>
+
+                        }
+                    </table>
+                }
+
+
+            </div>
+        </div>
+    </div>
+    <script>
+        function fnGetTrackData(assetId, $this) {
+            debugger;
+            if (assetId != null && assetId != undefined && assetId != '') {
+                if ($($this).hasClass("fa-plus")) {
+                    $($this).removeClass("fa-plus").addClass("fa-minus");
+                    $('.trTrackAsset_' + assetId).show();
+                }
+                else {
+                    $($this).removeClass("fa-minus").addClass("fa-plus");
+                    $('.trTrackAsset_' + assetId).hide();
+                }
+            }
+        }
+    </script>*@

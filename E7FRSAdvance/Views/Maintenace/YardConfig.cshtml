@@ -1,0 +1,328 @@
+﻿
+@{
+    ViewBag.Title = "YardConfig";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Yard Config</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Type</strong>
+                            </div>
+                            <div class="pull-left">
+
+                                @Html.DropDownList("TypeId", new List<SelectListItem>
+{
+new SelectListItem{ Text="By Cluster", Value = "1" },
+new SelectListItem{ Text="By Asset", Value = "2" },
+}, new { @class = "form-control", tabindex = 2 })
+                            </div>
+                            <div id="divAssetType" style="display:none">
+                                <div class="pull-left">
+                                    <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Asset Type</strong>
+                                </div>
+                                <div class="pull-left">
+                                    <select id="AssetTypeId" class="form-control" onchange="GetAssetTypeById(this)">
+                                        <option value="0">Select Asset Type</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="pull-left m-l-10">
+                                <button type="button" class="btn btn-success" onclick="fnSearchYardConfig()">Search</button>
+                                <button type="button" class="btn btn-success" onclick="fnDownloadYardConfig()">Download</button>
+                                <button type="button" class="btn btn-success" onclick="fnDownloadMisssingWebConfig()">Misssing Web Config</button>
+                                <button type="button" class="btn btn-success" onclick="fnDownloadMisssingClusterConfig()">Misssing Cluster Config</button>
+                                <button type="button" class="btn btn-success" onclick="fnDownloadMaterialPositioning()">Material Positioning</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div id="divYardConfig">
+                            </div>
+
+                            <div id="divYardConfigByAsset">
+                            </div>
+                        </div>
+                    </div>
+                    <div id="divAssetAttributePartial">
+                        @*@Html.Partial("_AssetAttributePartial", new Domain.AssetLister())*@
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+    $(document).ready(function () {
+        $("#SiteId").change(function () {
+            if ($("#TypeId").val() == 2) {
+                BindAssetType();
+            }
+        });
+
+
+        $("#TypeId").change(function () {
+            if ($(this).val() == 1) {
+                $("#AssetTypeId").empty();
+                $("#divAssetType").hide();
+            }
+            else if ($(this).val() == 2) {
+                BindAssetType();
+                $("#divAssetType").show();
+            }
+        });
+    });
+
+    function BindAssetType() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetAssetTypeBySiteId',
+                type: 'POST',
+                data: '{siteId:' + $("#SiteId").val() + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#AssetTypeId").empty();
+                    $("#AssetTypeId").append($("<option></option>").val('0').html('Select Asset Type'));
+                    $.each(data, function (key, value) {
+                        $("#AssetTypeId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+
+    }
+
+    function GetAssetTypeById($this) {
+        $("#loader").show();
+        $.ajax({
+            url: '/Maintenace/GetAssetById',
+            type: 'Post',
+            data: '{assetTypeId:' + $($this).val() + ',siteId:' + $("#SiteId").val() + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddAsset").empty().append(data);
+                //$("#modal-add-assetType").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnSearchYardConfig() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+
+            if ($("#TypeId").val() == 1) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/Maintenace/GetYardConfig',
+                    type: 'POST',
+                    data: '{siteId:' + $('#SiteId').val() + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        $("#divYardConfigByAsset").empty();
+                        $("#divYardConfig").empty().append(data);
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            } if ($("#TypeId").val() == 2) {
+                if ($("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                    $("#loader").show();
+                    $.ajax({
+                        url: '/Maintenace/GetYardConfigByAssetType',
+                        type: 'POST',
+                        data: '{siteId:' + $('#SiteId').val() + ',assetTypeId:' + $('#AssetTypeId').val() + '}',
+                        contentType: 'application/json',
+                        success: function (data) {
+                            $("#loader").hide();
+                            $("#divYardConfig").empty();
+                            $("#divYardConfigByAsset").empty().append(data);
+                        },
+                        error: function (response) {
+                            $("#loader").hide();
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+                    });
+                }
+                else {
+                    CommonNotification("ERROR", "Please select Asset Type", "Error");
+                }
+            }
+
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+
+    }
+
+    function fnGetByClusterName(clusterId, $this) {
+        if (clusterId != null && clusterId != undefined && clusterId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trCluster_' + clusterId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trCluster_' + clusterId).hide();
+            }
+        }
+    }
+
+    function fnGetByAssetName(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trAsset_' + assetId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trAsset_' + assetId).hide();
+            }
+        }
+    }
+
+    function fnDownloadYardConfig() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+            if ($("#TypeId").val() == 1) {
+                window.location.href = "@Url.Action("DownloadYardConfig")?siteId=" + $("#SiteId").val();
+            }
+            if ($("#TypeId").val() == 2) {
+                if ($("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                    window.location.href = "@Url.Action("DownloadYardConfigByAssetType")?siteId=" + $("#SiteId").val() + "&assetTypeId=" + $("#AssetTypeId").val();
+                } else {
+                    CommonNotification("ERROR", "Please select Asset Type", "Error");
+                }
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadMisssingWebConfig() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+            if ($("#TypeId").val() == 1) {
+                window.location.href = "@Url.Action("DownloadMisssingWebConfig")?siteId=" + $("#SiteId").val();
+            }
+            if ($("#TypeId").val() == 2) {
+                if ($("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                    window.location.href = "@Url.Action("DownloadMisssingWebConfig")?siteId=" + $("#SiteId").val() + "&assetTypeId=" + $("#AssetTypeId").val();
+                } else {
+                    CommonNotification("ERROR", "Please select Asset Type", "Error");
+                }
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadMisssingClusterConfig() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+            if ($("#TypeId").val() == 1) {
+                window.location.href = "@Url.Action("DownloadMisssingClusterConfig")?siteId=" + $("#SiteId").val();
+            }
+            if ($("#TypeId").val() == 2) {
+                if ($("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                    window.location.href = "@Url.Action("DownloadMisssingClusterConfig")?siteId=" + $("#SiteId").val() + "&assetTypeId=" + $("#AssetTypeId").val();
+                } else {
+                    CommonNotification("ERROR", "Please select Asset Type", "Error");
+                }
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadMaterialPositioning() {
+          if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0') {
+            if ($("#TypeId").val() == 1) {
+                window.location.href = "@Url.Action("DownloadMaterialPositioning")?siteId=" + $("#SiteId").val();
+            }
+            if ($("#TypeId").val() == 2) {
+                if ($("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                    @*window.location.href = "@Url.Action("DownloadMaterialPositioningByAssetType")?siteId=" + $("#SiteId").val() + "&assetTypeId=" + $("#AssetTypeId").val();*@
+                } else {
+                    CommonNotification("ERROR", "Please select Asset Type", "Error");
+                }
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnGetAssetAttribute(assetId, assetTypeId) {
+        var siteName = $("#SiteId option:selected").text();
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + siteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+</script>

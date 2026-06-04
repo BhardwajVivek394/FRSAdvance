@@ -1,0 +1,156 @@
+﻿@model Domain.PointMachineDataLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+</style>
+
+<div class="card">
+
+    <div class="card-body" style="padding:15px;">
+        @if (Model.mPointMachineDatas != null && Model.mPointMachineDatas.Count > 0)
+        {
+            foreach (var asset in Model.mPointMachineDatas.GroupBy(x => new { x.AssetId, x.AssetName }).Select(x => x.Key).ToList())
+            {
+                var mAsset = Model.mAssets.Where(x => x.Id == asset.AssetId).FirstOrDefault();
+                if (mAsset != null && mAsset.Id > 0)
+                {
+                    <div class="col-sm-12 col-md-12 col-lg-12">
+                        <div class="card">
+                            <div class="col-xl-12 news box-col-12">
+                                <div class="card card-border">
+                                    <div class="bg-primary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                        <div class="" style="width:95%;float:left;padding:5px;border-top-left-radius:15px;">
+                                            <h6 style="margin-left:10px">
+                                                <a class="text-white"> PointMachine : @asset.AssetName</a>
+                                            </h6>
+                                            @*<span style="margin-left:11px;">Index Score: @item.IndexScore</span>*@
+                                        </div>
+
+
+                                    </div>
+                                    <div class="card-body" style="padding:10px;margin-bottom:-15px">
+                                        <div class="table-responsive width100p tblAssetData m-b-20" style="overflow:auto;max-height:420px;">
+
+                                            <table class="table table-bordered table-striped" id="tblPoint@(asset.AssetId)">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Date</th>
+                                                        <th>Name</th>
+                                                        <th>Direction</th>
+                                                        @if (mAsset.IsSeriesOpration != null && mAsset.IsSeriesOpration.Value)
+                                                        {
+                                                            <th>Combine</th>
+                                                        }
+
+                                                        @if (mAsset.IsHalfPointMachine == null || (mAsset.IsHalfPointMachine != null && !mAsset.IsHalfPointMachine.Value))
+                                                        {
+
+                                                            <th>A Current(Max/Avg)</th>
+                                                            <th>A Voltage</th>
+                                                            <th>A Time (ms)</th>
+                                                        }
+                                                        else
+                                                        {
+                                                            <th>Current(Max/Avg)</th>
+                                                            <th>Voltage</th>
+                                                            <th>Time (ms)</th>
+                                                        }
+
+
+                                                        @if (mAsset.IsHalfPointMachine == null || (mAsset.IsHalfPointMachine != null && !mAsset.IsHalfPointMachine.Value))
+                                                        {
+                                                            <th>B Current(Max/Avg)</th>
+                                                            <th>B Voltage</th>
+                                                            <th>B Time (ms)</th>
+                                                        }
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var point in Model.mPointMachineDatas.Where(x => x.AssetId == asset.AssetId))
+                                                    {
+                                                        var pointRemark = point.Remark.Split('~');
+                                                        <tr>
+                                                            <td>@point.TimeStamp.ToString()</td>
+                                                            <td>@point.AssetName</td>
+                                                            <td>@point.Direction</td>
+
+
+                                                            @if (mAsset.IsSeriesOpration != null && mAsset.IsSeriesOpration.Value)
+                                                            {
+                                                                var sumTime = point.PointMachineJson.A_C_TIME + point.PointMachineJson.B_C_TIME;
+                                                                <td>
+                                                                    <a href="#" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','CC',' @point.Date','@point.Direction','@point.AssetType')">C</a>/<a href="#" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','CV',' @point.Date','@point.Direction','@point.AssetType')">V</a>/<a>T(@sumTime)</a>
+                                                                </td>
+                                                            }
+
+                                                            <td>
+                                                                <a style="cursor:pointer;color:#dc8b33;" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AC',' @point.Date','@point.Direction','@point.AssetType')">
+
+                                                                    @string.Format("{0:0.00}", point.PointMachineJson.A_C_MAX)  /  @string.Format("{0:0.00}", @point.PointMachineJson.A_C_AVERAGE)
+                                                                </a>
+                                                                <br />
+                                                                @if (pointRemark.Length > 0)
+                                                                {
+                                                                    <span>@pointRemark[0]</span>
+                                                                }
+                                                            </td>
+                                                            <td onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.Date','@point.Direction','@point.AssetType')">
+                                                                @point.PointMachineJson.A_V_AVERAGE
+
+                                                            </td>
+                                                            <td>
+                                                                <span> @point.PointMachineJson.A_C_TIME </span>
+                                                            </td>
+                                                            @if (mAsset.IsHalfPointMachine == null || (mAsset.IsHalfPointMachine != null && !mAsset.IsHalfPointMachine.Value))
+                                                            {
+                                                                <td>
+
+                                                                    <a style="cursor:pointer;color:#dc8b33;" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BC',' @point.Date','@point.Direction','@point.AssetType')">@string.Format("{0:0.00}", point.PointMachineJson.B_C_MAX)  /  @string.Format("{0:0.00}", @point.PointMachineJson.B_C_AVERAGE)</a>
+                                                                    <br />
+                                                                    @if (pointRemark.Length > 1)
+                                                                    {
+                                                                        <span>@pointRemark[1]</span>
+                                                                    }
+                                                                </td>
+                                                                <td onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.Date','@point.Direction','@point.AssetType')">
+                                                                    @point.PointMachineJson.B_V_AVERAGE
+
+                                                                </td>
+                                                                <td>
+                                                                    @point.PointMachineJson.B_C_TIME
+                                                                </td>
+
+                                                            }
+                                                        </tr>
+
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+
+            }
+
+        }
+        else
+        {
+            <p style="font-size:15px">No record found!</p>
+        }
+    </div>
+</div>

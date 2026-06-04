@@ -1,0 +1,608 @@
+@* ═══════════════════════════════════════════════════════════════════════
+    _FRSFeedbackSlidePanel.cshtml
+    RDPMS Annexure-D style slide-in feedback panel.
+    Include ONCE in the parent page (Index.cshtml) via:
+        @Html.Partial("_FRSFeedbackSlidePanel")
+    Place it AFTER @Html.Partial("_FRSAlertModals") and OUTSIDE
+    #divAlertDetailReport so it survives AJAX reloads of _List.
+   ═══════════════════════════════════════════════════════════════════════ *@
+
+<!-- Backdrop -->
+<div id="fbSlideBdrop" class="fb-slide-bdrop"></div>
+
+<!-- Slide Panel -->
+<div id="fbSlidePanel" class="fb-slide-panel">
+    <!-- Header -->
+    <div class="fb-panel-header">
+        <div class="fb-panel-title-group">
+            <h2 class="fb-panel-title">Provide Alert Feedback</h2>
+        </div>
+        <button class="fb-panel-close" onclick="closeFeedbackSlidePanel()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <!-- Body -->
+    <div class="fb-panel-body">
+        <!-- Alert Summary Card -->
+        <div class="fb-alert-summary">
+            <div class="fb-summary-header">
+                <div>
+                    <div class="fb-alert-id" id="fbPanelAlertId">#—</div>
+                    <div class="fb-alert-asset" id="fbPanelAssetName">—</div>
+                </div>
+                <span class="fb-alert-type" id="fbPanelAlertType">
+                    <i class="fas fa-exclamation-circle"></i> —
+                </span>
+            </div>
+            <div class="fb-summary-grid">
+                <div class="fb-summary-item">
+                    <span class="fb-summary-label">Station</span>
+                    <span class="fb-summary-value" id="fbPanelStation">—</span>
+                </div>
+                <div class="fb-summary-item">
+                    <span class="fb-summary-label">Division / Zone</span>
+                    <span class="fb-summary-value" id="fbPanelDivZone">—</span>
+                </div>
+                <div class="fb-summary-item">
+                    <span class="fb-summary-label">Cause Code</span>
+                    <span class="fb-summary-value fb-mono" id="fbPanelCause">—</span>
+                </div>
+                <div class="fb-summary-item">
+                    <span class="fb-summary-label">Incidence Time</span>
+                    <span class="fb-summary-value" id="fbPanelIncTime">—</span>
+                </div>
+                <div class="fb-summary-item">
+                    <span class="fb-summary-label">Duration</span>
+                    <span class="fb-summary-value" id="fbPanelDuration" style="color:#ef4444;">—</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ FULL FEEDBACK MODE ═══ -->
+        <div id="fbFullMode" style="display:none;">
+            <!-- Feedback type selection (PT / T / F / M) -->
+            <div class="fb-section">
+                <div class="fb-section-title">
+                    <i class="fas fa-check-circle"></i>
+                    Select Feedback Type <span class="fb-req">*</span>
+                </div>
+                <div class="fb-options" id="fbOptions">
+                    <div class="fb-option fb-opt-pt" data-status="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()" onclick="selectFbOption(this)">
+                        <div class="fb-option-icon">PT</div>
+                        <div class="fb-option-label">Partially True</div>
+                        <div class="fb-option-desc">Failure occurred BUT cause differs</div>
+                    </div>
+                    <div class="fb-option fb-opt-t" data-status="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()" onclick="selectFbOption(this)">
+                        <div class="fb-option-icon">T</div>
+                        <div class="fb-option-label">True</div>
+                        <div class="fb-option-desc">Failure occurred AND cause matches</div>
+                    </div>
+                    <div class="fb-option fb-opt-f" data-status="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()" onclick="selectFbOption(this)">
+                        <div class="fb-option-icon">F</div>
+                        <div class="fb-option-label">False</div>
+                        <div class="fb-option-desc">No actual failure at site</div>
+                    </div>
+                    <div class="fb-option fb-opt-m" data-status="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()" onclick="selectFbOptionM(this)">
+                        <div class="fb-option-icon">M</div>
+                        <div class="fb-option-label">Maintenance</div>
+                        <div class="fb-option-desc">Alert during maintenance</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cause Code dropdown (shown for PT) -->
+            <div class="fb-section" id="fbDivRemarkAlertInfo" style="display:none;">
+                <div class="fb-section-title">
+                    <i class="fas fa-tag"></i>
+                    Cause Code <span class="fb-req">*</span>
+                </div>
+                <select class="fb-form-select" id="fbDrpRemarkAlertInfo">
+                    <option value="">Select</option>
+                </select>
+            </div>
+
+            <!-- Rectification Date/Time -->
+            <div class="fb-section">
+                <div class="fb-section-title">
+                    <i class="fas fa-calendar-check"></i>
+                    Rectification Date &amp; Time
+                </div>
+                <input type="datetime-local" class="fb-form-input" id="fbTxtRectificationDateTime" />
+            </div>
+
+            <!-- Remark -->
+            <div class="fb-section">
+                <div class="fb-section-title">
+                    <i class="fas fa-comment-alt"></i>
+                    Remark <span class="fb-req">*</span>
+                </div>
+                <textarea class="fb-form-textarea" id="fbTxtAlertRemark" placeholder="Describe action taken, root cause analysis, observations..."></textarea>
+            </div>
+
+            <!-- Hidden fields -->
+            <input type="hidden" id="fbHdnAlertRemarkId" />
+            <input type="hidden" id="fbHdnAlertAlertStatusId" />
+        </div>
+
+        <!-- ═══ REMARK-ONLY MODE ═══ -->
+        <div id="fbRemarkOnlyMode" style="display:none;">
+            <div class="fb-section">
+                <div class="fb-section-title">
+                    <i class="fas fa-comment-alt"></i>
+                    Remark <span class="fb-req">*</span>
+                </div>
+                <textarea class="fb-form-textarea" id="fbTxtAlertRemarkWithOutFeedback" placeholder="Enter your remark..."></textarea>
+            </div>
+            <input type="hidden" id="fbHdnAlertRemarkWithOutFeedbackId" />
+            <input type="hidden" id="fbHdnAlertAlertStatusWithOutFeedbackId" />
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="fb-panel-footer">
+        <button class="fb-btn-cancel" onclick="closeFeedbackSlidePanel()">Cancel</button>
+        <button class="fb-btn-save" id="fbBtnSubmit" onclick="submitFeedbackSlidePanel()">
+            <i class="fas fa-paper-plane"></i>
+            Submit Feedback
+        </button>
+    </div>
+</div>
+
+
+@* ═══════════════════════════════════════════════════════════════
+   SLIDE PANEL JAVASCRIPT
+   ═══════════════════════════════════════════════════════════════ *@
+<script>
+(function () {
+    var _fbMode = ''; // 'full' or 'remarkOnly'
+
+    /* ───────────────── OPEN ───────────────── */
+    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone) {
+        _fbMode = mode;
+
+        /* Populate summary */
+        document.getElementById('fbPanelAlertId').textContent = '#' + alertId;
+        document.getElementById('fbPanelAssetName').textContent = asset || '—';
+        document.getElementById('fbPanelStation').textContent = station || '—';
+        document.getElementById('fbPanelDivZone').textContent =
+            ((division || '') + (division && zone ? ' / ' : '') + (zone || '')) || '—';
+        document.getElementById('fbPanelCause').textContent = cause || '—';
+        document.getElementById('fbPanelIncTime').textContent = incTime || '—';
+        document.getElementById('fbPanelDuration').textContent = duration || '—';
+
+        /* Type badge */
+        var typeBadge = document.getElementById('fbPanelAlertType');
+        var tl = (typeLbl || '').toLowerCase();
+        var ico = tl.indexOf('predict') >= 0 ? 'chart-line' : tl.indexOf('health') >= 0 ? 'heartbeat' : 'exclamation-circle';
+        var cls = tl.indexOf('predict') >= 0 ? 'predictive' : tl.indexOf('fail') >= 0 ? 'failure' : 'unknown';
+        typeBadge.className = 'fb-alert-type ' + cls;
+        typeBadge.innerHTML = '<i class="fas fa-' + ico + '"></i> ' + (typeLbl || '—');
+
+        /* Toggle mode */
+        if (mode === 'full') {
+            document.getElementById('fbFullMode').style.display = 'block';
+            document.getElementById('fbRemarkOnlyMode').style.display = 'none';
+            document.getElementById('fbBtnSubmit').innerHTML = '<i class="fas fa-paper-plane"></i> Submit Feedback';
+
+            /* Reset */
+            var opts = document.querySelectorAll('#fbOptions .fb-option');
+            for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
+            document.getElementById('fbTxtAlertRemark').value = '';
+            document.getElementById('fbTxtRectificationDateTime').value = '';
+            document.getElementById('fbDivRemarkAlertInfo').style.display = 'none';
+            document.getElementById('fbHdnAlertAlertStatusId').value = '';
+
+            /* Pre-select if current status already set */
+            if (statusId) {
+                for (var i = 0; i < opts.length; i++) {
+                    if (opts[i].getAttribute('data-status') === String(statusId)) {
+                        opts[i].classList.add('selected');
+                    }
+                }
+                document.getElementById('fbHdnAlertAlertStatusId').value = statusId;
+            }
+
+            /* Load alert data (remark, cause code list) */
+            _loadAlertDataForPanel(alertId, statusId);
+        } else {
+            document.getElementById('fbFullMode').style.display = 'none';
+            document.getElementById('fbRemarkOnlyMode').style.display = 'block';
+            document.getElementById('fbBtnSubmit').innerHTML = '<i class="fas fa-paper-plane"></i> Submit Remark';
+            document.getElementById('fbTxtAlertRemarkWithOutFeedback').value = '';
+            document.getElementById('fbHdnAlertRemarkWithOutFeedbackId').value = alertId;
+            document.getElementById('fbHdnAlertAlertStatusWithOutFeedbackId').value = statusId;
+        }
+
+        /* Slide open */
+        document.getElementById('fbSlidePanel').classList.add('active');
+        document.getElementById('fbSlideBdrop').classList.add('show');
+    };
+
+    /* ── Load alert detail for full mode ── */
+    function _loadAlertDataForPanel(id, statusId) {
+        $("#loader,#e7-loader").filter(':first').show();
+        $.ajax({
+            url: '/FRS25/Alerts/GetBy',
+            type: 'POST',
+            data: '{id:' + id + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader,#e7-loader").hide();
+                if (data != null && data.Id > 0) {
+                    document.getElementById('fbHdnAlertRemarkId').value = id;
+                    document.getElementById('fbTxtAlertRemark').value = data.Remark || '';
+                    document.getElementById('fbHdnAlertAlertStatusId').value = statusId;
+                }
+                /* Populate cause code dropdown for PT */
+                if (data.mAlertInfos != null && data.mAlertInfos.length > 0
+                    && statusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
+                    document.getElementById('fbDivRemarkAlertInfo').style.display = 'block';
+                    var drp = document.getElementById('fbDrpRemarkAlertInfo');
+                    drp.innerHTML = '<option value="">Select</option>';
+                    for (var i = 0; i < data.mAlertInfos.length; i++) {
+                        var opt = document.createElement('option');
+                        opt.value = data.mAlertInfos[i].Id;
+                        opt.textContent = data.mAlertInfos[i].Name;
+                        drp.appendChild(opt);
+                    }
+                } else {
+                    document.getElementById('fbDrpRemarkAlertInfo').innerHTML = '';
+                    document.getElementById('fbDivRemarkAlertInfo').style.display = 'none';
+                }
+            },
+            error: function () {
+                $("#loader,#e7-loader").hide();
+                if (typeof CommonNotification === 'function')
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    /* ───────────────── FEEDBACK OPTION SELECT ───────────────── */
+    window.selectFbOption = function (el) {
+        var opts = document.querySelectorAll('#fbOptions .fb-option');
+        for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
+        el.classList.add('selected');
+        var statusId = el.getAttribute('data-status');
+        document.getElementById('fbHdnAlertAlertStatusId').value = statusId;
+
+        /* Show/hide cause code dropdown for PT */
+        var ptId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()';
+        if (statusId === ptId) {
+            document.getElementById('fbDivRemarkAlertInfo').style.display = 'block';
+            /* Reload cause codes if not yet loaded */
+            var drp = document.getElementById('fbDrpRemarkAlertInfo');
+            if (drp.options.length <= 1) {
+                var alertId = document.getElementById('fbHdnAlertRemarkId').value;
+                _loadAlertDataForPanel(alertId, ptId);
+            }
+        } else {
+            document.getElementById('fbDivRemarkAlertInfo').style.display = 'none';
+        }
+    };
+
+    /* ── Maintenance — direct status update, no remark needed ── */
+    window.selectFbOptionM = function (el) {
+        var alertId = document.getElementById('fbHdnAlertRemarkId').value;
+        var statusId = el.getAttribute('data-status');
+        closeFeedbackSlidePanel();
+        if (typeof fnUpdateAckStatus === 'function') {
+            fnUpdateAckStatus(alertId, statusId);
+        }
+    };
+
+    /* ───────────────── SUBMIT ───────────────── */
+    window.submitFeedbackSlidePanel = function () {
+        var currentSkip = window._alertCurrentSkip || 0;
+
+        if (_fbMode === 'full') {
+            var remarkVal = document.getElementById('fbTxtAlertRemark').value;
+            if (!remarkVal) { alert('Remark is required.'); return; }
+
+            var statusId = document.getElementById('fbHdnAlertAlertStatusId').value;
+            if (!statusId) { alert('Please select a feedback type.'); return; }
+
+            var mFRSAlert = {
+                Id: document.getElementById('fbHdnAlertRemarkId').value,
+                Remark: remarkVal,
+                AcknowledgemenStatusId: statusId
+            };
+
+            var rectVal = document.getElementById('fbTxtRectificationDateTime').value;
+            if (rectVal) {
+                var rectDate = new Date(rectVal);
+                if (rectDate > new Date()) { alert("Future date & time is not allowed."); return; }
+                mFRSAlert.RectificationDateTime = rectDate.toISOString();
+            }
+
+            var ptId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()';
+            if (statusId === ptId) {
+                mFRSAlert.PTAlertInfoId = document.getElementById('fbDrpRemarkAlertInfo').value;
+                if (!mFRSAlert.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+            }
+
+            $("#loader,#e7-loader").filter(':first').show();
+            $.ajax({
+                url: '/FRS25/Alerts/UpdateRemark',
+                type: 'POST', contentType: 'application/json',
+                data: JSON.stringify(mFRSAlert), dataType: 'json',
+                success: function (data) {
+                    $("#loader,#e7-loader").hide();
+                    closeFeedbackSlidePanel();
+                    _refreshList(currentSkip);
+                    _showResult(data);
+                },
+                error: function () {
+                    $("#loader,#e7-loader").hide();
+                    closeFeedbackSlidePanel();
+                    alert("Something went wrong!");
+                }
+            });
+
+        } else {
+            /* remarkOnly mode */
+            var remarkVal = document.getElementById('fbTxtAlertRemarkWithOutFeedback').value;
+            if (!remarkVal) { alert('Remark is required.'); return; }
+
+            var mFRSAlert = {
+                Id: document.getElementById('fbHdnAlertRemarkWithOutFeedbackId').value,
+                Remark: remarkVal,
+                AcknowledgemenStatusId: document.getElementById('fbHdnAlertAlertStatusWithOutFeedbackId').value
+            };
+
+            $("#loader,#e7-loader").filter(':first').show();
+            $.ajax({
+                url: '/FRS25/Alerts/UpdateRemark',
+                type: 'POST', contentType: 'application/json',
+                data: JSON.stringify(mFRSAlert), dataType: 'json',
+                success: function (data) {
+                    $("#loader,#e7-loader").hide();
+                    closeFeedbackSlidePanel();
+                    _refreshList(currentSkip);
+                    _showResult(data);
+                },
+                error: function () {
+                    $("#loader,#e7-loader").hide();
+                    closeFeedbackSlidePanel();
+                    alert("Something went wrong!");
+                }
+            });
+        }
+    };
+
+    /* ───────────────── CLOSE ───────────────── */
+    window.closeFeedbackSlidePanel = function () {
+        document.getElementById('fbSlidePanel').classList.remove('active');
+        document.getElementById('fbSlideBdrop').classList.remove('show');
+    };
+    document.getElementById('fbSlideBdrop').addEventListener('click', closeFeedbackSlidePanel);
+
+    /* ── Helpers ── */
+    function _refreshList(skip) {
+        if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
+        else if (typeof fnGetAlertList === 'function') fnGetAlertList(skip);
+        else location.reload();
+    }
+    function _showResult(data) {
+        if (data == null) return;
+        var msg = data.result || '';
+        if (typeof CommonNotification === 'function') {
+            if (data.type === 'success') CommonNotification("SUCCESS", msg, "success");
+            else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
+        }
+    }
+})();
+</script>
+
+
+@* ═══════════════════════════════════════════════════════════════
+   SLIDE PANEL CSS
+   ═══════════════════════════════════════════════════════════════ *@
+<style>
+/* ── Feedback display badge (in _List table) ── */
+.feedback-display-wrap { display:flex; flex-direction:column; align-items:center; gap:6px; }
+.alrt-fb-badge {
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:32px; padding:4px 10px; border-radius:8px;
+    font-size:12px; font-weight:700; letter-spacing:.04em;
+}
+.alrt-fb-badge.fb-true   { background:rgba(74,222,128,.15); color:#4ade80; border:1px solid rgba(74,222,128,.30); }
+.alrt-fb-badge.fb-partial{ background:rgba(251,191,36,.15);  color:#fbbf24; border:1px solid rgba(251,191,36,.30); }
+.alrt-fb-badge.fb-false  { background:rgba(248,113,113,.15); color:#f87171; border:1px solid rgba(248,113,113,.30); }
+.alrt-fb-badge.fb-maint  { background:rgba(167,139,250,.15); color:#a78bfa; border:1px solid rgba(167,139,250,.30); }
+.alrt-fb-badge.fb-none   { background:rgba(255,255,255,.05); color:rgba(255,255,255,.25); border:1px solid rgba(255,255,255,.08); }
+.alrt-fb-remark-link {
+    font-size:11px; color:rgba(34,211,238,.65); cursor:pointer; transition:color .18s;
+}
+.alrt-fb-remark-link:hover { color:#22d3ee; text-decoration:underline; }
+
+/* ── Feedback action button (green, in Actions column) ── */
+.alrt-act-btn.alrt-act-feedback {
+    background:linear-gradient(135deg,#059669 0%,#10b981 100%) !important;
+    color:#fff !important; border-color:#059669 !important;
+    box-shadow:0 2px 8px rgba(16,185,129,.35);
+}
+.alrt-act-btn.alrt-act-feedback:hover {
+    background:linear-gradient(135deg,#047857 0%,#059669 100%) !important;
+    box-shadow:0 4px 14px rgba(16,185,129,.50); transform:translateY(-1px);
+}
+
+/* ══════════════════════════════════════════════
+   SLIDE PANEL SHELL
+   ══════════════════════════════════════════════ */
+.fb-slide-bdrop {
+    position:fixed; inset:0; background:rgba(0,0,0,.55);
+    backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
+    z-index:1065; opacity:0; pointer-events:none; transition:opacity .3s;
+}
+.fb-slide-bdrop.show { opacity:1; pointer-events:auto; }
+
+.fb-slide-panel {
+    position:fixed; top:0; right:-560px;
+    width:540px; max-width:100vw; height:100vh;
+    background:linear-gradient(175deg,#0c1228 0%,#080c1c 100%);
+    z-index:1070; transition:right .4s cubic-bezier(.22,1,.36,1);
+    display:flex; flex-direction:column;
+    box-shadow:-20px 0 70px rgba(0,0,0,.80),inset 1px 0 0 rgba(34,211,238,.06);
+    border-left:1px solid rgba(34,211,238,.18);
+}
+.fb-slide-panel.active { right:0; }
+
+/* Top gradient bar */
+.fb-slide-panel::before {
+    content:""; display:block; position:absolute; top:0; left:0; right:0;
+    height:3px; z-index:2;
+    background:linear-gradient(90deg,#22d3ee 0%,#818cf8 45%,#f472b6 100%);
+    box-shadow:0 0 20px rgba(34,211,238,.35);
+}
+
+/* ── Header ── */
+.fb-panel-header {
+    flex-shrink:0; padding:22px 24px 18px;
+    background:linear-gradient(135deg,rgba(34,211,238,.10) 0%,rgba(129,140,248,.06) 100%);
+    border-bottom:1px solid rgba(255,255,255,.07);
+    display:flex; justify-content:space-between; align-items:flex-start;
+    margin-top:3px;
+}
+.fb-panel-title-group { display:flex; flex-direction:column; gap:4px; }
+.fb-panel-title { font-size:17px; font-weight:700; color:#fff; margin:0; letter-spacing:-.025em; }
+.fb-panel-subtitle { font-size:13px; color:rgba(255,255,255,.55); margin:0; }
+.fb-panel-close {
+    width:34px; height:34px; border-radius:8px;
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10);
+    color:rgba(255,255,255,.45); font-size:14px; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition:all .18s; flex-shrink:0;
+}
+.fb-panel-close:hover {
+    background:rgba(251,113,133,.18); border-color:rgba(251,113,133,.38);
+    color:#fb7185; transform:scale(1.05);
+}
+
+/* ── Body ── */
+.fb-panel-body {
+    flex:1; overflow-y:auto; overflow-x:hidden; padding:24px;
+    scrollbar-width:thin; scrollbar-color:rgba(34,211,238,.15) transparent;
+}
+.fb-panel-body::-webkit-scrollbar { width:4px; }
+.fb-panel-body::-webkit-scrollbar-track { background:transparent; }
+.fb-panel-body::-webkit-scrollbar-thumb { background:rgba(34,211,238,.18); border-radius:2px; }
+
+/* ── Alert Summary ── */
+.fb-alert-summary {
+    background:rgba(255,255,255,.04); border-radius:12px; padding:20px;
+    margin-bottom:24px; border:1px solid rgba(255,255,255,.08);
+}
+.fb-summary-header {
+    display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;
+}
+.fb-alert-id { font-family:'SF Mono',monospace; font-size:12px; color:rgba(255,255,255,.40); margin-bottom:4px; }
+.fb-alert-asset { font-size:17px; font-weight:700; color:#fff; }
+.fb-alert-type {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:5px 12px; border-radius:20px; font-size:12px; font-weight:700;
+}
+.fb-alert-type.failure    { background:rgba(239,68,68,.15);  color:#ef4444; }
+.fb-alert-type.predictive { background:rgba(245,158,11,.15); color:#f59e0b; }
+.fb-alert-type.unknown    { background:rgba(100,116,139,.15); color:#64748b; }
+.fb-summary-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.fb-summary-item { display:flex; flex-direction:column; gap:3px; }
+.fb-summary-label {
+    font-size:10px; font-weight:700; text-transform:uppercase;
+    letter-spacing:.12em; color:rgba(34,211,238,.55);
+}
+.fb-summary-value { font-size:13.5px; font-weight:600; color:rgba(255,255,255,.85); }
+.fb-mono { font-family:'SF Mono',monospace; color:#22d3ee !important; }
+
+/* ── Section titles ── */
+.fb-section { margin-bottom:22px; }
+.fb-section-title {
+    font-size:13px; font-weight:700; color:rgba(255,255,255,.80);
+    margin-bottom:12px; display:flex; align-items:center; gap:10px;
+}
+.fb-section-title i { color:#22d3ee; font-size:13px; }
+.fb-req { color:#fb7185 !important; margin-left:2px; }
+
+/* ── Feedback options grid ── */
+.fb-options { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+.fb-option {
+    padding:16px 8px; border-radius:12px;
+    border:2px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03);
+    cursor:pointer; transition:all .22s; text-align:center;
+}
+.fb-option:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,.30); }
+.fb-option-icon {
+    width:38px; height:38px; border-radius:50%; margin:0 auto 8px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:800;
+}
+.fb-option-label { font-size:12px; font-weight:700; color:rgba(255,255,255,.80); margin-bottom:3px; }
+.fb-option-desc  { font-size:9.5px; color:rgba(255,255,255,.35); line-height:1.4; }
+.fb-opt-pt .fb-option-icon { background:rgba(251,191,36,.15); color:#fbbf24; }
+.fb-opt-t  .fb-option-icon { background:rgba(74,222,128,.15);  color:#4ade80; }
+.fb-opt-f  .fb-option-icon { background:rgba(248,113,113,.15); color:#f87171; }
+.fb-opt-m  .fb-option-icon { background:rgba(167,139,250,.15); color:#a78bfa; }
+.fb-opt-pt.selected { border-color:rgba(251,191,36,.50); background:rgba(251,191,36,.10); }
+.fb-opt-t.selected  { border-color:rgba(74,222,128,.50);  background:rgba(74,222,128,.10); }
+.fb-opt-f.selected  { border-color:rgba(248,113,113,.50); background:rgba(248,113,113,.10); }
+.fb-opt-m.selected  { border-color:rgba(167,139,250,.50); background:rgba(167,139,250,.10); }
+
+/* ── Form elements ── */
+.fb-form-input, .fb-form-select, .fb-form-textarea {
+    width:100%; background:rgba(255,255,255,.05);
+    border:1.5px solid rgba(255,255,255,.09); border-radius:10px;
+    padding:12px 15px; font-size:13.5px; font-family:inherit;
+    color:rgba(255,255,255,.88); color-scheme:dark;
+    box-shadow:none; outline:none;
+    transition:border-color .20s,box-shadow .20s,background .20s;
+    box-sizing:border-box;
+}
+.fb-form-textarea { resize:vertical; min-height:100px; line-height:1.65; }
+.fb-form-input:focus, .fb-form-select:focus, .fb-form-textarea:focus {
+    border-color:rgba(34,211,238,.55); background:rgba(34,211,238,.04);
+    box-shadow:0 0 0 3px rgba(34,211,238,.12),inset 0 1px 0 rgba(34,211,238,.05);
+    color:#fff;
+}
+.fb-form-input::placeholder, .fb-form-textarea::placeholder { color:rgba(255,255,255,.20); }
+.fb-form-select option { background:#0d1220; color:rgba(255,255,255,.90); }
+.fb-form-input[type=datetime-local]::-webkit-calendar-picker-indicator {
+    filter:invert(.7) sepia(1) saturate(3) hue-rotate(165deg); opacity:.7; cursor:pointer;
+}
+
+/* ── Footer ── */
+.fb-panel-footer {
+    flex-shrink:0; padding:16px 24px; background:rgba(0,0,0,.30);
+    border-top:1px solid rgba(255,255,255,.06);
+    display:flex; justify-content:flex-end; align-items:center; gap:10px;
+}
+.fb-btn-save {
+    display:inline-flex; align-items:center; gap:7px;
+    background:linear-gradient(135deg,#22d3ee 0%,#818cf8 55%,#a78bfa 100%);
+    border:none; color:#fff; font-size:13.5px; font-weight:700; letter-spacing:.02em;
+    padding:11px 26px; border-radius:11px;
+    box-shadow:0 4px 20px -4px rgba(34,211,238,.55),0 0 0 1px rgba(34,211,238,.15);
+    transition:all .20s; cursor:pointer;
+}
+.fb-btn-save:hover {
+    opacity:.88; transform:translateY(-2px);
+    box-shadow:0 8px 28px -4px rgba(34,211,238,.60),0 0 0 1px rgba(34,211,238,.20);
+}
+.fb-btn-save:active { transform:translateY(0); opacity:.82; }
+.fb-btn-cancel {
+    display:inline-flex; align-items:center; gap:7px;
+    background:rgba(255,255,255,.06); border:1.5px solid rgba(255,255,255,.11);
+    color:rgba(255,255,255,.55); font-size:13.5px; font-weight:600;
+    padding:10px 20px; border-radius:11px; transition:all .18s; cursor:pointer;
+}
+.fb-btn-cancel:hover {
+    background:rgba(255,255,255,.11); border-color:rgba(255,255,255,.20);
+    color:rgba(255,255,255,.85);
+}
+
+/* ── Responsive ── */
+@@media(max-width:600px) {
+    .fb-slide-panel { width:100%; right:-100%; }
+    .fb-options { grid-template-columns:repeat(2,1fr); }
+}
+</style>

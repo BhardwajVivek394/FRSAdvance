@@ -1,0 +1,208 @@
+﻿@model Domain.FRSAlertLister
+<div class="col-12">
+    <div class="card-body">
+        @if (Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+        {
+            <div class="email-wrap email-main-wrapper">
+                <div class="row">
+                    <div class="col-xxl-12 col-xl-12 box-col-12">
+                        <div class="email-right-aside">
+                            <div class="card email-body email-list">
+                                <div class="mail-header-wrapper" style="background-color:#215968; color:white; border-top-left-radius: 15px; border-top-right-radius:15px;">
+                                    <div class="col-xl-12">
+                                        <div class="mail-header">
+                                            <div class="form-check form-check-inline">
+                                                <ul class="email-tabs nav" role="tablist">
+                                                    @{
+                                                        var grouByAssetType = Model.mFRSAlerts.GroupBy(x => new { x.AssetTypeId, x.AssetType }).Select(x => x.Key).ToList();
+                                                    }
+                                                    @foreach (var atype in grouByAssetType)
+                                                    {
+                                                        var isActive = "";
+                                                        if (atype == grouByAssetType.FirstOrDefault())
+                                                        {
+                                                            isActive = "show active";
+                                                        }
+                                                        if (Model.SearchCriteria.CurrentTab != null && Model.SearchCriteria.CurrentTab != string.Empty)
+                                                        {
+                                                            if (atype.AssetType.Trim().ToLower().StartsWith(Model.SearchCriteria.CurrentTab.Trim().ToLower()))
+                                                            {
+                                                                isActive = "show active";
+                                                            }
+                                                            else
+                                                            {
+                                                                isActive = "";
+                                                            }
+                                                        }
+
+                                                        <li class="nav-item">
+
+                                                            <a class="nav-link @isActive" id="@atype.AssetType.Replace(" ","")-pill-tab" data-bs-toggle="pill" href="#@atype.AssetType.Replace(" ","")-pill" role="tab" aria-controls="@atype.AssetType.Replace(" ","")-pill" aria-selected="false" style="color:white;">
+                                                                <div>@atype.AssetType</div>
+                                                                <span class="span badge rounded-pill pill-badge-primary">@Model.mFRSAlerts.Where(x => x.AssetTypeId == atype.AssetTypeId).Count()</span>
+                                                            </a>
+                                                        </li>
+                                                    }
+
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="tab-content" id="email-pills-tabContent">
+
+                                    @foreach (var item in grouByAssetType)
+                                    {
+                                        var isActive = "";
+                                        int counter = 1;
+                                        if (item == grouByAssetType.FirstOrDefault())
+                                        {
+                                            isActive = "show active";
+                                        }
+                                        if (Model.SearchCriteria.CurrentTab != null && Model.SearchCriteria.CurrentTab != string.Empty)
+                                        {
+                                            if (item.AssetType.Trim().ToLower().StartsWith(Model.SearchCriteria.CurrentTab.Trim().ToLower()))
+                                            {
+                                                isActive = "show active";
+                                            }
+                                            else
+                                            {
+                                                isActive = "";
+                                            }
+                                        }
+                                        <div class="tab-pane fade @isActive" id="@item.AssetType.Replace(" ","")-pill" role="tabpanel" aria-labelledby="@item.AssetType.Replace(" ","")-pill-tab">
+                                            <div class="mail-body-wrapper">
+                                                <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                    @if (Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                                                    {
+                                                        foreach (var frsAlert in Model.mFRSAlerts.Where(x => x.AssetTypeId == item.AssetTypeId).ToList())
+                                                        {
+                                                            var isDisable = false;
+                                                            <li class="inbox-data">
+                                                                <div class="inbox-user">
+                                                                    <p>@counter.</p>
+                                                                    <p>@frsAlert.SiteName (@frsAlert.StationCode)</p>
+                                                                </div>
+                                                                <div class="inbox-message">
+                                                                    <div class="email-data">
+                                                                        <span><b>@frsAlert.CauseCode</b></span>
+                                                                        <span>@frsAlert.SetAlertMessage</span>
+                                                                        <span>@Html.Raw(frsAlert.Description)</span>
+                                                                        <span><b>Incidence Date & Time:</b> @frsAlert.SetTimeStamp.ToString("dd/MM/yyyy hh:mm:ss tt")</span>
+                                                                        @if (frsAlert.IsActive == true)
+                                                                        {
+                                                                            <div class="span badge rounded-pill pill-badge-danger">@E7FRSAdvance.Utility.Utility.AlertStatus.Active.ToString()</div>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <div class="span badge rounded-pill pill-badge-success">@E7FRSAdvance.Utility.Utility.AlertStatus.InActive.ToString()</div>
+                                                                        }
+                                                                    </div>
+                                                                    <div class="email-timing">
+                                                                        @if (frsAlert.IsRailwayUpdate != null && frsAlert.IsRailwayUpdate.Value)
+                                                                        {
+                                                                            <div style="width: 34px; height: 34px; border: 2px solid red; color: red; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;margin-right:4px ">
+                                                                                RLF
+                                                                            </div>
+                                                                        }
+
+                                                                        @if (ViewBag.FRSAlertAudits != null)
+                                                                        {
+                                                                            var frsAlertAudit = ViewBag.FRSAlertAudits as List<Domain.FRSAlertAudit>;
+                                                                            if (frsAlertAudit != null && frsAlertAudit.Count > 0)
+                                                                            {
+                                                                                var frsAlertAud = frsAlertAudit.Where(x => x.AssetId == frsAlert.AssetId && x.AlertInfoId == frsAlert.AlertInfoId).OrderByDescending(x => x.CreatedDate).FirstOrDefault();
+                                                                                if (frsAlertAud != null && frsAlertAud.Id > 0)
+                                                                                {
+                                                                                    if (frsAlertAud.IssueTypeId != null && !frsAlertAud.IsAlert)
+                                                                                    {
+                                                                                        var emdDisplayname = E7FRSAdvance.Utility.EnumHelper.GetDisplayName<E7FRSAdvance.Utility.Utility.FRSAlertIssue>(frsAlertAud.IssueTypeId.Value);
+                                                                                        if (emdDisplayname != null && emdDisplayname != string.Empty)
+                                                                                        {
+                                                                                            if (!frsAlertAud.IsResolved)
+                                                                                            {
+                                                                                                isDisable = true;
+
+                                                                                                <div style="width:32px; height:32px; border:2px solid red; color:red; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;" onclick="fnShowFRSAlertAuditView('@frsAlertAud.AssetId','@frsAlertAud.AlertInfoId')">
+                                                                                                    @emdDisplayname
+                                                                                                </div>
+                                                                                            }
+                                                                                            else
+                                                                                            {
+                                                                                                <div style="width: 32px; height: 32px; border: 2px solid green; color: green; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;" onclick="fnShowFRSAlertAuditView('@frsAlertAud.AssetId','@frsAlertAud.AlertInfoId')">
+                                                                                                    @emdDisplayname
+                                                                                                </div>
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                    else if (frsAlertAud.IsAlert && frsAlertAud.IsRailwayAlert != null)
+                                                                                    {
+                                                                                        if (frsAlertAud.IsRailwayAlert.Value)
+                                                                                        {
+                                                                                            <div style="width: 32px; height: 32px; border: 2px solid green; color: green; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;" onclick="fnShowFRSAlertAuditView('@frsAlertAud.AssetId','@frsAlertAud.AlertInfoId')">
+                                                                                                RT
+                                                                                            </div>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <div style="width: 32px; height: 32px; border: 2px solid #FFEA00; color: #FFEA00; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; " onclick="fnShowFRSAlertAuditView('@frsAlertAud.AssetId','@frsAlertAud.AlertInfoId')">
+                                                                                                T
+                                                                                            </div>
+                                                                                        }
+
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        <div style="width: 32px; height: 32px; border: 2px solid green; color: green; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;" onclick="fnShowFRSAlertAuditView('@frsAlertAud.AssetId','@frsAlertAud.AlertInfoId')">
+                                                                                            T
+                                                                                        </div>
+                                                                                    }
+
+                                                                                }
+
+                                                                            }
+                                                                        }
+                                                                        @if (!isDisable)
+                                                                        {
+                                                                            <a title="Alert Audit Data" class="f-30 emailTimeAlertAudit@(frsAlert.AssetId)@(frsAlert.AlertInfoId)" onclick="fnShowFRSAlertAudit('@frsAlert.Id')">Ⓐ</a>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <a title="Alert Audit Data" class="f-30 emailTimeAlertAudit@(frsAlert.AssetId)@(frsAlert.AlertInfoId)" onclick="return false;">Ⓐ</a>
+                                                                        }
+                                                                        @if (frsAlert.AlertInstanceCount > 0)
+                                                                        {
+                                                                            @*<a class="justify-content-center f-30" href="javascript:void(0)" onclick="fnShowFRSAlertInstance(@frsAlert.Id); return false;" data-bs-original-title="" title="Alert Instance">ⓘ</a>*@
+
+                                                                            <div style="width: 30px; height: 30px; border: 2px solid #21a4e0; color: #21a4e0; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; " onclick="fnShowFRSAlertInstance(@frsAlert.Id); return false;">
+                                                                                @frsAlert.AlertInstanceCount
+                                                                            </div>
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    @frsAlert.DistributeName
+                                                                </div>
+
+                                                            </li>
+
+
+                                                            counter++;
+                                                        }
+                                                    }
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    }
+
+
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>

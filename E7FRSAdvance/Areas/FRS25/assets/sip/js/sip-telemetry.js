@@ -1,0 +1,1433 @@
+/* ==========================================================================
+ *  SIP Telemetry — Live View  (rewritten 22-05-2026)
+ *  ------------------------------------------------------------------------
+ *  Single-file live binding engine for the new SIP3 yard view.
+ *
+ *  WHAT IT DOES
+ *  ────────────
+ *  1. Fetches the saved SIP layout from /Telemetry/GetSipView for the current site.
+ *  2. Renders it into #sipCanvas using SIP.renderCell() from sip-library.js.
+ *  3. Subscribes to live telemetry in BRIDGE MODE — instead of opening a second
+ *     WebSocket it monkey-patches window.processItemsInternal so every batch
+ *     from the existing telemetrylive.js socket is also piped here.
+ *  4. Resolves encoded attribute names (e.g. "01655-PM-02003-Min") to human
+ *     names ("A End - NWKR") via window.getAttrDisplayName / userAssetSimpleMap.
+ *  5. Mutates cell.attrs in-place, then re-renders via requestAnimationFrame.
+ *
+ *  ASSET TYPE SUPPORT
+ *  ──────────────────
+ *  examples.Signal          → attrs.signal.lit  = 'R'|'Y'|'G'|'X'|''
+ *  examples.Signald90/45/90 → attrs.circle1.fill = lit-colour | OFF_GREY
+ *  examples.Track (1-6)     → attrs.path.stroke  = #ff0000 | OFF_GREY
+ *  examples.Track3/4        → attrs.path.fill    = #ff0000 | OFF_GREY
+ *  examples.PointMachine(1) → attrs.circle1.fill = NORMAL|REVERSE|PM_OFF
+ *  examples.Shaunt(2/3)     → attrs.body.fill    = lit | OFF_GREY
+ *  examples.SignalShunt     → attrs.lit           = 'R'|'Y'|'G'|''
+ *
+ *  WS MESSAGE SHAPE  (from your actual WebSocket feed)
+ *  ────────────────────────────────────────────────────
+ *  MessageType: "Batch"
+ *  Messages: [ "{\"AssetId\":1655,\"AssetName\":\"60\",
+ *               \"AssetAttributeId\":2003,
+ *               \"AssetAttributeName\":\"01655-PM-02003-Min\",
+ *               \"Value\":0.0, \"DataType\":\"PointMachine\", ...}", ... ]
+ *
+ *  PUBLIC API
+ *  ──────────
+ *    SipTelemetry.connectToSite(siteId)
+ *    SipTelemetry.disconnect()
+ *    SipTelemetry.refresh()
+ *    SipTelemetry.highlight(query)
+ *    SipTelemetry.diagnose()        — call from DevTools console
+ *    SipTelemetry.simulate(assetName, attrName, value)
+ *    SipTelemetry._state            — full internal state (debug)
+ * ========================================================================== */
+
+(function () {
+    'use strict';
+
+    /* ── Guard ────────────────────────────────────────────────────────────── */
+    if (!window.SIP) {
+        console.error('[sip-telemetry] window.SIP missing — load sip-library.js first.');
+        return;
+    }
+
+    /* =========================================================================
+       CONSTANTS
+       ========================================================================= */
+
+    var WS_BASE = (window.APP_CONFIG && window.APP_CONFIG.WebSocketBaseUrl
+        ? window.APP_CONFIG.WebSocketBaseUrl
+        : (window.location.protocol === 'https:'
+            ? 'wss://proxy.energy7.org:8081'
+            : 'ws://proxy.energy7.org:8081')) + '/subscribe/liveValue';
+
+    var MAX_RECONNECT = 15;
+    var RECONNECT_MS = 3000;
+    var HEARTBEAT_MS = 30000;
+
+    /* Thresholds — mirrors telemetrylive.js */
+    var ZERO_OFFSET_DEFAULT = 5.0;
+    var TRACK_OCC_THR = 1.0;
+    var PM_IND_THR = 4.5;
+
+    /* Colours — same palette as sip-library.js */
+    var OFF_GREY = '#3c4260';
+    var PM_OFF = '#d4d4d4';
+    var C_RED = '#FF2E2E';
+    var C_YELLOW = '#FFD400';
+    var C_GREEN = '#22D142';
+
+    /* ── Asset type maps ─────────────────────────────────────────────────── */
+    var COMPOSITE_SIGNAL = {
+        'examples.Signal': 1,
+        'examples.SignalBackground': 1,
+        'examples.SignalShunt': 1
+    };
+    var LAMP_SIGNAL = {
+        'examples.Signald90': 1,   // Red
+        'examples.Signal90': 1,   // Green
+        'examples.Signal45': 1,   // Yellow
+        'examples.Signald45': 1    // Double-yellow
+    };
+    var TRACK_STROKE = {
+        'examples.Track': 1, 'examples.Track1': 1, 'examples.Track2': 1,
+        'examples.Track5': 1, 'examples.Track6': 1
+    };
+    var TRACK_FILL = {
+        'examples.Track3': 1, 'examples.Track4': 1
+    };
+    var PM_TYPES = {
+        'examples.PointMachine': 1, 'examples.PointMachine1': 1
+    };
+    var SHUNT_TYPES = {
+        'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1
+    };
+
+    /* ── Lamp type → colour ──────────────────────────────────────────────── */
+    var LAMP_COLOUR = {
+        'examples.Signald90': C_RED,
+        'examples.Signal90': C_GREEN,
+        'examples.Signal45': C_YELLOW,
+        'examples.Signald45': C_YELLOW
+    };
+
+    /* =========================================================================
+       INTERNAL STATE
+       ========================================================================= */
+    var state = {
+        siteId: null,
+        cells: [],
+        byLabel: {},   // label → [cell, ...]
+        byPrefix: {},   // prefix → [cell, ...]  (legacy per-lamp)
+        viewBox: '0 0 2000 740',
+        assetValues: {},   // assetName → { attrName: numericValue }
+        zeroOffset: {},   // assetName → threshold
+        highlight: '',
+        renderPending: false,
+        ws: null,
+        wsReconnTimer: null,
+        wsReconnCount: 0,
+        wsHeartTimer: null,
+        wsLastMsgAt: 0,
+        msgCount: 0,
+        bridgeInstalled: false,
+        origPII: null,  // original processItemsInternal
+        origPBM: null,  // original parseBatchMessages
+        diag: {
+            recv: 0,
+            items: 0,
+            hits: 0,
+            noMatch: 0,
+            recent: [],     // ring-30
+            unmatched: []      // ring-20
+        }
+    };
+
+    /* ── DOM refs (resolved in init()) ───────────────────────────────────── */
+    var canvasEl, statusEl, siteSelectEl;
+
+    /* ── Asset popup click state ──────────────────────────────────────────── */
+    var assetClickDown = null;
+
+    /* =========================================================================
+       SECTION 1 — INITIALISATION & HOST DETECTION
+       ========================================================================= */
+
+    function init() {
+        /* Three host modes:
+         *  standalone   — TelemetryLive.cshtml: #sipCanvas, #wsStatus, #siteSelect
+         *  integrated   — telemetrylive.js dashboard: #divTelemetryLive, #drpSite
+         *  card         — same page but .sip-card section exists                 */
+        var sipCard = document.querySelector('section.sip-card, .sip-card');
+        var divTL = document.getElementById('divTelemetryLive');
+        var drpSite = document.getElementById('drpSite');
+
+        if (sipCard && drpSite) {
+            initCardMode(sipCard, drpSite);
+        } else if (divTL && drpSite) {
+            initIntegratedMode(divTL, drpSite);
+        } else {
+            initStandaloneMode();
+        }
+    }
+
+    function initStandaloneMode() {
+        canvasEl = document.getElementById('sipCanvas');
+        wireCanvasAssetPopupClick();
+        statusEl = document.getElementById('wsStatus');
+        siteSelectEl = document.getElementById('siteSelect');
+        var searchEl = document.getElementById('assetSearch');
+
+        if (siteSelectEl) {
+            siteSelectEl.addEventListener('change', function () {
+                connectToSite(siteSelectEl.value);
+            });
+        }
+        if (searchEl) {
+            searchEl.addEventListener('input', function () {
+                highlight(searchEl.value);
+            });
+        }
+        setStatus('Idle — select a site', '');
+        renderPlaceholder('Select a site to view live SIP.');
+    }
+
+    function initIntegratedMode(divTL, drpSite) {
+        siteSelectEl = drpSite;
+        canvasEl = null;   // injected on activate
+
+        /* Listen for the site dropdown change that tells us to activate */
+        if (!drpSite._sipBound) {
+            drpSite.addEventListener('change', function () {
+                var sid = drpSite.value;
+                if (sid && sid !== '0') activate(divTL, drpSite);
+                else deactivate(divTL);
+            });
+            drpSite._sipBound = true;
+        }
+
+        /* Auto-activate if a site is already selected */
+        setTimeout(function () {
+            var sid = drpSite.value;
+            if (sid && sid !== '0') activate(divTL, drpSite);
+        }, 700);
+    }
+
+    function initCardMode(sipCard, drpSite) {
+        siteSelectEl = drpSite;
+        canvasEl = document.getElementById('sipCanvas');
+        wireCanvasAssetPopupClick();
+        statusEl = document.getElementById('wsStatus')
+            || document.querySelector('.sip-card-head .sip-sub')
+            || null;
+
+        wireCardFullscreen(sipCard);
+
+        if (!drpSite._sipBound) {
+            drpSite.addEventListener('change', function () {
+                var sid = drpSite.value;
+                if (sid && sid !== '0') connectToSite(sid);
+                else disconnect();
+            });
+            drpSite._sipBound = true;
+        }
+
+        setTimeout(function () {
+            var sid = drpSite.value;
+            if (sid && sid !== '0') connectToSite(sid);
+        }, 700);
+    }
+
+    function activate(divTL, drpSite) {
+        /* Inject our canvas into #divTelemetryLive */
+        ['#atCardView', '#atKpiRow', '#trackCardContainer', '.at-table-scroll'].forEach(function (s) {
+            var n = document.querySelector(s);
+            if (n) n.style.display = 'none';
+        });
+
+        divTL.innerHTML =
+            '<div id="sipTelWrap" style="position:relative;height:55vh;min-height:380px;' +
+            'background:#08101c;border-radius:8px;overflow:hidden;">' +
+            '<div style="position:absolute;top:10px;right:14px;z-index:10;display:flex;gap:8px;align-items:center;">' +
+            '<span id="wsStatus" style="padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600;' +
+            'background:rgba(148,163,184,0.18);color:#cbd5e1;border:1px solid rgba(148,163,184,0.32);">Idle</span>' +
+            '<button id="sipFsBtn" type="button" title="Fullscreen (Esc)" ' +
+            'style="background:rgba(34,211,238,0.18);color:#67e8f9;border:1px solid rgba(34,211,238,0.42);' +
+            'border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:14px;' +
+            'display:inline-flex;align-items:center;justify-content:center;">' +
+            '<i class="fas fa-expand"></i></button>' +
+            '</div>' +
+            '<div id="sipCanvas" style="position:absolute;inset:0;overflow:hidden;"></div>' +
+            '</div>';
+
+        canvasEl = document.getElementById('sipCanvas');
+        wireCanvasAssetPopupClick();
+        statusEl = document.getElementById('wsStatus');
+
+        var wrap = document.getElementById('sipTelWrap');
+        var btn = document.getElementById('sipFsBtn');
+        if (btn) {
+            btn.addEventListener('click', function () {
+                var fs = wrap.classList.toggle('sip-tel-fs');
+                wrap.style.cssText = fs
+                    ? 'position:fixed;inset:0;height:100vh;width:100vw;z-index:9999;background:#08101c;'
+                    : 'position:relative;height:55vh;min-height:380px;background:#08101c;border-radius:8px;overflow:hidden;';
+                document.body.style.overflow = fs ? 'hidden' : '';
+                var icon = btn.querySelector('i');
+                if (icon) { icon.className = fs ? 'fas fa-compress' : 'fas fa-expand'; }
+            });
+        }
+
+        connectToSite(drpSite.value);
+    }
+
+    function deactivate(divTL) {
+        closeSockets();
+        if (divTL) {
+            divTL.innerHTML = '';
+            ['#atCardView', '#atKpiRow', '#trackCardContainer', '.at-table-scroll'].forEach(function (s) {
+                var n = document.querySelector(s); if (n) n.style.display = '';
+            });
+        }
+        canvasEl = statusEl = null;
+    }
+
+    function wireCardFullscreen(sipCard) {
+        var fsBtn = document.getElementById('sipFullscreenBtn');
+        if (fsBtn && !fsBtn._sipFsBound) {
+            fsBtn.onclick = null;
+            fsBtn.addEventListener('click', function () {
+                var fs = sipCard.classList.toggle('fullscreen');
+                document.body.style.overflow = fs ? 'hidden' : '';
+            });
+            fsBtn._sipFsBound = true;
+        }
+        if (!document._sipEscBound) {
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && sipCard.classList.contains('fullscreen')) {
+                    sipCard.classList.remove('fullscreen');
+                    document.body.style.overflow = '';
+                }
+            });
+            document._sipEscBound = true;
+        }
+    }
+
+    /* =========================================================================
+       ASSET CLICK → POPUP  (Live SIP View)
+       =========================================================================
+       This view re-renders SVG with canvasEl.innerHTML on every telemetry update.
+       Therefore listeners must be delegated from #sipCanvas, not attached to
+       individual SVG nodes.
+       ------------------------------------------------------------------------- */
+
+    function wireCanvasAssetPopupClick() {
+        if (!canvasEl || canvasEl._sipAssetPopupClickBound) return;
+
+        canvasEl.addEventListener('pointerdown', onSipAssetPointerDown, true);
+        canvasEl.addEventListener('pointerup', onSipAssetPointerUp, true);
+        canvasEl._sipAssetPopupClickBound = true;
+
+        console.log('[sip-telemetry] asset popup click handler bound on #' + (canvasEl.id || '(canvas)'));
+    }
+
+    function onSipAssetPointerDown(evt) {
+        var g = findSipLiveCellGroup(evt.target);
+        if (!g) {
+            assetClickDown = null;
+            return;
+        }
+
+        assetClickDown = {
+            x: evt.clientX,
+            y: evt.clientY,
+            id: g.getAttribute('data-cell-id') || g.getAttribute('data-id') || '',
+            group: g
+        };
+    }
+
+    function onSipAssetPointerUp(evt) {
+        if (!assetClickDown) return;
+
+        var g = findSipLiveCellGroup(evt.target) || assetClickDown.group;
+        if (!g) {
+            assetClickDown = null;
+            return;
+        }
+
+        var upId = g.getAttribute('data-cell-id') || g.getAttribute('data-id') || '';
+        var moved = Math.abs(evt.clientX - assetClickDown.x) > 6 ||
+            Math.abs(evt.clientY - assetClickDown.y) > 6;
+        var sameAsset = String(upId) === String(assetClickDown.id);
+
+        assetClickDown = null;
+
+        if (moved || !sameAsset) return;
+
+        var cell = cellByRenderedId(upId);
+        if (!cell) {
+            console.warn('[sip-telemetry] clicked SVG asset but no matching cell found:', upId);
+            return;
+        }
+
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        openSipAssetPopupForCell(cell, evt);
+    }
+
+    function findSipLiveCellGroup(node) {
+        while (node && node !== canvasEl && node.nodeType === 1) {
+            if (hasClass(node, 'sip-live-cell') && node.getAttribute('data-cell-id')) return node;
+            node = node.parentNode;
+        }
+        return null;
+    }
+
+    function hasClass(node, className) {
+        return !!(node && node.classList && node.classList.contains(className));
+    }
+
+    function cellByRenderedId(id) {
+        if (!id) return null;
+        for (var i = 0; i < state.cells.length; i++) {
+            if (String(state.cells[i].id) === String(id)) return state.cells[i];
+        }
+        return null;
+    }
+
+    function getCellLabel(cell) {
+        return String((cell && cell.attrs && cell.attrs.label && cell.attrs.label.text) || '').trim();
+    }
+
+    function getCellAssetName(cell) {
+        var label = getCellLabel(cell);
+        if (!label) return '';
+
+        // Legacy signal lamps are saved as "S18 RG", "S18 HG", etc.
+        // Actual live asset name usually comes as only "S18".
+        if (LAMP_SIGNAL[cell.type] || !state.byLabel[label]) {
+            var prefix = label.split(/\s+/)[0];
+            if (prefix && state.assetValues[prefix]) return prefix;
+        }
+
+        if (state.assetValues[label]) return label;
+
+        return label.split(/\s+/)[0] || label;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       SELF-CONTAINED ASSET POPUP — shows live telemetry on click.
+       Creates its own overlay HTML, CSS, and event wiring.
+       Zero dependency on sip-asset-popup.js or telemetrylive.js.
+       ═══════════════════════════════════════════════════════════════ */
+    var _popupEl = null;
+    var _popupTimer = null;
+    var _popupAssetName = '';
+
+    function ensurePopupDOM() {
+        if (_popupEl) return _popupEl;
+
+        /* ── Inject CSS ── */
+        if (!document.getElementById('sipTelPopupCSS')) {
+            var css = document.createElement('style');
+            css.id = 'sipTelPopupCSS';
+            css.textContent =
+                '#sipTelPopup{position:fixed;inset:0;z-index:999999;display:none;align-items:center;justify-content:center;background:rgba(5,8,18,.72);backdrop-filter:blur(6px);font-family:"IBM Plex Sans","Plus Jakarta Sans",system-ui,sans-serif;color:#e2e8f0;}' +
+                '#sipTelPopup.open{display:flex;}' +
+                '#sipTelPopup *{box-sizing:border-box;margin:0;padding:0;}' +
+                '.stp-box{width:960px;max-width:96vw;max-height:75vh;background:#0f1629;border:1px solid #1e2a45;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.4),0 0 60px rgba(0,212,255,.06);display:flex;flex-direction:column;overflow:hidden;animation:stpSlide .25s ease;}' +
+                '@keyframes stpSlide{from{opacity:0;transform:translateY(18px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}' +
+                '.stp-head{background:linear-gradient(135deg,#1a2744,#0f1629);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1e2a45;}' +
+                '.stp-head-left{display:flex;align-items:center;gap:12px;min-width:0;}' +
+                '.stp-icon{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,rgba(0,212,255,.15),rgba(0,229,160,.1));border:1px solid rgba(0,212,255,.25);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#00d4ff;}' +
+                '.stp-icon svg{width:18px;height:18px;}' +
+                '.stp-name{font-size:17px;font-weight:600;color:#fff;}' +
+                '.stp-sub{font-size:12px;color:#8b9dc3;margin-top:2px;}' +
+                '.stp-type{font-family:"JetBrains Mono",monospace;font-size:10px;color:#00d4ff;background:rgba(0,212,255,.08);padding:2px 8px;border-radius:4px;margin-left:6px;}' +
+                '.stp-close{width:32px;height:32px;border-radius:8px;border:1px solid #1e2a45;background:rgba(255,255,255,.03);color:#8b9dc3;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;}' +
+                '.stp-close:hover{background:rgba(239,68,68,.15);color:#ef4444;border-color:rgba(239,68,68,.3);}' +
+                '.stp-bar{padding:10px 20px;background:#0c1220;border-bottom:1px solid #1e2a45;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#00d4ff;text-transform:uppercase;letter-spacing:.06em;}' +
+                '.stp-dot{width:7px;height:7px;background:#22c55e;border-radius:50%;box-shadow:0 0 6px rgba(34,197,94,.6);animation:stpPulse 1.5s infinite;}' +
+                '@keyframes stpPulse{0%,100%{opacity:1}50%{opacity:.3}}' +
+                '.stp-grid{display:grid;grid-template-columns:1fr 1fr;flex:1;overflow-y:auto;min-height:180px;}' +
+                '.stp-col{display:flex;flex-direction:column;}' +
+                '.stp-col:first-child{border-right:1px solid #1e2a45;}' +
+                '.stp-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 20px;border-bottom:1px solid rgba(30,42,69,.5);transition:background .1s;}' +
+                '.stp-row:hover{background:#1a2340;}' +
+                '.stp-row:nth-child(even){background:#111827;}' +
+                '.stp-row:nth-child(even):hover{background:#1a2340;}' +
+                '.stp-lbl{font-size:13px;color:#8b9dc3;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+                '.stp-val{font-family:"JetBrains Mono",monospace;font-size:13px;font-weight:500;color:#e2e8f0;text-align:right;white-space:nowrap;}' +
+                '.stp-val.warn{color:#f59e0b!important;}' +
+                '.stp-val.ok{color:#22c55e!important;font-family:inherit!important;font-weight:600!important;}' +
+                '.stp-empty{grid-column:1/-1;padding:32px 20px;color:#5a6a8a;font-size:13px;text-align:center;}' +
+                '.stp-foot{padding:10px 20px;border-top:1px solid #1e2a45;display:flex;align-items:center;justify-content:space-between;background:#0c1220;font-size:11px;color:#5a6a8a;}' +
+                '.stp-foot-r{display:flex;gap:8px;}' +
+                '.stp-btn{font-family:inherit;font-size:12px;font-weight:500;padding:6px 16px;border-radius:4px;border:1px solid #1e2a45;background:transparent;color:#8b9dc3;cursor:pointer;display:flex;align-items:center;gap:6px;}' +
+                '.stp-btn:hover{border-color:#2a3a5c;color:#e2e8f0;}' +
+                '.stp-btn.pri{background:rgba(0,212,255,.1);border-color:rgba(0,212,255,.3);color:#00d4ff;}' +
+                '@media(max-width:700px){.stp-grid{grid-template-columns:1fr;}.stp-col:first-child{border-right:none;}}';
+            document.head.appendChild(css);
+        }
+
+        /* ── Inject HTML ── */
+        var ov = document.createElement('div');
+        ov.id = 'sipTelPopup';
+        ov.innerHTML =
+            '<div class="stp-box">' +
+            '<div class="stp-head">' +
+            '<div class="stp-head-left">' +
+            '<div class="stp-icon" id="stpIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div>' +
+            '<div><div class="stp-name" id="stpName">—</div><div class="stp-sub" id="stpSub">—</div></div>' +
+            '<span class="stp-type" id="stpType">—</span>' +
+            '</div>' +
+            '<button class="stp-close" id="stpClose">✕</button>' +
+            '</div>' +
+            '<div class="stp-bar"><span class="stp-dot"></span><span id="stpTitle">Live Telemetry</span></div>' +
+            '<div class="stp-grid" id="stpGrid"><div class="stp-empty">Click an asset to view live attributes</div></div>' +
+            '<div class="stp-foot">' +
+            '<span id="stpSync">—</span>' +
+            '<div class="stp-foot-r"><button class="stp-btn" id="stpCloseBtn">Close</button></div>' +
+            '</div>' +
+            '</div>';
+        document.body.appendChild(ov);
+
+        /* ── Wire close events ── */
+        var closeBtn = document.getElementById('stpClose');
+        var closeFoot = document.getElementById('stpCloseBtn');
+        function doClose() { ov.classList.remove('open'); clearInterval(_popupTimer); }
+        if (closeBtn) closeBtn.addEventListener('click', doClose);
+        if (closeFoot) closeFoot.addEventListener('click', doClose);
+        ov.addEventListener('click', function (e) { if (e.target === ov) doClose(); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && ov.classList.contains('open')) doClose();
+        });
+
+        _popupEl = ov;
+        return ov;
+    }
+
+    function fmtVal(raw) {
+        if (raw === null || raw === undefined || raw === '') return '--';
+        var n = parseFloat(raw);
+        if (isNaN(n)) return escHtml(String(raw));
+        return n % 1 === 0 ? String(n) : n.toFixed(2);
+    }
+
+    function refreshPopupGrid() {
+        var grid = document.getElementById('stpGrid');
+        if (!grid || !_popupAssetName) return;
+
+        /* Pull live values from state.assetValues or wsLiveData */
+        var vals = state.assetValues[_popupAssetName] || {};
+        if (!Object.keys(vals).length && window.wsLiveData) {
+            for (var id in wsLiveData) {
+                if (wsLiveData[id] && wsLiveData[id].AssetName === _popupAssetName && wsLiveData[id].attrs) {
+                    var a = wsLiveData[id].attrs;
+                    for (var k in a) { if (a.hasOwnProperty(k)) vals[k] = (a[k] && typeof a[k] === 'object' && 'Value' in a[k]) ? a[k].Value : a[k]; }
+                    break;
+                }
+            }
+        }
+
+        var keys = Object.keys(vals);
+        /* Respect wsAttributeNames ordering if available */
+        if (window.wsAttributeNames && wsAttributeNames.length) {
+            var ordered = [];
+            wsAttributeNames.forEach(function (n) { if (n in vals) ordered.push(n); });
+            keys.forEach(function (k) { if (ordered.indexOf(k) < 0) ordered.push(k); });
+            keys = ordered;
+        }
+
+        if (!keys.length) { grid.innerHTML = '<div class="stp-empty">No live attribute values received for this asset yet.</div>'; return; }
+
+        var half = Math.ceil(keys.length / 2);
+        var renderRow = function (k) {
+            var v = fmtVal(vals[k]);
+            var cls = 'stp-val';
+            if (v === 'Ok' || v === 'ok') return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) + '</span><span class="stp-val ok">Ok</span></div>';
+            var num = parseFloat(v);
+            if (!isNaN(num) && num < 0) cls += ' warn';
+            return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) + '</span><span class="' + cls + '">' + escHtml(v) + '</span></div>';
+        };
+        grid.innerHTML =
+            '<div class="stp-col">' + keys.slice(0, half).map(renderRow).join('') + '</div>' +
+            '<div class="stp-col">' + keys.slice(half).map(renderRow).join('') + '</div>';
+
+        var sync = document.getElementById('stpSync');
+        if (sync) { var d = new Date(); sync.textContent = 'Last sync: ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2); }
+    }
+
+    var ICON_SVG = {
+        Track: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4"/><path d="M14 12h4"/></svg>',
+        Signal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="6" r="3"/><circle cx="12" cy="14" r="3"/><line x1="12" y1="17" x2="12" y2="22"/></svg>',
+        Point: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20L20 4"/><circle cx="12" cy="12" r="3"/></svg>',
+        Default: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>'
+    };
+
+    function openSipAssetPopupForCell(cell, evt) {
+        var assetName = getCellAssetName(cell);
+        var label = getCellLabel(cell);
+
+        console.log('[sip-telemetry] SIP asset clicked:', assetName, cell.type);
+
+        /* ── If sip-asset-popup.js provided the full popup, use it ── */
+        if (typeof window.SipAssetPopupLive === 'object' && typeof window.SipAssetPopupLive.open === 'function') {
+            window.SipAssetPopupLive.open(cell, {
+                source: 'sip-telemetry', siteId: state.siteId,
+                assetName: assetName, label: label,
+                cellId: cell.id, cellType: cell.type, cell: cell,
+                liveValues: state.assetValues[assetName] || {}
+            });
+            return;
+        }
+
+        /* ── Otherwise use our built-in popup ── */
+        var ov = ensurePopupDOM();
+        _popupAssetName = assetName || label || cell.id || '—';
+
+        /* Header */
+        var iconEl = document.getElementById('stpIcon');
+        var t = cell.type || '';
+        if (iconEl) iconEl.innerHTML = t.indexOf('Track') >= 0 ? ICON_SVG.Track : t.indexOf('Signal') >= 0 ? ICON_SVG.Signal : t.indexOf('Point') >= 0 ? ICON_SVG.Point : ICON_SVG.Default;
+        var nameEl = document.getElementById('stpName');
+        if (nameEl) nameEl.textContent = _popupAssetName;
+        var subEl = document.getElementById('stpSub');
+        if (subEl) subEl.textContent = 'Site: ' + (state.siteId || '—');
+        var typeEl = document.getElementById('stpType');
+        if (typeEl) typeEl.textContent = cell.type ? cell.type.replace('examples.', '') : '—';
+        var titleEl = document.getElementById('stpTitle');
+        if (titleEl) titleEl.textContent = 'Live Telemetry — ' + _popupAssetName;
+
+        /* Grid */
+        refreshPopupGrid();
+
+        /* Show */
+        ov.classList.add('open');
+
+        /* Auto-refresh every 3s */
+        clearInterval(_popupTimer);
+        _popupTimer = setInterval(refreshPopupGrid, 3000);
+
+        /* Also fire the old global in case anything else needs it */
+        if (typeof window.OpenSipAssetPopupFromCell === 'function') {
+            try {
+                window.OpenSipAssetPopupFromCell(cell, {
+                    source: 'sip-telemetry', siteId: state.siteId,
+                    assetName: assetName, label: label
+                });
+                /* If the external popup opened, close our built-in one */
+                var extOv = document.getElementById('sipAssetPopupOverlay');
+                if (extOv && (extOv.classList.contains('sap-show') || extOv.style.display === 'flex')) {
+                    ov.classList.remove('open');
+                    clearInterval(_popupTimer);
+                }
+            } catch (ex) {
+                console.warn('[sip-telemetry] External popup failed, using built-in:', ex.message);
+            }
+        }
+    }
+
+
+    /* =========================================================================
+       SECTION 2 — SITE LOAD + LAYOUT
+       ========================================================================= */
+
+    function connectToSite(rawSiteId) {
+        var siteId = parseInt(rawSiteId, 10);
+        closeSockets();
+        removeBridge();
+
+        if (!siteId || isNaN(siteId)) {
+            state.siteId = null;
+            state.cells = [];
+            state.byLabel = {}; state.byPrefix = {};
+            setStatus('No site selected', '');
+            renderPlaceholder('Select a site to view live SIP.');
+            return;
+        }
+
+        state.siteId = siteId;
+        state.assetValues = {};
+        state.msgCount = 0;
+        state.diag.recv = state.diag.items = state.diag.hits = state.diag.noMatch = 0;
+        setStatus('Loading layout…', 'loading');
+
+        $.ajax({
+            url: '/Telemetry/GetSipView',
+            type: 'POST',
+            data: JSON.stringify({ siteId: siteId }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (!data || !data.Id || data.Id <= 0) {
+                    setStatus('No SIP layout for site ' + siteId, 'warn');
+                    renderPlaceholder('No SIP layout saved for this site.');
+                    return;
+                }
+                var raw = data.SipView1 || data.SipView;
+                if (!raw) {
+                    setStatus('Empty SIP payload', 'warn');
+                    renderPlaceholder('Site record exists but SIP payload is empty.');
+                    return;
+                }
+                var layout;
+                try { layout = JSON.parse(raw); } catch (e) {
+                    setStatus('Cannot parse SIP JSON', 'error');
+                    renderPlaceholder('Saved SIP JSON is malformed.');
+                    return;
+                }
+
+                /* Accept both { cells:[…] } and a bare […] array */
+                var cells = Array.isArray(layout) ? layout
+                    : (layout && Array.isArray(layout.cells)) ? layout.cells
+                        : null;
+
+                if (!cells) {
+                    setStatus('Unrecognised SIP shape', 'error');
+                    renderPlaceholder('Saved SIP has an unrecognised shape.');
+                    return;
+                }
+
+                state.cells = cells;
+                state.viewBox = autoViewBox(cells);
+                buildIndex();
+                render();
+                openSocket(siteId);
+            },
+            error: function () {
+                setStatus('Failed to load SIP', 'error');
+                renderPlaceholder('Could not reach /Telemetry/GetSipView.');
+            }
+        });
+    }
+
+    function autoViewBox(cells) {
+        if (!cells.length) return '0 0 2000 740';
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        cells.forEach(function (c) {
+            var x = (c.position && c.position.x) || 0, y = (c.position && c.position.y) || 0;
+            var w = (c.size && c.size.width) || 60, h = (c.size && c.size.height) || 60;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x + w > maxX) maxX = x + w;
+            if (y + h > maxY) maxY = y + h;
+        });
+        var pad = 80;
+        return (minX - pad) + ' ' + (minY - pad) + ' ' + (maxX - minX + 2 * pad) + ' ' + (maxY - minY + 2 * pad);
+    }
+
+    /* Build two lookup indexes:
+     *  byLabel["S13"]       → [composite signal cell]
+     *  byLabel["C-18T"]     → [track cell]
+     *  byPrefix["S18"]      → [all lamp cells whose label starts "S18 …"]   */
+    function buildIndex() {
+        state.byLabel = {};
+        state.byPrefix = {};
+        state.cells.forEach(function (c) {
+            var raw = c.attrs && c.attrs.label && c.attrs.label.text;
+            if (raw == null || raw === '') return;
+            var lbl = String(raw).trim();
+            var prefix = lbl.split(/\s+/)[0];
+
+            // Direct label index for ALL types
+            (state.byLabel[lbl] = state.byLabel[lbl] || []).push(c);
+
+            // Prefix index only for legacy per-lamp cells ("S18 RG" → prefix "S18")
+            if (!COMPOSITE_SIGNAL[c.type] && prefix && prefix !== lbl) {
+                (state.byPrefix[prefix] = state.byPrefix[prefix] || []).push(c);
+            }
+        });
+    }
+
+    /* =========================================================================
+       SECTION 3 — WEBSOCKET  (Bridge-first, standalone fallback)
+       =========================================================================
+       BRIDGE MODE: monkey-patch window.processItemsInternal so every batch
+       that flows through the existing telemetrylive.js pipeline ALSO feeds
+       our telemetry resolver. No second WebSocket is opened.
+
+       STANDALONE MODE: open our own WS when bridge is not available.         */
+
+    function openSocket(siteId) {
+        if (tryBridge()) {
+            setStatus('Live (bridged)', 'ok');
+            console.log('[sip-telemetry] Bridge mode — sharing telemetrylive.js WS');
+            return;
+        }
+        // telemetrylive.js may not have exposed window.processItemsInternal yet
+        // (script-load ordering). Poll briefly before falling back to a 2nd WS.
+        if (!state._bridgeWaitTimer) {
+            var attempts = 0;
+            state._bridgeWaitTimer = setInterval(function () {
+                attempts++;
+                if (tryBridge()) {
+                    clearInterval(state._bridgeWaitTimer);
+                    state._bridgeWaitTimer = null;
+                    setStatus('Live (bridged)', 'ok');
+                    console.log('[sip-telemetry] Bridge installed after ' + attempts + ' wait(s)');
+                    return;
+                }
+                if (attempts >= 20) {   // ~10s total
+                    clearInterval(state._bridgeWaitTimer);
+                    state._bridgeWaitTimer = null;
+                    console.warn('[sip-telemetry] Bridge unavailable after wait — opening own WS');
+                    openOwnSocket(siteId);
+                }
+            }, 500);
+            setStatus('Waiting for telemetry bridge…', 'loading');
+        }
+    }
+
+    /* ── Bridge installation ─────────────────────────────────────────────── */
+    function tryBridge() {
+        if (state.bridgeInstalled) return true;
+        var orig = window.processItemsInternal;
+        if (typeof orig !== 'function') return false;
+
+        state.origPII = orig;
+        // Mark our wrapper so a later tryBridge() call can tell it's already us
+        // (defends against accidental double-install if telemetrylive.js
+        // reassigns window.processItemsInternal mid-stream).
+        var bridgedPII = function (items) {
+            orig.apply(this, arguments);
+            if (state.cells.length > 0) feedItems(items);
+        };
+        bridgedPII._sipBridged = true;
+        window.processItemsInternal = bridgedPII;
+
+        /* Also hook parseBatchMessages for DataLogger items */
+        var origPBM = window.parseBatchMessages;
+        if (typeof origPBM === 'function') {
+            state.origPBM = origPBM;
+            var bridgedPBM = function (messages) {
+                origPBM.apply(this, arguments);
+                if (state.cells.length > 0 && messages && messages.length) {
+                    var dlItems = [];
+                    for (var i = 0; i < messages.length; i++) {
+                        var m = messages[i];
+                        if (typeof m === 'string') { try { m = JSON.parse(m); } catch (e) { continue; } }
+                        if (m && m.DataType === 'DataLogger') dlItems.push(m);
+                    }
+                    if (dlItems.length) feedItems(dlItems);
+                }
+            };
+            bridgedPBM._sipBridged = true;
+            window.parseBatchMessages = bridgedPBM;
+        }
+
+        state.bridgeInstalled = true;
+        return true;
+    }
+
+    function removeBridge() {
+        if (state._bridgeWaitTimer) {
+            clearInterval(state._bridgeWaitTimer);
+            state._bridgeWaitTimer = null;
+        }
+        if (!state.bridgeInstalled) return;
+        // Only restore originals if the current window.* is still OUR wrapper.
+        // If something else has wrapped us further, leave the chain alone --
+        // it'll keep calling our orig anyway.
+        if (window.processItemsInternal && window.processItemsInternal._sipBridged &&
+            typeof state.origPII === 'function') {
+            window.processItemsInternal = state.origPII;
+        }
+        if (window.parseBatchMessages && window.parseBatchMessages._sipBridged &&
+            typeof state.origPBM === 'function') {
+            window.parseBatchMessages = state.origPBM;
+        }
+        state.origPII = state.origPBM = null;
+        state.bridgeInstalled = false;
+    }
+
+    /* ── Standalone WebSocket ────────────────────────────────────────────── */
+    function openOwnSocket(siteId) {
+        var url = WS_BASE + '/' + siteId + '/all';
+
+        // ── FIX: Upgrade ws:// → wss:// on HTTPS pages ──
+        if (window.location.protocol === 'https:' && url.indexOf('ws://') === 0) {
+            url = url.replace('ws://', 'wss://');
+        }
+
+        // ── FIX: Append auth token for secure connections ──
+        var _isSecurePage = (typeof isSecure !== 'undefined') ? isSecure : (window.location.protocol === 'https:');
+        if (_isSecurePage && window.APP_CONFIG && window.APP_CONFIG.WebSocketAuthToken) {
+            var sep = url.indexOf('?') > -1 ? '&' : '?';
+            url = url + sep + 'token=' + encodeURIComponent(window.APP_CONFIG.WebSocketAuthToken);
+        }
+
+        console.log('[sip-telemetry] Standalone WS →', url.replace(/token=[^&]+/, 'token=***'));
+        setStatus('Connecting…', 'loading');
+
+        try { state.ws = new WebSocket(url); }
+        catch (e) {
+            console.error('[sip-telemetry] WS failed:', e);
+            setStatus('Connection failed', 'error');
+            schedReconn(siteId); return;
+        }
+
+        state.ws.onopen = function () {
+            state.wsReconnCount = 0;
+            state.wsLastMsgAt = Date.now();
+            setStatus('Live · 0 msgs', 'ok');
+            startHeartbeat();
+        };
+
+        state.ws.onmessage = function (ev) {
+            state.wsLastMsgAt = Date.now();
+            var payload;
+            try {
+                payload = JSON.parse(ev.data);
+                if (typeof payload === 'string') payload = JSON.parse(payload);
+            } catch (e) { return; }
+            applyPayload(payload);
+        };
+
+        state.ws.onclose = function () {
+            stopHeartbeat();
+            if (state.siteId && state.wsReconnCount < MAX_RECONNECT)
+                schedReconn(siteId);
+            else setStatus('Disconnected', 'error');
+        };
+
+        state.ws.onerror = function (e) { console.warn('[sip-telemetry] ws error', e); };
+    }
+
+    function schedReconn(siteId) {
+        state.wsReconnCount++;
+        setStatus('Reconnecting (' + state.wsReconnCount + '/' + MAX_RECONNECT + ')…', 'warn');
+        state.wsReconnTimer = setTimeout(function () { openOwnSocket(siteId); }, RECONNECT_MS);
+    }
+
+    function startHeartbeat() {
+        stopHeartbeat();
+        state.wsHeartTimer = setInterval(function () {
+            if (Date.now() - state.wsLastMsgAt > HEARTBEAT_MS) {
+                console.warn('[sip-telemetry] heartbeat timeout — reconnecting');
+                if (state.ws) try { state.ws.close(); } catch (e) { }
+            }
+        }, HEARTBEAT_MS / 2);
+    }
+
+    function stopHeartbeat() {
+        if (state.wsHeartTimer) { clearInterval(state.wsHeartTimer); state.wsHeartTimer = null; }
+    }
+
+    function closeSockets() {
+        removeBridge();
+        if (state.wsReconnTimer) { clearTimeout(state.wsReconnTimer); state.wsReconnTimer = null; }
+        stopHeartbeat();
+        if (state.ws) {
+            state.ws.onopen = state.ws.onmessage = state.ws.onclose = state.ws.onerror = null;
+            try { state.ws.close(1000); } catch (e) { }
+            state.ws = null;
+        }
+        state.wsReconnCount = 0;
+    }
+
+    /* =========================================================================
+       SECTION 4 — TELEMETRY APPLICATION
+       ========================================================================= */
+
+    /* Entry point for BOTH bridge and standalone paths.
+     * Accepts:  raw array of item objects  OR  the batch envelope object     */
+    function applyPayload(payload) {
+        var items = null;
+        if (Array.isArray(payload)) items = payload;
+        else if (payload && Array.isArray(payload.Messages)) items = payload.Messages;
+        else if (payload && Array.isArray(payload.items)) items = payload.items;
+        else if (payload && Array.isArray(payload.data)) items = payload.data;
+        else if (payload && Array.isArray(payload.payload)) items = payload.payload;
+        else if (payload && payload.AssetName) items = [payload];
+        if (items && items.length) feedItems(items);
+    }
+
+    /* feedItems — normalise, resolve attribute names, absorb into snapshots,
+     * then re-evaluate every affected cell.                                  */
+    function feedItems(items) {
+        state.diag.recv++;
+        if (!items || !items.length) return;
+
+        var touched = {};   // assetName → true
+
+        /* ── PHASE 1: ABSORB ─────────────────────────────────────────────── */
+        for (var i = 0; i < items.length; i++) {
+            var d = items[i];
+            if (!d) continue;
+            /* Messages array items may be JSON-stringified (your server does this) */
+            if (typeof d === 'string') {
+                try { d = JSON.parse(d); } catch (e) { continue; }
+                if (typeof d === 'string') {
+                    try { d = JSON.parse(d); } catch (e) { continue; }
+                }
+            }
+            if (!d || !d.AssetName) continue;
+
+            var assetName = String(d.AssetName).trim();
+            var rawAttr = String(d.AssetAttributeName || '').trim();
+            var assetId = d.AssetId;
+            var attrId = d.AssetAttributeId || d.EdgeXAttributeId;
+            var dataType = String(d.DataType || '').toLowerCase();
+            var rawValue = d.Value;
+
+            /* Resolve encoded attribute name → human display name
+             * "01655-PM-02003-Min"  →  "A End - NWKR"
+             * Uses telemetrylive.js maps when available.                    */
+            var attrName = resolveAttrName(rawAttr, attrId, assetId, dataType);
+
+            pushSample(state.diag.recent,
+                { assetName: assetName, attr: attrName, rawAttr: rawAttr, value: rawValue }, 30);
+
+            var numVal = parseFloat(rawValue);
+            if (isNaN(numVal)) continue;
+
+            var bag = state.assetValues[assetName] || (state.assetValues[assetName] = {});
+            bag[attrName] = numVal;
+            if (attrName !== rawAttr) bag[rawAttr] = numVal;   // keep raw as fallback
+            touched[assetName] = true;
+
+            if (d.ZeroOffsetValue != null && !isNaN(parseFloat(d.ZeroOffsetValue)))
+                state.zeroOffset[assetName] = parseFloat(d.ZeroOffsetValue);
+        }
+
+        /* ── PHASE 2: ENRICH + RE-EVALUATE ──────────────────────────────── */
+        var dirty = false;
+        var batchHit = 0, batchMiss = 0, batchNoCell = 0;
+
+        for (var assetName in touched) {
+            if (!touched.hasOwnProperty(assetName)) continue;
+            var snapshot = state.assetValues[assetName];
+
+            /* Enrich snapshot from wsLiveData (bridge mode) — wsLiveData has
+             * the full merged history; our snapshot may only have this batch   */
+            enrichFromWsLiveData(assetName, snapshot);
+
+            var cells = findCells(assetName);
+            if (!cells.length) {
+                batchNoCell++;
+                pushSample(state.diag.unmatched, assetName, 20);
+                continue;
+            }
+
+            var changedAny = false;
+            for (var ci = 0; ci < cells.length; ci++) {
+                if (reeval(cells[ci], assetName, snapshot)) {
+                    changedAny = true;
+                    dirty = true;
+                }
+            }
+            if (changedAny) batchHit++; else batchMiss++;
+        }
+
+        state.diag.items += items.length;
+        state.diag.hits += batchHit;
+        state.diag.noMatch += batchNoCell;
+
+        if (dirty) {
+            state.msgCount++;
+            setStatus('Live · ' + state.msgCount + ' upd · ' + state.diag.recv + ' msg', 'ok');
+            requestRender();
+        } else if (state.diag.noMatch > 10 && state.diag.hits === 0) {
+            setStatus('RX ' + state.diag.recv + ' · 0 matched (check labels)', 'warn');
+        }
+    }
+
+    /* ── Attribute name resolution ───────────────────────────────────────── */
+    function resolveAttrName(rawName, attrId, assetId, dataType) {
+        /* 1. telemetrylive getAttrDisplayName (covers all maps + fallback table) */
+        if (typeof window.getAttrDisplayName === 'function' && attrId != null) {
+            var dn = window.getAttrDisplayName(rawName, attrId);
+            if (dn && dn !== rawName) return dn;
+        }
+        /* 2. userAssetSimpleMap: PointMachine & RDPMS  (assetId_attrId → name) */
+        if (attrId != null && typeof window.userAssetSimpleMap !== 'undefined') {
+            var e1 = window.userAssetSimpleMap[String(assetId) + '_' + String(attrId)];
+            if (e1 && e1.name) return e1.name;
+        }
+        /* 3. userAssetDataloggerMap: DataLogger relays */
+        if (attrId != null && typeof window.userAssetDataloggerMap !== 'undefined') {
+            var e2 = window.userAssetDataloggerMap[String(assetId) + '_' + String(attrId)];
+            if (e2 && e2.name) return e2.name;
+        }
+        /* 4. Raw name (DataLogger already sends clean names: "HR", "RECR"…) */
+        return rawName;
+    }
+
+    /* Merge wsLiveData attrs into our snapshot so full history is available */
+    function enrichFromWsLiveData(assetName, snapshot) {
+        if (!window.wsLiveData) return;
+        for (var wid in window.wsLiveData) {
+            if (!window.wsLiveData.hasOwnProperty(wid)) continue;
+            var wEntry = window.wsLiveData[wid];
+            if (!wEntry || String(wEntry.AssetName || '').trim() !== assetName) continue;
+            if (wEntry.attrs) {
+                for (var ak in wEntry.attrs) {
+                    if (!wEntry.attrs.hasOwnProperty(ak)) continue;
+                    var av = parseFloat(wEntry.attrs[ak] && wEntry.attrs[ak].Value);
+                    if (!isNaN(av)) snapshot[ak] = av;
+                }
+            }
+            if (wEntry.ZeroOffsetValue != null && !isNaN(parseFloat(wEntry.ZeroOffsetValue)))
+                state.zeroOffset[assetName] = parseFloat(wEntry.ZeroOffsetValue);
+            break;
+        }
+    }
+
+    /* ── Cell finder ─────────────────────────────────────────────────────── */
+    function findCells(assetName) {
+        var out = [];
+        var direct = state.byLabel[assetName];
+        if (direct) for (var i = 0; i < direct.length; i++) out.push(direct[i]);
+        var prefix = state.byPrefix[assetName];
+        if (prefix) for (var j = 0; j < prefix.length; j++) if (out.indexOf(prefix[j]) === -1) out.push(prefix[j]);
+        return out;
+    }
+
+    /* =========================================================================
+       SECTION 5 — SIGNAL / TRACK / PM LOGIC
+       ========================================================================= */
+
+    function relayPicked(s, names) {
+        for (var i = 0; i < names.length; i++) { var v = s[names[i]]; if (v != null && v >= 0.5) return true; }
+        return false;
+    }
+    function valOf(s, names) {
+        for (var i = 0; i < names.length; i++) { var v = s[names[i]]; if (v != null && !isNaN(v)) return v; }
+        return null;
+    }
+    function valOfPrefix(s, prefixes) {
+        var keys = Object.keys(s);
+        for (var i = 0; i < keys.length; i++) {
+            var k = keys[i].toLowerCase().replace(/\s+/g, '');
+            for (var j = 0; j < prefixes.length; j++)
+                if (k.indexOf(prefixes[j].toLowerCase().replace(/\s+/g, '')) !== -1) return s[keys[i]];
+        }
+        return null;
+    }
+
+    /* Signal aspect — relay relays take priority over mA readings */
+    function computeAspect(s, thr) {
+        if (relayPicked(s, ['RECR', 'RED CR', 'R E CR'])) return 'RG';
+        if (valOf(s, ['RG mA', 'R mA']) > thr) return 'RG';
+        if (relayPicked(s, ['HECR', 'HE CR']) && relayPicked(s, ['HHECR', 'HHE CR'])) return 'HHG';
+        if (valOf(s, ['HHG mA']) > thr) return 'HHG';
+        if (relayPicked(s, ['HECR', 'HE CR'])) return 'HG';
+        if (valOf(s, ['HG mA', 'H mA']) > thr) return 'HG';
+        if (relayPicked(s, ['DECR', 'DE CR'])) return 'DG';
+        if (valOf(s, ['DG mA', 'G mA']) > thr) return 'DG';
+        return 'OFF';
+    }
+
+    /* Convert aspect → lit string for composite signal (attrs.signal.lit) */
+    function aspectToLit(aspect, lampsStr) {
+        if (!aspect || aspect === 'OFF') return '';
+        var lamps = String(lampsStr || '').toUpperCase();
+        if (aspect === 'RG') return lamps.indexOf('R') !== -1 ? 'R' : '';
+        if (aspect === 'HG') return lamps.indexOf('Y') !== -1 ? 'Y' : '';
+        if (aspect === 'DG') return lamps.indexOf('G') !== -1 ? 'G' : '';
+        if (aspect === 'HHG') return lamps.indexOf('X') !== -1 ? 'X'
+            : lamps.indexOf('Y') !== -1 ? 'Y' : '';
+        return '';
+    }
+
+    /* Track occupancy — mirrors Sview.cshtml / telemetrylive.js rules */
+    function computeOccupied(s) {
+        var tpr = valOf(s, ['TPR', 'TPR Relay']);
+        if (tpr != null) return tpr < 0.5;
+        var tprV = valOf(s, ['TPR V', 'TPR V (Loc)', 'TPRV', 'TPR Voltage']);
+        if (tprV != null) return tprV < TRACK_OCC_THR;
+        var vr = valOf(s, ['Vr', 'VR', 'V Relay']);
+        if (vr != null && ((vr > 0.1 && vr < 2.5) || vr > 4.2)) return true;
+        var ck = valOf(s, ['Choke V', 'ChokeV']);
+        if (ck != null && ck > 1.8) return true;
+        return false;
+    }
+
+    /* Point Machine position — A End wins, mirrors old Sview.cshtml */
+    function computePM(s) {
+        var aEN = valOf(s, ['A End - NWKR', 'ANWKR', 'A_NWKR']);
+        var aER = valOf(s, ['A End - RWKR', 'ARWKR', 'A_RWKR']);
+        var bEN = valOf(s, ['B End - NWKR', 'BNWKR', 'B_NWKR']);
+        var bER = valOf(s, ['B End - RWKR', 'BRWKR', 'B_RWKR']);
+        var nw = valOfPrefix(s, ['NWKR']);
+        var rw = valOfPrefix(s, ['RWKR']);
+        var normalV = aEN != null ? aEN : bEN != null ? bEN : nw;
+        var reverseV = aER != null ? aER : bER != null ? bER : rw;
+        if (normalV != null && normalV > PM_IND_THR) return 'NORMAL';
+        if (reverseV != null && reverseV > PM_IND_THR) return 'REVERSE';
+        return 'UNKNOWN';
+    }
+
+    /* Shunt lit when HR relay picked OR any mA > threshold */
+    function computeShunt(s, thr) {
+        if (relayPicked(s, ['HR'])) return true;
+        for (var k in s) if (s.hasOwnProperty(k) && k.toUpperCase().indexOf('MA') !== -1 && s[k] > thr) return true;
+        return false;
+    }
+
+    /* =========================================================================
+       SECTION 6 — CELL RE-EVALUATION
+       ========================================================================= */
+
+    function reeval(cell, assetName, s) {
+        cell.attrs = cell.attrs || {};
+        var thr = state.zeroOffset[assetName] || ZERO_OFFSET_DEFAULT;
+
+        /* ── Composite signal (examples.Signal / SignalShunt) ── */
+        if (COMPOSITE_SIGNAL[cell.type]) {
+            var aspect = computeAspect(s, thr);
+
+            if (cell.type === 'examples.SignalShunt') {
+                /* SignalShunt uses attrs.lit directly (same char as composite) */
+                var litChar = aspectToLit(aspect, 'RYG');   // always has R,Y,G
+                var cur = String((cell.attrs && cell.attrs.lit) || '');
+                if (cur !== litChar) { cell.attrs.lit = litChar; return true; }
+                return false;
+            }
+
+            /* examples.Signal — write to attrs.signal.lit */
+            var sigA = cell.attrs.signal || {};
+            var lamps = String(sigA.lamps || 'RYG');
+            var newLit = aspectToLit(aspect, lamps);
+            var curLit = String(sigA.lit || '');
+            if (curLit !== newLit) {
+                cell.attrs.signal = cell.attrs.signal || {};
+                cell.attrs.signal.lit = newLit;
+                return true;
+            }
+            return false;
+        }
+
+        /* ── Legacy per-lamp signal cells ── */
+        if (LAMP_SIGNAL[cell.type]) {
+            var aspect2 = computeAspect(s, thr);
+            /* Map cell type to aspect tag */
+            var tagMap = {
+                'examples.Signald90': 'RG',
+                'examples.Signal45': 'HG',
+                'examples.Signal90': 'DG',
+                'examples.Signald45': 'HHG'
+            };
+            /* Also read tag from label ("S18 RG" → "RG") */
+            var lbl = ((cell.attrs.label && cell.attrs.label.text) || '').trim().split(/\s+/);
+            var cellTag = lbl.length >= 2 ? lbl[1].toUpperCase() : tagMap[cell.type];
+            var shouldLit = (aspect2 === cellTag);
+            var litCol = LAMP_COLOUR[cell.type] || C_RED;
+            var newFill = shouldLit ? litCol : OFF_GREY;
+            cell.attrs.circle1 = cell.attrs.circle1 || {};
+            if (cell.attrs.circle1.fill !== newFill) { cell.attrs.circle1.fill = newFill; return true; }
+            return false;
+        }
+
+        /* ── Track (stroke-based: Track, Track1, Track2, Track5, Track6) ── */
+        if (TRACK_STROKE[cell.type]) {
+            var occ = computeOccupied(s);
+            var ns = occ ? C_RED : OFF_GREY;
+            cell.attrs.path = cell.attrs.path || {};
+            if (cell.attrs.path.stroke !== ns) { cell.attrs.path.stroke = ns; return true; }
+            return false;
+        }
+
+        /* ── Track (fill-based: Track3, Track4 — curved variants) ── */
+        if (TRACK_FILL[cell.type]) {
+            var occ2 = computeOccupied(s);
+            var nf = occ2 ? C_RED : OFF_GREY;
+            cell.attrs.path = cell.attrs.path || {};
+            if (cell.attrs.path.fill !== nf) { cell.attrs.path.fill = nf; return true; }
+            return false;
+        }
+
+        /* ── Point Machine ── */
+        if (PM_TYPES[cell.type]) {
+            var pos = computePM(s);
+            var pf = pos === 'NORMAL' ? C_GREEN : pos === 'REVERSE' ? C_YELLOW : PM_OFF;
+            cell.attrs.circle1 = cell.attrs.circle1 || {};
+            if (cell.attrs.circle1.fill !== pf) { cell.attrs.circle1.fill = pf; return true; }
+            return false;
+        }
+
+        /* ── Shunt signal ── */
+        if (SHUNT_TYPES[cell.type]) {
+            var lit2 = computeShunt(s, thr);
+            var sf = lit2 ? C_RED : OFF_GREY;
+            cell.attrs.body = cell.attrs.body || {};
+            if (cell.attrs.body.fill !== sf) { cell.attrs.body.fill = sf; return true; }
+            return false;
+        }
+
+        return false;
+    }
+
+    /* =========================================================================
+       SECTION 7 — RENDERING
+       ========================================================================= */
+
+    function requestRender() {
+        if (state.renderPending) return;
+        state.renderPending = true;
+        (window.requestAnimationFrame || function (fn) { setTimeout(fn, 16); })(function () {
+            state.renderPending = false;
+            render();
+        });
+    }
+
+    function render() {
+        if (!canvasEl) return;
+        if (!state.cells.length) { renderPlaceholder('No cells to render.'); return; }
+
+        /* sip-library layer functions */
+        var railLayer = typeof SIP.renderRailLayer === 'function' ? SIP.renderRailLayer(state.cells) : '';
+        var standLayer = typeof SIP.renderStandLayer === 'function' ? SIP.renderStandLayer(state.cells) : '';
+        var breakerLayer = typeof SIP.renderBreakerLayer === 'function' ? SIP.renderBreakerLayer(state.cells) : '';
+
+        var hl = state.highlight ? state.highlight.toLowerCase() : '';
+        var frags = '';
+        for (var i = 0; i < state.cells.length; i++) {
+            var c = state.cells[i];
+            var inner = SIP.renderCell(c);
+            var cls = 'sip-live-cell';
+            if (hl) {
+                var lbl = ((c.attrs && c.attrs.label && c.attrs.label.text) || '').toLowerCase();
+                cls += lbl.indexOf(hl) !== -1 ? ' sip-highlight' : ' sip-dim';
+            }
+            frags += '<g class="' + cls + '" data-cell-id="' + escHtml(c.id) + '" data-cell-type="' + escHtml(c.type) + '" data-cell-label="' + escHtml((c.attrs && c.attrs.label && c.attrs.label.text) || '') + '" style="cursor:pointer;pointer-events:all;">' + inner + '</g>';
+        }
+
+        canvasEl.innerHTML =
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + state.viewBox + '" ' +
+            'class="sip-yard" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;">' +
+            '<defs>' +
+            '<style>' +
+            '.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
+            '.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
+            '</style>' +
+            '<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">' +
+            '<stop offset="0%"  stop-color="#0c1530"/>' +
+            '<stop offset="55%" stop-color="#08101c"/>' +
+            '<stop offset="100%" stop-color="#060a14"/>' +
+            '</linearGradient>' +
+            '</defs>' +
+            '<rect width="100%" height="100%" fill="url(#sipBg)"/>' +
+            railLayer + standLayer + breakerLayer + frags +
+            '</svg>';
+    }
+
+    function renderPlaceholder(msg) {
+        if (!canvasEl) return;
+        canvasEl.innerHTML =
+            '<div style="display:flex;align-items:center;justify-content:center;' +
+            'height:100%;color:#64748b;font-size:14px;font-family:system-ui;">' +
+            escHtml(msg) + '</div>';
+    }
+
+    /* =========================================================================
+       SECTION 8 — STATUS + HIGHLIGHT
+       ========================================================================= */
+
+    function setStatus(text, cls) {
+        if (!statusEl) return;
+        statusEl.textContent = text;
+        statusEl.className = 'ws-status' + (cls ? ' ws-' + cls : '');
+    }
+
+    function highlight(query) {
+        state.highlight = (query || '').trim();
+        render();
+    }
+
+    /* =========================================================================
+       SECTION 9 — DIAGNOSTICS + SIMULATE
+       ========================================================================= */
+
+    function diagnose() {
+        var ws = state.ws;
+        var wsState = !ws ? 'NONE'
+            : ws.readyState === 0 ? 'CONNECTING'
+                : ws.readyState === 1 ? 'OPEN'
+                    : ws.readyState === 2 ? 'CLOSING' : 'CLOSED';
+
+        var info = {
+            mode: state.bridgeInstalled ? 'bridge (sharing telemetrylive.js WS)' : (state.ws ? 'standalone' : 'idle'),
+            siteId: state.siteId,
+            'cells loaded': state.cells.length,
+            'labels': Object.keys(state.byLabel).length,
+            'prefixes': Object.keys(state.byPrefix).length,
+            'WS state': wsState,
+            'msgs recv': state.diag.recv,
+            'items': state.diag.items,
+            'hits': state.diag.hits,
+            'no-match': state.diag.noMatch
+        };
+        console.log('[sip-telemetry] DIAGNOSE'); console.table(info);
+
+        if (!state.cells.length)
+            console.warn('No layout — select a site first.');
+
+        if (state.diag.unmatched.length) {
+            console.warn('Assets in WS not found in SIP labels:');
+            console.table(state.diag.unmatched);
+            console.log('Known SIP labels:', Object.keys(state.byLabel).sort());
+        }
+
+        if (state.diag.recent.length) {
+            console.log('Last 5 messages:');
+            console.table(state.diag.recent.slice(-5));
+        }
+        return info;
+    }
+
+    /* Inject a fake telemetry message for testing.
+     *
+     *   SipTelemetry.simulate('S13','RECR',1)          → S13 R lamp RED
+     *   SipTelemetry.simulate('S13','HECR',1)          → S13 Y lamp YELLOW
+     *   SipTelemetry.simulate('S13','DECR',1)          → S13 G lamp GREEN
+     *   SipTelemetry.simulate('C-18T','TPR V',0.5)     → track occupied (red)
+     *   SipTelemetry.simulate('60','A End - NWKR',23)  → PM normal (green)
+     *   SipTelemetry.simulate('60','A End - RWKR',23)  → PM reverse (yellow)
+     *   SipTelemetry.simulate('SH114','HR',1)          → shunt lit (red)
+     */
+    function simulate(assetName, attrName, value) {
+        if (!state.cells.length) { console.warn('[sip-telemetry] No layout — select a site first.'); return; }
+        feedItems([{
+            AssetName: assetName, AssetAttributeName: attrName,
+            AssetAttributeId: null, AssetId: 0,
+            Value: value, DataType: 'Simulated',
+            TimestampDevice: new Date().toISOString()
+        }]);
+    }
+
+    /* =========================================================================
+       HELPERS
+       ========================================================================= */
+    function pushSample(arr, v, cap) { arr.push(v); while (arr.length > cap) arr.shift(); }
+    function escHtml(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    /* =========================================================================
+       BOOT
+       ========================================================================= */
+    if (document.readyState === 'loading')
+        document.addEventListener('DOMContentLoaded', init);
+    else
+        init();
+
+    /* =========================================================================
+       PUBLIC API
+       ========================================================================= */
+    window.SipTelemetry = {
+        connectToSite: connectToSite,
+        disconnect: function () { closeSockets(); removeBridge(); },
+        refresh: function () { if (state.siteId) connectToSite(state.siteId); },
+        highlight: highlight,
+        diagnose: diagnose,
+        simulate: simulate,
+        installBridge: tryBridge,
+        removeBridge: removeBridge,
+        _state: state
+    };
+
+})();

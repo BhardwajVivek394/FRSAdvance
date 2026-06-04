@@ -1,0 +1,141 @@
+﻿
+@model Domain.Project
+
+<style>
+    .select2-selection__choice__remove {
+        float: right;
+        margin-left: 5px; /* I added to separate a little bit */
+        color: black;
+    }
+</style>
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal bounceIn animated" id="modal-add-project" tabindex="-1" aria-labelledby="modal-add-project" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content bradius4">
+            @Html.HiddenFor(m => m.Id, new { @id = "hdnProjectId" })
+            <div class="modal-header">
+                @if (Model.Id == 0)
+                {
+                    <h4 class="modal-title"><span>Add Project</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title"><span> Edit Project</span></h4>
+                }
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="">
+                                <label class="control-label">Name <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    @Html.TextBoxFor(m => m.Name, new { @class = "form-control", tabindex = 1 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="col-sm-12">
+                            <div class="">
+                                <label class="control-label">Contract Number <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    @Html.TextBoxFor(m => m.ContractNumber, new { @class = "form-control", tabindex = 1 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+
+                        </div>
+                        <div class="col-sm-12">
+                            <div class="">
+                                <label class="control-label">Divisions</label>
+                                <select id="drpProjectDivision" class="js-example-basic-multiple form-control" multiple>
+                                    @if (ViewBag.Divisions != null)
+                                    {
+
+                                        foreach (var item in ViewBag.Divisions as List<Domain.Division>)
+                                        {
+                                            <option class="divisionId_@item.Id" value="@item.Id">@item.Name</option>
+
+                                        }
+                                    }
+                                </select>
+
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <div class="row divProjectSite">
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()" id="btnSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+@if (Model.ProjectDivisions != null && Model.ProjectDivisions.Count > 0)
+{
+    foreach (var division in Model.ProjectDivisions)
+    {
+        foreach (var site in division.ProjectSites)
+        {
+            <input type="hidden" id="hdnProjectSelectedSite_@site.SiteId" value="@site.SiteId"/>
+        }
+    }
+}
+<script>
+    $(document).ready(function () {
+
+        $('#drpProjectDivision').select2();
+        if (@Html.Raw(Json.Encode(Model.ProjectDivisions)) != null) {
+            var javascriptArray = @Html.Raw(Json.Encode(Model.ProjectDivisions));
+            var selectedValues = javascriptArray.map(function (item) { return item.DivisionId; });
+
+            $('#drpProjectDivision').val(selectedValues).trigger('change');
+        }
+
+        if ($('#hdnSaveType').val() == 'Success') {
+
+            CommonNotification($("#hdnSaveType").val().toUpperCase(), $("#hdnSaveMessage").val(), $("#hdnSaveType").val());
+
+            $("[class*='modal-backdrop']").remove();
+            $("#frmProjectList").submit();
+           // window.history.pushState('', '', "Index");
+        }
+        else if ($('#hdnSaveType').val() == 'Error') {
+            CommonNotification($("#hdnSaveType").val().toUpperCase(), $("#hdnSaveMessage").val(), $("#hdnSaveType").val());
+
+            $("[class*='modal-backdrop']").remove();
+            //window.history.pushState('', '', "Index");
+        }
+
+        var divisionIds = $("#drpProjectDivision").val();
+        if (divisionIds != null && divisionIds != undefined && divisionIds.length > 0) {
+            $(".divProjectSite").empty();
+            $(divisionIds).each(function (d, divisionId) {
+                fnBindSite(divisionId);
+            });
+        }
+
+        $("#drpProjectDivision").change(function () {
+            var divisionIds = $(this).val();
+            if (divisionIds != null && divisionIds != undefined && divisionIds.length > 0) {
+                $(".divProjectSite").empty();
+                $(divisionIds).each(function (d, divisionId) {
+                    fnBindSite(divisionId);
+                });
+            }
+            $(".divProjectSite").empty();
+        });
+    });
+
+</script>

@@ -1,0 +1,211 @@
+﻿@model Domain.AssetLister
+
+@Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+@Html.HiddenFor(model => model.Pager.PageSize, new { id = "hdnPageSize" })
+
+@{ // Group the data
+    var assetReport = new List<dynamic>();
+    int totalAssetCount = 0;
+
+    if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
+    {
+        assetReport = Model.mAssets
+            .GroupBy(c => new
+            {
+                c.Zone,
+                c.Division,
+                c.SiteName,
+                c.AssetTypeName,
+                c.RailwayAssetMake
+            })
+            .Select(gcs => new
+            {
+                gcs.Key.Zone,
+                gcs.Key.Division,
+                gcs.Key.SiteName,
+                gcs.Key.AssetTypeName,
+                gcs.Key.RailwayAssetMake,
+                Count = gcs.Count()
+            }).ToList<dynamic>();
+
+        totalAssetCount = assetReport.Sum(x => (int)x.Count);
+    }
+
+    // Pagination calculations
+    int pageSize = Model.Pager != null && Model.Pager.PageSize > 0 ? Model.Pager.PageSize : 10;
+    int skip = Model.Pager != null ? Model.Pager.Skip : 0;
+    int totalRecords = assetReport.Count;
+    int totalPages = totalRecords > 0 ? (int)Math.Ceiling((double)totalRecords / pageSize) : 1;
+    int currentPage = (skip / pageSize) + 1;
+
+    // Apply pagination
+    var pagedData = assetReport.Skip(skip).Take(pageSize).ToList();
+    int startIndex = skip; }
+
+<div class="col">
+    <!-- List View -->
+    <div id="listView">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="thead-light2">
+                    <tr>
+                        <th>Sr.No</th>
+                        <th>Zone</th>
+                        <th>Division</th>
+                        <th>Station</th>
+                        <th>Asset Type</th>
+                        <th>Asset Make</th>
+                        <th class="text-center">Count of Asset</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (pagedData.Count > 0)
+                    {
+                        int counter = startIndex;
+                        foreach (var asset in pagedData)
+                        {
+                            counter++;
+                            <tr>
+                                <td>@counter</td>
+                                <td>@asset.Zone</td>
+                                <td>@asset.Division</td>
+                                <td>@asset.SiteName</td>
+                                <td>@asset.AssetTypeName</td>
+                                <td>@asset.RailwayAssetMake</td>
+                                <td class="text-center">@asset.Count</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <!-- Pagination with Arrows -->
+        <!--<div class="d-flex justify-content-between align-items-center px-md-4 px-2 flex-wrap gap-10">
+            <div class="text-muted" style="font-size: 13px;">
+                Showing <strong>@(totalRecords > 0 ? skip + 1 : 0)</strong> to <strong>@(Math.Min(skip + pageSize, totalRecords))</strong> of <strong>@totalRecords</strong> records
+            </div>
+            <nav>
+                <ul class="pagination pagination-sm justify-content-end mb-0">-->
+        <!-- Previous Arrow -->
+        <!--<li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+            <a class="page-link" href="javascript:void(0);" onclick="@(currentPage > 1 ? "fnPrevPage()" : "")" title="Previous">
+                <i class="fas fa-chevron-left"></i>
+            </a>
+        </li>
+
+        @{
+            int startPage = Math.Max(1, currentPage - 2);
+            int endPage = Math.Min(totalPages, currentPage + 2);
+
+            if (startPage > 1)
+            {
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(1)">1</a>
+                </li>
+                if (startPage > 2)
+                {
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                }
+            }
+
+            for (int i = startPage; i <= endPage; i++)
+            {
+                <li class="page-item @(i == currentPage ? "active" : "")">
+                    <a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(@i)">@i</a>
+                </li>
+            }
+
+            if (endPage < totalPages)
+            {
+                if (endPage < totalPages - 1)
+                {
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                }
+                <li class="page-item">
+                    <a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(@totalPages)">@totalPages</a>
+                </li>
+            }
+        }-->
+        <!-- Next Arrow -->
+        <!--<li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                        <a class="page-link" href="javascript:void(0);" onclick="@(currentPage < totalPages ? "fnNextPage()" : "")" title="Next">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>-->
+        <!--<div class="d-flex justify-content-between align-items-center px-md-4 px-2">
+        <div class="text-muted" style="font-size: 13px;">
+            Showing <strong>@(totalRecords > 0 ? skip + 1 : 0)</strong> to <strong>@(Math.Min(skip + pageSize, totalRecords))</strong> of <strong>@totalRecords</strong> records
+        </div>
+        <nav>
+            <ul class="pagination justify-content-end mt-3">-->
+        <!-- Previous -->
+        <!--<li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+            <a class="page-link" href="javascript:void(0);" onclick="fnPrevPage()">Previous</a>
+        </li>
+
+        @@{ int startPage = Math.Max(1, currentPage - 2);
+                        int endPage = Math.Min(totalPages, currentPage + 2);
+
+                        if (startPage > 1)
+                        {
+            <li class="page-item">
+                <a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(1)">1</a>
+            </li> if (startPage > 2)
+                            {
+            <li class="page-item disabled"><span class="page-link">...</span></li> }
+                        }
+
+                        for (int i = startPage; i <= endPage; i++)
+                        {
+            <li class="page-item @@(i == currentPage ? "active" : "")">
+                <a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(@@i)">@@i</a>
+            </li> }
+
+                        if (endPage < totalPages)
+                        {
+                            if (endPage < totalPages - 1)
+                            {
+            <li class="page-item disabled"><span class="page-link">...</span></li> }
+            <li class="page-item">
+                <a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(@@totalPages)">@@totalPages</a>
+            </li> } }-->
+        <!-- Next -->
+        <!--<li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                        <a class="page-link" href="javascript:void(0);" onclick="fnNextPage()">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>-->
+    </div>
+</div>
+
+<script>
+    var _totalRecords = @totalRecords;
+    var _pageSize = @pageSize;
+
+    function fnPrevPage() {
+        var skip = parseInt($('#hdnSkip').val()) || 0;
+        if (skip >= _pageSize) {
+            $('#hdnSkip').val(skip - _pageSize);
+            fnGetAssetDetailReport();
+        }
+    }
+
+    function fnNextPage() {
+        var skip = parseInt($('#hdnSkip').val()) || 0;
+        if (skip + _pageSize < _totalRecords) {
+            $('#hdnSkip').val(skip + _pageSize);
+            fnGetAssetDetailReport();
+        }
+    }
+
+    function fnGoToPage(page) {
+        $('#hdnSkip').val((page - 1) * _pageSize);
+        fnGetAssetDetailReport();
+    }
+</script>

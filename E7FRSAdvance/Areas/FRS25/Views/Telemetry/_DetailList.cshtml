@@ -1,0 +1,217 @@
+﻿<style>
+    /* DetailList — aurora-adaptive table */
+    .tblTelemetryHistory thead th {
+        background: linear-gradient(135deg, #042c43 0%, #0a4a6e 100%) !important;
+        color: #ffffff !important;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        padding: 12px 14px;
+        border: none;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
+    .tblTelemetryHistory tbody td {
+        padding: 10px 14px;
+        border-bottom: 1px solid #e2e8f0;
+        color: #374151;
+        font-size: 13px;
+        vertical-align: middle;
+    }
+
+    .tblTelemetryHistory tbody tr:hover {
+        background: #f8fafc;
+    }
+
+    .tblTelemetryHistory tbody tr:nth-child(even) {
+        background: #fafbfc;
+    }
+    /* Aurora dark overrides */
+    body[data-aurora="dark"] .tblTelemetryHistory tbody td {
+        color: #cbd5e1;
+        border-bottom-color: rgba(255,255,255,0.08);
+    }
+
+    body[data-aurora="dark"] .tblTelemetryHistory tbody tr:hover {
+        background: rgba(255,255,255,0.04);
+    }
+
+    body[data-aurora="dark"] .tblTelemetryHistory tbody tr:nth-child(even) {
+        background: rgba(255,255,255,0.02);
+    }
+    /* Pagination aurora overrides */
+    body[data-aurora="dark"] .pagination .page-link {
+        background: rgba(255,255,255,0.06);
+        border-color: rgba(255,255,255,0.12);
+        color: #94a3b8;
+    }
+
+    body[data-aurora="dark"] .pagination .page-item.active .page-link {
+        background: linear-gradient(135deg, #042c43 0%, #0a4a6e 100%);
+        border-color: #0a4a6e;
+        color: #fff;
+    }
+
+    body[data-aurora="dark"] .pagination .page-link:hover {
+        background: rgba(255,255,255,0.1);
+        color: #e2e8f0;
+    }
+</style>
+@model Domain.Asset
+
+
+@if (Model != null && Model.assetAttributes != null && Model.assetAttributes.Count > 0)
+{
+
+
+    <div class="table-responsive">
+        <table class="table table-hover tblTelemetryHistory">
+            <thead class="thead-light2">
+                <tr>
+                    <th>Sr.No</th>
+                    <th>Time</th>
+                    @foreach (var attr in Model.assetAttributes)
+                    {
+                        <th>
+                            @if (!string.IsNullOrEmpty(attr.AliasName))
+                            {
+                                <span>@attr.AliasName</span>
+                            }
+                            else
+                            {
+                                <span>@attr.Title</span>
+                            }
+                        </th>
+                    }
+
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    int srNo = 1;
+                    int counter = 0;
+                }
+
+                @foreach (var dlist in Model.DateList)
+                {
+
+                    <tr>
+                        <td>@srNo</td>
+                        <td>@dlist</td>
+                        @foreach (var attr in Model.assetAttributes)
+                        {
+                            <td>@(attr.Data != null && counter < attr.Data.Count ? attr.Data[counter] : "-")</td>
+                        }
+
+                    </tr>
+                    counter++;
+                    srNo++;
+                }
+
+            </tbody>
+        </table>
+    </div>
+    <!-- Pagination aligned to bottom right -->
+    <nav class="px-md-4 px-2">
+        <ul class="pagination justify-content-end mt-3" id="pager">
+            <li class="page-item" data-page="prev">
+                <a class="page-link" href="#">Previous</a>
+            </li>
+            <!-- page numbers injected here -->
+            <li class="page-item" data-page="next">
+                <a class="page-link" href="#">Next</a>
+            </li>
+        </ul>
+    </nav>
+
+}
+
+
+<script>
+    $(function () {
+
+        var rowsPerPage = 10;
+        var rows = $('.tblTelemetryHistory tbody tr');
+        var totalRows = rows.length;
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var currentPage = 1;
+        var pager = $('#pager');
+
+        function showPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+
+            var start = (page - 1) * rowsPerPage;
+            var end = start + rowsPerPage;
+            rows.hide().slice(start, end).show();
+
+            renderPager();
+        }
+
+        function renderPager() {
+            pager.find('.page-number, .ellipsis').remove();
+
+            function addPage(p) {
+                $('<li class="page-item page-number ' + (p === currentPage ? 'active' : '') + '">' +
+                    '<a class="page-link" href="#">' + p + '</a></li>')
+                    .insertBefore(pager.find('[data-page="next"]'));
+            }
+
+            function addEllipsis() {
+                $('<li class="page-item disabled ellipsis">' +
+                    '<span class="page-link">...</span></li>')
+                    .insertBefore(pager.find('[data-page="next"]'));
+            }
+
+            // First 3 pages
+            for (var i = 1; i <= Math.min(3, totalPages); i++) {
+                addPage(i);
+            }
+
+            // Ellipsis before current
+            if (currentPage > 5) {
+                addEllipsis();
+            }
+
+            // Current ±1
+            for (var i = currentPage - 1; i <= currentPage + 1; i++) {
+                if (i > 3 && i < totalPages - 2) {
+                    addPage(i);
+                }
+            }
+
+            // Ellipsis after current
+            if (currentPage < totalPages - 4) {
+                addEllipsis();
+            }
+
+            // Last 3 pages
+            for (var i = Math.max(totalPages - 2, 4); i <= totalPages; i++) {
+                addPage(i);
+            }
+
+            pager.find('[data-page="prev"]').toggleClass('disabled', currentPage === 1);
+            pager.find('[data-page="next"]').toggleClass('disabled', currentPage === totalPages);
+        }
+
+        pager.on('click', '.page-link', function (e) {
+            e.preventDefault();
+            var li = $(this).parent();
+
+            if (li.hasClass('disabled') || li.hasClass('active')) return;
+
+            if (li.data('page') === 'prev') showPage(currentPage - 1);
+            else if (li.data('page') === 'next') showPage(currentPage + 1);
+            else showPage(parseInt($(this).text()));
+        });
+
+        showPage(1);
+    });
+</script>
+
+
+

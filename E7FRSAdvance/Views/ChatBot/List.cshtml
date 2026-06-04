@@ -1,0 +1,128 @@
+﻿@model  List<Domain.ChatBot>
+@{
+    string answer = string.Empty;
+}
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+@if (Model != null && Model.Count() > 0)
+{
+    var ansModel = Model.Where(x => x.MessageType == "Answer").LastOrDefault();
+    if (ansModel != null && !string.IsNullOrEmpty(ansModel.Message))
+    {
+        answer = ansModel.Message;
+    }
+    int count = 0;
+    foreach (var remark in Model)
+    {
+        remark.Message = remark.Message.Replace("\n", "<br/>");
+        if (remark.UserId == E7FRSAdvance.Utility.ClsHttpContent.LoginUser.Id)
+        {
+            <div class="msg right-msg">
+                <div class="msg-img1">
+                </div>
+                <div class="msg-bubble2">
+                    <div class="msg-info">
+                        <div class="msg-info-name" style="color:white;">@remark.Name</div>
+                    </div>
+                    <div class="msg-chat-text" style="color: white; margin-left:9px;">@Html.Raw(HttpUtility.HtmlDecode(remark.Message))</div>
+                </div>
+            </div>
+        }
+        else if (count == 0)
+        {
+            <div class="msg left-msg">
+                <div class="msg-img1">
+                </div>
+                <div class="msg-bubble1">
+                    <div class="msg-info">
+                        <div class="msg-info-name">@remark.Name</div>
+                        @*<i class="fa fa-pencil" onclick="fnGetRemark()"></i>*@
+                    </div>
+                    <div class="msg-chat-text" style="margin-left:9px;">
+                        <span>
+                            @Html.Raw(HttpUtility.HtmlDecode(remark.Message))
+                        </span>                        
+                        @if (remark != null && remark.Files != null && remark.Files.Count > 0)
+                        {
+                            foreach (var item in remark.Files)
+                            {
+                                <br />
+                                <a href="@Url.Action("GetPDFDownload", "ChatBot", new {fileName = item.Name,filePath = item.Path,fileType=item.Type})">@item.Name</a>
+                            }
+
+                        }
+                    </div>
+                </div>
+            </div>
+            count++;
+        }
+        else
+        {
+            <div class="msg left-msg">
+                <div class="msg-img1">
+                </div>
+                <div class="msg-bubble1">
+                    <div class="msg-info">
+                        <div class="msg-info-name">@remark.Name</div>
+                        <i class="fa fa-pencil" onclick="fnGetRemark('@remark.Question.Replace('\'', '\"')')"></i>
+                    </div>
+                    <div class="msg-chat-text" style="margin-left:9px;">
+                        <span>@Html.Raw(HttpUtility.HtmlDecode(remark.Message))</span>
+                        @if (remark != null && remark.Files != null && remark.Files.Count > 0)
+                        {
+                            foreach (var item in remark.Files)
+                            {
+                                <br />
+                                <a href="@Url.Action("GetPDFDownload", "ChatBot", new {fileName = item.Name,filePath = item.Path,fileType=item.Type})">@item.Name</a>
+                            }
+
+                        }
+
+                    </div>
+                </div>
+            </div>
+        }
+
+    }
+}
+
+<script>
+    $(document).ready(function () {
+        if ($('#hdnSaveType').val() == 'Success') {
+
+            CommonNotification($("#hdnSaveType").val().toLowerCase(), $("#hdnSaveMessage").val());
+
+            $("[class*='modal-backdrop fade show']").remove();
+
+        }
+        else if ($('#hdnSaveType').val() == 'Error') {
+            CommonNotification($("#hdnSaveType").val().toLowerCase(), $("#hdnSaveMessage").val());
+
+            $("[class*='modal-backdrop fade show']").remove();
+        }
+
+        $('#divChatBotePartial').scrollTop($('#divChatBotePartial')[0].scrollHeight);
+
+
+    });
+
+    //var addTextByDelay = function (text, elem, delay) {
+    //    if (!elem) {
+    //        elem = $("body");
+    //    }
+    //    if (!delay) {
+    //        delay = 300;
+    //    }
+    //    if (text.length > 0) {
+    //        //append first character
+    //        elem.append(text[0]);
+    //        setTimeout(
+    //            function () {
+    //                //Slice text by 1 character and call function again
+    //                addTextByDelay(text.slice(1), elem, delay);
+    //            }, delay
+    //        );
+    //    }
+    //}
+</script>

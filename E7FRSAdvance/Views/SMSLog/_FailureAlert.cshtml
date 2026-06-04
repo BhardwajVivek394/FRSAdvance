@@ -1,0 +1,987 @@
+﻿
+@model Domain.SMSLogLister
+
+<style>
+    .rounded-pill1 {
+        border-radius: 55rem !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+</style>
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="container-fluid">
+    <div class="email-wrap email-main-wrapper">
+        <div class="row">
+            <div class="col-xxl-12 col-xl-12 box-col-12">
+                <div class="email-right-aside">
+                    <div class="card email-body email-list">
+                        <div class="mail-header-wrapper">
+                            <div class="row">
+                                <div class="col-xl-12">
+                                    <div class="mail-body">
+                                        <div class="row p-4">
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Divisions:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, ViewBag.Divisions as SelectList, new { @class = "form-control", tabindex = 1 })
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Site:</label>
+                                                    <select class="form-control" id="selSearchSiteName" name="SearchCriteria.SiteId">
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Gear:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.AssetTypeId, (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "All", new { @class = "form-control", tabindex = 1 })
+
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Alert Type:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.AlertTypeId, (IEnumerable<SelectListItem>)ViewBag.Alerts, "All", new { @class = "form-control", tabindex = 1 })
+
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+
+                                                    <label class="control-label center-block">Asset:</label>
+                                                    <select class="form-control" name="SearchCriteria.AssetId" id="drpSerchAssetId">
+                                                        <option value="0">All</option>
+                                                        @foreach (var item in Model.Assets)
+                                                        {
+                                                            <option @(Model.SearchCriteria.AssetId == item.Id ? "selected" : "") value="@item.Id" data-AssetTypeId="@item.AssetTypeId">@item.Name</option>
+
+                                                        }
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2"></div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">From Date:</label>
+                                                    @Html.TextBoxFor(m => m.SearchCriteria.FromDate, "{0:d}", new { id = "txtFromDate", @class = "form-control" })
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-3">
+                                                    <label class="control-label center-block">To Date:</label>
+                                                    @Html.TextBoxFor(m => m.SearchCriteria.ToDate, "{0:d}", new { id = "txtToDate", @class = "form-control" })
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <br />
+                                                    @Html.HiddenFor(x => x.SearchCriteria.IsSmsLogActive)
+                                                    <label class="radio-inline">
+                                                        @if (Model.SearchCriteria.IsSmsLogActive == true)
+                                                        {
+                                                            <input type="radio" name="filter" checked id="rdActive" value="1" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <input type="radio" name="filter" id="rdActive" value="1" />
+                                                        }
+                                                        Active
+                                                    </label>
+                                                    <label class="radio-inline">
+                                                        @if (Model.SearchCriteria.IsSmsLogActive == false)
+                                                        {
+                                                            <input type="radio" name="filter" checked id="rdInActive" value="0" />
+                                                        }
+                                                        else
+                                                        {
+                                                            <input type="radio" name="filter" id="rdInActive" value="0" />
+                                                        }
+                                                        InActive
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <br />
+                                                    <label class="control-label center-block">Validity :</label>
+                                                    @Html.CheckBox("SearchCriteria.Validity")
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-3">
+                                                <a class="btn btn-success btn-quirk" onclick="fnSearchSMSLogs()" data-bs-original-title="" title="Search"><i class="fa fa-search"></i></a>
+                                                <a class="btn btn-primary btn-quirk" href="@Url.Action("DownloadSMSLog")" data-bs-original-title="" title="Download csv"><i class="fa fa-download"></i></a>
+                                                <a href="#" class="btn btn-danger btn-quirk" onclick="fnDeleteSelected()" data-bs-original-title="" title="Delete selected alert log"><i class="fa fa-trash"></i></a>
+
+                                            </div>
+                                            @*<div class="col-sm-1">
+
+                                                </div>*@
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+{
+    <div class="container-fluid">
+        <div class="email-wrap email-main-wrapper">
+            <div class="row">
+                <div class="col-xxl-12 col-xl-12 box-col-12">
+                    <div class="email-right-aside">
+                        <div class="card email-body email-list">
+                            <div class="mail-header-wrapper" style="background-color:#215968; color:white; border-top-left-radius: 15px; border-top-right-radius:15px;">
+                                <div class="col-xl-12">
+                                    <div class="mail-header">
+                                        <div class="form-check form-check-inline">
+
+                                            <input class="form-check-input checkbox-primary" id="allSelectCheckbox" type="checkbox" value="@Model.AssetTypes.FirstOrDefault().Name.Replace(" ","")">
+                                            <label class="form-check-label" for="allSelectCheckbox"></label>
+                                            <ul class="email-tabs nav" role="tablist">
+                                                @foreach (var item in Model.AssetTypes)
+                                                {
+
+                                                    <li class="nav-item">
+                                                        @{
+                                                            var isActive = string.Empty;
+                                                        }
+
+                                                        @if (item == Model.AssetTypes.FirstOrDefault())
+                                                        {
+                                                            isActive = "active";
+                                                        }
+
+                                                        <a class="nav-link @isActive" id="@item.Name.Replace(" ","")-pill-tab" data-bs-toggle="pill" href="#@item.Name.Replace(" ","")-pill" role="tab" aria-controls="@item.Name.Replace(" ","")-pill" aria-selected="false" onclick="fnChangeTab('@item.Name.Replace(" ","")')" style="color:white;">
+                                                            <div>@item.Name</div>
+                                                            <span class="span badge rounded-pill pill-badge-primary">@Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id).Count()</span>
+                                                        </a>
+                                                    </li>
+
+                                                }
+
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tab-content" id="email-pills-tabContent">
+                                @foreach (var item in Model.AssetTypes)
+                                {
+                                    var isActive = "";
+                                    if (item == Model.AssetTypes.FirstOrDefault())
+                                    {
+                                        isActive = "show active";
+                                    }
+                                    <div class="tab-pane fade @isActive" id="@item.Name.Replace(" ","")-pill" role="tabpanel" aria-labelledby="@item.Name.Replace(" ","")-pill-tab">
+                                        <div class="mail-body-wrapper">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                                {
+                                                    foreach (var site in Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id).GroupBy(x => new { x.SiteId, x.SiteName }).Select(x => x.Key).ToList())
+                                                    {
+                                                        int smsCount = Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId).Count();
+                                                        if (smsCount > 0)
+                                                        {
+                                                            <li class="inbox-data" style="background-color:#f4f8f8">
+                                                                <div class="inbox-message">
+
+                                                                    <div class="email-data">
+                                                                        <span style="float:left;">@site.SiteName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary" style="color:white;">@smsCount</span>
+                                                                    </div>
+                                                                    <span class="pull-right">
+                                                                        <a href="#" data-bs-original-title="" title=""><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceAlertLogSite('@site.SiteId','@item.Name.Replace(" ", "")', this); return false;"></i></a>
+                                                                    </span>
+                                                                </div>
+                                                            </li>
+
+                                                        }
+
+                                                        if (item.Name != "Earth Fault" && item.Name != "ELD")
+                                                        {
+                                                            foreach (var alert in Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AlertName != null && x.AlertName != string.Empty).GroupBy(x => new { x.AlertTypeId, x.AlertName }).Select(x => x.Key).ToList())
+                                                            {
+                                                                if (alert != null && alert.AlertName != "")
+                                                                {
+
+                                                                    var smsAlertNameCount = Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AlertName == alert.AlertName).Count();
+                                                                    <li class="inbox-data  maintenaceALertLogBySite_@(site.SiteId)_@(item.Name.Replace(" ",""))" style="display:none">
+                                                                        <div class="mail-body-wrapper" style="width:100%;">
+                                                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                                <li class="inbox-data" style="background-color: #4bacc6;">
+                                                                                    <div class="inbox-message">
+                                                                                        <div class="email-data">
+                                                                                            <span style="float: left; color: white;">@alert.AlertName  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAlertNameCount</span>
+                                                                                        </div>
+                                                                                        <span class="pull-right">
+                                                                                            <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceAlertLogAlertName('@site.SiteId','@alert.AlertName.Replace(" ","")', this); return false;"></i></a>
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </li>
+                                                                                @foreach (var asset in Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AlertName == alert.AlertName).GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                                                {
+                                                                                    var smsAssetCount = Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AlertName == alert.AlertName && x.AssetId == asset.AssetId).Count();
+                                                                                    //var isA10Count = Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AssetId == asset.AssetId && x.AlertName == alert.AlertName && x.isTenDays).FirstOrDefault();
+                                                                                    <li class="inbox-data  maintenaceALertLogByAletType_@(site.SiteId)_@(alert.AlertName.Replace(" ",""))" style="display:none">
+                                                                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" style="width:100%;">
+                                                                                            <li class="inbox-data" style="background-color: #21596880; ">
+                                                                                                <div class="inbox-message">
+                                                                                                    <div class="email-data">
+                                                                                                        <span style="float: left; color: white;">@asset.AssetName  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                                                    </div>
+                                                                                                    <span class="pull-right">
+                                                                                                        @*<a class="m-r-10" href="javascript:void(0)" onclick="fnShowLastTenDaysAlert('@site.SiteId','@asset.AssetId','@alert.AlertTypeId'); return false;" data-bs-original-title="" title="" style="color: black"><img src="@Url.Content("~/assets/images/Vector.png")" /></a>*@
+
+                                                                                                        <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceAlertLogAsset('@site.SiteId','@asset.AssetId','@alert.AlertName.Replace(" ","")', this); return false;"></i></a>
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            </li>
+
+                                                                                            @foreach (var smsLog in Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AssetId == asset.AssetId && x.AlertName == alert.AlertName).ToList())
+                                                                                            {
+                                                                                                <li class="inbox-data  maintenaceALertLogByAsset_@(site.SiteId + "" + asset.AssetId)_@(alert.AlertName.Replace(" ",""))" style="display:none">
+                                                                                                    <div class="inbox-user">
+                                                                                                        <div class="form-check form-check-inline m-0">
+                                                                                                            <input class="form-check-input checkbox-primary clsSelectAlltype clsSelectCheckbox_@item.Name.Replace(" ","")" id="smsCheckbox" type="checkbox" name="chkSMSLogDelete" value="@smsLog.Id">
+                                                                                                            <label class="form-check-label" for="emailCheckboxB"></label>
+                                                                                                        </div>
+                                                                                                        <p>@smsLog.SiteName</p>
+                                                                                                    </div>
+                                                                                                    <div class="inbox-message">
+                                                                                                        <div class="email-data">
+                                                                                                            <span>@smsLog.Message</span>
+                                                                                                            @if (smsLog.IsSmsLogActive == true)
+                                                                                                            {
+                                                                                                                <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                                                            }
+                                                                                                            else
+                                                                                                            {
+                                                                                                                <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                                                            }
+                                                                                                            <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                                                            @if (smsLog.AssetTypeName == "TRACK" && smsLog.Message.Contains("trk " + smsLog.AssetName + " Failed"))
+                                                                                                            {
+                                                                                                                <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+
+                                                                                                                <a href="@Url.Action("DownloadTrainOnTrack","SMSLog",new { assetId = smsLog.AssetId, date = smsLog.TimeStamp.ToString("d-M-yyyy")})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-info" data-original-title="Debug">Debug Block <i class="fa fa-download"></i></a>
+                                                                                                            }
+
+
+                                                                                                        </div>
+                                                                                                        <div class="email-timing"><span>@smsLog.TimeStamp.ToString()</span></div>
+                                                                                                        <div class="email-options">
+                                                                                                            @if (smsLog.isTenDays)
+                                                                                                            {
+                                                                                                                <a class="m-r-10" href="javascript:void(0)" onclick="fnShowLastTenDaysAlert('@site.SiteId','@asset.AssetId','@alert.AlertTypeId','@smsLog.TimeStamp.ToShortDateString()'); return false;" data-bs-original-title="" title="" style="color: black"><img src="@Url.Content("~/assets/images/Vector.png")" /></a>
+                                                                                                            }
+                                                                                                            <i class="fa fa-eye text-vision f-20" style="padding-right:1em;margin-top:1px;" onclick="fnOpenModal('@smsLog.SiteId','@smsLog.AssetId','@smsLog.AssetTypeId','@smsLog.SiteName','@smsLog.AssetName')"></i>
+
+                                                                                                            <div class="form-check form-switch">
+                                                                                                                @if (smsLog.Validity != null && smsLog.Validity.Value)
+                                                                                                                {
+                                                                                                                    <input type="checkbox" title="Validity" class="form-check-input f-20" onchange="fnChangeValidity('@smsLog.Id',this)" checked />
+
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <input type="checkbox" title="Validity" class="form-check-input f-20" onchange="fnChangeValidity('@smsLog.Id',this)" />
+                                                                                                                }
+
+                                                                                                            </div>
+                                                                                                            <i class="fa fa-comment f-20" title="Remarks" onclick="fnGetFailureAlertRemrk('@smsLog.SiteId','@smsLog.AssetId','@smsLog.AlertId','@smsLog.TimeStamp.ToString()')" aria-hidden="true"></i>
+                                                                                                            <i class="fa fa-trash-o trash-3 f-20" onclick="DeleteSMSLog('@smsLog.Id')"></i>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </li>
+                                                                                            }
+
+                                                                                        </ul>
+                                                                                    </li>
+                                                                                }
+
+
+                                                                            </ul>
+                                                                        </div>
+                                                                    </li>
+                                                                }
+
+                                                            }
+
+                                                        }
+                                                        else
+                                                        {
+                                                            foreach (var smsLog in Model.mSMSLogs.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId).ToList())
+                                                            {
+
+                                                                <li class="inbox-data  maintenaceALertLogBySite_@(site.SiteId)_@(item.Name.Replace(" ",""))" style="display:none">
+                                                                    <div class="inbox-user">
+                                                                        <div class="form-check form-check-inline m-0">
+                                                                            <input class="form-check-input checkbox-primary clsSelectAlltype clsSelectCheckbox_@item.Name.Replace(" ","")" id="smsCheckbox" type="checkbox" name="chkSMSLogDelete" value="@smsLog.Id">
+                                                                            <label class="form-check-label" for="emailCheckboxB"></label>
+                                                                        </div>
+                                                                        <p>@smsLog.SiteName</p>
+                                                                    </div>
+                                                                    <div class="inbox-message">
+                                                                        <div class="email-data">
+                                                                            <span>@smsLog.Message</span>
+                                                                            @if (smsLog.IsSmsLogActive == true)
+                                                                            {
+                                                                                <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                            }
+                                                                            <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                            @if (smsLog.AssetTypeName == "TRACK" && smsLog.Message.Contains("trk " + smsLog.AssetName + " Failed"))
+                                                                            {
+                                                                                <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+
+                                                                                <a href="@Url.Action("DownloadTrainOnTrack","SMSLog",new { assetId = smsLog.AssetId, date = smsLog.TimeStamp.ToString("d-M-yyyy")})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-info" data-original-title="Debug">Debug Block <i class="fa fa-download"></i></a>
+                                                                            }
+
+
+                                                                        </div>
+                                                                        <div class="email-timing"><span>@smsLog.TimeStamp.ToString()</span></div>
+                                                                        <div class="email-options">
+                                                                            <i class="fa fa-eye text-vision f-20" style="padding-right:1em;margin-top:1px;" onclick="fnOpenModal('@smsLog.SiteId','@smsLog.AssetId','@smsLog.AssetTypeId','@smsLog.SiteName','@smsLog.AssetName')"></i>
+                                                                            <div class="form-check form-switch">
+                                                                                @if (smsLog.Validity != null && smsLog.Validity.Value)
+                                                                                {
+                                                                                    <input type="checkbox" title="Validity" class="form-check-input f-20" onchange="fnChangeValidity('@smsLog.Id',this)" checked />
+
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    <input type="checkbox" title="Validity" class="form-check-input f-20" onchange="fnChangeValidity('@smsLog.Id',this)" />
+                                                                                }
+
+                                                                            </div>
+                                                                            <i class="fa fa-comment f-20" title="Remarks" onclick="fnGetFailureAlertRemrk('@smsLog.SiteId','@smsLog.AssetId','@smsLog.AlertId','@smsLog.TimeStamp.ToString()')" aria-hidden="true"></i>
+                                                                            <i class="fa fa-trash-o trash-3 f-20" onclick="DeleteSMSLog('@smsLog.Id')"></i>
+                                                                        </div>
+                                                                    </div>
+                                                                </li>
+                                                            }
+                                                        }
+
+
+
+
+                                                    }
+
+                                                }
+                                            </ul>
+                                        </div>
+                                    </div>
+                                }
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+<div id="divProbabilityAlert">
+    @*@Html.Partial("_ProbabilityAlertList", new Domain.SMSLogLister())*@
+</div>
+<div id="divProbabilityCSVList">
+    @*@Html.Partial("_ProbabilityCSVList", new Domain.ProbabilityLister())*@
+</div>
+
+<div class="modal bounceIn animated" id="modal-lap" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span id="spModallapHeader"></span></h4>
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close" data-bs-original-title="" title=""></button>
+            </div>
+            <div class="modal-body text-center">
+                <input type="hidden" id="hdnlapAssetId" />
+                <input type="hidden" id="hdnlapSiteId" />
+                <input type="hidden" id="hdnlapSiteName" />
+                <input type="hidden" id="hdnlapAssetTypeId" />
+                <button type="button" class="btn btn-primary" title="Live Data" onclick="fnGetAssetAttribute()">L</button>
+                <button type="button" class="btn btn-success" title="Maintenance Alert" onclick="fnLoadProbabilityAlertList()">A <span id="spnMaintenanceAlertCount"></span></button>
+                <button type="button" class="btn btn-dark" title="Predictive Alert" onclick="fnLoadProbabilityCSVList()">P <span id="spnPredictiveAlertCount"></span></button>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(document).ready(function () {
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmSMSLogsList").submit();
+        });
+
+          $('#txtFromDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtFromDate').val() == "@DateTime.MinValue") {
+            $('#txtFromDate').val('');
+        }
+
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtToDate').val() == "@DateTime.MinValue") {
+            $('#txtToDate').val('');
+        }
+
+        $('#allSelectCheckbox').change(function () {
+            if ($(this).prop('checked') == true) {
+                $('.clsSelectCheckbox_' + $(this).val()).prop('checked', true);
+            } else {
+                $('.clsSelectCheckbox_' + $(this).val()).prop('checked', false);
+
+                $('.clsSelectAlltype').prop('checked', false);
+            }
+        });
+
+        $('#drpSerchAssetTypeId').change(function () {
+            var typeId = $(this).val();
+            $("#drpSerchAssetId > option").each(function () {
+                if ($(this).attr('data-AssetTypeId') != null && $(this).attr('data-AssetTypeId') != undefined && $(this).attr('data-AssetTypeId') != '') {
+                    if (typeId == $(this).attr('data-AssetTypeId')) {
+                        $(this).show();
+                    } else {
+                        $(this).hide();
+                    }
+                }
+
+            });
+        });
+
+        GetAllSite($('#SearchCriteria_DivisionId').val(),'@Model.SearchCriteria.SiteId');
+        $('#SearchCriteria_DivisionId').change(function () {
+            GetAllSite($(this).val(),'@Model.SearchCriteria.SiteId');
+        });
+    });
+
+    function fnChangeTab(type) {
+        $('#allSelectCheckbox').val(type);
+    }
+
+    function GetRemarks($this, id) {
+        if ($($this).hasClass("fa-plus")) {
+            $($this).removeClass("fa-plus").addClass("fa-minus");
+            $("#trSMSLogRemark" + id).show();
+        } else {
+            $($this).removeClass("fa-minus").addClass("fa-plus");
+            $("#trSMSLogRemark" + id).hide();
+        }
+    }
+
+    function fnChangeValidity(id, $this) {
+        var mSMSLog = {};
+        mSMSLog.Id = id;
+        if ($($this).prop('checked') == true) {
+            mSMSLog.Validity = true;
+        }
+        else {
+            mSMSLog.Validity = false;
+        }
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/UpdateSMSLog',
+            type: 'Post',
+            data: '{mSMSLog:' + JSON.stringify(mSMSLog) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnChangeRemark(siteId, assetId, alertId, timeStamp) {
+        if ($('#txtFailureAlertRemark').val() != null && $('#txtFailureAlertRemark').val() != undefined && $('#txtFailureAlertRemark').val() != '') {
+            var mSMSLog = {};
+            mSMSLog.AssetId = assetId;
+            mSMSLog.SiteId = siteId;
+            mSMSLog.AlertId = alertId;
+            mSMSLog.TimeStamp = timeStamp;
+            mSMSLog.Remark = $('#txtFailureAlertRemark').val();
+            $("#loader").show();
+            $.ajax({
+                url: '/SMSLog/UpdateSMSLog',
+                type: 'Post',
+                data: '{mSMSLog:' + JSON.stringify(mSMSLog) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#modal-alert-remark").modal('hide');
+                    $("#frmSMSLogsList").submit();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Remark is required!", "Error");
+        }
+
+    }
+
+    function DeleteSMSLog(id) {
+        if (confirm('Are you sure you want to delete selected record')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/SMSLog/DeleteSMSLogById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data == true) {
+                        $("#frmSMSLogsList").submit();
+                        CommonNotification("SUCCESS", "Alert Log has been deleted.", "success");
+
+                    }
+                    else {
+                        CommonNotification("ERROR", "Something went wrong!", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "error");
+                }
+            });
+        }
+
+    }
+
+    function fnGetFailureAlertRemrk(siteId, assetId, alertId, timeStamp) {
+        var mSMSLog = {};
+        mSMSLog.AssetId = assetId;
+        mSMSLog.SiteId = siteId;
+        mSMSLog.AlertId = alertId;
+        mSMSLog.TimeStamp = timeStamp;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/GetFailureAlertRemark',
+            type: 'Post',
+            data: '{mSMSLog:' + JSON.stringify(mSMSLog) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divFailureAlertRemrk").empty().append(data);
+                $("#modal-alert-remark").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmSMSLogsList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize) {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmSMSLogsList").submit();
+            }
+        }
+    }
+
+
+    function fnGetCluster(assetTypeId, $this) {
+        if (assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trAsset_' + assetTypeId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trAsset_' + assetTypeId).hide();
+            }
+        }
+    }
+
+    function fnSearchSMSLogs() {
+        $("#hdnSkip").val(0);
+
+        var filterType = $('input[name="filter"]:checked').val();
+        if (filterType == "0") {
+            $("#SearchCriteria_IsSmsLogActive").val(false);
+        } else if (filterType == "1") {
+            $("#SearchCriteria_IsSmsLogActive").val(true);
+        }
+
+        $("#frmSMSLogsList").submit();
+    }
+
+    function GetAllSite(divisionId, hdnSiteId) {
+        $("#selSearchSiteName").empty();
+        if (divisionId != null && divisionId != undefined && divisionId != '' && parseInt(divisionId) > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/SMSLog/GetSitesBy',
+                type: 'Post',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        var html = "";
+                        html += "<option value='0'>All</option>";
+                        $.each(data, function (id, val) {
+                            if (hdnSiteId == val.Id) {
+                                html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+                            }
+                            else {
+                                html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                            }
+
+                        });
+                        $("#selSearchSiteName").append(html);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            GetSite(hdnSiteId);
+        }
+
+    }
+
+    function GetSite(hdnSiteId) {
+        $("#selSearchSiteName").empty();
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/GetAllSites',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.length > 0) {
+                    var html = "";
+                    html += "<option value='0'>All</option>";
+                    $.each(data, function (id, val) {
+                        if (hdnSiteId == val.Id) {
+                            html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+                        }
+                        else {
+                            html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                        }
+
+                    });
+                    $("#selSearchSiteName").append(html);
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    //function fnDeleteSelected() {
+    //    var j = 0;
+    //    var selectedValue = [];
+    //    $("input:checkbox[name=chkSMSLogDelete]:checked").each(function () {
+    //        var mSMSLog = {};
+    //        mSMSLog.AssetId = $(this).data('assetid');
+    //        mSMSLog.SiteId = $(this).data('siteid');
+    //        mSMSLog.AlertId = $(this).data('alertid');
+    //        mSMSLog.TimeStamp = $(this).data('timestamp');
+    //        selectedValue.push(mSMSLog);
+    //    });
+    //    if (selectedValue != null && selectedValue != undefined && selectedValue.length > 0) {
+    //        if (confirm('Are you sure you want to delete selected record')) {
+    //            $("#loader").show();
+    //            $.ajax({
+    //                url: '/SMSLog/DeleteAllSMSLog',
+    //                type: 'Post',
+    //                data: '{mSMSLogs:' + JSON.stringify(selectedValue) + '}',
+    //                contentType: 'application/json',
+    //                success: function (data) {
+    //                    $("#loader").hide();
+    //                    $("#frmSMSLogsList").submit();
+    //                },
+    //                error: function (response) {
+    //                    $("#loader").hide();
+    //                    CommonNotification("ERROR", "Something went wrong!", "Error");
+    //                }
+    //            });
+
+    //        }
+
+    //    } else {
+    //        CommonNotification("ERROR", "Please select any option for delete alert log", "error");
+    //    }
+    //}
+
+    function fnDeleteSelected() {
+        var j = 0;
+        var selectedValue = [];
+        $("input:checkbox[name=chkSMSLogDelete]:checked").each(function () {
+            selectedValue.push($(this).val());
+        });
+        $("#loader").show();
+        if (selectedValue != null && selectedValue != undefined && selectedValue.length > 0) {
+            if (confirm('Are you sure you want to delete selected record')) {
+                $.ajax({
+                    url: '/SMSLog/DeleteSMSLogByIds',
+                    type: 'Post',
+                    data: JSON.stringify(selectedValue),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        CommonNotification("SUCCESS", "Alert Log has been deleted.", "success");
+                        $("#frmSMSLogsList").submit();
+
+                        //j++;
+                        //if (j == $("input:checkbox[name=chkSMSLogDelete]:checked").length) {
+                        //    $("#frmGetSMSLogList").submit();
+                        //    CommonNotification("SUCCESS", "Alert Log has been deleted.", "success");
+                        //}
+
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "error");
+                    }
+                });
+            }
+
+        } else {
+            CommonNotification("ERROR", "Please select any option for delete alert log", "error");
+        }
+    }
+
+    function fnGetAssetAttribute() {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + $("#hdnlapSiteName").val() + '",assetId:' + $("#hdnlapAssetId").val() + ',assetTypeId:' + $("#hdnlapAssetTypeId").val() + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnShowMaintenaceAlertLogSite(siteId, typeName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && typeName != null && typeName != undefined && typeName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogBySite_' + siteId + '_' + typeName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogBySite_' + siteId + '_' + typeName).hide();
+            }
+        }
+    }
+
+    function fnShowMaintenaceAlertLogAlertName(siteId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAletType_' + siteId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAletType_' + siteId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnShowMaintenaceAlertLogAsset(siteId, assetId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnOpenModal(siteId, assetId, assetTypeId, siteName, assetName) {
+        var mSearchCriteria = {};
+        const date = new Date();
+        const month = date.toLocaleString('default', { month: 'long' });
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.Month = month;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/Showlap',
+            type: 'Post',
+            data: JSON.stringify(mSearchCriteria),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#hdnlapSiteId").val(siteId);
+                $("#hdnlapAssetId").val(assetId);
+                $("#hdnlapAssetTypeId").val(assetTypeId);
+                $("#hdnlapSiteName").val(siteName);
+                $("#spModallapHeader").text('Asset - ' + assetName);
+
+                if (data != null) {
+                    $("#spnMaintenanceAlertCount").text('(' + data.AlertCount + ')');
+                    $("#spnPredictiveAlertCount").text('(' + data.ProbabilityCount + ')');
+                }
+
+                $("#modal-lap").modal("show");
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnLoadProbabilityAlertList() {
+        var mSearchCriteria = {};
+        const date = new Date();
+        const month = date.toLocaleString('default', { month: 'long' });
+        mSearchCriteria.SiteId =  $("#hdnlapSiteId").val();
+        mSearchCriteria.AssetId = $("#hdnlapAssetId").val();
+        mSearchCriteria.Month = month;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/_ProbabilityAlertList',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mSearchCriteria),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divProbabilityAlert").empty().append(data);
+                $("#modal-lap").modal("hide");
+                $("#modalProbabilityAlert").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnLoadProbabilityCSVList() {
+        const date = new Date();  // 2009-11-10
+        const month = date.toLocaleString('default', { month: 'long' });
+
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $("#hdnlapSiteId").val();
+        mSearchCriteria.AssetId = $("#hdnlapAssetId").val();
+        mSearchCriteria.Month = month;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/_ProbabilityCSVList',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mSearchCriteria),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divProbabilityCSVList").empty().append(data);
+                $("#modal-lap").modal("hide");
+                $("#modalProbabilityCSV").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnShowLastTenDaysAlert(siteId, assetId, alertTypeId, timeStamp) {
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.AlertTypeId = alertTypeId;
+        mSearchCriteria.TimeStamp = timeStamp;
+        //mSearchCriteria.EndDate = $('#txtToDate').val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/_TenDaysAlertAlertList',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mSearchCriteria),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divProbabilityAlert").empty().append(data);
+                $("#modal-lap").modal("hide");
+                $("#modalProbabilityAlert").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+</script>

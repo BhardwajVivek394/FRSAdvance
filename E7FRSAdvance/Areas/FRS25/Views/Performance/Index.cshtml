@@ -1,0 +1,4267 @@
+﻿@{ ViewBag.Title = "Performance";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+
+<style>
+    /* ===== SEARCH SECTION ===== */
+    .search-section {
+        padding: 20px 0px;
+        position: relative;
+        z-index: 100;
+    }
+
+    .search-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    /* ===== FILTER ROW ===== */
+    .filter-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 100;
+    }
+
+    /* ===== FILTER ITEM ===== */
+    .filter-item {
+        flex-shrink: 0;
+        position: relative;
+        z-index: 100;
+    }
+
+        .filter-item label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+    /* ===== SELECT BUTTON ===== */
+    .select-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #333;
+        cursor: pointer;
+        min-width: 230px;
+        height: 40px;
+    }
+
+        .select-btn:hover {
+            border-color: #999;
+        }
+
+        .select-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .select-btn .text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .select-btn i {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+    /* ===== DROPDOWN - FIXED POSITION ===== */
+    .filter-dropdown {
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        min-width: 260px;
+        max-width: 320px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+    /* Search Box in Dropdown */
+    .dropdown-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .dropdown-search input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+            .dropdown-search input:focus {
+                border-color: #3b82f6;
+            }
+
+            .dropdown-search input::placeholder {
+                color: #aaa;
+            }
+
+    /* Select All Header */
+    .dropdown-header {
+        padding: 10px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .dropdown-header input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .dropdown-header label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            margin: 0;
+        }
+
+    /* Options List */
+    .dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: #f5f7fa;
+        }
+
+        .dropdown-item.checked {
+            background: #e8f2ff;
+        }
+
+        .dropdown-item.hidden {
+            display: none;
+        }
+
+        .dropdown-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+            flex-shrink: 0;
+        }
+
+        .dropdown-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .dropdown-item.checked span {
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+
+        /* Highlight matched text */
+        .dropdown-item span mark {
+            background: #fef08a;
+            color: #333;
+            padding: 0;
+            border-radius: 2px;
+        }
+
+    /* Empty/Loading State */
+    .dropdown-empty {
+        padding: 25px;
+        text-align: center;
+        color: #888;
+        font-size: 14px;
+    }
+
+    /* No results message */
+    .dropdown-no-results {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+        font-size: 13px;
+        display: none;
+    }
+
+        .dropdown-no-results.show {
+            display: block;
+        }
+
+    /* ===== INPUT FIELDS ===== */
+    .filter-input {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        height: 40px;
+        width: 120px;
+        outline: none;
+        background: #fff;
+    }
+
+        .filter-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+    /* ===== SEARCH BUTTON ===== */
+    .btn-search {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+        .btn-search:hover {
+            background: #2563eb;
+        }
+
+    /* ===== BACKDROP ===== */
+    .dropdown-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9998;
+        display: none;
+    }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
+    /* ===== TABLE SECTION ===== */
+    .table-border {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* ===== CHART STYLES ===== */
+    .chart-container {
+        padding: 25px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        margin: 15px;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 25px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .chart-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .chart-wrapper {
+        position: relative;
+        height: 400px;
+        width: 100%;
+    }
+
+    .no-data-box {
+        height: 400px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 16px;
+    }
+
+        .no-data-box i {
+            font-size: 50px;
+            margin-bottom: 15px;
+            color: #cbd5e1;
+        }
+
+    .chart-legend {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        margin-top: 25px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+        flex-wrap: wrap;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #475569;
+    }
+
+    .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+    }
+
+    /* ================================================================
+       ACTUAL FAILURE MODAL — REDESIGNED
+    ================================================================ */
+    #modal-ActualFailureEntry {
+        padding-right: 0 !important;
+    }
+
+        #modal-ActualFailureEntry .modal-dialog {
+            max-width: min(92vw, 1260px) !important;
+            width: min(92vw, 1260px) !important;
+            margin: 20px auto !important;
+        }
+
+        #modal-ActualFailureEntry .modal-content {
+            border-radius: 14px !important;
+            overflow: hidden;
+            border: none;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.28);
+        }
+
+        /* ── HEADER ── */
+        #modal-ActualFailureEntry .modal-header {
+            background: linear-gradient(135deg, #0f1f4b 0%, #1a2d5a 60%, #1e3875 100%) !important;
+            color: #fff !important;
+            padding: 0 20px;
+            border-bottom: none !important;
+            display: flex !important;
+            align-items: center;
+            gap: 12px;
+            height: 56px;
+            min-height: 56px;
+            position: relative;
+        }
+
+            #modal-ActualFailureEntry .modal-header::after {
+                content: '';
+                position: absolute;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                background: linear-gradient(90deg, #f59e0b, #ef4444, #3b82f6);
+            }
+
+        #modal-ActualFailureEntry .af-header-icon {
+            width: 34px;
+            height: 34px;
+            background: rgba(245,158,11,0.18);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f59e0b;
+            font-size: 15px;
+            flex-shrink: 0;
+            border: 1px solid rgba(245,158,11,0.3);
+        }
+
+        #modal-ActualFailureEntry .modal-title {
+            font-size: 14.5px !important;
+            font-weight: 700 !important;
+            color: #fff !important;
+            flex: 1;
+            line-height: 1.2;
+            letter-spacing: 0.2px;
+        }
+
+            #modal-ActualFailureEntry .modal-title small {
+                display: block;
+                font-size: 10.5px;
+                font-weight: 400;
+                color: rgba(255,255,255,0.45);
+                margin-top: 2px;
+                letter-spacing: 0.3px;
+            }
+
+        #modal-ActualFailureEntry .af-modal-close {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            color: rgba(255,255,255,0.8) !important;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+            flex-shrink: 0;
+            padding: 0;
+        }
+
+            #modal-ActualFailureEntry .af-modal-close:hover {
+                background: rgba(239,68,68,0.8);
+                border-color: #ef4444;
+                color: #fff !important;
+            }
+
+        /* ── FILTER SECTION ── */
+        #modal-ActualFailureEntry .af-filter-section {
+            background: #f8faff;
+            border-bottom: 1px solid #e2e8f2;
+            padding: 14px 20px;
+            margin-bottom: 0;
+        }
+
+        #modal-ActualFailureEntry .af-filter-section-title {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+        }
+
+        #modal-ActualFailureEntry .af-filter-row {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 10px;
+            align-items: flex-end;
+            overflow-x: auto;
+        }
+
+        #modal-ActualFailureEntry .af-filter-item {
+            flex: 1;
+            min-width: 100px;
+        }
+
+            #modal-ActualFailureEntry .af-filter-item.btn-item {
+                flex: 0 0 auto;
+                min-width: 100px;
+            }
+
+        #modal-ActualFailureEntry .af-filter-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #475569;
+            margin-bottom: 5px;
+            display: block;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #modal-ActualFailureEntry .af-select,
+        #modal-ActualFailureEntry .af-input {
+            width: 100%;
+            height: 34px;
+            border: 1.5px solid #dde3f0;
+            border-radius: 7px;
+            padding: 3px 10px;
+            font-size: 12.5px;
+            color: #1a2d5a;
+            background: #fff;
+            outline: none;
+            transition: all 0.15s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+            #modal-ActualFailureEntry .af-select:focus,
+            #modal-ActualFailureEntry .af-input:focus {
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+            }
+
+    /* Search button */
+    .vf-btn-search {
+        width: 100%;
+        height: 34px;
+        background: linear-gradient(135deg, #1a2d5a, #1e3875);
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(26,45,90,0.3);
+    }
+
+        .vf-btn-search:hover {
+            background: linear-gradient(135deg, #0f1f4b, #1a2d5a);
+            box-shadow: 0 4px 12px rgba(26,45,90,0.4);
+            transform: translateY(-1px);
+        }
+
+    .vf-btn-reset {
+        width: 100%;
+        height: 34px;
+        background: #fff;
+        color: #64748b;
+        border: 1.5px solid #dde3f0;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: all 0.15s;
+    }
+
+        .vf-btn-reset:hover {
+            background: #f1f5f9;
+            color: #1a2d5a;
+            border-color: #94a3b8;
+        }
+
+    /* Add New Row button */
+    .af-btn-add-table {
+        width: 100%;
+        height: 34px;
+        background: linear-gradient(135deg, #059669, #047857);
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(5,150,105,0.3);
+        white-space: nowrap;
+    }
+
+        .af-btn-add-table:hover {
+            background: linear-gradient(135deg, #047857, #065f46);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(5,150,105,0.4);
+        }
+
+    /* Download buttons */
+    .vf-dl-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 6px;
+        border: none;
+        font-size: 12.5px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+    }
+
+    .vf-dl-excel {
+        background: #e6f4ea;
+        color: #1d6f42;
+    }
+
+        .vf-dl-excel:hover {
+            background: #1d6f42;
+            color: #fff;
+        }
+
+    .vf-dl-csv {
+        background: #e8f0fe;
+        color: #185abc;
+    }
+
+        .vf-dl-csv:hover {
+            background: #185abc;
+            color: #fff;
+        }
+
+    /* ── TABLE ── */
+    #modal-ActualFailureEntry .vf-table-wrap {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 420px;
+    }
+
+    #modal-ActualFailureEntry .vf-table,
+    #modal-ActualFailureEntry .af-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 12px;
+        min-width: 860px;
+    }
+
+        /* Sticky header */
+        #modal-ActualFailureEntry .vf-table thead th,
+        #modal-ActualFailureEntry .af-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            background: #1a2d5a;
+            color: #fff;
+            font-weight: 600;
+            font-size: 11px;
+            padding: 11px 12px;
+            white-space: nowrap;
+            border: none;
+            border-right: 1px solid rgba(255,255,255,0.08);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            vertical-align: middle;
+        }
+
+            #modal-ActualFailureEntry .vf-table thead th:last-child,
+            #modal-ActualFailureEntry .af-table thead th:last-child {
+                border-right: none;
+            }
+
+            #modal-ActualFailureEntry .vf-table thead th small {
+                display: block;
+                color: rgba(255,255,255,0.45);
+                font-weight: 400;
+                font-size: 9.5px;
+                margin-top: 2px;
+                text-transform: none;
+                letter-spacing: 0;
+            }
+
+        /* Body rows */
+        #modal-ActualFailureEntry .vf-table tbody tr,
+        #modal-ActualFailureEntry .af-table tbody tr {
+            background: #fff;
+            transition: background 0.12s;
+        }
+
+            #modal-ActualFailureEntry .vf-table tbody tr:nth-child(even) {
+                background: #f8faff;
+            }
+
+            #modal-ActualFailureEntry .vf-table tbody tr:hover {
+                background: #eef4ff !important;
+            }
+
+        #modal-ActualFailureEntry .vf-table tbody td,
+        #modal-ActualFailureEntry .af-table tbody td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #edf1f8;
+            vertical-align: middle;
+            color: #334155;
+            font-size: 12px;
+        }
+
+        /* New editable row style */
+        #modal-ActualFailureEntry .vf-table tbody tr[data-new-row] {
+            background: #fefce8 !important;
+            border-left: 3px solid #f59e0b;
+        }
+
+            #modal-ActualFailureEntry .vf-table tbody tr[data-new-row]:hover {
+                background: #fef9c3 !important;
+            }
+
+            #modal-ActualFailureEntry .vf-table tbody tr[data-new-row] td {
+                border-bottom: 1px solid #fde68a;
+            }
+
+    /* Cause code badge */
+    .vf-badge {
+        display: inline-block;
+        background: #ede9fe;
+        color: #5b21b6;
+        border: 1px solid #c4b5fd;
+        border-radius: 20px;
+        padding: 2px 10px;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+    }
+
+    /* Cell inputs in editable row */
+    #modal-ActualFailureEntry .af-cell-input,
+    #modal-ActualFailureEntry .af-cell-select,
+    #modal-ActualFailureEntry .af-cell-textarea {
+        width: 100%;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 5px;
+        padding: 3px 7px;
+        font-size: 11.5px;
+        color: #1a2d5a;
+        background: #fff;
+        outline: none;
+        transition: border-color 0.15s;
+    }
+
+    #modal-ActualFailureEntry .af-cell-input {
+        height: 28px;
+    }
+
+    #modal-ActualFailureEntry .af-cell-select {
+        height: 28px;
+    }
+
+        #modal-ActualFailureEntry .af-cell-input:focus,
+        #modal-ActualFailureEntry .af-cell-select:focus,
+        #modal-ActualFailureEntry .af-cell-textarea:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.12);
+        }
+
+    #modal-ActualFailureEntry .af-date-label {
+        font-size: 9px;
+        color: #94a3b8;
+        font-weight: 700;
+        text-transform: uppercase;
+        display: block;
+        margin-bottom: 2px;
+        letter-spacing: 0.3px;
+    }
+
+    /* Row action buttons */
+    .af-row-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+    }
+
+    .af-btn {
+        border: none;
+        border-radius: 5px;
+        padding: 4px 9px;
+        font-size: 10.5px;
+        font-weight: 700;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        white-space: nowrap;
+        height: 26px;
+        transition: all 0.15s;
+    }
+
+    .af-btn-save {
+        background: #d1fae5;
+        color: #065f46;
+        border: 1px solid #6ee7b7;
+    }
+
+        .af-btn-save:hover {
+            background: #059669;
+            color: #fff;
+            border-color: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(5,150,105,0.3);
+        }
+
+    .af-btn-del {
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+    }
+
+        .af-btn-del:hover {
+            background: #dc2626;
+            color: #fff;
+            border-color: #dc2626;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 8px rgba(220,38,38,0.3);
+        }
+
+    .vf-btn-edit {
+        background: #dbeafe;
+        color: #1d4ed8;
+        border: 1px solid #93c5fd;
+    }
+
+        .vf-btn-edit:hover {
+            background: #1d4ed8;
+            color: #fff;
+            border-color: #1d4ed8;
+        }
+
+    .vf-btn-del {
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+    }
+
+        .vf-btn-del:hover {
+            background: #dc2626;
+            color: #fff;
+            border-color: #dc2626;
+        }
+
+    /* ── FOOTER ── */
+    #modal-ActualFailureEntry .modal-footer {
+        background: #f8faff !important;
+        border-top: 1px solid #e2e8f2 !important;
+        padding: 12px 20px !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .af-btn-all-save {
+        background: linear-gradient(135deg, #059669, #047857);
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        padding: 8px 20px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        transition: all 0.2s;
+        box-shadow: 0 3px 10px rgba(5,150,105,0.35);
+    }
+
+        .af-btn-all-save:hover {
+            background: linear-gradient(135deg, #047857, #065f46);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(5,150,105,0.4);
+        }
+
+    .af-btn-close-footer {
+        background: #fff;
+        color: #64748b;
+        border: 1.5px solid #dde3f0;
+        border-radius: 7px;
+        padding: 7px 18px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        transition: all 0.15s;
+    }
+
+        .af-btn-close-footer:hover {
+            background: #f1f5f9;
+            color: #ef4444;
+            border-color: #fca5a5;
+        }
+
+    /* S No column */
+    #modal-ActualFailureEntry .vf-table tbody td:first-child {
+        font-weight: 700;
+        color: #94a3b8;
+        font-size: 11px;
+        text-align: center;
+    }
+
+    /* Station name bold */
+    #modal-ActualFailureEntry .vf-table tbody td:nth-child(2) {
+        font-weight: 600;
+        color: #1a2d5a;
+    }
+
+    /* Hide ugly 0001-01-01 date */
+    .vf-date-sub {
+        display: block;
+        font-size: 10.5px;
+        color: #94a3b8;
+        margin-top: 1px;
+    }
+
+    /* Empty state */
+    #af_emptyRow td {
+        padding: 48px 0 !important;
+        text-align: center;
+        background: #fff !important;
+        color: #94a3b8;
+        font-size: 13px;
+    }
+
+
+    /* ===== ACTUAL FAILURE ENTRY BUTTON ===== */
+    .btn-failure-entry {
+        background: #dc2626;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        transition: background 0.2s;
+        white-space: nowrap;
+    }
+
+        .btn-failure-entry:hover {
+            background: #b91c1c;
+        }
+
+    /* ===== ACTUAL FAILURE ENTRY MODAL ===== */
+    #modal-ActualFailureEntry {
+        padding-right: 0 !important;
+    }
+
+        #modal-ActualFailureEntry .modal-dialog {
+            max-width: min(88vw, 1200px) !important;
+            width: min(88vw, 1200px) !important;
+            margin: 24px auto !important;
+        }
+
+        #modal-ActualFailureEntry .modal-content {
+            border-radius: 10px !important;
+            overflow: hidden;
+            border: none;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+        }
+
+        /* ── HEADER ── */
+        #modal-ActualFailureEntry .modal-header {
+            background: linear-gradient(135deg, #1e3a6e 0%, #1a2d5a 100%) !important;
+            color: #fff !important;
+            padding: 0 18px;
+            border-bottom: none !important;
+            display: flex !important;
+            align-items: center;
+            gap: 10px;
+            height: 48px;
+            min-height: 48px;
+        }
+
+        #modal-ActualFailureEntry .af-header-icon {
+            width: 30px;
+            height: 30px;
+            background: rgba(245,158,11,0.2);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #f59e0b;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+
+        #modal-ActualFailureEntry .modal-title {
+            font-size: 13.5px !important;
+            font-weight: 700 !important;
+            color: #fff !important;
+            flex: 1;
+            line-height: 1.2;
+        }
+
+            #modal-ActualFailureEntry .modal-title small {
+                display: block;
+                font-size: 10.5px;
+                font-weight: 400;
+                color: rgba(255,255,255,0.55);
+                margin-top: 1px;
+            }
+
+        #modal-ActualFailureEntry .af-modal-close {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 5px;
+            color: #fff !important;
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+            flex-shrink: 0;
+            padding: 0;
+        }
+
+            #modal-ActualFailureEntry .af-modal-close:hover {
+                background: rgba(255,255,255,0.22);
+                border-color: rgba(255,255,255,0.5);
+            }
+
+        /* ── TABS ── */
+        #modal-ActualFailureEntry .af-tabs {
+            display: flex;
+            background: #f4f6fb;
+            border-bottom: 1px solid #dde3f0;
+            padding: 0 16px;
+        }
+
+        #modal-ActualFailureEntry .af-tab-btn {
+            padding: 9px 18px;
+            border: none;
+            background: transparent;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #7a869a;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            transition: all 0.18s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+            #modal-ActualFailureEntry .af-tab-btn.active {
+                color: #1a2d5a;
+                border-bottom-color: #1a2d5a;
+                background: #fff;
+            }
+
+            #modal-ActualFailureEntry .af-tab-btn:hover:not(.active) {
+                color: #1a2d5a;
+                background: #eaeff8;
+            }
+
+        #modal-ActualFailureEntry .af-tab-pane {
+            display: none;
+            padding: 14px 16px;
+            background: #fff;
+        }
+
+            #modal-ActualFailureEntry .af-tab-pane.active {
+                display: block;
+            }
+
+        /* ── FILTER SECTION (Tab 1) ── */
+        #modal-ActualFailureEntry .af-filter-section {
+            background: #f8faff;
+            border: 1px solid #dde3f0;
+            border-left: 3px solid #1a2d5a;
+            border-radius: 6px;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+        }
+
+        #modal-ActualFailureEntry .af-filter-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            margin-bottom: 8px;
+        }
+
+        #modal-ActualFailureEntry .af-filter-row {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 8px;
+            align-items: flex-end;
+            overflow-x: auto;
+        }
+
+        #modal-ActualFailureEntry .af-filter-item {
+            flex: 1;
+            min-width: 100px;
+        }
+
+            #modal-ActualFailureEntry .af-filter-item.btn-item {
+                flex: 0 0 auto;
+                min-width: 110px;
+            }
+
+        #modal-ActualFailureEntry .af-filter-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            margin-bottom: 4px;
+            display: block;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        #modal-ActualFailureEntry .af-select,
+        #modal-ActualFailureEntry .af-input {
+            width: 100%;
+            height: 32px;
+            border: 1px solid #dde3f0;
+            border-radius: 5px;
+            padding: 3px 8px;
+            font-size: 12.5px;
+            color: #1a2d5a;
+            background: #fff;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+            #modal-ActualFailureEntry .af-select:focus,
+            #modal-ActualFailureEntry .af-input:focus {
+                border-color: #1a2d5a;
+                box-shadow: 0 0 0 2px rgba(26,45,90,0.1);
+            }
+
+        /* Asset No multiselect — keep same height as other selects, scroll internally */
+        #modal-ActualFailureEntry #af_AssetNo {
+            height: 32px;
+            overflow-y: auto;
+            cursor: pointer;
+        }
+
+    .af-btn-add-table {
+        width: 100%;
+        height: 32px;
+        background: #1a2d5a;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+    }
+
+        .af-btn-add-table:hover {
+            background: #253f78;
+        }
+
+    /* ── INFO BOX ── */
+    #modal-ActualFailureEntry .af-info-box {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-left: 3px solid #f59e0b;
+        border-radius: 5px;
+        padding: 6px 12px;
+        font-size: 11.5px;
+        color: #92400e;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+        #modal-ActualFailureEntry .af-info-box i {
+            color: #f59e0b;
+            flex-shrink: 0;
+        }
+
+    /* ── ENTRY TABLE ── */
+    #modal-ActualFailureEntry .af-table-wrap {
+        border: 1px solid #dde3f0;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    #modal-ActualFailureEntry .af-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        min-width: 860px;
+    }
+
+        #modal-ActualFailureEntry .af-table thead tr {
+            background: #1a2d5a;
+        }
+
+        #modal-ActualFailureEntry .af-table thead th {
+            color: #fff;
+            font-weight: 600;
+            font-size: 11.5px;
+            padding: 9px 10px;
+            white-space: nowrap;
+            border: none;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            vertical-align: middle;
+        }
+
+            #modal-ActualFailureEntry .af-table thead th:last-child {
+                border-right: none;
+            }
+
+            #modal-ActualFailureEntry .af-table thead th small {
+                display: block;
+                color: rgba(255,255,255,0.5);
+                font-weight: 400;
+                font-size: 10px;
+                margin-top: 1px;
+            }
+
+        #modal-ActualFailureEntry .af-table tbody tr {
+            background: #fff;
+        }
+
+            #modal-ActualFailureEntry .af-table tbody tr:nth-child(even) {
+                background: #f8faff;
+            }
+
+            #modal-ActualFailureEntry .af-table tbody tr:hover {
+                background: #eef2fb;
+                transition: background 0.1s;
+            }
+
+        #modal-ActualFailureEntry .af-table tbody td {
+            padding: 7px 10px;
+            border-bottom: 1px solid #edf0f8;
+            border-right: 1px solid #f4f6fc;
+            vertical-align: middle;
+        }
+
+            #modal-ActualFailureEntry .af-table tbody td:last-child {
+                border-right: none;
+            }
+
+        #modal-ActualFailureEntry .af-table .af-cell-input {
+            width: 100%;
+            height: 28px;
+            border: 1px solid #dde3f0;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11.5px;
+            color: #1a2d5a;
+            background: #fff;
+            outline: none;
+        }
+
+            #modal-ActualFailureEntry .af-table .af-cell-input:focus {
+                border-color: #1a2d5a;
+            }
+
+        #modal-ActualFailureEntry .af-table .af-cell-select {
+            width: 100%;
+            height: 28px;
+            border: 1px solid #dde3f0;
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-size: 11.5px;
+            color: #1a2d5a;
+            background: #fff;
+            outline: none;
+        }
+
+        #modal-ActualFailureEntry .af-table .af-cell-textarea {
+            width: 100%;
+            border: 1px solid #dde3f0;
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-size: 11.5px;
+            color: #1a2d5a;
+            background: #fff;
+            resize: none;
+            outline: none;
+        }
+
+        #modal-ActualFailureEntry .af-table .af-date-label {
+            font-size: 9.5px;
+            color: #94a3b8;
+            font-weight: 700;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+    #modal-ActualFailureEntry .af-empty-row td {
+        padding: 36px 0 !important;
+        text-align: center;
+        color: #94a3b8;
+        font-size: 12.5px;
+        background: #fff !important;
+    }
+
+    /* ── ROW ACTION BUTTONS ── */
+    .af-btn {
+        border: none;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        white-space: nowrap;
+        height: 26px;
+    }
+
+    .af-row-actions {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+    }
+
+    .af-btn-del {
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+        min-width: 58px;
+    }
+
+        .af-btn-del:hover {
+            background: #dc2626;
+            color: #fff;
+            border-color: #dc2626;
+        }
+
+    .af-btn-save {
+        background: #dcfce7;
+        color: #15803d;
+        border: 1px solid #86efac;
+        min-width: 52px;
+    }
+
+        .af-btn-save:hover {
+            background: #15803d;
+            color: #fff;
+            border-color: #15803d;
+        }
+
+    /* ── FOOTER ── */
+    #modal-ActualFailureEntry .modal-footer {
+        background: #f8faff !important;
+        border-top: 1px solid #dde3f0 !important;
+        padding: 9px 16px !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .af-btn-all-save {
+        background: #15803d;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        padding: 7px 16px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.15s;
+    }
+
+        .af-btn-all-save:hover {
+            background: #166534;
+        }
+
+    .af-btn-close-footer {
+        background: #fff;
+        color: #475569;
+        border: 1px solid #dde3f0;
+        border-radius: 5px;
+        padding: 6px 16px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.15s;
+    }
+
+        .af-btn-close-footer:hover {
+            background: #f1f5f9;
+            border-color: #94a3b8;
+        }
+
+    /* ── VIEW FAILURES TAB FILTER ROW ── */
+    #modal-ActualFailureEntry .vf-filter-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+        background: #f8faff;
+        border: 1px solid #dde3f0;
+        border-left: 3px solid #1a2d5a;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+    }
+
+    #modal-ActualFailureEntry .vf-filter-item {
+        flex: 1;
+        min-width: 130px;
+    }
+
+        #modal-ActualFailureEntry .vf-filter-item.btn-item {
+            flex: 0 0 auto;
+            min-width: 90px;
+        }
+
+    .vf-btn-search {
+        width: 100%;
+        height: 32px;
+        background: #1a2d5a;
+        color: #fff;
+        border: none;
+        border-radius: 5px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+    }
+
+        .vf-btn-search:hover {
+            background: #253f78;
+        }
+
+    .vf-btn-reset {
+        width: 100%;
+        height: 32px;
+        background: #fff;
+        color: #64748b;
+        border: 1px solid #dde3f0;
+        border-radius: 5px;
+        font-size: 12.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+    }
+
+        .vf-btn-reset:hover {
+            background: #f1f5f9;
+            color: #1a2d5a;
+            border-color: #94a3b8;
+        }
+
+    .vf-dl-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 6px;
+        border: none;
+        font-size: 12.5px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+    }
+
+    .vf-dl-excel {
+        background: #e6f4ea;
+        color: #1d6f42;
+    }
+
+        .vf-dl-excel:hover {
+            background: #1d6f42;
+            color: #fff;
+        }
+
+    .vf-dl-csv {
+        background: #e8f0fe;
+        color: #185abc;
+    }
+
+        .vf-dl-csv:hover {
+            background: #185abc;
+            color: #fff;
+        }
+
+    /* ── VIEW FAILURES TABLE ── */
+    #modal-ActualFailureEntry .vf-table-wrap {
+        border: 1px solid #dde3f0;
+        border-radius: 6px;
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 380px;
+    }
+
+    #modal-ActualFailureEntry .vf-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        min-width: 780px;
+    }
+
+        #modal-ActualFailureEntry .vf-table thead tr {
+            background: #1a2d5a;
+        }
+
+        #modal-ActualFailureEntry .vf-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #1a2d5a;
+        }
+
+        #modal-ActualFailureEntry .vf-table thead th {
+            color: #fff;
+            font-weight: 600;
+            font-size: 11.5px;
+            padding: 9px 10px;
+            white-space: nowrap;
+            border: none;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            vertical-align: middle;
+        }
+
+            #modal-ActualFailureEntry .vf-table thead th:last-child {
+                border-right: none;
+            }
+
+        #modal-ActualFailureEntry .vf-table tbody tr {
+            background: #fff;
+        }
+
+            #modal-ActualFailureEntry .vf-table tbody tr:nth-child(even) {
+                background: #f8faff;
+            }
+
+            #modal-ActualFailureEntry .vf-table tbody tr:hover {
+                background: #eef2fb;
+            }
+
+        #modal-ActualFailureEntry .vf-table tbody td {
+            padding: 7px 10px;
+            border-bottom: 1px solid #edf0f8;
+            border-right: 1px solid #f4f6fc;
+            font-size: 12px;
+            color: #334155;
+            vertical-align: middle;
+        }
+
+            #modal-ActualFailureEntry .vf-table tbody td:last-child {
+                border-right: none;
+            }
+
+    .vf-badge {
+        display: inline-block;
+        background: #ede9fe;
+        color: #4f46e5;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .vf-btn {
+        border: none;
+        border-radius: 4px;
+        padding: 3px 8px;
+        font-size: 11.5px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .vf-btn-edit {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
+
+        .vf-btn-edit:hover {
+            background: #1d4ed8;
+            color: #fff;
+        }
+
+    .vf-btn-del {
+        background: #fee2e2;
+        color: #dc2626;
+    }
+
+        .vf-btn-del:hover {
+            background: #dc2626;
+            color: #fff;
+        }
+    /* af_AssetNo sizing is handled in the modal block above */
+
+</style>
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Performance</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Performance</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="search-section">
+                        <div class="search-title">Search</div>
+
+                        <!-- Backdrop for closing dropdowns -->
+                        <div class="dropdown-backdrop" id="backdrop"></div>
+
+                        <div class="filter-row">
+                            <!-- Zone -->
+                            <div class="filter-item">
+                                <label>Zone</label>
+                                <div class="select-btn" id="btnZone" data-target="ddZone">
+                                    <span class="text" id="txtZone">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- Division -->
+                            <div class="filter-item">
+                                <label>Division</label>
+                                <div class="select-btn" id="btnDivision" data-target="ddDivision">
+                                    <span class="text" id="txtDivision">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- Station -->
+                            <div class="filter-item">
+                                <label>Station</label>
+                                <div class="select-btn" id="btnSite" data-target="ddSite">
+                                    <span class="text" id="txtSite">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- From Date -->
+                            <div class="filter-item">
+                                <label>From Date</label>
+                                <input type="text" class="filter-input" id="txtFromDate" placeholder="Select" readonly>
+                            </div>
+
+                            <!-- To Date -->
+                            <div class="filter-item">
+                                <label>To Date</label>
+                                <input type="text" class="filter-input" id="txtToDate" placeholder="Select" readonly>
+                            </div>
+
+                            <!-- View Type -->
+                            <div class="filter-item">
+                                <label>View</label>
+                                <div class="select-btn" id="btnViewType" data-target="ddViewType" style="min-width: 100px;">
+                                    <span class="text" id="txtViewType">Table</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- Search Button -->
+                            <div class="filter-item">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-search" onclick="fnGetAlertPerformanceReport()">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                </button>
+                            </div>
+
+                            <!-- Actual Failure Entry Button -->
+                            <div class="filter-item">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-failure-entry" onclick="openActualFailureModal()">
+                                    <i class="fa fa-exclamation-triangle"></i> Actual Failure Entry
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DROPDOWNS -->
+                    <!-- Zone Dropdown -->
+                    <div class="filter-dropdown" id="ddZone">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search zone..." onkeyup="filterDropdown('zone', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllZone">
+                            <label for="chkAllZone">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listZone">
+                            @if (ViewBag.Zones != null)
+                            {
+                                foreach (var zone in (IEnumerable<SelectListItem>)ViewBag.Zones)
+                                {
+                <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
+                    <input type="checkbox" class="cb-zone" value="@zone.Value">
+                    <span>@zone.Text</span>
+                </div>}
+        }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Division Dropdown -->
+                    <div class="filter-dropdown" id="ddDivision">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search division..." onkeyup="filterDropdown('division', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllDivision">
+                            <label for="chkAllDivision">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listDivision">
+                            @if (ViewBag.Divisions != null)
+                            {
+                                foreach (var division in (IEnumerable<SelectListItem>)ViewBag.Divisions)
+                                {
+                <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
+                    <input type="checkbox" class="cb-division" value="@division.Value">
+                    <span>@division.Text</span>
+                </div>}
+        }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Site Dropdown -->
+                    <div class="filter-dropdown" id="ddSite">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search station..." onkeyup="filterDropdown('site', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllSite">
+                            <label for="chkAllSite">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listSite">
+                            @if (ViewBag.Sites != null)
+                            {
+                                foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                {
+                <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                    <input type="checkbox" class="cb-site" value="@site.Value">
+                    <span>@site.Text</span>
+                </div>}
+        }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- View Type Dropdown (Single Select) -->
+                    <div class="filter-dropdown" id="ddViewType">
+                        <div class="dropdown-list" id="listViewType">
+                            <div class="dropdown-item checked" data-value="Table" data-text="Table">
+                                <span>Table</span>
+                            </div>
+                            <div class="dropdown-item" data-value="Pie" data-text="Pie">
+                                <span>Pie</span>
+                            </div>
+                            <div class="dropdown-item" data-value="Bar" data-text="Bar">
+                                <span>Bar</span>
+                            </div>
+                            <div class="dropdown-item" data-value="Graph" data-text="Graph">
+                                <span>Graph</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table View Container -->
+                    <div class="table-border" id="divTableContainer">
+                    </div>
+
+                    <!-- Chart View Container -->
+                    <div id="divChartContainer" style="display:none;">
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ================================================================
+     ACTUAL FAILURE ENTRY MODAL
+     ================================================================ -->
+<div class="modal fade" id="modal-ActualFailureEntry" tabindex="-1" role="dialog" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-scrollable" style="max-width:min(88vw,1200px);width:min(88vw,1200px);margin:24px auto;">
+        <div class="modal-content">
+
+            <!-- Header -->
+            <div class="modal-header">
+                <div class="af-header-icon">
+                    <i class="fa fa-exclamation-triangle"></i>
+                </div>
+                <h5 class="modal-title">
+                    Actual Failure Entry
+                    <small>Remote Diagnostic &amp; Predictive Maintenance System</small>
+                </h5>
+                <button class="af-modal-close" type="button" onclick="closeActualFailureModal()" title="Close">&times;</button>
+            </div>
+
+            <!-- Body -->
+            <!-- Body -->
+            <div class="modal-body p-0">
+
+                <!-- Single Panel: Filter + Table -->
+                <div class="af-tab-pane active" id="panel-unified" style="display:block;">
+
+                    <!-- Filter Bar: From Date, To Date, Station + Search + Add New Row -->
+                    <div class="af-filter-section">
+                        <div class="af-filter-section-title">Search &amp; Filter</div>
+                        <div class="af-filter-row">
+                            <div class="af-filter-item">
+                                <span class="af-filter-label">From Date</span>
+                                <input type="date" class="af-input" id="vf_FromDate" />
+                            </div>
+                            <div class="af-filter-item">
+                                <span class="af-filter-label">To Date</span>
+                                <input type="date" class="af-input" id="vf_ToDate" />
+                            </div>
+                            <div class="af-filter-item" style="max-width:220px;">
+                                <span class="af-filter-label">Station</span>
+                                <select class="af-select" id="vf_Station" onchange="afOnFilterStationChange()">
+                                    <option value="0">All Stations</option>
+                                    @if (ViewBag.Sites != null)
+                                    {
+                                        foreach (var s in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                        {
+                        <option value="@s.Value">@s.Text</option>}
+                                    }
+                                </select>
+                            </div>
+                            <div class="af-filter-item btn-item">
+                                <span class="af-filter-label">&nbsp;</span>
+                                <button class="vf-btn-search" onclick="vfLoadList()">
+                                    <i class="fa fa-search"></i> Search
+                                </button>
+                            </div>
+                            <div class="af-filter-item btn-item">
+                                <span class="af-filter-label">&nbsp;</span>
+                                <button class="vf-btn-reset" onclick="vfResetFilters()">
+                                    <i class="fa fa-undo"></i> Reset
+                                </button>
+                            </div>
+                            <div class="af-filter-item btn-item">
+                                <span class="af-filter-label">&nbsp;</span>
+                                <button class="af-btn-add-table" onclick="afAddNewRow()" id="btnAddNewRow">
+                                    <i class="fa fa-plus"></i> Add New Row
+                                </button>
+                            </div>
+                            <div class="af-filter-item btn-item" style="margin-left:auto;">
+                                <span class="af-filter-label">&nbsp;</span>
+                                <div style="display:flex;gap:6px;align-items:center;">
+                                    <button class="vf-dl-btn vf-dl-excel" onclick="vfDownload('excel')" title="Download Excel">
+                                        <i class="fa fa-file-excel-o"></i> Excel
+                                    </button>
+                                    <button class="vf-dl-btn vf-dl-csv" onclick="vfDownload('csv')" title="Download CSV">
+                                        <i class="fa fa-file-text-o"></i> CSV
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Unified Table: saved rows + new editable rows -->
+                    <div style="overflow-x:auto;">
+                        <div class="vf-table-wrap">
+                            <table class="vf-table" id="vf_ListTable" style="min-width:1000px;">
+                                <thead>
+                                    <tr>
+                                        <th>S No</th>
+                                        <th>Station Name</th>
+                                        <th style="min-width:130px;">Asset Type</th>
+                                        <th style="min-width:120px;">Asset No.</th>
+                                        <th style="min-width:180px;">Incidence Date &amp; Time</th>
+                                        <th style="min-width:180px;">Rectification Date &amp; Time</th>
+                                        <th style="min-width:150px;">Cause Code</th>
+                                        <th style="min-width:150px;">Remark</th>
+                                        <th style="min-width:120px;">Alert Status</th>
+                                        <th style="min-width:120px;">Generated By</th>
+                                        <th style="text-align:center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vf_ListBody">
+                                    <tr id="af_emptyRow">
+                                        <td colspan="12" style="text-align:center;padding:40px 0;color:#9ca3af;font-size:13px;">
+                                            <i class="fa fa-search" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>
+                                            Select date range and click <strong>Search</strong>, or click <strong>+ Add New Row</strong> to add a record.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+                <!-- END UNIFIED PANEL -->
+
+            </div><!-- /modal-body -->
+            <!--<div class="modal-body p-0">-->
+            <!-- Custom Tabs -->
+            <!--<div class="af-tabs">
+                <button class="af-tab-btn active" id="tab-add-btn" onclick="afSwitchTab('add')">
+                    <span class="tab-icon"><i class="fa fa-plus"></i></span>
+                    Add Failures Occurred
+                </button>
+                <button class="af-tab-btn" id="tab-view-btn" onclick="afSwitchTab('view')">
+                    <span class="tab-icon"><i class="fa fa-list"></i></span>
+                    View Failures List
+                </button>
+            </div>-->
+            <!-- TAB 1: Add Failures Occurred -->
+            <!--<div class="af-tab-pane active" id="panel-add-failure">-->
+            <!-- Filter Section -->
+            <!--<div class="af-filter-section">
+                                    <div class="af-filter-section-title">Search &amp; Filter</div>
+                                    <div class="af-filter-row">
+                                        <div class="af-filter-item">
+                                            <span class="af-filter-label">Zone</span>
+                                            <select class="af-select" id="af_Zone" onchange="afLoadDivision()">
+                                                <option value="0">All</option>
+                                                @if (ViewBag.Zones != null)
+                                                {
+                                                    foreach (var z in (IEnumerable<SelectListItem>)ViewBag.Zones)
+                                                    {
+                                    <option value="@z.Value">@z.Text</option>
+            }
+                            }
+                                            </select>
+                                        </div>
+                                        <div class="af-filter-item">
+                                            <span class="af-filter-label">Division</span>
+                                            <select class="af-select" id="af_Division" onchange="afLoadStation()">
+                                                <option value="0">All</option>
+                                                @if (ViewBag.Divisions != null)
+                                                {
+                                                    foreach (var d in (IEnumerable<SelectListItem>)ViewBag.Divisions)
+                                                    {
+                                    <option value="@d.Value">@d.Text</option>
+            }
+                            }
+                                            </select>
+                                        </div>
+                                        <div class="af-filter-item">
+                                            <span class="af-filter-label">Station</span>
+                                            <select class="af-select" id="af_Station" onchange="afLoadAssetType()">
+                                                <option value="0">-- Select Station --</option>
+                                                @if (ViewBag.Sites != null)
+                                                {
+                                                    foreach (var s in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                                    {
+                                    <option value="@s.Value">@s.Text</option>
+            }
+                            }
+                                            </select>
+                                        </div>
+                                        <div class="af-filter-item">
+                                            <span class="af-filter-label">Asset Type</span>
+                                            <select class="af-select" id="af_AssetType" onchange="afLoadAssetNo()">
+                                                <option value="0">-- Select Station First --</option>
+                                            </select>
+                                        </div>
+                                        <div class="af-filter-item">
+                                            <span class="af-filter-label">Asset No <span style="font-weight:400;color:#94a3b8;text-transform:none;">(Ctrl+click multi)</span></span>
+                                            <select class="af-select" id="af_AssetNo" multiple size="1">
+                                                <option value="0" selected>All</option>
+                                            </select>
+                                        </div>
+                                        <div class="af-filter-item btn-item">
+                                            <span class="af-filter-label">&nbsp;</span>
+                                            <button class="af-btn-add-table" onclick="afAddToTable()">
+                                                &#43; Add to Table
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>-->
+            <!-- /af-filter-section -->
+            <!-- Info note -->
+            <!--<div class="af-info-box">
+                <i class="fa fa-info-circle"></i>&nbsp;
+                Select Station &amp; Asset Type, then hold <strong>Ctrl/Cmd</strong> and click to pick multiple Asset Nos — each adds a separate row.
+            </div>-->
+            <!-- Entry Table -->
+            <!--<div style="overflow-x:auto;">
+                    <div class="af-table-wrap">
+                        <table class="af-table" id="af_EntryTable">
+                            <thead>
+                                <tr>
+                                    <th style="width:50px;">S No</th>
+                                    <th style="min-width:120px;">Station Name</th>
+                                    <th style="min-width:100px;">Asset Type</th>
+                                    <th style="min-width:80px;">Asset No.</th>
+                                    <th style="min-width:230px;">Date <small>From &rarr; To</small></th>
+                                    <th style="min-width:190px;">Time <small>From &rarr; To</small></th>
+                                    <th style="min-width:150px;">Cause Code <small>Select from Dropdown</small></th>
+                                    <th style="min-width:160px;">Remark <small>Max 50 words</small></th>
+                                    <th style="min-width:100px;text-align:center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="af_EntryTableBody">
+                                <tr class="af-empty-row" id="af_emptyRow">
+                                    <td colspan="9">
+                                        <i class="fa fa-table" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>
+                                        No rows yet — select filters above and click <strong>+ Add to Table</strong>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>-->
+            <!-- END TAB 1 -->
+            <!-- TAB 2: View Failures List -->
+            <!--<div class="af-tab-pane" id="panel-view-failure">-->
+            <!-- View Filters -->
+            <!--<div class="vf-filter-row">
+                                    <div class="vf-filter-item">
+                                        <span class="af-filter-label">From Date</span>
+                                        <input type="date" class="af-input" id="vf_FromDate" />
+                                    </div>
+                                    <div class="vf-filter-item">
+                                        <span class="af-filter-label">To Date</span>
+                                        <input type="date" class="af-input" id="vf_ToDate" />
+                                    </div>
+                                    <div class="vf-filter-item" style="max-width:220px;">
+                                        <span class="af-filter-label">Station</span>
+                                        <select class="af-select" id="vf_Station">
+                                            <option value="0">All Stations</option>
+                                            @if (ViewBag.Sites != null)
+                                            {
+                                                foreach (var s in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                                {
+                                <option value="@s.Value">@s.Text</option>
+            }
+                        }
+                                        </select>
+                                    </div>
+                                    <div class="vf-filter-item btn-item">
+                                        <span class="af-filter-label">&nbsp;</span>
+                                        <button class="vf-btn-search" onclick="vfLoadList()">
+                                            <i class="fa fa-search"></i> Search
+                                        </button>
+                                    </div>
+                                    <div class="vf-filter-item btn-item">
+                                        <span class="af-filter-label">&nbsp;</span>
+                                        <button class="vf-btn-reset" onclick="vfResetFilters()">
+                                            <i class="fa fa-undo"></i> Reset
+                                        </button>
+                                    </div>
+                                    <div class="vf-filter-item btn-item" style="margin-left:auto;">
+                                        <span class="af-filter-label">&nbsp;</span>
+                                        <div style="display:flex;gap:6px;align-items:center;">
+                                            <button class="vf-dl-btn vf-dl-excel" onclick="vfDownload('excel')" title="Download Excel">
+                                                <i class="fa fa-file-excel-o"></i> Excel
+                                            </button>
+                                            <button class="vf-dl-btn vf-dl-csv" onclick="vfDownload('csv')" title="Download CSV">
+                                                <i class="fa fa-file-text-o"></i> CSV
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>-->
+            <!-- View Table -->
+            <!--<div style="overflow-x:auto;">
+                    <div class="vf-table-wrap">
+                        <table class="vf-table" id="vf_ListTable">
+                            <thead>
+                                <tr>
+                                    <th>S No</th>
+                                    <th>Station Name</th>
+                                    <th>Asset Type</th>
+                                    <th>Asset No.</th>
+                                    <th>Failure Date</th>
+                                    <th>Failure Time</th>
+                                    <th>Cause Code</th>
+                                    <th>Remark</th>
+                                    <th>Entered By</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="vf_ListBody">
+                                <tr>
+                                    <td colspan="10" style="text-align:center;padding:40px 0;color:#9ca3af;font-size:13px;">
+                                        <i class="fa fa-search" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>
+                                        Select date range and click <strong>Search</strong> to load records.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>-->
+            <!-- END TAB 2 -->
+            <!--</div>--><!-- /modal-body -->
+            <!-- Footer -->
+            <!-- Footer -->
+            @*<div class="modal-footer">
+                    <button type="button" class="af-btn-all-save" id="btnSaveAllFailures"
+                            onclick="afSaveAll()" style="display:none;">
+                        <i class="fa fa-save"></i>&nbsp; Save All
+                    </button>
+                    <button type="button" class="af-btn-close-footer" onclick="closeActualFailureModal()">
+                        <i class="fa fa-times"></i>&nbsp; Close
+                    </button>
+                </div>*@
+            <div class="modal-footer">
+                <button type="button" class="af-btn-all-save" id="btnSaveAllFailures"
+                        onclick="afSaveAll()" style="display:none;">
+                    <i class="fa fa-save"></i>&nbsp; Save All New
+                </button>
+                <button type="button" class="af-btn-close-footer" onclick="closeActualFailureModal()">
+                    <i class="fa fa-times"></i>&nbsp; Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- END ACTUAL FAILURE ENTRY MODAL -->
+<!-- ── TOAST CONTAINER ── -->
+<div id="af-toast-container" style="position:fixed;top:18px;right:18px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+
+<!-- ================================================================
+     EDIT FAILURE MODAL — compact light design
+     ================================================================ -->
+<div class="modal fade" id="modal-vfEdit" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog" style="max-width:480px;margin:40px auto;">
+        <div class="modal-content" style="border-radius:8px;overflow:hidden;border:none;box-shadow:0 12px 40px rgba(0,0,0,0.16);">
+
+            <!-- Header -->
+            <div class="modal-header" style="background:#f0f4ff;border-bottom:1px solid #dde3f0;padding:10px 16px;display:flex;align-items:center;gap:8px;">
+                <div style="width:28px;height:28px;background:#dbe4ff;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#3b5bdb;font-size:12px;flex-shrink:0;">
+                    <i class="fa fa-pencil"></i>
+                </div>
+                <div style="flex:1;">
+                    <div style="font-size:13px;font-weight:700;color:#1e293b;">Edit Failure Record</div>
+                    <div style="font-size:10.5px;color:#64748b;">Update details and click Update</div>
+                </div>
+                <button type="button" onclick="$('#modal-vfEdit').modal('hide')" style="background:transparent;border:1px solid #c8d4f0;border-radius:4px;color:#64748b;font-size:15px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;">&times;</button>
+            </div>
+
+            <!-- Info strip -->
+            <div style="background:#f8faff;border-bottom:1px solid #e8edf5;padding:7px 16px;display:flex;gap:20px;flex-wrap:wrap;">
+                <div><div style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Station</div><div style="font-size:12.5px;font-weight:600;color:#1e293b;" id="ef_StationName">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Asset Type</div><div style="font-size:12.5px;font-weight:600;color:#1e293b;" id="ef_AssetType">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:700;color:#94a3b8;text-transform:uppercase;">Asset No.</div><div style="font-size:12.5px;font-weight:600;color:#1e293b;" id="ef_AssetNo">—</div></div>
+            </div>
+
+            <div class="modal-body" style="padding:14px 16px 10px;">
+                <input type="hidden" id="ef_Id" />
+                <input type="hidden" id="ef_SiteId" />
+                <input type="hidden" id="ef_AssetTypeId" />
+                <input type="hidden" id="ef_AssetId" />
+
+                <!-- Date & Time grid -->
+                <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid #f1f5f9;">
+                    <i class="fa fa-calendar" style="margin-right:4px;"></i>Date &amp; Time
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:12px;">
+                    <div>
+                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">
+                            Incidence Date <span style="color:#ef4444;">*</span>
+                        </label>
+                        <input type="date" id="ef_IncidenceDateTime"
+                               style="width:100%;height:30px;border:1px solid #dde3f0;border-radius:4px;padding:3px 8px;font-size:12.5px;color:#1e293b;outline:none;" />
+                    </div>
+                    <div>
+                        <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">
+                            Rectification Date
+                            <span style="font-weight:400;color:#94a3b8;text-transform:none;font-size:9px;">(optional)</span>
+                        </label>
+                        <input type="date" id="ef_RectificationDateTime"
+                               style="width:100%;height:30px;border:1px solid #dde3f0;border-radius:4px;padding:3px 8px;font-size:12.5px;color:#1e293b;outline:none;" />
+                    </div>
+                </div>
+
+                <!-- Cause & Remark -->
+                <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid #f1f5f9;">
+                    <i class="fa fa-tag" style="margin-right:4px;"></i>Cause &amp; Remark
+                </div>
+                <div style="margin-bottom:8px;">
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Cause Code</label>
+                    <select id="ef_CauseCode" style="width:100%;height:30px;border:1px solid #dde3f0;border-radius:4px;padding:3px 8px;font-size:12.5px;color:#1e293b;background:#fff;outline:none;"></select>
+                </div>
+                <div>
+                    <label style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;display:block;margin-bottom:3px;">Remark</label>
+                    <textarea id="ef_Remark" rows="3" maxlength="500" placeholder="Enter remark (optional)..." style="width:100%;border:1px solid #dde3f0;border-radius:4px;padding:5px 8px;font-size:12.5px;color:#1e293b;background:#fff;outline:none;resize:none;"></textarea>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="background:#f8faff;border-top:1px solid #e8edf5;padding:9px 16px;display:flex;justify-content:flex-end;gap:7px;">
+                <button type="button" onclick="vfSaveEdit()" style="background:#4f46e5;color:#fff;border:none;border-radius:5px;padding:6px 16px;font-size:12.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;">
+                    <i class="fa fa-check"></i> Update
+                </button>
+                <button type="button" onclick="$('#modal-vfEdit').modal('hide')" style="background:#fff;color:#64748b;border:1px solid #dde3f0;border-radius:5px;padding:5px 14px;font-size:12.5px;font-weight:600;cursor:pointer;">
+                    <i class="fa fa-times"></i> Cancel
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+<!-- END EDIT MODAL -->
+
+<script>
+    var openDropdown = null;
+    var selectedViewType = 'Table';
+    var performanceChart = null;
+
+    // ================================================================
+    //  DATETIME HELPERS
+    // ================================================================
+
+    /**
+     * Build a datetime-local string (yyyy-MM-ddTHH:mm) from multiple possible
+     * sources. Priority:
+     *   1. row.FromDateTime / row.ToDateTime  (ISO or "yyyy-MM-dd HH:mm:ss")
+     *   2. separate date + time fields       (row.FailureDateFrom + FailureTimeFrom)
+     *   3. empty string if nothing available
+     */
+    function vfBuildDateTimeLocal(isoDateTime, datePart, timePart) {
+        // ── 1. Try combined ISO / SQL datetime string ──────────────────
+        if (isoDateTime && isoDateTime !== '0001-01-01T00:00:00' &&
+            isoDateTime !== '0001-01-01 00:00:00' && isoDateTime !== '01/01/0001 00:00:00') {
+            // Handle formats:  "2025-06-10T14:30:00"  or  "2025-06-10 14:30:00"
+            var s = String(isoDateTime).replace(' ', 'T');
+            if (s.indexOf('T') !== -1) {
+                // Slice to "yyyy-MM-ddTHH:mm" (drop seconds / timezone)
+                return s.substring(0, 16);
+            }
+        }
+
+        // ── 2. Try separate date + time parts ─────────────────────────
+        // datePart may arrive as "dd/MM/yyyy", "yyyy-MM-dd", or "dd-MM-yyyy"
+        if (datePart && datePart.trim()) {
+            var dNorm = vfNormalizeDate(datePart.trim());   // → yyyy-MM-dd
+            if (dNorm) {
+                var tNorm = (timePart || '').trim().substring(0, 5); // HH:mm
+                return dNorm + 'T' + (tNorm || '00:00');
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Normalise various date formats to yyyy-MM-dd.
+     * Accepts: dd/MM/yyyy | dd-MM-yyyy | yyyy-MM-dd
+     */
+    function vfNormalizeDate(d) {
+        if (!d) return '';
+        // dd/MM/yyyy  or  dd-MM-yyyy
+        var m = d.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+        if (m) return m[3] + '-' + m[2] + '-' + m[1];
+        // yyyy-MM-dd  (already correct)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+        return '';
+    }
+
+    /**
+     * Format a datetime for table cell display.
+     * Shows "dd/MM/yyyy HH:mm" or "–" if unavailable / min-date.
+     */
+    function vfFmtDT(isoDateTime, datePart, timePart) {
+        var local = vfBuildDateTimeLocal(isoDateTime, datePart, timePart);
+        if (!local) return '<span style="color:#94a3b8;">–</span>';
+        // local = "yyyy-MM-ddTHH:mm"
+        var parts = local.split('T');
+        var dp    = parts[0].split('-');
+        var displayDate = dp[2] + '/' + dp[1] + '/' + dp[0];   // dd/MM/yyyy
+        var displayTime = parts[1] || '00:00';
+        return '<span style="display:block;font-weight:500;">' + displayDate + '</span>' +
+               '<span style="color:#64748b;font-size:11px;">' + displayTime + '</span>';
+    }
+
+    // Chart colors
+    var chartColors = {
+        failure: '#ef4444',      // Red
+        predictive: '#3b82f6',   // Blue
+        rdpms: '#22c55e'         // Green
+    };
+
+    // Consistent date format: MM/DD/YYYY
+    var DATE_FORMAT = 'mm/dd/yy';
+
+    $(document).ready(function () {
+        // Set default dates to today with consistent format
+        setDefaultDates();
+
+        // Date pickers with consistent format
+        $('#txtFromDate').datepicker({
+            dateFormat: DATE_FORMAT,
+            autoClose: true,
+            onSelect: function (dateText) {
+                $(this).val(dateText);
+            }
+        });
+
+        $('#txtToDate').datepicker({
+            dateFormat: DATE_FORMAT,
+            autoClose: true,
+            onSelect: function (dateText) {
+                $(this).val(dateText);
+            }
+        });
+
+        // Bind button clicks
+        $('.select-btn').on('click', function (e) {
+            e.stopPropagation();
+            var target = $(this).data('target');
+            toggleDD(target, this);
+        });
+
+        // Backdrop click
+        $('#backdrop').on('click', closeDD);
+
+        // Select All handlers
+        //$('#chkAllZone').on('change', function () { selectAll('zone', this.checked); });
+        //$('#chkAllDivision').on('change', function () { selectAll('division', this.checked); });
+        //$('#chkAllSite').on('change', function () { selectAll('site', this.checked); });
+
+        // Multi-select item click handlers
+        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $(this).toggleClass('checked', $cb.prop('checked'));
+
+            var cbClass = $cb.attr('class') || '';
+            var type = cbClass.replace('cb-', '');
+
+            updateSelectAllState(type);
+            updateText(type);
+            onFilterChange(type);
+        });
+        $(document).on('click', '.dropdown-header', function (e) {
+            e.stopPropagation();
+            var $chk = $(this).find('input[type="checkbox"]');
+            // If user clicked the checkbox or label (label triggers native toggle), browser already toggled — don't reverse it
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                var id = $chk.attr('id') || '';
+                var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+                selectAll(type, $chk.prop('checked'));
+                return;
+            }
+            // Clicked on the row background — toggle manually
+            var newState = !$chk.prop('checked');
+            $chk.prop('checked', newState);
+            var id = $chk.attr('id') || '';
+            var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+            selectAll(type, newState);
+        });
+        // Single select for View Type
+        $(document).on('click', '#ddViewType .dropdown-item', function (e) {
+            e.stopPropagation();
+            $('#ddViewType .dropdown-item').removeClass('checked');
+            $(this).addClass('checked');
+            selectedViewType = $(this).data('value');
+            $('#txtViewType').text($(this).data('text'));
+            closeDD();
+        });
+
+        // Prevent dropdown close when clicking inside search box
+        $(document).on('click', '.dropdown-search', function (e) {
+            e.stopPropagation();
+        });
+
+        // Load data on page load
+        fnGetAlertPerformanceReport();
+    });
+
+    // ===== SET DEFAULT DATES (TODAY) WITH CONSISTENT FORMAT =====
+    function setDefaultDates() {
+        var today = new Date();
+        var formattedDate = formatDate(today);
+        $('#txtFromDate').val(formattedDate);
+        $('#txtToDate').val(formattedDate);
+    }
+
+    // ===== FORMAT DATE AS MM/DD/YYYY (with leading zeros) =====
+    function formatDate(date) {
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var day = String(date.getDate()).padStart(2, '0');
+        var year = date.getFullYear();
+        return month + '/' + day + '/' + year;
+    }
+
+    // ===== DROPDOWN SEARCH FILTER =====
+    function filterDropdown(type, searchText) {
+        var $dropdown = $('#dd' + capitalize(type));
+        var $items = $dropdown.find('.dropdown-item');
+        var $noResults = $dropdown.find('.dropdown-no-results');
+        var search = searchText.toLowerCase().trim();
+        var visibleCount = 0;
+
+        $items.each(function () {
+            var $item = $(this);
+            var text = ($item.data('text') || $item.find('span').text()).toLowerCase();
+
+            if (search === '' || text.indexOf(search) > -1) {
+                $item.removeClass('hidden');
+                visibleCount++;
+
+                if (search !== '') {
+                    var originalText = $item.data('text') || $item.find('span').text();
+                    var regex = new RegExp('(' + escapeRegex(searchText) + ')', 'gi');
+                    var highlighted = originalText.replace(regex, '<mark>$1</mark>');
+                    $item.find('span').html(highlighted);
+                } else {
+                    var origText = $item.data('text');
+                    if (origText) $item.find('span').text(origText);
+                }
+            } else {
+                $item.addClass('hidden');
+            }
+        });
+
+        if (visibleCount === 0 && search !== '') {
+            $noResults.addClass('show');
+        } else {
+            $noResults.removeClass('show');
+        }
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function toggleDD(id, btn) {
+        if (openDropdown === id) {
+            closeDD();
+            return;
+        }
+        closeDD();
+
+        var $dd = $('#' + id);
+        var rect = btn.getBoundingClientRect();
+
+        $dd.css({ top: rect.bottom + 4, left: rect.left });
+        $dd.addClass('open');
+        $(btn).addClass('active');
+        $('#backdrop').addClass('show');
+        openDropdown = id;
+
+        setTimeout(function () {
+            var $searchInput = $dd.find('.dropdown-search input');
+            if ($searchInput.length) $searchInput.focus();
+        }, 100);
+    }
+
+    function closeDD() {
+        if (openDropdown) {
+            var $dd = $('#' + openDropdown);
+            $dd.find('.dropdown-search input').val('');
+            $dd.find('.dropdown-item').removeClass('hidden');
+            $dd.find('.dropdown-no-results').removeClass('show');
+            $dd.find('.dropdown-item').each(function () {
+                var origText = $(this).data('text');
+                if (origText) $(this).find('span').text(origText);
+            });
+            $dd.removeClass('open');
+            $('.select-btn').removeClass('active');
+            $('#backdrop').removeClass('show');
+            openDropdown = null;
+        }
+    }
+
+    function selectAll(type, checked) {
+        $('.cb-' + type).each(function () {
+            var $item = $(this).closest('.dropdown-item');
+            if (!$item.hasClass('hidden')) {
+                $(this).prop('checked', checked);
+                $item.toggleClass('checked', checked);
+            }
+        });
+        updateText(type);
+        onFilterChange(type);
+    }
+
+    function updateSelectAllState(type) {
+        var $visible = $('#list' + capitalize(type) + ' .dropdown-item:not(.hidden)');
+        var total = $visible.length;
+        var checked = $visible.find('.cb-' + type + ':checked').length;
+        $('#chkAll' + capitalize(type)).prop('checked', total > 0 && total === checked);
+    }
+
+    function updateText(type) {
+        var $checked = $('.cb-' + type + ':checked');
+        var count = $checked.length;
+        var text = 'All';
+
+        if (count === 1) {
+            text = $checked.first().closest('.dropdown-item').data('text') ||
+                $checked.first().closest('.dropdown-item').find('span').text();
+        } else if (count > 1) {
+            text = count + ' selected';
+        }
+        $('#txt' + capitalize(type)).text(text);
+    }
+
+    function getValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () {
+            vals.push($(this).val());
+        });
+        return vals;
+    }
+
+    function getFirstValue(type) {
+        var vals = getValues(type);
+        return vals.length > 0 ? vals[0] : '';
+    }
+
+    function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function onFilterChange(type) {
+        if (type === 'zone') {
+            loadDivisions();
+        } else if (type === 'division') {
+            loadSites();
+        }
+    }
+
+    // ===== LOAD DIVISIONS =====
+    function loadDivisions() {
+        var zoneIds = getValues('zone');
+
+        $('#listDivision').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllDivision').prop('checked', false);
+        $('#txtDivision').text('All');
+
+        $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+
+        if (zoneIds.length === 0) {
+            $('#listDivision').html('<div class="dropdown-empty">Select Zone first</div>');
+            return;
+        }
+
+        var requestData = { SearchCriteria: { ZoneIds: zoneIds } };
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetDivisionByZoneId',
+            type: 'POST',
+            data: JSON.stringify(requestData),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-division" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span></div>';
+                    });
+                    $('#listDivision').html(html);
+                } else {
+                    $('#listDivision').html('<div class="dropdown-empty">No divisions found</div>');
+                }
+            },
+            error: function () {
+                $('#listDivision').html('<div class="dropdown-empty">Error loading divisions</div>');
+            }
+        });
+    }
+
+    // ===== LOAD SITES =====
+    function loadSites() {
+        var divisionIds = getValues('division');
+
+        $('#listSite').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+
+        if (divisionIds.length === 0) {
+            $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+            return;
+        }
+
+        var requestData = { SearchCriteria: { DivisionIds: divisionIds } };
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetSiteByDivisionId',
+            type: 'POST',
+            data: JSON.stringify(requestData),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-site" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span></div>';
+                    });
+                    $('#listSite').html(html);
+                } else {
+                    $('#listSite').html('<div class="dropdown-empty">No stations found</div>');
+                }
+            },
+            error: function () {
+                $('#listSite').html('<div class="dropdown-empty">Error loading stations</div>');
+            }
+        });
+    }
+
+    // ===== MAIN SEARCH FUNCTION =====
+    function fnGetAlertPerformanceReport() {
+        var mAssetLister = { SearchCriteria: {} };
+
+        // Multi-select values (arrays)
+        mAssetLister.SearchCriteria.ZoneIds = getValues('zone');
+        mAssetLister.SearchCriteria.DivisionIds = getValues('division');
+        mAssetLister.SearchCriteria.SiteIds = getValues('site');
+
+        // Single values for backward compatibility
+        //mAssetLister.SearchCriteria.ZoneId = getFirstValue('zone');
+        //mAssetLister.SearchCriteria.DivisionId = getFirstValue('division');
+        //mAssetLister.SearchCriteria.SiteId = getFirstValue('site');
+
+        // Date values
+        mAssetLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mAssetLister.SearchCriteria.ToDate = $('#txtToDate').val();
+
+        // Load based on view type
+        if (selectedViewType === 'Table') {
+            fnLoadTableView(mAssetLister);
+        } else {
+            fnLoadChartView(mAssetLister, selectedViewType);
+        }
+    }
+
+    // ===== TABLE VIEW =====
+    function fnLoadTableView(mAssetLister) {
+        $("#loader").show();
+        $('#divTableContainer').show();
+        $('#divChartContainer').hide();
+
+        // Destroy existing chart
+        if (performanceChart != null) {
+            performanceChart.destroy();
+            performanceChart = null;
+        }
+
+        $.ajax({
+            url: '/FRS25/Performance/_List',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divTableContainer").empty().append(data);
+            },
+            error: function () {
+                $("#loader").hide();
+                showError("Something went wrong!", "Error");
+            }
+        });
+    }
+
+    // ===== CHART VIEW =====
+    function fnLoadChartView(mAssetLister, viewType) {
+        $("#loader").show();
+        $('#divTableContainer').hide();
+        $('#divChartContainer').show();
+
+        // First load table data to parse for chart
+        $.ajax({
+            url: '/FRS25/Performance/_List',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+
+                // Parse table data to extract chart data
+                var chartData = parseTableDataForChart(data);
+
+                if (chartData.labels.length > 0) {
+                    renderChart(chartData, viewType);
+                } else {
+                    renderNoData();
+                }
+            },
+            error: function () {
+                $("#loader").hide();
+                showError("Something went wrong!", "Error");
+            }
+        });
+    }
+
+    // ===== PARSE TABLE DATA FOR CHART =====
+    function parseTableDataForChart(htmlData) {
+        var $temp = $('<div>').html(htmlData);
+        var $rows = $temp.find('tbody tr[data-station]');
+
+        var labels = [];
+        var failurePercentages = [];
+        var predictivePercentages = [];
+        var rdpmsPercentages = [];
+
+        $rows.each(function () {
+            var station = $(this).data('station') || '';
+            var failPct = parseFloat($(this).data('failure')) || 0;
+            var predPct = parseFloat($(this).data('predictive')) || 0;
+            var rdpmsPct = parseFloat($(this).data('rdpms')) || 0;
+
+            if (station) {
+                labels.push(station);
+                failurePercentages.push(failPct);
+                predictivePercentages.push(predPct);
+                rdpmsPercentages.push(rdpmsPct);
+            }
+        });
+
+        return {
+            labels: labels,
+            failure: failurePercentages,
+            predictive: predictivePercentages,
+            rdpms: rdpmsPercentages
+        };
+    }
+
+    // ===== NO DATA VIEW =====
+    function renderNoData() {
+        var html = '<div class="chart-container">' +
+            '<div class="no-data-box">' +
+            '<i class="fas fa-chart-bar"></i>' +
+            '<p>No data available for visualization</p>' +
+            '</div></div>';
+        $('#divChartContainer').html(html);
+    }
+
+    // ===== RENDER CHART =====
+    function renderChart(data, viewType) {
+        // Destroy existing chart
+        if (performanceChart != null) {
+            performanceChart.destroy();
+            performanceChart = null;
+        }
+
+        var chartTitle = viewType === 'Pie' ? 'Performance Distribution (Average %)' :
+            viewType === 'Graph' ? 'Performance Trend Analysis' : 'Performance Comparison by Station';
+
+        var $container = $('#divChartContainer');
+        $container.empty();
+
+        var $chartContainer = $('<div class="chart-container"></div>');
+        var $chartHeader = $('<div class="chart-header"><h4 class="chart-title">' + chartTitle + '</h4></div>');
+        var $chartWrapper = $('<div class="chart-wrapper"></div>');
+        var $canvas = $('<canvas id="performanceChart"></canvas>');
+
+        $chartWrapper.append($canvas);
+        $chartContainer.append($chartHeader).append($chartWrapper);
+
+        // Add legend
+        var $legend = $('<div class="chart-legend">' +
+            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.failure + '"></div><span>% (True + PT) Failure Alerts</span></div>' +
+            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.predictive + '"></div><span>% (True + PT) Predictive Alerts</span></div>' +
+            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.rdpms + '"></div><span>% Failure Alerts by RDPMS</span></div>' +
+            '</div>');
+
+        $chartContainer.append($legend);
+        $container.append($chartContainer);
+
+        var ctx = $canvas[0].getContext('2d');
+        var chartConfig = {};
+
+        // ===== PIE CHART =====
+        if (viewType === 'Pie') {
+            // Calculate averages for pie chart
+            var avgFailure = data.failure.length > 0 ? data.failure.reduce(function (a, b) { return a + b; }, 0) / data.failure.length : 0;
+            var avgPredictive = data.predictive.length > 0 ? data.predictive.reduce(function (a, b) { return a + b; }, 0) / data.predictive.length : 0;
+            var avgRdpms = data.rdpms.length > 0 ? data.rdpms.reduce(function (a, b) { return a + b; }, 0) / data.rdpms.length : 0;
+
+            chartConfig = {
+                type: 'doughnut',
+                data: {
+                    labels: ['% (True + PT) Failure Alerts', '% (True + PT) Predictive Alerts', '% Failure Alerts by RDPMS'],
+                    datasets: [{
+                        data: [avgFailure.toFixed(1), avgPredictive.toFixed(1), avgRdpms.toFixed(1)],
+                        backgroundColor: [chartColors.failure, chartColors.predictive, chartColors.rdpms],
+                        borderColor: '#ffffff',
+                        borderWidth: 3,
+                        hoverOffset: 15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '55%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            padding: 14,
+                            cornerRadius: 8,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 },
+                            callbacks: {
+                                label: function (context) {
+                                    return context.label + ': ' + context.parsed + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        // ===== BAR CHART =====
+        else if (viewType === 'Bar') {
+            chartConfig = {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: '% (True + PT) Failure Alerts',
+                            data: data.failure,
+                            backgroundColor: chartColors.failure,
+                            borderRadius: 4,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.8
+                        },
+                        {
+                            label: '% (True + PT) Predictive Alerts',
+                            data: data.predictive,
+                            backgroundColor: chartColors.predictive,
+                            borderRadius: 4,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.8
+                        },
+                        {
+                            label: '% Failure Alerts by RDPMS',
+                            data: data.rdpms,
+                            backgroundColor: chartColors.rdpms,
+                            borderRadius: 4,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.8
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            padding: 14,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function (context) {
+                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 11 }, color: '#64748b', maxRotation: 45, minRotation: 45 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 120,
+                            grid: { color: 'rgba(0,0,0,0.06)' },
+                            ticks: {
+                                font: { size: 12 },
+                                color: '#64748b',
+                                callback: function (value) { return value + '%'; }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        // ===== LINE GRAPH =====
+        else if (viewType === 'Graph') {
+            chartConfig = {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: '% (True + PT) Failure Alerts',
+                            data: data.failure,
+                            borderColor: chartColors.failure,
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: chartColors.failure,
+                            pointBorderWidth: 2,
+                            pointRadius: 6,
+                            pointHoverRadius: 8
+                        },
+                        {
+                            label: '% (True + PT) Predictive Alerts',
+                            data: data.predictive,
+                            borderColor: chartColors.predictive,
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: chartColors.predictive,
+                            pointBorderWidth: 2,
+                            pointRadius: 6,
+                            pointHoverRadius: 8
+                        },
+                        {
+                            label: '% Failure Alerts by RDPMS',
+                            data: data.rdpms,
+                            borderColor: chartColors.rdpms,
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            borderWidth: 3,
+                            fill: false,
+                            tension: 0.4,
+                            pointBackgroundColor: '#ffffff',
+                            pointBorderColor: chartColors.rdpms,
+                            pointBorderWidth: 2,
+                            pointRadius: 6,
+                            pointHoverRadius: 8
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            padding: 14,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function (context) {
+                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 11 }, color: '#64748b', maxRotation: 45, minRotation: 45 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 120,
+                            grid: { color: 'rgba(0,0,0,0.06)' },
+                            ticks: {
+                                font: { size: 12 },
+                                color: '#64748b',
+                                callback: function (value) { return value + '%'; }
+                            }
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            };
+        }
+
+        performanceChart = new Chart(ctx, chartConfig);
+    }
+
+    function fnDownloadAlertDetailReport() {
+        window.location.href = '@Url.Action("DownloadFRSAlertLiveStatus", "AlertLive")';
+    }
+
+    // ================================================================
+    //  ACTUAL FAILURE ENTRY — JavaScript
+    // ================================================================
+
+    var afRowCount = 0;
+    var afNewRowCount = 0;           // tracks unsaved new rows only
+    var afFilterAssetTypes = [];     // asset types loaded from selected station
+
+    // ── Cause code cache — keyed by AssetTypeId ──────────────────────
+    var afCauseCodeCache = {};
+
+    // Called when Station dropdown in filter bar changes
+    function afOnFilterStationChange() {
+        var siteId = $('#vf_Station').val();
+        afFilterAssetTypes = [];
+        if (!siteId || siteId === '0') return;
+        $.ajax({
+            url: '/FRS25/Performance/GetAssetTypeBySiteId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SiteId: siteId }),
+            success: function (data) {
+                afFilterAssetTypes = data || [];
+            }
+        });
+    }
+
+    // Adds a blank editable row to the unified table
+    function afAddNewRow() {
+        var siteId = $('#vf_Station').val();
+        var siteName = $('#vf_Station option:selected').text();
+        if (!siteId || siteId === '0') {
+            showWarning('Please select a Station in the filter before adding a row.', 'Validation');
+            return;
+        }
+
+        $('#af_emptyRow').remove();
+        afRowCount++;
+        afNewRowCount++;
+        var idx = afRowCount;
+        var today = new Date().toISOString().split('T')[0];
+
+        // Build asset type options from prefetched list
+        var atHtml = '<option value="0">-- Select --</option>';
+        $.each(afFilterAssetTypes, function (i, a) {
+            atHtml += '<option value="' + a.Id + '">' + a.Name + '</option>';
+        });
+        // If not yet loaded, fetch now
+        if (afFilterAssetTypes.length === 0) {
+            atHtml = '<option value="0">Loading...</option>';
+            $.ajax({
+                url: '/FRS25/Performance/GetAssetTypeBySiteId', type: 'POST', contentType: 'application/json',
+                data: JSON.stringify({ SiteId: siteId }),
+                success: function (data) {
+                    afFilterAssetTypes = data || [];
+                    var html = '<option value="0">-- Select --</option>';
+                    $.each(data, function (i, a) { html += '<option value="' + a.Id + '">' + a.Name + '</option>'; });
+                    $('#af_assetType_' + idx).html(html);
+                }
+            });
+        }
+
+        var rowHtml =
+            '<tr data-new-row="1" data-idx="' + idx + '" id="af_row_' + idx + '" ' +
+            '    data-station-id="' + siteId + '" data-assettype-id="0" data-assetno-id="0" data-id="0" ' +
+            '    style="background:#fffbeb;border-left:3px solid #f59e0b;">' +
+
+            // Col 1 — S No (new row icon)
+            '<td style="color:#94a3b8;font-size:12px;text-align:center;">' +
+            '  <i class="fa fa-plus" style="color:#f59e0b;"></i>' +
+            '</td>' +
+
+            // Col 2 — Station Name
+            '<td style="font-size:12px;font-weight:600;color:#1a2d5a;">' + siteName + '</td>' +
+
+            // Col 3 — Asset Type
+            '<td>' +
+            '  <select class="af-cell-select" id="af_assetType_' + idx + '" ' +
+            '          onchange="afNewRowLoadAssetNo(' + idx + ',' + siteId + ')">' + atHtml + '</select>' +
+            '</td>' +
+
+            // Col 4 — Asset No
+            '<td>' +
+            '  <select class="af-cell-select" id="af_assetNo_' + idx + '">' +
+            '    <option value="0">-- Select Asset Type First --</option>' +
+            '  </select>' +
+            '</td>' +
+
+            // Col 5 — Incidence Date
+            '<td>' +
+            '  <input type="date" class="af-cell-input" id="af_incidenceDT_' + idx + '" value="' + today + '" max="' + today + '" style="width:100%;">' +
+            '</td>' +
+
+            // Col 6 — Rectification Date (optional)
+            '<td>' +
+            '  <input type="date" class="af-cell-input" id="af_rectificationDT_' + idx + '" max="' + today + '" style="width:100%;">' +
+            '</td>' +
+
+            // Col 7 — Cause Code
+            '<td>' +
+            '  <select class="af-cell-select" id="af_causeCode_' + idx + '">' +
+            '    <option value="0">-- Select Asset Type First --</option>' +
+            '  </select>' +
+            '</td>' +
+
+            // Col 8 — Remark
+            '<td>' +
+            '  <textarea class="af-cell-textarea" id="af_remark_' + idx + '" rows="2" placeholder="Optional remark..."></textarea>' +
+            '</td>' +
+
+            // Col 9 — Alert Status (manual entry = not applicable)
+            '<td style="text-align:center;">' +
+            '  <span style="color:#9ca3af;font-size:11px;">&#8212;</span>' +
+            '</td>' +
+
+            // Col 10 — Generated By (manual entry = current user)
+            '<td style="text-align:center;">' +
+            '  <span style="display:inline-flex;align-items:center;gap:4px;background:#f0fdf4;' +
+            '    color:#166534;border:1px solid #bbf7d0;padding:3px 10px;border-radius:20px;' +
+            '    font-size:11px;font-weight:700;">' +
+            '    <i class="fa fa-user"></i> Manual' +
+            '  </span>' +
+            '</td>' +
+
+            // Col 11 — Action buttons
+            '<td style="text-align:center;white-space:nowrap;">' +
+            '  <div class="af-row-actions">' +
+            '    <button class="af-btn af-btn-save" onclick="afSaveRow(' + idx + ')" title="Save this row">' +
+            '      <i class="fa fa-save"></i> Save' +
+            '    </button>' +
+            '    <button class="af-btn af-btn-del" onclick="afRemoveNewRow(' + idx + ')" title="Remove row">' +
+            '      <i class="fa fa-trash"></i>' +
+            '    </button>' +
+            '  </div>' +
+            '</td>' +
+            '</tr>';
+
+        // ── prepend so new row appears at TOP of list ──
+        $('#vf_ListBody').prepend(rowHtml);
+        // Scroll table to top so user sees the new row immediately
+        $('#vf_ListBody').closest('.vf-table-wrap').scrollTop(0);
+        $('#btnSaveAllFailures').show();
+    }
+
+    // Load asset nos when asset type changes in a new row
+    function afNewRowLoadAssetNo(idx, siteId) {
+        var assetTypeId = $('#af_assetType_' + idx).val();
+        $('#af_row_' + idx).data('assettype-id', assetTypeId);
+        var $assetNo = $('#af_assetNo_' + idx);
+        var $causeCode = $('#af_causeCode_' + idx);
+        $assetNo.html('<option value="0">Loading...</option>');
+        $causeCode.html('<option value="0">Loading...</option>');
+
+        if (!assetTypeId || assetTypeId === '0') {
+            $assetNo.html('<option value="0">-- Select Asset Type First --</option>');
+            $causeCode.html('<option value="0">-- Select Asset Type First --</option>');
+            return;
+        }
+
+        // Load asset nos
+        $.ajax({
+            url: '/FRS25/Performance/GetAssestBy', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ AssetTypeId: assetTypeId, SiteId: siteId }),
+            success: function (data) {
+                var html = '<option value="0">-- Select --</option>';
+                $.each(data || [], function (i, a) { html += '<option value="' + a.Id + '">' + a.Name + '</option>'; });
+                $assetNo.html(html);
+            },
+            error: function () { $assetNo.html('<option value="0">Error loading</option>'); }
+        });
+
+        // Load cause codes
+        afLoadCauseCodes(assetTypeId, function (list) {
+            $causeCode.html(afBuildCauseCodeOptions(list));
+        });
+    }
+
+    // When asset no changes, store its id on the row
+    $(document).on('change', '[id^="af_assetNo_"]', function () {
+        var idx = $(this).attr('id').replace('af_assetNo_', '');
+        $('#af_row_' + idx).data('assetno-id', $(this).val());
+    });
+
+    // Remove an unsaved new row
+    function afRemoveNewRow(idx) {
+        $('#af_row_' + idx).remove();
+        afNewRowCount = Math.max(0, afNewRowCount - 1);
+        if (afNewRowCount === 0) $('#btnSaveAllFailures').hide();
+        if ($('#vf_ListBody tr').length === 0) afShowEmptyRow();
+    }
+
+    // Fallback: resolve AssetTypeId integer from AssetType string e.g. "TRACK" -> 1
+    function afResolveAssetTypeId(assetTypeStr) {
+        if (!assetTypeStr) return 0;
+        var resolved = 0;
+        $('#af_AssetType option').each(function () {
+            if ($(this).text().trim().toUpperCase() === assetTypeStr.trim().toUpperCase()) {
+                resolved = parseInt($(this).val()) || 0;
+                return false;
+            }
+        });
+        return resolved;
+    }
+
+    function afLoadCauseCodes(assetTypeId, callback) {
+        var key = String(assetTypeId || 0);
+
+        // Only use cache if it contains REAL API data (flagged by .fromApi)
+        if (afCauseCodeCache[key] && afCauseCodeCache[key].fromApi) {
+            if (typeof callback === 'function') callback(afCauseCodeCache[key].list);
+            return;
+        }
+
+        $.ajax({
+            url: '/FRS25/AlertDetailReport/GetAlertInfo', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ AssetTypeId: assetTypeId }),
+            success: function (data) {
+                if (data && data.length > 0) {
+                    // Normalise: API may return Id/Code/Name OR Id/AlertCode/AlertName OR Id/Title etc.
+                    var list = $.map(data, function (c) {
+                        return {
+                            Id:   c.Id   || c.id   || 0,
+                            Code: c.Code || c.AlertCode || c.ShortName || c.code || '',
+                            Name: c.Name || c.AlertName || c.Title     || c.name || ''
+                        };
+                    });
+                    afCauseCodeCache[key] = { fromApi: true, list: list };
+                    if (typeof callback === 'function') callback(list);
+                } else {
+                    // API returned empty — do NOT cache, do NOT use fallback
+                    showInfo('No cause codes found for this asset type.', 'Cause Code');
+                    if (typeof callback === 'function') callback([]);
+                }
+            },
+            error: function (xhr) {
+                // API failed — do NOT cache fallback data
+                var msg = 'Could not load cause codes from server.';
+                try { var e = JSON.parse(xhr.responseText); if (e && e.Message) msg = e.Message; } catch(ex) {}
+                showError(msg, 'Cause Code');
+                if (typeof callback === 'function') callback([]);
+            }
+        });
+    }
+    function afBuildCauseCodeOptions(list) {
+        var html = '<option value="0" data-code="">-- Select --</option>';
+        $.each(list || [], function (i, c) {
+            html += '<option value="' + c.Id + '" data-code="' + c.Code + '">' + c.Name + '</option>';
+        });
+        return html;
+    }
+
+    /** Open the Actual Failure Entry modal — opens immediately */
+    //function openActualFailureModal() {
+    //    afRowCount = 0;
+    //    afCauseCodeCache = {};   // clear cache — always fetch fresh from API
+    //    afResetEntryTable();
+    //    $('#btnSaveAllFailures').hide();
+    //    $('#af_Zone').val('0');
+    //    $('#af_Division').val('0');
+    //    $('#af_Station').val('0');
+    //    $('#af_AssetType').html('<option value="0">-- Select Station First --</option>');
+    //    $('#af_AssetNo').html('<option value="0" selected>All</option>');
+    //    afSwitchTab('add');
+    //    $('#modal-ActualFailureEntry').modal('show');
+    //}
+    function openActualFailureModal() {
+        afRowCount = 0;
+        afCauseCodeCache = {};
+        afNewRowCount = 0;
+        $('#btnSaveAllFailures').hide();
+        // Reset filters
+        var today = new Date().toISOString().split('T')[0];
+        $('#vf_FromDate').val(today);
+        $('#vf_ToDate').val(today);
+        $('#vf_Station').val('0');
+        afFilterAssetTypes = [];
+        // Show modal and auto-load today's list
+        $('#modal-ActualFailureEntry').modal('show');
+        vfLoadList();
+    }
+    /** Close the modal — works for both Bootstrap 4 and 5 */
+    function closeActualFailureModal() {
+        try {
+            // Bootstrap 5
+            var modalEl = document.getElementById('modal-ActualFailureEntry');
+            var bsModal = bootstrap.Modal.getInstance(modalEl);
+            if (bsModal) { bsModal.hide(); return; }
+        } catch(e) {}
+        try {
+            // Bootstrap 4 / jQuery
+            $('#modal-ActualFailureEntry').modal('hide');
+        } catch(e) {}
+    }
+
+    /** Switch between tabs */
+    function afSwitchTab(tab) {
+        if (tab === 'add') {
+            $('#tab-add-btn').addClass('active');
+            $('#tab-view-btn').removeClass('active');
+            $('#panel-add-failure').addClass('active');
+            $('#panel-view-failure').removeClass('active');
+            $('#btnSaveAllFailures').toggle(afRowCount > 0);
+        } else {
+            $('#tab-view-btn').addClass('active');
+            $('#tab-add-btn').removeClass('active');
+            $('#panel-view-failure').addClass('active');
+            $('#panel-add-failure').removeClass('active');
+            $('#btnSaveAllFailures').hide();
+            vfResetList();
+            vfLoadList();   // auto-load when tab opens
+        }
+    }
+
+    //function afResetEntryTable() {
+    //    $('#af_EntryTableBody').html(
+    //        '<tr class="af-empty-row" id="af_emptyRow"><td colspan="9">' +
+    //        '<i class="fa fa-table" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>' +
+    //        'No rows yet — select filters above and click <strong>+ Add to Table</strong>' +
+    //        '</td></tr>');
+    //}
+    function afResetEntryTable() {
+        $('#vf_ListBody').find('tr[data-new-row]').remove();
+        afNewRowCount = 0;
+        $('#btnSaveAllFailures').hide();
+        if ($('#vf_ListBody tr:not([data-new-row])').length === 0) {
+            afShowEmptyRow();
+        }
+    }
+
+    function afShowEmptyRow() {
+        if ($('#af_emptyRow').length === 0) {
+            $('#vf_ListBody').prepend(
+                '<tr id="af_emptyRow"><td colspan="10" style="text-align:center;padding:40px 0;color:#9ca3af;font-size:13px;">' +
+                '<i class="fa fa-search" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>' +
+                'Select date range and click <strong>Search</strong>, or click <strong>+ Add New Row</strong> to add a record.' +
+                '</td></tr>');
+        }
+    }
+    // ----- TAB 1: cascaded dropdowns -----
+
+    function afLoadDivision() {
+        var zoneId = $('#af_Zone').val();
+        $('#af_Station').val('0');
+        $('#af_AssetType').html('<option value="0">-- Select Station First --</option>');
+        $('#af_AssetNo').html('<option value="0" selected>All</option>');
+        if (!zoneId || zoneId === '0') { $('#af_Division').val('0'); return; }
+        $.ajax({
+            url: '/FRS25/AlertLive/GetDivisionByZoneId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { ZoneIds: [zoneId] } }),
+            success: function (data) {
+                var html = '<option value="0">All Divisions</option>';
+                $.each(data, function (i, d) { html += '<option value="' + d.Id + '">' + d.Name + '</option>'; });
+                $('#af_Division').html(html);
+            },
+            error: function () { $('#af_Division').val('0'); }
+        });
+    }
+
+    function afLoadStation() {
+        var divId = $('#af_Division').val();
+        $('#af_AssetType').html('<option value="0">-- Select Station First --</option>');
+        $('#af_AssetNo').html('<option value="0" selected>All</option>');
+        if (!divId || divId === '0') { afRestoreAllStations(); return; }
+        $('#af_Station').html('<option value="0">Loading...</option>');
+        $.ajax({
+            url: '/FRS25/AlertLive/GetSiteByDivisionId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { DivisionIds: [divId] } }),
+            success: function (data) {
+                var html = '<option value="0">-- Select Station --</option>';
+                $.each(data, function (i, s) { html += '<option value="' + s.Id + '">' + s.Name + '</option>'; });
+                $('#af_Station').html(html);
+            },
+            error: function () { afRestoreAllStations(); }
+        });
+    }
+
+    function afRestoreAllStations() {
+        $.ajax({
+            url: '/FRS25/AlertLive/GetAllSites', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({}),
+            success: function (data) {
+                var html = '<option value="0">-- Select Station --</option>';
+                $.each(data, function (i, s) { html += '<option value="' + s.Id + '">' + s.Name + '</option>'; });
+                $('#af_Station').html(html);
+            },
+            error: function () {
+                var html = '<option value="0">-- Select Station --</option>';
+                $('#vf_Station option').each(function () {
+                    if ($(this).val() !== '0') html += '<option value="' + $(this).val() + '">' + $(this).text() + '</option>';
+                });
+                $('#af_Station').html(html);
+            }
+        });
+    }
+
+    function afLoadAssetType() {
+        var siteId = $('#af_Station').val();
+        $('#af_AssetType').html('<option value="0">-- Select Station First --</option>');
+        $('#af_AssetNo').html('<option value="0" selected>All</option>');
+        if (!siteId || siteId === '0') return;
+        $('#af_AssetType').html('<option value="0">Loading...</option>');
+        // Auto-select Zone & Division silently if endpoint exists
+        $.ajax({
+            url: '/FRS25/Performance/GetZoneDivisionBySiteId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SiteId: siteId }),
+            success: function (info) {
+                if (!info || !info.ZoneId) return;
+                $('#af_Zone').val(info.ZoneId);
+                $.ajax({
+                    url: '/FRS25/AlertLive/GetDivisionByZoneId', type: 'POST', contentType: 'application/json',
+                    data: JSON.stringify({ SearchCriteria: { ZoneIds: [info.ZoneId] } }),
+                    success: function (divData) {
+                        var html = '<option value="0">All Divisions</option>';
+                        $.each(divData, function (i, d) { html += '<option value="' + d.Id + '">' + d.Name + '</option>'; });
+                        $('#af_Division').html(html);
+                        if (info.DivisionId > 0) $('#af_Division').val(info.DivisionId);
+                    }
+                });
+            }
+        });
+        $.ajax({
+            url: '/FRS25/Performance/GetAssetTypeBySiteId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SiteId: siteId }),
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '<option value="0">-- Select Asset Type --</option>';
+                    $.each(data, function (i, a) { html += '<option value="' + a.Id + '">' + a.Name + '</option>'; });
+                    $('#af_AssetType').html(html);
+                } else { $('#af_AssetType').html('<option value="0">No Asset Types Found</option>'); }
+            },
+            error: function () {
+                $('#af_AssetType').html('<option value="0">-- Select Asset Type --</option><option value="TRACK">TRACK</option><option value="SIGNAL">SIGNAL</option><option value="POINT_MACHINE">POINT MACHINE</option>');
+            }
+        });
+    }
+
+    function afLoadAssetNo() {
+        var assetTypeId = $('#af_AssetType').val();
+        var siteId = $('#af_Station').val();
+        $('#af_AssetNo').html('<option value="0" selected>All</option>');
+        if (!assetTypeId || assetTypeId === '0') return;
+        if (!siteId || siteId === '0') { showWarning('Please select a Station first.', 'Validation'); return; }
+        $('#af_AssetNo').html('<option value="">Loading...</option>');
+        $.ajax({
+            url: '/FRS25/Performance/GetAssestBy', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ AssetTypeId: assetTypeId, SiteId: siteId }),
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '<option value="0">All</option>';
+                    $.each(data, function (i, a) { html += '<option value="' + a.Id + '">' + a.Name + '</option>'; });
+                    $('#af_AssetNo').html(html);
+                    // Auto-select All + every asset on load
+                    $('#af_AssetNo option').prop('selected', true);
+                } else {
+                    $('#af_AssetNo').html('<option value="0" selected>No Assets Found</option>');
+                }
+            },
+            error: function () {
+                $('#af_AssetNo').html('<option value="0" selected>Error loading</option>');
+            }
+        });
+    }
+
+    // ── "All" toggle: clicking All selects/deselects every option ────
+    $(document).on('change', '#af_AssetNo', function () {
+        var $sel     = $(this);
+        var $allOpt  = $sel.find('option[value="0"]');
+        var allWasJustSelected = $allOpt.is(':selected');
+
+        // Detect if user just clicked "All" by checking if it just became selected
+        // while previously not all items were selected — we track via a data flag
+        var prevAllState = $sel.data('prevAllSelected') || false;
+
+        if (allWasJustSelected && !prevAllState) {
+            // User just clicked "All" ON → select everything
+            $sel.find('option').prop('selected', true);
+        } else if (!allWasJustSelected && prevAllState) {
+            // User just clicked "All" OFF → deselect everything
+            $sel.find('option').prop('selected', false);
+        } else {
+            // Individual item toggled
+            var totalItems     = $sel.find('option[value!="0"]').length;
+            var selectedItems  = $sel.find('option[value!="0"]:selected').length;
+            if (selectedItems === totalItems) {
+                // All individuals selected → also tick "All"
+                $allOpt.prop('selected', true);
+            } else {
+                // Not all → untick "All"
+                $allOpt.prop('selected', false);
+            }
+        }
+
+        // Remember All state for next change
+        $sel.data('prevAllSelected', $sel.find('option[value="0"]').is(':selected'));
+    });
+
+    // ----- Add row to table -----
+
+    function afAddToTable() {
+        var stationVal    = $('#af_Station').val();
+        var stationText   = $('#af_Station option:selected').text();
+        var assetTypeVal  = $('#af_AssetType').val();
+        var assetTypeText = $('#af_AssetType option:selected').text();
+
+        if (!stationVal || stationVal === '0') {
+            showWarning('Please select a Station before adding to the table.', 'Validation'); return;
+        }
+        if (!assetTypeVal || assetTypeVal === '0') {
+            showWarning('Please select an Asset Type before adding to the table.', 'Validation'); return;
+        }
+
+        // Collect selected Asset Nos from native multiselect
+        var selectedAssets = [];
+        var isAllSelected  = $('#af_AssetNo option[value="0"]').is(':selected');
+
+        if (isAllSelected) {
+            // "All" checked → expand to every individual asset in the list
+            $('#af_AssetNo option').each(function () {
+                if ($(this).val() !== '0') {
+                    selectedAssets.push({ val: $(this).val(), text: $(this).text() });
+                }
+            });
+            // If no individual assets exist yet (list only has "All"), fall back to one All row
+            if (selectedAssets.length === 0) {
+                selectedAssets = [{ val: '0', text: 'All' }];
+            }
+        } else {
+            // Specific assets chosen via Ctrl+click
+            $('#af_AssetNo option:selected').each(function () {
+                selectedAssets.push({ val: $(this).val(), text: $(this).text() });
+            });
+            if (selectedAssets.length === 0) selectedAssets = [{ val: '0', text: 'All' }];
+        }
+
+        $('#af_emptyRow').remove();
+
+        $.each(selectedAssets, function (i, asset) {
+            afRowCount++;
+            afNewRowCount++;
+            var idx = afRowCount;
+
+            var _today = new Date().toISOString().split('T')[0];
+            var row =
+                '<tr id="af_row_' + idx + '" data-idx="' + idx + '" data-id="0" data-new-row="1"' +
+                ' data-station-id="' + stationVal + '" data-assettype-id="' + assetTypeVal + '" data-assetno-id="' + asset.val + '">' +
+                '<td style="text-align:center;font-weight:700;color:#1a2d5a;">' + idx + '</td>' +
+                '<td style="font-weight:500;color:#1a2d5a;">' + stationText + '</td>' +
+                '<td>' + assetTypeText + '</td>' +
+                '<td>' + (asset.val === '0' ? 'All' : asset.text) + '</td>' +
+                '<td style="min-width:140px;">' +
+                  '<input type="date" class="af-cell-input" id="af_incidenceDT_' + idx + '" max="' + _today + '" style="width:100%;height:28px;">' +
+                '</td>' +
+                '<td style="min-width:140px;">' +
+                  '<input type="date" class="af-cell-input" id="af_rectificationDT_' + idx + '" max="' + _today + '" style="width:100%;height:28px;">' +
+                '</td>' +
+                '<td style="min-width:150px;"><select class="af-cell-select" id="af_causeCode_' + idx + '" disabled><option value="0">Loading...</option></select></td>' +
+                '<td style="min-width:160px;"><textarea class="af-cell-textarea" id="af_remark_' + idx + '" rows="2" maxlength="350" placeholder="Max 50 words..." oninput="afLimitWords(this,50)"></textarea></td>' +
+                '<td style="text-align:center;white-space:nowrap;min-width:125px;">' +
+                  '<div class="af-row-actions">' +
+                  '<button class="af-btn af-btn-del" onclick="afDeleteRow(' + idx + ')"><i class="fa fa-trash"></i> Del</button>' +
+                  '<button class="af-btn af-btn-save" onclick="afSaveRow(' + idx + ')"><i class="fa fa-save"></i> Save</button>' +
+                  '</div></td></tr>';
+
+            $('#vf_ListBody').prepend(row);
+
+            (function (rowIdx, atVal) {
+                afLoadCauseCodes(atVal, function (list) {
+                    $('#af_causeCode_' + rowIdx).html(afBuildCauseCodeOptions(list)).prop('disabled', false);
+                });
+            }(idx, assetTypeVal));
+        });
+
+        $('#btnSaveAllFailures').show();
+    }
+
+    // ── Inline confirm helper — uses showInfo toast with Yes/No buttons ──
+    function afConfirm(message, title, onYes) {
+        var id = 'afconfirm_' + Date.now();
+        var html =
+            '<div id="' + id + '" style="' +
+                'position:fixed;top:0;left:0;width:100%;height:100%;' +
+                'background:rgba(0,0,0,0.35);z-index:999999;' +
+                'display:flex;align-items:center;justify-content:center;">' +
+              '<div style="background:#fff;border-radius:12px;padding:24px 28px;max-width:360px;width:90%;' +
+                'box-shadow:0 20px 60px rgba(0,0,0,0.2);text-align:center;">' +
+                '<div style="width:48px;height:48px;background:#eff6ff;border-radius:50%;' +
+                  'display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">' +
+                  '<i class="fas fa-question-circle" style="color:#3b82f6;font-size:22px;"></i>' +
+                '</div>' +
+                '<div style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:6px;">' + (title || 'Confirm') + '</div>' +
+                '<div style="font-size:13px;color:#64748b;margin-bottom:20px;">' + message + '</div>' +
+                '<div style="display:flex;gap:10px;justify-content:center;">' +
+                  '<button id="' + id + '_yes" style="background:#ef4444;color:#fff;border:none;border-radius:7px;' +
+                    'padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;">Yes, Delete</button>' +
+                  '<button id="' + id + '_no" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;' +
+                    'border-radius:7px;padding:8px 22px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>' +
+                '</div>' +
+              '</div>' +
+            '</div>';
+        $('body').append(html);
+        $('#' + id + '_yes').on('click', function () { $('#' + id).remove(); onYes(); });
+        $('#' + id + '_no').on('click',  function () { $('#' + id).remove(); });
+    }
+
+    /** Delete a specific row */
+    function afDeleteRow(idx) {
+        afConfirm('Remove this row from the table?', 'Remove Row', function () {
+            $('#af_row_' + idx).remove();
+            if ($('#af_EntryTableBody tr[data-idx]').length === 0) {
+                $('#btnSaveAllFailures').hide();
+                afResetEntryTable();
+            }
+            $('#af_EntryTableBody tr[data-idx]').each(function (i) {
+                $(this).find('td:first').text(i + 1);
+            });
+        });
+    }
+
+    /** Limit textarea to N words */
+    function afLimitWords(el, maxWords) {
+        var words = el.value.trim().split(/\s+/).filter(function (w) { return w.length > 0; });
+        if (words.length > maxWords) { el.value = words.slice(0, maxWords).join(' '); }
+    }
+
+    /** Save a single row immediately */
+    //function afSaveRow(idx) {
+    //    var payload = afBuildRowPayload(idx);
+    //    if (!payload) return;
+    //    afCallSaveAPI([payload], function (response) {
+    //        showSuccess('Row ' + idx + ' saved successfully!', 'Success');
+    //        // If the API returned the new DB Id, store it so a re-save does an UPDATE
+    //        if (response && response.Id && response.Id > 0) {
+    //            $('#af_row_' + idx).data('id', response.Id);
+    //        }
+    //    });
+    //}
+    /** Save a single new row immediately */
+    function afSaveRow(idx) {
+        var payload = afBuildRowPayload(idx);
+        if (!payload) return;
+        afCallSaveAPI([payload], function (response) {
+            showSuccess('Row saved successfully!', 'Success');
+            $('#af_row_' + idx).remove();
+            afNewRowCount = Math.max(0, afNewRowCount - 1);
+            if (afNewRowCount === 0) $('#btnSaveAllFailures').hide();
+            vfLoadList();   // reload to show newly saved record in table
+        });
+    }
+    /** Save ALL rows at once */
+    //function afSaveAll() {
+    //    var rows = [];
+    //    var valid = true;
+    //    $('#af_EntryTableBody tr[data-idx]').each(function () {
+    //        var idx = parseInt($(this).data('idx'));
+    //        var payload = afBuildRowPayload(idx);
+    //        if (!payload) { valid = false; return false; }
+    //        rows.push(payload);
+    //    });
+    //    if (!valid || rows.length === 0) return;
+    //    afCallSaveAPI(rows, function () {
+    //        showSuccess('All ' + rows.length + ' failure(s) saved successfully!', 'Success');
+    //        afResetEntryTable();
+    //        afRowCount = 0;
+    //        $('#btnSaveAllFailures').hide();
+    //    });
+    //}
+    /** Save ALL new unsaved rows at once */
+    function afSaveAll() {
+        var rows = [];
+        var valid = true;
+        $('#vf_ListBody tr[data-new-row]').each(function () {
+            var idx = parseInt($(this).data('idx'));
+            var payload = afBuildRowPayload(idx);
+            if (!payload) { valid = false; return false; }
+            rows.push(payload);
+        });
+        if (!valid || rows.length === 0) return;
+        afCallSaveAPI(rows, function () {
+            showSuccess('All ' + rows.length + ' failure(s) saved successfully!', 'Success');
+            $('#vf_ListBody tr[data-new-row]').remove();
+            afNewRowCount = 0;
+            $('#btnSaveAllFailures').hide();
+            vfLoadList();   // reload saved list
+        });
+    }
+    function afBuildRowPayload(idx) {
+        var $row = $('#af_row_' + idx);
+        var incidenceDate     = $('#af_incidenceDT_'     + idx).val() || '';   // yyyy-MM-dd
+        var rectificationDate = $('#af_rectificationDT_' + idx).val() || '';   // yyyy-MM-dd (optional)
+        var assetNoId = $('#af_assetNo_' + idx).val();
+        if (assetNoId && assetNoId !== '0') $row.data('assetno-id', assetNoId);
+        var $causeSelect = $('#af_causeCode_' + idx);
+        var alertInfoId = parseInt($causeSelect.val()) || 0;
+        var causeCode   = $causeSelect.find('option:selected').data('code') || '';
+        var remark      = $('#af_remark_' + idx).val();
+
+        // Build full datetime strings (time defaults to 00:00)
+        var incidenceDT     = incidenceDate     ? incidenceDate     + 'T00:00' : '';
+        var rectificationDT = rectificationDate ? rectificationDate + 'T00:00' : '';
+
+        // ── Validation ──────────────────────────────────────────────────
+        if (!incidenceDate) {
+            showWarning('Row ' + idx + ': Incidence Date is required.', 'Validation');
+            return null;
+        }
+        if (alertInfoId === 0) {
+            showWarning('Row ' + idx + ': Cause Code is required.', 'Validation');
+            return null;
+        }
+        if (rectificationDate && rectificationDate < incidenceDate) {
+            showWarning('Row ' + idx + ': Rectification Date cannot be earlier than Incidence Date.', 'Validation');
+            return null;
+        }
+
+        // Keep legacy split fields for backward compat
+        var dateFrom = incidenceDate;
+        var dateTo   = rectificationDate;
+        var timeFrom = '';
+        var timeTo   = '';
+
+        return {
+            Id:           parseInt($row.data('id'))           || 0,   // 0 = INSERT, >0 = UPDATE
+            RowNo:        idx,
+            SiteId:       parseInt($row.data('station-id'))   || 0,
+            AssetTypeId:  parseInt($row.data('assettype-id')) || 0,
+            AssetId:      parseInt($row.data('assetno-id'))   || 0,
+            DateFrom:     dateFrom,
+            DateTo:       dateTo,
+            TimeFrom:     timeFrom       || '',
+            TimeTo:       timeTo         || '',
+            FromDateTime:         incidenceDT,               // ← Incidence Date & Time → FromDateTime column
+            RectificationDateTime: rectificationDT || '',      // ← Rectification Date & Time → RectificationDateTime column
+            AlertInfoId:  alertInfoId,   // ← integer FK required by API
+            CauseCode:    causeCode,     // ← display string (e.g. "EC")
+            Remark:       remark         || ''
+        };
+    }
+
+    /** Extract a clean, human-readable message from whatever the API returns.
+     *  Handles: plain strings, "API error: Conflict – {...json...}", raw JSON objects/strings. */
+    function afCleanMsg(raw) {
+        if (!raw) return null;
+        var s = String(raw).trim();
+        // Strip server prefix e.g. "API error: Conflict – "
+        s = s.replace(/^API\s+error\s*:[^–—-]*[–—-]\s*/i, '').trim();
+        // Extract Message field if JSON
+        if (s.charAt(0) === '{') {
+            try { var obj = JSON.parse(s); if (obj && obj.Message) s = String(obj.Message).trim(); } catch (e) {}
+        }
+        // Map verbose server messages → short user-friendly messages
+        if (/duplicate/i.test(s))               return 'Duplicate entry — record already exists for this date range.';
+        if (/not found/i.test(s))               return 'Record not found. It may have been deleted.';
+        if (/unauthorized|forbidden/i.test(s))  return 'Access denied. Please contact your administrator.';
+        if (/timeout|timed out/i.test(s))        return 'Request timed out. Please try again.';
+        if (/invalid|bad request/i.test(s))     return 'Invalid data. Please check your entries and try again.';
+        if (/conflict/i.test(s))                return 'Conflict — this record overlaps with an existing entry.';
+        return s || null;
+    }
+
+    function afCallSaveAPI(rows, onSuccess) {
+        $('#loader').show();
+        $.ajax({
+            url: '/FRS25/Performance/SaveActualFailures',
+            type: 'POST',
+            data: JSON.stringify({ Failures: rows }),
+            contentType: 'application/json',
+            success: function (response) {
+                $('#loader').hide();
+                if (response && response.IsSuccess) {
+                    // ✅ Do NOT show a toast here — the onSuccess callback is
+                    //    responsible for showing its own message (prevents double toasts).
+                    if (typeof onSuccess === 'function') onSuccess(response);
+                } else {
+                    var raw = (response && response.Message) ? response.Message : '';
+                    var msg = afCleanMsg(raw) || 'Save failed. Please try again.';
+                    showError(msg, 'Error');
+                }
+            },
+            error: function (xhr) {
+                $('#loader').hide();
+                var msg = 'Something went wrong while saving.';
+                try {
+                    // xhr.responseText may be plain JSON or "API error: X – {json}"
+                    var cleaned = afCleanMsg(xhr.responseText);
+                    if (cleaned) msg = cleaned;
+                } catch (e) {}
+                showError(msg, 'Error');
+            }
+        });
+    }
+
+    // ----- TAB 2: View list -----
+
+    function vfResetList() {
+        var today = new Date();
+        var fmt = function (d) { return d.toISOString().split('T')[0]; };
+        $('#vf_FromDate').val(fmt(today));
+        $('#vf_ToDate').val(fmt(today));
+    }
+
+    function vfResetFilters() {
+        vfResetList();
+        $('#vf_Station').val('0');
+        $('#vf_ListBody').html(
+            '<tr><td colspan="10" style="text-align:center;padding:40px 0;color:#94a3b8;font-size:12.5px;">' +
+            '<i class="fa fa-search" style="font-size:26px;color:#cbd5e1;display:block;margin-bottom:8px;"></i>' +
+            '<tr><td colspan="12" style="text-align:center;padding:40px 0;color:#94a3b8;font-size:12.5px;">')
+            }
+
+
+
+    function vfDownload(type) {
+
+        var headers = ['S No', 'Station Name', 'Asset Type', 'Asset No',
+            'Incidence Date & Time', 'Rectification Date & Time',
+            'Cause Code', 'Remark', 'Alert Status', 'Generated By'];
+        var rows = [];
+
+        $('#vf_ListBody tr[data-id]').each(function (i) {
+            var tds = $(this).find('td');
+            rows.push([
+                (i + 1),
+                tds.eq(1).text().trim(),
+                tds.eq(2).text().trim(),
+                tds.eq(3).text().trim(),
+                tds.eq(4).text().trim(),   // Incidence Date & Time
+                tds.eq(5).text().trim(),   // Rectification Date & Time
+                tds.eq(6).text().trim(),   // Cause Code
+                tds.eq(7).text().trim(),   // Remark
+                tds.eq(8).text().trim(),   // Alert Status
+                tds.eq(9).text().trim()    // Generated By
+            ]);
+        });
+
+        if (rows.length === 0) { showWarning('No data to download. Please search first.', 'Download'); return; }
+
+        var fromDate = $('#vf_FromDate').val() || 'all';
+        var toDate   = $('#vf_ToDate').val()   || 'all';
+        var fileName = 'ActualFailureList_' + fromDate + '_to_' + toDate;
+
+        if (type === 'csv') {
+            var allRows = [headers].concat(rows);
+            var csv = allRows.map(function (r) {
+                return r.map(function (c) {
+                    return '"' + String(c === null || c === undefined ? '' : c).replace(/"/g, '""') + '"';
+                }).join(',');
+            }).join('\r\n');
+            var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            saveAs(blob, fileName + '.csv');
+
+        } else {
+            var workbook  = new ExcelJS.Workbook();
+            workbook.creator = 'Energy7';
+            workbook.created = new Date();
+            var ws = workbook.addWorksheet('Actual Failure List');
+
+            ws.columns = [
+                { key: 'a', width: 7 },
+                { key: 'b', width: 18 },
+                { key: 'c', width: 16 },
+                { key: 'd', width: 16 },
+                { key: 'e', width: 22 },  // Incidence Date & Time
+                { key: 'f', width: 22 },  // Rectification Date & Time
+                { key: 'g', width: 20 },  // Cause Code
+                { key: 'h', width: 28 },  // Remark
+                { key: 'i', width: 18 },  // Alert Status
+                { key: 'j', width: 18 }   // Generated By
+            ];
+
+            var hRow = ws.addRow(headers);
+            hRow.eachCell(function (cell) {
+                cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+                cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2D5A' } };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border    = { top: { style: 'thin', color: { argb: 'FFB0B8D1' } }, left: { style: 'thin', color: { argb: 'FFB0B8D1' } }, bottom: { style: 'thin', color: { argb: 'FFB0B8D1' } }, right: { style: 'thin', color: { argb: 'FFB0B8D1' } } };
+            });
+            hRow.height = 36;
+
+            rows.forEach(function (row, idx) {
+                var dRow = ws.addRow(row);
+                var bg = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFF';
+                dRow.eachCell(function (cell) {
+                    cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                    cell.border    = { top: { style: 'thin', color: { argb: 'FFEDF0F8' } }, left: { style: 'thin', color: { argb: 'FFEDF0F8' } }, bottom: { style: 'thin', color: { argb: 'FFEDF0F8' } }, right: { style: 'thin', color: { argb: 'FFEDF0F8' } } };
+                });
+                dRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'left' };
+                dRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+                dRow.height = 22;
+            });
+
+            workbook.xlsx.writeBuffer().then(function (buffer) {
+                var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                saveAs(blob, fileName + '.xlsx');
+            });
+        }
+    }
+
+    function vfLoadList() {
+        var fromDate = $('#vf_FromDate').val();
+        var toDate = $('#vf_ToDate').val();
+        var station = parseInt($('#vf_Station').val()) || 0;
+
+        // Convert yyyy-MM-dd → dd-MM-yyyy to match controller expected format
+        //function fmtDate(d) {
+        //    if (!d) return '';
+        //    var p = d.split('-');
+        //    return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : d;
+        //}
+        function fmtDate(d) {
+            return d || '';
+        }
+        fromDate = fmtDate(fromDate);
+        toDate = fmtDate(toDate);
+        if (!fromDate || !toDate) { showWarning('Please select both From Date and To Date.', 'Validation'); return; }
+        $('#loader').show();
+        $.ajax({
+            url: '/FRS25/Performance/GetActualFailureList',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                SearchCriteria: {
+                    SiteId: station,
+                    FromDateTime: fromDate,
+                    ToDateTime: toDate
+                }
+            }),
+            success: function (data) {
+                $('#loader').hide();
+                var body = $('#vf_ListBody');
+                body.empty();
+                if (!data || data.length === 0) {
+                    body.html('<tr><td colspan="12" style="text-align:center;padding:40px 0;color:#94a3b8;font-size:12.5px;">' +
+                        '<i class="fa fa-inbox" style="font-size:26px;color:#cbd5e1;display:block;margin-bottom:8px;"></i>' +
+                        'No records found for the selected criteria.</td></tr>');
+                    return;
+                }
+                $.each(data, function (i, row) {
+                    // ── Alert Status badge ──
+                    var statusHtml = '';
+                    var alertStatusVal = (row.AlertStatus || '').trim();
+                    if (alertStatusVal === 'True' || alertStatusVal === 'T') {
+                        statusHtml = '<span style="display:inline-flex;align-items:center;gap:4px;' +
+                            'background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;' +
+                            'padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">' +
+                            '<i class="fa fa-check-circle"></i> True</span>';
+                    } else if (alertStatusVal === 'PT' || alertStatusVal === 'Partial True') {
+                        statusHtml = '<span style="display:inline-flex;align-items:center;gap:4px;' +
+                            'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' +
+                            'padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">' +
+                            '<i class="fa fa-adjust"></i> Partial True</span>';
+                    }
+                    //else if (alertStatusVal === 'False' || alertStatusVal === 'F') {
+                    //    statusHtml = '<span style="display:inline-flex;align-items:center;gap:4px;' +
+                    //        'background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;' +
+                    //        'padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">' +
+                    //        '<i class="fa fa-times-circle"></i> False</span>';
+                    //}
+                    //else if (alertStatusVal === 'Maintenace' || alertStatusVal === 'Maintenance' || alertStatusVal === 'M') {
+                    //    statusHtml = '<span style="display:inline-flex;align-items:center;gap:4px;' +
+                    //        'background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;' +
+                    //        'padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">' +
+                    //        '<i class="fa fa-wrench"></i> Maintenance</span>';
+                    //}
+                    else if (alertStatusVal === 'Not Given' || alertStatusVal === '') {
+                        statusHtml = '<span style="display:inline-flex;align-items:center;gap:4px;' +
+                            'background:#f1f5f9;color:#94a3b8;border:1px solid #cbd5e1;' +
+                            'padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">' +
+                            '<i class="fa fa-clock-o"></i> Pending</span>';
+                    } else {
+                        statusHtml = '<span style="display:inline-flex;align-items:center;gap:4px;' +
+                            'color:#9ca3af;font-size:11px;">&#8212;</span>';
+                    }
+
+                    // Generated By badge
+                    var generatedByHtml = '';
+                    if (row.GeneratedBy === 'RDPMS') {
+                        generatedByHtml = '<span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.3px;">&#9889; RDPMS</span>';
+                    } else {
+                        generatedByHtml =
+                            '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">'
+                        + '<span style="background:#f3e8ff;color:#7e22ce;padding:1px 8px;border-radius:4px;font-size:10.5px;font-weight:700;letter-spacing:0.3px;">&#9998; Manual</span>'
+                            + '<span style="font-size:11.5px;color:#374151;font-weight:500;">' + (row.GeneratedBy || '') + '</span>'
+                            + '</div>';
+                    }
+
+                    body.append(
+                        '<tr data-id="' + (row.Id || 0) + '"' +
+                        ' data-site-id="' + (row.SiteId || 0) + '"' +
+                        ' data-assettype-id="' + (row.AssetTypeId || 0) + '"' +
+                        ' data-asset-id="' + (row.AssetId || 0) + '">' +
+                        '<td style="text-align:center;font-weight:600;color:#1a2d5a;width:40px;">' + (i + 1) + '</td>' +
+                        '<td>' + (row.StationName || '') + '</td>' +
+                        '<td>' + (row.AssetType || '') + '</td>' +
+                        '<td>' + (row.AssetNo || '') + '</td>' +
+                        '<td style="white-space:nowrap;">' + (row.FailureDateFrom || '') + '</td>' +
+                        '<td style="white-space:nowrap;">' + (row.RectificationDateTimeFormatted|| '') + '</td>' +
+                        '<td><span class="vf-badge">' + (row.CauseCode || '') + '</span></td>' +
+                        '<td style="max-width:150px;white-space:normal;">' + (row.Remark || '') + '</td>' +
+                        '<td style="text-align:center;">' + statusHtml + '</td>' +
+                        '<td style="text-align:center;">' + generatedByHtml + '</td>' +
+                        '<td style="text-align:center;white-space:nowrap;">' +
+                        (row.GeneratedBy === 'RDPMS'
+                            ? '<span style="color:#94a3b8;font-size:11px;">—</span>'
+                            : '<button class="vf-btn vf-btn-edit" style="margin-right:3px;" onclick=\'vfOpenEditModal(' + JSON.stringify(row).replace(/'/g, "\\'") + ')\' title="Edit"><i class="fa fa-pencil"></i></button>' +
+                              '<button class="vf-btn vf-btn-del" onclick="vfDelete(' + row.Id + ')" title="Delete"><i class="fa fa-trash"></i></button>'
+                        ) +
+                        '</td>')
+                });
+            },
+            error: function () {
+                $('#loader').hide();
+                showError('Could not load failure list.', 'Error');
+            }
+        });
+    }
+
+    // -- Open Edit Modal: loads cause codes + pre-selects via GET API --
+    function vfOpenEditModal(row) {
+        var today = new Date().toISOString().split('T')[0];
+
+        // Use <tr> data-* attrs — more reliable than list API response fields
+        var $tr         = $('[data-id="' + row.Id + '"]').closest('tr');
+        var siteId      = parseInt($tr.data('site-id'))      || parseInt(row.SiteId)      || 0;
+        var assetTypeId = parseInt($tr.data('assettype-id')) || parseInt(row.AssetTypeId) || 0;
+        // Fallback: if list API didn't return AssetTypeId, resolve from AssetType string
+        if (assetTypeId === 0 && row.AssetType) {
+            assetTypeId = afResolveAssetTypeId(row.AssetType);
+        }
+        var assetId     = parseInt($tr.data('asset-id'))     || parseInt(row.AssetId)     || 0;
+
+        // Populate static fields immediately
+        $('#ef_Id').val(row.Id);
+        $('#ef_SiteId').val(siteId);
+        $('#ef_AssetTypeId').val(assetTypeId);
+        $('#ef_AssetId').val(assetId);
+        $('#ef_StationName').text(row.StationName || '—');
+        $('#ef_AssetType').text(row.AssetType     || '—');
+        $('#ef_AssetNo').text(row.AssetNo         || '—');
+
+        // Populate Incidence & Rectification date inputs (date only — strip time part)
+        var incidenceFull = vfBuildDateTimeLocal(
+            row.FromDateTime, row.FailureDateFrom, row.FailureTimeFrom
+        );
+        $('#ef_IncidenceDateTime').val(incidenceFull ? incidenceFull.split('T')[0] : '')
+                                  .attr('max', today);
+
+        // Rectification may be empty for RDPMS-generated records — that is OK
+        var rectFull = vfBuildDateTimeLocal(row.ToDateTime, row.FailureDateTo, row.FailureTimeTo);
+        // Also check the new RectificationDateTime field if API returns it
+        if (!rectFull && row.RectificationDateTime) {
+            rectFull = vfBuildDateTimeLocal(row.RectificationDateTime, null, null);
+        }
+        $('#ef_RectificationDateTime').val(rectFull ? rectFull.split('T')[0] : '')
+                                      .attr('max', today);
+
+        $('#ef_Remark').val(row.Remark             || '');
+
+        // Show modal immediately
+        $('#ef_CauseCode').html('<option value="0">Loading...</option>').prop('disabled', true);
+        $('#modal-vfEdit').modal('show');
+
+        // Step 1: Load all cause codes for this asset type (same API as Add tab)
+        afLoadCauseCodes(assetTypeId, function (list) {
+            if (!list || list.length === 0) {
+                $('#ef_CauseCode').html('<option value="0">-- No cause codes for this asset type --</option>').prop('disabled', false);
+                return;
+            }
+            $('#ef_CauseCode').html(afBuildCauseCodeOptions(list)).prop('disabled', false);
+
+            // Step 2: Fetch the saved record to get exact AlertInfoId
+            $.ajax({
+                url: '/FRS25/Performance/Get',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ Id: row.Id }),
+                success: function (record) {
+                    // ── Always update SiteId & AssetId from GET response ──
+                    // The list API often does not return these — GET API always does
+                    if (record && record.SiteId  && parseInt(record.SiteId)  > 0) {
+                        $('#ef_SiteId').val(parseInt(record.SiteId));
+                    }
+                    if (record && record.AssetId && parseInt(record.AssetId) > 0) {
+                        $('#ef_AssetId').val(parseInt(record.AssetId));
+                    }
+
+                    // ── Pre-select CauseCode ──
+                    var alertInfoId = (record && record.AlertInfoId) ? parseInt(record.AlertInfoId) : 0;
+                    if (alertInfoId > 0) {
+                        $('#ef_CauseCode').val(alertInfoId);
+                    }
+                    // Fallback: match by CauseCode name if direct val didn't stick
+                    if (!$('#ef_CauseCode').val() || parseInt($('#ef_CauseCode').val()) === 0) {
+                        var nameToMatch = (record && record.CauseCode) ? record.CauseCode.trim().toLowerCase()
+                                                                       : (row.CauseCode || '').trim().toLowerCase();
+                        $('#ef_CauseCode option').each(function () {
+                            if ($(this).text().trim().toLowerCase() === nameToMatch ||
+                                $(this).data('code') === nameToMatch) {
+                                $(this).prop('selected', true);
+                                return false;
+                            }
+                        });
+                    }
+                    if (record && record.Remark) { $('#ef_Remark').val(record.Remark); }
+                },
+                error: function () {
+                    // GET failed — fallback to name match from list data
+                    var nameToMatch = (row.CauseCode || '').trim().toLowerCase();
+                    if (nameToMatch) {
+                        $('#ef_CauseCode option').each(function () {
+                            if ($(this).text().trim().toLowerCase() === nameToMatch) {
+                                $(this).prop('selected', true);
+                                return false;
+                            }
+                        });
+                    }
+                    showInfo('Could not verify saved cause code — please confirm selection.', 'Info');
+                }
+            });
+        });
+    }
+
+    // ── Save Edit (Update) ───────────────────────────────────────────
+    function vfSaveEdit() {
+        var id          = parseInt($('#ef_Id').val())          || 0;
+        var siteId      = parseInt($('#ef_SiteId').val())      || 0;
+        var assetTypeId = parseInt($('#ef_AssetTypeId').val()) || 0;
+        var assetId     = parseInt($('#ef_AssetId').val())     || 0;
+        var incidenceDate     = $('#ef_IncidenceDateTime').val()     || '';   // yyyy-MM-dd
+        var rectificationDate = $('#ef_RectificationDateTime').val() || '';   // optional
+        var alertInfoId = parseInt($('#ef_CauseCode').val()) || 0;
+        var causeCode   = $('#ef_CauseCode option:selected').data('code') || '';
+        var remark      = $('#ef_Remark').val();
+
+        if (!incidenceDate)    { showWarning('Incidence Date is required.', 'Validation');           return; }
+        if (alertInfoId === 0) { showWarning('Cause Code is required.', 'Validation');               return; }
+        if (rectificationDate && rectificationDate < incidenceDate) {
+            showWarning('Rectification Date cannot be earlier than Incidence Date.', 'Validation');
+            return;
+        }
+
+        // Build full datetime strings (time defaults to 00:00)
+        var incidenceDT     = incidenceDate     + 'T00:00';
+        var rectificationDT = rectificationDate ? rectificationDate + 'T00:00' : '';
+
+        // Keep legacy split fields for backward compat
+        var dateFrom = incidenceDate;
+        var timeFrom = '';
+        var dateTo   = rectificationDate;
+        var timeTo   = '';
+
+        console.log('[UpdateActualFailure] Payload →', { id, siteId, assetTypeId, assetId, incidenceDT, rectificationDT, alertInfoId });
+
+        $('#loader').show();
+        $.ajax({
+            url: '/FRS25/Performance/UpdateActualFailure',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                Id:                    id,
+                SiteId:                siteId,
+                AssetTypeId:           assetTypeId,
+                AssetId:               assetId,
+                DateFrom:              dateFrom,
+                DateTo:                dateTo,
+                TimeFrom:              timeFrom              || '',
+                TimeTo:                timeTo                || '',
+                FromDateTime:          incidenceDT,
+                RectificationDateTime: rectificationDT       || '',
+                AlertInfoId:           alertInfoId,
+                CauseCode:             causeCode,
+                Remark:                remark                || ''
+            }),
+            success: function (response) {
+                $('#loader').hide();
+                if (response && response.IsSuccess) {
+                    $('#modal-vfEdit').modal('hide');
+                    showSuccess('Record updated successfully!', 'Success');
+                    vfLoadList();
+                } else {
+                    showError((response && response.Message) || 'Update failed.', 'Error');
+                }
+            },
+            error: function () { $('#loader').hide(); showError('Something went wrong.', 'Error'); }
+        });
+    }
+
+    // ── Soft Delete ─────────────────────────────────────────────────
+    function vfDelete(id) {
+        afConfirm('Are you sure you want to delete this failure record?', 'Delete Record', function () {
+        $('#loader').show();
+        $.ajax({
+            url: '/FRS25/Performance/DeleteActualFailure',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ Id: id }),
+            success: function (response) {
+                $('#loader').hide();
+                if (response && response.IsSuccess) {
+                    showSuccess('Record deleted successfully.', 'Success');
+                    vfLoadList();
+                } else {
+                    showError((response && response.Message) || 'Delete failed.', 'Error');
+                }
+            },
+            error: function () { $('#loader').hide(); showError('Delete failed.', 'Error'); }
+        });
+        }); // end afConfirm
+    }
+
+    // ================================================================
+    //  DISABLE FUTURE DATES — edit modal date inputs
+    //  (Add-tab row inputs already get max=today baked into the HTML
+    //   at build time inside afAddToTable)
+    // ================================================================
+    $('#modal-ActualFailureEntry').on('show.bs.modal', function () {
+        var today = new Date().toISOString().split('T')[0];
+        $('#ef_IncidenceDateTime, #ef_RectificationDateTime').attr('max', today);
+    });
+</script>

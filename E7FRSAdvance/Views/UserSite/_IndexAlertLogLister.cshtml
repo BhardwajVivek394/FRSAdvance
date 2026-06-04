@@ -1,0 +1,103 @@
+﻿@model Domain.IndexAlertLogLister
+
+@{
+    int count = 0;
+    var mAssets = new List<Domain.Asset>();
+}
+
+<div class="row">
+    <div class="col-12 divIndexAlertLogLister">
+        @if (ViewBag.Asset != null)
+        {
+            mAssets = ViewBag.Asset as List<Domain.Asset>;
+        }
+        @if (Model != null && Model.IndexAlertLogs != null && Model.IndexAlertLogs.Count > 0)
+        {
+            var mainTrack = Model.IndexAlertLogs.GroupBy(x => new { x.AssetName, x.AssetId });
+            if (mainTrack != null)
+            {
+                foreach (var assetId in mainTrack)
+                {
+                    if (mAssets.Where(x => x.Id == assetId.Key.AssetId).Count() > 0)
+                    {
+                        var assetTypeId = Model.IndexAlertLogs.Where(x => x.AssetId == assetId.Key.AssetId).Select(x => x.AssetTypeId).FirstOrDefault();
+                        count++;
+                        <button class="btn btn-info btn-lg m-r-10 m-b-10" type="button" onclick="fnShow@{@Model.SearchCriteria.Remarks}('@assetId.Key.AssetId','@assetId.Key.AssetName','@assetTypeId')">@assetId.Key.AssetName</button>
+                    }
+
+                }
+            }
+        }
+    </div>
+</div>
+
+<div class="modal fade bd-example-modal-lg" id="modal-add-@Model.SearchCriteria.Remarks" tabindex="-1" role="dialog" aria-labelledby="modal-add-IndexAlertLogs" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span> @Model.SearchCriteria.Remarks - </span><span id="spHeader_@Model.SearchCriteria.Remarks"></span></h4>
+                <button type="button" class="btn btn-warning" id="btn@(Model.SearchCriteria.Remarks)RealTime">Real Time Data</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            @if (Model != null && Model.IndexAlertLogs != null && Model.IndexAlertLogs.Count > 0)
+                            {
+                                var mainTrack = Model.IndexAlertLogs.GroupBy(x => new { x.AssetName, x.AssetId });
+                                if (mainTrack != null)
+                                {
+                                    <div class="row justify-content-around">
+                                        @foreach (var item in mainTrack)
+                                        {
+                                            <div class="table-responsive cls_@Model.SearchCriteria.Remarks" id="@{@Model.SearchCriteria.Remarks}Data_@item.Key.AssetId" style="display:none">
+                                                @foreach (var indexAlertLog in Model.IndexAlertLogs.Where(x => x.AssetId == item.Key.AssetId))
+                                                {
+                                                    <div class="clsDivIndexAlertLogs">
+                                                        <span>@indexAlertLog.TimeStamp.ToLongTimeString()</span>
+                                                        <span>@indexAlertLog.Remarks</span>
+                                                    </div>
+
+                                                }
+                                            </div>
+                                        }
+
+
+                                    </div>
+
+                                }
+
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                @*<button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()" id="btnSave">Save</button>*@
+            </div>
+
+            <!-- Modal -->
+
+
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        if ('@Model.IndexAlertLogs.Count' <= 0 || '@mAssets.Count' <= 0) {
+            $("#minDiv@{@Model.SearchCriteria.Remarks}").hide();
+        }else {
+            $('#@{@Model.SearchCriteria.Remarks}Count').text('(@count)');
+            $("#minDiv@{@Model.SearchCriteria.Remarks}").show();
+        }
+    });
+    function fnShow@{@Model.SearchCriteria.Remarks}(assetId, assetName, assetTypeId) {
+        $(".cls_@Model.SearchCriteria.Remarks").hide();
+        $("#@{@Model.SearchCriteria.Remarks}Data_" + assetId).show();
+        $("#spHeader_@Model.SearchCriteria.Remarks").text(assetName);
+        $("#btn@(Model.SearchCriteria.Remarks)RealTime").attr('onClick', 'fnGetAssetAttribute(' + assetId + ',' + assetTypeId + ')');
+        $("#modal-add-@Model.SearchCriteria.Remarks").modal("show");
+    }
+</script>

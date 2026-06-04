@@ -1,0 +1,190 @@
+﻿@model List<Domain.CardLine>
+
+@if (Model != null && Model.Count > 0)
+{
+    var ClusterNameGroup = Model.GroupBy(x => new { x.ClusterId, x.ClusterName }).Select(x => x.Key).ToList();
+
+    <div class="card-body">
+        <div class="table-responsive vh-100">
+            <table class="table">
+                <thead class="bg-primary">
+                    <tr>
+                        <th></th>
+                        <th>Cluster</th>
+                        <th>ModemId</th>
+                        <th></th>
+                    </tr>
+
+                </thead>
+                <tbody>
+                    @if (ClusterNameGroup != null && ClusterNameGroup.Count > 0)
+                    {
+                        foreach (var clusterName in ClusterNameGroup)
+                        {
+                            var cluster = Model.Where(x => x.ClusterId == clusterName.ClusterId).FirstOrDefault();
+                            <tr>
+                                <td>
+                                    <i class="fa fa-plus" onclick="fnGetByClusterName('@clusterName.ClusterId',this)"></i>
+                                </td>
+                                <td class="font-weight-bold">
+                                    @clusterName.ClusterName
+                                </td>
+                                <td class="font-weight-bold">
+                                    @if (cluster != null && cluster.Id > 0)
+                                    {
+                                        <span>@cluster.ModemId</span>
+                                    }
+
+                                </td>
+                                <td style="text-align:right">
+                                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                    {
+                                        if (cluster != null && cluster.Id > 0)
+                                        {
+                                            if (cluster.ModemVersion == null || (cluster.ModemVersion != null && cluster.ModemVersion.Value != (int)E7FRSAdvance.Utility.Utility.ModemVersion.Version3))
+                                            {
+                                                <a class="btn btn-info" href="javascript:void(0)" onclick="fnShowUploadCertificateHTTP('@clusterName.ClusterId')" title="Upload Certificate">
+                                                    <i class="fa fa-upload"></i>
+                                                </a>
+                                            }                                             
+
+                                        }
+
+                                        <a class="btn btn-info" href="javascript:void(0)" onclick="DownloadCertificateByClusterId('@clusterName.ClusterId')" title="Download Certificate With SSL">
+                                            <img src="~/assets/images/certificate_ssl.png" style="height:18px" />
+                                        </a>
+                                        <a class="btn btn-info" href="javascript:void(0)" onclick="DownloadCertificateGeneratorWithOutSSL('@clusterName.ClusterId')" title="Download Certificate Without SSL">
+                                            <img src="~/assets/images/certificate_without_ssl.png" style="height:18px" />
+                                        </a>
+
+                                        @*if (cluster != null && cluster.Id > 0 && cluster.ModemVersion != null && cluster.ModemVersion.Value == (int)E7FRSAdvance.Utility.Utility.ModemVersion.Version3)
+                                        {
+                                            <a class="btn btn-info" href="javascript:void(0)" onclick="DownloadWireguardServer('@clusterName.ClusterId')" title="Download wireguard Server">
+                                                <i class="fa fa-certificate"></i>
+                                            </a>
+                                        }*@
+                                    }
+
+                                    <a class="btn btn-primary" href="@Url.Action("DownloadCardLineCircuit", new {id = clusterName.ClusterId})" title="Download YC to FTU PDF"><i class="fa fa-download"></i></a>
+                                    <a class="btn btn-primary" href="@Url.Action("DownloadCircuitYCToLocationPDF", new {id = clusterName.ClusterId})" title="Download YC to Location PDF"><i class="fa fa-download"></i></a>
+                                </td>
+                            </tr>
+                            <tr class="trCluster_@clusterName.ClusterId" style="display:none">
+                                <td colspan="4">
+                                    <table class="table">
+                                        <thead class="bg-primary">
+                                            <tr>
+                                                <th></th>
+                                                <th>Cluster</th>
+                                                <th>Type</th>
+                                                <th>Asset</th>
+                                                <th>Attribute</th>
+                                                <th>ADC</th>
+                                                <th>Pin</th>
+                                                <th>Role</th>
+                                                <th class="text-center" width="10">Cluster Validation</th>
+                                                <th class="text-center" width="10">Joint Calibration</th>
+                                            </tr>
+
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in Model.Where(x => x.ClusterId == clusterName.ClusterId).GroupBy(x => x.CardName).Select(x => x.Key).ToList())
+                                            {
+                                                foreach (var cardLine in Model.Where(x => x.ClusterId == clusterName.ClusterId && x.CardName == item).OrderBy(x => x.Pin).ToList())
+                                                {
+                                                    <tr>
+                                                        <td>@cardLine.Number</td>
+                                                        <td>@cardLine.CardName</td>
+                                                        <td>@cardLine.AssetTypeName</td>
+                                                        <td><a href="javascript:void(0)" onclick="fnGetAssetAttribute('@cardLine.AssetId','@cardLine.AssetTypeId')">@cardLine.AssetName</a></td>
+                                                        <td>
+                                                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                            {
+                                                                <a href="javascript:void(0)" title="Add Circuit" onclick="fnEditCardLineCircuit('@cardLine.Id')">@cardLine.AttributeName</a>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span>@cardLine.AttributeName</span>
+                                                            }
+                                                        </td>
+                                                        <td>
+                                                            @if (cardLine.ADCNumber != null)
+                                                            {
+                                                                <span>
+                                                                    ADC @cardLine.SequenceNumber<br />
+                                                                    (@cardLine.ADCNumber)
+                                                                </span>
+                                                            }
+
+                                                        </td>
+                                                        <td>@cardLine.Pin</td>
+                                                        <td>@cardLine.Role</td>
+                                                        <td class="text-center">
+                                                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                            {
+                                                                if (cardLine.ClusterValidation != null && cardLine.ClusterValidation.Value)
+                                                                {
+                                                                    <input type="checkbox" value="ClusterValidation" onchange="fnUpdateCardLine('@cardLine.Id',this)" checked />
+                                                                }
+                                                                else
+                                                                {
+                                                                    <input type="checkbox" value="ClusterValidation" onchange="fnUpdateCardLine('@cardLine.Id',this)" />
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                if (cardLine.ClusterValidation != null && cardLine.ClusterValidation.Value)
+                                                                {
+                                                                    <i class="fa fa-check text-success f-24" aria-hidden="true"></i>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <i class="fa fa-close text-danger f-24" aria-hidden="true"></i>
+                                                                }
+                                                            }
+
+                                                        </td>
+                                                        <td class="text-center">
+                                                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                            {
+                                                                if (cardLine.JointCalibration != null && cardLine.JointCalibration.Value)
+                                                                {
+                                                                    <input type="checkbox" value="JointCalibration" onchange="fnUpdateCardLine('@cardLine.Id',this)" checked />
+                                                                }
+                                                                else
+                                                                {
+                                                                    <input type="checkbox" value="JointCalibration" onchange="fnUpdateCardLine('@cardLine.Id',this)" />
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                if (cardLine.JointCalibration != null && cardLine.JointCalibration.Value)
+                                                                {
+                                                                    <i class="fa fa-check text-success f-24" aria-hidden="true"></i>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <i class="fa fa-close text-danger f-24" aria-hidden="true"></i>
+                                                                }
+                                                            }
+
+                                                        </td>
+                                                    </tr>
+                                                }
+
+                                            }
+                                        </tbody>
+                                    </table>
+                                </td>
+                            </tr>
+
+
+                        }
+                    }
+
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+

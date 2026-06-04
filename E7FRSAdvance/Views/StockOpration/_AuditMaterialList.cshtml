@@ -1,0 +1,274 @@
+﻿@model  List<Domain.StockWorksheetMaterial>
+
+<div class="modal bounceIn animated" id="modal-audit-material" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title">Material</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="row">
+                    <div class="col-sm-9"></div>
+                    <div class="col-sm-3">
+                        <a href="javascript:void(0)" onclick="fnAddNewMaterial()">Add Material</a>
+                    </div>
+                    <div class="col-sm-12">
+                        <input type="hidden" id="hdnStockId" value="@ViewBag.StockId" />
+                        <div class="table-responsive">
+                            <table class="table" id="tblStockWorksheetMaterial">
+                                <thead>
+                                    <tr>
+                                        <th class="text-center">SR No.</th>
+                                        <th>Name</th>
+                                        <th class="text-center">Quantity</th>
+                                        <th class="text-center">Audit</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyStockWorksheetMaterial">
+                                    @if (Model != null && Model.Count > 0)
+                                    {
+                                        int counter = 0;
+                                        foreach (var item in Model)
+                                        {
+                                            counter++;
+                                            <tr class="materialmaintrview material-view-@item.Id" data-id="@item.Id" data-matrialid="@item.MaterialId">
+                                                <td class="text-center">@counter</td>
+                                                <td>@item.MaterialName</td>
+                                                <td class="text-center">
+                                                    <span id="spnMaterialQuantity@(item.Id)">
+                                                        @item.Quantity
+                                                    </span>
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (item.AuditedBy != null && item.AuditedBy.Value > 0)
+                                                    {
+                                                        if (item.DispatchedBy != null && item.DispatchedBy.Value > 0 && item.DispatchedDate != null)
+                                                        {
+                                                            <input type="checkbox" checked disabled />
+                                                        }
+                                                        else
+                                                        {
+                                                            <input type="checkbox" checked />
+                                                        }
+
+                                                    }
+                                                    else
+                                                    {
+                                                        <input type="checkbox" />
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (item.DispatchedBy != null && item.DispatchedBy.Value > 0 && item.DispatchedDate != null)
+                                                    {
+
+                                                    }
+                                                    else
+                                                    {
+                                                        <a href="javascript:void(0)" onclick="fnEditMaterial('@item.Id')"><i class="fa fa-pencil"></i></a>
+                                                    }
+                                                </td>
+                                            </tr>
+
+                                            <tr class="material-edit-@item.Id" style="display:none">
+                                                <td class="text-center">@counter</td>
+                                                <td>@item.MaterialName</td>
+                                                <td class="text-center">
+                                                    <input type="text" class="form-control" id="txtMaterialQuantity@(item.Id)" value="@item.Quantity" />
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (item.AuditedBy != null && item.AuditedBy.Value > 0)
+                                                    {
+                                                        <input type="checkbox" checked disabled/>
+
+                                                    }
+                                                    else
+                                                    {
+                                                        <input type="checkbox" disabled/>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <a href="javascript:void(0)" onclick="fnUpdateMaterial('@item.Id')"><i class="fa fa-save"></i></a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+
+                                    <tr class="material-add-new" style="display:none;">
+                                        <td></td>
+                                        <td>
+                                            <select class="form-control">
+                                                @if (ViewBag.WorksheetMaterials != null && Model != null && Model.Count > 0)
+                                                {
+                                                    var matrialIds = Model.Select(x => x.MaterialId).ToList();
+                                                    <option value="">Select</option>
+                                                    var materials = ViewBag.WorksheetMaterials as List<Domain.WorksheetMaterial>;
+                                                    if (materials != null && materials.Count > 0)
+                                                    {
+                                                        foreach (var material in materials.Where(x => !matrialIds.Contains(x.Id)))
+                                                        {
+                                                            <option value="@material.Id">@material.Name</option>
+                                                        }
+                                                    }
+                                                }
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="text" class="form-control" />
+                                        </td>
+                                        <td class="text-center">
+                                            <a href="javascript:void(0)"><i class="fa fa-save" onclick="fnUpdateNewMaterial()"></i></a>
+                                        </td>
+                                        <td class="text-center">
+                                            <a href="javascript:void(0)"><i class="fa fa-close" onclick="fnCloseNewMaterial()"></i></a>
+                                        </td>
+                                    </tr>
+                                </tbody>
+
+
+                            </table>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="fnUpdateAuditMaterial()">Update</button>
+                <button class="btn btn-default" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function fnEditMaterial(id) {
+
+        //if ($('#txtMaterialQuantity' + id).val() != null && $('#txtMaterialQuantity' + id).val() != undefined && $('#txtMaterialQuantity' + id).val() != "") {
+
+        //}
+
+        $('.material-view-' + id).hide();
+        $('.material-edit-' + id).show();
+    }
+
+    function fnAddNewMaterial() {
+        $('.material-add-new').show();
+    }
+
+    function fnCloseNewMaterial() {
+        $('.material-add-new').hide();
+    }
+
+    function fnUpdateNewMaterial() {
+
+        $(".material-add-new").each(function (t, trData) {
+
+            var mStockWorksheetMaterials = [];
+            var drpmatrialId = $(this).find("td").eq(1).children("select").val();
+            var txtQuantity = $(this).find("td").eq(2).children("input").val();
+
+            var mStockWorksheetMaterial = {};
+            mStockWorksheetMaterial.MaterialId = drpmatrialId;
+            mStockWorksheetMaterial.StockId = $('#hdnStockId').val();
+            mStockWorksheetMaterial.Quantity = txtQuantity;
+            mStockWorksheetMaterials.push(mStockWorksheetMaterial);
+
+            var isvalid = true;
+
+            if (drpmatrialId == null || drpmatrialId == undefined || drpmatrialId == '') {
+                isvalid = false;
+                alert('Material is required');
+            }
+            else if (txtQuantity == null || txtQuantity == undefined || txtQuantity == '') {
+                isvalid = false;
+                alert('Quantity is required');
+            }
+
+            if (mStockWorksheetMaterials != null && mStockWorksheetMaterials != undefined && mStockWorksheetMaterials.length > 0 && isvalid) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/StockOpration/UpdateMaterial',
+                    type: 'Post',
+                    contentType: 'application/json',
+                    data: JSON.stringify(mStockWorksheetMaterials),
+                    success: function (data) {
+                        $("#loader").hide();
+                        $("#modal-audit-material").modal('hide');
+                        $("#frmAuditList").submit();
+                        fnShowMaterial(mStockWorksheetMaterial.StockId);
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+
+        });
+    }
+
+    function fnUpdateMaterial(id) {
+
+        if ($('#txtMaterialQuantity' + id).val() != null && $('#txtMaterialQuantity' + id).val() != undefined && $('#txtMaterialQuantity' + id).val() != "") {
+
+            $('.material-view-' + id).show();
+            $('.material-edit-' + id).hide();
+
+            $('#spnMaterialQuantity' + id).text($('#txtMaterialQuantity' + id).val());
+        } else {
+            alert('Quantity is required.');
+        }
+    }
+
+    function fnUpdateAuditMaterial() {
+        var mStockWorksheetMaterials = [];
+
+        $(".materialmaintrview").each(function (t, trData) {
+
+            var id = $(this).data('id');
+            var drpmatrialId = $(this).data('matrialid');
+            var txtQuantity = $('#spnMaterialQuantity' + id).text();
+            var chkId = $(this).find("td").eq(3).children("input");
+            var mStockWorksheetMaterial = {};
+            mStockWorksheetMaterial.MaterialId = drpmatrialId;
+            mStockWorksheetMaterial.StockId = $('#hdnStockId').val();
+            mStockWorksheetMaterial.Quantity = txtQuantity;
+            if ($(chkId).is(':checked')) {
+                mStockWorksheetMaterial.IsAudit = true;
+            }
+            mStockWorksheetMaterials.push(mStockWorksheetMaterial);
+
+        });
+        if (mStockWorksheetMaterials != null && mStockWorksheetMaterials != undefined && mStockWorksheetMaterials.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/StockOpration/UpdateAuditMaterial',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mStockWorksheetMaterials),
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == 'success') {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        } else if (data.type == 'error') {
+                            CommonNotification("ERROR", data.result, "Error");
+                        }
+                        $("#modal-audit-material").modal('hide');
+                        $("#frmAuditList").submit();
+                    }
+
+                },
+                error: function (response) {
+                    $("#modal-audit-material").modal('hide');
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            alert('Material not found');
+        }
+
+    }
+</script>

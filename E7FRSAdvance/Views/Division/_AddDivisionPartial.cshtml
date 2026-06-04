@@ -1,0 +1,203 @@
+﻿@model Domain.Division
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal bounceIn animated" id="modal-add-division" tabindex="-1" aria-labelledby="modal-add-division" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content bradius4">
+            @Html.HiddenFor(m => Model.Id, new { @id = "hdnDivisionId" })
+            @Html.HiddenFor(m => Model.ImageBase64, new { @id = "hdnImageBase64" })
+            @Html.HiddenFor(m => Model.ImageExtension, new { @id = "hdnImageExtension" })
+            <div class="modal-header">
+                @if (Model.Id == 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Add Division</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"> Edit Division</span></h4>
+                }
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close" data-bs-original-title="" title=""></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="">
+                                <label class="control-label">Zone <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    @*@Html.DropDownListFor(m => m.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", style = "width:100%", id = "zoneAdd", tabindex = 1 })*@
+                                    <select id="zoneAdd" name="ZoneId" class="form-control">
+                                        @if (ViewBag.Zones != null)
+                                        {
+                                            foreach (var zone in ViewBag.Zones as List<Domain.Zone>)
+                                            {
+                                                if (zone.Id == Model.ZoneId)
+                                                {
+                                                    <option value="@zone.Id" data-code="@zone.RepresentationCode" selected>@zone.Name</option>
+                                                }
+                                                else
+                                                {
+                                                    <option value="@zone.Id" data-code="@zone.RepresentationCode">@zone.Name</option>
+                                                }
+                                            }
+                                        }
+
+                                    </select>
+                                    <span id="spRole" class="text-danger"></span>
+                                </div>
+                            </div>
+
+                            <div class="">
+                                <label class="control-label">Name <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    @Html.TextBoxFor(m => Model.Name, new { @class = "form-control", tabindex = 2 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+
+                            <div class="">
+                                <label class="control-label">Description <span class="text-danger"></span></label>
+                                <div class="mb-3">
+                                    @Html.TextAreaFor(m => Model.Description, new { @class = "form-control", tabindex = 3 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+                            <div class="">
+                                <label class="control-label">Store Name</label>
+                                <div class="mb-3">
+                                    @Html.TextBoxFor(m => m.StoreName, new { @class = "form-control", tabindex = 4 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+                            <div class="">
+                                <label class="control-label">Division Code</label>
+                                <div class="mb-3">
+                                    @Html.TextBoxFor(m => m.Code, new { @class = "form-control", tabindex = 5 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+                            <div class="">
+                                <label class="control-label">FRS Division</label>
+                                <div class="mb-3">
+                                    @*@Html.DropDownListFor(m => m.RepresentationCode, (IEnumerable<SelectListItem>)ViewBag.FRSDivision, new { @class = "form-control", style = "width:100%", tabindex = 5 })*@
+                                    <input type="hidden" />
+                                    <select name="RepresentationCode" id="drpRepresentationCode" class="form-control"></select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Upload Image</label>
+                                <div class="">
+
+                                    <input type="file" id="UploadImg" name="UploadImg" accept="image/*" class="form-control" onchange="fnUploadImageFile(this)" multiple>
+                                    @*@Html.EditorFor(m => Model., new { htmlAttributes = new { @class = "input-file form-control", type = "file", name = "file" } })*@
+                                </div>
+                            </div>
+                            <div class="mb-3" id="divImage">
+                                @if (!string.IsNullOrEmpty(Model.ImagePath))
+                                {
+                                    <img height="100" width="100" src="@Model.ImagePath" />
+                                }
+
+
+                            </div>
+
+                            <div class="">
+                                <label class="control-label"><span>Is Active</span>  @Html.CheckBoxFor(m => Model.IsActive, new { style = "vertical-align:sub" })</label>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" aria-label="Close" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()" id="btnSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="~/Content/PageJS/Division/AddDivision.js"></script>
+
+<script>
+    $(document).ready(function () {
+
+        GetFRSDivisionByZone($('#zoneAdd').find(":selected").data("code"));
+
+        $('#zoneAdd').change(function () {
+            debugger;
+            GetFRSDivisionByZone($(this).find(":selected").data("code"));
+        });
+
+    });
+
+    function GetFRSDivisionByZone(zoneCode) {
+        if (zoneCode != null && zoneCode != undefined && zoneCode != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Division/GetFRSDivision',
+                type: 'POST',
+                data: '{code:"' + zoneCode + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpRepresentationCode").empty();
+                    $("#drpRepresentationCode").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#drpRepresentationCode").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+
+                    $("#drpRepresentationCode").val('@Model.RepresentationCode');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnUploadImageFile($this) {
+        var counter = 0;
+        $("#loader").show();
+        //var fileUpload = $($this).get(0);
+        //var files = fileUpload.files;
+        //var fileData = new FormData();
+        //fileData.append(files[0].name, files[0]);
+
+        var files = $($this).get(0).files;
+        var fileData = new FormData();
+        for (var i = 0; i < files.length; i++) {
+            fileData.append(files[i].name, files[i]);
+        }
+
+        $.ajax({
+            url: "/Division/UploadFile",
+            type: "POST",
+            contentType: false,
+            processData: false,
+            data: fileData,
+            async: true,
+            success: function (data) {
+                $("#loader").hide();
+                var imageBase64 = '';
+                //$('#divImage').empty();
+                if (data != null && data != undefined && data != '') {
+                    imageBase64 += "<input type='hidden' id='hdnBas64_" + counter + "' class='hdnImageBase64' value='" + data.ImageBase64 + "' data-fileextension='" + data.ImageExtension + "' />";
+                    imageBase64 += "<img height='100' width='100' id='imgBas64_" + counter + "' src='data:image/png;base64," + data.ImageBase64 + "'/>";
+
+                    $('#hdnImageBase64').val(data.ImageBase64);
+                    $('#hdnImageExtension').val(data.ImageExtension);
+                }
+                $('#divImage').empty().append(imageBase64);
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+</script>

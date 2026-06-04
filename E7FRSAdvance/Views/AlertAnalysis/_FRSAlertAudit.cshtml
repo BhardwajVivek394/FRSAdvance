@@ -1,0 +1,120 @@
+﻿@model Domain.FRSAlert
+
+<div class="modal bounceIn animated" id="modalFRSAlertAudit" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">FRS Alert Audit(@Model.StationCode) - @Model.AssetName</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="">
+                            <label class="control-label">Alert Type <span class="text-danger">*</span></label>
+                            <div class="">
+                                <select class="form-control" id="drpFRSAlertAuditType@(Model.AssetId)@(Model.AlertInfoId)" onchange="fnChangeAlertAuditType(this)">
+                                    <option value="True">True Alert</option>
+                                    <option value="False" selected>False Alert</option>
+                                </select>
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="">
+                            <label class="control-label">Remark</label>
+                            <div class="">
+                                <textarea placeholder="Remark" rows="2" class="form-control" id="txtFRSAlertAuditRemark@(Model.AssetId)@(Model.AlertInfoId)"></textarea>
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 divFRSAlertAuditTrue" style="display:none">
+                        <div class="">
+                            <input type="checkbox" id="chkFRSAlertAuditWorngCausecode@(Model.AssetId)@(Model.AlertInfoId)" /><label for="chkFRSAlertAuditWorngCausecode@(Model.AssetId)@(Model.AlertInfoId)" style="margin-left:2px">Worng Cause code</label>
+
+                        </div>
+                    </div>
+                    <div class="col-12 divFRSAlertAuditIssueType">
+                        <div class="">
+                            <label class="control-label">Attribute</label>
+                            <div class="">
+                                <select id="drpFRSAlertAuditAttribute@(Model.AssetId)@(Model.AlertInfoId)" tabindex="5" class="js-example-basic-multiple form-control" multiple>
+                                    @if (ViewBag.AssetAttributes != null)
+                                    {
+                                        var assetAttributes = ViewBag.AssetAttributes as List<Domain.AssetAttribute>;
+                                        if (assetAttributes != null)
+                                        {
+                                            foreach (var assetAttribute in assetAttributes)
+                                            {
+                                                <option value="@assetAttribute.Id">@assetAttribute.Title</option>
+                                            }
+                                        }
+
+                                    }
+                                </select>
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 divFRSAlertAuditIssueType">
+                        <div class="">
+                            <label class="control-label">Issue</label>
+                            <div class="">
+                                <select class="form-control" id="drpFRSIssueType@(Model.AssetId)@(Model.AlertInfoId)">
+                                    @{
+                                        var enumData = from E7FRSAdvance.Utility.Utility.FRSAlertIssue e in Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.FRSAlertIssue))
+                                                       select new
+                                                       {
+                                                           Id = (int)e,
+                                                           Name = e.ToString().Replace("_", " ")
+                                                       };
+                                    }
+                                    @foreach (var item in enumData)
+                                    {
+                                        <option value="@item.Id">@item.Name</option>
+                                    }
+                                </select>
+
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.TRACK && Model.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+                {
+                    <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= Model.SiteId,assetId = Model.AssetId, timeStamp = Model.SetTimeStamp})" data-placement="top" data-toggle="tooltip" class="btn btn-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+                }
+
+                <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= Model.SiteId,assetId = Model.AssetId, timeStamp = Model.SetTimeStamp})" class="btn btn-warning">Debug </a>
+                <a class="btn btn-info" onclick="fnGetAssetAttribute('@Model.SiteName','@Model.AssetId','@Model.AssetTypeId')">Live Data</a>
+                <button type="button" class="btn btn-success" onclick="fnSaveFRSAlertAudit('@Model.SiteId','@Model.AssetId','@Model.AlertInfoId','@Model.Id')">Save</button>
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(function () {
+        $('#drpFRSAlertAuditAttribute@(Model.AssetId)@(Model.AlertInfoId)').select2();
+
+        $(".modal-dialog").draggable({
+            handle: ".modal-header"
+        });
+    });
+    function fnChangeAlertAuditType($this) {
+        if ($($this).val() == 'True') {
+            $('.divFRSAlertAuditIssueType').hide();
+            $('.divFRSAlertAuditTrue').show();
+        } else {
+            $('.divFRSAlertAuditIssueType').show();
+            $('.divFRSAlertAuditTrue').hide();
+        }
+
+    }
+</script>

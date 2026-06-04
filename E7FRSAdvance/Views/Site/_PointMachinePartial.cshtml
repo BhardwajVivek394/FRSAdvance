@@ -1,0 +1,298 @@
+﻿
+@model Domain.AssetLister
+
+
+
+<div class="card">
+    <div class="card-body" style="padding:15px;" >
+        @if (Model.mAssets != null && Model.mAssets.Count > 0)
+        {
+            foreach (var item in Model.mAssets)
+            {
+                int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+                var vibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration")).ToList();
+                bool isVibration = false;
+                if (vibration != null && vibration.Count > 0)
+                {
+                    isVibration = true;
+                }
+                <div class="col-sm-12 col-md-12 col-lg-12">
+                    <div class="card">
+                        <div class="col-xl-12 news box-col-12">
+                            <div class="card card-border">
+                                <div class="bg-primary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                    <div class="" style="width:95%;float:left;padding:10px;border-top-left-radius:15px;">
+                                        <h6>
+                                            <a target="_blank" class="text-white" href="@item.HttpMisLink"> @item.AssetTypeName : @item.Name</a>
+                                        </h6>
+                                    </div>
+                                    <div class="text-center bg-dark" style="width:5%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:3.5;height:50px">
+
+                                        @if (item.UnderMaintence == true)
+                                        {
+                                            <div class="text-center"> <i class="fa fa-bell-slash fa fa-das" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                        }
+                                        else
+                                        {
+                                            <div class="text-center">
+                                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                            </div>
+                                        }
+                                       
+                                    </div>
+
+                                </div>
+
+                                <div class="card-body" style="padding:5px;margin-bottom:-15px">
+
+                                    <div class="row">
+                                        <div class="col-sm-3 mb-1">
+                                            <label>From Date</label>
+                                            <input type="text" class="datepicker-here form-control digits from-date" data-language="en" data-bs-original-title="" title="" id="txtFromDate@(item.Id)" />
+                                        </div>
+                                        <div class="col-sm-3 mb-1">
+                                            <label>To Date</label>
+                                            <input type="text" class="datepicker-here form-control digits to-date" data-language="en" data-bs-original-title="" title="" id="txtToDate@(item.Id)" />
+                                        </div>
+                                        <div class="col-sm-3 mb-1 mt-4">
+                                            <a class="btn btn-success" onclick="Search('@item.Id')">Search</a>
+                                            <a class="btn btn-default" onclick="Clear('@item.Id')">Clear</a>
+                                        </div>
+                                        @*<div class="col-sm-3 mb10 mt20 text-right">
+                                            <a style="margin-bottom:10px;float:right;" class="btn btn-primary" onclick="DownloadPointData(@item.Id)">Download</a>
+                                        </div>*@
+                                    </div>
+
+                                    <div class="table-responsive width100p tblAssetData">
+                                        <table class="table table-bordered table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th>@item.Name</th>
+                                                    <th>Direction:A</th>
+                                                    <th>Direction:B</th>
+                                                    @if (isVibration)
+                                                    {
+                                                        <th>VibrationA(x/y/z)</th>
+                                                        <th>VibrationB(x/y/z)</th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tblAttributeData@(item.Id)" class="tblAttributes" >
+                                                <tr>
+                                                    <td>
+                                                    </td>
+                                                    <td id="diectionA@(item.Id)">
+                                                    </td>
+                                                    <td id="diectionB@(item.Id)">
+                                                    </td>
+                                                    @if (isVibration)
+                                                    {
+                                                        var VibA = vibration.Where(x => x.Title.ToLower().Contains("Vibration A".ToLower())).ToList();
+                                                        var VibB = vibration.Where(x => x.Title.ToLower().Contains("Vibration B".ToLower())).ToList();
+                                                        int a = 1;
+                                                        int b = 1;
+                                                        <td id="vibrationA@(item.Id)">
+
+                                                            @foreach (var assetAttribute in VibA)
+                                                            {
+                                                                if (VibA.Count == a)
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span><span> | </span>
+                                                                }
+                                                                a++;
+                                                            }
+
+                                                        </td>
+                                                        <td id="vibrationB@(item.Id)">
+                                                            @foreach (var assetAttribute in VibB)
+                                                            {
+                                                                if (VibB.Count == b)
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span><span> | </span>
+                                                                }
+                                                                b++;
+                                                            }
+                                                        </td>
+                                                    }
+
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="table-responsive width100p tblAssetData" >
+
+                                        <table class="table table-bordered table-striped" id="tblPoint@(item.Id)">
+                                            <thead>
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Name</th>
+                                                    <th>Direction</th>
+                                                    <th>A Current</th>
+                                                    <th>A Voltage</th>
+                                                    <th>A Time (ms)</th>
+                                                    <th>B Current</th>
+                                                    <th>B Voltage</th>
+                                                    <th>B Time (ms)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="fbody@(item.Id)">
+                                                @Html.Partial("_PointMachineDatePartial", item)
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <p style="font-size:15px">No record found!</p>
+        }
+    </div>
+</div>
+
+<script>
+    function Clear(id) {
+        $("#txtFromDate" + id).val('');
+        $("#txtToDate" + id).val('');
+        Search(id);
+    }
+    function stringToDate(s) {
+        var ret = NaN;
+        var parts = s.split("/");
+        date = new Date(parts[2], parts[0], parts[1]);
+        if (!isNaN(date.getTime())) {
+            ret = date;
+        }
+        return ret;
+    }
+    function stringtableToDate(s) {
+        var ret = NaN;
+        var parts = s.split("-");
+        date = new Date(parts[2], parts[0], parts[1]);
+        if (!isNaN(date.getTime())) {
+            ret = date;
+        }
+        return ret;
+    }
+
+    function Search(assetId) {
+        var pointMachineData = {};
+        pointMachineData.AssetId = assetId;
+        if ($("#txtFromDate" + assetId).val() != "") {
+            pointMachineData.StartDate = $("#txtFromDate" + assetId).val();
+        }
+        else {
+            pointMachineData.StartDate = new Date();
+        }
+        if ($("#txtToDate" + assetId).val() != "") {
+            pointMachineData.EndDate = $("#txtToDate" + assetId).val();
+
+        }
+        else {
+            pointMachineData.EndDate = new Date();
+        }
+
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetPointMachineDate',
+            type: 'Post',
+            data: '{pointMachineData:' + JSON.stringify(pointMachineData) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $(".fbody" + assetId).empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function DownloadPointData(id) {
+     
+        var titles = [];
+        var data = [];
+        var tbl = "#tblPoint" + id + " > thead > tr > th"
+        var tblbody = ".fbody" + id + " > tr";
+        $(tbl).each(function () {
+            titles.push($.trim($(this).text()));
+        });
+
+        //$('#tbodyExportOrder > tr > td').each(function () {
+        //       data.push($.trim($(this).text()));
+        //});
+
+        $(tblbody).each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+                var datas = $.trim($(ele).text());
+                data.push($.trim(datas));
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "PointMachineData" + GenerateUniqueCode() + ".csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+
+</script>

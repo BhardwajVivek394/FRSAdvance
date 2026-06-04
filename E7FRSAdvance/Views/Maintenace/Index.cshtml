@@ -1,0 +1,115 @@
+﻿
+@{
+    ViewBag.Title = "Maintenace DashBoard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<style>
+    .table > :not(:last-child) > :last-child > * {
+        border-bottom-color: #87c7d9 !important;
+    }
+
+    .MainTh {
+        background-color: #7fcde22e !important;
+        border-bottom-color: #87c9db !important;
+    }
+
+    .SubTh {
+        background-color: #f4f6fc !important;
+        border-bottom-color: #87c9db !important;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Dashboard</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="">
+    <div class="">
+        @using (Ajax.BeginForm("SiteList", "Site", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divSiteList",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+        }, new { id = "frmGetSiteList" }))
+        {
+            { HtmlHelper.ClientValidationEnabled = false; }
+            <div id="divSiteList">
+                @Html.Action("SiteList")
+            </div>
+        }
+    </div>
+</div>
+<script>
+    function Search() {
+        $("#hdnSkip").val('0');
+        if (client && client.isConnected()) {
+            try {
+                client.disconnect();
+            } catch (err) {
+            }
+        }
+        $("#frmGetSiteList").submit();
+     //   $("#divSiteList").empty();
+
+    }
+
+    function Clear() {
+        if (client && client.isConnected()) {
+            try {
+                client.disconnect();
+            } catch (err) {
+            }
+        }
+        $("#hdnSkip").val('0');
+        $("#zoneAdd").val('0');
+        $("#divisions").val('0');
+        $("#txtSearchName").val("");
+        $("#frmGetSiteList").submit();
+        //$("#divSiteList").empty();
+
+    }
+
+    function GeneratePdf() {
+        $("#loader").show();
+        var pdfDatas =[];
+        $("#tblsites tr").each(function (id,ele) {
+            var pdfData = {};
+            pdfData.SiteName = $(this).find('td:eq(0)').html();
+            pdfData.ChannelDown = $(this).find('td:eq(2)').html();
+            pdfData.RfDown = $(this).find('td:eq(3)').html();
+            pdfData.Channels = $(this).find('td:eq(2)').attr("data-bs-content");
+            pdfData.Rfs = $(this).find('td:eq(3)').attr("data-bs-content");
+            pdfData.HttpDown = $(this).find('td:eq(1)').html();
+            pdfData.HttpDownRfs = $(this).find('td:eq(1)').attr("data-bs-content");
+            pdfDatas.push(pdfData);
+        });
+        $.ajax({
+            url: '/Maintenace/MaintencePdf',
+            type: 'Post',
+            data: '{pdfDatas:' + JSON.stringify( pdfDatas) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                window.location.href = "/Maintenace/GeneratePdf";
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>
+

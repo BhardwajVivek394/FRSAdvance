@@ -1,0 +1,942 @@
+﻿@model  Domain.FRSAlertLister
+
+@{
+    var frsAlertSummary = Model.mFRSAlerts.ToList();
+}
+<style>
+    td {
+        padding: 10px;
+    }
+</style>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="col-md-1">
+                            <strong style="margin-bottom:10px;margin-right:10px;">Search</strong>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-2 mt-2">
+                                <span>Zone</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", tabindex = 1, @id = "drpAlertSummaryZone" })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Division</span>
+                                <input type="hidden" id="hdnAlertSummaryDivisionId" value="" />
+                                @Html.DropDownListFor(x => x.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", tabindex = 2, @id = "drpAlertSummaryDivision" })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Section</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.SectionId, (IEnumerable<SelectListItem>)ViewBag.Sections, "All", new { @class = "form-control", @id = "drpAlertSummarySection", tabindex = 3 })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Site</span>
+                                <input type="hidden" id="hdnAlertSummarySiteId" value="" />
+                                @Html.DropDownListFor(x => x.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", tabindex = 3, @id = "drpAlertSummarySites" })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Asset Type</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.AssetTypeId, (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "All", new { @class = "form-control", tabindex = 4, @id = "drpAlertSummaryAssetType" })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Asset Number</span>
+                                <select id="drpAlertSummaryAssetNumber" class="form-control">
+                                    <option value="0">Select</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-2 mt-2">
+                                <span>From Date</span>
+                                <input class="form-control col-lg-9" id="txtAlertSummaryFromDate" placeholder="From Date" type="text" value="@Model.SearchCriteria.FromDate.ToShortDateString()">
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>To Date</span>
+                                <input class="form-control col-lg-9" id="txtAlertSummaryToDate" placeholder="To Date" type="text" value="@Model.SearchCriteria.ToDate.ToShortDateString()">
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>View</span>
+                                @Html.DropDownList("drpAlertSummaryView", new List<SelectListItem>
+                                {
+                                new SelectListItem { Text = "Table", Value = "1"},
+                                new SelectListItem { Text = "Pie", Value = "2"},
+                                new SelectListItem { Text = "Bar", Value = "3"}
+                                }, new { @class = "form-control" })
+                            </div>
+                            <div class="col-lg-2 mt-2" id="graphView">
+                                <input type="hidden" id="hdnGraphView" value="1" />
+                                <span>Group Type</span>
+                                @Html.DropDownList("drpAlertSummaryGraphView", new List<SelectListItem>
+                                {
+                                new SelectListItem { Text = "Asset Type", Value = "1"},
+                                new SelectListItem { Text = "Asset Number", Value = "2"}
+                                }, "Select", new { @class = "form-control" })
+                            </div>
+                            <div class="col-lg-2 mt-4">
+                                <span style="display:none;">View</span>
+                                <a class="btn btn-success btn-quirk" onclick="fnGetAlertSummaryReport()">Search</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    @*<div class="col-xl-12">
+                            <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-primary" onclick="fnGroupAlertSummaryView()" title="Grid View"><i class="fa fa-group"></i></a></span>
+                            <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-info" onclick="fnListAlertSummaryView()" title="List View"><i class="fa fa-list"></i></a></span>
+                        </div>*@
+                    <div class="col-xl-12" id="AlertSummaryListView">
+                        <div id="tableView" class="row mt-4">
+                            <div class="col-12 mt-2">
+                                <div class="table-responsive tableFixHead tblAssetGroup" style="max-height: 620px;">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th style="background-color:#4bacc6;color:white;">Zone</th>
+                                                <th style="background-color:#215968;color:white;">Division</th>
+                                                <th style="background-color:#404040;color:white;">Section</th>
+                                                <th style="background-color:#4bacc6;color:white;">Site</th>
+                                                <th style="background-color:#215968;color:white;">Asset Type</th>
+                                                <th style="background-color:#404040;color:white;">Asset Number</th>
+                                                <th style="background-color:#4bacc6;color:white;" class="text-center">
+                                                    Failure Alert Count
+                                                </th>
+                                                <th style="background-color:#215968;color:white;" class="text-center">Precitive Alert Count</th>
+                                                <th style="background-color:#404040;color:white;" class="text-center">Total Count</th>
+                                                <th style="background-color: #4bacc6; color: white;" class="text-center">
+                                                    % of True feedback for Failure Alert
+                                                </th>
+                                                <th style="background-color: #215968; color: white;" class="text-center">
+                                                    % of True feedback for Predictive Alert
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody style="max-height: 620px;overflow-y:auto;">
+                                            @if (Model != null && Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                                            {
+                                                var alertSummaryReport =
+                                                Model.mFRSAlerts
+                                                .GroupBy(c => new
+                                                {
+                                                    c.ZoneName,
+                                                    c.DivisionName,
+                                                    c.SectionName,
+                                                    c.SiteName,
+                                                    c.AssetType,
+                                                    c.AssetName,
+                                                })
+                                                .Select(gcs => new
+                                                {
+                                                    gcs.Key.ZoneName,
+                                                    gcs.Key.DivisionName,
+                                                    gcs.Key.SectionName,
+                                                    gcs.Key.SiteName,
+                                                    gcs.Key.AssetType,
+                                                    gcs.Key.AssetName,
+                                                    Count = gcs.Count()
+                                                }).ToList();
+
+                                                foreach (var item in alertSummaryReport)
+                                                {
+                                                    var precount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetName.Trim().ToUpper() == item.AssetName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).Count();
+                                                    var preackcount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetName.Trim().ToUpper() == item.AssetName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive && x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True).Count();
+
+
+                                                    var failcount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetName.Trim().ToUpper() == item.AssetName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
+                                                    var failackcount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetName.Trim().ToUpper() == item.AssetName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True).Count();
+                                                    <tr>
+                                                        <td>@item.ZoneName</td>
+                                                        <td>@item.DivisionName</td>
+                                                        <td>@item.SectionName</td>
+                                                        <td>@item.SiteName</td>
+                                                        <td>@item.AssetType</td>
+                                                        <td>@item.AssetName</td>
+                                                        <td class="text-center">@failcount</td>
+                                                        <td class="text-center">@precount</td>
+                                                        <td class="text-center">@(precount + failcount)</td>
+                                                        <td class="text-center">
+                                                            @if (failackcount > 0)
+                                                            {
+                                                                <span>
+
+                                                                    @{
+
+                                                                        var value = Math.Round(((double)failackcount / failcount) * 100);
+                                                                    }
+                                                                    @value
+                                                                </span>
+                                                            }
+                                                        </td>
+                                                        <td class="text-center">
+                                                            @if (preackcount > 0)
+                                                            {
+                                                                <span>
+
+                                                                    @{
+
+                                                                        var value = Math.Round(((double)preackcount / precount) * 100);
+                                                                    }
+                                                                    @value
+                                                                </span>
+                                                            }
+
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+
+                                    </table>
+                                </div>
+
+                                <div class="table-responsive tableFixHead tblAssetTypeGroup" style="max-height: 620px;display:none">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th style="background-color:#4bacc6;color:white;">Zone</th>
+                                                <th style="background-color:#215968;color:white;">Division</th>
+                                                <th style="background-color:#404040;color:white;">Section</th>
+                                                <th style="background-color:#4bacc6;color:white;">Site</th>
+                                                <th style="background-color:#215968;color:white;">Asset Type</th>
+                                                <th style="background-color:#4bacc6;color:white;" class="text-center">
+                                                    Failure Alert Count
+                                                </th>
+                                                <th style="background-color:#215968;color:white;" class="text-center">Precitive Alert Count</th>
+                                                <th style="background-color:#404040;color:white;" class="text-center">Total Count</th>
+                                                <th style="background-color: #4bacc6; color: white;" class="text-center">
+                                                    % of True feedback for Failure Alert
+                                                </th>
+                                                <th style="background-color: #215968; color: white;" class="text-center">
+                                                    % of True feedback for Predictive Alert
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody style="max-height: 620px;overflow-y:auto;">
+                                            @if (Model != null && Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                                            {
+                                                var alertSummaryReport =
+                                                Model.mFRSAlerts
+                                                .GroupBy(c => new
+                                                {
+                                                    c.ZoneName,
+                                                    c.DivisionName,
+                                                    c.SectionName,
+                                                    c.SiteName,
+                                                    c.AssetType,
+                                                })
+                                                .Select(gcs => new
+                                                {
+                                                    gcs.Key.ZoneName,
+                                                    gcs.Key.DivisionName,
+                                                    gcs.Key.SectionName,
+                                                    gcs.Key.SiteName,
+                                                    gcs.Key.AssetType,
+                                                    Count = gcs.Count()
+                                                }).ToList();
+
+                                                foreach (var item in alertSummaryReport)
+                                                {
+                                                    var precount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).Count();
+                                                    var preackcount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive && x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True).Count();
+
+
+                                                    var failcount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
+                                                    var failackcount = Model.mFRSAlerts.Where(x => x.SiteName.Trim().ToUpper() == item.SiteName.Trim().ToUpper() && x.AssetType.Trim().ToUpper() == item.AssetType.Trim().ToUpper() && x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True).Count();
+                                                    <tr>
+                                                        <td>@item.ZoneName</td>
+                                                        <td>@item.DivisionName</td>
+                                                        <td>@item.SectionName</td>
+                                                        <td>@item.SiteName</td>
+                                                        <td>@item.AssetType</td>
+                                                        <td class="text-center">@failcount</td>
+                                                        <td class="text-center">@precount</td>
+                                                        <td class="text-center">@(precount + failcount)</td>
+                                                        <td class="text-center">
+                                                            @if (failackcount > 0)
+                                                            {
+                                                                <span>
+
+                                                                    @{
+
+                                                                        var value = Math.Round(((double)failackcount / failcount) * 100);
+                                                                    }
+                                                                    @value
+                                                                </span>
+                                                            }
+                                                        </td>
+                                                        <td class="text-center">
+                                                            @if (preackcount > 0)
+                                                            {
+                                                                <span>
+
+                                                                    @{
+
+                                                                        var value = Math.Round(((double)preackcount / precount) * 100);
+                                                                    }
+                                                                    @value
+                                                                </span>
+                                                            }
+
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }
+                                        </tbody>
+
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card" id="pieView" style="display:none;">
+                            <div class="card-header">
+                                <h5>Pie Chart </h5>
+                            </div>
+                            <div class="card-body apex-chart">
+                                @*<div id="piechart"></div>*@
+                                <div id="piechartAssetName">
+                                    @*<div class="card">
+                                            <div class="card-header">
+                                                <h5>Track</h5>
+                                            </div>
+                                            <div class="card-body"></div>
+                                        </div>*@
+                                    <div id="piechart_Track" style="display:inline-block"></div>
+                                    <div id="piechart_PointMachine" style="display:inline-block"></div>
+                                    <div id="piechart_Signal" style="display:inline-block"></div>
+                                </div>
+
+                                <div id="piechart_Custom"></div>
+                            </div>
+                        </div>
+                        <div class="card" id="barView" style="display:none;">
+                            <div class="card-header">
+                                <h5>Bar chart</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="basic-bar"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-12 mt-4" id="AlertSummaryGroupView" style="display:none">
+                        @if (Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                        {
+                            <div class="container-fluid">
+                                <div class="email-wrap email-main-wrapper">
+                                    <div class="row">
+                                        <div class="col-xxl-12 col-xl-12 box-col-12">
+                                            <div class="email-right-aside">
+                                                <div class="card email-body email-list">
+                                                    <div class="mail-header-wrapper" style="background-color:#215968; color:white; border-top-left-radius: 15px; border-top-right-radius:15px;">
+                                                        <div class="col-xl-12">
+                                                            <div class="mail-header">
+                                                                <div class="form-check form-check-inline">
+                                                                    <ul class="email-tabs nav" role="tablist">
+                                                                        @foreach (var item in Model.AssetTypes)
+                                                                        {
+                                                                            <li class="nav-item">
+                                                                                @{
+                                                                                    var isActive = string.Empty;
+                                                                                }
+
+                                                                                @if (item == Model.AssetTypes.FirstOrDefault())
+                                                                                {
+                                                                                    isActive = "active";
+                                                                                }
+                                                                                <a class="nav-link @isActive" id="@item.Name.Replace(" ","")" data-bs-toggle="pill" href="#@item.Name.Replace(" ","")-pill-alertSummary-tab" role="tab" aria-controls="@item.Name.Replace(" ","")-pill" aria-selected="false" style="color:white;">
+                                                                                    <div>@item.Name</div>
+                                                                                    <span class="span badge rounded-pill pill-badge-primary">@frsAlertSummary.Where(x => x.AssetTypeId == item.Id).Count()</span>
+                                                                                </a>
+                                                                            </li>
+
+                                                                        }
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="tab-content" id="email-pills-tabContent">
+                                                        @foreach (var item in Model.AssetTypes)
+                                                        {
+                                                            var isActive = "";
+                                                            if (item == Model.AssetTypes.FirstOrDefault())
+                                                            {
+                                                                isActive = "show active";
+                                                            }
+
+                                                            <div class="tab-pane fade @isActive" id="@item.Name.Replace(" ","")-pill-alertSummary-tab" role="tabpanel" aria-labelledby="@item.Name.Replace(" ","")-pill-tab">
+                                                                <div class="mail-body-wrapper">
+                                                                    <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                        @if (frsAlertSummary != null && frsAlertSummary.Count > 0)
+                                                                        {
+                                                                            foreach (var site in frsAlertSummary.Where(x => x.AssetTypeId == item.Id).GroupBy(x => new { x.SiteId, x.SiteName }).Select(x => x.Key).ToList())
+                                                                            {
+                                                                                int smsCount = frsAlertSummary.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId).Count();
+
+                                                                                if (smsCount > 0)
+                                                                                {
+                                                                                    <li class="inbox-data" style="background-color:#f4f8f8">
+                                                                                        <div class="inbox-message">
+                                                                                            <div class="email-data">
+                                                                                                <span style="float:left;">@site.SiteName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary" style="color:white;">@smsCount</span>
+                                                                                            </div>
+                                                                                            <span class="pull-right">
+                                                                                                <a href="#" data-bs-original-title="" title=""><i class="fa fa-angle-up fa-3x" onclick="fnShowAlerSummaryLogSite('@site.SiteId','@item.Name.Replace(" ", "")', this); return false;"></i></a>
+                                                                                            </span>
+                                                                                        </div>
+
+                                                                                    </li>
+                                                                                }
+
+                                                                                foreach (var alert in frsAlertSummary.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId).GroupBy(x => new { x.AlertTypeId, x.CauseCode }).Select(x => x.Key).ToList())
+                                                                                {
+                                                                                    var smsAlertNameCount = frsAlertSummary.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.CauseCode == alert.CauseCode).Count();
+
+                                                                                    <li class="inbox-data  maintenaceALertSummaryLogBySite_@(site.SiteId)_@(item.Name.Replace(" ",""))" style="display:none">
+
+                                                                                        <div class="mail-body-wrapper" style="width:100%;">
+                                                                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                                                <li class="inbox-data" style="background-color: #4bacc6;">
+                                                                                                    <div class="inbox-message">
+                                                                                                        <div class="email-data">
+                                                                                                            <span style="float: left; color: white;">@alert.CauseCode  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAlertNameCount</span>
+                                                                                                        </div>
+                                                                                                        <span class="pull-right">
+                                                                                                            <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowAlertSummaryLogAlertName('@site.SiteId','@E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode)', this); return false;"></i></a>
+                                                                                                        </span>
+                                                                                                    </div>
+                                                                                                </li>
+                                                                                                @foreach (var asset in frsAlertSummary.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.CauseCode == alert.CauseCode).GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                                                                {
+                                                                                                    var smsAssetCount = frsAlertSummary.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.CauseCode == alert.CauseCode && x.AssetId == asset.AssetId).Count();
+                                                                                                    <li class="inbox-data  maintenaceAlertSummaryLogByAletType_@(site.SiteId)_@(E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode))" style="display:none">
+                                                                                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" style="width:100%;">
+                                                                                                            <li class="inbox-data" style="background-color: #21596880; ">
+                                                                                                                <div class="inbox-message">
+                                                                                                                    <div class="email-data">
+                                                                                                                        <span style="float: left; color: white;">@asset.AssetName  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                                                                    </div>
+                                                                                                                    <span class="pull-right">
+
+                                                                                                                        <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowAlertSummaryLogAsset('@site.SiteId','@asset.AssetId','@E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode)', this); return false;"></i></a>
+                                                                                                                    </span>
+
+                                                                                                                </div>
+
+                                                                                                            </li>
+
+                                                                                                            @foreach (var smsLog in frsAlertSummary.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AssetId == asset.AssetId && x.CauseCode == alert.CauseCode).ToList())
+                                                                                                            {
+                                                                                                                <li class="inbox-data  maintenaceAlertSummaryLogByAsset_@(site.SiteId + "" + asset.AssetId)_@(E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode))" style="display:none">
+                                                                                                                    <div class="inbox-user">
+                                                                                                                        <p>@smsLog.SiteName</p>
+                                                                                                                    </div>
+                                                                                                                    <div class="inbox-message">
+                                                                                                                        <div class="email-data">
+                                                                                                                            <span>@smsLog.SetAlertMessage</span>
+                                                                                                                            <span>@smsLog.Description</span>
+                                                                                                                            @if (smsLog.IsActive == true)
+                                                                                                                            {
+                                                                                                                                <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                                                                            }
+                                                                                                                            else
+                                                                                                                            {
+                                                                                                                                <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                                                                            }
+
+                                                                                                                        </div>
+                                                                                                                        <div class="email-timing"><span>@smsLog.SetTimeStamp.ToString()</span></div>
+                                                                                                                    </div>
+                                                                                                                </li>
+
+                                                                                                            }
+
+                                                                                                        </ul>
+
+                                                                                                    </li>
+                                                                                                }
+
+                                                                                            </ul>
+
+                                                                                        </div>
+                                                                                    </li>
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var chart8;
+    var chart2;
+    var chart5;
+    var chart6;
+    var chart7;
+    $(document).ready(function () {
+
+        GetDivisionByZone($("#drpAlertSummaryZone").val(), $('#drpAlertSummaryDivision'), $('#hdnAlertSummaryDivisionId'));
+
+        GetSiteByDivisionId($("#drpAlertSummaryDivision").val(), $('#drpAlertSummarySites'), $('#hdnAlertSummarySiteId'));
+
+        $("#drpAlertSummaryZone").change(function () {
+            GetDivisionByZone($(this).val(), $('#drpAlertSummaryDivision'));
+
+        });
+
+        $("#drpAlertSummaryDivision").change(function () {
+            GetSiteByDivisionId($(this).val(), $('#drpAlertSummarySites'));
+        });
+
+
+        $("#drpAlertSummaryAssetType").change(function () {
+            BindAssetType($(this).val(), $('#drpAlertSummarySites').val(), $('#drpAlertSummaryAssetNumber'));
+        });
+
+        $("#drpAlertSummarySites").change(function () {
+            if ($("#drpAlertSummaryAssetType").val() != '0') {
+                BindAssetType($('#drpAlertSummaryAssetType').val(), $(this).val(), $('#drpAlertSummaryAssetNumber'));
+            }
+        });
+
+        $("#drpAlertSummaryView").change(function () {
+            fnView($(this).val());
+        });
+
+        $('#txtAlertSummaryFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#txtAlertSummaryToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $("#drpAlertSummaryView").change(function () {
+            fnView($(this).val());
+        });
+
+        $("#drpAlertSummaryGraphView").change(function () {
+            fnShowGraphView($(this).val());
+        })
+    });
+
+    function fnListAlertSummaryView() {
+        $("#AlertSummaryGroupView").hide();
+        $("#AlertSummaryListView").show();
+    }
+    function fnGroupAlertSummaryView() {
+        $("#AlertSummaryListView").hide();
+        $("#AlertSummaryGroupView").show();
+    }
+
+
+    function fnView(selectedView) {
+        $("#drpAlertSummaryGraphView").val($("#drpAlertSummaryGraphView option:first").val());
+        if (selectedView == 1) {
+            $("#pieView").hide();
+            $("#barView").hide();
+            // $("#drpAlertSummaryGraphView").val(1);
+            $("#hdnGraphView").val(selectedView);
+            $("#tableView").show();
+        }
+        else if (selectedView == 2) {
+            $("#hdnGraphView").val(selectedView);
+            $("#graphView").show();
+        }
+        else if (selectedView == 3) {
+            $("#hdnGraphView").val(selectedView);
+            $("#graphView").show();
+        }
+        else if (selectedView == 4) {
+            $("#graphView").show();
+        }
+
+    }
+
+    function fnGetDarkColor() {
+        var allowed = "ABCDEF0123456789", S = "#";
+
+        while (S.length < 7) {
+            S += allowed.charAt(Math.floor((Math.random() * 16) + 1));
+        }
+        return S;
+    }
+
+    function fnShowGraphView(selectedGraphView) {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpAlertSummarySites').val();
+        mSearchCriteria.ZoneId = $('#drpAlertSummaryZone').val();
+        mSearchCriteria.DivisionId = $('#drpAlertSummaryDivision').val();
+        mSearchCriteria.AssetTypeId = $('#drpAlertSummaryAssetType').val();
+        mSearchCriteria.AlertTypeId = $('#drpAlertSummaryAlertType').val();
+        mSearchCriteria.AssetId = $('#drpAlertSummaryAssetNumber').val();
+        mSearchCriteria.FromDate = $('#txtAlertSummaryFromDate').val();
+        mSearchCriteria.ToDate = $('#txtAlertSummaryToDate').val();
+        /* mSearchCriteria.CauseCode = $('#txtAlertDetailCauseCode').val();*/
+        mSearchCriteria.AlertStatus = $('#drpAlertSummaryAlertStatus').val();
+        mSearchCriteria.GraphType = selectedGraphView;
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        var selectedGraph = parseInt($("#hdnGraphView").val());
+        // Pie Chart
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/GetView',
+            type: 'POST',
+            data: JSON.stringify(mAssetLister),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                var totalCount = 0;
+                if (data != null) {
+                    if (selectedGraph == 2) {
+                        var Counts = [];
+                        var track = [];
+                        var signal = [];
+                        var point = [];
+                        var signalCount = [];
+                        var pointCount = [];
+                        var trackCount = [];
+                        var DataSeries = [];
+                        $.each(data, function (index, value) {
+                            if (value.Type == 'TRACK') {
+                                track.push(value.Name)
+                                trackCount.push(value.Count)
+                            }
+                            else if (value.Type == 'POINT MACHINE') {
+                                point.push(value.Name)
+                                pointCount.push(value.Count)
+                            }
+                            else if (value.Type == 'SIGNAL') {
+                                signal.push(value.Name)
+                                signalCount.push(value.Count)
+                            }
+                            else {
+                                DataSeries.push(value.Name)
+                                Counts.push(value.Count)
+                            }
+
+                        })
+                        if (data.some(data => data.Type == 'TRACK' || data.Type == 'SIGNAL' || data.Type == 'POINT MACHINE')) {
+                            //For Point Machine
+                            var options5 = {
+                                chart: {
+                                    width: 380,
+                                    type: "pie",
+                                },
+                                legend: {
+                                    show: false
+                                },
+                                labels: point,
+                                series: pointCount,
+                                responsive: [
+                                    {
+                                        breakpoint: 480,
+                                        options: {
+                                            chart: {
+                                                width: 200,
+                                            },
+                                            legend: {
+                                                show: false,
+                                            },
+                                        },
+                                    },
+                                ],
+
+                                colors: [
+                                    "#FFBA91",
+                                    "#FDB7EA",
+                                    "#FFDCCC",
+                                    "#B1C29E",
+                                    "#B7B1F2",
+                                ],
+                            };
+
+                            if (chart5 != null && chart5 != "" && chart5 != undefined) {
+                                chart5.destroy();
+                            }
+                            if (chart6 != null && chart6 != "" && chart6 != undefined) {
+                                chart6.destroy();
+                            }
+                            if (chart7 != null && chart7 != "" && chart7 != undefined) {
+                                chart7.destroy();
+                            }
+                            //if (chart8 != null && chart8 != "" && chart8 != undefined) {
+                            //    chart8.destroy();
+                            //}
+                            $("#piechart_PointMachine").append(` <h6 class=" text-center showPointMachine">Point Machine</h6>`);
+                            chart5 = new ApexCharts(document.querySelector("#piechart_PointMachine"), options5);
+                            chart5.render();
+
+                            // For Track
+                            var options6 = {
+                                chart: {
+                                    width: 380,
+                                    type: "pie",
+                                },
+                                legend: {
+                                    show: false
+                                },
+                                labels: track,
+                                series: trackCount,
+                                responsive: [
+                                    {
+                                        breakpoint: 480,
+                                        options: {
+                                            chart: {
+                                                width: 200,
+                                            },
+                                            legend: {
+                                                show: false,
+                                            },
+                                        },
+                                    },
+                                ],
+
+                                colors: [
+                                    CubaAdminConfig.primary,
+                                    CubaAdminConfig.secondary,
+                                    "#51bb25",
+                                    "#a927f9",
+                                    "#f8d62b",
+                                ],
+                            };
+                            $("#piechart_Track").append(`<h6 class="text-center ShowTrack">Track</h6>`);
+                            chart6 = new ApexCharts(document.querySelector("#piechart_Track"), options6);
+                            chart6.render();
+
+                            // For Signal
+                            var options7 = {
+                                chart: {
+                                    width: 380,
+                                    type: "pie",
+                                },
+                                legend: {
+                                    show: false
+                                },
+                                labels: signal,
+                                series: signalCount,
+                                responsive: [
+                                    {
+                                        breakpoint: 480,
+                                        options: {
+                                            chart: {
+                                                width: 200,
+                                            },
+                                            legend: {
+                                                show: false,
+                                            },
+                                        },
+                                    },
+                                ],
+
+                                colors: [
+                                    "#FFBA91",
+                                    "#FDB7EA",
+                                    "#FFDCCC",
+                                    "#B1C29E",
+                                    "#B7B1F2",
+                                ],
+                            };
+                            $("#piechart_Signal").append(`<h6 class="text-center ShowSignal">Signal</h6>`);
+                            chart7 = new ApexCharts(document.querySelector("#piechart_Signal"), options7);
+                            chart7.render();
+
+                            $("#piechart_Custom").hide();
+                            $("#piechartAssetName").show();
+                        }
+                        else {
+
+                            if (chart8 != null && chart8 != "" && chart8 != undefined) {
+                                chart8.destroy();
+                            }
+                            var options8 = {
+                                chart: {
+                                    width: 380,
+                                    type: "pie",
+                                },
+                                legend: {
+                                    show: false
+                                },
+                                labels: DataSeries,
+                                series: Counts,
+                                responsive: [
+                                    {
+                                        breakpoint: 480,
+                                        options: {
+                                            chart: {
+                                                width: 200,
+                                            },
+                                            legend: {
+                                                show: false,
+                                            },
+                                        },
+                                    },
+                                ],
+
+                                colors: [
+                                    "#FFBA91",
+                                    "#FDB7EA",
+                                    "#FFDCCC",
+                                    "#B1C29E",
+                                    "#B7B1F2",
+                                ],
+                            };
+
+                            chart8 = new ApexCharts(document.querySelector("#piechart_Custom"), options8);
+                            chart8.render();
+                            $("#piechart_Custom").show();
+                            $("#piechartAssetName").hide();
+                        }
+
+                        //$("#piechart").empty();
+
+                        $("#loader").hide();
+                        $("#AlertSummaryGroupView").hide();
+                        $("#tableView").hide();
+                        $("#barView").hide();
+                        $("#AlertSummaryListView").show();
+                        $("#pieView").show();
+                    }
+                    else if (selectedGraph == 3) {
+                        var Counts = [];
+                        var DataColor = [];
+                        var DataSeries = [];
+                        $.each(data, function (index, value) {
+                            Counts.push(value.Count);
+                            DataSeries.push(value.Name)
+                        });
+                        //  const uniqueArray = DataSeries.filter((value, index, self) => self.indexOf(value) === index)
+                        var options2 = {
+                            chart: {
+                                height: 350,
+                                type: "bar",
+                                toolbar: {
+                                    show: false,
+                                },
+                            },
+                            tooltip: {
+                                y: {
+                                    formatter: function (val) {
+                                        return val
+                                    },
+                                    title: {
+                                        formatter: function (seriesName) {
+                                            return ''
+                                        }
+                                    }
+                                }
+                            },
+                            plotOptions: {
+                                bar: {
+                                    vertical: true,
+                                },
+                            },
+                            dataLabels: {
+                                enabled: false,
+                            },
+                            series: [
+                                {
+                                    data: Counts,
+                                },
+                            ],
+                            xaxis: {
+                                categories: DataSeries,
+                            },
+                            colors: [CubaAdminConfig.primary],
+                        };
+                        $("#basic-bar").empty();
+                        chart2 = new ApexCharts(document.querySelector("#basic-bar"), options2);
+
+                        chart2.render();
+                        $("#loader").hide();
+                        $("#AlertSummaryGroupView").hide();
+                        $("#tableView").hide();
+                        $("#pieView").hide();
+                        $("#AlertSummaryListView").show();
+                        $("#barView").show();
+                    }
+                    else if (selectedGraph == 1) {
+                        if (selectedGraphView == 1) {
+                            $('.tblAssetTypeGroup').show();
+                            $('.tblAssetGroup').hide();
+                        }
+                        else if (selectedGraphView == 2) {
+                            $('.tblAssetTypeGroup').hide();
+                            $('.tblAssetGroup').show();
+                        }
+
+                    }
+
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+
+    function fnShowAlerSummaryLogSite(siteId, typeName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && typeName != null && typeName != undefined && typeName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertSummaryLogBySite_' + siteId + '_' + typeName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertSummaryLogBySite_' + siteId + '_' + typeName).hide();
+            }
+        }
+    }
+
+    function fnShowAlertSummaryLogAlertName(siteId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceAlertSummaryLogByAletType_' + siteId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceAlertSummaryLogByAletType_' + siteId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnShowAlertSummaryLogAsset(siteId, assetId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceAlertSummaryLogByAsset_' + siteId + "" + assetId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceAlertSummaryLogByAsset_' + siteId + "" + assetId + '_' + alertName).hide();
+            }
+        }
+    }
+
+
+</script>

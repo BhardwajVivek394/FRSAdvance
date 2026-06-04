@@ -1,0 +1,135 @@
+﻿@model Domain.Asset
+
+<table class="table table-bordered table-sm">
+    <tr>
+        <th>Direction</th>
+        <th>Time</th>
+        <th>DL Time</th>
+        <th colspan="4">Cluster</th>
+        <th colspan="4">MQTT</th>
+        <th colspan="4">FTP</th>
+    </tr>
+    <tr>
+        <th></th>
+        <th></th>
+        <th></th>
+        <th>AC</th>
+        <th>AV</th>
+        <th>BC</th>
+        <th>BV</th>
+
+        <th>AC</th>
+        <th>AV</th>
+        <th>BC</th>
+        <th>BV</th>
+
+        <th>AC</th>
+        <th>AV</th>
+        <th>BC</th>
+        <th>BV</th>
+    </tr>
+
+    @if (Model != null && Model.mPointMachineData != null)
+    {
+        foreach (var point in Model.mPointMachineData.OrderByDescending(x => x.Date))
+        {
+            try
+            {
+
+                var dbTime = Convert.ToDateTime(point.Date);
+                if (!string.IsNullOrEmpty(point.ChannelLog))
+                {
+                    Dictionary<string, Domain.PointMachineChannelLog> result =
+    Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, Domain.PointMachineChannelLog>>(point.ChannelLog);
+                    if (result != null && result.Count > 0)
+                    {
+                        var aC = result["A_C"];
+                        string statusAC = aC.s;
+                        string failureFTPAC = aC.F ?? "-";
+                        string failureClusterAC = aC.C ?? "-";
+                        string failureMQTTAC = aC.M ?? "-";
+
+                        var bC = result["B_C"];
+                        string statusBC = bC.s;
+                        string failureFTPBC = bC.F ?? "-";
+                        string failureClusterBC = bC.C ?? "-";
+                        string failureMQTTBC = bC.M ?? "-";
+
+                        var aV = result["A_V"];
+                        string statusAV = aV.s;
+                        string failureFTPAV = aV.F ?? "-";
+                        string failureClusterAV = aV.C ?? "-";
+                        string failureMQTTAV = aV.M ?? "-";
+
+                        var bV = result["B_V"];
+                        string statusBV = bV.s;
+                        string failureFTPBV = bV.F ?? "-";
+                        string failureClusterBV = bV.C ?? "-";
+                        string failureMQTTBV = bV.M ?? "-";
+
+                        <tr>
+
+                            <td>@point.Direction</td>
+                            <td>@point.Date</td>
+                            <td>
+                                @{
+                                    string directionDL = string.Empty;
+                                    string dlTime = string.Empty;
+                                    if (point.Direction.Contains("Normal"))
+                                    {
+                                        directionDL = "NWCR";
+                                    }
+                                    else if (point.Direction.Contains("Reverse"))
+                                    {
+                                        directionDL = "RWCR";
+                                    }
+                                }
+
+                                @if (ViewBag.Datalogger != null)
+                                {
+                                    var mDataloggers = ViewBag.Datalogger as List<Domain.Datalogger>;
+                                    if (mDataloggers != null && mDataloggers.Count > 0)
+                                    {
+                                        var dldata = mDataloggers.Where(x => x.Date > dbTime.AddSeconds(-5) && x.Date < dbTime.AddSeconds(5) && x.AttributeName.EndsWith(directionDL)).FirstOrDefault();
+                                        if (dldata != null && dldata.SrNo > 0)
+                                        {
+                                            dlTime = dldata.Date.ToString("yyyy-MM-dd HH:mm:ss");
+                                        }
+                                    }
+                                }
+                                <span>@dlTime</span>
+                            </td>
+
+                            <td class="@(statusAC == "C" ? "textgreencolor" : "")">@failureClusterAC</td>
+                            <td class="@(statusAV == "C" ? "textgreencolor" : "")">@failureClusterAV</td>
+                            <td class="@(statusBC == "C" ? "textgreencolor" : "")">@failureClusterBC</td>
+                            <td class="@(statusBV == "C" ? "textgreencolor" : "")">@failureClusterBV</td>
+
+                            <td class="@(statusAC == "M" ? "textgreencolor" : "")">@failureMQTTAC</td>
+                            <td class="@(statusAV == "M" ? "textgreencolor" : "")">@failureMQTTAV</td>
+                            <td class="@(statusBC == "M" ? "textgreencolor" : "")">@failureMQTTBC</td>
+                            <td class="@(statusBV == "M" ? "textgreencolor" : "")">@failureMQTTBV</td>
+
+
+                            <td class="@(statusAC == "F" ? "textgreencolor" : "")">@failureFTPAC</td>
+                            <td class="@(statusAV == "F" ? "textgreencolor" : "")">@failureFTPAV</td>
+                            <td class="@(statusBC == "F" ? "textgreencolor" : "")">@failureFTPBC</td>
+                            <td class="@(statusBV == "F" ? "textgreencolor" : "")">@failureFTPBV</td>
+
+                        </tr>
+                    }
+
+                }
+
+            }
+            catch (Exception)
+            {
+
+            }
+
+
+
+        }
+    }
+
+</table>

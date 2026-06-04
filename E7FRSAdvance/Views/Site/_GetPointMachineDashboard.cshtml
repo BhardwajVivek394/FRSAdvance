@@ -1,0 +1,1830 @@
+﻿@model Domain.AssetLister
+<style>
+    .popover {
+        max-width: 1000px;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    .popover-body table {
+        margin: 0;
+        font-size: 12px;
+    }
+
+
+
+    /* Or if you want green background with white text */
+    .popover-body .textgreencolor {
+        color: white !important;
+        background-color: green !important;
+    }
+
+    .point-dot-container {
+        display: flex;
+        gap: 20px;
+    }
+
+    .point-dot {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+    }
+
+    .point-dot-one .circle {
+        width: 20px;
+        height: 20px;
+        background-color: #dc8b33;
+        border-radius: 50%;
+    }
+
+    .point-dot-two .circle {
+        width: 20px;
+        height: 20px;
+        background-color: #00A4E0;
+        border-radius: 50%;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+
+    .f-div {
+        padding: 0px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #616161;
+    }
+
+    .hr-d1 {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .hr-d {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-right: 8px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #616161;
+    }
+
+
+        .hr-d h6 {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 4px
+        }
+
+
+    .bg-y {
+        background-color: #ffaa05 !important;
+    }
+
+    .bg-g {
+        background-color: #54ba4a !important;
+    }
+
+    .bg-se {
+        background-color: #6c757d !important;
+        margin-bottom: 6px;
+    }
+
+    .badge {
+        font-family: Arial, Helvetica, sans-serif;
+        display: inline-block;
+        padding: .35em .65em;
+        font-size: .75em;
+        font-weight: 700;
+        line-height: 1;
+        color: #fff;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: baseline;
+        border-radius: .25rem;
+    }
+
+    .pickup {
+        margin-left: 3px;
+    }
+
+
+
+
+    .shine-button {
+        position: relative;
+        color: white;
+        overflow: hidden;
+        cursor: pointer;
+    }
+
+        .shine-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -75%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(120deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.2) 100%);
+            transform: skewX(-20deg);
+            animation: shine 2s infinite;
+        }
+
+    @@keyframes shine {
+        0% {
+            left: -75%;
+        }
+
+        100% {
+            left: 125%;
+        }
+    }
+</style>
+<div id="divPointEventLogData"></div>
+<div class="people-options clearfix">
+    <div class="pull-left" style="display:inline-flex;">
+        <div class="input-group " style="margin-left:20px;">
+            @Html.TextBoxFor(x => x.SearchCriteria.AssetName, new { @class = "form-control btn-pill asset-search", @placeholder = "Search point machine" })
+        </div>
+    </div>
+    @*<div class="btn-group pull-right people-pager">
+            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+        </div>
+        <div class="btn-group pull-right people-pager">
+            <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+            <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+        </div>*@
+    @{
+        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+        if (Model.mAssets.Count == 0)
+        {
+            start = 0;
+        }
+        decimal end = Math.Floor(Model.Pager.TotalRecord);
+        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+        {
+            if (Model.Pager.PageSize == -1)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+            else
+            {
+                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                if (end > Model.Pager.TotalRecord)
+                {
+                    end = Model.Pager.TotalRecord;
+                }
+            }
+        }
+    }
+    <span class="people-count pull-right">Showing <strong>@Model.mAssets.Count</strong> Assets</span>
+</div>
+
+<div class="card">
+
+    <div class="card-body" style="padding:15px;">
+        <div class="row">
+            <div class="col-sm-2 mb-1">
+                <label>From Date</label>
+                <input type="text" name="SearchCriteria.StartDate" class="datepicker-here form-control digits from-date" id="txtFromDate" value="@Model.SearchCriteria.StartDate" data-language="en" data-bs-original-title="" title="" />
+            </div>
+            <div class="col-sm-2 mb-1">
+                <label>To Date</label>
+                <input type="text" name="SearchCriteria.EndDate" class="datepicker-here form-control digits to-date" id="txtToDate" value="@Model.SearchCriteria.EndDate" data-language="en" data-bs-original-title="" title="" />
+            </div>
+            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.User)
+            {
+                <div class="col-sm-1 mb-1">
+                    @Html.CheckBoxFor(x => x.SearchCriteria.IsPointMachineDebug)
+                    <label class="m-l-5 mt-4" for="SearchCriteria_IsPointMachineDebug">debug</label>
+                </div>
+            }
+
+            <div class="col-sm-2 mb-1 mt-4">
+                <a href="javascript:void(0)" class="btn btn-success" onclick="Search()"><i class="fa fa-search"></i></a>
+                <a href="javascript:void(0)" class="btn btn-primary" onclick="DownloadPointMachineData()" title="Download Report"><i class="fa fa-download"></i></a>
+                <a href="javascript:void(0)" class="btn btn-info" onclick="DownloadPointMachineEventData()" title="Download Event"><i class="fa fa-download"></i></a>
+                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping)
+                {
+                    <a href="javascript:void(0)" class="btn btn-warning" onclick="DownloadPointLogTxt()" title="Download Log"><i class="fa fa-download"></i></a>
+                    <a href="javascript:void(0)" class="btn btn-success" onclick="DownloadPointEventLog()" title="Download Event Log"><i class="fa fa-download"></i></a>
+                }
+            </div>
+            <div class="col-sm-1 mb-1 mt-4">
+
+                @Html.DropDownListFor(model => model.SearchCriteria.TakePointMachineData,
+                new List<SelectListItem> {
+                     new SelectListItem { Value = "0" , Text = "All" },
+                     new SelectListItem { Value = "2" , Text = "2" },
+                     new SelectListItem { Value = "4" , Text = "4" }
+                  },
+                new { @class = "form-control", style = "display: none;" })
+            </div>
+            <div class="col-sm-4 mb-1 mt-4">
+                @*<a href="javascript:void(0)" title="Normal Current" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId', 'Normal', 'C');return false;">NC</a> | <a href="javascript:void(0)" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId', 'Normal', 'V');return false;" title="Normal Voltage">NV</a> | <a href="javascript:void(0)" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId','Reverse','C');return false;" title="Reverse Current">RC</a> | <a href="javascript:void(0)" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId','Reverse','V');return false;" title="Reverse Voltage">RV</a>
+                    <br />*@
+
+                @if (Model.mAssets != null && Model.mAssets.Where(x => x.IsSeriesOpration != null && x.IsSeriesOpration.Value).Count() > 0)
+                {
+                    <a href="javascript:void(0)" class="btn btn-default" title="Normal Current" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId', 'Normal', 'C');return false;">NC</a>
+                    <span>|</span>
+                    <a href="javascript:void(0)" class="btn btn-default" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId', 'Normal', 'V');return false;" title="Normal Voltage">NV</a>
+                    <span>|</span>
+                    <a href="javascript:void(0)" class="btn btn-default" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId','Reverse','C');return false;" title="Reverse Current">RC</a>
+                    <span>|</span>
+                    <a href="javascript:void(0)" class="btn btn-default" onclick="fnBindMultipleSignatureEventGraghBySite('@Model.SearchCriteria.SiteId','Reverse','V');return false;" title="Reverse Voltage">RV</a>
+                    @*<span>|</span>
+                        <a class="btn btn-default" title="Combine Normal" href="javascript:void(0)" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','CC','Normal')">CN</a>
+                        <span>|</span>
+                        <a class="btn btn-default" title="Combine Reverse" href="javascript:void(0)" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','CC','Reverse')">CR</a>*@
+                }
+                <span>|</span>
+                <a class="btn btn-default" title="A Normal" href="javascript:void(0);" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','AC','Normal')">AN</a>
+                <span>|</span>
+                <a class="btn btn-default" title="A Reverse" href="javascript:void(0)" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','AC','Reverse')">AR</a>
+                <span>|</span>
+                <a class="btn btn-default" title="B Normal" href="javascript:void(0)" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','BC','Normal')">BN</a>
+                <span>|</span>
+                <a class="btn btn-default" title="B Reverse" href="javascript:void(0)" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','BC','Reverse')">BR</a>
+            </div>
+        </div>
+        @if (Model.mAssets != null && Model.mAssets.Count > 0)
+        {
+            foreach (var item in Model.mAssets)
+            {
+                int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+                var vibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration")).ToList();
+                bool isVibration = false;
+                if (vibration != null && vibration.Count > 0)
+                {
+                    isVibration = true;
+                }
+                string aEnd = string.Empty;
+                string bEnd = string.Empty;
+                string aVibration = string.Empty;
+                string bVibration = string.Empty;
+                string displacement1 = string.Empty;
+                if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                {
+                    var mAEnd = item.assetAttributes.Where(x => x.Title == "A End - NWKR" || x.Title == "A End - RWKR" || x.Title == "A End - NWKR (Loc)" || x.Title == "A End - RWKR (Loc)").ToList();
+                    if (mAEnd != null && mAEnd.Count > 0)
+                    {
+                        var mDisplacement1 = item.assetAttributes.Where(x => x.Title.Contains("Displacement1")).ToList();
+                        if (mDisplacement1 != null && mDisplacement1.Count > 0)
+                        {
+                            mAEnd.AddRange(mDisplacement1);
+                        }
+
+                        var mDisplacement2 = item.assetAttributes.Where(x => x.Title.Contains("Displacement2")).ToList();
+                        if (mDisplacement2 != null && mDisplacement2.Count > 0)
+                        {
+                            mAEnd.AddRange(mDisplacement2);
+                        }
+                        aEnd = Newtonsoft.Json.JsonConvert.SerializeObject(mAEnd);
+                    }
+                    var mBEnd = item.assetAttributes.Where(x => x.Title == "B End - NWKR" || x.Title == "B End - RWKR" || x.Title == "B End - NWKR (Loc)" || x.Title == "B End - RWKR (Loc)").ToList();
+                    if (mBEnd != null && mBEnd.Count > 0)
+                    {
+                        bEnd = Newtonsoft.Json.JsonConvert.SerializeObject(mBEnd);
+                    }
+                    var mAVibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration A")).ToList();
+                    if (mAVibration != null && mAVibration.Count > 0)
+                    {
+                        aVibration = Newtonsoft.Json.JsonConvert.SerializeObject(mAVibration);
+                    }
+                    var mBVibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration B")).ToList();
+                    if (mBVibration != null && mBVibration.Count > 0)
+                    {
+                        bVibration = Newtonsoft.Json.JsonConvert.SerializeObject(mBVibration);
+                    }
+
+                }
+
+                <div class="col-sm-12 col-md-12 col-lg-12">
+                    <div class="card">
+                        <div class="col-xl-12 news box-col-12">
+                            <div class="card card-border">
+                                <div class="bg-secondary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                    <div class="" style="width:95%;float:left;padding:5px;border-top-left-radius:15px;">
+                                        <h6 style="margin-left:10px">
+                                            <a class="text-white" href="javascript:void(0)" onclick="fnShowPointCircuitDiagram('@item.AssetTypeId','@item.Id')"> @item.AssetTypeName : @item.Name</a>
+                                        </h6>
+                                        <span style="margin-left:11px;">Index Score: @item.IndexScore</span>
+                                    </div>
+                                    <div class="text-center bg-dark" style="width:5%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:58px">
+
+                                        @if (item.UnderMaintence == true)
+                                        {
+                                            <div class="text-center"> <i class="fa fa-bell-slash fa fa-das" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                        }
+                                        else
+                                        {
+                                            <div class="text-center">
+                                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                            </div>
+                                        }
+                                        @*<a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>*@
+                                        <a href="javascript:void(0)" onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                                    </div>
+
+                                </div>
+                                <div class="card-body" style="padding:10px;margin-bottom:-15px">
+                                    <div class="row">
+                                        <div class="col-xl-3 mb10 mt20 text-left">
+                                            <div class="point-dot-container">
+                                                @if (item.IsThickWave != null && item.IsThickWave.Value)
+                                                {
+                                                    if (item.ThickWaveTypeId != null && (item.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.A || item.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both))
+                                                    {
+                                                        <div class="point-dot point-dot-two">
+                                                            <div class="circle"></div>
+                                                            @if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                                            {
+                                                                <div class="text"> PT-@item.AliasDirectionA TWS</div>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="text">@(item.Name.Contains("PT")? item.Name : "PT-" + item.Name)A TWS</div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="point-dot point-dot-one">
+                                                            <div class="circle"></div>
+                                                            @if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                                            {
+                                                                <div class="text"> PT-@item.AliasDirectionA IRS</div>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="text"> @(item.Name.Contains("PT")? item.Name : "PT-" + item.Name)A IRS</div>
+                                                            }
+                                                        </div>
+                                                    }
+
+                                                    if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+                                                        if (item.ThickWaveTypeId != null && (item.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.B || item.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both))
+                                                        {
+                                                            <div class="point-dot point-dot-two">
+                                                                <div class="circle"></div>
+                                                                @if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                                                {
+                                                                    <div class="text">PT-@item.AliasDirectionB TWS</div>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="text">@(item.Name.Contains("PT")? item.Name : "PT-" + item.Name)B TWS</div>
+                                                                }
+
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="point-dot point-dot-one">
+                                                                <div class="circle"></div>
+                                                                @if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                                                {
+                                                                    <div class="text">PT-@item.AliasDirectionB IRS</div>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="text">@(item.Name.Contains("PT")? item.Name : "PT-" + item.Name)B IRS</div>
+                                                                }
+                                                            </div>
+                                                        }
+                                                    }
+
+                                                }
+                                                else
+                                                {
+                                                    <div class="point-dot point-dot-one">
+                                                        <div class="circle"></div>
+                                                        @if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                                        {
+                                                            <div class="text"> PT-@item.AliasDirectionA IRS</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="text"> @(item.Name.Contains("PT")? item.Name : "PT-" + item.Name)A IRS</div>
+                                                        }
+                                                    </div>
+
+                                                    if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+                                                        <div class="point-dot point-dot-one">
+                                                            <div class="circle"></div>
+                                                            @if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                                            {
+                                                                <div class="text"> PT-@item.AliasDirectionB IRS</div>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="text"> @(item.Name.Contains("PT")? item.Name : "PT-" + item.Name)B IRS</div>
+                                                            }
+                                                        </div>
+                                                    }
+
+                                                }
+
+
+
+
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-8 mb10 mt20 text-right">
+                                            @{
+                                                List<string> dlAttrs = new List<string>();
+                                            }
+                                            @if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.Count > 0 && Model.Site != null && Model.Site.IsDatalogger)
+                                            {
+
+                                                <div class="row">
+                                                    <div class="col-xl-12">
+                                                        <div class="row">
+                                                            @foreach (var assetInfo in item.mAssetInfoDataloggers)
+                                                            {
+                                                                var name = assetInfo.DataloggerAttribute.Split('-').LastOrDefault().Trim();
+
+                                                                if (!dlAttrs.Contains(name))
+                                                                {
+                                                                    <div class="col-xl-2">
+                                                                        <div class="hr-d">
+                                                                            <h6>@assetInfo.DataloggerAssetName</h6>
+                                                                            <div class="DLAttribute@(item.Id)@(assetInfo.DataloggerAttributeId)">
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                                dlAttrs.Add(name);
+                                                            }
+                                                            <div class="col-xl-2">
+                                                                <div class="hr-d">
+                                                                    <span class="badge bg-se " style="cursor:pointer" onclick="fnShowDataLoggerEvent('@item.Id')">Detail</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+
+                                                    </div>
+
+                                                </div>
+
+                                            }
+                                        </div>
+                                        <div class="col-xl-1 mb10 mt20 text-right">
+                                            <a href="javascript:void(0)" style="margin-bottom:10px;float:right;" class="btn btn-primary" onclick="DownloadPointData(@item.Id)">Download</a>
+                                        </div>
+                                    </div>
+
+
+                                    <div class="table-responsive width100p tblAssetData">
+                                        <table class="table table-bordered table-striped">
+                                            <thead>
+                                                <tr>
+                                                    <th class="hdnAssetNameTD@(item.Id)">
+                                                        @item.Name
+                                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                        {
+                                                            <i class="fa fa-info-circle f-18" onclick="BindPointEventLogData('@item.Id')"></i>
+                                                        }
+                                                    </th>
+
+                                                    @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+                                                        if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                                        {
+                                                            <th @(item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineA != null && item.MachineA.Value > 0 ? "colspan=2" : "")><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId', '@item.Id', '@aEnd'); return false;"> Direction:@item.AliasDirectionA</a></th>
+                                                        }
+                                                        else
+                                                        {
+                                                            <th @(item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineA != null && item.MachineA.Value > 0 ? "colspan=2" : "")><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@aEnd'); return false;">Direction:A</a></th>
+                                                        }
+
+                                                        if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                                        {
+                                                            <th @(item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineB != null && item.MachineB.Value > 0 ? "colspan=2" : "")><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@bEnd'); return false;"> Direction:@item.AliasDirectionB</a></th>
+                                                        }
+                                                        else
+                                                        {
+                                                            <th @(item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineB != null && item.MachineB.Value > 0 ? "colspan=2" : "")><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@bEnd'); return false;"> Direction:B</a></th>
+                                                        }
+
+                                                        if (isVibration)
+                                                        {
+                                                            <th><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@aVibration'); return false;"> VibrationA(x/y/z)</a></th>
+                                                            <th><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@bVibration'); return false;"> VibrationB(x/y/z)</a></th>
+                                                        }
+                                                        <th></th>
+                                                    }
+                                                    else
+                                                    {
+                                                        <th><a href="javascript:void(0)" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@aEnd'); return false;">Direction</a></th>
+                                                        <th></th>
+                                                        if (isVibration)
+                                                        {
+                                                            <th></th>
+                                                            <th></th>
+                                                        }
+                                                    }
+
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tblAttributeData@(item.Id)" class="tblAttributes">
+                                                <tr>
+                                                    <td>
+                                                    </td>
+                                                    <td>
+                                                        @if (item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineA != null && item.MachineA.Value > 0)
+                                                        {
+                                                            <div class="row">
+                                                                <div class="col-md-12 text-center">
+                                                                    <b><u>Relay Room</u></b>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                        <div class='row'>
+                                                            <div class="col-md-8" id="diectionA@(item.Id)"></div>
+                                                            <div class="col-md-4" id="diectionLocationA@(item.Id)"></div>
+                                                        </div>
+                                                    </td>
+                                                    @if (item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineA != null && item.MachineA.Value > 0)
+                                                    {
+                                                        <td>
+                                                            <div class="row">
+                                                                <div class="col-md-12 text-center">
+                                                                    <b><u>Field</u></b>
+                                                                </div>
+                                                            </div>
+                                                            <div id="DisplacementA@(item.Id)"></div>
+                                                        </td>
+                                                    }
+                                                    <td>
+                                                        @if (item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineB != null && item.MachineB.Value > 0)
+                                                        {
+                                                            <div class="row">
+                                                                <div class="col-md-12 text-center">
+                                                                    <b><u>Relay Room</u></b>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                        <div id="diectionB@(item.Id)"></div>
+                                                        <div id="diectionLocationB@(item.Id)"></div>
+                                                    </td>
+                                                    @if (item.ISDisplacement != null && item.ISDisplacement.Value && item.MachineB != null && item.MachineB.Value > 0)
+                                                    {
+                                                        <td>
+                                                            <div class="row">
+                                                                <div class="col-md-12 text-center">
+                                                                    <b><u>Field</u></b>
+                                                                </div>
+                                                            </div>
+                                                            <div id="DisplacementB@(item.Id)"></div>
+                                                        </td>
+                                                    }
+                                                    @if (isVibration)
+                                                    {
+                                                        var VibA = vibration.Where(x => x.Title.ToLower().Contains("Vibration A".ToLower())).ToList();
+                                                        var VibB = vibration.Where(x => x.Title.ToLower().Contains("Vibration B".ToLower())).ToList();
+                                                        int a = 1;
+                                                        int b = 1;
+                                                        <td id="vibrationA@(item.Id)">
+
+                                                            @foreach (var assetAttribute in VibA)
+                                                            {
+                                                                if (VibA.Count == a)
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span><span> | </span>
+                                                                }
+                                                                a++;
+                                                            }
+
+                                                        </td>
+                                                        <td id="vibrationB@(item.Id)">
+                                                            @foreach (var assetAttribute in VibB)
+                                                            {
+                                                                if (VibB.Count == b)
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                    </span><span> | </span>
+                                                                }
+                                                                b++;
+                                                            }
+                                                        </td>
+                                                    }
+                                                    <td>
+                                                        <a href="javascript:void(0)" onclick="fnShowPMExtraColumn(this, '@item.Id'); return false;">See more columns</a>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div class="table-responsive width100p tblAssetData m-b-20" style="overflow:auto;max-height:420px;">
+
+                                        <table class="table table-bordered table-striped" id="tblPoint@(item.Id)">
+                                            <thead>
+                                                <tr>
+                                                    <th>Date</th>
+                                                    <th>Name</th>
+                                                    <th>Direction</th>
+                                                    @if (item.IsSeriesOpration != null && item.IsSeriesOpration.Value)
+                                                    {
+                                                        <th>New Combine<br /><a href="javascript:void(0)" title="Normal Current" onclick="fnBindMultipleSignatureEventGragh('@item.Id', 'Normal', 'C');return false;">NC</a> | <a href="javascript:void(0)" onclick="fnBindMultipleSignatureEventGragh('@item.Id', 'Normal', 'V');return false;" title="Normal Voltage">NV</a> | <a href="javascript:void(0)" onclick="fnBindMultipleSignatureEventGragh('@item.Id','Reverse','C');return false;" title="Reverse Current">RC</a> | <a href="javascript:void(0)" onclick="fnBindMultipleSignatureEventGragh('@item.Id','Reverse','V');return false;" title="Reverse Voltage">RV</a></th>
+
+                                                        <th>Combine <br /> <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'CC');return false;">N</a> | <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Reverse','CC');return false;">R</a></th>
+                                                    }
+
+                                                    @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+
+                                                        <th>A Current(Max/Avg) <br /><a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'AC');return false;">N</a> | <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Reverse','AC');return false;">R</a> | <a title="Normal Presentation" href="javascript:void(0)" onclick="fnShowPointmachineGif('@item.Id','Normal','AC');return false;">NP</a> | <a title="Reverse Presentation" href="javascript:void(0)" onclick="fnShowPointmachineGif('@item.Id','Reverse','AC');return false;">RP</a> | <a href="javascript:void(0)" title="Normal Current Graph" onclick="fnShowPMNormalCurrentGraph('@item.Id','AC');return false;">N-CG</a> | <a href="javascript:void(0)" title="Reverse Current Graph" onclick="fnShowPMReverseCurrentGraph('@item.Id','AC');return false;">R-CG</a></th>
+                                                        <th>A V<sub>PT110 DC LOC</sub> <br /><a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Normal','AV');return false;">N</a> | <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Reverse','AV');return false;">R</a></th>
+                                                        <th>A T<sub>PT</sub> (ms)</th>
+                                                    }
+                                                    else
+                                                    {
+                                                        <th>Current(Max/Avg) <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'AC');return false;">N</a> | <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Reverse','AC');return false;">R</a> | <a href="javascript:void(0)" onclick="fnShowPointmachineGif('@item.Id','Normal','AC');return false;">NP</a> | <a href="javascript:void(0)" onclick="fnShowPointmachineGif('@item.Id','Reverse','AC');return false;">RP</a> | <a href="javascript:void(0)" title="Normal Current Graph" onclick="fnShowPMNormalCurrentGraph('@item.Id','AC');return false;">N-CG</a> | <a href="javascript:void(0)" title="Reverse Current Graph" onclick="fnShowPMReverseCurrentGraph('@item.Id','AC');return false;">R-CG</a></th>
+                                                        <th>V<sub>PT110 DC LOC</sub></th>
+                                                        <th>T<sub>PT</sub> (ms)</th>
+                                                    }
+
+
+                                                    @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+                                                        <th>B Current(Max/Avg) <br /><a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Normal','BC');return false;">N</a> | <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Reverse','BC');return false;">R</a> | <a href="javascript:void(0)" title="Normal Current Graph" onclick="fnShowPMNormalCurrentGraph('@item.Id','BC');return false;">N-CG</a> | <a href="javascript:void(0)" title="Reverse Current Graph" onclick="fnShowPMReverseCurrentGraph('@item.Id','AC');return false;">R-CG</a></th>
+                                                        <th>B V<sub>PT110 DC LOC</sub> <br /><a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Normal','BV');return false;">N</a> | <a href="javascript:void(0)" onclick="fnShowMultipleGraph('@item.Id','Reverse','BV');return false;">R</a></th>
+                                                        <th>B T<sub>PT</sub> (ms)</th>
+
+                                                    }
+
+                                                    @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+
+                                                        <th class="PMExtraColumn_@item.Id display-none" width="120">Cluster A</th>
+                                                        <th class="PMExtraColumn_@item.Id display-none">Deviation A</th>
+                                                    }
+                                                    else
+                                                    {
+                                                        <th class="PMExtraColumn_@item.Id display-none" width="120">Cluster</th>
+                                                        <th class="PMExtraColumn_@item.Id display-none">Deviation</th>
+                                                    }
+
+                                                    @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                                    {
+                                                        <th class="PMExtraColumn_@item.Id display-none" width="120">Cluster B</th>
+                                                        <th class="PMExtraColumn_@item.Id display-none">Deviation B</th>
+                                                    }
+
+
+                                                </tr>
+                                            </thead>
+                                            <tbody class="fbody@(item.Id)">
+                                                @*<tr>
+                                                        <td colspan="15" class="text-center">
+                                                            <img src="~/assets/images/loader.gif" style='max-width:100px;height:100px;' />
+                                                        </td>
+                                                    </tr>*@
+                                                @Html.Partial("_PointMachineDatePartial", item)
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <p style="font-size:15px">No record found!</p>
+        }
+
+
+
+    </div>
+</div>
+@{
+    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+    serializer.MaxJsonLength = Int32.MaxValue;
+    var jsonModel = serializer.Serialize(Model);
+}
+
+<script>
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var aEN = null;
+    var aER = null;
+    var bEN = null;
+    var bER = null;
+
+    var isSiteKeeping = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping');
+    var displacementTypeNormalOpen ="@E7FRSAdvance.Utility.Utility.DisplacementType.Normal_Open.GetHashCode()"
+    var displacementTypeNormalClose ="@E7FRSAdvance.Utility.Utility.DisplacementType.Normal_Close.GetHashCode()"
+    var aDisplacement1 = 0;
+    var aDisplacement2 = 0;
+    var bDisplacement = 0;
+    var isCalibration = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsCalibration');
+    (function ($) {
+        $.fn.focusTextToEnd = function () {
+            this.focus();
+            var $thisVal = this.val();
+            this.val('').val($thisVal);
+            return this;
+        }
+    }(jQuery));
+
+
+
+    $(document).ready(function () {
+        $(".asset-search").keyup(function (e) {
+            setTimeout(function () {
+                $("#frmAssetDetails").submit();
+            }, 3000)
+        });
+
+
+        $('[data-bs-toggle="popover"]').popover({
+            trigger: 'hover',  // or 'click'
+            html: true
+        });
+
+        var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
+        popoverTriggerList.forEach(function (el) {
+            var content = el.getAttribute('data-bs-content');
+            if (content && content.trim() !== '') {
+                new bootstrap.Popover(el, {
+                    html: true,
+                    sanitize: false  // This allows ALL HTML including tables
+                });
+            }
+        });
+
+        $("#lblAssetType").html($("#AssetName" + $("#hdnassetTypeId").val()).val());
+        $(".asset-search").focusTextToEnd();
+        $('#spnDLLastUpdate').text('');
+     //   $('#Pager').select2({ minimumResultsForSearch: Infinity });
+
+     //   $('#drpPageSize').select2({ minimumResultsForSearch: Infinity });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            //$("#hdndateValue").val();
+            //$("#hdnassetTypeId").val();
+            $("#frmAssetDetails").submit();
+        });
+
+        $('.from-date').datepicker();
+        $('.to-date').datepicker();
+
+
+        $('#txtFromDate').change(function () {
+            fnShowPointMachineData();
+        });
+
+        $('#txtToDate').change(function () {
+            fnShowPointMachineData();
+        });
+        fnShowPointMachineData();
+
+        //  $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        json = @Html.Raw(jsonModel);
+          mQTT=@Html.Raw(Json.Encode(Model.MQTTDetail));
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        for (var i = 0; i < channels.length; i++) {
+            $("#c" + i).html('');
+        }
+        $('#spnDLLastUpdate').text('');
+        ///Create a client instance
+        //$scope.client = new Paho.Client('mqtt.wattmon.com', 8083, "clientId");
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+
+        if (isSiteKeeping || admin == '@E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode()') {
+            fnGetWatchList();
+        }
+
+        //ReceivedWebSocket();
+
+        //debugger;
+        //$.each(json.mAssets, function (id, item) {
+
+        //    SearchData(item.Id);
+
+        //});
+    });
+
+    function fnShowPointMachineData() {
+        var start = new Date($('#txtFromDate').val());
+        var end = new Date($('#txtToDate').val());
+        var days = new Date(end - start) / (1000 * 60 * 60 * 24);
+        if (Math.round(days) >= 1) {
+            $('#SearchCriteria_TakePointMachineData').show();
+        } else {
+            $("#SearchCriteria_TakePointMachineData").val($("#SearchCriteria_TakePointMachineData option:first").val());
+            $('#SearchCriteria_TakePointMachineData').hide();
+        }
+    }
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i]);
+
+                client.subscribe(mQQTPath + 'dl/#');
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['roles'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindPointMachineData(message.destinationName, array);
+
+                    try {
+                        BindCircuitPointSimulation(message.destinationName, array);
+
+                    }
+                    catch (err) {
+
+                    }
+                }
+            }
+        }
+        if (message.destinationName.includes("/dl/")) {
+
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var jsonData = parseJson['bits'];
+                var tsTime = parseJson['ts'];
+                if (tsTime != null) {
+                    let timeOnly = tsTime.split(" ")[0];
+                    $('#spnDLLastUpdate').text(timeOnly);
+                }
+                if (jsonData != null && jsonData != undefined && jsonData.length > 0) {
+                    var jsonArrayString = '';
+                    for (var i = 0; i < jsonData.length; i++) {
+                        var decimalNumber = decimalToBinary(jsonData[i]);
+                        if (decimalNumber != null) {
+                            if (decimalNumber.length != 8) {
+                                decimalNumber = ("00000000" + decimalNumber.toString(2)).substr(-8);
+                            }
+                            const reversedString = decimalNumber.split("").reduce((acc, char) => char + acc, "");
+
+                            jsonArrayString += reversedString;
+                        }
+                    }
+                    var jsonArray = jsonArrayString.split('');
+                    if (jsonArray != null && jsonArray != undefined && jsonArray.length > 0) {
+                        try {
+                            if (isDatalogger == "True") {
+
+                                BindPointDataLoggerAttribute(jsonArray);
+                                try {
+                                    BindCircuitDataLoggerSimulation(message.destinationName, jsonArray);
+                                }
+                                catch (err) {
+
+                                }
+                            }
+                        }
+                        catch (err) {
+
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            var channeldata = message.payloadString.split(',');
+            BindPointMachineData(message.destinationName, channeldata);
+        }
+
+
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+
+                var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+                if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+                    var d = new Date();
+                    var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                    $("#c" + i).html(time);
+                }
+            }
+        }
+    }
+
+    function BindPointMachineData(basePath, data) {
+
+        $.each(json.mAssets, function (id, item) {
+
+            var aENAttr = {};
+            var aERAttr = {};
+            var bENAttr = {};
+            var bERAttr = {};
+
+            var aENLAttr = {};
+            var aERLAttr = {};
+            var bENLAttr = {};
+            var bERLAttr = {};
+
+
+            aEN = null;
+            aER = null;
+            bEN = null;
+            bER = null;
+
+            var aENL = 0;
+            var aERL = 0;
+            var bENL = 0;
+            var bERL = 0;
+
+            if (item.Id == 24163) {
+                debugger;
+
+            }
+
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+                    var str1 = basePath.toLowerCase();
+                    var str2 = "";
+                    if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                        str2 = inItem.AssetInfoChannel.toLowerCase();
+                    }
+                    if (str1.indexOf(str2) != -1) {
+
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+
+                        if (infoValue != null) {
+                            var dataValue = data[infoValue];
+                            var id = "#hdnAttributeData" + inItem.Id + item.Id;
+                            if (infoMultiplication != null) {
+                                var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                if (inItem.Title == "A End - NWKR") {
+                                    aEN = v;
+
+                                    aENAttr.AssetId = item.Id;
+                                    aENAttr.AttributeId = inItem.Id;
+                                    aENAttr.Multiplication = inItem.Multiplication;
+                                    aENAttr.AssetName = item.Name;
+                                    aENAttr.AttributeName = inItem.Title;
+                                    aENAttr.CurrentMultiplication = aEN;
+                                }
+                                else if (inItem.Title == "A End - RWKR") {
+                                    aER = v;
+
+                                    aERAttr.AssetId = item.Id;
+                                    aERAttr.AttributeId = inItem.Id;
+                                    aERAttr.Multiplication = inItem.Multiplication;
+                                    aERAttr.AssetName = item.Name;
+                                    aERAttr.AttributeName = inItem.Title;
+                                    aERAttr.CurrentMultiplication = aER;
+                                }
+
+                                if (inItem.Title == "B End - NWKR") {
+                                    bEN = v;
+
+                                    bENAttr.AssetId = item.Id;
+                                    bENAttr.AttributeId = inItem.Id;
+                                    bENAttr.Multiplication = inItem.Multiplication;
+                                    bENAttr.AssetName = item.Name;
+                                    bENAttr.AttributeName = inItem.Title;
+                                    bENAttr.CurrentMultiplication = bEN;
+                                }
+
+                                if (inItem.Title == "B End - RWKR") {
+                                    bER = v;
+
+                                    bERAttr.AssetId = item.Id;
+                                    bERAttr.AttributeId = inItem.Id;
+                                    bERAttr.Multiplication = inItem.Multiplication;
+                                    bERAttr.AssetName = item.Name;
+                                    bERAttr.AttributeName = inItem.Title;
+                                    bERAttr.CurrentMultiplication = bER;
+                                }
+
+                                if (inItem.Title == "A End - NWKR (Loc)") {
+                                    aENL = v;
+
+                                    aENLAttr.AssetId = item.Id;
+                                    aENLAttr.AttributeId = inItem.Id;
+                                    aENLAttr.Multiplication = inItem.Multiplication;
+                                    aENLAttr.AssetName = item.Name;
+                                    aENLAttr.AttributeName = inItem.Title;
+                                    aENLAttr.CurrentMultiplication = aENL;
+                                }
+                                else if (inItem.Title == "A End - RWKR (Loc)") {
+                                    aERL = v;
+
+                                    aERLAttr.AssetId = item.Id;
+                                    aERLAttr.AttributeId = inItem.Id;
+                                    aERLAttr.Multiplication = inItem.Multiplication;
+                                    aERLAttr.AssetName = item.Name;
+                                    aERLAttr.AttributeName = inItem.Title;
+                                    aERLAttr.CurrentMultiplication = aERL;
+                                }
+
+                                if (inItem.Title == "B End - NWKR (Loc)") {
+                                    bENL = v;
+
+                                    bENLAttr.AssetId = item.Id;
+                                    bENLAttr.AttributeId = inItem.Id;
+                                    bENLAttr.Multiplication = inItem.Multiplication;
+                                    bENLAttr.AssetName = item.Name;
+                                    bENLAttr.AttributeName = inItem.Title;
+                                    bENLAttr.CurrentMultiplication = bENL;
+                                }
+                                else if (inItem.Title == "B End - RWKR (Loc)") {
+                                    bERL = v;
+
+                                    bERLAttr.AssetId = item.Id;
+                                    bERLAttr.AttributeId = inItem.Id;
+                                    bERLAttr.Multiplication = inItem.Multiplication;
+                                    bERLAttr.AssetName = item.Name;
+                                    bERLAttr.AttributeName = inItem.Title;
+                                    bERLAttr.CurrentMultiplication = bERL;
+                                }
+
+                                if (item.ISDisplacement != null && item.ISDisplacement == true) {
+                                    if (inItem.Title == "Displacement1") {
+                                        var disMainData = parseFloat(dataValue) * 1;
+                                        aDisplacement1 = (parseFloat(infoMultiplication) - disMainData).toFixed(2);
+                                    }
+                                    if (inItem.Title == "Displacement2") {
+                                        var disMainData = parseFloat(dataValue) * 1;
+                                        aDisplacement2 = (parseFloat(infoMultiplication) - disMainData).toFixed(2);
+                                    }
+                                }
+                                if (inItem.Title == "Vibration A end - X Axis") {
+                                    var vibData = parseFloat(dataValue) * 1;
+                                    $(id).html((vibData - parseFloat(infoMultiplication)).toFixed(2));
+                                }
+                                if (inItem.Title == "Vibration A end - Y Axis") {
+                                    var vibData = parseFloat(dataValue) * 1;
+                                    $(id).html((vibData - parseFloat(infoMultiplication)).toFixed(2));
+                                }
+                                if (inItem.Title == "Vibration A end - Z Axis") {
+                                    var vibData = parseFloat(dataValue) * 1;
+                                    $(id).html((vibData - parseFloat(infoMultiplication)).toFixed(2));
+                                }
+                                if (inItem.Title == "Vibration B end - X Axis") {
+                                    var vibData = parseFloat(dataValue) * 1;
+                                    $(id).html((vibData - parseFloat(infoMultiplication)).toFixed(2));
+                                }
+                                if (inItem.Title == "Vibration B end - Y Axis") {
+                                    var vibData = parseFloat(dataValue) * 1;
+                                    $(id).html((vibData - parseFloat(infoMultiplication)).toFixed(2));
+                                }
+                                if (inItem.Title == "Vibration B end - Z Axis") {
+                                    var vibData = parseFloat(dataValue) * 1;
+                                    $(id).html((vibData - parseFloat(infoMultiplication)).toFixed(2));
+                                }
+
+                                //$(id).html(v);
+                            }
+                            else {
+                                var v = (Math.round(dataValue * 100) / 100).toFixed(1)
+                                // $(id).html(v);
+
+                                if (inItem.Title == "A End - NWKR") {
+                                    aEN = v;
+
+                                    aENAttr.AssetId = item.Id;
+                                    aENAttr.AttributeId = inItem.Id;
+                                    aENAttr.Multiplication = inItem.Multiplication;
+                                    aENAttr.AssetName = item.Name;
+                                    aENAttr.AttributeName = inItem.Title;
+                                    aENAttr.CurrentMultiplication = aEN;
+                                }
+                                if (inItem.Title == "A End - RWKR") {
+                                    aER = v;
+
+                                    aERAttr.AssetId = item.Id;
+                                    aERAttr.AttributeId = inItem.Id;
+                                    aERAttr.Multiplication = inItem.Multiplication;
+                                    aERAttr.AssetName = item.Name;
+                                    aERAttr.AttributeName = inItem.Title;
+                                    aERAttr.CurrentMultiplication = aER;
+                                }
+                                if (inItem.Title == "B End - NWKR") {
+                                    bEN = v;
+
+                                    bENAttr.AssetId = item.Id;
+                                    bENAttr.AttributeId = inItem.Id;
+                                    bENAttr.Multiplication = inItem.Multiplication;
+                                    bENAttr.AssetName = item.Name;
+                                    bENAttr.AttributeName = inItem.Title;
+                                    bENAttr.CurrentMultiplication = bEN;
+                                }
+                                if (inItem.Title == "B End - RWKR") {
+                                    bER = v;
+
+                                    bERAttr.AssetId = item.Id;
+                                    bERAttr.AttributeId = inItem.Id;
+                                    bERAttr.Multiplication = inItem.Multiplication;
+                                    bERAttr.AssetName = item.Name;
+                                    bERAttr.AttributeName = inItem.Title;
+                                    bERAttr.CurrentMultiplication = bER;
+                                }
+
+                                if (inItem.Title == "A End - NWKR (Loc)") {
+                                    aENL = v;
+
+                                    aENLAttr.AssetId = item.Id;
+                                    aENLAttr.AttributeId = inItem.Id;
+                                    aENLAttr.Multiplication = inItem.Multiplication;
+                                    aENLAttr.AssetName = item.Name;
+                                    aENLAttr.AttributeName = inItem.Title;
+                                    aENLAttr.CurrentMultiplication = aENL;
+                                }
+                                else if (inItem.Title == "A End - RWKR (Loc)") {
+                                    aERL = v;
+
+                                    aERLAttr.AssetId = item.Id;
+                                    aERLAttr.AttributeId = inItem.Id;
+                                    aERLAttr.Multiplication = inItem.Multiplication;
+                                    aERLAttr.AssetName = item.Name;
+                                    aERLAttr.AttributeName = inItem.Title;
+                                    aERLAttr.CurrentMultiplication = aERL;
+                                }
+
+                                if (inItem.Title == "B End - NWKR (Loc)") {
+                                    bENL = v;
+
+                                    bENLAttr.AssetId = item.Id;
+                                    bENLAttr.AttributeId = inItem.Id;
+                                    bENLAttr.Multiplication = inItem.Multiplication;
+                                    bENLAttr.AssetName = item.Name;
+                                    bENLAttr.AttributeName = inItem.Title;
+                                    bENLAttr.CurrentMultiplication = bENL;
+                                }
+                                else if (inItem.Title == "B End - RWKR (Loc)") {
+                                    bERL = v;
+
+                                    bERLAttr.AssetId = item.Id;
+                                    bERLAttr.AttributeId = inItem.Id;
+                                    bERLAttr.Multiplication = inItem.Multiplication;
+                                    bERLAttr.AssetName = item.Name;
+                                    bERLAttr.AttributeName = inItem.Title;
+                                    bERLAttr.CurrentMultiplication = bERL;
+                                }
+
+                                if (inItem.Title == "Vibration A end - X Axis") {
+                                    $(id).html(dataValue);
+                                }
+                                if (inItem.Title == "Vibration A end - Y Axis") {
+                                    $(id).html(dataValue);
+                                }
+                                if (inItem.Title == "Vibration A end - Z Axis") {
+                                    $(id).html(dataValue);
+                                }
+                                if (inItem.Title == "Vibration B end - X Axis") {
+                                    $(id).html(dataValue);
+                                }
+                                if (inItem.Title == "Vibration B end - Y Axis") {
+                                    $(id).html(dataValue);
+                                }
+                                if (inItem.Title == "Vibration B end - Z Axis") {
+                                    $(id).html(dataValue);
+                                }
+                            }
+                        }
+                    }
+                    else {
+
+                    }
+                });
+            }
+
+            var html = "";
+            if (aEN != null && parseFloat(aEN) > 4.5) {
+                html = "<div class='row'><div class='col-md-8'> <span class='badge  badge-success'>A POINT IN NORMAL</span></div>";
+                html += "<div class='col-md-4'><span>V<sub>PT NWKR</sub></span><br /><span>" + aEN + " V</span>";
+                if (isCalibration != null && isCalibration != undefined && isCalibration && aENAttr != null && aENAttr != undefined) {
+                    html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + aENAttr.AssetId + '\',\'' + aENAttr.AttributeId + '\',\'' + aENAttr.Multiplication + '\',\'' + aENAttr.AssetName + '\',\'' + aENAttr.AttributeName + '\',\'' + aENAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                html += "</div>";
+
+                if (aENLAttr != null && aENLAttr != undefined && Object.keys(aENLAttr).length > 0) {
+                    var locationA = "";
+                    locationA += "<div class='col-md-12'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>" + aENL + " V</span>";
+
+                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                        locationA += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + aENLAttr.AssetId + '\',\'' + aENLAttr.AttributeId + '\',\'' + aENLAttr.Multiplication + '\',\'' + aENLAttr.AssetName + '\',\'' + aENLAttr.AttributeName + '\',\'' + aENLAttr.CurrentMultiplication + '\');"></i></a>';
+                    }
+                    locationA += "</div>";
+
+                    $("#diectionLocationA" + item.Id + "").empty().append(locationA);
+                }
+
+                html += "</div>";
+                $("#diectionA" + item.Id + "").empty().append(html);
+            }
+            else if (aER != null && parseFloat(aER) > 4.5) {
+                html = "<div class='row'><div class='col-md-8'><span class='badge  badge-warning'>A POINT IN REVERSE</span></div>";
+                html += "<div class='col-md-4'><span>V<sub>PT RWKR</sub></span><br /><span>" + aER + " V</span>";
+                if (isCalibration != null && isCalibration != undefined && isCalibration && aERAttr != null && aERAttr != undefined) {
+                    html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + aERAttr.AssetId + '\',\'' + aERAttr.AttributeId + '\',\'' + aERAttr.Multiplication + '\',\'' + aERAttr.AssetName + '\',\'' + aERAttr.AttributeName + '\',\'' + aERAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                html += "</div>";
+
+                if (aERLAttr != null && aERLAttr != undefined && Object.keys(aERLAttr).length > 0) {
+                    var locationA = "";
+                    locationA += "<div class='row'><div class='col-md-12'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>LOC: " + aERL + " V</span>";
+
+                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                        locationA += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + aERLAttr.AssetId + '\',\'' + aERLAttr.AttributeId + '\',\'' + aERLAttr.Multiplication + '\',\'' + aERLAttr.AssetName + '\',\'' + aERLAttr.AttributeName + '\',\'' + aERLAttr.CurrentMultiplication + '\');"></i></a>';
+                    }
+                    locationA += "</div></div>";
+                    $("#diectionLocationA" + item.Id + "").empty().append(locationA);
+                }
+
+                html += "</div>";
+                $("#diectionA" + item.Id + "").empty().append(html);
+            }
+            else if (aENLAttr != null && aENLAttr != undefined && Object.keys(aENLAttr).length > 0 && parseFloat(aENL) > 0) {
+                var locationA = "<div class='row'><div class='col-md-12'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>" + aENL + " V</span>";
+
+                if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                    locationA += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + aENLAttr.AssetId + '\',\'' + aENLAttr.AttributeId + '\',\'' + aENLAttr.Multiplication + '\',\'' + aENLAttr.AssetName + '\',\'' + aENLAttr.AttributeName + '\',\'' + aENLAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                locationA += "</div></div>";
+                $("#diectionLocationA" + item.Id + "").empty().append(locationA);
+            }
+            else if (aERLAttr != null && aERLAttr != undefined && Object.keys(aERLAttr).length > 0 && parseFloat(aERL) > 0) {
+                var locationA = "<div class='row'><div class='col-md-12'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>LOC: " + aERL + " V</span>";
+
+                if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                    locationA += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + aERLAttr.AssetId + '\',\'' + aERLAttr.AttributeId + '\',\'' + aERLAttr.Multiplication + '\',\'' + aERLAttr.AssetName + '\',\'' + aERLAttr.AttributeName + '\',\'' + aERLAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                locationA += "</div></div>";
+                $("#diectionLocationA" + item.Id + "").empty().append(locationA);
+            }
+            else if (item.IsHalfPointMachine == true && aEN != null && parseFloat(aEN) <= 5 && aER != null && parseFloat(aER) <= 5) {
+
+                html = "<div class='row'><div class='col-md-12'><span class='badge  badge-danger'>Point Not Set</span></div></div>";
+                $("#diectionA" + item.Id + "").empty().append(html);
+            }
+            else if (aEN != null && parseFloat(aEN) <= 5 && aER != null && parseFloat(aER) <= 5 && bEN != null && parseFloat(bEN) <= 5 && bER != null && parseFloat(bER) <= 5) {
+
+                html = "<div class='row'><div class='col-md-12'><span class='badge  badge-danger'>Point Not Set</span></div></div>";
+                $("#diectionA" + item.Id + "").empty().append(html);
+            }
+            //else if (aEN == null && aER == null && bEN == null && bER == null) {
+            //    html = "<div class='row'><div class='col-md-12'><span class='badge  badge-danger'>Point Not Set</span></div></div>";
+            //    $("#diectionA" + item.Id + "").empty().append(html);
+            //}
+
+            if (bEN != null && parseFloat(bEN) > 4.5) {
+                html = "<div class='row'><div class='col-md-6'><span class='badge  badge-success'>B POINT IN NORMAL</span></div>";
+                html += "<div class='col-md-3'><span>V<sub>PT NWKR</sub></span><br /><span>" + bEN + " V</span>";
+                if (isCalibration != null && isCalibration != undefined && isCalibration && bENAttr != null && bENAttr != undefined) {
+                    html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + bENAttr.AssetId + '\',\'' + bENAttr.AttributeId + '\',\'' + bENAttr.Multiplication + '\',\'' + bENAttr.AssetName + '\',\'' + bENAttr.AttributeName + '\',\'' + bENAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                html += "</div>";
+
+                if (bENLAttr != null && bENLAttr != undefined && Object.keys(bENLAttr).length > 0) {
+                    html += "<div class='col-md-3'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>" + bENL + " V</span>";
+
+                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                        html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + bENLAttr.AssetId + '\',\'' + bENLAttr.AttributeId + '\',\'' + bENLAttr.Multiplication + '\',\'' + bENLAttr.AssetName + '\',\'' + bENLAttr.AttributeName + '\',\'' + bENLAttr.CurrentMultiplication + '\');"></i></a>';
+                    }
+                    html += "</div>";
+                }
+
+                html += "</div>";
+                $("#diectionB" + item.Id + "").empty().append(html);
+            }
+            else if (bER != null && parseFloat(bER) > 4.5) {
+                html = "<div class='row'><div class='col-md-6'><span class='badge  badge-warning'>B POINT IN REVERSE</span></div>";
+                html += "<div class='col-md-3'><span>V<sub>PT RWKR</sub></span><br /><span>" + bER + " V</span>";
+                if (isCalibration != null && isCalibration != undefined && isCalibration && bERAttr != null && bERAttr != undefined) {
+                    html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + bERAttr.AssetId + '\',\'' + bERAttr.AttributeId + '\',\'' + bERAttr.Multiplication + '\',\'' + bERAttr.AssetName + '\',\'' + bERAttr.AttributeName + '\',\'' + bERAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                html += "</div>";
+
+                if (bERLAttr != null && bERLAttr != undefined && Object.keys(bERLAttr).length > 0) {
+                    html += "<div class='col-md-3'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>" + bERL + " V</span>";
+
+                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                        html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + bERLAttr.AssetId + '\',\'' + bERLAttr.AttributeId + '\',\'' + bERLAttr.Multiplication + '\',\'' + bERLAttr.AssetName + '\',\'' + bERLAttr.AttributeName + '\',\'' + bERLAttr.CurrentMultiplication + '\');"></i></a>';
+                    }
+                    html += "</div>";
+                }
+
+                html += "</div>";
+                $("#diectionB" + item.Id + "").empty().append(html);
+            }
+            else if (bENLAttr != null && bENLAttr != undefined && Object.keys(bENLAttr).length > 0 && parseFloat(bENL) > 0) {
+                html = "<div class='col-md-3'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>" + bENL + " V</span>";
+
+                if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                    html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + bENLAttr.AssetId + '\',\'' + bENLAttr.AttributeId + '\',\'' + bENLAttr.Multiplication + '\',\'' + bENLAttr.AssetName + '\',\'' + bENLAttr.AttributeName + '\',\'' + bENLAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                html += "</div>";
+                $("#diectionB" + item.Id + "").empty().append(html);
+            }
+            else if (bERLAttr != null && bERLAttr != undefined && Object.keys(bERLAttr).length > 0 && parseFloat(bERL) > 0) {
+                html = "<div class='col-md-3'><span>V<sub>PT 24 DC LOC</sub></span><br /><span>" + bERL + " V</span>";
+
+                if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                    html += '&nbsp;<a><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + bERLAttr.AssetId + '\',\'' + bERLAttr.AttributeId + '\',\'' + bERLAttr.Multiplication + '\',\'' + bERLAttr.AssetName + '\',\'' + bERLAttr.AttributeName + '\',\'' + bERLAttr.CurrentMultiplication + '\');"></i></a>';
+                }
+                html += "</div>";
+                $("#diectionB" + item.Id + "").empty().append(html);
+            }
+            else if (aEN != null && parseFloat(aEN) <= 5 && aER != null && parseFloat(aER) <= 5 && bEN != null && parseFloat(bEN) <= 5 && bER != null && parseFloat(bER) <= 5) {
+                $("#diectionB" + item.Id + "").empty();
+            }
+
+            if (aDisplacement1 != null) {
+
+                if (item.MachineA != null && item.MachineA != undefined && item.MachineA == displacementTypeNormalOpen) {
+                    if (parseFloat(aDisplacement1) <= 6) {
+                        html = "<div class='row'><div class='col-md-4'> <span class='badge  badge-success'>NORMAL</span></div>";
+                    }
+                    else if (parseFloat(aDisplacement1) >= 110) {
+                        html = "<div class='row'><div class='col-md-4'><span class='badge  badge-warning'>REVERSE</span></div>";
+                    }
+                    else if (parseFloat(aDisplacement1) > 6 && parseFloat(aDisplacement1) < 110) {
+                        html = "<div class='row'><div class='col-md-4'><span class='badge  badge-danger'>Point Not Set</span></div>";
+                    }
+                    html += "<div class='col-md-4'><span>Gap LH</span><br /><span>" + aDisplacement1 + " mm</span></div>";
+                    html += "<div class='col-md-4'><span>Gap RH</span><br /><span>" + aDisplacement2 + " mm</span></div>";
+                    html += "</div>";
+                }
+                else if (item.MachineA != null && item.MachineA != undefined && item.MachineA == displacementTypeNormalClose) {
+                    if (parseFloat(aDisplacement1) <= 6) {
+                        html = "<div class='row'><div class='col-md-4'><span class='badge  badge-warning'>REVERSE</span></div>";
+                    }
+                    else if (parseFloat(aDisplacement1) >= 110) {
+                        html = "<div class='row'><div class='col-md-4'> <span class='badge  badge-success'>NORMAL</span></div>";
+                    }
+                    else if (parseFloat(aDisplacement1) > 6 && parseFloat(aDisplacement1) < 110) {
+                        html = "<div class='row'><div class='col-md-4'><span class='badge  badge-danger'>Point Not Set</span></div>";
+                    }
+                    html += "<div class='col-md-4'><span>Gap LH</span><br /><span>" + aDisplacement1 + " mm</span></div>";
+                    html += "<div class='col-md-4'><span>Gap RH</span><br /><span>" + aDisplacement2 + " mm</span></div>";
+                    html += "</div>";
+                }
+
+
+                $("#DisplacementA" + item.Id + "").empty().append(html);
+            }
+
+            //if (bDisplacement != null) {
+            //    debugger;
+            //    if (parseFloat(bDisplacement) < 5) {
+            //        html = "<div class='row'><div class='col-md-6'> <span class='badge  badge-success'>B POINT IN NORMAL</span></div>";
+            //    }
+            //    else if (parseFloat(bDisplacement) > 115) {
+            //        html = "<div class='row'><div class='col-md-6'><span class='badge  badge-warning'>B POINT IN REVERSE</span></div>";
+            //    }
+            //    else if (parseFloat(bDisplacement) > 5 && parseFloat(bDisplacement) < 115) {
+            //        html = "<div class='row'><div class='col-md-6'><span class='badge  badge-danger'>Point Not Set</span></div>";
+            //    }
+
+
+            //    html += "<div class='col-md-6'><span>" + bDisplacement + " V</span>";
+
+            //    html += "</div></div>";
+            //    $("#DisplacementB" + item.Id + "").empty().append(html);
+            //}
+        });
+    }
+
+
+    function BindPointDataLoggerAttribute(data) {
+        //Bind Datalogger Attribute
+        $.each(json.mAssets, function (id, item) {
+            if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.length > 0) {
+                $.each(item.mAssetInfoDataloggers, function (idx, inItem) {
+                    if (inItem.Value != null && inItem.Value != '') {
+                        var dataValue = data[inItem.Value - 1];
+                        if (dataValue != null) {
+                            var id = ".DLAttribute" + item.Id + inItem.DataloggerAttributeId;
+
+                            if (isDataLoggerJsonReverse == "True") {
+
+                                if (parseInt(dataValue) == 0)
+                                    dataValue = 1;
+                                else if (parseInt(dataValue) == 1)
+                                    dataValue = 0;
+                            }
+                            if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'front') {
+                                if (parseInt(dataValue) == 1) {
+                                    $(id).html("<span class='badge bg-g shine-button'>Pickup</span>");
+                                }
+                                else if (parseInt(dataValue) == 0) {
+                                    $(id).html("<span class='badge bg-y shine-button'>Drop</span>");
+                                }
+                            } else if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'back') {
+                                if (parseInt(dataValue) == 1) {
+                                    $(id).html("<span class='badge bg-y shine-button'>Drop</span>");
+
+                                }
+                                else if (parseInt(dataValue) == 0) {
+
+                                    $(id).html("<span class='badge bg-g shine-button'>Pickup</span>");
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+    }
+
+    //function Search(id) {
+    //    var from = stringToDate($("#txtFromDate" + id).val());
+    //    var to = stringToDate($("#txtToDate" + id).val());
+    //    var tag = ".fbody" + id+" tr";
+    //    $(tag).each(function () {
+    //        debugger
+    //        var row = $(this);
+    //        var date = stringToDate($.trim(row.find("td").eq(0).text()));
+
+    //        //show all rows by default
+    //        var show = true;
+
+    //        //if from date is valid and row date is less than from date, hide the row
+    //        if (from && date < from)
+    //            show = false;
+
+    //        //if to date is valid and row date is greater than to date, hide the row
+    //        if (to && date > to)
+    //            show = false;
+
+    //        if (show)
+    //            row.show();
+    //        else
+    //            row.hide();
+    //    });
+    //}
+    function Clear(id) {
+       $("#txtFromDate" + id).val('');
+       $("#txtToDate" + id).val('');
+     $("#frmAssetDetails").submit();
+    }
+    function stringToDate(s) {
+        var ret = NaN;
+        var parts = s.split("/");
+        date = new Date(parts[2], parts[0], parts[1]);
+        if (!isNaN(date.getTime())) {
+            ret = date;
+        }
+        return ret;
+    }
+    function stringtableToDate(s) {
+        var ret = NaN;
+        var parts = s.split("-");
+        date = new Date(parts[2], parts[0], parts[1]);
+        if (!isNaN(date.getTime())) {
+            ret = date;
+        }
+        return ret;
+    }
+
+    function Search(assetId) {
+
+        $("#frmAssetDetails").submit();
+        //var pointMachineData = {};
+        //pointMachineData.AssetId = assetId;
+        //if ($("#txtFromDate" + assetId).val() != "") {
+        //    pointMachineData.StartDate = $("#txtFromDate" + assetId).val();
+        //}
+        //else {
+        //    pointMachineData.StartDate = new Date();
+        //}
+        //if ($("#txtToDate" + assetId).val() != "") {
+        //    pointMachineData.EndDate = $("#txtToDate" + assetId).val();
+
+        //}
+        //else {
+        //    pointMachineData.EndDate = new Date();
+        //}
+
+        //$("#loader").show();
+        //$.ajax({
+        //    url: '/Site/GetPointMachineDate',
+        //    type: 'Post',
+        //    data: '{pointMachineData:' + JSON.stringify(pointMachineData) + '}',
+        //    dataType:'html',
+        //    contentType: 'application/json',
+        //    success: function (data) {
+        //        $("#loader").hide();
+        //        $(".fbody" + assetId).empty().append(data);
+        //    },
+        //    error: function (response) {
+        //        $("#loader").hide();
+        //        CommonNotification("ERROR", "Something went wrong!", "Error");
+        //    }
+        //});
+    }
+
+    function DownloadPointData(id) {
+        var titles = [];
+        var data = [];
+        var tbl = "#tblPoint" + id + " > thead > tr > th"
+        var tblbody = ".fbody" + id + " > tr";
+        $(tbl).each(function () {
+            titles.push($.trim($(this).text()));
+        });
+
+        //$('#tbodyExportOrder > tr > td').each(function () {
+        //       data.push($.trim($(this).text()));
+        //});
+
+        $(tblbody).each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+                var datas = $.trim($(ele).text());
+                data.push($.trim(datas));
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "PointMachineData" + GenerateUniqueCode() + ".csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+
+
+    function DownloadPointMachineData() {
+        window.location.href = "@Url.Action("DownloadPointMachine", "Site")" + "?siteId=" + $('#hdnsiteId').val() + "&startDate=" + $('#txtFromDate').val() + "&endDate=" + $('#txtToDate').val();
+    }
+
+    function DownloadPointMachineEventData() {
+        window.location.href = "@Url.Action("DownloadPointMachineEvent", "Site")" + "?siteId=" + $('#hdnsiteId').val() + "&dt=" + $('#txtFromDate').val() + "&edt=" + $('#txtToDate').val();
+    }
+
+    function DownloadPointLogTxt() {
+        window.location.href = "@Url.Action("DownloadPointLogTxt", "Site")" + "?siteId=" + $('#hdnsiteId').val();
+    }
+
+    function DownloadPointEventLog() {
+        window.location.href = "@Url.Action("DownloadPointMachineEventLog", "Site")" + "?siteId=" + $('#hdnsiteId').val();
+    }
+
+    function fnShowPMExtraColumn($this, assetId) {
+        if ($($this).text() == "See more columns") {
+            $($this).text("Hide columns");
+            $('.PMExtraColumn_' + assetId).removeClass('display-none');
+        } else {
+            $($this).text("See more columns");
+            $('.PMExtraColumn_' + assetId).addClass('display-none');
+        }
+
+    }
+
+    function ReceivedWebSocket() {
+        //SearchData(17290);
+
+        // Replace with your WebSocket server URL
+        //var socket = new WebSocket('ws://23.106.52.154:114/api/WebSocket/Connect');
+
+        //socket.onopen = function () {
+        //    console.log('WebSocket connection opened');
+        //};
+
+        //socket.onmessage = function (event) {
+
+        //    var assetJson = JSON.parse(event.data);
+
+        //    if (assetJson != null && assetJson != undefined) {
+
+        //        $.each(json.mAssets, function (id, item) {
+        //            if (item.Id == assetJson.AssetId) {
+        //                SearchData(item.Id);
+        //            }
+        //        });
+        //    }
+
+
+
+
+        //   console.log('Message received: ' + event.data);
+        //};
+    }
+
+    function SearchData(assetId) {
+        var pointMachineData = {};
+        pointMachineData.AssetId = assetId;
+        if ($("#txtFromDate").val() != "") {
+            pointMachineData.StartDate = $("#txtFromDate").val();
+        }
+        else {
+            pointMachineData.StartDate = new Date();
+        }
+        if ($("#txtToDate").val() != "") {
+            pointMachineData.EndDate = $("#txtToDate").val();
+        }
+        else {
+            pointMachineData.EndDate = new Date();
+        }
+        var newDate = new Date();
+        var startDateStr = new Date(pointMachineData.StartDate);
+        var endDateStr = new Date(pointMachineData.EndDate);
+        $.ajax({
+            url: '/Site/GetPointMachineDate',
+            type: 'Post',
+            data: '{pointMachineData:' + JSON.stringify(pointMachineData) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+
+
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function BindPointEventLogData(assetId) {
+        var pointMachineData = {};
+
+        pointMachineData.AssetId = assetId;
+
+        if ($("#txtFromDate").val() != "") {
+            pointMachineData.StartDate = $("#txtFromDate").val();
+        }
+        else {
+            pointMachineData.StartDate = new Date();
+        }
+
+        if ($("#txtToDate").val() != "") {
+            pointMachineData.EndDate = $("#txtToDate").val();
+        }
+        else {
+            pointMachineData.EndDate = new Date();
+        }
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/BindPointEventLogData',
+            type: 'Post',
+            data: '{pointMachineData:' + JSON.stringify(pointMachineData) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPointEventLogData").empty().append(data);
+                $('#modal-Point-Event-LogData').modal('show');
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnSearchPointEventLogData(assetId) {
+        var pointMachineData = {};
+
+        pointMachineData.AssetId = assetId;
+        pointMachineData.StartDate = $("#txtEventLogFromDate").val();
+        pointMachineData.EndDate = $("#txtEventLogToDate").val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/_BindPointEventLogDataPartial',
+            type: 'Post',
+            data: '{pointMachineData:' + JSON.stringify(pointMachineData) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divmodalPointEventLogData").empty().append(data);
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>

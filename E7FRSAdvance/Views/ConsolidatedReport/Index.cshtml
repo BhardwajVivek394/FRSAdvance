@@ -1,0 +1,199 @@
+﻿@model Domain.ConsolidatedLister
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<style>
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        padding: 4px 4px !important;
+        margin-top: 5px !important;
+        background-color: #4bacc6 !important;
+        border-color: #4bacc6 !important;
+        color: #fff;
+        margin-right: 6px !important;
+    }
+
+    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+        color: white;
+        cursor: pointer;
+        display: inline-block;
+        font-weight: bold;
+        margin-right: 2px;
+    }
+</style>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Consolidated Report</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid">
+    <div class="email-wrap email-main-wrapper">
+        <div class="row">
+            <div class="col-xxl-12 col-xl-12 box-col-12">
+                <div class="email-right-aside">
+                    <div class="card email-body email-list">
+                        <div style="height:800px">
+                            <div class="row">
+                                <div class="col-xl-12">
+                                    <div class="mail-body">
+                                        <div class="row p-4">
+                                            <div class="col-sm-1">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Years:</label>
+                                                    @Html.DropDownList("Year", ViewBag.Years as SelectList, "Select Year", new { @class = "form-control", @id = "SearchCriteria_Year" })
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-3">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Month:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.Month, ViewBag.Months as SelectList, new { @class = "js-example-basic-multiple", @multiple = "multiple" })
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2">
+                                                <div class="form-group mb-2">
+                                                    <label class="control-label center-block">Search Criteria:</label>
+                                                    <select class="form-control drpSearchCriteria">
+                                                        <option value="All">All</option>
+                                                        <option value="Zone">Zone</option>
+                                                        <option value="Division">Division</option>
+                                                        <option value="Site">Site</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-sm-2 clsSearchCriteria" style="display:none">
+                                                <div class="form-group mb-2 clsSite">
+                                                    <label class="control-label center-block">Site:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, new { @class = "form-control", tabindex = 1 })
+                                                </div>
+
+
+                                                <div class="form-group mb-2 clsZone" style="display:none">
+                                                    <label class="control-label center-block">Zone:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                                                </div>
+
+                                                <div class="form-group mb-2 clsDivision" style="display:none">
+                                                    <label class="control-label center-block">Division:</label>
+                                                    @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", tabindex = 1 })
+                                                </div>
+                                            </div>
+
+                                            <div class="col-sm-2 pt-4">
+                                                <a class="btn btn-success btn-quirk" onclick="fnSearchReport()" data-bs-original-title="" title="Search"><i class="fa fa-search"></i></a>
+                                                <a class="btn btn-primary btn-quirk" onclick="fnDownloadFile()" data-bs-original-title="" title="Download csv"><i class="fa fa-download"></i></a>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-xl-12">
+                                    <div id="divConsolidatedReport"></div>
+                                </div>
+                                <div class="col-xl-12">
+                                    <div id="divConsolidatedSMSLog"></div>
+                                </div>
+                                <div class="col-xl-12">
+                                    <div id="divConsolidatedProbability"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(document).ready(function () {
+        $('#SearchCriteria_Month').select2({
+            dropdownParent: $('#myModal')
+        });
+
+        $('.drpSearchCriteria').change(function () {
+            $('.clsSearchCriteria').show();
+            if ($(this).val() == "Zone") {
+                $('.clsZone').show();
+                $('.clsDivision').hide();
+                $('.clsSite').hide();
+            }
+            else if ($(this).val() == "Division") {
+                $('.clsDivision').show();
+                $('.clsZone').hide();
+                $('.clsSite').hide();
+            }
+            else if ($(this).val() == "Site") {
+                $('.clsSite').show();
+                $('.clsZone').hide();
+                $('.clsDivision').hide();
+            } else {
+                $('.clsSearchCriteria').hide();
+            }
+
+        });
+    });
+
+    function fnSearchReport() {
+        var mConsolidatedLister = {};
+        var searchCriteria = {};
+        searchCriteria.Month = $('#SearchCriteria_Month').val();
+        searchCriteria.Year = $('#SearchCriteria_Year').val();
+        if ($('.drpSearchCriteria').val() == "Zone") {
+            searchCriteria.ZoneId = $('#SearchCriteria_ZoneId').val();
+        }
+        else if ($('.drpSearchCriteria').val() == "Division") {
+            searchCriteria.DivisionId = $('#SearchCriteria_DivisionId').val();
+        }
+        else if ($('.drpSearchCriteria').val() == "Site") {
+            searchCriteria.SiteId = $('#SearchCriteria_SiteId').val();
+        }
+        mConsolidatedLister.SearchCriteria = searchCriteria;
+        if (searchCriteria.Year != null && searchCriteria.Year != undefined && searchCriteria.Year.length > 0 && searchCriteria.Month != null && searchCriteria.Month != undefined && searchCriteria.Month.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: "/ConsolidatedReport/_List",
+                type: "POST",
+                data: '{mConsolidatedLister:' + JSON.stringify(mConsolidatedLister) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        $("#divConsolidatedReport").empty().append(data);
+                    } else {
+                        $("#divConsolidatedReport").empty()
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Please select month.", "Error");
+        }
+
+    }
+
+    function showLegendCheckboxes() {
+        var checkboxes = document.getElementById("checklegendsboxes");
+        if (!expanded) {
+            checkboxes.style.display = "block";
+            expanded = true;
+        } else {
+            checkboxes.style.display = "none";
+            expanded = false;
+        }
+    }
+</script>

@@ -1,0 +1,254 @@
+﻿@model Domain.UserLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="row">
+    <div class="col-xl-10">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="pull-left">
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+                        {
+                            <a id="btnAddUser" class="btn btn-primary btn-quirk" data-bs-toggle="modal" data-bs-target="#modal-add-user">Add User</a>
+                            <a class="btn btn-primary btn-quirk" onclick="fnGetAppAccessBySite()">Download User History</a>
+                            <a class="btn btn-primary btn-quirk" href="@Url.Action("Index","MaintainerUser")">Maintainer User</a>
+                        }
+                    </div>
+                    <div class="pull-left m-l-5">
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                        @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpUserPageSize" })
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        <button type="button" class="btn btn-outline-dark" onclick="GetUserPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                        <button type="button" class="btn btn-outline-dark" onclick="GetUserPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                    @{
+                        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                        if (Model.Users.Count == 0)
+                        {
+                            start = 0;
+                        }
+                        decimal end = Math.Floor(Model.Pager.TotalRecord);
+                        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                        {
+                            if (Model.Pager.PageSize == -1)
+                            {
+                                end = Model.Pager.TotalRecord;
+                            }
+                            else
+                            {
+                                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                if (end > Model.Pager.TotalRecord)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                            }
+                        }
+                    }
+                    <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Users</span>
+                </div>
+            </div>
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive vh-100">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+                                {
+                                    <th colspan="5" class="text-center">Action</th>
+                                }
+                                <th data-sortcolumn="FirstName" class="sorting" id="thFirstName" onclick="SortList('FirstName');">First Name</th>
+                                <th data-sortcolumn="LastName" class="sorting" id="thLastName" onclick="SortList('LastName');">Last Name</th>
+                                <th data-sortcolumn="EmailAddress" class="sorting" id="thEmailAddress" onclick="SortList('EmailAddress');">Email Address</th>
+                                <th>Password</th>
+                                <th data-sortcolumn="PhoneNumber1" class="sorting" id="thPhoneNumber" onclick="SortList('PhoneNumber');">Phone Number</th>
+                                <th data-sortcolumn="Title" class="sorting" id="thTitle" onclick="SortList('Title');">Role</th>
+                                <th data-sortcolumn="UserLevel" class="sorting" id="thUserLevel" onclick="SortList('UserLevel');">User Level</th>
+                                <th data-sortcolumn="VersionNumber" class="sorting text-center" id="thVersionNumber" onclick="SortList('VersionNumber');">Version</th>
+                                <th data-sortcolumn="IsActive" class="sorting" id="thIsActive" onclick="SortList('IsActive');" style="width:100px">Active?</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.Users != null && Model.Users.Count > 0)
+                            {
+                                foreach (var item in Model.Users)
+                                {
+                                    <tr class="table-light">
+                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+                                        {
+                                            <td class="text-center width60">
+                                                <a href="#"><i class="fa fa-plus text-vision" data-Id="@item.Id" onclick="GetZoneDivision('@item.Id',this)"></i></a>
+                                            </td>
+                                            <td class="text-center width60">
+                                                <a href="#"><i class="fa fa-exclamation-circle" title="User History" data-Id="@item.Id" onclick="fnGetAppAccessByUser('@item.Id')"></i></a>
+                                            </td>
+                                            <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Edit"><i class="fa fa-edit text-vision" onclick="GetUserById('@item.Id')"></i></a></td>
+                                            <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete"><i class="fa fa-trash text-danger" onclick="DeleteUserById('@item.Id')"></i></a></td>
+                                            if (item.IsSiteKeeping)
+                                            {
+                                                <td class="text-center width60">
+                                                    <a href="#"><i class="fa fa-plus text-vision" data-Id="@item.Id" onclick="fnAssignUserDivision('@item.Id')"></i></a>
+                                                </td>
+                                            }
+                                            else
+                                            {
+                                                <td class="text-center width60">
+                                                </td>
+                                            }
+                                        }
+                                        <td>@item.FirstName</td>
+                                        <td>@item.LastName</td>
+                                        <td>@item.EmailAddress</td>
+                                        <td>
+                                            ********
+                                            <i class="fa fa-eye-slash text-vision btn-view" data-bs-toggle="popover" data-bs-content="@item.Password" style="padding-left:5px" data-bs-placement="right" onclick="ViewPassword(this)"></i>
+                                        </td>
+                                        <td>@item.PhoneNumber</td>
+                                        <td>@item.Title</td>
+                                        <td>@item.UserLevel</td>
+                                        <td class="text-center">@item.VersionNumber</td>
+                                        <td class="">
+                                            @if (item.IsActive)
+                                            {
+                                                <span class="span badge rounded-pill pill-badge-success">Active</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="span badge rounded-pill pill-badge-yellow">In Active</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                    <tr id="trSites@(item.Id)" style="display:none;">
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="14" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-2 xl-40">
+        <div class="row">
+            <div class="col-xl-12 default-according style-1 faq-accordion job-accordion">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <a class="btn btn-link">Search User</a>
+                        </h5>
+                    </div>
+                    <div class="card-body filter-cards-view animate-chk">
+                        <div class="form-group mb-3">
+                            <label class="control-label center-block">First Name:</label>
+                            @Html.TextBoxFor(m => m.SearchCriteria.FirstName, new { @class = "form-control", type = "text", id = "txtSearchFirstName" })
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="control-label center-block">Last Name:</label>
+                            @Html.TextBoxFor(m => m.SearchCriteria.LastName, new { @class = "form-control", type = "text", id = "txtSearchLastName" })
+                        </div>
+
+                        <div class="form-group mb-3">
+                            <label class="control-label center-block">Email Address:</label>
+                            @Html.TextBoxFor(m => m.SearchCriteria.EmailAddress, new { @class = "form-control", type = "text", id = "txtEmailAddress" })
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="control-label center-block">Division:</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "drpSearch form-control", tabindex = 1, id = "drpUserDivisionId" })
+                        </div>
+                        <div class="form-group mb-3">
+                            <label class="control-label center-block">Site:</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites,"Select", new { @class = "drpSearch form-control", tabindex = 1, id = "drpUserSiteId" })
+                        </div>
+                        <div class="form-group mb-3">
+                            <div class="row">
+                                <div class="col-sm-6">
+                                    <a class="btn btn-success" onclick="Search()">Search</a>
+                                </div>
+                                <div class="col-sm-6">
+                                    <a class="btn btn-default btn-quirk btn-block" onclick="Clear()">Clear</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="~/Content/PageJS/User/UserList.js"></script>
+<script>
+    $(document).ready(function () {
+        $('#drpUserDivisionId').change(function () {
+            fnGetAllSites($(this).val());
+        });
+    })
+    function GetUserPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetUserList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetUserList").submit();
+            }
+        }
+    }
+
+    function fnGetAllSites(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/User/GetSitesBy',
+                type: 'Post',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpUserSiteId").empty();
+                    $("#drpUserSiteId").append($("<option></option>").val('0').html('Select Sites'));
+                    $.each(data, function (key, value) {
+                        if ('@Model.SearchCriteria.SiteId' != '0' && '@Model.SearchCriteria.SiteId' == value.Id) {
+                            $("#drpUserSiteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#drpUserSiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+
+    }
+</script>

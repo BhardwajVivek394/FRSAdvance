@@ -1,0 +1,126 @@
+﻿@model Domain.LoginMacAddressLister
+
+
+
+<input type="hidden" id="hdnAreaListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnAreaListMessage" value="@ViewBag.Message" />
+
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 people-list">
+        @Html.HiddenFor(x => x.SearchCriteria.IsApproved)
+        <div class="card-header">
+            <div class="people-options clearfix">
+                <div class="pull-left">
+                    @Html.DropDownListFor(model => model.SearchCriteria.Source, new List<SelectListItem> { new SelectListItem { Text = "Select Source", Value = "" }, new SelectListItem { Text = "Website", Value = "Website" }, new SelectListItem { Text = "App", Value = "MobileApp" } }, new { @class = "drpSearch form-control", id = "drpSource" })
+                </div>
+                <div class="pull-left" style="margin-left:10px;">
+                    @Html.DropDownListFor(model => model.SearchCriteria.UserId, new SelectList(@ViewBag.User, "Value", "Text"), new { @class = "drpSearch form-control", id = "drpUser" })
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="card-body " style="padding:15px;">
+            <div class="table-responsive" style="max-height: 620px;">
+                <table class="table">
+                    <thead class="bg-primary">
+                        <tr>
+                            <th style="width:70px;" colspan="2" class="text-center">Action</th>
+                            <th>Email</th>
+                            <th>Mac Address</th>
+                            <th>Ip Address</th>
+                            <th>City</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.LoginMacAddresses != null && Model.LoginMacAddresses.Count > 0)
+                        {
+                            foreach (var item in Model.LoginMacAddresses)
+                            {
+                                var isAp = item.IsApproved ? "true" : "false";
+                                <tr class="table-light">
+                                    @if (item.IsApproved == false)
+                                    {
+
+                                        <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips btn btn-success" data-original-title="Approved" onclick="UpdateMacAddress('@item.Id','@isAp')">Approve</a></td>
+                                    }
+                                    else
+                                    {
+                                        <td></td>
+                                    }
+
+                                    <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Edit"><i class="fa fa-trash text-danger" onclick="DeleteMacAddressById('@item.Id','@isAp')"></i></a></td>
+
+                                    <td>@item.Email</td>
+                                    <td>@item.MacAddress</td>
+                                    <td>@item.IpAddress</td>
+                                    <td>@item.City</td>
+                                    <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm")</td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="9" class="text-center">
+                                    No record found
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+    <!-- panel -->
+
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#drpSource').change(function (e) {
+            $("#hdnSkip").val('0');
+
+            if ('@Model.SearchCriteria.IsApproved' == 'True') {
+                $("#frmLoginMacAddress1").submit();
+            }
+            else {
+                $("#frmLoginMacAddress").submit();
+            }
+        });
+
+        $('#drpUser').change(function (e) {
+            $("#hdnSkip").val('0');
+            if ('@Model.SearchCriteria.IsApproved' == 'True') {
+                $("#frmLoginMacAddress1").submit();
+            }
+            else {
+                $("#frmLoginMacAddress").submit();
+            }
+
+        });
+    });
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetRoleList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetRoleList").submit();
+            }
+        }
+    }
+</script>

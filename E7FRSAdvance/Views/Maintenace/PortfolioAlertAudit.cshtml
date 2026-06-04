@@ -1,0 +1,144 @@
+﻿@model Domain.SearchCriteria
+@{
+    ViewBag.Title = "PortfolioRemark";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<style>
+    .rounded-pill1 {
+        border-radius: 55rem !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"><i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Portfolio Alert Audit</li>
+                </ol>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <div class="email-wrap email-main-wrapper">
+                <div class="row">
+                    <div class="col-xxl-4 col-xl-4 box-col-4">
+                        @if (ViewBag.User != null)
+                        {
+                            <h4>Alert Audit By @ViewBag.User.FirstName @ViewBag.User.LastName</h4>
+                        }
+
+                    </div>
+                    <div class="col-xxl-8 col-xl-8 box-col-8">
+                        <div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Start Date</strong>
+                        </div>
+                        <div class="pull-left">
+
+                            <input type="text" id="txtStartDate" class="form-control" value="@Model.StartDate.ToShortDateString()" />
+                        </div>
+                        <div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">End Date</strong>
+                        </div>
+                        <div class="pull-left">
+                            <input type="text" id="txtEndDate" class="form-control" value="@Model.EndDate.ToShortDateString()" />
+                        </div>
+                        <div class="pull-left m-l-10">
+                            <button type="button" class="btn btn-success" onclick="fnSearchRemark()">Search</button>
+
+                        </div>
+                        <div class="pull-left m-l-10">
+                            @if (ViewBag.User != null)
+                            {
+                                <button type="button" class="btn btn-info" onclick="fnDownloadRemark('@ViewBag.User.Id')">Download PDF</button>
+                            }
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            @using (Ajax.BeginForm("PortfolioAlertAuditList", "Maintenace", new AjaxOptions()
+            {
+                HttpMethod = "POST",
+                UpdateTargetId = "divPortfolioAlertAuditList",
+                InsertionMode = InsertionMode.Replace,
+                LoadingElementId = "loader"
+            }, new { id = "frmPortfolioAlertAuditList" }))
+            {
+                <input type="hidden" value="@Model.UserId" id="hdnUserId" name="UserId" />
+                <input type="hidden" value="@Model.StartDate" id="hdnStartDate" name="StartDate" />
+                <input type="hidden" value="@Model.EndDate" id="hdnEndDate" name="EndDate" />
+
+                <div id="divPortfolioAlertAuditList">
+                    @Html.Action("PortfolioAlertAuditList", Model)
+                </div>
+            }
+
+
+            @using (Ajax.BeginForm("UpdatePortfolioAlertAudit", "Maintenace", new AjaxOptions()
+            {
+                HttpMethod = "POST",
+                UpdateTargetId = "divUpdatePortfolioAlertAudit",
+                InsertionMode = InsertionMode.Replace,
+                LoadingElementId = "loader",
+            }, new { id = "frmUpdatePortfolioAlertAudit" }))
+            {
+                <div id="divUpdatePortfolioAlertAudit">
+
+                </div>
+            }
+
+        </div>
+    </div>
+
+
+    <div class="row">
+
+    </div>
+</div>
+
+<script>
+
+    $(document).ready(function () {
+        $('#txtStartDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#txtEndDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+    });
+
+    function fnSearchRemark() {
+        $('#hdnStartDate').val($('#txtStartDate').val());
+        $('#hdnEndDate').val($('#txtEndDate').val());
+        $('#frmPortfolioAlertAuditList').submit();
+    }
+
+    function fnDownloadRemark(userId) {
+        if ($('#txtStartDate').val() != null && $('#txtStartDate').val() != undefined && $('#txtStartDate').val() != '' && $('#txtEndDate').val() != null && $('#txtEndDate').val() != undefined && $('#txtEndDate').val() != '') {
+
+            window.location.href = "@Url.Action("DownloadPortfolioAlertAudit")?userId=" + userId + "&startdate=" + $('#txtStartDate').val() + "&endDate=" + $('#txtEndDate').val();
+
+        } else {
+            CommonNotification("error", "Please select start date and end date");
+        }
+    }
+</script>
+

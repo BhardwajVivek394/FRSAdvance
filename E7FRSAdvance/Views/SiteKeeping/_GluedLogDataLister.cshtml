@@ -1,0 +1,349 @@
+﻿@model Domain.GluedLogDataLister
+
+
+@*@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+    @Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })*@
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<input type="hidden" id="hdnGluedLogImageBase64"/>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row mt-3">
+                        <div class="col-sm-2 mb15">
+                            <label>Site</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select Site", new { @class = "form-control", id = "gluedLogSiteId", tabindex = 1 })
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            <label>Asset</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.MainTrackId, new SelectList(Model.Assets, "Id", "Name"), "Select", new { @class = "form-control", id = "gluedLogAssetId", tabindex = 1 })
+
+                        </div>
+                        @if (Model.FamilyTracks != null && Model.FamilyTracks.Count > 0 && Model.GluedLogDatas != null && Model.GluedLogDatas.Count > 0)
+                        {
+                            <div class="col-sm-2 mb15">
+                                <label>Remark</label>
+                                @if (!string.IsNullOrEmpty(Model.Remark))
+                                {
+                                    <input type="text" id="gluedLogRemark" class="form-control" value="@Model.Remark" disabled />
+                                }
+                                else
+                                {
+                                    <input type="text" id="gluedLogRemark" class="form-control" />
+                                }
+                            </div>
+                            <div class="col-sm-2 mb15">
+                                <label>Upload Image</label>
+                                <input type="file" class="form-control" accept="image/jpeg" onchange="fnEncodeImageFileGluedLog(this)" />
+                            </div>
+                            <div class="col-sm-2 mt-4">
+                                <button type="button" class="btn btn-primary" onclick="fnOnShowGluedLogRemark()">Edit</button>
+
+                                <button type="button" class="btn btn-primary" onclick="fnApplyGluedLogData()">Apply</button>
+                            </div>
+                        }
+
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="chart-gluedlog" style="width:100%">
+                    </div>
+                    <div class="apache-cotainer" id="area-gluedlog-echart">
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var json = "";
+    var chart;
+    $(document).ready(function () {
+        $('#gluedLogSiteId').change(function () {
+            $("#frmGluedLogData").submit();
+        });
+
+        $('#gluedLogAssetId').change(function () {
+            $("#frmGluedLogData").submit();
+        });
+
+        json = @Html.Raw(Json.Encode(Model));
+        DemoGluedLogChart()
+
+    });
+
+    function DemoGluedLogChart() {
+
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        var DataSeriaes = [];
+        var maxV = 0;
+        var legd = [];
+        var macLeft = 0;
+        var yAxisArray = [];
+        var lary = [];
+        var rary = [];
+        var xValue = [];
+
+        if (json.FamilyTracks != null && json.FamilyTracks.length > 0) {
+
+            $.each(json.FamilyTracks, function (data, val) {
+                var attr = {};
+                attr.name = val;
+                attr.type = 'line';
+                attr.notShowSymbol = true;
+                attr.sampling = sampling;
+                attr.hoverAnimation = false;
+                attr.clip = true;
+                legd.push(val);
+                if (val.indexOf('V') > -1) {
+                    var yaxis = {
+                        value: val,
+                    };
+                    rary.push(yaxis)
+                    attr.yAxisIndex = 1;
+                }
+                else {
+                    var yaxis = {
+                        value: val,
+                    };
+                    lary.push(yaxis)
+                    attr.yAxisIndex = 0;
+                }
+
+                attr.data = [];
+                var values = [];
+                var valFamilyTrack = '';
+                var isMainTrack = false;
+                $.each(json.GluedLogDatas, function (ids, valGLD) {
+
+                    var d = parseDate(valGLD.TimeStamp);
+                    var strDate = d.getDate() + "/" + (d.getMonth() + 1) + "/" + d.getFullYear();
+                    if (xValue.indexOf(strDate) == -1) {
+                        xValue.push(strDate);
+                    }
+                    if (val == valGLD.FamilyTrack) {
+                        values.push(valGLD.FamilyTrackValue.toString());
+                    }
+                    if (val == valGLD.MainTrack) {
+                        if (!isMainTrack) {
+                            valFamilyTrack = valGLD.FamilyTrack;
+                            isMainTrack = true;
+                        }
+                        if (valGLD.FamilyTrack == valFamilyTrack) {
+                            values.push(valGLD.MainTrackValue.toString());
+                        }
+                    }
+
+                });
+                if (val != "TPR V" || val != "DG V" || val != "RG V" || val != "HG V" || val != "HHG V" || val != "Tx1 V" || val != "Tx2 V" || val != "Choke V" || val != "Vr" || val != "Voltage") {
+
+                    var yLeft = Math.max.apply(Math, values); // 3
+                    if (yLeft >= macLeft) {
+                        macLeft = yLeft;
+                    }
+                }
+                attr.connectNulls = true;
+                attr.data = values;
+                attr.datasetIndex = legd.indexOf(val);
+                DataSeriaes.push(attr);
+            });
+
+
+            chart = echarts.init(document.getElementById('area-gluedlog-echart'));
+
+            var sampling = 'none';
+
+            chart.setOption({
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross',
+                        label: {
+                            backgroundColor: '#6a7985'
+                        }
+                    }
+                },
+                legend: {
+                    data: legd,
+                    x: 'left'
+
+                },
+                toolbox: {
+                    show: true,
+                    feature: {
+                        mark: { show: true },
+                        dataView: { show: true, readOnly: false },
+                        magicType: { show: true, type: ['line', 'bar'] },
+                        restore: { show: true },
+                        saveAsImage: { show: true }
+                    }
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: [
+                    {
+                        type: 'category',
+                        boundaryGap: false,
+                        axisLine: { onZero: false },
+                        interval: 50,
+                        data: xValue,
+                    }
+                ],
+                yAxis: [
+                    {
+                        type: 'value',
+                        min: 0,
+                        max: macLeft,
+                        data: lary
+                    }
+                ],
+                color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"],
+
+                series: DataSeriaes
+            });
+
+            window.onresize = chart.resize;
+            //chart.on('legendselectchanged', function (params) {
+            //    legendSelection(chart, params);
+            //});
+        }
+
+       // window.onresize = chart.resize;
+    }
+
+    function parseDate(date) {
+        return new Date(parseInt(/-?\d+/.exec(date)[0]))
+    }
+
+    function fnOnShowGluedLogRemark() {
+        $('#gluedLogRemark').prop('disabled', false)
+    }
+
+    function fnApplyGluedLogData() {
+        if ($('#gluedLogSiteId').val() == "0") {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+        else if ($('#gluedLogAssetId').val() == null || $('#gluedLogAssetId').val() == undefined || $('#gluedLogAssetId').val() == "") {
+            CommonNotification("ERROR", "Please select asset", "Error");
+        } else {
+            if (confirm('Are you sure you want to apply')) {
+                var mMaintenanceInput = {};
+                mMaintenanceInput.SiteId = $('#gluedLogSiteId').val();
+                mMaintenanceInput.AssetId = $('#gluedLogAssetId').val();
+                mMaintenanceInput.IndexScore = 6;
+                mMaintenanceInput.MaintenenceInput = $('#gluedLogRemark').val();
+
+                $.ajax({
+                    url: '/SiteKeeping/ApplyMaintenanceInput',
+                    type: 'Post',
+                    data: JSON.stringify(mMaintenanceInput),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != undefined && data != null && data.type != null && data.type != '') {
+                            if (data.type == 'success') {
+                                UploadGluedLogImage();
+                                SaveGluedLogData();
+                                CommonNotification("SUCCESS", data.result, "success");
+                                $("#frmGluedLogData").submit();
+                            }
+                            else {
+                                CommonNotification("ERROR", data.result, "Error");
+                            }
+                        } else {
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+    }
+
+    function fnEncodeImageFileGluedLog($this) {
+        var file = $this.files[0];
+        var fileType = file["type"];
+        var validImageTypes = ["image/jpeg"];
+        if ($.inArray(fileType, validImageTypes) < 0) {
+            $("#hdnGluedLogImageBase64").val("");
+            alert("Upload only jpeg file");
+        }
+        else {
+            $("#hdnGluedLogImageBase64").val("");
+            var formdata = new FormData(); var file = $($this).get(0).files; if (file.length > 0) {
+                formdata.append('file', file[0]);
+                var reader = new FileReader();
+                reader.readAsDataURL(file[0]);
+                reader.onload = function () {
+
+                    if (reader != null && reader != undefined && reader.result != null && reader.result != undefined) {
+                        var base64String = reader.result.replace("data:", "").replace(/^.+,/, "");
+                        $("#hdnGluedLogImageBase64").val(base64String);
+                    }
+                };
+            }
+        }
+
+        //  $('#hdnTrmImageBase64').val(imagebase64);
+    }
+
+    function SaveGluedLogData() {
+        var mAppKey = {};
+        mAppKey.Number = '@E7FRSAdvance.Utility.Utility.AppKeyEnum.GluedLogDataRemark.GetHashCode()';
+        mAppKey.AppValue = $('#gluedLogRemark').val();
+
+        $.ajax({
+            url: '/SiteKeeping/SaveAppKey',
+            type: 'Post',
+            data: JSON.stringify(mAppKey),
+            contentType: 'application/json',
+            success: function (data) {
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function UploadGluedLogImage() {
+        if ($('#gluedLogSiteId').val() != null && $('#gluedLogSiteId').val() != '0' && $('#gluedLogAssetId').val() != null && $('#gluedLogAssetId').val() != undefined && $('#gluedLogAssetId').val() != "") {
+            var mSiteKeeping = {};
+            mSiteKeeping.SiteId = $('#gluedLogSiteId').val();
+            mSiteKeeping.AssetId = $('#gluedLogAssetId').val();
+            mSiteKeeping.Type = 'Glued';
+            mSiteKeeping.ImageBase64 = $('#hdnGluedLogImageBase64').val();
+
+            $.ajax({
+                url: '/SiteKeeping/UploadImage',
+                type: 'Post',
+                data: JSON.stringify(mSiteKeeping),
+                contentType: 'application/json',
+                success: function (data) {
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                }
+            });
+        }
+
+    }
+</script>

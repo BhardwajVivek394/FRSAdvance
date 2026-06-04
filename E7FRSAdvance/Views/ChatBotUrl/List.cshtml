@@ -1,0 +1,199 @@
+﻿
+@model Domain.ChatBotUrlLister
+@*<style>
+        .card-header {
+            background-color: #fff;
+        }
+    </style>*@
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 people-list">
+        @Html.HiddenFor(x => x.SearchCriteria.IsApprove)
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="btn-group pull-right people-pager">
+                        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                        @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                    @{
+                        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                        if (Model.mChatBotUrls.Count == 0)
+                        {
+                            start = 0;
+                        }
+                        decimal end = Math.Floor(Model.Pager.TotalRecord);
+                        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                        {
+                            if (Model.Pager.PageSize == -1)
+                            {
+                                end = Model.Pager.TotalRecord;
+                            }
+                            else
+                            {
+                                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                if (end > Model.Pager.TotalRecord)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                            }
+                        }
+                    }
+                    <span class="people-count pull-right">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong>  ChatBotUrl</span>
+                </div>
+            </div>
+
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th style="width:70px;" colspan="2" class="text-center">Action</th>
+                                <th>Division</th>
+                                <th>Zone</th>
+                                <th>Url</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.mChatBotUrls != null && Model.mChatBotUrls.Count > 0)
+                            {
+                                foreach (var item in Model.mChatBotUrls)
+                                {
+                                    var isAp = item.IsApprove ? "true" : "false";
+                                    <tr class="table-light">
+                                        @if (item.IsApprove == false)
+                                        {
+
+                                            <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips btn btn-success" data-original-title="Approved" onclick="fnUpdate('@item.Id')">Approve</a></td>
+                                        }
+                                        else
+                                        {
+                                            <td></td>
+                                        }
+
+                                        <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips btn btn-danger" data-original-title="Delete" onclick="fnDelete('@item.Id')">Delete</a></td>
+
+                                        <td>@item.DivisionName</td>
+                                        <td>@item.ZoneName</td>
+                                        <td>@item.Url</td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="9" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#drpSource').change(function (e) {
+            $("#hdnSkip").val('0');
+
+            if ('@Model.SearchCriteria.IsApprove' == 'True') {
+                $("#frmChatBotUrlList").submit();
+            }
+            else {
+                $("#frmChatBotUrlList").submit();
+            }
+        });
+
+        $('#drpUser').change(function (e) {
+            $("#hdnSkip").val('0');
+            if ('@Model.SearchCriteria.IsApprove' == 'True') {
+                $("#frmChatBotUrlList").submit();
+            }
+            else {
+                $("#frmChatBotUrlList").submit();
+            }
+
+        });
+    });
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmChatBotUrlList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmChatBotUrlList").submit();
+            }
+        }
+    }
+
+    function fnUpdate(id) {
+        var mChatBotUrl = {};
+        mChatBotUrl.Id = id;
+        mChatBotUrl.IsApprove = true;
+        $("#loader").hide();        
+        $.ajax({
+            url: "/ChatBotUrl/Update",
+            type: "POST",
+            data: mChatBotUrl,
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    if (data.type == "success") {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "Error");
+                    }
+                } else {
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+
+
+    }
+
+    function fnDelete() {
+        $.ajax({
+            url: "/ChatBotUrl/Delete",
+            type: "POST",
+            data: mChatBotUrl,
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    if (data.type == "success") {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "Error");
+                    }
+                } else {
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+</script>

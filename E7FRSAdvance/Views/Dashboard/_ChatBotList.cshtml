@@ -1,0 +1,318 @@
+﻿@model List<Domain.ChatBot>
+
+<style>
+    .right-msg .msg-img1 {
+        margin: 0 0 0 10px;
+        background-image: url(/assets/images/small-logo.png) !important;
+        width: 40px;
+        height: 40px;
+        margin-bottom: 20px;
+    }
+
+    .left-msg .msg-img1 {
+        background-image: url(/assets/images/small-logo.png) !important;
+        width: 40px;
+        height: 40px;
+        margin-bottom: 20px;
+    }
+
+
+    .msg-bubble1 {
+        float: left;
+        width: 500px;
+        height: auto;
+        background-color: #cccc;
+        border: 1px solid #000000;
+        padding: 20px 15px;
+        border-radius: 40px;
+        border-color: #cccc
+    }
+
+    .msg-bubble2 {
+        float: left;
+        width: 500px;
+        height: auto;
+        background-color: #00a4e0;
+        border: 1px solid #000000;
+        padding: 20px 15px;
+        border-radius: 40px;
+        border-color: #00a4e0
+    }
+
+    .msg-info-name {
+        color:white;
+    }
+    .msg-text {
+        color: white;
+    }
+    .msger-chat {
+        background:white !important;
+    }
+    .msger-inputarea {
+        background: white !important;
+    }
+</style>
+<div class="modal bounceIn animated" id="modal-ChatBot" tabindex="-1" aria-labelledby="modal-ChatBot" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen" role="document">
+        <div class="modal-content bradius4">
+
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">ChatBot</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="right-sidebar-Chats">
+                    <div class="msger">
+                        <div class="msger-chat">
+                            @if (Model != null && Model.Count > 0)
+                            {
+                                foreach (var remark in Model)
+                                {
+                                    remark.Message = remark.Message.Replace("\n", "<br/>");
+                                    if (remark.UserId == E7FRSAdvance.Utility.ClsHttpContent.LoginUser.Id)
+                                    {
+                                        <div class="msg right-msg">
+                                           
+                                            <div class="msg-bubble2">
+                                                <div class="msg-info">
+                                                    <div class="msg-info-name">@remark.Name</div>
+                                                </div>
+                                                <div class="msg-text">@Html.Raw(HttpUtility.HtmlDecode(remark.Message))</div>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="msg left-msg">
+                                         
+                                            <div class="msg-bubble1">
+                                                <div class="msg-info">
+                                                    <div class="msg-info-name">@remark.Name</div>
+                                                </div>
+                                                <div class="msg-text">@Html.Raw(HttpUtility.HtmlDecode(remark.Message))</div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            }
+
+
+                        </div>
+                        <div class="msger-inputarea">
+                            <input class="msger-input two uk-textarea" type="text" placeholder="Type Message here.." id="txtMessage">
+                            <div>
+                                <select name="drpfileType" id="drpfileType" class="form-control">
+                                    <option value="PDF">Pdf</option>
+                                    <option value="CSV">Csv</option>
+                                </select>
+                            </div>
+                            <button class="msger-send-btn" type="button" onclick="fnBindMessage()"><i class="fa fa-location-arrow"></i></button>
+                        </div>
+
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    var counter = 0;
+    var wordCounter = 0;
+    $(document).ready(function () {
+        $("#txtMessage").keyup(function (event) {
+            if (event.keyCode === 13) {
+                fnGetMessage();
+            }
+        });
+
+        $('.msger-chat').scrollTop($('.msger-chat')[0].scrollHeight);
+    });
+
+    function fnBindMessage() {
+        var msg = $("#txtMessage").val();
+        var fileType = $("#drpfileType").val();
+        $("#txtMessage").val('');
+        $.ajax({
+            url: '/Dashboard/BindMainMessage',
+            type: 'Post',
+            data: '{message:"' + msg + '"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#modal-ChatBot").modal("hide");
+                $("#divChatBot").empty().append(data);
+                $("#modal-ChatBot").modal("show");
+                $("#loader").show();
+                $.ajax({
+                    url: '/Dashboard/GetMessageList',
+                    type: 'Post',
+                    data: '{message:"' + msg + '",fileType:"' + fileType + '"}',
+                    contentType: 'application/json',
+                    success: function (listdata) {
+                        counter++;
+                        $("#loader").hide();
+                        $.ajax({
+                            url: '/Dashboard/BindMainMessage',
+                            type: 'Post',
+                            dataType: 'html',
+                            contentType: 'application/json',
+                            success: function (data) {
+                                $("#modal-ChatBot").modal("hide");
+                                $("#divChatBot").empty().append(data);
+                                $("#modal-ChatBot").modal("show");
+
+                            },
+                            error: function (response) {
+                                CommonNotification("danger", "Something went wrong!");
+                            }
+                        });
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("danger", "Something went wrong!");
+                    }
+                });
+
+            },
+            error: function (response) {
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnDisplayMessage(text, elem, delay, length) {
+        if (!elem) {
+            elem = $("body");
+        }
+        if (!delay) {
+            delay = 300;
+        }
+        wordCounter++;
+        if (wordCounter >= length) {
+            $.ajax({
+                url: '/Dashboard/BindMainMessage',
+                type: 'Post',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#modal-ChatBot").modal("hide");
+                    $("#divChatBot").empty().append(data);
+                    $("#modal-ChatBot").modal("show");
+
+                },
+                error: function (response) {
+                    CommonNotification("danger", "Something went wrong!");
+                }
+            });
+
+        }
+        else {
+            if (text.length > 0) {
+                //append first character
+                elem.append(text[0]);
+                setTimeout(
+                    function () {
+                        $('#divChatBotePartial').scrollTop($('#divChatBotePartial')[0].scrollHeight);
+                        fnDisplayMessage(text.slice(1), elem, delay, length);
+                    }, delay
+                );
+
+            }
+        }
+
+    }
+
+    function fnGetMessage() {
+        fnBindMessage();
+        $("#loader").show();
+    }
+
+    function fnLoadMessage() {
+        $.ajax({
+            url: '/ChatBot/BindMainMessage',
+            type: 'Post',
+            data: '{message:""}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#divChatBotePartial").empty().append(data);
+
+
+            },
+            error: function (response) {
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnGetRemark(question) {
+        $('#RemarkQuestion').val(question);
+        $('#Remark').val('');
+        $("#modal-add-Remark").modal('show');
+
+    }
+
+    function fnSaveRemark() {
+        if (Validate()) {
+            var mChatBotRemark = {}
+            mChatBotRemark.Question = $('#RemarkQuestion').val();
+            mChatBotRemark.Remark = $('#Remark').val();
+
+            $.ajax({
+                url: '/ChatBot/SaveRemark',
+                type: 'Post',
+                data: '{mChatBotRemark:' + JSON.stringify(mChatBotRemark) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data.type == "success") {
+                        $("#modal-add-Remark").modal('hide');
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", response.result, "error");
+                }
+            });
+
+            /* $("#frmSaveRemark").submit();*/
+        }
+    }
+
+    function Validate() {
+        var result = true;
+
+        if ($.trim($("#Remark").val()).length == 0) {
+            $("#Remark").next("span").html("Remark is required!");
+            result = false;
+        }
+        else {
+            $("#Remark").next("span").html("");
+        }
+        return result;
+    }
+
+    function AddTextByDelay(text, elem, delay) {
+        if (!elem) {
+            elem = $("body");
+        }
+        if (!delay) {
+            delay = 300;
+        }
+        if (text.length > 0) {
+            //append first character
+            elem.append(text[0]);
+            setTimeout(
+                function () {
+                    //Slice text by 1 character and call function again
+                    addTextByDelay(text.slice(1), elem, delay);
+                }, delay
+            );
+        }
+    }
+</script>

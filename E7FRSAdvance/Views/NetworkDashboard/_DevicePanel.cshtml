@@ -1,0 +1,2909 @@
+﻿@* ============================================================
+    UPDATED DEVICE PANEL - With Cluster View & Asset View Toggle
+    Fixed Uptime/Downtime Calculation
+    ============================================================ *@
+
+@model Domain.Dto.StationDeviceVM
+@{ // Get first modem's mqttBasePath for site-level config
+    string siteMqttBasePath = "rdpms";
+    if (Model.Modems != null && Model.Modems.Any())
+    {
+        var firstModem = Model.Modems.FirstOrDefault();
+        if (firstModem != null && firstModem.MqttBasePath != null)
+        {
+            siteMqttBasePath = firstModem.MqttBasePath;
+        }
+    }
+
+    // Calculate site-level A10 counts
+    int siteTotalA10 = 0;
+    int siteOnlineA10 = 0;
+    int siteOfflineA10 = 0;
+    if (Model.Modems != null)
+    {
+        foreach (var m in Model.Modems)
+        {
+            if (m.A10List != null)
+            {
+                siteTotalA10 += m.A10List.Count;
+                siteOnlineA10 += m.A10List.Count(a => a.TcpStatus && a.MqttStatus);
+            }
+        }
+        siteOfflineA10 = siteTotalA10 - siteOnlineA10;
+    } }
+
+<div class="device-panel flex-grow-1 p-3">
+    <!-- Panel Header with View Toggle -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 panel-title">
+            <i class="bi bi-geo-alt me-2"></i>@Model.SiteName - Devices
+        </h6>
+        <div class="d-flex gap-3 align-items-center">
+            <!-- View Toggle -->
+            <div class="d-flex align-items-center gap-2">
+                <small class="filter-label">View:</small>
+                <div class="btn-group btn-group-sm" id="viewToggleGroup">
+                    <button class="btn btn-outline-primary active" onclick="switchView('cluster', this)" id="btnClusterView">
+                        <i class="bi bi-diagram-3 me-1"></i>Cluster
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="switchView('asset', this)" id="btnAssetView">
+                        <i class="bi bi-box-seam me-1"></i>Asset
+                    </button>
+                </div>
+            </div>
+
+            <!-- Cluster View Filters (shown in cluster view) -->
+            <div class="cluster-view-filters d-flex gap-3" id="clusterViewFilters">
+                <!-- Modem Filter -->
+                <div class="d-flex align-items-center gap-2">
+                    <small class="filter-label">Modems:</small>
+                    <div class="btn-group btn-group-sm" id="modemFilterGroup">
+                        <button class="btn btn-outline-secondary active" onclick="filterModems('All', this)">All</button>
+                        <button class="btn btn-outline-secondary" onclick="filterModems('Online', this)">Online</button>
+                        <button class="btn btn-outline-secondary" onclick="filterModems('Offline', this)">Offline</button>
+                    </div>
+                </div>
+                <!-- A10 Filter -->
+                <div class="d-flex align-items-center gap-2">
+                    <small class="filter-label">A10:</small>
+                    <div class="btn-group btn-group-sm" id="a10FilterGroup">
+                        <button class="btn btn-outline-secondary active" onclick="filterA10s('All', this)">All</button>
+                        <button class="btn btn-outline-secondary" onclick="filterA10s('Online', this)">Online</button>
+                        <button class="btn btn-outline-secondary" onclick="filterA10s('Offline', this)">Offline</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Asset View Filters (shown in asset view) -->
+            <div class="asset-view-filters d-flex gap-3" id="assetViewFilters" style="display: none;">
+                <div class="d-flex align-items-center gap-2">
+                    <small class="filter-label">Asset Type:</small>
+                    <select class="form-select form-select-sm" id="assetTypeDropdown" style="min-width: 180px;" onchange="onAssetTypeChange(this)">
+                        <option value="">-- Select Asset Type --</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Station Card Header (Common for both views) -->
+    <div class="card station-card mb-3">
+        <div class="card-header card-elevated d-flex align-items-center gap-3">
+            <div class="bg-primary bg-opacity-25 rounded d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                <i class="bi bi-buildings fs-5 text-primary"></i>
+            </div>
+            <div class="flex-grow-1">
+                <h6 class="mb-0 station-name">@Model.SiteName</h6>
+                <small class="station-location">@Model.DivisionName / @Model.ZoneDescription</small>
+            </div>
+            <div class="d-flex gap-4 text-center">
+                <div>
+                    <div class="fw-bold text-v2" id="visibleModemCount">@Model.Modems.Count()</div>
+                    <small class="count-label">Modems</small>
+                </div>
+                <div class="site-a10-stats">
+                    <div class="d-flex align-items-center justify-content-center gap-1">
+                        <span class="fw-bold text-a10" id="visibleA10Count">@siteTotalA10</span>
+                        <span class="a10-sub-count">
+                            (<span class="@(siteOnlineA10 == 0 ? "text-muted" : "text-success")">@siteOnlineA10</span>/<span class="@(siteOfflineA10 == 0 ? "text-muted" : "text-danger")">@siteOfflineA10</span>)
+                        </span>
+                    </div>
+                    <small class="count-label">A10</small>
+                </div>
+                <!-- Site Uptime Stats Placeholder -->
+                <div class="site-uptime-placeholder" id="siteUptimeStats">
+                    <div class="uptime-loading">Loading...</div>
+                </div>
+            </div>
+
+            @*<button class="btn btn-sm btn-outline-warning set-config-btn"
+                        onclick="openSetConfigModal('site', @Model.SiteId, null, null, '@Model.SiteName', '@siteMqttBasePath'); event.stopPropagation();"
+                        title="Configure all ADCs in this site">
+                    <i class="bi bi-gear me-1"></i> Set Config
+                </button>*@
+            <button class="btn btn-sm btn-outline-warning set-config-btn"
+                    data-context="@Model.SiteName"
+                    data-level="site"
+                    data-site-id="@Model.SiteId"
+                    data-cluster-id=""
+                    data-adc-number=""
+                    data-mqtt-base="@siteMqttBasePath"
+                    onclick="openSetConfigFromData(this); event.stopPropagation();"
+                    title="Configure all ADCs in this site">
+                <i class="bi bi-gear me-1"></i> Set Config
+            </button>
+
+        </div>
+
+        <!-- ============================================================
+             CLUSTER VIEW CONTENT
+             ============================================================ -->
+        <div class="card-body p-0" id="clusterViewContent">
+            @if (Model.Modems != null && Model.Modems.Any())
+            {
+                foreach (var modem in Model.Modems)
+                {
+                    string modemId = modem.ModemId != null ? modem.ModemId : "";
+                    string modemName = modem.ModemName != null ? modem.ModemName : "";
+                    string clusterName = modem.ClusterName != null ? modem.ClusterName : "";
+                    string siteName = modem.SiteName != null ? modem.SiteName : "";
+                    string divisionName = modem.DivisionName != null ? modem.DivisionName : "";
+                    string zoneName = modem.ZoneName != null ? modem.ZoneName : "";
+                    string mqttBasePath = modem.MqttBasePath != null ? modem.MqttBasePath : "";
+                    string simNumber = modem.SimNumber != null ? modem.SimNumber : "-";
+                    decimal? signalStrength = modem.SignalStrength;
+
+                    int totalA10Count = modem.A10List != null ? modem.A10List.Count : 0;
+                    int onlineA10Count = modem.A10List != null ? modem.A10List.Count(a => a.TcpStatus && a.MqttStatus) : 0;
+                    int offlineA10Count = totalA10Count - onlineA10Count;
+
+                    string subscribeTopic = modem.SubscribeTopic != null ? modem.SubscribeTopic : "";
+                    string publishTopic = modem.PublishTopic != null ? modem.PublishTopic : "";
+                    bool isFullyOnline = modem.TcpStatus && modem.MqttStatus;
+                    string onlineStatus = isFullyOnline ? "online" : "offline";
+
+                    <div class="modem-row">
+                        <div class="modem-header d-flex align-items-center gap-2 p-3"
+                             data-modem-version="@modem.Version"
+                             data-cluster-id="@modem.ClusterId"
+                             data-station-name="@siteName"
+                             data-division-name="@divisionName"
+                             data-zone-name="@zoneName"
+                             data-mqtt-base="@mqttBasePath"
+                             data-signal="@signalStrength"
+                             data-modem-id="@modem.ModemId"
+                             data-modem-name="@modemName"
+                             data-cluster-name="@clusterName"
+                             data-sim-number="@simNumber"
+                             data-tcp-status="@modem.TcpStatus.ToString().ToLower()"
+                             data-mqtt-status="@modem.MqttStatus.ToString().ToLower()"
+                             data-subscribe-topic="@subscribeTopic"
+                             data-publish-topic="@publishTopic"
+                             data-status="@onlineStatus"
+                             data-a10-total="@totalA10Count"
+                             data-a10-online="@onlineA10Count"
+                             data-a10-offline="@offlineA10Count"
+                             onclick="toggleA10List('@modem.ClusterId','@modem.ModemId', this)"
+                             style="cursor: pointer;">
+
+                            <i class="bi bi-chevron-right toggle-icon modem-toggle" id="toggle-icon-@modem.ClusterId"></i>
+
+                            <div class="bg-v@(modem.Version) rounded d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                <i class="bi bi-router text-v1"></i>
+                            </div>
+
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="fw-semibold modem-name">@clusterName</span>
+                                    <span class="badge badge-v@(modem.Version)" style="font-size: 0.55rem;">v@(modem.Version)</span>
+                                </div>
+                                <small class="modem-info font-mono">
+                                    Modem Id: @modemId | Modem Name: @modemName | Signal: @signalStrength
+                                </small>
+                            </div>
+
+                            <!-- A10 Count Display -->
+                            <div class="a10-count-group d-flex align-items-center gap-1 me-2">
+                                <div class="a10-count-box text-center" title="Total A10 Devices">
+                                    <div class="a10-count-value fw-bold @(totalA10Count == 0 ? "text-muted" : "")">@totalA10Count</div>
+                                    <div class="a10-count-label">A10</div>
+                                </div>
+                                <div class="a10-count-divider"></div>
+                                <div class="a10-count-box a10-online text-center" title="Online A10 Devices">
+                                    <div class="a10-count-value fw-bold @(onlineA10Count == 0 ? "zero-count" : "")">@onlineA10Count</div>
+                                    <div class="a10-count-label">
+                                        <span class="status-dot online me-1" style="width: 5px; height: 5px;"></span>On
+                                    </div>
+                                </div>
+                                <div class="a10-count-box a10-offline text-center" title="Offline A10 Devices">
+                                    <div class="a10-count-value fw-bold @(offlineA10Count == 0 ? "zero-count" : "")">@offlineA10Count</div>
+                                    <div class="a10-count-label">
+                                        <span class="status-dot offline me-1" style="width: 5px; height: 5px;"></span>Off
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Cluster Uptime Stats Placeholder -->
+                            <div class="cluster-uptime-placeholder" id="clusterUptime_@modem.ClusterId">
+                                <span class="uptime-loading">
+                                    <small style="font-size: 0.6rem;">...</small>
+                                </span>
+                            </div>
+
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="d-flex gap-2">
+                                    <span class="badge @(modem.TcpStatus ? "bg-primary" : "bg-danger") bg-opacity-25 @(modem.TcpStatus ? "text-tcp" : "text-danger") small">
+                                        <span class="status-dot @(modem.TcpStatus ? "online" : "offline") me-1" style="width:5px; height:5px;"></span>
+                                        TCP
+                                    </span>
+                                    <span class="badge @(modem.MqttStatus ? "bg-success" : "bg-danger") bg-opacity-25 @(modem.MqttStatus ? "text-mqtt" : "text-danger") small">
+                                        <span class="status-dot @(modem.MqttStatus ? "online" : "offline") me-1" style="width:5px; height:5px;"></span>
+                                        MQTT
+                                    </span>
+                                </div>
+
+                                @*<button class="btn btn-sm btn-outline-info set-config-btn"
+                                            onclick="openSetConfigModal('cluster', @Model.SiteId, @modem.ClusterId, null, '@clusterName','@siteMqttBasePath'); event.stopPropagation();"
+                                            title="Configure all ADCs in @clusterName">
+                                        <i class="bi bi-gear"></i>
+                                    </button>*@
+                                <button class="btn btn-sm btn-outline-info set-config-btn"
+                                        data-context="@clusterName"
+                                        data-level="cluster"
+                                        data-site-id="@Model.SiteId"
+                                        data-cluster-id="@modem.ClusterId"
+                                        data-adc-number=""
+                                        data-mqtt-base="@siteMqttBasePath"
+                                        onclick="openSetConfigFromData(this); event.stopPropagation();"
+                                        title="Configure all ADCs in @clusterName">
+                                    <i class="bi bi-gear"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- A10 List Container -->
+                        <div class="a10-container" id="a10Container_@modem.ClusterId" style="display: none;">
+                            @if (modem.A10List != null && modem.A10List.Count > 0)
+                            {
+                                <div class="a10-list pb-3">
+                                    <div class="d-flex flex-wrap a10-box p-3" style="gap: 8px;">
+                                        @foreach (var a10 in modem.A10List)
+                                        {
+                                            string firmware = a10.FirmwareVersion != null ? a10.FirmwareVersion : "";
+                                            string slaveAddress = a10.SlaveAddress != null ? a10.SlaveAddress : "";
+                                            string a10ClusterName = a10.ClusterName != null ? a10.ClusterName : clusterName;
+                                            string a10ModemId = a10.ModemId != null ? a10.ModemId.ToString() : modem.ModemId;
+                                            string a10ModemName = a10.ModemName != null ? a10.ModemName : modemName;
+                                            string a10StationName = a10.StationName != null ? a10.StationName : siteName;
+                                            string a10DivisionName = a10.DivisionName != null ? a10.DivisionName : divisionName;
+                                            string a10MqttBasePath = a10.MQTTBasePath != null ? a10.MQTTBasePath : mqttBasePath;
+                                            string mqttSubscribe = a10.MqttSubscribe != null ? a10.MqttSubscribe : "";
+                                            string mqttPublish = a10.MqttPublish != null ? a10.MqttPublish : "";
+                                            string lastDataTime = a10.LastDataTime.HasValue ? a10.LastDataTime.Value.ToString("o") : "";
+                                            string firmwareDisplay = a10.FirmwareVersion != null ? a10.FirmwareVersion : "-";
+                                            string adcTypeName = a10.ADCTypeName != null ? a10.ADCTypeName : "-";
+                                            bool isA10Online = a10.TcpStatus && a10.MqttStatus;
+                                            string statusClass = isA10Online ? "online" : "offline";
+
+                                            <div class="a10-item card card-elevated p-2 d-flex flex-row align-items-center gap-2 mw-125"
+                                                 data-a10-id="@a10.Id"
+                                                 data-a10-number="@a10.ADCNumber"
+                                                 data-a10-type="@adcTypeName"
+                                                 data-a10-type-id="@a10.ADCTypeId"
+                                                 data-a10-firmware="@firmware"
+                                                 data-a10-slave="@slaveAddress"
+                                                 data-a10-channels="@a10.ChannelCount"
+                                                 data-cluster-id="@modem.ClusterId"
+                                                 data-cluster-name="@a10ClusterName"
+                                                 data-modem-id="@a10ModemId"
+                                                 data-modem-name="@a10ModemName"
+                                                 data-site-id="@Model.SiteId"
+                                                 data-station-name="@a10StationName"
+                                                 data-division-name="@a10DivisionName"
+                                                 data-mqtt-base="@a10MqttBasePath"
+                                                 data-mqtt-subscribe="@mqttSubscribe"
+                                                 data-mqtt-publish="@mqttPublish"
+                                                 data-tcp-status="@a10.TcpStatus.ToString().ToLower()"
+                                                 data-mqtt-status="@a10.MqttStatus.ToString().ToLower()"
+                                                 data-last-data="@lastDataTime"
+                                                 onclick="selectA10BS(this); event.stopPropagation();">
+
+                                                <div class="flex-grow-1">
+                                                    <div class="fw-semibold small d-flex align-items-center a10-name">
+                                                        <span class="status-dot @statusClass me-1" style="width: 5px; height: 5px;"></span>
+                                                        A10-@a10.Id
+                                                        <span class="badge @(a10.TcpStatus ? "bg-primary" : "bg-danger") bg-opacity-25 @(a10.TcpStatus ? "text-tcp" : "text-danger") small" style="margin-left: 10px;">
+                                                            <span class="status-dot @(a10.TcpStatus ? "online" : "offline") me-1" style="width:5px; height:5px;"></span>
+                                                            TCP
+                                                        </span>
+                                                        <span class="badge @(a10.MqttStatus ? "bg-success" : "bg-danger") bg-opacity-25 @(a10.MqttStatus ? "text-mqtt" : "text-danger") small" style="margin-left: 10px;">
+                                                            <span class="status-dot @(a10.MqttStatus ? "online" : "offline") me-1" style="width:5px; height:5px;"></span>
+                                                            MQTT
+                                                        </span>
+                                                        @*<button class="btn btn-xs btn-outline-cyan set-config-btn-a10 ms-2"
+                                                                    onclick="openSetConfigModal('adc', @Model.SiteId, @modem.ClusterId, @a10.ADCNumber, 'A10-@a10.Id','@siteMqttBasePath'); event.stopPropagation();"
+                                                                    title="Configure A10-@a10.Id">
+                                                                <i class="bi bi-gear" style="font-size: 0.6rem;"></i>
+                                                            </button>*@
+                                                        <button class="btn btn-xs btn-outline-cyan set-config-btn-a10 ms-2"
+                                                                data-context="A10-@a10.Id"
+                                                                data-level="adc"
+                                                                data-site-id="@Model.SiteId"
+                                                                data-cluster-id="@modem.ClusterId"
+                                                                data-adc-number="@a10.Id"
+                                                                data-mqtt-base="@siteMqttBasePath"
+                                                                onclick="openSetConfigFromData(this); event.stopPropagation();"
+                                                                title="Configure A10-@a10.Id">
+                                                            <i class="bi bi-gear" style="font-size: 0.6rem;"></i>
+                                                        </button>
+                                                    </div>
+                                                    <small class="a10-info font-mono">Type: @a10.ADCTypeName | F/W: @firmwareDisplay</small>
+                                                </div>
+                                            </div>}
+                                    </div>
+                                </div> }
+                            else
+                            {
+                                <div class="no-devices-msg small text-center py-3">No A10 devices found</div>}
+                        </div>
+                    </div> }
+            }
+            else
+            {
+                <div class="no-devices-msg small text-center py-4">No modems found for this station</div>}
+        </div>
+
+        <!-- ============================================================
+             ASSET VIEW CONTENT
+             ============================================================ -->
+        <div class="card-body p-0" id="assetViewContent" style="display: none;">
+            <!-- Loading State -->
+            <div id="assetViewLoading" class="text-center py-5" style="display: none;">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <div class="mt-2 text-muted small">Loading assets...</div>
+            </div>
+
+            <!-- Placeholder when no asset type selected -->
+            <div id="assetViewPlaceholder" class="text-center py-5">
+                <i class="bi bi-box-seam text-muted" style="font-size: 3rem;"></i>
+                <div class="mt-2 text-muted">Select an Asset Type to view assets</div>
+            </div>
+
+            <!-- Asset List Container -->
+            <div id="assetListContainer" style="display: none;">
+                <!-- Will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     ADC MQTT BROKER MODAL (For Asset View) - Similar to A10 Index.cshtml
+     ============================================================ -->
+<div class="modal bounceIn animated" id="adcMqttModal" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="adcMqttModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header" style="background-color: #0e5068; color: white;">
+                <h5 class="modal-title" id="adcMqttModalLabel">
+                    <i class="bi bi-broadcast me-2"></i>ADC MQTT Broker Console
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- ADC Info Card -->
+                <div class="card mb-3" style="border-left: 4px solid #0e5068;">
+                    <div class="card-body py-2" style="background-color: #f8f9fa;">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <small class="text-muted">ADC Number</small>
+                                <div class="fw-bold" id="adcModalNumber">-</div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Cluster</small>
+                                <div class="fw-bold" id="adcModalCluster">-</div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Modem ID</small>
+                                <div class="fw-bold" id="adcModalModem">-</div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Pin</small>
+                                <div class="fw-bold" id="adcModalPin">-</div>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-3">
+                                <small class="text-muted">Asset</small>
+                                <div class="fw-bold" id="adcModalAsset">-</div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Attribute</small>
+                                <div class="fw-bold" id="adcModalAttribute">-</div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Location</small>
+                                <div class="fw-bold" id="adcModalLocation">-</div>
+                            </div>
+                            <div class="col-md-3">
+                                <small class="text-muted">Card</small>
+                                <div class="fw-bold" id="adcModalCard">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connection Section -->
+                <div class="card mb-3">
+                    <div class="card-header py-2" style="background-color: #215968; color: white;">
+                        <i class="bi bi-plug me-2"></i>Connection
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold">Subscribe Topic (Receive)</label>
+                                <input type="text" class="form-control form-control-sm font-mono" id="adcMqttSubscribeTopic" readonly style="background-color: #e9f7ef;">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold">Publish Topic (Send)</label>
+                                <input type="text" class="form-control form-control-sm font-mono" id="adcMqttPublishTopic" readonly style="background-color: #fef9e7;">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end gap-2">
+                                <button class="btn btn-success btn-sm flex-grow-1" id="btnAdcMqttConnect" onclick="adcMqttConnect()">
+                                    <i class="bi bi-plug me-1"></i>Connect
+                                </button>
+                                <button class="btn btn-danger btn-sm flex-grow-1" id="btnAdcMqttDisconnect" onclick="adcMqttDisconnect()" style="display: none;">
+                                    <i class="bi bi-x-circle me-1"></i>Disconnect
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <span class="badge bg-secondary" id="adcMqttConnectionStatus">
+                                <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Disconnected
+                            </span>
+                            <small class="text-muted ms-2" id="adcMqttLastUpdate">Last Update: --</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Command Panel -->
+                <div class="card mb-3">
+                    <div class="card-header py-2" style="background-color: #4bacc6; color: white;">
+                        <i class="bi bi-terminal me-2"></i>Command Panel
+                    </div>
+                    <div class="card-body">
+                        <!-- Quick Commands Row 1 -->
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Quick Commands - Configuration</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-outline-primary btn-sm" onclick="adcSendQuickCommand('GETCONFIG')" title="Get ADC Configuration">
+                                    <i class="bi bi-download me-1"></i>Get Config
+                                </button>
+                                <button class="btn btn-outline-warning btn-sm" onclick="openSetConfigFromMqttModal()" title="Set ADC Configuration">
+                                    <i class="bi bi-gear me-1"></i>Set Config
+                                </button>
+                                <button class="btn btn-outline-info btn-sm" onclick="adcSendQuickCommand('GETSTATUS')" title="Get Status">
+                                    <i class="bi bi-info-circle me-1"></i>Get Status
+                                </button>
+                                <button class="btn btn-outline-secondary btn-sm" onclick="adcSendQuickCommand('GETVERSION')" title="Get Firmware Version">
+                                    <i class="bi bi-cpu me-1"></i>Get Version
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Quick Commands Row 2 -->
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Quick Commands - Device Control</label>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-outline-success btn-sm" onclick="adcSendQuickCommand('RESTART')" title="Restart Device">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>Restart
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" onclick="adcSendQuickCommand('RESET')" title="Reset Device">
+                                    <i class="bi bi-arrow-repeat me-1"></i>Reset
+                                </button>
+                                <button class="btn btn-outline-primary btn-sm" onclick="adcSendQuickCommand('PING')" title="Ping Device">
+                                    <i class="bi bi-broadcast me-1"></i>Ping
+                                </button>
+                                <button class="btn btn-outline-info btn-sm" onclick="adcSendQuickCommand('GETTIME')" title="Get Device Time">
+                                    <i class="bi bi-clock me-1"></i>Get Time
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Custom Command Input -->
+                        <div class="mt-3">
+                            <label class="form-label small fw-bold">Custom Command</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control form-control-sm font-mono" id="adcCustomCommand" placeholder="Enter custom command...">
+                                <button class="btn btn-primary btn-sm" onclick="adcSendCustomCommand()">
+                                    <i class="bi bi-send me-1"></i>Send
+                                </button>
+                            </div>
+                            <small class="text-muted">Press Enter to send command</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Messages Log -->
+                <div class="card">
+                    <div class="card-header py-2 d-flex justify-content-between align-items-center" style="background-color: #215968; color: white;">
+                        <span><i class="bi bi-chat-left-text me-2"></i>Messages Log</span>
+                        <button class="btn btn-sm btn-outline-light" onclick="clearAdcMqttLog()">
+                            <i class="bi bi-trash me-1"></i>Clear
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="adcMqttLogContainer" class="mqtt-log-container" style="height: 250px; overflow-y: auto; background: #1e1e1e; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem;">
+                            <div class="p-3 text-secondary text-center">
+                                <i class="bi bi-chat-dots me-2"></i>No messages yet. Connect to start receiving data.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i>Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* ============================================================
+        VIEW TOGGLE STYLES
+        ============================================================ */
+    #viewToggleGroup .btn.active {
+        font-weight: 600;
+    }
+
+    /* ============================================================
+        ASSET VIEW STYLES
+        ============================================================ */
+    /*.asset-group {
+         border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+         border-radius: 8px;
+         margin-bottom: 12px;
+         overflow: hidden;
+     }
+
+     .asset-header {
+         background: var(--card-bg, rgba(0, 0, 0, 0.02));
+         padding: 10px 15px;
+         cursor: pointer;
+         transition: background 0.2s ease;
+         border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+     }
+
+         .asset-header:hover {
+             background: var(--card-hover-bg, rgba(0, 0, 0, 0.05));
+         }
+
+         .asset-header .toggle-icon {
+             transition: transform 0.2s ease;
+         }
+
+         .asset-header.expanded .toggle-icon {
+             transform: rotate(90deg);
+         }
+
+     .asset-content {
+         padding: 0;
+     }
+
+     .attribute-group {
+         border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.05));
+     }
+
+         .attribute-group:last-child {
+             border-bottom: none;
+         }
+
+     .attribute-header {
+         background: var(--body-bg, #fff);
+         padding: 8px 15px 8px 30px;
+         cursor: pointer;
+         transition: background 0.2s ease;
+     }
+
+         .attribute-header:hover {
+             background: var(--card-bg, rgba(0, 0, 0, 0.02));
+         }
+
+         .attribute-header.expanded .toggle-icon {
+             transform: rotate(90deg);
+         }
+
+     .adc-list {
+         padding: 10px 15px 10px 45px;
+         background: var(--card-bg, rgba(0, 0, 0, 0.01));
+     }
+
+     .adc-item {
+         display: inline-flex;
+         align-items: center;
+         gap: 6px;
+         padding: 6px 12px;
+         margin: 4px;
+         background: var(--body-bg, #fff);
+         border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+         border-radius: 6px;
+         cursor: pointer;
+         transition: all 0.2s ease;
+         font-size: 0.8rem;
+     }
+
+         .adc-item:hover {
+             border-color: var(--bs-primary);
+             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+             transform: translateY(-1px);
+         }
+
+         .adc-item .adc-number {
+             font-weight: 600;
+             color: var(--bs-primary);
+         }
+
+         .adc-item .adc-pin {
+             font-size: 0.7rem;
+             color: var(--muted-color);
+         }*/
+
+    /* Dark theme adjustments */
+    /*[data-theme="dark"] .asset-header {
+         background: rgba(255, 255, 255, 0.03);
+     }
+
+         [data-theme="dark"] .asset-header:hover {
+             background: rgba(255, 255, 255, 0.06);
+         }
+
+     [data-theme="dark"] .attribute-header:hover {
+         background: rgba(255, 255, 255, 0.03);
+     }
+
+     [data-theme="dark"] .adc-list {
+         background: rgba(255, 255, 255, 0.02);
+     }
+
+     [data-theme="dark"] .adc-item {
+         background: rgba(255, 255, 255, 0.05);
+         border-color: rgba(255, 255, 255, 0.1);
+     }*/
+    /* ============================================================
+    ENHANCED ASSET VIEW STYLES - Card View with MQTT
+    ============================================================ */
+
+    /* Asset Group Card */
+    .asset-group {
+        border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+        border-radius: 10px;
+        margin-bottom: 16px;
+        overflow: hidden;
+        background: var(--card-bg, #fff);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
+
+    .asset-header {
+        background: linear-gradient(135deg, var(--card-bg, rgba(0, 0, 0, 0.02)), var(--card-hover-bg, rgba(0, 0, 0, 0.04)));
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+    }
+
+        .asset-header:hover {
+            background: var(--card-hover-bg, rgba(0, 0, 0, 0.06));
+        }
+
+        .asset-header.expanded {
+            border-bottom-color: var(--bs-primary);
+        }
+
+        .asset-header .toggle-icon {
+            transition: transform 0.3s ease;
+            color: var(--muted-color);
+        }
+
+        .asset-header.expanded .toggle-icon {
+            transform: rotate(90deg);
+            color: var(--bs-primary);
+        }
+
+    /* MQTT Subscribe Button */
+    .mqtt-subscribe-btn {
+        padding: 4px 10px;
+        font-size: 0.65rem;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+        .mqtt-subscribe-btn.subscribed {
+            background-color: var(--bs-success) !important;
+            border-color: var(--bs-success) !important;
+            color: #fff !important;
+        }
+
+        .mqtt-subscribe-btn .spinner-border {
+            width: 12px;
+            height: 12px;
+            border-width: 2px;
+        }
+
+    /* Asset MQTT Status */
+    .asset-mqtt-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: var(--card-bg, rgba(0, 0, 0, 0.03));
+        border-radius: 12px;
+        font-size: 0.6rem;
+        border: 1px solid var(--border-color);
+    }
+
+        .asset-mqtt-status .status-dot {
+            width: 6px;
+            height: 6px;
+        }
+
+        .asset-mqtt-status.connected {
+            background: rgba(25, 135, 84, 0.1);
+            border-color: var(--bs-success);
+            color: var(--bs-success);
+        }
+
+    /* Attribute Group */
+    .attribute-group {
+        border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.05));
+        background: var(--body-bg, #fff);
+    }
+
+        .attribute-group:last-child {
+            border-bottom: none;
+        }
+
+    .attribute-header {
+        background: transparent;
+        padding: 10px 16px 10px 32px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+        .attribute-header:hover {
+            background: var(--card-bg, rgba(0, 0, 0, 0.02));
+        }
+
+        .attribute-header.expanded {
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+
+            .attribute-header.expanded .toggle-icon {
+                transform: rotate(90deg);
+                color: var(--bs-success);
+            }
+
+    /* ADC Card Grid */
+    .adc-card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+        padding: 16px;
+        background: var(--card-bg, rgba(0, 0, 0, 0.01));
+    }
+
+    /* ADC Card */
+    .adc-card {
+        background: var(--body-bg, #fff);
+        border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+        border-radius: 8px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+        .adc-card:hover {
+            border-color: var(--bs-primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .adc-card.selected {
+            border-color: var(--bs-primary);
+            box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), 0.25);
+        }
+
+        .adc-card .card-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .adc-card .adc-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: var(--body-color);
+        }
+
+            .adc-card .adc-title .status-dot {
+                width: 8px;
+                height: 8px;
+            }
+
+        .adc-card .adc-pin-badge {
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            background: var(--card-bg, rgba(0, 0, 0, 0.05));
+            border-radius: 4px;
+            color: var(--muted-color);
+        }
+
+        .adc-card .card-info-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .adc-card .cluster-badge {
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            background: rgba(var(--bs-info-rgb), 0.1);
+            color: var(--bs-info);
+            border-radius: 4px;
+        }
+
+        /* Live Data Display */
+        .adc-card .live-data-section {
+            background: var(--card-bg, rgba(0, 0, 0, 0.02));
+            border-radius: 6px;
+            padding: 8px;
+            margin-top: 8px;
+            min-height: 50px;
+        }
+
+        .adc-card .live-data-placeholder {
+            text-align: center;
+            color: var(--muted-color);
+            font-size: 0.7rem;
+            padding: 10px 0;
+        }
+
+        .adc-card .live-data-value {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+            .adc-card .live-data-value .value {
+                font-size: 1.2rem;
+                font-weight: 700;
+                color: var(--bs-primary);
+            }
+
+            .adc-card .live-data-value .unit {
+                font-size: 0.7rem;
+                color: var(--muted-color);
+            }
+
+        .adc-card .live-data-timestamp {
+            text-align: center;
+            font-size: 0.55rem;
+            color: var(--muted-color);
+            margin-top: 4px;
+        }
+
+        /* Status Badges Row */
+        .adc-card .status-badges {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+
+            .adc-card .status-badges .badge {
+                font-size: 0.55rem;
+                padding: 2px 5px;
+            }
+
+        /* Uptime Row */
+        .adc-card .uptime-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--border-color);
+        }
+
+        .adc-card .uptime-item {
+            text-align: center;
+            flex: 1;
+        }
+
+            .adc-card .uptime-item .label {
+                font-size: 0.5rem;
+                color: var(--muted-color);
+                text-transform: uppercase;
+            }
+
+            .adc-card .uptime-item .value {
+                font-size: 0.7rem;
+                font-weight: 600;
+            }
+
+    /* Pulse animation for live data */
+    @@keyframes dataPulse {
+        0% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.5;
+        }
+
+        100% {
+            opacity: 1;
+        }
+    }
+
+    .adc-card.receiving .live-data-value {
+        animation: dataPulse 0.5s ease;
+    }
+
+    /* Dark theme */
+    [data-theme="dark"] .asset-group {
+        background: rgba(255, 255, 255, 0.02);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    [data-theme="dark"] .asset-header {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.05));
+    }
+
+    [data-theme="dark"] .adc-card {
+        background: rgba(255, 255, 255, 0.03);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+        [data-theme="dark"] .adc-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        [data-theme="dark"] .adc-card .live-data-section {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+    /* Responsive */
+    @@media (max-width: 576px) {
+        .adc-card-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    /* ============================================================
+        MQTT LOG STYLES
+        ============================================================ */
+    .mqtt-log-container .log-entry {
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.05));
+    }
+
+        .mqtt-log-container .log-entry.sent {
+            background: rgba(25, 135, 84, 0.1);
+        }
+
+        .mqtt-log-container .log-entry.received {
+            background: rgba(13, 110, 253, 0.1);
+        }
+
+    .mqtt-log-container .log-time {
+        color: var(--muted-color);
+        margin-right: 8px;
+    }
+
+    /* ============================================================
+        EXISTING CLUSTER VIEW STYLES
+        ============================================================ */
+    .panel-title {
+        color: var(--body-color) !important;
+    }
+
+    .filter-label {
+        color: var(--muted-color) !important;
+    }
+
+    .station-name {
+        color: var(--body-color) !important;
+    }
+
+    .station-location {
+        color: var(--muted-color) !important;
+    }
+
+    .count-label {
+        color: var(--muted-color) !important;
+    }
+
+    .modem-name {
+        color: var(--body-color) !important;
+    }
+
+    .modem-info {
+        color: var(--muted-color) !important;
+    }
+
+    .a10-name {
+        color: var(--body-color) !important;
+    }
+
+    .a10-info {
+        color: var(--muted-color) !important;
+    }
+
+    .no-devices-msg {
+        color: var(--muted-color) !important;
+    }
+
+    .zero-count {
+        color: var(--muted-color, #6c757d) !important;
+    }
+
+    .a10-count-box.a10-online .a10-count-value.zero-count {
+        color: var(--muted-color, #6c757d) !important;
+    }
+
+    .a10-count-box.a10-offline .a10-count-value.zero-count {
+        color: var(--muted-color, #6c757d) !important;
+    }
+
+    .site-a10-stats .text-muted {
+        color: var(--muted-color, #6c757d) !important;
+    }
+
+    .a10-count-group {
+        background: var(--card-bg, rgba(0, 0, 0, 0.03));
+        border-radius: 8px;
+        padding: 4px 10px;
+        border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+    }
+
+    .a10-count-box {
+        min-width: 32px;
+        padding: 0 4px;
+    }
+
+    .a10-count-value {
+        font-size: 0.85rem;
+        line-height: 1.2;
+        color: var(--body-color);
+    }
+
+    .a10-count-label {
+        font-size: 0.55rem;
+        color: var(--muted-color);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .a10-count-divider {
+        width: 1px;
+        height: 22px;
+        background: var(--border-color, rgba(0, 0, 0, 0.15));
+        margin: 0 2px;
+    }
+
+    .a10-count-box.a10-online .a10-count-value:not(.zero-count) {
+        color: var(--bs-success, #198754);
+    }
+
+    .a10-count-box.a10-offline .a10-count-value:not(.zero-count) {
+        color: var(--bs-danger, #dc3545);
+    }
+
+    .modem-header:hover .a10-count-group {
+        background: var(--card-hover-bg, rgba(0, 0, 0, 0.05));
+    }
+
+    .site-a10-stats .a10-sub-count {
+        font-size: 0.7rem;
+        font-weight: normal;
+    }
+
+    [data-theme="dark"] .a10-count-group {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    [data-theme="dark"] .a10-count-divider {
+        background: rgba(255, 255, 255, 0.15);
+    }
+
+    [data-theme="dark"] .zero-count {
+        color: var(--muted-color, #8b949e) !important;
+    }
+
+    .set-config-btn {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+        .set-config-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+    .set-config-btn-a10 {
+        font-size: 0.55rem;
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid var(--a10-color, #06b6d4);
+        color: var(--a10-color, #06b6d4);
+        background: transparent;
+    }
+
+        .set-config-btn-a10:hover {
+            background-color: rgba(6, 182, 212, 0.15);
+            border-color: var(--a10-color, #06b6d4);
+            color: var(--a10-color, #06b6d4);
+        }
+
+    .btn-outline-cyan {
+        border-color: var(--a10-color, #06b6d4);
+        color: var(--a10-color, #06b6d4);
+    }
+
+        .btn-outline-cyan:hover {
+            background-color: rgba(6, 182, 212, 0.15);
+            border-color: var(--a10-color, #06b6d4);
+            color: var(--a10-color, #06b6d4);
+        }
+
+    .modem-header .toggle-icon {
+        color: var(--muted-color) !important;
+    }
+
+    .modem-header .set-config-btn, .a10-item .set-config-btn-a10 {
+        position: relative;
+        z-index: 10;
+    }
+
+    .status-dot {
+        display: inline-block;
+        border-radius: 50%;
+    }
+
+        .status-dot.online {
+            background-color: var(--bs-success, #198754);
+        }
+
+        .status-dot.offline {
+            background-color: var(--bs-danger, #dc3545);
+        }
+
+    /*.cluster-uptime-stats {
+         background: var(--card-bg, rgba(0, 0, 0, 0.03));
+         border-radius: 8px;
+         padding: 4px 10px;
+         border: 1px solid var(--border-color, rgba(0, 0, 0, 0.1));
+     }
+
+     .uptime-stat-box {
+         text-align: center;
+         min-width: 45px;
+         padding: 0 4px;
+     }
+
+         .uptime-stat-box .stat-value {
+             font-size: 0.75rem;
+             line-height: 1.2;
+         }
+
+         .uptime-stat-box .stat-label {
+             font-size: 0.5rem;
+             color: var(--muted-color);
+             text-transform: uppercase;
+             letter-spacing: 0.3px;
+         }
+
+     .uptime-stat-divider {
+         width: 1px;
+         height: 22px;
+         background: var(--border-color, rgba(0, 0, 0, 0.15));
+         margin: 0 2px;
+     }
+
+     .modem-header:hover .cluster-uptime-stats {
+         background: var(--card-hover-bg, rgba(0, 0, 0, 0.05));
+     }
+
+     .site-uptime-stats {
+         text-align: center;
+     }
+
+     .site-uptime-box {
+         text-align: center;
+         padding: 0 8px;
+     }
+
+         .site-uptime-box .count-label {
+             display: block;
+             color: var(--muted-color) !important;
+             font-size: 0.7rem;
+         }
+
+     .uptime-loading {
+         display: inline-flex;
+         align-items: center;
+         gap: 4px;
+         color: var(--muted-color);
+         font-size: 0.65rem;
+     }
+
+     .cluster-uptime-placeholder .uptime-loading {
+         padding: 4px 8px;
+         background: var(--card-bg, rgba(0, 0, 0, 0.03));
+         border-radius: 6px;
+         border: 1px dashed var(--border-color);
+     }
+
+     [data-theme="dark"] .cluster-uptime-stats {
+         background: rgba(255, 255, 255, 0.05);
+         border-color: rgba(255, 255, 255, 0.1);
+     }
+
+     [data-theme="dark"] .uptime-stat-divider {
+         background: rgba(255, 255, 255, 0.15);
+     }
+
+     [data-theme="dark"] .cluster-uptime-placeholder .uptime-loading {
+         background: rgba(255, 255, 255, 0.03);
+         border-color: rgba(255, 255, 255, 0.1);
+     }
+
+     @@media (max-width: 768px) {
+         .cluster-uptime-stats, .cluster-uptime-placeholder {
+             display: none !important;
+         }
+
+         .site-uptime-stats, .site-uptime-placeholder {
+             display: none !important;
+         }
+     }
+
+     @@media (max-width: 992px) {
+         .uptime-stat-box {
+             min-width: 38px;
+         }
+
+             .uptime-stat-box .stat-value {
+                 font-size: 0.7rem;
+             }
+
+             .uptime-stat-box .stat-label {
+                 font-size: 0.45rem;
+             }
+     }*/
+    /* ── CLUSTER UPTIME WIDGET — bifurcated TCP + MQTT ── */
+    .cluster-uptime-stats {
+        display: inline-flex;
+        align-items: stretch;
+        border-radius: 7px;
+        border: 1px solid var(--border-color, rgba(0,0,0,0.1));
+        overflow: hidden;
+        background: var(--card-bg, rgba(0,0,0,0.03));
+        white-space: nowrap;
+    }
+
+    /* Each protocol block */
+    .cluster-uptime-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 10px;
+        min-width: 68px;
+    }
+
+        .cluster-uptime-block + .cluster-uptime-block {
+            border-left: 1px solid var(--border-color, rgba(0,0,0,0.12));
+        }
+
+    /* Row 1: dot + label + % badge */
+    .cluster-uptime-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        line-height: 1.2;
+    }
+
+    .cluster-proto-name {
+        font-size: 0.58rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--muted-color, #6c757d);
+    }
+
+    .cluster-pct-badge {
+        font-size: 0.6rem;
+        font-weight: 800;
+        padding: 0px 4px;
+        border-radius: 3px;
+        line-height: 1.4;
+    }
+
+    .cluster-pct-good {
+        background: rgba(25,135,84,0.15);
+        color: #198754;
+    }
+
+    .cluster-pct-warn {
+        background: rgba(255,193,7,0.2);
+        color: #a07000;
+    }
+
+    .cluster-pct-bad {
+        background: rgba(220,53,69,0.15);
+        color: #dc3545;
+    }
+
+    .cluster-pct-zero {
+        background: rgba(108,117,125,0.1);
+        color: #6c757d;
+    }
+
+    /* Row 2: ↑ up / ↓ down durations */
+    .cluster-uptime-durations {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 0.6rem;
+        line-height: 1.2;
+    }
+
+    .cluster-dur-up {
+        font-weight: 700;
+    }
+
+    .cluster-dur-down {
+        font-weight: 700;
+    }
+
+    .cluster-dur-sep {
+        color: var(--muted-color, #aaa);
+        font-weight: 400;
+    }
+
+    .cluster-up-color {
+        color: #198754;
+    }
+
+    .cluster-dwn-color {
+        color: #dc3545;
+    }
+
+    /* Loading placeholder */
+    .uptime-loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--muted-color);
+        font-size: 0.65rem;
+    }
+
+    .cluster-uptime-placeholder .uptime-loading {
+        padding: 4px 8px;
+        background: var(--card-bg, rgba(0,0,0,0.03));
+        border-radius: 6px;
+        border: 1px dashed var(--border-color);
+    }
+
+    /* Site uptime */
+    .site-uptime-stats {
+        text-align: center;
+    }
+
+    .site-uptime-box {
+        text-align: center;
+        padding: 0 8px;
+    }
+
+        .site-uptime-box .count-label {
+            display: block;
+            color: var(--muted-color) !important;
+            font-size: 0.7rem;
+        }
+
+    /* Dark theme */
+    [data-theme="dark"] .cluster-uptime-stats {
+        background: rgba(255,255,255,0.05);
+        border-color: rgba(255,255,255,0.1);
+    }
+
+    [data-theme="dark"] .cluster-uptime-block + .cluster-uptime-block {
+        border-left-color: rgba(255,255,255,0.12);
+    }
+
+    [data-theme="dark"] .cluster-uptime-placeholder .uptime-loading {
+        background: rgba(255,255,255,0.03);
+        border-color: rgba(255,255,255,0.1);
+    }
+
+    @@media (max-width: 768px) {
+        .cluster-uptime-stats, .cluster-uptime-placeholder {
+            display: none !important;
+        }
+
+        .site-uptime-stats, .site-uptime-placeholder {
+            display: none !important;
+        }
+    }
+
+    @@media (max-width: 992px) {
+        .cluster-uptime-block {
+            min-width: 58px;
+            padding: 3px 7px;
+        }
+
+        .cluster-uptime-durations {
+            font-size: 0.55rem;
+        }
+    }
+
+    /* A10 Uptime Indicator Styles — Bifurcated TCP + MQTT */
+
+    /* Make A10 cards wide enough */
+    .a10-item {
+        min-width: 220px !important;
+        max-width: 280px;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+    }
+
+        .a10-item .flex-grow-1 {
+            width: 100%;
+        }
+
+    /* Uptime indicator — full-width row below info line */
+    .a10-uptime-indicator {
+        display: flex;
+        align-items: stretch;
+        width: 100%;
+        margin-top: 5px;
+        border-radius: 4px;
+        border: 1px solid var(--border-color, rgba(0,0,0,0.12));
+        overflow: hidden;
+        background: var(--card-bg, rgba(0,0,0,0.02));
+    }
+
+    /* TCP block / MQTT block — each takes half */
+    .a10-uptime-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 6px;
+        gap: 2px;
+    }
+
+        .a10-uptime-block + .a10-uptime-block {
+            border-left: 1px solid var(--border-color, rgba(0,0,0,0.12));
+        }
+
+    /* Row 1: dot + label + percentage */
+    .a10-uptime-header {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        line-height: 1;
+    }
+
+    .a10-proto-name {
+        font-size: 0.58rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: var(--muted-color, #6c757d);
+    }
+
+    .a10-pct {
+        font-size: 0.72rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    /* Row 2: ↑ up duration / ↓ down duration */
+    .a10-uptime-durations {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 0.56rem;
+        line-height: 1;
+    }
+
+    .a10-dur-up {
+        font-weight: 600;
+    }
+
+    .a10-dur-down {
+        font-weight: 600;
+    }
+
+    .a10-dur-sep {
+        color: var(--muted-color, #aaa);
+    }
+
+    /* Percentage colours */
+    .a10-pct-good {
+        color: #198754;
+    }
+
+    .a10-pct-warn {
+        color: #a07000;
+    }
+
+    .a10-pct-bad {
+        color: #dc3545;
+    }
+
+    .a10-pct-zero {
+        color: var(--muted-color, #6c757d);
+    }
+
+    .a10-up-color {
+        color: #198754;
+    }
+
+    .a10-dwn-color {
+        color: #dc3545;
+    }
+
+    [data-theme="dark"] .a10-uptime-indicator {
+        background: rgba(255,255,255,0.04);
+        border-color: rgba(255,255,255,0.1);
+    }
+
+    [data-theme="dark"] .a10-uptime-block + .a10-uptime-block {
+        border-left-color: rgba(255,255,255,0.1);
+    }
+
+    /* Adjust cluster uptime stats for better fit */
+    .cluster-uptime-stats .uptime-stat-box {
+        min-width: 35px;
+        padding: 0 3px;
+    }
+
+    .cluster-uptime-stats .stat-value {
+        font-size: 0.65rem;
+        line-height: 1.1;
+    }
+
+    .cluster-uptime-stats .stat-label {
+        font-size: 0.4rem;
+        white-space: nowrap;
+    }
+</style>
+
+@Html.Partial("_SetConfigModal")
+
+<script>
+    // ============================================================
+    // GLOBAL VARIABLES
+    // ============================================================
+    var currentSiteId = @Model.SiteId;
+    var currentSiteMqttBasePath = '@siteMqttBasePath';
+    var currentView = 'cluster';
+    var assetTypesLoaded = false;
+    var adcMqttClient = null;
+    var currentAdcData = null;
+    var UPTIME_GAP_THRESHOLD_MS = 10 * 60 * 1000;
+    // ============================================================
+    // VIEW TOGGLE FUNCTIONS
+    // ============================================================
+    function switchView(view, btn) {
+        currentView = view;
+
+        // Update button states
+        $('#viewToggleGroup .btn').removeClass('active');
+        $(btn).addClass('active');
+
+        if (view === 'cluster') {
+            $('#clusterViewFilters').show();
+            $('#assetViewFilters').hide();
+            $('#clusterViewContent').show();
+            $('#assetViewContent').hide();
+        } else {
+            $('#clusterViewFilters').hide();
+            $('#assetViewFilters').show();
+            $('#clusterViewContent').hide();
+            $('#assetViewContent').show();
+
+            // Load asset types if not already loaded
+            if (!assetTypesLoaded) {
+                loadAssetTypes();
+            }
+        }
+    }
+
+    // ============================================================
+    // ASSET VIEW FUNCTIONS
+    // ============================================================
+    function loadAssetTypes() {
+        var url = '@Url.Action("GetAssetTypeBySiteId", "NetworkDashboard")' + '?siteId=' + currentSiteId;
+
+        $.ajax({
+            url: url,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                var dropdown = $('#assetTypeDropdown');
+                dropdown.empty();
+                dropdown.append('<option value="">-- Select Asset Type --</option>');
+
+                if (Array.isArray(response)) {
+                    response.forEach(function(item) {
+                        dropdown.append('<option value="' + item.Id + '">' + item.Name + '</option>');
+                    });
+                }
+
+                assetTypesLoaded = true;
+                console.log('[AssetView] Loaded ' + response.length + ' asset types');
+            },
+            error: function(xhr, status, error) {
+                console.error('[AssetView] Failed to load asset types:', error);
+                showNotification('Failed to load asset types', 'error');
+            }
+        });
+    }
+
+    function onAssetTypeChange(select) {
+        var assetTypeId = $(select).val();
+
+        if (!assetTypeId) {
+            $('#assetViewPlaceholder').show();
+            $('#assetViewLoading').hide();
+            $('#assetListContainer').hide();
+            return;
+        }
+
+        loadAssetsByType(assetTypeId);
+    }
+
+    function loadAssetsByType(assetTypeId) {
+        $('#assetViewPlaceholder').hide();
+        $('#assetViewLoading').show();
+        $('#assetListContainer').hide();
+
+        var url = '@Url.Action("GetYardConfigByAssetTypeJson", "NetworkDashboard")' +
+                  '?siteId=' + currentSiteId + '&assetTypeId=' + assetTypeId;
+
+        $.ajax({
+            url: url,
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                $('#assetViewLoading').hide();
+
+                var data = [];
+                if (response && response.Success && response.Data) {
+                    data = response.Data;
+                } else if (Array.isArray(response)) {
+                    data = response;
+                }
+
+                if (data.length > 0) {
+                    renderAssetView(data);
+                    $('#assetListContainer').show();
+                } else {
+                    $('#assetListContainer').html('<div class="text-center py-4 text-muted">No assets found for this type</div>').show();
+                }
+            },
+            error: function(xhr, status, error) {
+                $('#assetViewLoading').hide();
+                $('#assetListContainer').html('<div class="text-center py-4 text-danger">Failed to load assets</div>').show();
+                console.error('[AssetView] Failed to load assets:', error);
+            }
+        });
+    }
+
+    function renderAssetView(data) {
+        // Group by AssetName
+        var assetGroups = {};
+        data.forEach(function(item) {
+            var assetName = item.AssetName || 'Unknown';
+            if (!assetGroups[assetName]) {
+                assetGroups[assetName] = {
+                    assetId: item.AssetId,
+                    assetTypeName: item.AssetTypeName,
+                    attributes: {}
+                };
+            }
+
+            // Group by AttributeName within each asset
+            var attrName = item.AttributeName || 'Unknown';
+            if (!assetGroups[assetName].attributes[attrName]) {
+                assetGroups[assetName].attributes[attrName] = {
+                    attributeId: item.AttributeId,
+                    adcs: []
+                };
+            }
+
+            // Add ADC info
+            assetGroups[assetName].attributes[attrName].adcs.push({
+                id: item.Id,
+                adcId: item.ADCId,
+                adcNumber: item.ADCNumber,
+                pin: item.Pin,
+                clusterId: item.ClusterId,
+                clusterName: item.ClusterName,
+                modemId: item.ModemId,
+                siteId: item.SiteId,
+                cardName: item.CardName,
+                locationName: item.LocationName,
+                assetName: assetName,
+                attributeName: attrName,
+                multiplication: item.Multiplication,
+                thresholdValue: item.ThresholdValue
+            });
+        });
+
+        // Build HTML
+        var html = '<div class="asset-view-list p-3">';
+
+        Object.keys(assetGroups).sort().forEach(function(assetName) {
+            var asset = assetGroups[assetName];
+            var assetId = 'asset_' + assetName.replace(/[^a-zA-Z0-9]/g, '_');
+
+            html += '<div class="asset-group">';
+            html += '<div class="asset-header d-flex align-items-center gap-2" onclick="toggleAssetGroup(\'' + assetId + '\', this)">';
+            html += '<i class="bi bi-chevron-right toggle-icon"></i>';
+            html += '<i class="bi bi-box-seam text-primary"></i>';
+            html += '<span class="fw-semibold">' + assetName + '</span>';
+            html += '<span class="badge bg-secondary bg-opacity-25 text-secondary small ms-2">' + asset.assetTypeName + '</span>';
+            html += '<span class="badge bg-info bg-opacity-25 text-info small ms-auto">' + Object.keys(asset.attributes).length + ' Attributes</span>';
+            html += '</div>';
+
+            html += '<div class="asset-content" id="' + assetId + '" style="display: none;">';
+
+            Object.keys(asset.attributes).forEach(function(attrName) {
+                var attr = asset.attributes[attrName];
+                var attrId = assetId + '_attr_' + attrName.replace(/[^a-zA-Z0-9]/g, '_');
+
+                html += '<div class="attribute-group">';
+                html += '<div class="attribute-header d-flex align-items-center gap-2" onclick="toggleAttributeGroup(\'' + attrId + '\', this)">';
+                html += '<i class="bi bi-chevron-right toggle-icon" style="font-size: 0.7rem;"></i>';
+                html += '<i class="bi bi-speedometer2 text-success" style="font-size: 0.85rem;"></i>';
+                html += '<span class="small fw-medium">' + attrName + '</span>';
+                html += '<span class="badge bg-primary bg-opacity-10 text-primary small ms-auto">' + attr.adcs.length + ' ADCs</span>';
+                html += '</div>';
+
+                html += '<div class="adc-list" id="' + attrId + '" style="display: none;">';
+                attr.adcs.forEach(function(adc) {
+                    html += '<div class="adc-item" onclick="openAdcMqttModal(' + JSON.stringify(adc).replace(/"/g, '&quot;') + ')">';
+                    html += '<i class="bi bi-cpu text-warning"></i>';
+                    html += '<span class="adc-number">ADC-' + adc.adcNumber + '</span>';
+                    html += '<span class="adc-pin">Pin ' + adc.pin + '</span>';
+                    html += '<span class="badge bg-dark bg-opacity-10 small">' + (adc.clusterName || '-') + '</span>';
+                    html += '</div>';
+                });
+                html += '</div>';
+
+                html += '</div>';
+            });
+
+            html += '</div>';
+            html += '</div>';
+        });
+
+        html += '</div>';
+
+        $('#assetListContainer').html(html);
+    }
+
+    function toggleAssetGroup(assetId, header) {
+        var content = $('#' + assetId);
+        var isExpanded = content.is(':visible');
+
+        if (isExpanded) {
+            content.slideUp(200);
+            $(header).removeClass('expanded');
+        } else {
+            content.slideDown(200);
+            $(header).addClass('expanded');
+        }
+    }
+
+    function toggleAttributeGroup(attrId, header) {
+        var content = $('#' + attrId);
+        var isExpanded = content.is(':visible');
+
+        if (isExpanded) {
+            content.slideUp(200);
+            $(header).removeClass('expanded');
+        } else {
+            content.slideDown(200);
+            $(header).addClass('expanded');
+        }
+    }
+
+    // ============================================================
+    // ADC MQTT MODAL FUNCTIONS
+    // ============================================================
+    function openAdcMqttModal(adcData) {
+        currentAdcData = adcData;
+
+        // Disconnect any existing MQTT connection when opening new modal
+        if (adcMqttClient != null) {
+            try {
+                adcMqttClient.disconnect();
+            } catch (e) {
+                // Ignore
+            }
+            adcMqttClient = null;
+        }
+
+        // Populate modal info - all fields
+        $('#adcModalNumber').text('ADC-' + adcData.adcNumber);
+        $('#adcModalCluster').text(adcData.clusterName || '-');
+        $('#adcModalModem').text(adcData.modemId || '-');
+        $('#adcModalPin').text(adcData.pin || '-');
+        $('#adcModalAsset').text(adcData.assetName || '-');
+        $('#adcModalAttribute').text(adcData.attributeName || '-');
+        $('#adcModalLocation').text(adcData.locationName || '-');
+        $('#adcModalCard').text(adcData.cardName || '-');
+
+        // Build MQTT topics using the site's base path
+        var basePath = currentSiteMqttBasePath || 'rdpms';
+        var clusterNameClean = (adcData.clusterName || '').replace(/\s+/g, '');
+        var subscribeTopic = basePath + clusterNameClean + '/P';
+        var publishTopic = basePath + clusterNameClean + '/S';
+
+        $('#adcMqttSubscribeTopic').val(subscribeTopic);
+        $('#adcMqttPublishTopic').val(publishTopic);
+
+        // Reset connection status
+        $('#adcMqttConnectionStatus').removeClass('bg-success bg-danger bg-warning').addClass('bg-secondary').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Disconnected');
+        $('#btnAdcMqttConnect').show();
+        $('#btnAdcMqttDisconnect').hide();
+        $('#adcMqttLastUpdate').text('Last Update: --');
+
+        // Clear log
+        $('#adcMqttLogContainer').html('<div class="p-2 text-muted text-center" style="color: #6c757d !important;">Waiting for connection...</div>');
+
+        // Clear custom command input
+        $('#adcCustomCommand').val('');
+
+        // Show modal
+        var modal = new bootstrap.Modal(document.getElementById('adcMqttModal'));
+        modal.show();
+    }
+
+    function adcMqttConnect() {
+        if (!currentAdcData) return;
+
+        var subscribeTopic = $('#adcMqttSubscribeTopic').val();
+
+        try {
+            // Disconnect existing connection if any
+            if (adcMqttClient != null) {
+                try {
+                    adcMqttClient.disconnect();
+                } catch (e) {
+                    // Ignore disconnect errors
+                }
+            }
+
+            // Check if MQTT config is available
+            if (typeof mQTT === 'undefined' || mQTT == null) {
+                addAdcMqttLog('error', 'MQTT configuration not available');
+                return;
+            }
+
+            // Detect if running on HTTPS
+            var isSecure = window.location.protocol === "https:";
+
+            // Create unique client ID
+            var clientId = "adcConsole_" + Math.ceil(Math.random() * 10000);
+
+            // Create Paho MQTT Client
+            adcMqttClient = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, clientId);
+
+            // Set callback handlers
+            adcMqttClient.onConnectionLost = function(responseObject) {
+                console.log('[ADC MQTT] Connection lost:', responseObject.errorMessage);
+                $('#adcMqttConnectionStatus').removeClass('bg-success bg-warning').addClass('bg-danger').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Disconnected');
+                $('#btnAdcMqttConnect').show();
+                $('#btnAdcMqttDisconnect').hide();
+                addAdcMqttLog('error', 'Connection lost: ' + responseObject.errorMessage);
+            };
+
+            adcMqttClient.onMessageArrived = function(message) {
+                console.log('[ADC MQTT] Message received:', message.payloadString);
+                addAdcMqttLog('received', message.payloadString);
+            };
+
+            // Update status
+            $('#adcMqttConnectionStatus').removeClass('bg-secondary bg-danger').addClass('bg-warning').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Connecting...');
+            addAdcMqttLog('info', 'Connecting to ' + mQTT.MQTTUri + ':' + mQTT.MQTTPort + ' (SSL: ' + isSecure + ')');
+
+            // Connect with SSL support
+            adcMqttClient.connect({
+                onSuccess: function() {
+                    console.log('[ADC MQTT] Connected successfully');
+                    $('#adcMqttConnectionStatus').removeClass('bg-secondary bg-danger bg-warning').addClass('bg-success').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Connected');
+                    $('#btnAdcMqttConnect').hide();
+                    $('#btnAdcMqttDisconnect').show();
+                    addAdcMqttLog('info', 'Connected successfully');
+
+                    // Subscribe to topic
+                    adcMqttClient.subscribe(subscribeTopic);
+                    addAdcMqttLog('info', 'Subscribed to: ' + subscribeTopic);
+                },
+                onFailure: function(error) {
+                    console.error('[ADC MQTT] Connection failed:', error);
+                    $('#adcMqttConnectionStatus').removeClass('bg-success bg-warning').addClass('bg-danger').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Failed');
+                    $('#btnAdcMqttConnect').show();
+                    $('#btnAdcMqttDisconnect').hide();
+                    addAdcMqttLog('error', 'Connection failed: ' + (error.errorMessage || 'Unknown error'));
+                },
+                useSSL: isSecure,
+                userName: mQTT.MQTTUsername,
+                password: mQTT.MQTTPassword,
+                cleanSession: true,
+                timeout: 10
+            });
+
+        } catch (e) {
+            console.error('[ADC MQTT] Error:', e);
+            addAdcMqttLog('error', 'Error: ' + e.message);
+            $('#adcMqttConnectionStatus').removeClass('bg-success bg-warning').addClass('bg-danger').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Error');
+        }
+    }
+
+    function adcMqttDisconnect() {
+        if (adcMqttClient != null) {
+            try {
+                adcMqttClient.disconnect();
+                addAdcMqttLog('info', 'Disconnected');
+            } catch (e) {
+                console.log('[ADC MQTT] Disconnect error:', e);
+            }
+        }
+        adcMqttClient = null;
+        $('#adcMqttConnectionStatus').removeClass('bg-success bg-warning bg-danger').addClass('bg-secondary').html('<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i>Disconnected');
+        $('#btnAdcMqttConnect').show();
+        $('#btnAdcMqttDisconnect').hide();
+    }
+
+    function adcMqttSendCommand(command) {
+        if (adcMqttClient == null) {
+            showNotification('Please connect to MQTT first', 'warning');
+            return;
+        }
+
+        var publishTopic = $('#adcMqttPublishTopic').val();
+        var payload = command;
+
+        try {
+            var message = new Paho.Message(payload);
+            message.destinationName = publishTopic;
+            adcMqttClient.send(message);
+            addAdcMqttLog('sent', 'Topic: ' + publishTopic + ' | Payload: ' + payload);
+        } catch (e) {
+            console.error('[ADC MQTT] Send error:', e);
+            addAdcMqttLog('error', 'Send failed: ' + e.message);
+            showNotification('Failed to send command', 'error');
+        }
+    }
+
+    function adcSendQuickCommand(command) {
+        if (adcMqttClient == null) {
+            showNotification('Please connect to MQTT first', 'warning');
+            return;
+        }
+
+        var publishTopic = $('#adcMqttPublishTopic').val();
+        var adcNumber = currentAdcData ? currentAdcData.adcNumber : '';
+        var payload = command;
+        if (adcNumber) {
+            payload = command + ',' + adcNumber;
+        }
+
+        try {
+            var message = new Paho.Message(payload);
+            message.destinationName = publishTopic;
+            adcMqttClient.send(message);
+            addAdcMqttLog('sent', payload);
+            updateLastUpdateTime();
+        } catch (e) {
+            console.error('[ADC MQTT] Send error:', e);
+            addAdcMqttLog('error', 'Send failed: ' + e.message);
+            showNotification('Failed to send command', 'error');
+        }
+    }
+
+    function adcSendCustomCommand() {
+        var customCommand = $('#adcCustomCommand').val().trim();
+
+        if (!customCommand) {
+            showNotification('Please enter a command', 'warning');
+            return;
+        }
+
+        if (adcMqttClient == null) {
+            showNotification('Please connect to MQTT first', 'warning');
+            return;
+        }
+
+        var publishTopic = $('#adcMqttPublishTopic').val();
+
+        try {
+            var message = new Paho.Message(customCommand);
+            message.destinationName = publishTopic;
+            adcMqttClient.send(message);
+            addAdcMqttLog('sent', customCommand);
+            updateLastUpdateTime();
+            $('#adcCustomCommand').val('');
+        } catch (e) {
+            console.error('[ADC MQTT] Send error:', e);
+            addAdcMqttLog('error', 'Send failed: ' + e.message);
+            showNotification('Failed to send command', 'error');
+        }
+    }
+
+    function updateLastUpdateTime() {
+        var now = new Date();
+        var timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+        $('#adcMqttLastUpdate').text('Last Update: ' + timeStr);
+    }
+
+    function copyAdcMqttLog() {
+        var container = $('#adcMqttLogContainer');
+        var logText = '';
+
+        container.find('.log-entry').each(function() {
+            var time = $(this).find('.log-time').text();
+            var msg = $(this).find('span:last').text();
+            logText += '[' + time + '] ' + msg + '\n';
+        });
+
+        if (logText) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(logText).then(function() {
+                    showNotification('Log copied to clipboard', 'success');
+                });
+            } else {
+                var textArea = document.createElement('textarea');
+                textArea.value = logText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showNotification('Log copied to clipboard', 'success');
+            }
+        } else {
+            showNotification('No log entries to copy', 'warning');
+        }
+    }
+
+    function addAdcMqttLog(type, message) {
+        var container = $('#adcMqttLogContainer');
+        container.find('.text-muted.text-center').remove();
+
+        var now = new Date();
+        var time = String(now.getHours()).padStart(2, '0') + ':' +
+                   String(now.getMinutes()).padStart(2, '0') + ':' +
+                   String(now.getSeconds()).padStart(2, '0');
+
+        var bgColor = '';
+        var icon = 'info-circle';
+        var iconColor = '#17a2b8';
+
+        if (type === 'sent') {
+            bgColor = 'rgba(40, 167, 69, 0.2)';
+            icon = 'arrow-up-circle-fill';
+            iconColor = '#28a745';
+        } else if (type === 'received') {
+            bgColor = 'rgba(0, 123, 255, 0.2)';
+            icon = 'arrow-down-circle-fill';
+            iconColor = '#007bff';
+            updateLastUpdateTime();
+        } else if (type === 'error') {
+            bgColor = 'rgba(220, 53, 69, 0.2)';
+            icon = 'exclamation-triangle-fill';
+            iconColor = '#dc3545';
+        } else {
+            bgColor = 'rgba(108, 117, 125, 0.1)';
+            icon = 'info-circle-fill';
+            iconColor = '#6c757d';
+        }
+
+        var html = '<div class="log-entry" style="padding: 6px 10px; border-bottom: 1px solid #333; background: ' + bgColor + ';">';
+        html += '<span class="log-time" style="color: #888; margin-right: 10px; font-size: 0.75rem;">[' + time + ']</span>';
+        html += '<i class="bi bi-' + icon + ' me-2" style="color: ' + iconColor + ';"></i>';
+        html += '<span style="color: #e0e0e0; word-break: break-all;">' + escapeHtml(message) + '</span>';
+        html += '</div>';
+
+        container.append(html);
+        container.scrollTop(container[0].scrollHeight);
+    }
+
+    function clearAdcMqttLog() {
+        $('#adcMqttLogContainer').html('<div class="p-2 text-center" style="color: #6c757d;">Log cleared</div>');
+    }
+
+    function openSetConfigFromMqttModal() {
+        if (!currentAdcData) return;
+        var mqttModal = bootstrap.Modal.getInstance(document.getElementById('adcMqttModal'));
+        if (mqttModal) mqttModal.hide();
+        //openSetConfigModal('adc', currentAdcData.siteId, currentAdcData.clusterId, currentAdcData.adcNumber,
+        //                  'ADC-' + currentAdcData.adcNumber, currentSiteMqttBasePath);
+        openSetConfigModal('ADC-' + currentAdcData.adcNumber, 'adc', currentAdcData.siteId, currentAdcData.clusterId, currentAdcData.adcNumber, currentSiteMqttBasePath);
+
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showNotification(message, type) {
+        if (typeof CommonNotification === 'function') {
+            CommonNotification(message, type);
+        } else {
+            alert(message);
+        }
+    }
+// ============================================================
+// UPTIME CALCULATOR - WITH TCP/MQTT SEPARATION & A10 SUPPORT
+// ============================================================
+(function () {
+    'use strict';
+
+    var CONFIG = {
+        modemHistoryBaseUrl: '@Url.Action("GetModemHistoryForGraph", "NetworkDashboard")',
+        a10HistoryApiUrl: '@Url.Action("GetA10HistoryForGraph", "NetworkDashboard")',
+        pollIntervalMs: 300000,
+        expectedPollingIntervalSeconds: 60
+    };
+
+    var clusterStats = {};
+    var a10Stats = {};
+
+    // TypeId Constants
+    var TYPE_TCP = 1;
+    var TYPE_MQTT = 2;
+
+    function formatDateForApi(date) {
+        var day = String(date.getDate()).padStart(2, '0');
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var year = date.getFullYear();
+        return day + '-' + month + '-' + year;
+    }
+
+    function formatDuration(seconds) {
+        if (seconds === null || seconds === undefined || isNaN(seconds)) return '-';
+        seconds = Math.round(seconds);
+        if (seconds < 60) return seconds + 's';
+        var hours = Math.floor(seconds / 3600);
+        var minutes = Math.floor((seconds % 3600) / 60);
+        var secs = seconds % 60;
+        if (hours > 0) return hours + 'h ' + minutes + 'm';
+        return minutes + 'm ' + secs + 's';
+    }
+
+    function formatDurationShort(seconds) {
+        if (seconds === null || seconds === undefined || isNaN(seconds)) return '-';
+        seconds = Math.round(seconds);
+        if (seconds < 60) return seconds + 's';
+        var hours = Math.floor(seconds / 3600);
+        var minutes = Math.floor((seconds % 3600) / 60);
+        if (hours > 0) return hours + 'h' + minutes + 'm';
+        return minutes + 'm';
+    }
+
+    function formatPercentage(value) {
+        if (value === null || value === undefined || isNaN(value)) return '-';
+        return value.toFixed(1) + '%';
+    }
+
+    function formatPercentageShort(value) {
+        if (value === null || value === undefined || isNaN(value)) return '-';
+        return Math.round(value) + '%';
+    }
+
+    // ============================================================
+    // FETCH FUNCTIONS
+    // ============================================================
+
+    function fetchModemHistory(clusterId) {
+        return new Promise(function(resolve, reject) {
+            var today = formatDateForApi(new Date());
+            var url = CONFIG.modemHistoryBaseUrl + '?clusterId=' + clusterId + '&fromDate=' + today + '&toDate=' + today;
+
+            console.log('[UptimeCalculator] Fetching cluster: ' + url);
+
+            $.ajax({
+                url: url,
+                type: 'GET',
+                dataType: 'json',
+                success: function (response) {
+                    var data = [];
+                    if (Array.isArray(response)) {
+                        data = response;
+                    } else if (response && response.Success && response.Data) {
+                        data = response.Data;
+                    } else if (response && response.data) {
+                        data = response.data;
+                    }
+                    console.log('[UptimeCalculator] Cluster ' + clusterId + ': ' + data.length + ' records');
+                    resolve({ clusterId: clusterId, data: data });
+                },
+                error: function (xhr, status, error) {
+                    console.warn('[UptimeCalculator] Failed for cluster ' + clusterId + ':', error);
+                    resolve({ clusterId: clusterId, data: [] });
+                }
+            });
+        });
+    }
+
+    function fetchA10History(a10Id, clusterId) {
+        return new Promise(function(resolve, reject) {
+            var today = formatDateForApi(new Date());
+            var url = CONFIG.a10HistoryApiUrl + '?clusterId=' + clusterId + '&a10Id=' + a10Id + '&fromDate=' + today + '&toDate=' + today;
+
+            console.log('[UptimeCalculator] Fetching A10: ' + url);
+
+            $.ajax({
+                url: url,
+                type: 'GET',
+                dataType: 'json',
+                success: function (response) {
+                    var data = [];
+                    if (Array.isArray(response)) {
+                        data = response;
+                    } else if (response && response.Success && response.Data) {
+                        data = response.Data;
+                    } else if (response && response.data) {
+                        data = response.data;
+                    }
+                    console.log('[UptimeCalculator] A10 ' + a10Id + ': ' + data.length + ' records');
+                    resolve({ a10Id: a10Id, clusterId: clusterId, data: data });
+                },
+                error: function (xhr, status, error) {
+                    console.warn('[UptimeCalculator] Failed for A10 ' + a10Id + ':', error);
+                    resolve({ a10Id: a10Id, clusterId: clusterId, data: [] });
+                }
+            });
+        });
+    }
+
+    // ============================================================
+    // CALCULATION FUNCTIONS
+    // ============================================================
+
+    /**
+     * Calculate MODEM uptime stats - Uses SignalStrength field
+     * Modem API has SignalStrength, TypeId (mostly MQTT=2)
+     * Logic: SignalStrength > 0 for a minute = UPTIME
+     */
+    function calculateModemUptimeStats(historyData) {
+        // Modem graph uses SignalStrength > 0  (same as renderModemSignalChart)
+        var tcp = calcGapBased(
+            (historyData || []).filter(function (r) { return parseInt(r.TypeId, 10) === 1; }),
+            function (r) { return parseInt(r.SignalStrength, 10) || 0; }
+        );
+
+        var mqtt = calcGapBased(
+            (historyData || []).filter(function (r) { return parseInt(r.TypeId, 10) === 2; }),
+            function (r) { return parseInt(r.SignalStrength, 10) || 0; }
+        );
+
+        var combined = calcGapBased(
+            historyData || [],
+            function (r) { return parseInt(r.SignalStrength, 10) || 0; }
+        );
+
+        return { tcp: tcp, mqtt: mqtt, combined: combined };
+    }
+    //function calculateModemUptimeStats(historyData) {
+    //    var now = new Date();
+    //    var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    //    var totalMinutesElapsed = Math.max(1, Math.floor((now - startOfDay) / 1000 / 60));
+
+    //    console.log('[UptimeCalculator] Modem - Total minutes from midnight: ' + totalMinutesElapsed);
+    //    console.log('[UptimeCalculator] Modem - Records received: ' + (historyData ? historyData.length : 0));
+
+    //    // Track minutes with valid signal by TypeId
+    //    var tcpMinutesWithSignal = {};
+    //    var mqttMinutesWithSignal = {};
+    //    var combinedMinutesWithSignal = {};
+
+    //    if (!historyData || historyData.length === 0) {
+    //        var totalSecondsElapsed = totalMinutesElapsed * 60;
+    //        var emptyStats = {
+    //            totalSeconds: totalSecondsElapsed,
+    //            uptimeSeconds: 0,
+    //            downtimeSeconds: totalSecondsElapsed,
+    //            uptimePercentage: 0,
+    //            downtimePercentage: 100,
+    //            dataPoints: 0,
+    //            hasData: false
+    //        };
+    //        return {
+    //            tcp: Object.assign({}, emptyStats),
+    //            mqtt: Object.assign({}, emptyStats),
+    //            combined: Object.assign({}, emptyStats)
+    //        };
+    //    }
+
+    //    historyData.forEach(function (record) {
+    //        if (!record.TimeStamp) return;
+
+    //        var recordTime = new Date(record.TimeStamp);
+
+    //        // Skip if record is before today's midnight or in the future
+    //        if (recordTime < startOfDay || recordTime > now) return;
+
+    //        var typeId = parseInt(record.TypeId, 10);
+
+    //        // Parse SignalStrength - it's a string like "27"
+    //        var signalStrength = parseInt(record.SignalStrength, 10);
+
+    //        // Calculate which minute slot this record belongs to
+    //        var minuteSlot = Math.floor((recordTime - startOfDay) / 1000 / 60);
+
+    //        if (minuteSlot >= 0 && minuteSlot < totalMinutesElapsed) {
+    //            // Check if SignalStrength > 0 (UPTIME condition for Modem)
+    //            if (!isNaN(signalStrength) && signalStrength > 0) {
+    //                if (typeId === TYPE_TCP) {
+    //                    tcpMinutesWithSignal[minuteSlot] = true;
+    //                } else if (typeId === TYPE_MQTT) {
+    //                    mqttMinutesWithSignal[minuteSlot] = true;
+    //                }
+    //                combinedMinutesWithSignal[minuteSlot] = true;
+    //            }
+    //        }
+    //    });
+
+    //    // Build stats helper function
+    //    function buildStats(minutesWithData, dataPoints) {
+    //        var uptimeMinutes = Object.keys(minutesWithData).length;
+    //        var downtimeMinutes = Math.max(0, totalMinutesElapsed - uptimeMinutes);
+    //        var uptimeSeconds = uptimeMinutes * 60;
+    //        var downtimeSeconds = downtimeMinutes * 60;
+    //        var totalSeconds = totalMinutesElapsed * 60;
+    //        var uptimePercentage = (uptimeSeconds / totalSeconds) * 100;
+
+    //        return {
+    //            totalSeconds: totalSeconds,
+    //            uptimeSeconds: uptimeSeconds,
+    //            downtimeSeconds: downtimeSeconds,
+    //            uptimePercentage: Math.min(100, Math.max(0, uptimePercentage)),
+    //            downtimePercentage: Math.min(100, Math.max(0, 100 - uptimePercentage)),
+    //            uptimeMinutes: uptimeMinutes,
+    //            downtimeMinutes: downtimeMinutes,
+    //            totalMinutes: totalMinutesElapsed,
+    //            dataPoints: dataPoints,
+    //            hasData: true
+    //        };
+    //    }
+
+    //    var tcpDataPoints = historyData.filter(function(r) { return parseInt(r.TypeId, 10) === TYPE_TCP; }).length;
+    //    var mqttDataPoints = historyData.filter(function(r) { return parseInt(r.TypeId, 10) === TYPE_MQTT; }).length;
+
+    //    var tcpStats = buildStats(tcpMinutesWithSignal, tcpDataPoints);
+    //    var mqttStats = buildStats(mqttMinutesWithSignal, mqttDataPoints);
+    //    var combinedStats = buildStats(combinedMinutesWithSignal, historyData.length);
+
+    //    console.log('[UptimeCalculator] Modem - TCP uptime minutes: ' + tcpStats.uptimeMinutes +
+    //        ', MQTT uptime minutes: ' + mqttStats.uptimeMinutes +
+    //        ', Combined uptime minutes: ' + combinedStats.uptimeMinutes);
+
+    //    return {
+    //        tcp: tcpStats,
+    //        mqtt: mqttStats,
+    //        combined: combinedStats
+    //    };
+    //}
+    function calculateA10UptimeStats(historyData) {
+        // TCP: val = ResponseTime  (same field renderA10Chart uses for TypeId=1)
+        var tcp = calcGapBased(
+            (historyData || []).filter(function (r) { return parseInt(r.TypeId, 10) === 1; }),
+            function (r) { return parseInt(r.ResponseTime, 10) || 0; }
+        );
+
+        // MQTT: val = Uptime  (same field renderA10Chart uses for TypeId=2)
+        var mqtt = calcGapBased(
+            (historyData || []).filter(function (r) { return parseInt(r.TypeId, 10) === 2; }),
+            function (r) { return parseInt(r.Uptime, 10) || 0; }
+        );
+
+        // Combined: union of both valid record sets
+        var combined = calcGapBased(
+            historyData || [],
+            function (r) {
+                return parseInt(r.TypeId, 10) === 1
+                    ? (parseInt(r.ResponseTime, 10) || 0)
+                    : (parseInt(r.Uptime, 10) || 0);
+            }
+        );
+
+        return { tcp: tcp, mqtt: mqtt, combined: combined };
+    }
+    /**
+     * Calculate A10 uptime stats - Uses record presence (no SignalStrength)
+     * A10 API has TypeId (1=TCP, 2=MQTT), no SignalStrength
+     * Logic: Record EXISTS for a minute = UPTIME
+     */
+    //function calculateA10UptimeStats(historyData) {
+    //    var now = new Date();
+    //    var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    //    var totalMinutesElapsed = Math.max(1, Math.floor((now - startOfDay) / 1000 / 60));
+
+    //    console.log('[UptimeCalculator] A10 - Total minutes from midnight: ' + totalMinutesElapsed);
+    //    console.log('[UptimeCalculator] A10 - Records received: ' + (historyData ? historyData.length : 0));
+
+    //    // Track minutes with data by TypeId
+    //    var tcpMinutesWithData = {};
+    //    var mqttMinutesWithData = {};
+    //    var combinedMinutesWithData = {};
+
+    //    if (!historyData || historyData.length === 0) {
+    //        var totalSecondsElapsed = totalMinutesElapsed * 60;
+    //        var emptyStats = {
+    //            totalSeconds: totalSecondsElapsed,
+    //            uptimeSeconds: 0,
+    //            downtimeSeconds: totalSecondsElapsed,
+    //            uptimePercentage: 0,
+    //            downtimePercentage: 100,
+    //            dataPoints: 0,
+    //            hasData: false
+    //        };
+    //        return {
+    //            tcp: Object.assign({}, emptyStats),
+    //            mqtt: Object.assign({}, emptyStats),
+    //            combined: Object.assign({}, emptyStats)
+    //        };
+    //    }
+
+    //    historyData.forEach(function (record) {
+    //        if (!record.TimeStamp) return;
+
+    //        var recordTime = new Date(record.TimeStamp);
+
+    //        // Skip if record is before today's midnight or in the future
+    //        if (recordTime < startOfDay || recordTime > now) return;
+
+    //        var typeId = parseInt(record.TypeId, 10);
+
+    //        // Calculate which minute slot this record belongs to
+    //        var minuteSlot = Math.floor((recordTime - startOfDay) / 1000 / 60);
+
+    //        if (minuteSlot >= 0 && minuteSlot < totalMinutesElapsed) {
+    //            // For A10: Record presence = UPTIME (no SignalStrength check)
+    //            if (typeId === TYPE_TCP) {
+    //                tcpMinutesWithData[minuteSlot] = true;
+    //            } else if (typeId === TYPE_MQTT) {
+    //                mqttMinutesWithData[minuteSlot] = true;
+    //            }
+    //            combinedMinutesWithData[minuteSlot] = true;
+    //        }
+    //    });
+
+    //    // Build stats helper function
+    //    function buildStats(minutesWithData, dataPoints) {
+    //        var uptimeMinutes = Object.keys(minutesWithData).length;
+    //        var downtimeMinutes = Math.max(0, totalMinutesElapsed - uptimeMinutes);
+    //        var uptimeSeconds = uptimeMinutes * 60;
+    //        var downtimeSeconds = downtimeMinutes * 60;
+    //        var totalSeconds = totalMinutesElapsed * 60;
+    //        var uptimePercentage = (uptimeSeconds / totalSeconds) * 100;
+
+    //        return {
+    //            totalSeconds: totalSeconds,
+    //            uptimeSeconds: uptimeSeconds,
+    //            downtimeSeconds: downtimeSeconds,
+    //            uptimePercentage: Math.min(100, Math.max(0, uptimePercentage)),
+    //            downtimePercentage: Math.min(100, Math.max(0, 100 - uptimePercentage)),
+    //            uptimeMinutes: uptimeMinutes,
+    //            downtimeMinutes: downtimeMinutes,
+    //            totalMinutes: totalMinutesElapsed,
+    //            dataPoints: dataPoints,
+    //            hasData: true
+    //        };
+    //    }
+
+    //    var tcpDataPoints = historyData.filter(function(r) { return parseInt(r.TypeId, 10) === TYPE_TCP; }).length;
+    //    var mqttDataPoints = historyData.filter(function(r) { return parseInt(r.TypeId, 10) === TYPE_MQTT; }).length;
+
+    //    var tcpStats = buildStats(tcpMinutesWithData, tcpDataPoints);
+    //    var mqttStats = buildStats(mqttMinutesWithData, mqttDataPoints);
+    //    var combinedStats = buildStats(combinedMinutesWithData, historyData.length);
+
+    //    console.log('[UptimeCalculator] A10 - TCP uptime minutes: ' + tcpStats.uptimeMinutes +
+    //        ', MQTT uptime minutes: ' + mqttStats.uptimeMinutes +
+    //        ', Combined uptime minutes: ' + combinedStats.uptimeMinutes);
+
+    //    return {
+    //        tcp: tcpStats,
+    //        mqtt: mqttStats,
+    //        combined: combinedStats
+    //    };
+    //}
+
+    // ============================================================
+    // UI UPDATE FUNCTIONS - CLUSTER LEVEL
+    // ============================================================
+
+    function updateClusterUptimeUI(clusterId, stats) {
+        var tcp = stats.tcp;
+        var mqtt = stats.mqtt;
+
+        function pctBadge(pct) {
+            if (pct <= 0) return 'cluster-pct-zero';
+            if (pct >= 90) return 'cluster-pct-good';
+            if (pct >= 50) return 'cluster-pct-warn';
+            return 'cluster-pct-bad';
+        }
+
+        function clusterBlock(label, dotColor, s) {
+            var upPct = Math.min(100, Math.max(0, s.uptimePercentage));
+            var dwnPct = Math.min(100, Math.max(0, s.downtimePercentage));
+            var upCol = upPct === 0 ? 'text-muted' : 'cluster-up-color';
+            var dwnCol = dwnPct === 0 ? 'text-muted' : 'cluster-dwn-color';
+
+            return '<div class="cluster-uptime-block" ' +
+                'title="' + label + '\nUptime:   ' + formatDuration(s.uptimeSeconds) + ' (' + upPct.toFixed(1) + '%)\n' +
+                'Downtime: ' + formatDuration(s.downtimeSeconds) + ' (' + dwnPct.toFixed(1) + '%)">' +
+
+                // Row 1: dot + name + % badge
+                '<div class="cluster-uptime-header">' +
+                '<span style="width:6px;height:6px;border-radius:50%;background:' + dotColor + ';display:inline-block;flex-shrink:0;"></span>' +
+                '<span class="cluster-proto-name">' + label + '</span>' +
+                '<span class="cluster-pct-badge ' + pctBadge(upPct) + '">' + Math.round(upPct) + '%</span>' +
+                '</div>' +
+
+                // Row 2: ↑ uptime / ↓ downtime
+                '<div class="cluster-uptime-durations">' +
+                '<span class="cluster-dur-up ' + upCol + '">&#8593;' + formatDurationShort(s.uptimeSeconds) + '</span>' +
+                '<span class="cluster-dur-sep">/</span>' +
+                '<span class="cluster-dur-down ' + dwnCol + '">&#8595;' + formatDurationShort(s.downtimeSeconds) + '</span>' +
+                '</div>' +
+                '</div>';
+        }
+
+        var html =
+            '<div class="cluster-uptime-stats me-2" id="clusterUptime_' + clusterId + '" ' +
+            'title="Today\'s uptime — Cluster ' + clusterId + '">' +
+            clusterBlock('TCP', '#0d6efd', tcp) +
+            clusterBlock('MQTT', '#198754', mqtt) +
+            '</div>';
+
+        var $ph = $('#clusterUptime_' + clusterId);
+        if ($ph.length) { $ph.replaceWith(html); }
+        clusterStats[clusterId] = stats;
+    }
+
+    // ============================================================
+    // UI UPDATE FUNCTIONS - SITE LEVEL
+    // ============================================================
+
+    function updateSiteUptimeUI() {
+        var clusterIds = Object.keys(clusterStats);
+        if (clusterIds.length === 0) return;
+
+        var totalTcpUptime = 0, totalTcpDowntime = 0;
+        var totalMqttUptime = 0, totalMqttDowntime = 0;
+        var totalSeconds = 0;
+        var validClusterCount = 0;
+
+        clusterIds.forEach(function (clusterId) {
+            var stats = clusterStats[clusterId];
+            if (stats && stats.tcp && stats.mqtt) {
+                totalTcpUptime += stats.tcp.uptimeSeconds;
+                totalTcpDowntime += stats.tcp.downtimeSeconds;
+                totalMqttUptime += stats.mqtt.uptimeSeconds;
+                totalMqttDowntime += stats.mqtt.downtimeSeconds;
+                totalSeconds += stats.tcp.totalSeconds;
+                validClusterCount++;
+            }
+        });
+
+        var avgTcpUptime = validClusterCount > 0 ? totalTcpUptime / validClusterCount : 0;
+        var avgTcpDowntime = validClusterCount > 0 ? totalTcpDowntime / validClusterCount : 0;
+        var avgMqttUptime = validClusterCount > 0 ? totalMqttUptime / validClusterCount : 0;
+        var avgMqttDowntime = validClusterCount > 0 ? totalMqttDowntime / validClusterCount : 0;
+
+        var overallTcpPercentage = totalSeconds > 0 ? (totalTcpUptime / totalSeconds) * 100 : 0;
+        var overallMqttPercentage = totalSeconds > 0 ? (totalMqttUptime / totalSeconds) * 100 : 0;
+
+        var tcpUptimeClass = avgTcpUptime === 0 ? 'text-muted' : 'text-primary';
+        var tcpDowntimeClass = avgTcpDowntime === 0 ? 'text-muted' : 'text-danger';
+        var mqttUptimeClass = avgMqttUptime === 0 ? 'text-muted' : 'text-success';
+        var mqttDowntimeClass = avgMqttDowntime === 0 ? 'text-muted' : 'text-danger';
+
+        var html = '<div class="site-uptime-stats d-flex align-items-center gap-2 text-center" id="siteUptimeStats">' +
+            // TCP Stats
+            '<div class="site-uptime-box" title="Average TCP Uptime/Downtime across all clusters">' +
+            '<div class="d-flex align-items-center justify-content-center gap-1">' +
+            '<span class="fw-bold ' + tcpUptimeClass + '">' + formatDurationShort(avgTcpUptime) + '</span>' +
+            '<span class="text-muted">/</span>' +
+            '<span class="fw-bold ' + tcpDowntimeClass + '">' + formatDurationShort(avgTcpDowntime) + '</span>' +
+            '</div>' +
+            '<small class="count-label">TCP (' + formatPercentageShort(overallTcpPercentage) + ')</small>' +
+            '</div>' +
+            // MQTT Stats
+            '<div class="site-uptime-box" title="Average MQTT Uptime/Downtime across all clusters">' +
+            '<div class="d-flex align-items-center justify-content-center gap-1">' +
+            '<span class="fw-bold ' + mqttUptimeClass + '">' + formatDurationShort(avgMqttUptime) + '</span>' +
+            '<span class="text-muted">/</span>' +
+            '<span class="fw-bold ' + mqttDowntimeClass + '">' + formatDurationShort(avgMqttDowntime) + '</span>' +
+            '</div>' +
+            '<small class="count-label">MQTT (' + formatPercentageShort(overallMqttPercentage) + ')</small>' +
+            '</div>' +
+            '</div>';
+
+        var placeholder = $('#siteUptimeStats');
+        if (placeholder.length > 0) {
+            placeholder.replaceWith(html);
+        }
+
+        console.log('[UptimeCalculator] Site Stats - Clusters: ' + validClusterCount +
+            ', TCP Uptime: ' + formatDuration(totalTcpUptime) + ' (' + overallTcpPercentage.toFixed(1) + '%)' +
+            ', MQTT Uptime: ' + formatDuration(totalMqttUptime) + ' (' + overallMqttPercentage.toFixed(1) + '%)');
+    }
+
+    // ============================================================
+    // UI UPDATE FUNCTIONS - A10 LEVEL
+    // ============================================================
+
+    function updateA10UptimeUI(a10Id, stats) {
+        var tcp = stats.tcp;
+        var mqtt = stats.mqtt;
+
+        var a10Item = $('.a10-item[data-a10-id="' + a10Id + '"]');
+        if (a10Item.length === 0) return;
+        a10Item.find('.a10-uptime-indicator').remove();
+
+        function pctClass(pct) {
+            if (pct <= 0) return 'a10-pct-zero';
+            if (pct >= 90) return 'a10-pct-good';
+            if (pct >= 50) return 'a10-pct-warn';
+            return 'a10-pct-bad';
+        }
+
+        function a10Block(label, dotColor, s) {
+            var upPct = Math.min(100, Math.max(0, s.uptimePercentage));
+            var dwnPct = Math.min(100, Math.max(0, s.downtimePercentage));
+            var upCol = upPct === 0 ? 'text-muted' : 'a10-up-color';
+            var dwnCol = dwnPct === 0 ? 'text-muted' : 'a10-dwn-color';
+
+            return '<div class="a10-uptime-block" ' +
+                'title="' + label + '\nUptime:   ' + formatDuration(s.uptimeSeconds) + ' (' + upPct.toFixed(1) + '%)\n' +
+                'Downtime: ' + formatDuration(s.downtimeSeconds) + ' (' + dwnPct.toFixed(1) + '%)">' +
+
+                // Row 1: dot + protocol name + bold %
+                '<div class="a10-uptime-header">' +
+                '<span style="width:6px;height:6px;border-radius:50%;background:' + dotColor + ';display:inline-block;flex-shrink:0;"></span>' +
+                '<span class="a10-proto-name">' + label + '</span>' +
+                '<span class="a10-pct ' + pctClass(upPct) + '">' + Math.round(upPct) + '%</span>' +
+                '</div>' +
+
+                // Row 2: ↑ uptime / ↓ downtime durations
+                '<div class="a10-uptime-durations">' +
+                '<span class="a10-dur-up ' + upCol + '">&#8593;' + formatDurationShort(s.uptimeSeconds) + '</span>' +
+                '<span class="a10-dur-sep">/</span>' +
+                '<span class="a10-dur-down ' + dwnCol + '">&#8595;' + formatDurationShort(s.downtimeSeconds) + '</span>' +
+                '</div>' +
+                '</div>';
+        }
+
+        var html = '<div class="a10-uptime-indicator">' +
+            a10Block('TCP', '#0d6efd', tcp) +
+            a10Block('MQTT', '#198754', mqtt) +
+            '</div>';
+
+        a10Item.find('.a10-info').after(html);
+        a10Stats[a10Id] = stats;
+    }
+
+    // ============================================================
+    // PROCESS FUNCTIONS
+    // ============================================================
+
+    function processAllClusters() {
+        var modemHeaders = $('.modem-header');
+        if (modemHeaders.length === 0) return;
+
+        var clusterIds = [];
+        modemHeaders.each(function() {
+            var clusterId = $(this).data('cluster-id');
+            if (clusterId && clusterIds.indexOf(clusterId) === -1) {
+                clusterIds.push(clusterId);
+            }
+        });
+
+        console.log('[UptimeCalculator] Processing ' + clusterIds.length + ' clusters');
+
+        var promises = clusterIds.map(function(clusterId) {
+            return fetchModemHistory(clusterId).then(function(result) {
+                // Use MODEM calculation (with SignalStrength check)
+                var stats = calculateModemUptimeStats(result.data);
+                updateClusterUptimeUI(clusterId, stats);
+                return { clusterId: clusterId, stats: stats };
+            }).catch(function(error) {
+                console.error('[UptimeCalculator] Error processing cluster ' + clusterId + ':', error);
+                return { clusterId: clusterId, stats: null };
+            });
+        });
+
+        Promise.all(promises).then(function() {
+            updateSiteUptimeUI();
+        });
+    }
+
+    function processExpandedA10s(clusterId) {
+        var container = $('#a10Container_' + clusterId);
+        if (container.length === 0 || !container.is(':visible')) return;
+
+        var a10Items = container.find('.a10-item');
+        var a10List = [];
+
+        a10Items.each(function() {
+            var a10Id = $(this).data('a10-id');
+            if (a10Id && !a10Stats[a10Id]) {
+                a10List.push({ a10Id: a10Id, clusterId: clusterId });
+            }
+        });
+
+        if (a10List.length === 0) return;
+
+        console.log('[UptimeCalculator] Processing ' + a10List.length + ' A10s for cluster ' + clusterId);
+
+        // Process A10s one by one with small delay to avoid overwhelming server
+        var index = 0;
+        function processNext() {
+            if (index >= a10List.length) return;
+
+            var item = a10List[index];
+            fetchA10History(item.a10Id, item.clusterId).then(function(result) {
+                // Use A10 calculation (record presence check, no SignalStrength)
+                var stats = calculateA10UptimeStats(result.data);
+                updateA10UptimeUI(result.a10Id, stats);
+                index++;
+                setTimeout(processNext, 100); // Small delay between requests
+            }).catch(function(error) {
+                console.error('[UptimeCalculator] Error processing A10 ' + item.a10Id + ':', error);
+                index++;
+                setTimeout(processNext, 100);
+            });
+        }
+
+        processNext();
+    }
+    var GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 min — covers 5-min polling with buffer
+
+    function calcGapBased(records, valFn) {
+        var now = new Date();
+        var startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        var totalMs = now - startOfDay;
+
+        var empty = {
+            totalSeconds: Math.round(totalMs / 1000),
+            uptimeSeconds: 0,
+            downtimeSeconds: Math.round(totalMs / 1000),
+            uptimePercentage: 0,
+            downtimePercentage: 100,
+            dataPoints: 0,
+            hasData: false
+        };
+
+        // Apply same val>0 filter the graph uses
+        var valid = (records || []).filter(function (r) {
+            return valFn(r) > 0;
+        }).sort(function (a, b) {
+            return new Date(a.TimeStamp) - new Date(b.TimeStamp);
+        });
+
+        if (valid.length === 0) return empty;
+
+        var downtimeMs = 0;
+
+        // Gap from midnight to first valid record
+        var firstMs = new Date(valid[0].TimeStamp) - startOfDay;
+        if (firstMs > GAP_THRESHOLD_MS) downtimeMs += firstMs;
+
+        // Gaps between consecutive valid records
+        for (var i = 1; i < valid.length; i++) {
+            var gap = new Date(valid[i].TimeStamp) - new Date(valid[i - 1].TimeStamp);
+            if (gap > GAP_THRESHOLD_MS) downtimeMs += gap;
+        }
+
+        // Gap from last valid record to now
+        var tailMs = now - new Date(valid[valid.length - 1].TimeStamp);
+        if (tailMs > GAP_THRESHOLD_MS) downtimeMs += tailMs;
+
+        downtimeMs = Math.min(downtimeMs, totalMs);
+        var uptimeMs = Math.max(0, totalMs - downtimeMs);
+
+        return {
+            totalSeconds: Math.round(totalMs / 1000),
+            uptimeSeconds: Math.round(uptimeMs / 1000),
+            downtimeSeconds: Math.round(downtimeMs / 1000),
+            uptimePercentage: Math.min(100, (uptimeMs / totalMs) * 100),
+            downtimePercentage: Math.min(100, (downtimeMs / totalMs) * 100),
+            dataPoints: valid.length,
+            hasData: true
+        };
+    }
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+
+    function init() {
+        if ($('.device-panel').length === 0) {
+            setTimeout(init, 500);
+            return;
+        }
+
+        console.log('[UptimeCalculator] Initializing...');
+
+        // Process clusters first
+        processAllClusters();
+
+        // Set up periodic refresh
+        setInterval(processAllClusters, CONFIG.pollIntervalMs);
+
+        // Listen for A10 container expansion to load A10 stats on-demand
+        $(document).on('click', '.modem-header', function() {
+            var clusterId = $(this).data('cluster-id');
+            // Delay to let the container expand
+            setTimeout(function() {
+                processExpandedA10s(clusterId);
+            }, 300);
+        });
+    }
+
+    // Expose public API
+    window.A10UptimeCalculator = {
+        refresh: processAllClusters,
+        refreshClusterA10s: processExpandedA10s,
+        getClusterStats: function(clusterId) { return clusterStats[clusterId]; },
+        getA10Stats: function(a10Id) { return a10Stats[a10Id]; },
+        getAllClusterStats: function() { return clusterStats; },
+        getAllA10Stats: function() { return a10Stats; }
+    };
+
+    $(document).ready(function() {
+        setTimeout(init, 500);
+
+        $('#adcMqttModal').on('hidden.bs.modal', function () {
+            adcMqttDisconnect();
+            currentAdcData = null;
+        });
+
+        $(document).on('keypress', '#adcCustomCommand', function(e) {
+            if (e.which === 13) {
+                e.preventDefault();
+                adcSendCustomCommand();
+            }
+        });
+    });
+})();
+</script>

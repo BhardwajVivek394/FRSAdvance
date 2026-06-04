@@ -1,0 +1,270 @@
+﻿@model Domain.UserLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="row">
+                        <div class="col-xl-1 col-lg-1 col-md-4">
+                            <span>Zone</span>
+                            @Html.DropDownListFor(x => x.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                        </div>
+                        <div class="col-xl-1 col-lg-1 col-md-4">
+                            <input type="hidden" id="hdnUserHistoryDivisionId" value="@Model.SearchCriteria.DivisionId" />
+                            <span>Division</span>
+                            @Html.DropDownListFor(x => x.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", tabindex = 2 })
+                        </div>
+                        <div class="col-xl-2 col-lg-2 col-md-4">
+                            <span>Site</span>
+                            <input type="hidden" id="hdnUserHistorySiteId" value="@Model.SearchCriteria.SiteId"/>
+                            @Html.DropDownListFor(x => x.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 3 })
+                        </div>
+                        <div class="col-xl-1 col-lg-1 col-md-6">
+                            <span>From Date</span>
+                            @Html.TextBoxFor(x => x.SearchCriteria.FromDate, "{0:M/d/yyyy}", new {@class="form-control", @id = "txtFromDate" })
+                        </div>
+                        <div class="col-xl-1 col-lg-1 col-md-6">
+                            <span>To Date</span>
+                            @Html.TextBoxFor(x => x.SearchCriteria.ToDate, "{0:M/d/yyyy}", new { @class = "form-control", @id = "txtToDate" })
+
+                        </div>
+                        <div class="col-xl-2 col-lg-2 col-md-6">
+                            <a class="btn btn-success mt-3" onclick="fnSearch()"><i class="fa fa-search" ></i></a>
+                            <a class="btn btn-success mt-3" onclick="fnAddTraining()">Add Training</a>
+                        </div>
+                        <div class="col-xl-4 col-lg-4 col-md-6">
+                            <div class="btn-group pull-right people-pager">
+                                @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                                @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpUserPageSize" })
+                            </div>
+                            <div class="btn-group pull-right people-pager">
+                                <button type="button" class="btn btn-outline-dark" onclick="GetUserPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                                <button type="button" class="btn btn-outline-dark" onclick="GetUserPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                            </div>
+                            @{
+                                int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                                if (Model.Users.Count == 0)
+                                {
+                                    start = 0;
+                                }
+                                decimal end = Math.Floor(Model.Pager.TotalRecord);
+                                if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                                {
+                                    if (Model.Pager.PageSize == -1)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                    else
+                                    {
+                                        end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                        if (end > Model.Pager.TotalRecord)
+                                        {
+                                            end = Model.Pager.TotalRecord;
+                                        }
+                                    }
+                                }
+                            }
+                            <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Users</span>
+
+                        </div>
+                    </div>
+                 
+                    
+                </div>
+            </div>
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th data-sortcolumn="FirstName" class="sorting" id="thFirstName" onclick="SortList('FirstName');">First Name</th>
+                                <th data-sortcolumn="LastName" class="sorting" id="thLastName" onclick="SortList('LastName');">Last Name</th>
+                                <th data-sortcolumn="EmailAddress" class="sorting" id="thEmailAddress" onclick="SortList('EmailAddress');">Email Address</th>
+                                <th data-sortcolumn="Mobile" class="sorting text-center" id="thMobile" onclick="SortList('Mobile');">Total Minute Mobile</th>
+                                <th data-sortcolumn="Web" class="sorting text-center" id="thWeb" onclick="SortList('Web');">Total Minute Web</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.Users != null && Model.Users.Count > 0)
+                            {
+                                foreach (var item in Model.Users)
+                                {
+                                    <tr class="table-light">
+                                    
+                                        <td>@item.FirstName</td>
+                                        <td>@item.LastName</td>
+                                        <td>@item.EmailAddress</td>
+                                        <td class="text-center">@item.Duration</td>
+                                        <td class="text-center">@item.WebDuration</td>
+                                      
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        //$('#drpUserDivisionId').change(function () {
+        //    fnGetAllSites($(this).val());
+        //});
+
+        $('#txtFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        GetDivisionByZone($("#SearchCriteria_ZoneId").val());
+
+        $("#SearchCriteria_ZoneId").change(function () {
+            GetDivisionByZone($(this).val());
+
+        });
+
+        $("#SearchCriteria_DivisionId").change(function () {
+            GetSiteByDivisionId($(this).val());
+        });    
+
+        $('#drpUserPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmGetUserList").submit();
+        });
+
+    })
+
+    function fnSearch() {
+        $("#hdnSkip").val('0');
+        $("#frmGetUserList").submit();
+    }
+
+
+    function GetUserPagerButtonClick(btn) {
+
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetUserList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetUserList").submit();
+            }
+        }
+    }
+
+    function fnAddTraining() {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserHistory/_SiteTraining',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddUserTraining").empty().append(data);
+                $("#modal-add-User-Training").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/UserHistory/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_DivisionId").empty();
+                    $("#SearchCriteria_DivisionId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnUserHistoryDivisionId').val() != '0' && $('#hdnUserHistoryDivisionId').val() == value.Id) {
+                            $("#SearchCriteria_DivisionId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SearchCriteria_DivisionId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/UserHistory/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_SiteId").empty();
+                    $("#SearchCriteria_SiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnUserHistorySiteId').val() != '0' && $('#hdnUserHistorySiteId').val() == value.Id) {
+                            $("#SearchCriteria_SiteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SearchCriteria_SiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+</script>

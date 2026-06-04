@@ -1,0 +1,476 @@
+﻿@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@*<script src="~/assets/js/jquery-3.5.1.min.js"></script>*@
+
+<input type="hidden" id="hdnAssetId" value="@ViewBag.AssetId" />
+<input type="hidden" id="hdnSiteId" value="@ViewBag.SiteId" />
+<div class="row">
+    <div class="col-lg-12 people-list m-t-15">
+        <div class="card" style="width:100%;height:600px;">
+            <div class="card-header">
+                <div class="pull-left">
+                    <label style="margin-top:7px;font-weight:bold" id="lblType"></label>
+                    <label style="margin-top:7px" id="lblName"></label>
+                </div>
+                <div class="pull-right" style="display:inline-flex;">
+
+                    @*<input type="text" name="dates" style="width:400px;height:28px;margin-right:10px;" class="form-control" placeholder="mm/dd/yyyy" id="datepicker">*@
+                    <select class="form-control" style="width:200px;margin-right:10px;" id="sel" onchange="fnChange()">
+                        <option value="0">Today</option>
+                        <option value="-1">Yesterday</option>
+                        <option value="-7">Last 7 Day</option>
+                        <option value="-30">Last 30 Day</option>
+                        <option value="1">This Month</option>
+                        <option value="-60">Last Month</option>
+                    </select>
+                    <a id="btn-download-csv" onclick="GetDownloadCsv()" style="line-height:2;" title="download csv" class="text-white btn btn-dark m-r-10"><i class="fa fa-upload"></i></a>
+                    <a id="btn-download" style="line-height:2;" href="#" class="text-white btn  btn btn-dark" download=""><i class="fa fa-camera"></i></a>
+
+                </div>
+            </div>
+            <div id="chart" style="width:100%">
+            </div>
+            <div class="apache-cotainer" id="area-echart"></div>
+
+        </div>
+    </div>
+</div>
+@*<script src="~/assets/js/chart/chartjs/chart.min.js"></script>*@
+@*<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>*@
+@*<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>*@
+@*<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.6.0/Chart.bundle.min.js"></script>*@
+@*<script src="http://admin.pixelstrap.com/cuba/dist/echarts.js"></script>*@
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+
+<script>
+
+    $(document).ready(function () {
+        // Demochart();
+        //$('input[name="daterange"]').daterangepicker({
+        //    opens: 'left'
+        //}, function (start, end, label) {
+        //    console.log("A new date selection was made: " + start.format('YYYY-MM-DD') + ' to ' + end.format('YYYY-MM-DD'));
+        //});
+        //$('#datepicker').datepicker({
+        //    dateFormat: 'mm/dd/yy',
+        //    numberOfMonths: 2,
+
+        //})
+        // Chart();
+        GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+
+        $("#btn-download").click(function () {
+            var canvas = $("#basicflot").get(0);
+            var dataURL = canvas.toDataURL('image/jpeg');
+            $("#btn-download").attr("href", dataURL);
+        });
+
+    });
+
+    function fnChange() {
+        if ($("#sel").val() == "0") {
+            GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+        }
+        if ($("#sel").val() == "-1") {
+            var d = new Date()
+            d.setDate(d.getDate() - 1);
+            // var month = dd.getMonth() ;
+            ////var day = dd.getDay();
+            // var year = dd.getFullYear();
+            var sd = d.toLocaleDateString();
+            var ed = d.toLocaleDateString();
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "-7") {
+            var d = new Date()
+            d.setDate(d.getDate() - 7);
+            // var month = dd.getMonth() ;
+            ////var day = dd.getDay();
+            // var year = dd.getFullYear();
+            var sd = d.toLocaleDateString();
+            var ed = new Date().toLocaleDateString();
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "-30") {
+            var d = new Date()
+            d.setDate(d.getDate() - 30);
+            // var month = dd.getMonth() ;
+            ////var day = dd.getDay();
+            // var year = dd.getFullYear();
+            var sd = d.toLocaleDateString();
+            var ed = new Date().toLocaleDateString();
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "1") {
+
+            var d = new Date()
+            var day = d.getDay();
+
+            d.setDate(d.getDate() - day);
+
+            var sd = d.toLocaleDateString();
+            d.setDate(d.getDate() + 30)
+            var ed = d.toLocaleDateString();
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "-60") {
+            var d = new Date()
+            var day = d.getDay();
+            d.setDate(d.getDate() - day);
+            var sd = d.toLocaleDateString();
+            d.setDate(d.getDate() - 30)
+            var ed = d.toLocaleDateString();
+            GetGraph(sd, ed);
+        }
+
+    }
+    function GetGraph(sd, ed) {
+        var mAsset = {};
+        mAsset.Id = $("#hdnAssetId").val();
+        mAsset.SiteId = $("#hdnSiteId").val();
+        mAsset.StartDate = sd;
+        mAsset.EndDate = ed;
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetReportData',
+            type: 'Post',
+            data: '{mAsset:' + JSON.stringify(mAsset) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    //  ChartGraph(data);
+                    //BindChart(data);
+                    Demochart(data)
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function ChartGraph(data) {
+
+        var color = ["#4bacc6", "#215968", "#404040", "#7366ff", "#f73164", "#90d474", "#fceda2", "#00e396", "#00ceba", "#f37995"];
+
+        var colorB = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var DataSeriaes = [];
+        var maxV = 0;
+
+        if (data.assetAttributes != null && data.assetAttributes.length > 0) {
+            $.each(data.assetAttributes, function (ids, val) {
+                if (ids == 0) {
+                    $("#lblType").text(val.AssetTypeName + " :");
+                    $("#lblName").text(val.AssetName)
+                }
+                var attr = {};
+                attr.label = val.Title;
+                attr.Fill = true;
+                //var backColor = [];
+                //for (var i = 0; i < data.assetAttributes.length; i++) {
+                //    backColor.push(colorB[ids]);
+                //}
+                attr.backgroundColor = colorB[ids];
+                attr.fillColor = colorB[ids];
+                attr.strokeColor = colorB[ids];
+                attr.pointColor = color[ids];
+                attr.lineTension = 0.1;
+                attr.borderColor = color[ids];
+                attr.borderCapStyle = 'butt';
+                attr.borderDashOffset = 0.5;
+                attr.borderJoinStyle = 'miter';
+                attr.pointBorderColor = color[ids];
+                attr.pointBackgroundColor = "#fff";
+                attr.pointBorderWidth = 2;
+                attr.pointHoverRadius = 2;
+                attr.pointHoverBackgroundColor = color[ids];
+                attr.pointHoverBorderColor = color[ids];
+                attr.pointHoverBorderWidth = 2;
+                attr.pointRadius = 2;
+                attr.pointHitRadius = 2;
+                if (ids % 2 == 0) {
+                    attr.yAxisID = 'A';
+                }
+                else {
+                    attr.yAxisID = 'B';
+                }
+
+                if (val.Title == "TPR V" || val.Title == "DG V" || val.Title == "RG V" || val.Title == "HG V" || val.Title == "HHG V" || val.Title == "Tx1 V" || val.Title == "Tx2 V") {
+
+                    $.each(val.Data, function (i, j) {
+                        var d = parseInt(j);
+                        if (d > maxV) {
+                            maxV = d;
+                        }
+                    });
+                }
+                //  maxV = maxV + 1;
+                attr.data = [];
+                var values = [];
+                $.each(val.Data, function (i, j) {
+                    values.push(j);
+                });
+                attr.data = values;
+                DataSeriaes.push(attr);
+            });
+        }
+
+        var xValue = [];
+        $.each(data.DateList, function (ids, val) {
+            xValue.push(val);
+        });
+
+
+        var pieChartContent = document.getElementById('chart');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#chart').append('<canvas id="basicflot" style="height:350px;width:100%;"><canvas>');
+
+        // var canvas = document.getElementById('basicflot');
+        var ctx = $("#basicflot").get(0).getContext("2d");
+        ctx.height = 1200;
+        var myChart = new Chart(ctx, {
+            type: "line",
+            data: {
+                datasets: DataSeriaes,
+                labels: xValue
+            },
+            options: {
+                tooltips: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                legend: {
+                    position: 'bottom',
+                },
+
+                //scaleUse2Y: true,
+                showLines: true,
+                responsive: false,
+                aspectRatio: 1,
+                maintainAspectRatio: false,
+                scales: {
+
+                    yAxes: [{
+                        id: 'A',
+                        type: 'linear',
+                        position: 'left',
+                        stacked: true,
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                        }
+                    }, {
+                        id: 'B',
+                        type: 'linear',
+                        position: 'right',
+                        stacked: true,
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                        },
+                        ticks: {
+                            max: maxV,
+                            min: 0,
+                        }
+                    }],
+
+                    xAxes: [{
+                        type: 'time',
+                        display: true,
+                        scaleLabel: {
+                            display: true,
+                        },
+                        ticks: {
+                            maxRotation: 90,
+                            minRotation: 80,
+                        },
+                        time: {
+                            format: 'HH:mm',
+                            tooltipFormat: 'HH:mm',
+                            unit: 'hour',
+                            unitStepSize: 15,
+                            displayFormats: {
+                                'minute': 'HH:mm',
+                                'hour': 'HH:mm'
+                            },
+                        }
+                    }],
+
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                        },
+                        suggestedMin: 0,
+                    }
+                },
+
+            },
+        });
+    }
+
+    function GetDownloadCsv() {
+        window.location.href = "/Site/DownloadReportCsv";
+    }
+
+    function Demochart(data) {    
+        var DataSeriaes = [];
+        var maxV = 0;
+        var legends = [];
+        var macLeft = 0;
+        debugger;
+        if (data.assetAttributes != null && data.assetAttributes.length > 0) {
+            $.each(data.assetAttributes, function (ids, val) {
+                if (ids == 0) {
+                    $("#lblType").text(val.AssetTypeName + " :");
+                    $("#lblName").text(val.AssetName)
+                }
+                var xA = [];
+                $.each(val.Data, function (i, j) {
+                    xA.push(j);
+                });
+
+                legends.push(val.Title)
+                var attr = {};
+                attr.name = val.Title;
+                attr.type = 'line';
+                attr.notShowSymbol = true;
+                attr.sampling = sampling;
+                attr.hoverAnimation = false;
+
+                if (val.Title.indexOf('V') > -1) {
+                    attr.yAxisIndex = 1;
+                }
+                else {
+                    attr.yAxisIndex = 0;
+                }
+
+                if (val.Title == "TPR V" || val.Title == "DG V" || val.Title == "RG V" || val.Title == "HG V" || val.Title == "HHG V" || val.Title == "Tx1 V" || val.Title == "Tx2 V" || val.Title == "Choke V" || val.Title == "Vr") {
+
+                    $.each(val.Data, function (i, j) {
+                        var d = parseInt(j);
+                        if (d > maxV) {
+                            maxV = d;
+                        }
+                    });
+                }
+                //  maxV = maxV + 1;
+                attr.data = [];
+                var values = [];
+                $.each(val.Data, function (i, j) {
+                    values.push(j);
+                });
+                var yLeft = Math.max.apply(Math, values); // 3
+                if (yLeft >= macLeft) {
+                    macLeft = yLeft;
+                }
+
+                attr.data = values;
+                DataSeriaes.push(attr);
+            });
+        }
+
+        var xValue = [];
+        $.each(data.DateList, function (ids, val) {
+            xValue.push(val);
+        });
+
+        var chart = echarts.init(document.getElementById('area-echart'));
+        var sampling = 'none';
+
+        chart.setOption({
+            //title: {
+            //    text: 'Rainfall Flow diagram',
+            //    x: 'center'
+            //},
+            tooltip: {
+                trigger: 'axis',
+                //formatter: function (params) {
+                //    return params[0].name + '<br/>'
+                //        + (
+                //            params[0]
+                //                ? params[0].seriesName + ' : ' + params[0].value + ' (m^3/s)<br/>'
+                //                : ''
+                //        )
+                //        + (
+                //            params[1]
+                //                ? params[1].seriesName + ' : ' + -params[1].value + ' (mm)'
+                //                : ''
+                //        );
+                //},
+                axisPointer: {
+                    animation: true,
+                   // type: 'cross',
+                    type: 'line',
+                    lineStyle: {
+                        color: '#408829',
+                        type: 'dashed'
+                    },
+                    crossStyle: {
+                        color: '#408829'
+                    },
+                    shadowStyle: {
+                        color: 'rgba(200,200,200,0.3)'
+                    }
+                }
+            },
+            legend: {
+                data: legends,
+                x: 'center',
+
+            },
+            toolbox: {
+                show: true,
+                feature: {
+                    mark: { show: true },
+                    dataView: { show: true, readOnly: false },
+                    magicType: { show: true, type: ['line', 'bar'] },
+                    restore: { show: true },
+                    saveAsImage: { show: true }
+                }
+            },
+            xAxis: [
+                {
+                    type: 'category',
+                    boundaryGap: false,
+                    axisLine: { onZero: false },
+                    interval: 50,
+                    //minInterval:1,
+                   //  maxInterval: 3600 * 1000 * 24,
+                    data: xValue,
+                   // min: "00:00",
+                  //  max:"11.59"
+                }
+            ],
+            yAxis: [
+                {
+                    type: 'value',
+                    min: 0,
+                    max: macLeft
+                },
+                {
+                    type: 'value',
+                    inverse: false,
+                    min: -1,
+                    max: maxV,
+                }
+            ],
+            color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"],
+
+            series: DataSeriaes
+        });
+
+        window.onresize = chart.resize;
+    }
+
+</script>

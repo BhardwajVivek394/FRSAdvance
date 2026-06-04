@@ -1,0 +1,195 @@
+﻿@*@model List<Domain.PointMachineData>*@
+@model Domain.Asset
+
+@if (Model != null && Model.mPointMachineData != null)
+{
+    foreach (var point in Model.mPointMachineData.OrderByDescending(x => x.Date))
+    {
+        var date = Convert.ToDateTime(point.Date).ToString("MM/dd/yyyy");
+        <tr>
+
+            <td>
+                @point.Date
+            </td>
+            <td class="assetname">
+                @point.AssetType
+            </td>
+            <td>
+                @point.Direction  Operation
+            </td>
+            @if (Model.IsSeriesOpration != null && Model.IsSeriesOpration.Value)
+            {
+                var sumTime = point.PointMachineJson.A_C_TIME + point.PointMachineJson.B_C_TIME;
+                <td>
+                    <a onclick="fnBindSignatureEventGragh('@point.AssetId', '@point.Direction', '@point.Date', 'C'); return false;" href="javascript:void(0)">C</a>/
+                    <a onclick="fnBindSignatureEventGragh('@point.AssetId', '@point.Direction', '@point.Date', 'V'); return false;" href="javascript:void(0)">V</a>
+
+                </td>
+
+                <td>
+                    @if ((point.PointMachineJson.Combine_C_TIME > 0 && point.PointMachineJson.Combine_V_TIME > 0) || (point.PointMachineJson.IsCombineOperation_A && point.PointMachineJson.IsCombineOperation_B))
+                    {
+                        <span>(Max/Avg/Time)</span>
+                        <span>
+                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CC', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">C(@point.PointMachineJson.Combine_C_MAX/@point.PointMachineJson.Combine_C_AVERAGE/@point.PointMachineJson.Combine_C_TIME)</a>
+                            <br />
+                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V(@point.PointMachineJson.Combine_V_MAX/@point.PointMachineJson.Combine_V_AVERAGE/@point.PointMachineJson.Combine_V_TIME)</a>
+                        </span>
+                    }
+                    else
+                    {
+                        <span>
+                            <a href="javascript:void(0)" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','CC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">C</a>/<a href="#" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V</a>/<a>T(@sumTime)</a>
+                        </span>
+                    }
+
+                </td>
+            }
+
+            @if ((point.PointMachineJson.Combine_C_TIME > 0 && point.PointMachineJson.Combine_V_TIME > 0) || (point.PointMachineJson.IsCombineOperation_A && point.PointMachineJson.IsCombineOperation_B))
+            {
+                <td style="cursor:pointer;color:@(Model.IsThickWave != null && Model.ThickWaveTypeId != null && Model.IsThickWave.Value && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.A || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both) ? "#00A4E0" : "#dc8b33");" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','AC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+
+                    @string.Format("{0:0.00}", point.PointMachineJson.A_C_MAX)   /  @string.Format("{0:0.00}", @point.PointMachineJson.A_C_AVERAGE) (@point.PointMachineJson.A_C_CurveArea)
+                </td>
+            }
+            else if (point.PointMachineJson.Combine_A_C_TIME > 0 || point.PointMachineJson.IsCombineOperation_A)
+            {
+                <td style="cursor:pointer;color:@(Model.IsThickWave != null && Model.ThickWaveTypeId != null && Model.IsThickWave.Value && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.A || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both) ? "#00A4E0" : "#dc8b33");" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','AC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+
+                    @string.Format("{0:0.00}", point.PointMachineJson.A_C_MAX)   /  @string.Format("{0:0.00}", @point.PointMachineJson.A_C_AVERAGE) (@point.PointMachineJson.A_C_CurveArea)
+
+
+                    <br />
+                    <span style="color:black !important">(Max/Avg/Time)</span> <br />
+                    <span>
+                        <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CC', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">C(@point.PointMachineJson.Combine_A_C_MAX/@point.PointMachineJson.Combine_A_C_AVERAGE/@point.PointMachineJson.Combine_A_C_TIME)</a>
+                        <br />
+                        <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V(@point.PointMachineJson.Combine_A_V_MAX/@point.PointMachineJson.Combine_A_V_AVERAGE/@point.PointMachineJson.Combine_A_V_TIME)</a>
+                    </span>
+
+
+                </td>
+            }
+            else
+            {
+                <td style="cursor:pointer;color:@(Model.IsThickWave != null && Model.ThickWaveTypeId != null && Model.IsThickWave.Value && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.A || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both) ? "#00A4E0" : "#dc8b33");" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+
+                    @string.Format("{0:0.00}", point.PointMachineJson.A_C_MAX)   /  @string.Format("{0:0.00}", @point.PointMachineJson.A_C_AVERAGE) (@point.PointMachineJson.A_C_CurveArea)
+                </td>
+            }
+
+            @*@if ((point.PointMachineJson.Combine_C_TIME > 0 && point.PointMachineJson.Combine_V_TIME > 0) || (point.PointMachineJson.IsCombineOperation_A && point.PointMachineJson.IsCombineOperation_B))
+                {
+                    <td onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                        @point.PointMachineJson.A_V_AVERAGE
+
+                    </td>
+                }
+                else if (point.PointMachineJson.Combine_A_C_TIME > 0 || point.PointMachineJson.IsCombineOperation_A)
+                {
+                    <td onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                        @point.PointMachineJson.A_V_AVERAGE
+
+                    </td>
+                }
+                else
+                {
+                    <td onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                        @point.PointMachineJson.A_V_AVERAGE
+
+                    </td>
+                }*@
+            <td onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                @point.PointMachineJson.A_V_AVERAGE
+
+            </td>
+
+            <td>
+                <span> @point.PointMachineJson.A_C_TIME </span>
+            </td>
+
+            @if (Model.IsHalfPointMachine == null || (Model.IsHalfPointMachine != null && !Model.IsHalfPointMachine.Value))
+            {
+                if ((point.PointMachineJson.Combine_C_TIME > 0 && point.PointMachineJson.Combine_V_TIME > 0) || (point.PointMachineJson.IsCombineOperation_A && point.PointMachineJson.IsCombineOperation_B))
+                {
+                    <td style="cursor:pointer;color:@(Model.IsThickWave != null && Model.ThickWaveTypeId  != null && Model.IsThickWave.Value && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.B || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both) ? "#00A4E0" : "#dc8b33");" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','BC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+
+                        @string.Format("{0:0.00}", point.PointMachineJson.B_C_MAX)  /  @string.Format("{0:0.00}", @point.PointMachineJson.B_C_AVERAGE) (@point.PointMachineJson.B_C_CurveArea)
+
+                    </td>
+                }
+                else if (point.PointMachineJson.Combine_B_C_TIME > 0 || point.PointMachineJson.IsCombineOperation_B)
+                {
+                    <td style="cursor:pointer;color:@(Model.IsThickWave != null && Model.ThickWaveTypeId  != null && Model.IsThickWave.Value && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.B || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both) ? "#00A4E0" : "#dc8b33");" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','BC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+
+                        @string.Format("{0:0.00}", point.PointMachineJson.B_C_MAX)  /  @string.Format("{0:0.00}", @point.PointMachineJson.B_C_AVERAGE) (@point.PointMachineJson.B_C_CurveArea)
+
+
+                        <br />
+                        <span style="color:black !important">(Max/Avg/Time)</span> <br />
+                        <span>
+                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CC', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">C(@point.PointMachineJson.Combine_B_C_MAX/@point.PointMachineJson.Combine_B_C_AVERAGE/@point.PointMachineJson.Combine_B_C_TIME)</a>
+                            <br />
+                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V(@point.PointMachineJson.Combine_B_V_MAX/@point.PointMachineJson.Combine_B_V_AVERAGE/@point.PointMachineJson.Combine_B_V_TIME)</a>
+                        </span>
+                    </td>
+                }
+                else
+                {
+                    <td style="cursor:pointer;color:@(Model.IsThickWave != null && Model.ThickWaveTypeId  != null && Model.IsThickWave.Value && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.B || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both) ? "#00A4E0" : "#dc8b33");" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+
+                        @string.Format("{0:0.00}", point.PointMachineJson.B_C_MAX)  /  @string.Format("{0:0.00}", @point.PointMachineJson.B_C_AVERAGE) (@point.PointMachineJson.B_C_CurveArea)
+
+                    </td>
+                }
+
+                @*if ((point.PointMachineJson.Combine_C_TIME > 0 && point.PointMachineJson.Combine_V_TIME > 0) || (point.PointMachineJson.IsCombineOperation_A && point.PointMachineJson.IsCombineOperation_B))
+                    {
+                        <td onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                            @point.PointMachineJson.B_V_AVERAGE
+
+                        </td>
+                    }
+                    else if (point.PointMachineJson.Combine_B_C_TIME > 0 || point.PointMachineJson.IsCombineOperation_B)
+                    {
+                        <td onclick="fnBindCombineSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                            @point.PointMachineJson.B_V_AVERAGE
+
+                        </td>
+                    }
+                    else
+                    {
+                        <td onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                            @point.PointMachineJson.B_V_AVERAGE
+
+                        </td>
+                    }*@
+                <td onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">
+                    @point.PointMachineJson.B_V_AVERAGE
+
+                </td>
+                <td>
+                    @point.PointMachineJson.B_C_TIME
+                </td>
+            }
+            <td class="PMExtraColumn_@Model.Id display-none">
+                <span> @point.PointMachineJson.ClusterA </span>
+            </td>
+            <td class="PMExtraColumn_@Model.Id display-none">
+                <span> @point.PointMachineJson.DeviationA </span>
+            </td>
+            @if (Model.IsHalfPointMachine == null || (Model.IsHalfPointMachine != null && !Model.IsHalfPointMachine.Value))
+            {
+                <td class="PMExtraColumn_@Model.Id display-none">
+                    <span> @point.PointMachineJson.ClusterB </span>
+                </td>
+                <td class="PMExtraColumn_@Model.Id display-none">
+                    <span> @point.PointMachineJson.DeviationB </span>
+                </td>
+            }
+
+        </tr>
+    }
+}
+

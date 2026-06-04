@@ -1,0 +1,210 @@
+﻿@model Domain.SiteSurveyLister
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal bounceIn animated" id="modal-add-finalize-asset" tabindex="-1" aria-labelledby="modal-add-finalize-asset" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen" role="document">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader"> Finalize</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            @{
+                var mSurveyAttributes = new List<Domain.SurveyAttribute>();
+                if (ViewBag.SurveyAttributes != null)
+                {
+                    mSurveyAttributes = ViewBag.SurveyAttributes as List<Domain.SurveyAttribute>;
+                }
+            }
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th class="text-center">Sr No.</th>
+                                <th>Location Box No.</th>
+                                <th>Location Side</th>
+                                <th>Distance From RR</th>
+                                <th>V/C</th>
+                                <th class="text-center">Cluster</th>
+                                <th>Conductor</th>
+                                <th>TR</th>
+                                <th>TF</th>
+                                <th>Point Machine</th>
+                                <th>Signal</th>
+                                @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.AXLE_COUNTER).Count() > 0)
+                                {
+                                    <th>Axle Counter</th>
+                                }
+                                @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.Bus_Bar).Count() > 0)
+                                {
+                                    <th>Bus Bar</th>
+                                }
+                                @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.UFSBI).Count() > 0)
+                                {
+                                    <th>UFSBI</th>
+                                }
+                                @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.BHMS).Count() > 0)
+                                {
+                                    <th>BHMS</th>
+                                }
+                                <th>FTU BOX</th>
+                                <th>Input Cluster Wise</th>
+                                <th>CS (0-3A)</th>
+                                <th>CS (0-10A)</th>
+                                <th>CS (0-600MA-AC)</th>
+                                <th>0-10V</th>
+                                <th>(0-150V,DC)</th>
+                                <th>(0-150V,AC)</th>
+                                <th>(0-50V,DC)</th>
+                                <th>0-1 V</th>
+                                <th>0-100 V</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbodySurveyList">
+
+                            @if (Model.SiteSurveys != null && Model.SiteSurveys.Count > 0)
+                            {
+                                int srno = 0;
+                                int previousCluster = 0;
+                                var rowSpan = 1;
+
+                                var clusterGroup = Model.SiteSurveys.GroupBy(x => x.Cluster).Select(x => x.Key).OrderBy(x => x).ToList();
+                                foreach (var cluster in clusterGroup)
+                                {
+                                    foreach (var item in Model.SiteSurveys.Where(x => x.Cluster == cluster))
+                                    {
+                                        srno++;
+                                        <tr>
+                                            <td class="text-center">@srno</td>
+                                            <td>@item.LocationBoxNo</td>
+                                            <td>@item.LocationSide</td>
+                                            <td>@item.DistanceFromRR</td>
+                                            <td class="text-center">@item.VC</td>
+                                            @if (item.Cluster != previousCluster)
+                                            {
+                                                rowSpan = Model.SiteSurveys.Where(m => m.Cluster == item.Cluster).Count();
+                                                <td class="text-center" rowspan="@rowSpan">
+                                                    @item.Cluster
+                                                </td>
+                                            }
+
+                                            <td class="text-center">@item.Conductor</td>
+                                            <td>@item.TR</td>
+                                            <td>@item.TF</td>
+                                            <td>@item.PointMachine</td>
+                                            <td>@item.Signal</td>
+                                            @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.AXLE_COUNTER).Count() > 0)
+                                            {
+                                                <td>@item.AxleCounter</td>
+                                            }
+                                            @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.Bus_Bar).Count() > 0)
+                                            {
+                                                <td>@item.BusBar</td>
+                                            }
+
+                                            @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.UFSBI).Count() > 0)
+                                            {
+                                                <td>@item.UFSBI</td>
+                                            }
+                                            @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.BHMS).Count() > 0)
+                                            {
+                                                <td>@item.BHMS</td>
+                                            }
+                                            <td>@item.FtuBox</td>
+                                            <td>@item.InputClusterWise</td>
+                                            <td class="text-center">@item.CS03A</td>
+                                            <td class="text-center">@item.CS10A</td>
+                                            <td class="text-center">@item.CS600A</td>
+                                            <td class="text-center">@item.V10</td>
+                                            <td class="text-center">@item.V150DC</td>
+                                            <td class="text-center">@item.V150AC</td>
+                                            <td class="text-center">@item.V50DC</td>
+                                            <td class="text-center">@item.V1</td>
+                                            <td class="text-center">@item.V100</td>
+                                        </tr>
+                                        { previousCluster = item.Cluster; }
+
+                                    }
+                                }
+
+                                <tr>
+                                    <th>Total</th>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <th>
+                                        @Model.SiteSurveys.Sum(x => x.VoltageCount)/@Model.SiteSurveys.Sum(x => x.CurrentCount)
+                                    </th>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    <td></td>
+                                    @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.AXLE_COUNTER).Count() > 0)
+                                    {
+                                        <td></td>
+                                    }
+                                    @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.Bus_Bar).Count() > 0)
+                                    {
+                                        <td></td>
+                                    }
+
+                                    @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.UFSBI).Count() > 0)
+                                    {
+                                        <td></td>
+                                    }
+                                    @if (mSurveyAttributes != null && mSurveyAttributes.Where(x => x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.SiteSurveyAssetType.BHMS).Count() > 0)
+                                    {
+                                        <td></td>
+                                    }
+                                    <td></td>
+                                    <td></td>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.CS03A)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.CS10A)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.CS600A)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.V10)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.V150DC)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.V150AC)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.V50DC)
+                                    </th>
+                                    <th class="text-center">
+                                        @Model.SiteSurveys.Sum(x => x.V1)
+                                    </th>
+                                    <th class="text-center">  @Model.SiteSurveys.Sum(x => x.V100)</th>
+                                </tr>
+
+                            }
+
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+
+</script>

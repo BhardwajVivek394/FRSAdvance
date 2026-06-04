@@ -1,0 +1,299 @@
+﻿@model List<Domain.FRSAlertRemark>
+
+@* ══════════════════════════════════════════════════════════════
+    _FRSRemark.cshtml  — injected via AJAX into #divFRSAlertRemark
+    DO NOT wrap in a modal here. The parent modal shell is in
+    _FRSAlertModals.cshtml (#modalFRSAlertRemark).
+    ══════════════════════════════════════════════════════════════ *@
+
+<style>
+    .frsr-wrap {
+        overflow-x: auto;
+    }
+
+    .frsr-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+        color: #cbd5e1;
+    }
+
+        .frsr-table thead tr {
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+        }
+
+        .frsr-table thead th {
+            padding: 9px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #64748b;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .frsr-table tbody tr {
+            border-bottom: 1px solid #1e293b;
+            transition: background .12s;
+        }
+
+            .frsr-table tbody tr:last-child {
+                border-bottom: none;
+            }
+
+            .frsr-table tbody tr:hover {
+                background: #1e3352;
+            }
+
+        .frsr-table tbody td {
+            padding: 10px 12px;
+            vertical-align: top;
+            color: #cbd5e1;
+            font-size: 12.5px;
+            line-height: 1.55;
+        }
+
+    /* ── sr no cell ── */
+    .frsr-srno {
+        color: #475569;
+        font-size: 11px;
+        font-weight: 600;
+        text-align: center;
+        min-width: 36px;
+    }
+
+    /* ── ack status badge ── */
+    .frsr-ack {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .frsr-ack-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .frsr-ack-pt {
+        background: #422006;
+        color: #fbbf24;
+        border: 1px solid #78350f;
+    }
+
+        .frsr-ack-pt .frsr-ack-dot {
+            background: #fbbf24;
+        }
+
+    .frsr-ack-true {
+        background: #052e16;
+        color: #4ade80;
+        border: 1px solid #166534;
+    }
+
+        .frsr-ack-true .frsr-ack-dot {
+            background: #4ade80;
+        }
+
+    .frsr-ack-false {
+        background: #3b0707;
+        color: #f87171;
+        border: 1px solid #7f1d1d;
+    }
+
+        .frsr-ack-false .frsr-ack-dot {
+            background: #f87171;
+        }
+
+    .frsr-ack-maint {
+        background: #1c1917;
+        color: #a78bfa;
+        border: 1px solid #4c1d95;
+    }
+
+        .frsr-ack-maint .frsr-ack-dot {
+            background: #a78bfa;
+        }
+
+    /* ── cause code pill ── */
+    .frsr-cause {
+        display: inline-block;
+        background: #1e3a5f;
+        color: #93c5fd;
+        border: 1px solid #1d4ed8;
+        border-radius: 5px;
+        padding: 2px 7px;
+        font-size: 11px;
+        font-weight: 600;
+        margin-bottom: 4px;
+        word-break: break-all;
+    }
+
+    /* ── remark text ── */
+    .frsr-remark {
+        color: #e2e8f0;
+        line-height: 1.6;
+    }
+
+    /* ── datetime cells ── */
+    .frsr-dt {
+        font-size: 11.5px;
+        color: #94a3b8;
+        white-space: nowrap;
+    }
+
+    /* ── maintainer cell ── */
+    .frsr-maint-name {
+        color: #e2e8f0;
+        font-weight: 600;
+        font-size: 12.5px;
+    }
+
+    .frsr-maint-desig {
+        color: #64748b;
+        font-size: 11px;
+        margin-top: 2px;
+    }
+
+    /* ── empty state ── */
+    .frsr-empty {
+        text-align: center;
+        padding: 40px 20px;
+        color: #475569;
+    }
+
+        .frsr-empty i {
+            font-size: 28px;
+            display: block;
+            margin-bottom: 10px;
+            opacity: .4;
+        }
+
+    /* ── image button ── */
+    .frsr-img-btn {
+        background: #1e3a5f;
+        border: 1px solid #1d4ed8;
+        color: #7dd3fc;
+        border-radius: 6px;
+        padding: 5px 9px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: background .15s, color .15s;
+        line-height: 1;
+    }
+
+        .frsr-img-btn:hover {
+            background: #1d4ed8;
+            color: #fff;
+        }
+</style>
+
+@if (Model == null || !Model.Any())
+{
+    <div class="frsr-empty">
+        <i class="fas fa-comment-slash"></i>
+        No feedback or remarks recorded yet.
+    </div>
+}
+else
+{
+    <div class="frsr-wrap">
+        <table class="frsr-table">
+            <thead>
+                <tr>
+                    <th style="width:42px;text-align:center;">#</th>
+                    <th style="min-width:110px;">Ack. Type</th>
+                    <th style="min-width:200px;">Remark &amp; Cause Code</th>
+                    <th style="min-width:130px;">Rectification Date</th>
+                    <th style="min-width:120px;">Maintainer</th>
+                    <th style="min-width:100px;">Timestamp</th>
+                    <th style="width:60px;text-align:center;">Image</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ int srNo = 1; }
+                @foreach (var item in Model)
+                {
+                    @* ── determine ack badge ── *@
+                    string ackCss, ackLbl;
+                    if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True)
+                    { ackCss = "frsr-ack-true"; ackLbl = "True"; }
+                    else if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)
+                    { ackCss = "frsr-ack-false"; ackLbl = "False"; }
+                    else if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace)
+                    { ackCss = "frsr-ack-maint"; ackLbl = "Maintenance"; }
+                    else if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)
+                    { ackCss = "frsr-ack-pt"; ackLbl = "PT"; }
+                    else
+                    { ackCss = "frsr-ack-maint"; ackLbl = "—"; }
+
+                    <tr>
+                        <td class="frsr-srno">@srNo</td>
+
+                        <td>
+                            <span class="frsr-ack @ackCss">
+                                <span class="frsr-ack-dot"></span>@ackLbl
+                            </span>
+                        </td>
+
+                        <td>
+                            @if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT
+                                 && !string.IsNullOrEmpty(item.PTAlertInfo))
+                            {
+                                <span class="frsr-cause">@item.PTAlertInfo</span><br />
+                            }
+                            <span class="frsr-remark">@(string.IsNullOrEmpty(item.Remark) ? "—" : item.Remark)</span>
+                        </td>
+
+                        <td class="frsr-dt">
+                            @if (item.RectificationDateTime != null && item.RectificationDateTime.Value != DateTime.MinValue)
+                            {
+                                @item.RectificationDateTime.Value.ToString("dd/MM/yyyy")<br />
+                                <span style="color:#64748b;">@item.RectificationDateTime.Value.ToString("HH:mm:ss")</span>
+                            }
+                            else
+                            {
+                                <span style="color:#334155;">—</span>
+                            }
+                        </td>
+
+                        <td>
+                            <div class="frsr-maint-name">@(string.IsNullOrEmpty(item.MaintainerName) ? "—" : item.MaintainerName)</div>
+                            <div class="frsr-maint-desig">@item.MaintainerDesignation</div>
+                        </td>
+
+                        <td class="frsr-dt">
+                            @if (item.CreatedDate != null && item.CreatedDate != DateTime.MinValue)
+                            {
+                                @item.CreatedDate.ToString("dd/MM/yyyy")<br />
+                                <span style="color:#64748b;">@item.CreatedDate.ToString("HH:mm:ss")</span>
+                            }
+                            else
+                            {
+                                <span style="color:#334155;">—</span>
+                            }
+                        </td>
+
+                        <td style="text-align:center;vertical-align:middle;">
+                            <button onclick="fnShowRemarkImage(@item.Id)"
+                                    class="frsr-img-btn"
+                                    title="View Image">
+                                <i class="fas fa-image"></i>
+                            </button>
+                        </td>
+                    </tr>
+
+                    srNo++;
+                }
+            </tbody>
+        </table>
+    </div>
+}

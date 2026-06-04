@@ -1,0 +1,128 @@
+﻿@model Domain.RoleLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+<input type="hidden" id="hdnAreaListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnAreaListMessage" value="@ViewBag.Message" />
+
+<div class="row">
+    <div class="col-sm-8 col-md-9 col-lg-10 people-list">
+        <div class="people-options clearfix">
+            <div class="pull-left">
+                <a id="btnAddRole" onclick="ClearAddUserControls()" class="btn btn-primary btn-quirk" data-bs-toggle="modal" data-bs-target="#modal-add-role">Add Role</a>
+            </div>
+            <div class="btn-group pull-right people-pager">
+                @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+            </div>
+            <div class="btn-group pull-right people-pager">
+                <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+                <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+            </div>
+            @{
+                int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                if (Model.Roles.Count == 0)
+                {
+                    start = 0;
+                }
+                decimal end = Math.Floor(Model.Pager.TotalRecord);
+                if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                {
+                    if (Model.Pager.PageSize == -1)
+                    {
+                        end = Model.Pager.TotalRecord;
+                    }
+                    else
+                    {
+                        end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                        if (end > Model.Pager.TotalRecord)
+                        {
+                            end = Model.Pager.TotalRecord;
+                        }
+                    }
+                }
+            }
+            <span class="people-count pull-right">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Roles</span>
+        </div>
+        <div class="panel panel-profile list-view">
+            <div class="panel-body">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th colspan="2" class="text-center">Action</th>
+                                <th data-sortcolumn="Title" class="sorting" id="thTitle" onclick="SortList('Title');">Title</th>
+                                <th data-sortcolumn="Description" class="sorting" id="thDescription" onclick="SortList('Description');">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.Roles != null && Model.Roles.Count > 0)
+                            {
+                                foreach (var item in Model.Roles)
+                                {
+                                    <tr class="table-light">
+                                        <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Edit"><i class="glyphicon glyphicon-edit" onclick="GetRoleById('@item.Id')"></i></a></td>
+                                        <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete"><i class="glyphicon glyphicon-trash text-danger" onclick="DeleteRoleById('@item.Id')"></i></a></td>
+                                        <td>@item.Title</td>
+                                        <td>@item.Description</td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- panel -->
+    <div class="col-sm-4 col-md-3 col-lg-2">
+        <div class="panel">
+            <div class="panel-heading">
+                <h4 class="panel-title">Search Area</h4>
+            </div>
+            <div class="panel-body">
+                <div class="form-group">
+                    <label class="control-label center-block">Title:</label>
+                    @Html.TextBoxFor(m => m.SearchCriteria.Title, new { @class = "form-control", type = "text", id = "txtSearchTitle" })
+                </div>
+
+                <a class="btn btn-success" onclick="Search()">Search</a>
+            </div>
+        </div>
+        <!-- panel -->
+    </div>
+</div>
+
+<script src="~/Content/PageJS/Role/RoleList.js"></script>
+<script>
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetRoleList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetRoleList").submit();
+            }
+        }
+    }
+</script>

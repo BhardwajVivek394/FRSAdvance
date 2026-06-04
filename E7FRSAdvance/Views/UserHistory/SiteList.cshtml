@@ -1,0 +1,309 @@
+﻿@model Domain.SiteLister
+<style>
+
+    .tablemodalFixHead {
+        overflow: auto;
+        height: 70vh;
+    }
+
+        .tablemodalFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+</style>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="row">
+                            <div class="col-xl-1 col-lg-1 col-md-4">
+                                <span>Zone</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="col-xl-1 col-lg-1 col-md-4">
+                                <input type="hidden" id="hdnUserHistoryDivisionId" value="@Model.SearchCriteria.DivisionId" />
+                                <span>Division</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", tabindex = 2 })
+                            </div>
+
+                            <div class="col-xl-1 col-lg-1 col-md-6">
+                                <span>From Date</span>
+                                @Html.TextBoxFor(x => x.SearchCriteria.FromDate, "{0:M/d/yyyy}", new { @class = "form-control", @id = "txtFromDate" })
+                            </div>
+                            <div class="col-xl-1 col-lg-1 col-md-6">
+                                <span>To Date</span>
+                                @Html.TextBoxFor(x => x.SearchCriteria.ToDate, "{0:M/d/yyyy}", new { @class = "form-control", @id = "txtToDate" })
+
+                            </div>
+                            <div class="col-xl-1 col-lg-1 col-md-6">
+                                <span>Minutes</span>
+                                @Html.TextBoxFor(x => x.SearchCriteria.SearchMinutes, new { @class = "form-control", @type = "number", @id = "txtSearchMinutes" })
+
+
+                            </div>
+                            <div class="col-xl-1 col-lg-1 col-md-6">
+                                @Html.DropDownListFor(model => model.SearchCriteria.Type, new List<SelectListItem> { new SelectListItem { Text = "Greater than", Value = "Greater" }, new SelectListItem { Text = "Less than", Value = "Less" } }, new { @class = "form-control mt-4" })
+
+                                @*<select class="form-control mt-3" name="SearchCriteria.Type">
+
+                                        <option value="Greater">Greater than</option>
+                                        <option value="Less">Less than</option>
+                                    </select>*@
+                            </div>
+                            <div class="col-xl-3 col-lg-2 col-md-6">
+                                <a class="btn btn-success mt-3" onclick="fnSearch()"><i class="fa fa-search"></i></a>
+                                <a class="btn btn-success mt-3" onclick="fnAddTraining()">Add Training</a>
+                                <a class="btn btn-info mt-3" onclick="fnAddSiteBenefit()">Add Benefit</a>
+                            </div>
+
+                            <div class="col-xl-3 mt-4 text-right" id="divPagerArea">
+                                <div class="btn-group pull-right people-pager">
+                                    @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                                    @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                                </div>
+
+                                <div class="btn-group pull-right">
+
+                                    <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                                    <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                                </div>
+                                @{
+                                    int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                                    if (Model.mSites.Count == 0)
+                                    {
+                                        start = 0;
+                                    }
+                                    decimal end = Math.Floor(Model.Pager.TotalRecord);
+                                    if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                                    {
+                                        if (Model.Pager.PageSize == -1)
+                                        {
+                                            end = Model.Pager.TotalRecord;
+                                        }
+                                        else
+                                        {
+                                            end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                            if (end > Model.Pager.TotalRecord)
+                                            {
+                                                end = Model.Pager.TotalRecord;
+                                            }
+                                        }
+                                    }
+                                }
+                                <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Sites </span>
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card-body" style="padding:15px;">
+                        <div class="table-responsive tablemodalFixHead vh-100">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="ZoneName" class="sorting" id="thName">Zone</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="DivisionName" class="sorting" id="thName">Division</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="Name" class="sorting" id="thName" onclick="SortList('Name');">Site</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="Training" class="sorting" id="thTraining" onclick="SortList('Training');">Training</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="Benefit" class="sorting" id="thBenefit" onclick="SortList('Benefit');">Benefit</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="User" class="sorting" id="thUser" onclick="SortList('User');">User</th>
+
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.mSites != null && Model.mSites.Count > 0)
+                                    {
+                                        foreach (var site in Model.mSites)
+                                        {
+                                            <tr>
+                                                <td>@site.ZoneName</td>
+                                                <td>@site.DivisionName</td>
+                                                <td>@site.Name</td>
+                                                <td>
+                                                    @if (site.TrainingDate != null && site.TrainingDate != DateTime.MinValue)
+                                                    {
+                                                        <span>
+                                                            @site.TrainingDate.Value.ToShortDateString()
+                                                        </span>
+                                                        <i class="fa fa-info-circle" onclick="GetSiteTrainingList('@site.Id')"></i>
+                                                    }
+
+                                                </td>
+                                                <td>
+                                                    @if (site.SiteBenefitTypeId != null && site.SiteBenefitTypeId.Value > 0)
+                                                    {
+                                                        if (site.SiteBenefitTypeId.Value == 1)
+                                                        {
+                                                            <span data-bs-trigger="hover" data-bs-toggle="popover" data-bs-content="@site.SiteBenefitRemark" data-bs-placement="top">
+                                                                Mannual
+                                                            </span>
+                                                        }
+                                                        else if (site.SiteBenefitTypeId.Value == 2)
+                                                        {
+                                                            <a href="javascript:void(0)" onclick="fnShowBenefitAlert('@site.SiteBenefitId')">
+                                                                RDPMS  (@site.FRSSiteBenefitCount)
+                                                            </a>
+                                                        }
+
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <div class="row">
+                                                        @if (ViewBag.Users != null)
+                                                        {
+                                                            var users = ViewBag.Users as List<Domain.User>;
+                                                            if (users != null && users.Count > 0)
+                                                            {
+                                                                var userIds = users.SelectMany(x => x.UserSites).Where(x => x.SiteId == site.Id).Select(x => x.UserId).Distinct().ToList();
+                                                                if (userIds != null && userIds.Count() > 0)
+                                                                {
+                                                                    var musers = users.Where(x => userIds.Contains(x.Id)).ToList();
+                                                                    if (musers != null && musers.Count > 0)
+                                                                    {
+                                                                        foreach (var us in musers)
+                                                                        {
+                                                                            <div class="col-xl-2" style="padding:3px !important">
+                                                                                <div class="card" style="margin-bottom:1px !important">
+                                                                                    @*<div class="card-header">
+
+                                                                                        </div>*@
+                                                                                    <div class="card-body" style="padding:15px !important">
+                                                                                        <a href="javascript:void(0)" onclick="GetUserById('@us.Id')">
+                                                                                            <b>
+                                                                                                @if (us.Duration > 10 || us.WebDuration > 10)
+                                                                                                {
+                                                                                                    <u style="color:seagreen">
+                                                                                                        @us.FirstName @us.LastName
+                                                                                                    </u>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <u style="color:orangered">
+                                                                                                        @us.FirstName @us.LastName
+                                                                                                    </u>
+                                                                                                }
+
+                                                                                            </b>
+
+                                                                                        </a> <br />
+                                                                                        <span onclick="GetHistoryDetails('@us.Id')">Mobile - @us.Duration min</span>
+                                                                                        <span onclick="GetHistoryDetails('@us.Id')">Web - @us.WebDuration min</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    </div>
+
+                                                </td>
+                                            </tr>
+                                        }
+
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        //$('#drpUserDivisionId').change(function () {
+        //    fnGetAllSites($(this).val());
+        //});
+        $("[data-toggle='popover']").popover();
+        $('#txtFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        GetDivisionByZone($("#SearchCriteria_ZoneId").val());
+
+        $("#SearchCriteria_ZoneId").change(function () {
+            GetDivisionByZone($(this).val());
+
+        });
+
+        $("#SearchCriteria_DivisionId").change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmSiteList").submit();
+        });
+
+        $("#txtSearchMinutes").keyup(function () {
+
+            if ($("#txtSearchMinutes").val() == '') {
+                $('#drpPageSize').val('20');
+                $('#divPagerArea').show();
+            }
+        });
+
+        if ($("#txtSearchMinutes").val() != null && $("#txtSearchMinutes").val() != undefined && $("#txtSearchMinutes").val() != '') {
+            $('#divPagerArea').hide();
+        } else {
+            $('#divPagerArea').show();
+        }
+    })
+
+    function fnSearch() {
+        $("#hdnSkip").val('0');
+        if ($("#txtSearchMinutes").val() != null && $("#txtSearchMinutes").val() != undefined && $("#txtSearchMinutes").val() != '') {
+            $('#drpPageSize').val('-1');
+        }
+        $("#frmSiteList").submit();
+    }
+
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmSiteList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmSiteList").submit();
+            }
+        }
+    }
+</script>

@@ -1,0 +1,347 @@
+﻿@model Domain.AssetLister
+
+
+<div class="modal bounceIn animated" id="modal-assetLister" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"> Asset</span></h4>
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close" data-bs-original-title="" title=""></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="card" id="gridView">
+                            <div class="card-body row" style="padding:15px;">
+                                @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                                {
+                                    foreach (var item in Model.mAssets)
+                                    {
+                                        int cnt = item.AssetTypeName.Length + item.Name.Length;
+                                        <div class="col-xl-12 xl-50 news box-col-12">
+                                            <div class="card card-border">
+                                                <div class="bg-primary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                                    <div class="" style="width:80%;float:left;padding:10px;border-top-left-radius:15px;">
+                                                        <h6>
+                                                            <a target="_blank" class="text-white" href="@item.HttpMisLink"> @item.AssetTypeName : @item.Name</a>
+                                                        </h6>
+                                                    </div>
+                                                    <div class="text-center bg-dark" style="width:20%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:50px">
+
+                                                        @if (item.UnderMaintence == true)
+                                                        {
+                                                            <div class="text-center">
+                                                                <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="text-center">
+                                                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                                            </div>
+                                                        }
+                                                        <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>
+                                                        <a onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                                                    </div>
+
+                                                </div>
+                                                <div class="card-body" style="padding:5px;">
+                                                    <div class="table-responsive width100p tblAssetData">
+                                                        <table class="table table-bordered table-striped">
+                                                            <tbody id="tblAttributeData@(item.Id)" class="tblAttributes">
+                                                                @if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                                                                {
+                                                                    foreach (var assetAttribute in item.assetAttributes)
+                                                                    {
+                                                                        <tr>
+                                                                            <td style="width:50%">@assetAttribute.Title</td>
+                                                                            <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(item.Id)">@assetAttribute.AttributeData</td>
+                                                                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsCalibration)
+                                                                            {
+                                                                                <td style="width:50%">
+                                                                                    <a class=""><i class="fa fa-pencil" onclick="fnAddCalibration('@item.Id','@assetAttribute.Id','@assetAttribute.Multiplication','@item.Name','@assetAttribute.Title')"></i></a>
+                                                                                </td>
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <td></td>
+                                                                            }
+                                                                        </tr>
+                                                                    }
+                                                                    <tr>
+                                                                        <td style="width:50%">
+                                                                            Index Score
+
+                                                                        </td>
+                                                                        <td style="width:50%" class="@(item.IndexScore<7?"text-danger":"")">
+                                                                            @item.IndexScore
+                                                                        </td>
+                                                                        <td></td>
+                                                                    </tr>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <tr>
+                                                                        <td class="text-center" colspan="3">No attributes found!</td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <p style="font-size:15px">No record found!</p>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    (function ($) {
+        $.fn.focusTextToEnd = function () {
+            this.focus();
+            var $thisVal = this.val();
+            this.val('').val($thisVal);
+            return this;
+        }
+    }(jQuery));
+    $(document).ready(function () {
+        $(".asset-search").keyup(function (e) {
+            setTimeout(function () {
+                $("#frmAssetDetails").submit();
+            }, 3000)
+        });
+        $('[data-toggle="popover"]').popover();
+
+        $("#lblAssetType").html($("#AssetName" + $("#hdnassetTypeId").val()).val());
+        $(".asset-search").focusTextToEnd();
+       // $('#Pager').select2({ minimumResultsForSearch: Infinity });
+
+      //  $('#drpPageSize').select2({ minimumResultsForSearch: Infinity });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            //$("#hdndateValue").val();
+            //$("#hdnassetTypeId").val();
+            $("#frmAssetDetails").submit();
+        });
+
+       // $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        json = @Html.Raw(Json.Encode(Model));
+           mQTT=@Html.Raw(Json.Encode(Model.MQTTDetail));
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        for (var i = 0; i < channels.length; i++) {
+            $("#c" + i).html('');
+        }
+        ///Create a client instance
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrivedGate;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+
+    });
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i].toLowerCase());
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject != null && responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrivedGate(message) {
+        if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['roles'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindDataGate(message.destinationName, array);
+                }
+            }
+        } else {
+            var channeldata = message.payloadString.split(',');
+            BindDataGate(message.destinationName, channeldata);
+        }
+     
+
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+
+                var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+                if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+                    var d = new Date();
+                    var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                    $("#c" + i).html(time);
+                }
+            }
+        }
+    }
+
+    $(document).on('hide.bs.modal', '#modal-assetLister', function () {
+        if (client && client.isConnected()) {
+            try {
+                client.disconnect();
+            } catch (err) {
+            }
+        } 
+    });
+
+    function BindDataGate(basePath, data) {
+        $.each(json.mAssets, function (id, item) {
+
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+                    var str1 = basePath.toLowerCase();
+                    var str2 = inItem.AssetInfoChannel.toLowerCase()
+                    if (str1.indexOf(str2) != -1) {
+
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+                            var dataValue = data[infoValue];
+                            var id = ".hdnAttributeData" + inItem.Id + item.Id;
+                            if (infoMultiplication != null) {
+
+                                var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                if (inItem.GateContectTypeId != null && inItem.GateContectTypeId != undefined && inItem.GateContectTypeId == 1) {
+                                    if (v > 4.5) {
+                                        $(id).html("<span class='badge badge-success'>Pickup</span>");
+                                    }
+                                    if (v < 4.5) {
+                                        $(id).html("<span class='badge badge-warning'>DROP</span>");
+                                    }
+                                } else if (inItem.GateContectTypeId != null && inItem.GateContectTypeId != undefined && inItem.GateContectTypeId == 2) {
+                                    if (v > 4.5) {
+                                        $(id).html("<span class='badge badge-warning'>DROP</span>");
+                                    }
+                                    if (v < 4.5) {
+                                        $(id).html("<span class='badge badge-success'>Pickup</span>");
+                                    }
+                                }
+
+                            }
+                            else {
+                                if (inItem.GateContectTypeId != null && inItem.GateContectTypeId != undefined && inItem.GateContectTypeId == 1) {
+                                    if (v > 4.5) {
+                                        $(id).html("<span class='badge badge-success'>Pickup</span>");
+                                    }
+                                    if (v < 4.5) {
+                                        $(id).html("<span class='badge badge-warning'>DROP</span>");
+                                    }
+                                } else if (inItem.GateContectTypeId != null && inItem.GateContectTypeId != undefined && inItem.GateContectTypeId == 2) {
+                                    if (v > 4.5) {
+                                        $(id).html("<span class='badge badge-warning'>DROP</span>");
+                                    }
+                                    if (v < 4.5) {
+                                        $(id).html("<span class='badge badge-success'>Pickup</span>");
+                                    }
+                                }
+
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+
+    function GetMQTTData(basePath, channel) {
+
+        if (assetTypeId > 0 && siteId > 0) {
+            $.ajax({
+                url: '/Site/GetMQTTData',
+                type: 'Post',
+                data: '{basePath:"' + basePath + '",channel:"' + channel.toLowerCase() + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data!=""&&data != null && data.length > 0) {
+
+                    }
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+    }
+    function fnGridView() {
+        $("#listView").hide();
+        $("#gridView").show();
+    }
+    function fnListView() {
+        $("#listView").show();
+        $("#gridView").hide();
+    }
+</script>

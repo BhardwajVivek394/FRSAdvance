@@ -1,0 +1,68 @@
+﻿
+<div class="row mt-4 mb-2">
+    <div class="d-md-flex gap">
+        @Html.DropDownList("ZoneId", (IEnumerable<SelectListItem>)ViewBag.Zones, "Zone", new { @class = "form-select mb-2 mb-md-0 drpZone", tabindex = 1 })
+        <select class="form-select mb-2 mb-md-0 drpDivision" name="DivisionId">
+            @if (ViewBag.Divisions != null)
+            {
+                <option value="">Division</option>
+                foreach (var division in ViewBag.Divisions as List<Domain.Division>)
+                {
+                    <option value="@division.Id" data-code="@division.DivisionCode">@division.Name</option>
+                }
+            }
+
+        </select>
+        <select class="form-select mb-2 mb-md-0 drpSite" name="SiteId" id="ssmsAssetListSiteId">
+            @if (ViewBag.Sites != null)
+            {
+                <option value="">Site</option>
+                foreach (var site in ViewBag.Sites as List<Domain.Site>)
+                {
+                    <option value="@site.Id" data-code="@site.StationCode" data-mqtt-base-path="@site.MQTTBasePath">@site.Name</option>
+                }
+            }
+
+        </select>
+       
+        <button class="btn btn-primary w-100 w-md-auto" type="button" onclick="fnBindRequestJsonList()">Get Asset Telemetr</button>
+
+    </div>
+</div>
+
+<div class="asset-section mt-5">
+    <div class="row" id="divSSMSTelemetryList">
+        
+
+
+
+    </div>
+</div>
+
+<script>
+
+    function fnBindRequestJsonList() {
+        var siteId = $('#ssmsAssetListSiteId').val();
+        if (siteId != null && siteId != undefined && siteId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/AnnexureB/_SMMSListPartial',
+                type: 'POST',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#divSSMSTelemetryList').empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+
+        } else {
+            CommonNotification("ERROR", "Select SMMS Type", "Error");
+        }
+    }
+</script>

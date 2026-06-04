@@ -1,0 +1,3502 @@
+﻿@model Domain.AssetLister
+@{
+    ViewBag.Title = "SipView1";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link href="~/assets/sip/css/rappid.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.css" rel="stylesheet" />
+<link href="~/assets/sip/css/theme-picker.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.dark.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.material.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.modern.css" rel="stylesheet" />
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+<style>
+
+    #app {
+        height: 800px
+    }
+
+    .card-fullscreen {
+        z-index: 99;
+        position: fixed;
+        width: 100% !important;
+        height: 100% !important;
+        top: 0;
+        right: 0;
+        left: 0;
+        bottom: 0;
+        background-color: white;
+    }
+
+    .joint-paper-background, .joint-paper-grid, .joint-paper > svg {
+        background-color: #010300
+    }
+
+    .handle {
+        display: none !important;
+    }
+
+    .site {
+        background-color: black;
+        color: white;
+        padding: 20px 20px 40px;
+    }
+</style>
+<div class="container-fluid">
+
+    <input type="hidden" id="hdnId" value="0" />
+    <input type="hidden" id="hdnSiteId" value="@Model.SearchCriteria.SiteId" />
+    <br />
+    <div id="app" class="card-fullscreen">
+        <div class="app-header">
+            <div class="app-title" style="background-color:white;">
+                <button class="btn btn-dark" onclick="fnReset(this)">Reset</button>
+            </div>
+            <div class="toolbar-container"></div>
+        </div>
+        <div class="site mt-2">
+            <div class="pull-left">
+                <img src="~/assets/images/cmenu.png" />
+            </div>
+            <div class="row">
+                <div class="col-auto">
+                    <a class="nav-link text-white" style="font-size:16px;font-weight:500;background:#4bacc6; border-radius:10px;">Remote Diagnostic </a>
+                </div>
+                <div class="col-auto" style="margin-left:-15px;">
+                    <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #215968; border-radius: 10px;">And</a>
+                </div>
+                <div class="col-auto" style="margin-left:-15px;">
+                    <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #484640; border-radius: 10px;">Predictive Maintenance System </a>
+                </div>
+                <div class="col-auto" style="margin-left:-15px;">
+                    <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #4bacc6; border-radius: 10px;">
+                        Site Name: @Model.mAssets[0].SiteName
+                    </a>
+                </div>
+                <div class="col-sm-3" style="background-color:#0e0e26">
+                    <a class="nav-link text-white">
+                        <div class="media mb-2">
+                            <label class="col-form-label m-r-10">Simulation mode</label>
+                            <div class="media-body text-end icon-state">
+                                <label class="switch">
+                                    <input type="checkbox" id="chMaintenceMode"><span class="switch-state bg-primary"></span>
+                                </label>
+                            </div>
+                            <label class="col-form-label m-l-10">Maintenace mode</label>
+                        </div>
+                    </a>
+                </div>
+            </div>
+            <div class="row m-t-15">
+                <div class="col-auto">
+                    <a class="nav-link text-white" style="font-size: 16px; font-weight: 500; background: #404040; border-radius: 10px;">
+                        <div>
+                            Last Update:
+                            @for (int i = 0; i < Model.SearchCriteria.ChannelList.Count; i++)
+                            {
+                                if (i == (Model.SearchCriteria.ChannelList.Count - 1))
+                                {
+                                    <span>@(i+1):</span>
+                                    <span id="c@(i)"></span>
+                                }
+                                else
+                                {
+                                    <span>@(i+1):</span>
+                                    <span id="c@(i)"></span><span> || </span>
+                                }
+
+                            }
+                        </div>
+                    </a>
+                </div>
+                <div class="col-auto">
+                    <a class="nav-link text-white" id="gear-flash" style="font-size: 16px; font-weight: 500; background: #215968; border-radius: 10px; ">
+                        Gear flashing :Active alerts
+                    </a>
+                </div>
+                <div class="col-auto">
+                    <a class="nav-link" id="roster-flash" style="font-size:16px;font-weight:600;background:#000;color:white;border:2px solid #7366ff">
+                        Name Flashing :In current roster
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="app-body ">
+            <div class="stencil-container" style="display:none"></div>
+            <div class="paper-container" style="left:0px;right:0"></div>
+            <div class="inspector-container" style="display:none"></div>
+            <div class="navigator-container" style="display:none"></div>
+        </div>
+    </div>
+
+</div>
+@{
+    var track = Model.mAssets.Where(x => x.AssetTypeName.Trim().ToLower() == "TRACK".Trim().ToLower()).ToList();
+    var signal = Model.mAssets.Where(x => x.AssetTypeName.Trim().ToLower() == "SIGNAL".Trim().ToLower()).ToList();
+    var point = Model.mAssets.Where(x => x.AssetTypeName.Trim().ToLower() == "POINT MACHINE".Trim().ToLower()).ToList();
+    var gate = Model.mAssets.Where(x => x.AssetTypeName.Trim().ToLower() == "GATE".Trim().ToLower()).ToList();
+    var axcounter = Model.mAssets.Where(x => x.AssetTypeName.Trim().ToLower() == "AXLE COUNTER".Trim().ToLower()).ToList();
+    var busBar = Model.mAssets.Where(x => x.AssetTypeName.Trim().ToLower() == "Bus Bar".Trim().ToLower()).ToList();
+}
+<div class="modal bounceIn animated" id="modal-add-asset" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-add-asset" style="overflow-y:hidden">
+    <div class="modal-dialog" style="max-width:98%;">
+        <div class="modal-content bradius4 modal-lg" style="max-width:98%;">
+
+            <div class="modal-header">
+                <h5 class="modal-title isEdit " style="width:400px;" id="myModalLabel"><span id="spHeader"></span></h5>
+                <h6 class="btn btn-primary" id="prevM"></h6>
+                <h6 class="btn btn-success" id="nextM" style="margin-left:10px;"></h6>
+                <button type="button" style="position:absolute;right:80px;" id="indexScore"></button>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <ul class="nav nav-tabs" id="myTab" role="tablist">
+                            <li class="nav-item"><a class="nav-link active" id="home-tab" data-bs-toggle="tab" href="#home" role="tab" aria-controls="home" aria-selected="true">Live</a></li>
+                            <li class="nav-item"><a class="nav-link" id="profile-tabs" data-bs-toggle="tab" href="#profile" role="tab" aria-controls="profile" aria-selected="false">Alert Analytics</a></li>
+                            <li class="nav-item">
+                                <a class="nav-link" id="contact-tab"
+                                   data-bs-toggle="tab" href="#contact" role="tab" aria-controls="contact" aria-selected="false" onclick="fnGetGraph()">Graph</a>
+                            </li>
+                            <li class="nav-item"><a class="nav-link" id="event-tab" data-bs-toggle="tab" href="#event" role="tab" aria-controls="event" aria-selected="false">Event Log</a></li>
+                            <li class="nav-item"><a class="nav-link text-white" id="alertLog-tab" data-bs-toggle="tab" href="#alertLog" role="tab" aria-controls="alertLog" aria-selected="false">Alarm</a></li>
+                            <li class="nav-item error-code" style="display:none"><a class="nav-link" id="error-tab" data-bs-toggle="tab" href="#error" role="tab" aria-controls="error" aria-selected="false">Error Code</a></li>
+                        </ul>
+                        <div class="tab-content" id="myTabContent">
+                            <div class="tab-pane fade active show" id="home" role="tabpanel" aria-labelledby="home-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-12" id="divT">
+                                        <div class="card card-border ">
+                                            <div class="card-header bg-primary">
+                                                <h6 id="assetName" style="float:left">
+                                                </h6>
+                                                <div id="bell-icon" class="text-center bg-dark" style="border-top-right-radius: 15px;position:absolute;right:0;height:100%;line-height:4;width:50px;top:0">
+                                                </div>
+                                            </div>
+                                            <div class="card-body" style="padding:5px;">
+                                                <div class="tblAssetData">
+                                                    <table class="table table-striped">
+                                                        <tbody id="tblAttributeData31" class="tblAttributes tblAttributeData">
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-12" id="divP" style="display:none;max-height:600px;overflow-y:auto">
+
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="tab-pane fade" id="profile" role="tabpanel" aria-labelledby="profile-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-2">
+                                        <label>From Date</label>
+                                    </div>
+                                    <div class="col-sm-4">
+
+                                        <div class="input-group">
+                                            <input type="text" class="datepicker-here form-control digits" data-language="en" id="alert-from-date">
+                                            <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+                                        </div>
+
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <label>To Date</label>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <div class="input-group">
+                                            <input type="text" class="datepicker-here form-control digits" data-language="en" id="alert-to-date">
+                                            <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="row" id="assetCount" style="margin-top:10px;">
+
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="contact" role="tabpanel" aria-labelledby="contact-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-12">
+                                        <div class="pull-right" style="display:inline-flex;">
+                                            <input type="hidden" id="hdnAssetId" value="0" />
+                                            <input type="hidden" id="hdnSiteId" value="0" />
+                                            <input type="hidden" id="selDatabase" value="MQTT" />
+                                            <div class="btn-group btn-bar-rad">
+                                                <button class="btn btn-outline-primary db1 active" id="mqtt" onclick="fnDBChanges(this,'MQTT')" data-name="MQTT" type="button">MQTT Db</button>
+                                                <button class="btn btn-outline-primary db1" id="http" onclick="fnDBChanges(this,'HTTP')" data-name="HTTP" type="button">PLC LOG</button>
+                                            </div>
+                                            <div class="input-group mt20" id="fTime" style="width:200px;">
+                                                <input id="tpFrom" type="text" class="form-control" />
+                                                <span class="input-group-text"><i class="fa fa-calendar-times-o"></i></span>
+                                            </div>
+                                            <div class="input-group mt20" id="tTime" style="width:200px;">
+                                                <input id="tpTo" type="text" class="form-control" />
+                                                <span class="input-group-text"><i class="fa fa-calendar-times-o"></i></span>
+                                            </div>
+                                            <div class="theme-form">
+
+                                                <div>
+                                                    <input class="form-control" type="text" id="txtRange" name="daterange">
+                                                </div>
+                                            </div>
+                                            <select class="form-control" style="width:200px;margin-right:10px;" id="sel" onchange="fnChange()">
+                                                <option value="0">Today</option>
+                                                <option value="-1">Yesterday</option>
+                                                <option value="-7">Last 7 Day</option>
+                                                <option value="-30">Last 30 Day</option>
+                                                <option value="1">This Month</option>
+                                                <option value="-60">Last Month</option>
+                                            </select>
+                                            @*<a  style="line-height:2;" class="text-white btn  btn btn-success" onclick="fnSearchGraph()">Search</a>*@
+
+                                            <a id="btn-download-csv" onclick="GetDownloadCsv()" style="line-height:2;" title="download csv" class="text-white btn btn-dark m-r-10 "><i class="fa fa-upload"></i></a>
+                                            <a id="btn-download" style="line-height:2;" href="#" class="text-white btn  btn btn-dark" download=""><i class="fa fa-camera"></i></a>
+
+                                        </div>
+
+
+                                    </div>
+                                    <div class="col-sm-12">
+                                        <div class="apache-cotainer" id="area-echart" style="margin-top:60px;">
+
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                            <div class="tab-pane fade" id="event" role="tabpanel" aria-labelledby="event-tab" style="margin-top:10px;">
+                                <div id="eventlog">
+
+                                </div>
+                            </div>
+                            <div id="alertLog" class="tab-pane fade" role="tabpanel" aria-labelledby="alertLog-tab" style="margin-top:10px;">
+
+                            </div>
+                            <div class="tab-pane fade error-code" id="error" role="tabpanel" aria-labelledby="error-tab" style="margin-top:10px;">
+                                <div class="row">
+                                    <div class="col-sm-3 mb10">
+                                        <label>From Date</label>
+                                        <input type="text" class="form-control" data-language="en" id="txtFromDate" />
+                                    </div>
+                                    <div class="col-sm-3 mb10">
+                                        <label>To Date</label>
+                                        <input type="text" class="form-control" data-language="en" id="txtToDate" />
+                                    </div>
+                                    <div class="col-sm-3 mb10 m-t-30">
+                                        <a class="btn btn-success" onclick="Search()">Search</a>
+                                    </div>
+                                    <div class="col-sm-12" id="errorcode">
+
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+<div class="modal bounceIn animated" id="modalSmslogs" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">SMS Log</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 text-end mb-2">
+                        <a class="btn btn-outline-dark-2x" onclick="DownloadChildCsvFile()">Download</a>
+                    </div>
+                    <div class="col-sm-12" id="model-div">
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-graph" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-lg">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h6 class="modal-title" id="myModalLabel">
+                    <span id="line1">52 2021-05-26 17:07:00 <b id="op">Normal Operation:</b></span><br />
+                    <span id="line2">- A Max / Average Current: 3.8 / 2.34</span><br />
+                    <span id="line3">- A Max / Average Voltage: 118.9 / 116.00</span><br />
+                    <span id="line4">- A Operating Time (ms): 3300</span><br />
+                    <span id="line5">B Max / Average Current: null / 0.0</span><br />
+                    <span id="line6">- B Max / Average Voltage: 0 / 0.00</span><br />
+                    <span id="line7">- B Operating Time (ms): 0</span><br />
+                </h6>
+                <button type="button" style="position:absolute;right:8px;top:8px;" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 mainclass" id="mainId">
+                        <canvas id='basicflot' style='height: 263px'></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<script>
+    var assetNames = null;
+    var isInteractive = false;
+
+    $(document).ready(function () {
+
+    });
+    function fnReset($this) {
+        if ($("#app").hasClass("card-fullscreen")) {
+            $("#app").removeClass("card-fullscreen");
+            $($this).text("Full View")
+        }
+        else {
+            $("#app").addClass("card-fullscreen");
+            $($this).text("Reset")
+        }
+    }
+</script>
+
+
+
+<script src="~/assets/sip/js/lodash.js"></script>
+<script src="~/assets/sip/js/backbone.js"></script>
+<script src="~/assets/sip/js/graphlib.core.js"></script>
+<script src="~/assets/sip/js/dagre.core.js"></script>
+@*<script src="~/assets/sip/js/rappid.js"></script>*@
+<script src="~/assets/sip/js/JavaScript.js"></script>
+
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<!-- Application files:  -->
+<script src="~/assets/sip/js/halo.js"></script>
+<script src="~/assets/sip/js/selection.js"></script>
+<script src="~/assets/sip/js/inspector.js"></script>
+<script src="~/assets/sip/js/stencil.js"></script>
+@*<script src="~/assets/sip/js/toolbar.js"></script>*@
+<script src="~/assets/sip/js/toolbar-main.js"></script>
+@*<script src="~/assets/sip/js/sample-graphs.js"></script>*@
+<script src="~/assets/sip/js/main.js"></script>
+<script src="~/assets/sip/js/theme-picker.js"></script>
+<script src="~/assets/sip/js/joint.shapes.app.js"></script>
+<script src="~/assets/sip/js/navigator.js"></script>
+@{
+    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+    serializer.MaxJsonLength = Int32.MaxValue;
+}
+<script>
+    var app = null;
+    var json = null;
+    var objectList = null;
+    var client = null;
+    var client1 = null;
+    var mQQTPath = "";
+    var channels = [];
+    var isGraphLoad = false;
+    var parseJson = null;
+
+    var tJosn = null;
+    var sJosn = null;
+    var pJosn = null;
+    var gJosn = null;
+    var aJosn = null;
+    var bJosn = null;
+    var clearTime;
+    var activeAlerts = null;
+    var mQTT = null;
+    var fontcolor = [
+
+        '#ff0000',
+        '#fff'
+    ];
+    var color = [
+
+        '#7366ff',
+        '#a927f9',
+        '#4bacc6',
+        '#215968',
+        '#b75d32',
+        '#31d0c6'
+    ];
+    $(document).ready(function () {
+
+        json = @Html.Raw(serializer.Serialize(Model));
+
+        tJosn = @Html.Raw(serializer.Serialize(track));
+        sJosn = @Html.Raw(serializer.Serialize(signal));
+        pJosn = @Html.Raw(serializer.Serialize(point));
+        gJosn = @Html.Raw(serializer.Serialize(gate));
+        aJosn = @Html.Raw(serializer.Serialize(axcounter));
+        bJosn = @Html.Raw(serializer.Serialize(busBar));
+
+        mQTT=@Html.Raw(serializer.Serialize(Model.MQTTDetail));
+
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+
+        joint.setTheme('modern');
+        app = new App.MainView({ el: '#app' });
+        themePicker = new App.ThemePicker({ mainView: app });
+        themePicker.render().$el.appendTo(document.body);
+        //window.addEventListener('load', function () {
+        //    app.graph.fromJSON(JSON.parse(App.config.sampleGraphs.emergencyProcedure));
+        //});
+
+        $("#chMaintenceMode").click(function () {
+
+            if ($(this).is(":checked")) {
+                fnMaintenaceMode();
+            }
+            else {
+                //location.reload();
+                fnMaintenaceModeOff();
+            }
+        });
+
+        $(".toolbar-container .joint-toolbar-group").each(function () {
+
+            if ($(this).attr("data-group") == "zoom") {
+
+            }
+            else {
+                $(this).remove();
+            }
+        })
+
+        GetSipView();
+
+
+        app.paper.on('cell:pointerdown', function (ele) {
+            $(".joint-free-transform,.handles").remove();
+            $(".resize").hide().remove();
+            $(".no-rotation").hide().remove();
+            $(".rotate").hide().remove();
+
+            $("#assetName").empty();
+            $(".tblAttributeData").empty();
+            $("#eventlog").empty();
+            $("#assetCount").empty();
+            $("#errorcode").empty();
+            $(".error-code").hide();
+            $("#divT").show();
+            $("#divP").hide();
+            $('[href="#home"]').tab('show');
+            $("#alertLog-tab").removeClass("bg-success")
+            $("#alertLog-tab").removeClass("bg-dander")
+            if (chart != null && chart != "" && chart != undefined) {
+                chart.dispose();
+            }
+            objectList = null;
+            if ('label' in ele.model.attributes.attrs && 'text' in ele.model.attributes.attrs.label) {
+                if (ele.model.attributes.attrs.label.text != undefined && ele.model.attributes.attrs.label.text != "") {
+                    $("#selDatabase").val("MQTT");
+                    $("#mqtt").addClass("active");
+                    $("#http").removeClass("active");
+                    $.each(json.mAssets, function (id, item) {
+
+                        if ($.trim(item.AssetTypeName.toLocaleLowerCase()) == "SIGNAL".toLocaleLowerCase()) {
+
+                            if ($.trim(ele.model.attributes.attrs.label.text).toLocaleLowerCase().indexOf($.trim(item.Name).toLocaleLowerCase()) != -1) {
+                                objectList = item;
+                                $("#spHeader").text(item.AssetTypeName + "-" + item.Name);
+                                $("#assetName").text(item.AssetTypeName + "-" + item.Name);
+                                if (item.IndexScore < 7) {
+                                    $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-danger").removeClass("btn-success");
+                                }
+                                else {
+                                    $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-success").removeClass("btn-danger");
+                                }
+                                if (item.UnderMaintence != null && item.UnderMaintence == true) {
+                                    $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell-slash" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + ' style="font-size:16px;cursor:pointer;"></i></div>');
+                                }
+                                else {
+                                    $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + '></i></div>');
+
+                                }
+                                isGraphLoad = false;
+                                BindAssetData(item)
+                                fnGetRosterHistory(item.Id);
+                                fnGetSmsLog(item.Id);
+
+                                var now = new Date();
+                                var day = ("0" + now.getDate()).slice(-2);
+                                var month = ("0" + (now.getMonth() + 1)).slice(-2);
+                                var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+                                var monthp = ("0" + (now.getMonth())).slice(-2);
+
+                                var pretoday = (month) + "/" + (day) + "/" + now.getFullYear();
+
+                                $("#alert-from-date").val(pretoday);
+                                $("#alert-to-date").val(today);
+
+                                fnGetAlertCountByAsset(item.AssetTypeId, item.Name, item.Id);
+                                $('#tpTo').val('23:59');
+                                $('#tpFrom').val('00:00');
+
+                                //GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+                                fnGetActiveAlerts(item);
+                                $("#modal-add-asset").modal('show');
+                                return false;
+                            }
+                        }
+                        else if ($.trim(item.AssetTypeName.toLocaleLowerCase()) == "POINT MACHINE".toLocaleLowerCase()) {
+                            // var pName = $.trim(item.Name.toLowerCase().replace("point", ""));
+                            if ($.trim(item.Name.toLowerCase().replace("point", "")).toLocaleLowerCase() == $.trim(ele.model.attributes.attrs.label.text).toLocaleLowerCase()) {
+                                objectList = item;
+
+                                if (item.AssetTypeName.toLocaleLowerCase() == "AXLE COUNTER".toLocaleLowerCase()) {
+                                    $(".error-code").show();
+                                }
+                                $("#spHeader").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+                                $("#assetName").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+                                if (item.IndexScore < 7) {
+                                    $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-danger").removeClass("btn-success");
+                                }
+                                else {
+                                    $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-success").removeClass("btn-danger");
+                                }
+                                if (item.UnderMaintence != null && item.UnderMaintence == true) {
+                                    $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell-slash" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + ' style="font-size:16px;cursor:pointer;"></i></div>');
+                                }
+                                else {
+                                    $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + '></i></div>');
+
+                                }
+                                isGraphLoad = false;
+                                BindPointMachineAsset(item);
+
+                                fnGetRosterHistory(item.Id);
+                                fnGetSmsLog(item.Id);
+
+                                var now = new Date();
+                                var day = ("0" + now.getDate()).slice(-2);
+                                var month = ("0" + (now.getMonth() + 1)).slice(-2);
+                                var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+                                var monthp = ("0" + (now.getMonth())).slice(-2);
+
+                                var pretoday = (month) + "/" + (day) + "/" + now.getFullYear();
+
+                                $("#alert-from-date").val(pretoday);
+                                $("#alert-to-date").val(today);
+
+                                fnGetAlertCountByAsset(item.AssetTypeId, item.Name, item.Id);
+                                $('#tpTo').val('23:59');
+                                $('#tpFrom').val('00:00');
+                                fnGetActiveAlerts(item);
+                                $("#modal-add-asset").modal('show');
+                                //  GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+                                return false;
+                            }
+                        }
+                        else {
+
+                            if ($.trim(item.Name).toLocaleLowerCase() == $.trim(ele.model.attributes.attrs.label.text).toLocaleLowerCase()) {
+                                objectList = item;
+
+                                if (item.AssetTypeName.toLocaleLowerCase() == "AXLE COUNTER".toLocaleLowerCase()) {
+                                    $(".error-code").show();
+                                }
+                                $("#spHeader").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+                                $("#assetName").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+                                if (item.IndexScore < 7) {
+                                    $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-danger").removeClass("btn-success");
+                                }
+                                else {
+                                    $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-success").removeClass("btn-danger");
+                                }
+                                if (item.UnderMaintence != null && item.UnderMaintence == true) {
+                                    $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell-slash" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + ' style="font-size:16px;cursor:pointer;"></i></div>');
+                                }
+                                else {
+                                    $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + '></i></div>');
+
+                                }
+                                if (item.AssetTypeName.toLocaleLowerCase() == "POINT MACHINE".toLocaleLowerCase()) {
+
+                                    BindPointMachineAsset(item);
+                                }
+                                else {
+                                    BindAssetData(item)
+                                }
+                                isGraphLoad = false;
+                                fnGetRosterHistory(item.Id);
+                                fnGetSmsLog(item.Id);
+
+                                var now = new Date();
+                                var day = ("0" + now.getDate()).slice(-2);
+                                var month = ("0" + (now.getMonth() + 1)).slice(-2);
+                                var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+                                var monthp = ("0" + (now.getMonth())).slice(-2);
+
+                                var pretoday = (month) + "/" + (day) + "/" + now.getFullYear();
+
+                                $("#alert-from-date").val(pretoday);
+                                $("#alert-to-date").val(today);
+
+                                fnGetAlertCountByAsset(item.AssetTypeId, item.Name, item.Id);
+                                $('#tpTo').val('23:59');
+                                $('#tpFrom').val('00:00');
+                                fnGetActiveAlerts(item);
+                                $("#modal-add-asset").modal('show');
+                                // GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+
+                            }
+                        }
+                    });
+                }
+            }
+
+        });
+        app.paper.on('cell:pointerclick', function (ele) {
+
+            $(".joint-free-transform,.handles").remove();
+            $(".joint-free-transform,.handles").remove();
+            $(".resize").hide().remove();
+            $(".no-rotation").hide().remove();
+            $(".rotate").hide().remove();
+
+            //$("#assetName").empty();
+            //$(".tblAttributeData").empty();
+            //$("#eventlog").empty();
+            //$("#assetCount").empty();
+            //$("#errorcode").empty();
+            //$(".error-code").hide();
+            //$("#divT").show();
+            //$("#divP").hide();
+            //$('[href="#home"]').tab('show');
+            //if (chart != null && chart != "" && chart != undefined) {
+            //    chart.dispose();
+            //}
+            //objectList = null;
+            //if ('label' in ele.model.attributes.attrs && 'text' in ele.model.attributes.attrs.label) {
+            //    if (ele.model.attributes.attrs.label.text != undefined && ele.model.attributes.attrs.label.text != "") {
+
+            //        $.each(json.mAssets, function (id, item) {
+
+            //            if ($.trim(item.AssetTypeName.toLocaleLowerCase()) == "SIGNAL".toLocaleLowerCase()) {
+
+            //                if ($.trim(ele.model.attributes.attrs.label.text).toLocaleLowerCase().indexOf($.trim(item.Name).toLocaleLowerCase()) != -1) {
+            //                    objectList = item;
+            //                    $("#spHeader").text(item.AssetTypeName + "-" + item.Name);
+            //                    $("#assetName").text(item.AssetTypeName + "-" + item.Name);
+            //                    if (item.IndexScore < 7) {
+            //                        $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-danger").removeClass("btn-success");
+            //                    }
+            //                    else {
+            //                        $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-success").removeClass("btn-danger");
+            //                    }
+            //                    if (item.UnderMaintence != null && item.UnderMaintence == true) {
+            //                        $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell-slash" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + ' style="font-size:16px;cursor:pointer;"></i></div>');
+            //                    }
+            //                    else {
+            //                        $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + '></i></div>');
+
+            //                    }
+            //                    isGraphLoad = false;
+            //                    BindAssetData(item)
+            //                    fnGetRosterHistory(item.Id);
+            //                    fnGetSmsLog(item.Id);
+
+            //                    var now = new Date();
+            //                    var day = ("0" + now.getDate()).slice(-2);
+            //                    var month = ("0" + (now.getMonth() + 1)).slice(-2);
+            //                    var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+            //                    var monthp = ("0" + (now.getMonth())).slice(-2);
+
+            //                    var pretoday = (monthp) + "/" + (day) + "/" + now.getFullYear();
+
+            //                    $("#alert-from-date").val(pretoday);
+            //                    $("#alert-to-date").val(today);
+
+            //                    fnGetAlertCountByAsset(item.AssetTypeId, item.Name, item.Id);
+            //                    $('#tpTo').val('23:59');
+            //                    $('#tpFrom').val('00:00');
+
+            //                    //GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+            //                    $("#modal-add-asset").modal('show');
+            //                    return false;
+            //                }
+            //            }
+            //            else if ($.trim(item.AssetTypeName.toLocaleLowerCase()) == "POINT MACHINE".toLocaleLowerCase()) {
+            //               // var pName = $.trim(item.Name.toLowerCase().replace("point", ""));
+            //                if ($.trim(item.Name.toLowerCase().replace("point", "")).toLocaleLowerCase() == $.trim(ele.model.attributes.attrs.label.text).toLocaleLowerCase()) {
+            //                    objectList = item;
+
+            //                    if (item.AssetTypeName.toLocaleLowerCase() == "AXLE COUNTER".toLocaleLowerCase()) {
+            //                        $(".error-code").show();
+            //                    }
+            //                    $("#spHeader").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+            //                    $("#assetName").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+            //                    if (item.IndexScore < 7) {
+            //                        $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-danger").removeClass("btn-success");
+            //                    }
+            //                    else {
+            //                        $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-success").removeClass("btn-danger");
+            //                    }
+            //                    if (item.UnderMaintence != null && item.UnderMaintence == true) {
+            //                        $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell-slash" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + ' style="font-size:16px;cursor:pointer;"></i></div>');
+            //                    }
+            //                    else {
+            //                        $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + '></i></div>');
+
+            //                    }
+            //                    isGraphLoad = false;
+            //                    BindPointMachineAsset(item);
+
+            //                    fnGetRosterHistory(item.Id);
+            //                    fnGetSmsLog(item.Id);
+
+            //                    var now = new Date();
+            //                    var day = ("0" + now.getDate()).slice(-2);
+            //                    var month = ("0" + (now.getMonth() + 1)).slice(-2);
+            //                    var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+            //                    var monthp = ("0" + (now.getMonth())).slice(-2);
+
+            //                    var pretoday = (monthp) + "/" + (day) + "/" + now.getFullYear();
+
+            //                    $("#alert-from-date").val(pretoday);
+            //                    $("#alert-to-date").val(today);
+
+            //                    fnGetAlertCountByAsset(item.AssetTypeId, item.Name, item.Id);
+            //                    $('#tpTo').val('23:59');
+            //                    $('#tpFrom').val('00:00');
+            //                    $("#modal-add-asset").modal('show');
+            //                  //  GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+            //                    return false;
+            //                }
+            //            }
+            //            else {
+
+            //                if ($.trim(item.Name).toLocaleLowerCase() == $.trim(ele.model.attributes.attrs.label.text).toLocaleLowerCase()) {
+            //                    objectList = item;
+
+            //                    if (item.AssetTypeName.toLocaleLowerCase() == "AXLE COUNTER".toLocaleLowerCase()) {
+            //                        $(".error-code").show();
+            //                    }
+            //                    $("#spHeader").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+            //                    $("#assetName").text(item.AssetTypeName + "-" + ele.model.attributes.attrs.label.text);
+            //                    if (item.IndexScore < 7) {
+            //                        $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-danger").removeClass("btn-success");
+            //                    }
+            //                    else {
+            //                        $("#indexScore").html("Index-score: " + item.IndexScore).addClass("btn btn-success").removeClass("btn-danger");
+            //                    }
+            //                    if (item.UnderMaintence != null && item.UnderMaintence == true) {
+            //                        $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell-slash" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + ' style="font-size:16px;cursor:pointer;"></i></div>');
+            //                    }
+            //                    else {
+            //                        $("#bell-icon").html('<div class="text-center" > <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance(' + item.Id + ', this)" data-id=' + item.Id + '></i></div>');
+
+            //                    }
+            //                    if (item.AssetTypeName.toLocaleLowerCase() == "POINT MACHINE".toLocaleLowerCase()) {
+
+            //                        BindPointMachineAsset(item);
+            //                    }
+            //                    else {
+            //                        BindAssetData(item)
+            //                    }
+            //                    isGraphLoad = false;
+            //                    fnGetRosterHistory(item.Id);
+            //                    fnGetSmsLog(item.Id);
+
+            //                    var now = new Date();
+            //                    var day = ("0" + now.getDate()).slice(-2);
+            //                    var month = ("0" + (now.getMonth() + 1)).slice(-2);
+            //                    var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+            //                    var monthp = ("0" + (now.getMonth())).slice(-2);
+
+            //                    var pretoday = (monthp) + "/" + (day) + "/" + now.getFullYear();
+
+            //                    $("#alert-from-date").val(pretoday);
+            //                    $("#alert-to-date").val(today);
+
+            //                    fnGetAlertCountByAsset(item.AssetTypeId, item.Name, item.Id);
+            //                    $('#tpTo').val('23:59');
+            //                    $('#tpFrom').val('00:00');
+            //                    $("#modal-add-asset").modal('show');
+            //                   // GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+
+            //                }
+            //            }
+            //        });
+            //    }
+            //}
+        });
+
+        app.paper.on('element:mouseleave', function (ele) {
+            //  var vla = ele;
+            // ele.model.attributes.attrs.path.stroke = "#000";
+        });
+
+
+        setInterval(function () {
+            var ifMa = $.trim($('.tblAttributeData tr:first').find("td:eq(1)").html());
+            var irMa = $.trim($('.tblAttributeData tr:nth-child(2)').find("td:eq(1)").html());
+
+            if (ifMa != null && irMa != null) {
+
+                if (isNaN($.trim(ifMa.replace(/\n/g, ''))) || ifMa == "")
+                    ifMa = 0;
+                if (isNaN($.trim(irMa.replace(/\n/g, ''))) || irMa == "")
+                    irMa = 0;
+
+                var lekage = parseFloat(ifMa) - parseFloat(irMa);
+                if (lekage > 150) {
+                    $('tr.leakge').find("td:eq(1)").addClass('text-danger').html(lekage.toFixed(1));
+
+
+                    //$(this).find('table').children('tbody').children('tr:nth-child(10)').find("td:eq(1)").addClass('text-danger').html(lekage.toFixed(1));
+                }
+                else {
+
+                    $('tr.leakge').find("td:eq(1)").removeClass('text-danger').html(lekage.toFixed(1));
+                }
+            }
+
+
+        }, 4000);
+
+        $("#alert-from-date").datepicker({
+            onSelect: function (dateText) {
+                fnGetAlertCountByAsset(objectList.AssetTypeId, objectList.Name, objectList.Id);
+            }
+        });
+        $("#alert-to-date").datepicker({
+            onSelect: function (dateText) {
+                fnGetAlertCountByAsset(objectList.AssetTypeId, objectList.Name, objectList.Id);
+            }
+        });
+
+        $('#txtRange').daterangepicker();
+        $('#txtRange').on('apply.daterangepicker', function (ev, picker) {
+            $(this).val(picker.startDate.format('MM/DD/YYYY') + ' - ' + picker.endDate.format('MM/DD/YYYY'));
+            fnCustomerDateRangeValue(picker.startDate._d.toLocaleDateString(), picker.endDate._d.toLocaleDateString());
+        });
+
+        $('#txtRange').on('cancel.daterangepicker', function (ev, picker) {
+            $(this).val('');
+            $("#sd").val('');
+            $("#ed").val('');
+        });
+
+
+        $('#tpFrom').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#tpFrom').change(function () {
+
+            if ($('#tpFrom').val() != "" && $('#tpFrom').val() != null && $('#tpTo').val() != "" && $('#tpTo').val() != null) {
+                $(".applyBtn").removeAttr("disabled")
+                $(".applyBtn").click();
+            }
+        });
+
+        $('#tpTo').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#tpTo').change(function () {
+            if ($('#tpFrom').val() != "" && $('#tpFrom').val() != null && $('#tpTo').val() != "" && $('#tpTo').val() != null) {
+                $(".applyBtn").removeAttr("disabled")
+                $(".applyBtn").click();
+            }
+        });
+        GetListActiveAlerts();
+        setInterval(function () {
+            GetListActiveAlerts();
+        }, 120000);
+
+        setInterval(function () {
+
+            $("#gear-flash").css("background", color[Math.floor(Math.random() * color.length)])
+            $("#roster-flash").css("color", fontcolor[Math.floor(Math.random() * fontcolor.length)])
+
+        }, 3000);
+
+        $('#txtFromDate').datepicker({
+            "autoclose": true
+        });
+        $('#txtToDate').datepicker({
+            "autoclose": true
+        });
+    })
+
+
+    function fnDBChanges($this, db) {
+        $("#selDatabase").val(db);
+        $(".db1").removeClass("active");
+        $($this).addClass("active");
+        fnChange();
+    }
+
+    function GetSipView() {
+        $.ajax({
+            url: '/Site/GetSipView',
+            type: 'Post',
+            data: '{siteId:' + $("#hdnSiteId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.Id > 0) {
+                    parseJson = JSON.parse(data.SipView1);
+                    app.graph.fromJSON(parseJson);
+                    loadColor();
+
+                    setTimeout(function () {
+                        MqqtConnectSimulation();
+                    },3000);
+                }
+                else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function BindAssetData(item) {
+
+        $(".tblAttributeData").empty();
+        var html = "";
+        $.each(item.assetAttributes, function (id, val) {
+
+            if (item.AssetTypeName.toLocaleLowerCase() == "SIGNAL".toLocaleLowerCase()) {
+                if (id == 0) {
+                    html += "<tr>";
+                    html += "<td id='signal" + item.Id + "' colspan='2' class='text-center'></td>";
+                    html += "</tr>";
+                    html += "<tr>";
+                    html += "<td class='signalC" + item.Id + "'></td>";
+                    html += "<td class='signalV" + item.Id + "'></td>";
+                    html += "</tr>";
+                }
+            }
+            else {
+                html += "<tr>";
+                html += "<td style='width:50%'>" + val.Title + "</td>";
+                var atId = "hdnAttributeData" + val.Id + "" + item.Id;
+                html += "<td style='width:50%' class=" + atId + "></td>";
+                html += "</tr>";
+            }
+        });
+
+        if (item.AssetTypeName.toLocaleLowerCase() == "Track".toLocaleLowerCase()) {
+            html += "<tr>";
+            html += "<td style='width:50%'> Index Score</td>";
+
+            if (item.IndexScore < 7) {
+                html += "<td style='width:50%' class='text-danger'>" + item.IndexScore + "</td>";
+            }
+            else {
+                html += "<td style='width:50%'>" + item.IndexScore + "</td>";
+            }
+
+            html += "</tr>";
+
+            html += "<tr class='leakge'>";
+            html += "<td style='width:50%'>Leakage</td>";
+            var lId = "lekage" + item.Id;
+            html += "<td style='width:50%' class='lekage" + lId + "'></td>";
+            html += "</tr>";
+
+            html += "<tr >";
+            html += "<td style='width:50%'>HEALTH</td>";
+            var checkHealth = "checkHealth" + item.Id +" tdHealth";
+            html += "<td style='width:50%' data-id=" + item.Id + " class=" + checkHealth + ">";
+            if (item.IsAlarm)
+              {
+                html += "<span style='cursor:pointer' onclick='GetLogByAssetId(" + item.Id + ")' class='text-danger'>Alarm</span>";
+               }
+               else
+              {
+                html += "<span class='text-success'>Ok</span>";
+            }
+            html+="</td> ";
+            html += "</tr>";
+
+        }
+        if (item.AssetTypeName.toLocaleLowerCase() == "Gate".toLocaleLowerCase()) {
+            html += "<tr>";
+            html += "<td style='width:50%'> Index Score</td>";
+
+            if (item.IndexScore < 7) {
+                html += "<td style='width:50%' class='text-danger'>" + item.IndexScore + "</td>";
+            }
+            else {
+                html += "<td style='width:50%'>" + item.IndexScore + "</td>";
+            }
+        }
+        if (item.AssetTypeName.toLocaleLowerCase() == "AXLE COUNTER".toLocaleLowerCase()) {
+            $(".error-code").show();
+
+            var now = new Date();
+                 var day = ("0" + now.getDate()).slice(-2);
+                                var month = ("0" + (now.getMonth() + 1)).slice(-2);
+                                var today = (month) + "/" + (day) + "/" + now.getFullYear();
+
+
+
+            $('#txtFromDate').val(today)
+            $('#txtToDate').val(today);
+            fnGetErrorcode(item.Id);
+        }
+        $(".tblAttributeData").append(html);
+
+        MqqtConnect();
+    }
+
+    function BindPointMachineAsset(item) {
+
+        $.ajax({
+            url: '/Site/GetPointMachineById',
+            type: 'Post',
+            data: '{mAsset:' + JSON.stringify(item) + '}',
+            dataType:'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+
+                $("#divP").empty().append(data);
+                $("#divP").show();
+                $("#divT").hide();
+                $('.from-date').datepicker();
+                $('.to-date').datepicker();
+                MqqtConnect();
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function fnGetSmsLog(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/SMSLog/Alert',
+            type: 'Post',
+            data: '{assetId:' + id + ',isHide:' + true + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#eventlog").empty().append(data);
+               // $(".table-responsive").attr('style')
+               // $(".table-responsive").css("max-height", "300px")
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnGetRosterHistory(id) {
+        $("#loader").show();
+        $("#prevM").html("")
+        $("#nextM").html("")
+        $.ajax({
+            url: '/Site/GetRosterHistory',
+            type: 'Post',
+            data: '{siteId:'+$("#hdnSiteId").val()+',assetId:' + id + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.length > 0) {
+                    var html = "";
+                    $.each(data, function (id, val) {
+
+                        if (id == 0) {
+
+                            $("#prevM").html("Last in Maintenance roster: " + $.trim(val.StringAssignDate))
+                            //html += "<tr>";
+                            //html += "<th>Last in Maintenance roster</th>";
+                            //if (val.Id > 0) {
+                            //    html += "<td>" + val.StringAssignDate + "</td>";
+                            //}
+                            //else {
+                            //    html += "<td></td>";
+                            //}
+                            //html += "</tr>";
+                        }
+                        else {
+                            var input = "Next in Maintenance roster: " + $.trim(val.StringAssignDate);
+                            if ($.trim(val.MaintenanceInput) != null && $.trim(val.MaintenanceInput) != "") {
+                                input += "(Condition: " + val.MaintenanceInput + ")";
+                            }
+                            $("#nextM").html(input)
+                            //html += "<tr>";
+                            //html += "<th>Next in Maintenance roster</th>";
+                            //if (val.Id > 0) {
+                            //    html += "<td>" + val.StringAssignDate + "</td>";
+                            //}
+                            //else {
+                            //    html += "<td></td>";
+                            //}
+                            //html += "</tr>";
+                        }
+                    });
+
+                    ///$("#tbodyHistory").empty().append(html);
+                }
+
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function fnUnderMaintenance(assetId, $this) {
+        var isUnderMaintenance = false;
+        if ($($this).hasClass("fa-bell")) {
+            isUnderMaintenance = true;
+            $($this).attr("title", "Under Maintenance");
+            $($this).removeClass("fa-bell").addClass("fa-bell-slash");
+        }
+        else {
+            $($this).attr("title", "");
+            $($this).removeClass("fa-bell-slash").addClass("fa-bell");
+        }
+
+        $.ajax({
+            url: '/Site/UpdateAssetMaintenance',
+            type: 'Post',
+            data: '{assetId:' + assetId + ',isUnderMaintenance:' + isUnderMaintenance + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data == true) {
+                    CommonNotification("SUCCESS", "Record Updated!", "Success");
+                }
+                else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function fnGetAlertCountByAsset(assetTypeId, name, assetId) {
+        var mAlertAnalyticsSearch = {};
+        mAlertAnalyticsSearch.SiteId = $("#hdnSiteId").val();
+        mAlertAnalyticsSearch.FromDate = $("#alert-from-date").val();
+        mAlertAnalyticsSearch.ToDate = $("#alert-to-date").val();
+        mAlertAnalyticsSearch.AssetTypeId = assetTypeId;
+        mAlertAnalyticsSearch.AssetId = assetId;
+        $("#hdnAssetType").val(name)
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetAlertCountByAsset',
+            type: 'Post',
+            contentType: 'application/json',
+            data: '{mAlertAnalyticsSearch:' + JSON.stringify(mAlertAnalyticsSearch) + '}',
+            success: function (data) {
+                $("#loader").hide();
+
+                if (data != null && data.mAlerts.length > 0) {
+                    var html = "";
+
+                    $.each(data.mAlerts, function (id, val) {
+                        html += '<div class="col-sm-2">';
+                        html += '<div class="card " style="margin-bottom:10px;border: 1px solid rgba(0,0,0,0.125) !important">';
+                        html += '<div class="card-header bg-dark" style="padding:8px !important;">';
+                        html += '<h6 class="text-white" style="font-size:14px;height:40px;">' + val.AlertName + '</h5>';
+                        html += "</div>";
+                        html += '<div class="card-body" style="padding:12px;font-size:14px;text-align:center;">';
+                        html += '<strong onclick="fnGetAlertWiseCount(' + data.Analytics[0].mAlertValues[id].Id + ',' + assetId+')">' + data.Analytics[0].mAlertValues[id].TotalCount + '</strong>';
+                        html += '</div>'
+                        html += '</div>';
+                        html += '</div>';
+                    });
+
+                    $("#assetCount").empty().append(html);
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function fnGetAlertWiseCount(alertId, assetId) {
+        var mAlertAnalyticsSearch = {};
+        mAlertAnalyticsSearch.SiteId = $("#hdnSiteId").val();
+        mAlertAnalyticsSearch.FromDate = $("#alert-from-date").val();
+        mAlertAnalyticsSearch.ToDate = $("#alert-to-date").val();
+        mAlertAnalyticsSearch.AssetId = assetId;
+        mAlertAnalyticsSearch.AlertId = alertId;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/Reporting/GetSmsLogById',
+            type: 'Post',
+            contentType: 'application/json',
+            dataType: 'html',
+            data: '{mAlertAnalyticsSearch:' + JSON.stringify(mAlertAnalyticsSearch) + '}',
+            success: function (data) {
+                $("#loader").hide();
+                $("#model-div").empty().append(data);
+                $("#modalSmslogs").modal("show");
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function DownloadChildCsvFile() {
+        var titles = [];
+        var data = [];
+
+        $('#tblsmslogs > thead > tr > th').each(function () {
+            titles.push($.trim($(this).text()));
+        });
+
+        //$('#tbodyExportOrder > tr > td').each(function () {
+        //       data.push($.trim($(this).text()));
+        //});
+
+        $('#tblsmslogs > tbody >  tr').each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+                var val = $.trim($(ele).text()).replace(",", " ").replace("\n", " ").replace("\r", " ");
+                data.push(val);
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "Analytics" + GenerateUniqueCode() + ".csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+
+    function fnGetErrorcode(Id) {
+        var searchCriteria = {};
+        searchCriteria.AssetId = Id;
+        searchCriteria.FromDate = $("#txtFromDate").val();
+        searchCriteria.ToDate = $("#txtToDate").val();
+
+        $.ajax({
+            url: '/Site/GetErrorcode',
+            type: 'Post',
+            contentType: 'application/json',
+            data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+            dataType:'html',
+            success: function (data) {
+                $("#loader").hide();
+
+                $("#errorcode").empty().append(data)
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function Search() {
+        fnGetErrorcode(objectList.Id);
+    }
+
+    function GetGraph(sd, ed) {
+        $("#area-echart").removeAttr("_echarts_instance_");
+        $("#area-echart").find('div').remove();
+        var mAsset = {};
+        mAsset.Id = objectList.Id;
+        mAsset.SiteId = $("#hdnSiteId").val();
+        mAsset.StartDate = sd;
+        mAsset.EndDate = ed;
+
+        mAsset.StartTime = $("#tpFrom").val();
+        mAsset.EndTime = $("#tpTo").val();
+        mAsset.IsReadHttpPost = false;
+        if ($("#selDatabase").val() == "HTTP") {
+            mAsset.IsReadHttpPost = true;
+        }
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetReportData',
+            type: 'Post',
+            data: '{asset:' + JSON.stringify(mAsset) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    Demochart(data)
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function fnChange() {
+        if ($("#sel").val() == "0") {
+            GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+        }
+        if ($("#sel").val() == "-1") {
+            var d = new Date()
+            d.setDate(d.getDate() - 1);
+            // var month = dd.getMonth() ;
+            ////var day = dd.getDay();
+            // var year = dd.getFullYear();
+            var sd = d.toLocaleDateString();
+            var ed = d.toLocaleDateString();
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "-7") {
+            var d = new Date()
+            d.setDate(d.getDate() - 7);
+            // var month = dd.getMonth() ;
+            ////var day = dd.getDay();
+            // var year = dd.getFullYear();
+            var sd = d.toLocaleDateString();
+            var ed = new Date().toLocaleDateString();
+            $("#tpFrom").val('');
+            $("#tpTo").val('');
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "-30") {
+            var d = new Date()
+            d.setDate(d.getDate() - 30);
+            // var month = dd.getMonth() ;
+            ////var day = dd.getDay();
+            // var year = dd.getFullYear();
+            var sd = d.toLocaleDateString();
+            var ed = new Date().toLocaleDateString();
+            $("#tpFrom").val('');
+            $("#tpTo").val('');
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "1") {
+
+            var d = new Date()
+            var day = d.getDay();
+
+            d.setDate(d.getDate() - day);
+            var sd = d.toLocaleDateString();
+            d.setDate(d.getDate() + 30)
+            var ed = d.toLocaleDateString();
+            $("#tpFrom").val('');
+            $("#tpTo").val('');
+            GetGraph(sd, ed);
+        }
+        if ($("#sel").val() == "-60") {
+
+            var d = new Date()
+            var day = d.getDay();
+            d.setDate(d.getDate() - day);
+            var sd = d.toLocaleDateString();
+            d.setDate(d.getDate() - 30)
+            var ed = d.toLocaleDateString();
+            $("#tpFrom").val('');
+            $("#tpTo").val('');
+            GetGraph(sd, ed);
+        }
+
+    }
+    function fnCustomerDateRangeValue(sd, ed) {
+        GetGraph(sd, ed)
+    }
+    function fnGetGraph() {
+        if (!isGraphLoad) {
+            isGraphLoad = true;
+            GetGraph(new Date().toLocaleDateString(), new Date().toLocaleDateString());
+        }
+
+    }
+
+    function fnSearchGraph() {
+        fnChange();
+    }
+    function GetDownloadCsv() {
+        window.location.href = "/Site/DownloadReportCsv";
+    }
+    var chart;
+    function Demochart(data) {
+
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        var colorB = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var color = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var DataSeriaes = [];
+        var maxV = 0;
+        var legends = [];
+        var macLeft = 0;
+        var yAxisArray = [];
+        var lary = [];
+        var rary = [];
+        if (data.assetAttributes != null && data.assetAttributes.length > 0) {
+            $.each(data.assetAttributes, function (ids, val) {
+                if (ids == 0) {
+                    $("#lblType").text(val.AssetTypeName + " :");
+                    $("#lblName").text(val.AssetName)
+                }
+                var xA = [];
+                $.each(val.Data, function (i, j) {
+                    xA.push(j);
+                });
+
+                legends.push(val.Title)
+                var attr = {};
+                attr.name = val.Title;
+                attr.type = 'line';
+                attr.notShowSymbol = true;
+                attr.sampling = sampling;
+                attr.hoverAnimation = false;
+                attr.clip = true;
+                // attr.yAxisIndex = ids;
+                if (val.Title.indexOf('V') > -1) {
+                    var yaxis = {
+                        value: val.Title,
+                    };
+                    rary.push(yaxis)
+                    attr.yAxisIndex = 1;
+                }
+                else {
+                    var yaxis = {
+                        value: val.Title,
+                    };
+                    lary.push(yaxis)
+                    attr.yAxisIndex = 0;
+                }
+
+                if (val.Title == "TPR V" || val.Title == "DG V" || val.Title == "RG V" || val.Title == "HG V" || val.Title == "HHG V" || val.Title == "Tx1 V" || val.Title == "Tx2 V" || val.Title == "Choke V" || val.Title == "Vr" || val.Title == "Voltage") {
+
+                    $.each(val.Data, function (i, j) {
+                        var d = parseInt(j);
+                        if (d > maxV) {
+                            maxV = d;
+                        }
+                    });
+                }
+                //if (val.Title == "TPR V") {
+
+                //    $.each(val.Data, function (i, j) {
+                //        console.log("Time:" + data.DateList[i] + "==" + j);
+                //    });
+                //}
+
+                //  maxV = maxV + 1;
+                attr.data = [];
+                var values = [];
+                $.each(val.Data, function (i, j) {
+                    values.push(j);
+                });
+
+                if (val.Title != "TPR V" || val.Title != "DG V" || val.Title != "RG V" || val.Title != "HG V" || val.Title != "HHG V" || val.Title != "Tx1 V" || val.Title != "Tx2 V" || val.Title != "Choke V" || val.Title != "Vr" || val.Title != "Voltage") {
+                    var yLeft = Math.max.apply(Math, values); // 3
+                    if (yLeft >= macLeft) {
+                        macLeft = yLeft;
+                    }
+                }
+
+
+                attr.connectNulls = true;
+                attr.data = values;
+                attr.datasetIndex = ids;
+                DataSeriaes.push(attr);
+
+                //var yaxis = {
+                //    value: val.Title,
+                //};
+                //var t = [];
+                //t.push(yaxis)
+                //var obj = {
+                //        name:val.Title,
+                //        type: 'value',
+                //        min: Math.min.apply(Math, values),
+                //    max: Math.max.apply(Math, values),
+                //    data:t
+                //};
+
+                //yAxisArray.push(obj)
+
+            });
+        }
+
+        var xValue = [];
+        $.each(data.DateList, function (ids, val) {
+            xValue.push(val);
+        });
+
+        chart = echarts.init(document.getElementById('area-echart'));
+
+        var sampling = 'none';
+
+        chart.setOption({
+            //title: {
+            //    text: 'Rainfall Flow diagram',
+            //    x: 'center'
+            //},
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'cross',
+                    label: {
+                        backgroundColor: '#6a7985'
+                    }
+                }
+            },
+            legend: {
+                data: legends,
+                x: 'left'
+
+            },
+            toolbox: {
+                show: true,
+                feature: {
+                    mark: { show: true },
+                    dataView: { show: true, readOnly: false },
+                    magicType: { show: true, type: ['line', 'bar'] },
+                    restore: { show: true },
+                    saveAsImage: { show: true }
+                }
+            },
+            grid: {
+                left: '3%',
+                right: '4%',
+                bottom: '3%',
+                containLabel: true
+            },
+            xAxis: [
+                {
+                    type: 'category',
+                    boundaryGap: false,
+                    axisLine: { onZero: false },
+                    interval: 50,
+                    //minInterval:1,
+                    //  maxInterval: 3600 * 1000 * 24,
+                    data: xValue,
+                    // min: "00:00",
+                    //  max:"11.59"
+                }
+            ],
+            //yAxis: yAxisArray,
+            yAxis: [
+                {
+                    type: 'value',
+                    min: 0,
+                    max: macLeft,
+                    data: lary
+                },
+                {
+                    type: 'value',
+                    inverse: false,
+                    min: -1,
+                    max: maxV + 1,
+                    data: rary
+                }
+            ],
+            color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"],
+
+            series: DataSeriaes
+        });
+
+        chart.on('legendselectchanged', function (params) {
+            legendSelection(chart, params);
+        });
+
+        function legendSelection(chart1, params) {
+            DemochartUpdate(data, params, chart1);
+        }
+
+        window.onresize = chart.resize;
+    }
+
+    function DemochartUpdate(data, params, chart) {
+
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        var colorB = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var color = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var DataSeriaes = [];
+        var maxV = 0;
+        var legends = [];
+        var macLeft = 0;
+        var yAxisArray = [];
+        var lary = [];
+        var rary = [];
+        if (data.assetAttributes != null && data.assetAttributes.length > 0) {
+            $.each(data.assetAttributes, function (ids, val) {
+                if (ids == 0) {
+                    $("#lblType").text(val.AssetTypeName + " :");
+                    $("#lblName").text(val.AssetName)
+                }
+                legends.push(val.Title)
+
+
+                var xA = [];
+                $.each(val.Data, function (i, j) {
+                    xA.push(j);
+                });
+
+                var attr = {};
+                attr.name = val.Title;
+                attr.type = 'line';
+                attr.notShowSymbol = true;
+                attr.sampling = sampling;
+                attr.hoverAnimation = false;
+                attr.clip = true;
+                // attr.yAxisIndex = ids;
+                if (val.Title.indexOf('V') > -1) {
+                    var yaxis = {
+                        value: val.Title,
+                    };
+                    rary.push(yaxis)
+                    attr.yAxisIndex = 1;
+                }
+                else {
+                    var yaxis = {
+                        value: val.Title,
+                    };
+                    lary.push(yaxis)
+                    attr.yAxisIndex = 0;
+                }
+                var values = [];
+
+                $.each(params.selected, function (i, k) {
+                    if (k == true) {
+                        $.each(val.Data, function (i1, j) {
+                            values.push(j);
+                        });
+                    }
+                });
+
+
+
+                if (val.Title == "TPR V" || val.Title == "DG V" || val.Title == "RG V" || val.Title == "HG V" || val.Title == "HHG V" || val.Title == "Tx1 V" || val.Title == "Tx2 V" || val.Title == "Choke V" || val.Title == "Vr" || val.Title == "Voltage") {
+
+
+                    $.each(params.selected, function (i, val1) {
+
+                        //if (i != params.name && val == true) {
+                        //    $.each(val.Data, function (i, j) {
+                        //        var d = parseInt(j);
+                        //        if (d > maxV) {
+                        //            maxV = d;
+                        //        }
+                        //    });
+                        //}
+
+                        if (i == val.Title && val1 == true) {
+                            var yright = Math.max.apply(Math, values); // 3
+                            if (yright >= maxV) {
+                                maxV = yright;
+                            }
+                        }
+
+                    });
+
+                }
+                //if (val.Title == "TPR V") {
+
+                //    $.each(val.Data, function (i, j) {
+                //        console.log("Time:" + data.DateList[i] + "==" + j);
+                //    });
+                //}
+
+                //  maxV = maxV + 1;
+                attr.data = [];
+
+                if (val.Title != "TPR V" || val.Title != "DG V" || val.Title != "RG V" || val.Title != "HG V" || val.Title != "HHG V" || val.Title != "Tx1 V" || val.Title != "Tx2 V" || val.Title != "Choke V" || val.Title != "Vr" || val.Title != "Voltage") {
+
+
+                    $.each(params.selected, function (i, val2) {
+
+                        if (i == val.Title && val2 == true) {
+                            var yLeft = Math.max.apply(Math, values); // 3
+                            if (yLeft >= macLeft) {
+                                macLeft = yLeft;
+                            }
+                        }
+                    });
+                }
+
+
+                attr.connectNulls = true;
+                attr.data = values;
+                attr.datasetIndex = ids;
+                DataSeriaes.push(attr);
+
+            });
+        }
+
+        var xValue = [];
+        $.each(data.DateList, function (ids, val) {
+            xValue.push(val);
+        });
+
+        chart = echarts.init(document.getElementById('area-echart'));
+
+        var sampling = 'none';
+
+        chart.setOption({
+            //title: {
+            //    text: 'Rainfall Flow diagram',
+            //    x: 'center'
+            //},
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'cross',
+                    label: {
+                        backgroundColor: '#6a7985'
+                    }
+                }
+            },
+            legend: {
+                data: legends,
+                x: 'left',
+                selected: params.selected
+
+            },
+            toolbox: {
+                show: true,
+                feature: {
+                    mark: { show: true },
+                    dataView: { show: true, readOnly: false },
+                    magicType: { show: true, type: ['line', 'bar'] },
+                    restore: { show: true },
+                    saveAsImage: { show: true }
+                }
+            },
+            grid: {
+                left: '3%',
+                right: '4%',
+                bottom: '3%',
+                containLabel: true
+            },
+            xAxis: [
+                {
+                    type: 'category',
+                    boundaryGap: false,
+                    axisLine: { onZero: false },
+                    interval: 50,
+                    //minInterval:1,
+                    //  maxInterval: 3600 * 1000 * 24,
+                    data: xValue,
+                    // min: "00:00",
+                    //  max:"11.59"
+                }
+            ],
+            //yAxis: yAxisArray,
+            yAxis: [
+                {
+                    type: 'value',
+                    min: 0,
+                    max: macLeft,
+                    data: lary
+                },
+                {
+                    type: 'value',
+                    inverse: false,
+                    min: -1,
+                    max: maxV + 1,
+                    data: rary
+                }
+            ],
+            color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"],
+
+            series: DataSeriaes
+        });
+
+        chart.on('legendselectchanged', function (params) {
+            legendSelection(chart, params);
+        });
+
+        function legendSelection(chart1, params) {
+            DemochartUpdate(data, params, chart1);
+        }
+
+        window.onresize = chart.resize;
+    }
+    function MqqtConnect() {
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+        //client = new Paho.Client('mqtt.wattmon.com', 8083, "clientId" + Math.ceil(Math.random() * 10000));
+        //// set callback handlers
+        //client.onConnectionLost = onConnectionLost;
+        //client.onMessageArrived = onMessageArrived;
+        //// connect the client
+        //client.connect({
+        //    timeout: 30,
+        //    onSuccess: onConnect,
+        //    userName: "wattmon",
+        //    password: "wattmon_2018",
+        //    cleanSession: true,
+        //});
+    };
+
+    function onConnect() {
+
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i].toLowerCase());
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+        client.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+
+        var channeldata = message.payloadString.split(',');
+        if (objectList.AssetTypeName != null && $.trim(objectList.AssetTypeName.toLocaleLowerCase()) == "Gate".toLocaleLowerCase()) {
+            GateBindData(message.destinationName, channeldata)
+        }
+        else if (objectList.AssetTypeName != null && $.trim(objectList.AssetTypeName.toLocaleLowerCase()) == "Signal".toLocaleLowerCase()) {
+            SignalBindData(message.destinationName, channeldata)
+        }
+        else if (objectList.AssetTypeName != null && $.trim(objectList.AssetTypeName.toLocaleLowerCase()) == "POINT MACHINE".toLocaleLowerCase()) {
+
+            PointMachineBindData(message.destinationName, channeldata);
+        }
+        else {
+            BindData(message.destinationName, channeldata);
+        }
+    }
+
+    function BindData(basePath, data) {
+
+        $.each(json.mAssets, function (id, item) {
+            var ifMa = 0;
+            var irMa = 0;
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+                    if (inItem.Title == "A10 id") {
+                        $(".hdnAttributeData" + inItem.Id + item.Id).html(inItem.AssetInfoValue);
+                    }
+                    var str1 = basePath.toLowerCase();
+                    if (inItem.AssetInfoChannel != null) {
+                        var str2 = inItem.AssetInfoChannel.toLowerCase();
+                        if (str1.indexOf(str2) != -1) {
+
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
+
+                                if (infoMultiplication != null) {
+                                    if (inItem.Title == "Last Update Feed End( sec ago)" || inItem.Title == "Last Update Relay End( sec ago)" || inItem.Title == "Last Access (Sec)") {
+                                        var mainData = parseFloat(dataValue);
+                                        var v = (Math.round(mainData * 100) / 100).toFixed(1)
+                                        $(id).html(v);
+                                    }
+                                    else {
+
+                                        var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                        var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                        if (inItem.Title == "Vr") {
+
+                                            if (v > 0.1 && v < 2.5) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else if (v > 4.2) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                        }
+                                        if (inItem.Title == "TPR V") {
+
+                                            if (v > 0.1 && v < 20) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                            if (v < 1) {
+                                                $(".trackoc" + item.Id).addClass("text-danger").removeClass("text-success").html("O");
+                                            }
+                                            else {
+                                                $(".trackoc" + item.Id).addClass("text-success").removeClass("text-danger").html("C");
+                                            }
+                                        }
+                                        if (inItem.Title == "Charger mA") {
+
+                                            if (v < 100) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                        }
+                                        if (inItem.Title == "Choke V") {
+
+                                            if (v > 1.8) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                        }
+
+                                        $(id).html(v);
+
+                                    }
+
+                                }
+                                else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1);
+                                    if (inItem.Title == "Vr") {
+
+                                        if (v > 0.1 && v < 2.5) {
+                                            $(id).addClass("text-danger");
+                                        }
+                                        else if (v > 4.2) {
+                                            $(id).addClass("text-danger");
+                                        }
+                                        else {
+                                            $(id).removeClass("text-danger");
+                                        }
+                                    }
+                                    if (inItem.Title == "TPR V") {
+
+                                        if (v > 0.1 && v < 20) {
+                                            $(id).addClass("text-danger");
+                                        }
+                                        else {
+                                            $(id).removeClass("text-danger");
+                                        }
+                                    }
+                                    if (inItem.Title == "Charger mA") {
+
+                                        if (v < 100) {
+                                            $(id).addClass("text-danger");
+                                        }
+                                        else {
+                                            $(id).removeClass("text-danger");
+                                        }
+                                    }
+                                    if (inItem.Title == "Choke V") {
+
+                                        if (v > 1.8) {
+                                            $(id).addClass("text-danger");
+                                        }
+                                        else {
+                                            $(id).removeClass("text-danger");
+                                        }
+                                    }
+                                    $(id).html(v);
+                                }
+                            }
+                        }
+                    }
+
+                });
+            }
+        });
+    }
+
+    function GateBindData(basePath, data) {
+
+        $.each(json.mAssets, function (id, item) {
+
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+                    var str1 = basePath.toLowerCase();
+                    if (inItem.AssetInfoChannel != null) {
+                        var str2 = inItem.AssetInfoChannel.toLowerCase()
+                        if (str1.indexOf(str2) != -1) {
+
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
+                                if (infoMultiplication != null) {
+
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                    if (v > 4.5) {
+                                        $(id).html("<span class='badge badge-success'>Pickup</span>");
+                                    }
+                                    if (v < 4.5) {
+                                        $(id).html("<span class='badge badge-warning'>DROP</span>");
+                                    }
+
+                                }
+                                else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1)
+                                    if (v > 4.5) {
+                                        $(id).html("<span class='badge badge-success'>Pickup</span>");
+                                    }
+                                    if (v < 4.5) {
+                                        $(id).html("<span class='badge badge-warning'>DROP</span>");
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+
+                });
+            }
+        });
+    }
+
+    function SignalBindData(basePath, data) {
+
+        $.each(json.mAssets, function (id, item) {
+
+            rgC = 0;
+            rgv = 0;
+            dgC = 0;
+            dgv = 0;
+            hgC = 0;
+            hgv = 0;
+
+            if (item.Id == objectList.Id) {
+
+                if (objectList.assetAttributes != null && objectList.assetAttributes.length > 0) {
+                    $.each(objectList.assetAttributes, function (idx, inItem) {
+
+
+                        var str1 = basePath.toLowerCase();
+                        var str2 = "";
+                        if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                            str2 = inItem.AssetInfoChannel;
+                        }
+                        if (str1.indexOf(str2) != -1) {
+
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+
+                                var dataValue = data[infoValue];
+
+                                var id = ".hdnAttributeData" + objectList.Id;
+                                if (infoMultiplication != null) {
+
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = ((mainData * 100) / 100).toFixed(1);
+
+
+                                    if (inItem.Title == "RG mA" && parseFloat(v) > parseFloat(objectList.ZeroOffsetValue)) {
+                                        rgC = v;
+                                        $("#signal" + objectList.Id + "").html("<img style='height:150px;' src='/Content/images/SR-1.jpg' />");
+                                        $(".signalC" + objectList.Id + "").html("C :" + v + " ma");
+                                        $(id).html(inItem.Title);
+                                        // console.log("#RG mA" + v)
+                                        // console.log("#divSignal" + item.Id)
+                                        $("#divSignal" + item.Id).show();
+                                        $("#trSignal" + item.Id).show();
+                                    }
+                                    else if (inItem.Title == "DG mA" && parseFloat(v) > parseFloat(objectList.ZeroOffsetValue)) {
+                                        dgC = v;
+                                        $("#signal" + objectList.Id + "").html("<img style='height:150px;' src='/Content/images/SG-1.jpg' />");
+                                        $(".signalC" + objectList.Id + "").html("C :" + v + " ma");
+                                        $(id).html(inItem.Title);
+                                        // console.log("#DG mA" + v)
+                                        $("#divSignal" + objectList.Id).show();
+                                        $("#trSignal" + objectList.Id).show();
+                                    }
+                                    else if (inItem.Title == "HG mA" && parseFloat(v) > parseFloat(objectList.ZeroOffsetValue)) {
+                                        hgC = v;
+                                        $("#signal" + objectList.Id + "").html("<img style='height:150px;' src='/Content/images/SY-1.jpg' />");
+                                        $(".signalC" + objectList.Id + "").html("C :" + v + " ma");
+                                        $(id).html(inItem.Title);
+                                        //console.log("#HG mA" + v)
+                                        $("#divSignal" + objectList.Id).show();
+                                        $("#trSignal" + objectList.Id).show();
+                                    }
+
+                                    if (inItem.Title == "RG V") {
+                                        if ($.trim($("#signal" + objectList.Id + "").html()).length > 0 && $.trim($("#signal" + objectList.Id + "").html()).indexOf("SR-1.jpg") != -1) {
+                                            $(".signalV" + objectList.Id + "").html("V :" + v + " v");
+                                        }
+                                    }
+                                    else if (inItem.Title == "DG V") {
+                                        dgv = v;
+                                        if ($.trim($("#signal" + objectList.Id + "").html()).length > 0 && $.trim($("#signal" + objectList.Id + "").html()).indexOf("SG-1.jpg") != -1) {
+                                            $(".signalV" + objectList.Id + "").html("V :" + v + " v");
+                                        }
+
+                                    }
+
+                                    else if (inItem.Title == "HG V") {
+                                        hgv = v;
+                                        if ($.trim($("#signal" + objectList.Id + "").html()).length > 0 && $.trim($("#signal" + objectList.Id + "").html()).indexOf("SY-1.jpg") != -1) {
+                                            $(".signalV" + objectList.Id + "").html("V :" + v + " v");
+                                        }
+
+                                    }
+                                    // $(id).html(v);
+                                }
+                                else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1);
+                                    console.log("else=" + v)
+                                    // $(id).html(v);
+                                    // $("#divSignal" + item.Id).hide();
+                                    if (inItem.Title.indexOf("RG mA") != -1 && parseFloat(v) > parseFloat(objectList.ZeroOffsetValue)) {
+                                        rgC = v;
+                                        $("#signal" + objectList.Id + "").html("<img style='height:150px;' src='/Content/images/SR-1.jpg' />");
+                                        $(".signalC" + objectList.Id + "").html("C :" + v + " ma");
+                                        $(id).html(inItem.Title);
+                                        $("#divSignal" + objectList.Id).show();
+                                        $("#trSignal" + objectList.Id).show();
+                                    }
+                                    if (inItem.Title.indexOf("RG V") != -1) {
+
+                                        rgv = v;
+                                        if ($.trim($("#signal" + objectList.Id + "").html()).length > 0 && $.trim($("#signal" + objectList.Id + "").html()).indexOf("SR-1.jpg") != -1) {
+                                            $(".signalV" + objectList.Id + "").html("V :" + v + " v");
+                                        }
+                                    }
+                                    if (inItem.Title.indexOf("DG mA") != -1 && parseFloat(v) > parseFloat(objectList.ZeroOffsetValue)) {
+                                        dgC = v;
+                                        $("#signal" + objectList.Id + "").html("<img style='height:150px;' src='/Content/images/SG-1.jpg' />");
+                                        $(".signalC" + objectList.Id + "").html("C :" + v + " ma");
+                                        $(id).html(inItem.Title);
+                                        $("#divSignal" + objectList.Id).show();
+                                        $("#trSignal" + objectList.Id).show();
+                                    }
+                                    if (inItem.Title.indexOf("DG V") != -1) {
+                                        dgv = v;
+                                        if ($.trim($("#signal" + objectList.Id + "").html()).length > 0 && $.trim($("#signal" + objectList.Id + "").html()).indexOf("SG-1.jpg") != -1) {
+                                            $(".signalV" + objectList.Id + "").html("V :" + v + " v");
+                                        }
+                                    }
+                                    if (inItem.Title.indexOf("HG mA") != -1 && parseFloat(v) > parseFloat(objectList.ZeroOffsetValue)) {
+                                        hgC = v;
+                                        $("#signal" + objectList.Id + "").html("<img style='height:150px;' src='/Content/images/SY-1.jpg' />");
+                                        $(".signalC" + objectList.Id + "").html("C :" + v + " ma");
+                                        $(id).html(inItem.Title);
+                                        $("#divSignal" + objectList.Id).show();
+                                        $("#trSignal" + objectList.Id).show();
+                                    }
+                                    if (inItem.Title.indexOf("HG V") != -1) {
+                                        hgv = v;
+                                        if ($.trim($("#signal" + objectList.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SY-1.jpg") != -1) {
+                                            $(".signalV" + objectList.Id + "").html("V :" + v + " v");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+
+        });
+    }
+    var aEN = 0;
+    var aER = 0;
+    var bEN = 0;
+    var bER = 0;
+    function PointMachineBindData(basePath, data) {
+
+        $.each(json.mAssets, function (id, item) {
+            aEN = 0;
+            aER = 0;
+            bEN = 0;
+            bER = 0;
+            if (item.Id == objectList.Id) {
+
+                if (objectList.assetAttributes != null && objectList.assetAttributes.length > 0) {
+
+                    $.each(objectList.assetAttributes, function (idx, inItem) {
+
+                        var str1 = basePath.toLowerCase();
+                        var str2 = "";
+                        if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                            str2 = inItem.AssetInfoChannel.toLowerCase();
+                        }
+
+                        if (str1.indexOf(str2) != -1) {
+
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+                                var id = "#hdnAttributeData" + inItem.Id + objectList.Id;
+                                if (infoMultiplication != null) {
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                    if (inItem.Title == "A End - NWKR") {
+                                        aEN = v;
+                                    }
+                                    else if (inItem.Title == "A End - RWKR") {
+                                        aER = v;
+                                    }
+                                    if (inItem.Title == "B End - NWKR") {
+                                        bEN = v;
+                                    }
+                                    if (inItem.Title == "B End - RWKR") {
+                                        bER = v;
+                                    }
+
+                                    if (inItem.Title == "Vibration A end - X Axis") {
+                                        $(id).html(mainData);
+                                    }
+                                    if (inItem.Title == "Vibration A end - Y Axis") {
+                                        $(id).html(mainData);
+                                    }
+                                    if (inItem.Title == "Vibration A end - Z Axis") {
+                                        $(id).html(mainData);
+                                    }
+                                    if (inItem.Title == "Vibration B end - X Axis") {
+                                        $(id).html(mainData);
+                                    }
+                                    if (inItem.Title == "Vibration B end - Y Axis") {
+                                        $(id).html(mainData);
+                                    }
+                                    if (inItem.Title == "Vibration B end - Z Axis") {
+                                        $(id).html(mainData);
+                                    }
+
+                                    //$(id).html(v);
+                                }
+                                else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1)
+                                    // $(id).html(v);
+
+                                    if (inItem.Title == "A End - NWKR") {
+                                        aEN = v;
+                                    }
+                                    if (inItem.Title == "A End - RWKR") {
+                                        aER = v;
+                                    }
+                                    if (inItem.Title == "B End - NWKR") {
+                                        bEN = v;
+                                    }
+                                    if (inItem.Title == "B End - RWKR") {
+                                        bER = v;
+                                    }
+                                    if (inItem.Title == "Vibration A end - X Axis") {
+                                        $(id).html(dataValue);
+                                    }
+                                    if (inItem.Title == "Vibration A end - Y Axis") {
+                                        $(id).html(dataValue);
+                                    }
+                                    if (inItem.Title == "Vibration A end - Z Axis") {
+                                        $(id).html(dataValue);
+                                    }
+                                    if (inItem.Title == "Vibration B end - X Axis") {
+                                        $(id).html(dataValue);
+                                    }
+                                    if (inItem.Title == "Vibration B end - Y Axis") {
+                                        $(id).html(dataValue);
+                                    }
+                                    if (inItem.Title == "Vibration B end - Z Axis") {
+                                        $(id).html(dataValue);
+                                    }
+                                }
+                            }
+                        }
+                        else {
+
+                        }
+                    });
+                }
+                var html = "";
+                if (aEN != null && parseFloat(aEN) > 4.5) {
+                    html = "<div class='row'><div class='col-md-6'> <span class='badge  badge-success'>A POINT IN NORMAL</span></div>";
+                    html += "<div class='col-md-6'><span>" + aEN + " V</span></div></div>";
+                    $("#diectionA" + item.Id + "").empty().append(html);
+                }
+                else if (aER != null && parseFloat(aER) > 4.5) {
+                    html = "<div class='row'><div class='col-md-6'><span class='badge  badge-warning'>A POINT IN REVERSE</span></div>";
+                    html += "<div class='col-md-6'><span>" + aER + " V</span></div></div>";
+                    $("#diectionA" + item.Id + "").empty().append(html);
+                }
+
+                if (bEN != null && parseFloat(bEN) > 4.5) {
+                    html = "<div class='row'><div class='col-md-6'><span class='badge  badge-success'>B POINT IN NORMAL</span></div>";
+                    html += "<div class='col-md-6'><span>" + bEN + " V</span></div></div>";
+                    $("#diectionB" + item.Id + "").empty().append(html);
+                }
+                else if (bER != null && parseFloat(bER) > 4.5) {
+                    html = "<div class='row'><div class='col-md-6'><span class='badge  badge-warning'>B POINT IN REVERSE</span></div>";
+                    html += "<div class='col-md-6'><span>" + bER + " V</span></div></div>";
+                    $("#diectionB" + item.Id + "").empty().append(html);
+                }
+            }
+
+
+        });
+    }
+
+    function loadColor() {
+        $("[joint-selector='label']").attr('storke', '#fff');
+    }
+    function fnBindSignatureGragh(data, type, datevalue, direction, name) {
+
+        // $(".mianclass").empty().append("<canvas  id='basicflot' style='height: 263px'></canvas>")
+        //  $("#basicflot").empty();
+        $("div").remove(".chartjs-size-monitor");
+        //$(".chartjs-size-monitor").each(function () {
+        //    $(this).remove()
+        //})
+        var j = JSON.parse(data);
+
+        var acg;
+        var bcg;
+        var avg;
+        var bvg;
+        if (j.A_C_AVERAGE != null) {
+            acg = parseFloat(j.A_C_AVERAGE).toFixed(2);
+        }
+        if (j.B_C_AVERAGE != null) {
+            bcg = parseFloat(j.B_C_AVERAGE).toFixed(2);
+        }
+        if (j.A_V_AVERAGE != null) {
+            avg = parseFloat(j.A_V_AVERAGE).toFixed(2);
+        }
+        if (j.B_V_AVERAGE != null) {
+            bvg = parseFloat(j.B_V_AVERAGE).toFixed(2);
+        }
+
+        $("#line1").empty().text(name + " " + datevalue);
+        $("#op").text(direction + " Operation");
+        $("#line2").empty().text("- A Max / Average Current:" + j.A_C_MAX + "/" + acg);
+        $("#line3").empty().text("-  Average Voltage:"  + avg);
+        $("#line4").empty().text("- A Operating Time (ms):" + j.A_C_TIME);
+        $("#line5").empty().text("- B Max / Average Current:" + j.B_C_MAX + "/" + bcg);
+        $("#line6").empty().text("-  Average Voltage:" +  bvg);
+        $("#line7").empty().text("- B Operating Time (ms):" + j.B_C_TIME);
+
+        // var ctx = document.getElementById("basicflot").getContext("2d");
+        var array = [];
+        var labels = "";
+        var total = 0;
+        if (type == "AC") {
+            labels = "A End";
+            $.each(j.A_C, function (id, val) {
+                var num = parseInt(val);
+                // if (num > total) {
+                total += num;
+                // }
+                array.push(val);
+            });
+        }
+        if (type == "BC") {
+            labels = "B End";
+            $.each(j.B_C, function (id, val) {
+                var num = parseInt(val);
+                //if (num > total) {
+                total += num;
+                //}
+                array.push(val);
+            });
+        }
+
+        if (type == "AV") {
+            labels = "A End";
+            $.each(j.A_V, function (id, val) {
+                var num = parseInt(val);
+                //if (num > total) {
+                total += num;
+                //}
+                array.push(val);
+            });
+        }
+        if (type == "BV") {
+            labels = "B End";
+            $.each(j.B_V, function (id, val) {
+                var num = parseInt(val);
+                //if (num > total) {
+                total += num;
+                //}
+                array.push(val);
+            });
+        }
+
+        var marker = total / array.length;
+        var time = j.A_C_TIME;
+        var len = parseInt(j.A_C_TIME) / parseInt(1000);
+        var loop = parseInt(array.length / 2) + 1;
+
+        var label = [];
+
+        for (var i = 0; i <= array.length; i++) {
+            var xVal = (i) * (100);
+            label.push(xVal);
+        }
+        //  labels: ["January", "February", "March", "April", "May", "June", "July"],
+
+
+        var pieChartContent = document.getElementById('mainId');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#mainId').append('<canvas id="basicflot"style="height: 263px"><canvas>');
+
+        // var canvas = document.getElementById('basicflot');
+        var canvas = $("#basicflot").get(0).getContext("2d");
+        // var myPieChart = new Chart(ctx).Pie(data, options);
+
+        // do some drawing
+
+        var data = {
+            labels: label,
+            datasets: [
+                {
+                    label: labels + " Current",
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: "rgba(75,192,192,0.4)",
+                    borderColor: "rgba(75,192,192,1)",
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: "rgba(75,192,192,1)",
+                    pointBackgroundColor: "#fff",
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: "rgba(75,192,192,1)",
+                    pointHoverBorderColor: "rgba(220,220,220,1)",
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array,
+                    markLine: {
+                        data: [{
+                            type: 'average',
+                            name: '???'
+                        }]
+                    }
+                }
+            ]
+        };
+
+        var option = {
+            showLines: true,
+
+        };
+        var myLineChart = Chart.Line(canvas, {
+            data: data,
+            options: option
+        });
+
+        $("#modal-graph").modal("show");
+    }
+
+
+    //Simulation
+
+    function MqqtConnectSimulation() {
+        let isSecure = window.location.protocol === "https:";
+        client1 = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+        client1.onConnectionLost = onConnectionLost1;
+        client1.onMessageArrived = onMessageArrived1;
+        // connect the client
+        client1.connect({
+            timeout: 300,
+            onSuccess: onConnect1,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true,
+        });
+    };
+
+    function onConnect1() {
+        //client1.subscribe(mQQTPath + "#");
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+                client1.subscribe(mQQTPath + channels[i].toLowerCase());
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost1(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+        client1.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    // called when a message arrives
+    function onMessageArrived1(message) {
+        var channeldata = message.payloadString.split(',');
+        // console.log(channeldata);
+        if ($("#chMaintenceMode").is(":checked") == false) {
+            BindDataSimulation(message.destinationName, channeldata);
+            BindTrackDataSimulation(message.destinationName, channeldata);
+            BindSignalData(message.destinationName, channeldata);
+            BindBusBarSimulation(message.destinationName, channeldata);
+            for (var i = 0; i < channels.length; i++) {
+                if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+
+                    var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+                    if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+                        var d = new Date();
+                        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                        $("#c" + i).html(time);
+                    }
+                }
+            }
+
+        }
+
+        fnShowActiveAlertSimulation();
+
+
+        //var d = new Date();
+        //var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        //$("#lastupdate").html("Last Update: "+ time);
+    }
+    function BindTrackDataSimulation(basePath, data) {
+
+        $.each(tJosn, function (id, item) {
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+                    var str1 = basePath.toLowerCase();
+                    var str2 = "";
+                    if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                        str2 = inItem.AssetInfoChannel;
+                    }
+                    if (str2 != null && str2 != "" && str1.indexOf(str2) != -1) {
+
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+
+                            var dataValue = data[infoValue];
+
+                            var id = ".hdnAttributeData" + item.Id;
+                            if (infoMultiplication != null) {
+
+                                $.each(parseJson.cells, function (id, val) {
+                                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                        var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+
+                                        var v = ((mainData * 100) / 100).toFixed(1);
+                                        if (val.type == "examples.Track" || val.type == "examples.Track1" || val.type == "examples.Track2" || val.type == "examples.Track5" || val.type == "examples.Track6") {
+
+                                            if ($.trim(val.attrs.label.text) == $.trim(item.Name)) {
+                                                if ('path' in val.attrs) {
+                                                    if (inItem.Title == "TPR V") {
+                                                        if (parseFloat(v) <1) {
+                                                            val.attrs.path.stroke = "#ff0000";
+                                                        }
+                                                        else {
+                                                            val.attrs.path.stroke = "#3c4260";
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        else {
+
+                                        }
+                                        if (val.type == "examples.Track3" || val.type == "examples.Track4") {
+
+                                            if ($.trim(val.attrs.label.text) == $.trim(item.Name)) {
+                                                if ('path' in val.attrs) {
+                                                    if (inItem.Title == "TPR V") {
+                                                        if (parseFloat(v) < 1) {
+                                                            val.attrs.path.fill = "#ff0000";
+                                                        }
+                                                        else {
+                                                            val.attrs.path.fill = "#3c4260";
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        else {
+
+                                        }
+                                    }
+
+                                });
+
+                                // $(id).html(v);
+                            }
+                            else {
+
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        app.graph.fromJSON(parseJson);
+    }
+
+    function BindDataSimulation(basePath, data) {
+        $.each(pJosn, function (id, item) {
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+                    var aEN = 0;
+                    var aER = 0;
+                    var bEN = 0;
+                    var bER = 0;
+                    var str1 = basePath.toLowerCase();
+                    var str2 = "";
+                    if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                        str2 = inItem.AssetInfoChannel;
+                    }
+                    if (str2 != null && str2!="" && str1.indexOf(str2) != -1) {
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+                            var dataValue = data[infoValue];
+                            var id = ".hdnAttributeData" + item.Id;
+                            if (infoMultiplication != null) {
+                                var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                if (inItem.Title == "A End - NWKR") {
+                                    aEN = v;
+                                }
+                                else if (inItem.Title == "A End - RWKR") {
+                                    aER = v;
+                                }
+                                if (inItem.Title == "B End - NWKR") {
+                                    bEN = v;
+                                }
+                                if (inItem.Title == "B End - RWKR") {
+                                    bER = v;
+                                }
+                            }
+                            else {
+                                var v = (Math.round(dataValue * 100) / 100).toFixed(1)
+                                if (inItem.Title == "A End - NWKR") {
+                                    aEN = v;
+                                }
+                                if (inItem.Title == "A End - RWKR") {
+                                    aER = v;
+                                }
+                                if (inItem.Title == "B End - NWKR") {
+                                    bEN = v;
+                                }
+                                if (inItem.Title == "B End - RWKR") {
+                                    bER = v;
+                                }
+                            }
+                        }
+
+                        $.each(parseJson.cells, function (id, val) {
+
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                //  console.log(val.attrs.label.text);
+
+                                if (val.type == "examples.PointMachine" || val.type == "examples.PointMachine1") {
+
+
+                                    var pName = $.trim(item.Name.toLowerCase().replace("point", ""));
+
+                                    if (val.attrs.label.text == pName) {
+
+                                        if (aEN != null && parseFloat(aEN) > 4.5) {
+                                            if ('circle1' in val.attrs) {
+                                                val.attrs.circle1.fill = "#51bb25";
+                                                val.attrs.circle1.stroke = "#51bb25";
+                                            }
+                                            if ('body' in val.attrs) {
+                                                val.attrs.body.stroke = "#3c4260";
+                                            }
+                                        }
+                                        else if (aER != null && parseFloat(aER) > 4.5) {
+
+                                            if ('body' in val.attrs) {
+                                                val.attrs.body.stroke = "#FFFF00";
+                                            }
+                                            if ('circle1' in val.attrs) {
+                                                val.attrs.circle1.fill = "#FFFF00";
+                                                val.attrs.circle1.stroke = "#FFFF00";
+                                            }
+                                        }
+
+                                        if (bEN != null && parseFloat(bEN) > 4.5) {
+                                            if ('circle1' in val.attrs) {
+                                                val.attrs.circle1.fill = "#51bb25";
+                                                val.attrs.circle1.stroke = "#51bb25";
+                                            }
+                                            if ('body' in val.attrs) {
+                                                val.attrs.body.stroke = "#3c4260";
+                                            }
+                                        }
+                                        else if (bER != null && parseFloat(bER) > 4.5) {
+
+                                            if ('body' in val.attrs) {
+                                                val.attrs.body.stroke = "#FFFF00";
+                                            }
+                                            if ('circle1' in val.attrs) {
+                                                val.attrs.circle1.fill = "#FFFF00";
+                                                val.attrs.circle1.stroke = "#FFFF00";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+        });
+        app.graph.fromJSON(parseJson);
+    }
+
+    function BindSignalData(basePath, data) {
+
+        $.each(sJosn, function (id, item) {
+
+            rgC = 0;
+            rgv = 0;
+            dgC = 0;
+            dgv = 0;
+            hgC = 0;
+            hgv = 0;
+
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+
+                    var str1 = basePath.toLowerCase();
+                    var str2 = "";
+                    if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                        str2 = inItem.AssetInfoChannel;
+                    }
+                    if (str1.indexOf(str2) != -1) {
+
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+
+                            var dataValue = data[infoValue];
+
+                            var id = ".hdnAttributeData" + item.Id;
+                            if (infoMultiplication != null) {
+
+                                var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                var v = ((mainData * 100) / 100).toFixed(1);
+                                var signalName = item.Name + " " + inItem.Title.split(' ')[0];
+                                $.each(parseJson.cells, function (id, val) {
+
+                                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                        // console.log(val.attrs.label.text);
+
+                                        if (true) {
+
+                                            var namer = item.Name + " " + "RG";
+                                            var named = item.Name + " " + "DG";
+                                            var nameh = item.Name + " " + "HG";
+                                            var namehh = item.Name + " " + "HHG";
+
+                                            if (val.type == "examples.Signald90" && $.trim(val.attrs.label.text) == $.trim(namer) && inItem.Title == "RG mA") {
+
+                                                if ($.trim(val.attrs.label.text) == $.trim(namer) && inItem.Title == "RG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+
+                                                    val.attrs.circle1.stroke = "#ff0000"
+                                                    val.attrs.circle1.fill = "#ff0000"
+                                                }
+                                                else {
+
+                                                    val.attrs.circle1.stroke = "#3c4260"
+                                                    val.attrs.circle1.fill = "#3c4260"
+
+                                                }
+                                            }
+                                            else if (val.type == "examples.Signal90" && $.trim(val.attrs.label.text) == $.trim(named) && inItem.Title == "DG mA") {
+
+                                                if ($.trim(val.attrs.label.text) == $.trim(named) && inItem.Title == "DG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+
+                                                    val.attrs.circle1.stroke = "#008000"
+                                                    val.attrs.circle1.fill = "#008000"
+                                                }
+                                                else {
+                                                    val.attrs.circle1.stroke = "#3c4260"
+                                                    val.attrs.circle1.fill = "#3c4260"
+                                                }
+                                            }
+                                            else if (val.type == "examples.Signal45" && $.trim(val.attrs.label.text) == $.trim(nameh) && inItem.Title == "HG mA" ) {
+
+
+
+                                                if ($.trim(val.attrs.label.text) == $.trim(nameh) && inItem.Title == "HG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+
+                                                    val.attrs.circle1.stroke = "#FFFF00"
+                                                    val.attrs.circle1.fill = "#FFFF00"
+                                                }
+                                                else {
+                                                    val.attrs.circle1.stroke = "#3c4260"
+                                                    val.attrs.circle1.fill = "#3c4260"
+                                                }
+                                            }
+                                            else if (val.type == "examples.Signald45" && $.trim(val.attrs.label.text) == $.trim(namehh) && inItem.Title == "HHG mA") {
+
+
+
+                                                if ($.trim(val.attrs.label.text) == $.trim(namehh) && inItem.Title == "HHG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+
+                                                    val.attrs.circle1.stroke = "#FFFF00"
+                                                    val.attrs.circle1.fill = "#FFFF00"
+                                                }
+                                                else {
+                                                    val.attrs.circle1.stroke = "#3c4260"
+                                                    val.attrs.circle1.fill = "#3c4260"
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+
+                            }
+                            else {
+                                var v = (Math.round(dataValue * 100) / 100).toFixed(1);
+                                console.log("else=" + v)
+                                // $(id).html(v);
+                                // $("#divSignal" + item.Id).hide();
+                                if (inItem.Title.indexOf("RG mA") != -1 && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    rgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SR-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+
+                                }
+                                if (inItem.Title.indexOf("RG V") != -1) {
+
+                                    rgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SR-1.jpg") != -1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                    }
+                                }
+                                if (inItem.Title.indexOf("DG mA") != -1 && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    dgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SG-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+
+                                }
+                                if (inItem.Title.indexOf("DG V") != -1) {
+                                    dgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SG-1.jpg") != -1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                    }
+                                }
+                                if (inItem.Title.indexOf("HG mA") != -1 && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    hgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SY-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+
+                                }
+                                if (inItem.Title.indexOf("HG V") != -1) {
+                                    hgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SY-1.jpg") != -1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            app.graph.fromJSON(parseJson);
+        });
+
+    }
+
+    function fnShowActiveAlertSimulation() {
+
+        $.each(activeAlerts, function (id, al) {
+            $.each(parseJson.cells, function (id, val) {
+
+                        if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                            if (val.type == "examples.Track" || val.type == "examples.Track1" || val.type == "examples.Track2" || val.type == "examples.Track5" || val.type == "examples.Track6") {
+                                if ($.trim(val.attrs.label.text) == $.trim(al.AssetName)) {
+                                    if (al.IsSmsLogActive == true) {
+                                        if ('path' in val.attrs) {
+                                           val.attrs.path.stroke = color[Math.floor(Math.random() * color.length)]
+                                        }
+                                    }
+                                    else {
+                                        //val.attrs.path.stroke = "#3c4260";
+                                    }
+                                } else {
+                                    //val.attrs.label.fill = "#d7d7d7";
+                                 //  val.attrs.label.fontSize = "20";
+                                }
+
+                            }
+                            if (val.type == "examples.Track3" || val.type == "examples.Track4") {
+                                if ($.trim(val.attrs.label.text) == $.trim(al.AssetName)) {
+                                    if (al.IsSmsLogActive == true) {
+                                        if ('path' in val.attrs) {
+                                            val.attrs.path.fill = color[Math.floor(Math.random() * color.length)]
+                                        }
+                                    }
+                                    else {
+                                        //val.attrs.path.stroke = "#3c4260";
+                                    }
+                                } else {
+                                    //val.attrs.label.fill = "#d7d7d7";
+                                    //  val.attrs.label.fontSize = "20";
+                                }
+
+                            }
+
+                            if (val.type == "examples.PointMachine" || val.type == "examples.PointMachine1") {
+                                var pName = $.trim(al.AssetName.toLowerCase().replace("point", ""));
+                                if (val.attrs.label.text == pName) {
+
+
+                                    if (al.IsSmsLogActive == true) {
+                                        if ('body' in val.attrs) {
+                                                val.attrs.body.stroke = color[Math.floor(Math.random() * color.length)]
+                                        }
+                                        }
+                                        else {
+                                        //val.attrs.body.stroke = "#3c4260";
+                                        }
+
+                                } else {
+                                   // val.attrs.label.fill = "#d7d7d7";
+                                   //val.attrs.label.fontSize = "20";
+                                }
+
+                            }
+
+                            if (val.type.indexOf("examples.Signal") != -1) {
+                                if ($.trim(val.attrs.label.text) == $.trim(al.AssetName)) {
+                                    if (al.IsSmsLogActive == true) {
+
+                                        if ('circle1' in val.attrs) {
+                                            val.attrs.circle1.fill = color[Math.floor(Math.random() * color.length)]
+                                            val.attrs.circle1.stroke = color[Math.floor(Math.random() * color.length)]
+                                        }
+                                        if ('body' in val.attrs) {
+                                            val.attrs.body.stroke = color[Math.floor(Math.random() * color.length)]
+                                        }
+
+                                        if ('path1' in val.attrs) {
+                                            val.attrs.path1.stroke = color[Math.floor(Math.random() * color.length)]
+                                                    }
+                                        }
+                                        else {
+                                        //val.attrs.path1.stroke = "#3c4260";
+                                        }
+                                } else {
+                                  //  val.attrs.circle1.fill = "#3c4260";
+                                   // val.attrs.circle1.stroke = "#3c4260";
+                                }
+                            }
+
+                            if (val.type == "examples.AxleCounter") {
+                                if ($.trim(val.attrs.label.text) == $.trim(al.AssetName)) {
+
+                                    if (al.IsSmsLogActive == true) {
+                                        if ('path' in val.attrs) {
+                                            val.attrs.path.stroke = color[Math.floor(Math.random() * color.length)]
+                                        }
+                                        }
+                                        else {
+                                      //  val.attrs.path.stroke = "#3c4260";
+                                        }
+
+                                } else {
+                                  //  val.attrs.label.fill = "#d7d7d7";
+                                   // val.attrs.label.fontSize = "20";
+                                }
+
+                            }
+                        }
+
+                    });
+        });
+    }
+
+    function BindBusBarSimulation(basePath, data) {
+        $.each(bJosn, function (id, item) {
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                var acValue = 0;
+                var dcValue = 0;
+                $.each(item.assetAttributes, function (idx, inItem) {
+                    var str1 = basePath.toLowerCase();
+                    var str2 = "";
+                    if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                        str2 = inItem.AssetInfoChannel;
+                    }
+                    if (str2 != null && str2 != "" && str1.indexOf(str2) != -1) {
+                        var infoValue = inItem.AssetInfoValue;
+                        if (infoValue != null) {
+                            if (infoValue == 95 || infoValue == 112 || infoValue == 258) {
+                                var infoMultiplication = inItem.Multiplication;
+                                var dataValue = data[infoValue];
+                                if (infoMultiplication != null) {
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                    if (inItem.Title == "24 V") {
+                                        dcValue = v;
+                                    } else if (inItem.Title == "110V") {
+                                        acValue = v;
+                                    }
+                                } else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1)
+                                    if (inItem.Title == "24 V") {
+                                        dcValue = v;
+                                    } else if (inItem.Title == "110V") {
+                                        acValue = v;
+                                    }
+                                }
+
+                                $.each(parseJson.cells, function (id, val) {
+                                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                        if (val.type == "examples.BusBar") {
+                                            if ($.trim(fnTrimDynamicValue(val.attrs.label.text)) == $.trim(item.Name)) {
+                                                if (acValue > 0 && dcValue > 0) {
+                                                    val.attrs.label.text = dcValue + " || " + $.trim(item.Name) + " || " + acValue + "v";
+                                                } else if (dcValue > 0 && acValue <= 0) {
+                                                    val.attrs.label.text = dcValue + " || " + $.trim(item.Name)
+                                                }
+                                                else if (dcValue <= 0 && acValue > 0) {
+                                                    val.attrs.label.text = $.trim(item.Name) + " || " + acValue + "v";
+                                                }
+
+                                                if (acValue < 110 && acValue > 0) {
+                                                    val.attrs.label.fill = "#ff0000";
+                                                }
+                                                else {
+                                                    val.attrs.label.fill = "#ffffff";
+                                                }
+
+                                                if (dcValue < 20 && dcValue > 0) {
+                                                    val.attrs.label.fill = "#ff0000";
+                                                }
+                                                else {
+                                                    val.attrs.label.fill = "#ffffff";
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+
+
+                        }
+                    }
+                });
+            }
+        });
+
+        app.graph.fromJSON(parseJson);
+    }
+
+    function fnMaintenaceMode($this) {
+
+        clearTime =   setInterval(function () {
+            $.each(json.mAssets, function (id, item) {
+                $.each(parseJson.cells, function (id, val) {
+                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                        if (val.type == "examples.Track" || val.type == "examples.Track1" || val.type == "examples.Track2" || val.type == "examples.Track5" || val.type == "examples.Track6") {
+                            if (val.attrs.label.text == item.Name) {
+                                if ('path' in val.attrs) {
+                                    if (item.IndexScore < 7) {
+                                        val.attrs.label.fill = fontcolor[Math.floor(Math.random() * fontcolor.length)]
+                                        val.attrs.label.fontSize = "26";
+                                       // val.attrs.path.stroke = color[Math.floor(Math.random() * color.length)]
+                                    }
+                                    else {
+                                        val.attrs.label.fill = "#d7d7d7";
+                                        val.attrs.label.fontSize = "20";
+                                    }
+                                }
+                            }
+                        }
+                        if (val.type == "examples.Track3" || val.type == "examples.Track4") {
+                            if (val.attrs.label.text == item.Name) {
+                                if ('path' in val.attrs) {
+                                    if (item.IndexScore < 7) {
+
+                                        val.attrs.label.fill = fontcolor[Math.floor(Math.random() * fontcolor.length)]
+                                        val.attrs.label.fontSize = "26";
+                                        // val.attrs.path.stroke = color[Math.floor(Math.random() * color.length)]
+                                    }
+                                    else {
+                                        val.attrs.label.fill = "#d7d7d7";
+                                        val.attrs.label.fontSize = "20";
+                                    }
+                                }
+                            }
+                        }
+
+                        if (val.type == "examples.PointMachine" || val.type == "examples.PointMachine1") {
+
+                            var pName = $.trim(item.Name.toLowerCase().replace("point", ""));
+
+                            if (val.attrs.label.text == pName) {
+                                if ('body' in val.attrs) {
+                                    if (item.IndexScore < 7) {
+                                        val.attrs.label.fill = fontcolor[Math.floor(Math.random() * fontcolor.length)]
+                                        val.attrs.label.fontSize = "26";
+
+                                       // val.attrs.body.stroke = color[Math.floor(Math.random() * color.length)]
+                                    }
+                                    else {
+                                        val.attrs.label.fill = "#d7d7d7";
+                                        val.attrs.label.fontSize = "20";
+                                    }
+                                }
+                            }
+                        }
+
+                        if (val.type == "examples.Post1" || val.type == "examples.Post2" || val.type == "examples.Post" || val.type == "examples.Post3")  {
+
+                            var sName = val.attrs.label.text.split(" ")[0];
+
+                            if (sName == item.Name) {
+                                if ('circle1' in val.attrs) {
+                                    if (item.IndexScore < 7) {
+                                        val.attrs.label.fill = fontcolor[Math.floor(Math.random() * fontcolor.length)]
+                                        val.attrs.label.fontSize = "26";
+                                        //if ('circle1' in val.attrs) {
+                                        //    val.attrs.circle1.fill = color[Math.floor(Math.random() * color.length)]
+                                        //    val.attrs.circle1.stroke = color[Math.floor(Math.random() * color.length)]
+                                        //}
+                                        //if ('body' in val.attrs) {
+                                        //    val.attrs.body.stroke = color[Math.floor(Math.random() * color.length)]
+                                        //}
+                                    }
+                                    else {
+                                        val.attrs.label.fill = "#d7d7d7";
+                                        val.attrs.label.fontSize = "20";
+                                    }
+                                }
+                            }
+                        }
+                        //if (val.type.indexOf("examples.AxleCounter") != -1) {
+                        //    if (val.attrs.label.text.indexOf(item.Name) != -1) {
+                        //        if (item.IndexScore < 6) {
+
+                        //        }
+                        //    }
+                        //}
+                        //if (val.type.indexOf("examples.Gate") != -1) {
+                        //    if (val.attrs.label.text.indexOf(item.Name) != -1) {
+                        //        if (item.IndexScore < 6) {
+
+                        //        }
+                        //    }
+                        //}
+                    }
+                });
+            });
+
+            app.graph.fromJSON(parseJson);
+        },2000)
+    }
+
+    function fnMaintenaceModeOff($this) {
+        $.each(json.mAssets, function (id, item) {
+            $.each(parseJson.cells, function (id, val) {
+                if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                    if (val.type == "examples.Track" || val.type == "examples.Track1" || val.type == "examples.Track2" || val.type == "examples.Track5" || val.type == "examples.Track6") {
+                        if (val.attrs.label.text == item.Name) {
+                            if ('path' in val.attrs) {
+                                if (item.IndexScore < 7) {
+                                    val.attrs.path.stroke = "#3c4260";
+                                    val.attrs.label.fill = "#d7d7d7";
+                                    val.attrs.label.fontSize = "20";
+                                }
+                            }
+                        }
+                    }
+                    if (val.type == "examples.Track3" || val.type == "examples.Track4") {
+                        if (val.attrs.label.text == item.Name) {
+                            if ('path' in val.attrs) {
+                                if (item.IndexScore < 7) {
+                                    val.attrs.label.fill = "#d7d7d7";
+                                    val.attrs.label.fontSize = "20";
+                                }
+                            }
+                        }
+                    }
+
+                    if (val.type == "examples.PointMachine" || val.type == "examples.PointMachine1") {
+
+                        var pName = $.trim(item.Name.toLowerCase().replace("point", ""));
+
+                        if (val.attrs.label.text == pName) {
+                            if ('body' in val.attrs) {
+                                if (item.IndexScore < 7) {
+                                    val.attrs.body.stroke = "#3c4260";
+                                    val.attrs.label.fill = "#d7d7d7";
+                                    val.attrs.label.fontSize = "20";
+                                }
+                            }
+                        }
+                    }
+
+                    if (val.type.indexOf("examples.Post") != -1) {
+
+                        var sName = val.attrs.label.text.split(" ")[0];
+
+                        if (sName == item.Name) {
+                            if ('circle1' in val.attrs) {
+                                if (item.IndexScore < 7) {
+                                    val.attrs.label.fill = "#d7d7d7";
+                                    val.attrs.label.fontSize = "20";
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+        clearInterval(clearTime);
+    }
+
+    function fnGetActiveAlerts(item) {
+        var smsLog = {};
+        smsLog.SiteId = $("#hdnSiteId").val();
+        smsLog.AssetTypeId = 0;
+        smsLog.AssetId = item.Id;
+        $.ajax({
+            url: '/SMSLog/GetActiveAlerts',
+            type: 'Post',
+            data: '{mSmsLog:' + JSON.stringify(smsLog) + '}',
+            dataType:'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#alertLog").empty().append(data);
+                $("#alertLog-tab").addClass("bg-success")
+                $("#alertLog-tab").removeClass("bg-danger")
+                $("#alertLog table tbody tr").each(function () {
+                    if ($.trim($(this).find("td").eq(0).html()) == "No record found") {
+                        $("#alertLog-tab").addClass("bg-success").removeClass("bg-danger");
+                    }
+                    else {
+                        $("#alertLog-tab").removeClass("bg-success").addClass("bg-danger");
+                    }
+                });
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    function GetListActiveAlerts() {
+        var smsLog = {};
+        smsLog.SiteId = $("#hdnSiteId").val();
+        smsLog.AssetTypeId = 0;
+        $.ajax({
+            url: '/SMSLog/GetListActiveAlerts',
+            type: 'Post',
+            data: '{mSmsLog:' + JSON.stringify(smsLog) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                activeAlerts = data.mSMSLogs;
+                $.each(parseJson.cells, function (id, val) {
+
+                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                        if (val.type == "examples.Track" || val.type == "examples.Track1" || val.type == "examples.Track2" || val.type == "examples.Track5" || val.type == "examples.Track6") {
+                            if ('fill' in val.attrs.label) {
+                                    val.attrs.label.fill = "#d7d7d7";
+                            }
+                            if ('fontSize' in val.attrs.label) {
+                                val.attrs.label.fontSize = "20";
+                            }
+
+                        } if (val.type == "examples.Track4" || val.type == "examples.Track3") {
+                            if ('fill' in val.attrs.label) {
+                                val.attrs.label.fill = "#d7d7d7";
+                            }
+                            if ('fontSize' in val.attrs.label) {
+                                val.attrs.label.fontSize = "20";
+                            }
+
+                        }
+
+                        if (val.type == "examples.PointMachine" || val.type == "examples.PointMachine1") {
+                            if ('fill' in val.attrs.label) {
+                                val.attrs.label.fill = "#d7d7d7";
+                            }
+                            if ('fontSize' in val.attrs.label) {
+                                val.attrs.label.fontSize = "20";
+                            }
+
+                        }
+
+                        if (val.type == "examples.Post1" || val.type == "examples.Post2" || val.type == "examples.Post" || val.type == "examples.Post3") {
+                            if ('fill' in val.attrs.label) {
+                                val.attrs.label.fill = "#d7d7d7";
+                            }
+                            if ('fontSize' in val.attrs.label) {
+                                val.attrs.label.fontSize = "20";
+                            }
+
+                        }
+
+                        if (val.type == "examples.AxleCounter") {
+                            if ('fill' in val.attrs.label) {
+                                val.attrs.label.fill = "#d7d7d7";
+                            }
+                            if ('fontSize' in val.attrs.label) {
+                                val.attrs.label.fontSize = "20";
+                            }
+                        }
+                    }
+                });
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnTrimDynamicValue(symbolLabel) {
+        var assetName = "";
+        if ($.trim(symbolLabel) != null && $.trim(symbolLabel) != undefined && $.trim(symbolLabel) != "") {
+            var symbolArray = $.trim(symbolLabel).split(" || ");
+            if (symbolArray.length > 2) {
+                assetName = symbolArray[1];
+            } else if (symbolArray.length > 1) {
+                if ($.isNumeric(symbolArray[0])) {
+                    assetName = symbolArray[1];
+                } else if ($.isNumeric(symbolArray[1])) {
+                    assetName = symbolArray[0];
+                }
+            } else {
+                assetName = symbolLabel;
+            }
+        }
+        return assetName;
+    }
+
+</script>

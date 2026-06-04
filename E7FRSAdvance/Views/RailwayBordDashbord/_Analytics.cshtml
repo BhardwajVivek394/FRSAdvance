@@ -1,0 +1,192 @@
+﻿@model Domain.SearchCriteria
+
+<div class="modal bounceIn animated" id="modalAnalytics" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Analytics</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="row">
+
+                    <div class="col-xl-2">
+                        <label>Division</label>
+                        @Html.DropDownList("drpAnalyticsDivisions", ViewBag.Divisions as SelectList, "Select", new { @class = "form-control" })
+                    </div>
+                    <div class="col-xl-2">
+                        <label>Site</label>
+                        @Html.DropDownList("drpAnalyticsSite", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control" })
+                    </div>
+                    <div class="col-xl-2">
+                        <label>Asset Type</label>
+                        @Html.DropDownList("drpAnalyticsAssetType", (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "Asset Type", new { @class = "form-control", tabindex = 4 })
+                    </div>
+                    <div class="col-xl-2">
+                        <label>Asset</label>
+                        <select class="form-control" id="drpAnalyticsAsset">
+                        </select>
+                    </div>
+                    <div class="col-xl-1">
+                        <label>Date</label>
+                        <input id="txtAnalyticsDate" type="text" class="form-control" />
+                    </div>
+                    <div class="col-xl-1">
+                        <label>Start Time</label>
+                        <input id="txtAnalyticsStartTime" type="text" class="form-control" />
+                    </div>
+                    <div class="col-xl-1">
+                        <label>End Time</label>
+                        <input type="text" id="txtAnalyticsEndTime" class="form-control" />
+                    </div>
+                    <div class="col-xl-1">
+                        <button type="button" class="btn btn-success mt-4" onclick="fnSearchAnalytics()"><i class="fa fa-search"></i></button>
+                        <button type="button" class="btn btn-info mt-4" onclick="fnDownloadAnalytics()"><i class="fa fa-download"></i></button>
+                    </div>
+                    <div class="col-xl-12" id="divAnalyticsDetail">
+
+                    </div>
+                </div>
+
+
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    $(document).ready(function () {
+
+        $('#txtAnalyticsDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtAnalyticsStartTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#txtAnalyticsEndTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#drpAnalyticsAssetType').change(function () {
+            GetByAssest($('#drpAnalyticsSite').val(), $(this).val());
+        });
+
+    });
+
+    function fnSearchAnalytics() {
+
+        var isValid = true;
+        var mAsset = {};
+        mAsset.Id = $("#drpAnalyticsAsset").val();
+        mAsset.SiteId = $("#drpAnalyticsSite").val();
+        mAsset.StartDate = $('#txtAnalyticsDate').val();
+        mAsset.EndDate = $('#txtAnalyticsDate').val();
+
+        mAsset.StartTime = $("#txtAnalyticsStartTime").val();
+        mAsset.EndTime = $("#txtAnalyticsEndTime").val();
+
+        mAsset.IsReadHttpPost = false;
+        mAsset.IsLocal = false;
+
+        if (mAsset.Id == null || mAsset.Id == undefined || mAsset.Id == '') {
+            isValid = false;
+            alert('Select any one asset');
+        }
+        else if (mAsset.SiteId == null || mAsset.SiteId == undefined || mAsset.SiteId == '') {
+            alert('Select any one Site');
+            isValid = false;
+        }
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/RailwayBordDashbord/_AnalyticsReportData',
+                type: 'Post',
+                data: '{asset:' + JSON.stringify(mAsset) + '}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    debugger;
+                    $("#loader").hide();
+                    $('#divAnalyticsDetail').empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnDownloadAnalytics() {
+        debugger;
+        var isValid = true;
+        var mAsset = {};
+        mAsset.Id = $("#drpAnalyticsAsset").val();
+        mAsset.SiteId = $("#drpAnalyticsSite").val();
+        mAsset.StartDate = $('#txtAnalyticsDate').val();
+        mAsset.EndDate = $('#txtAnalyticsDate').val();
+
+        mAsset.StartTime = $("#txtAnalyticsStartTime").val();
+        mAsset.EndTime = $("#txtAnalyticsEndTime").val();
+
+        mAsset.IsReadHttpPost = false;
+        mAsset.IsLocal = false;
+
+        if (mAsset.Id == null || mAsset.Id == undefined || mAsset.Id == '') {
+            isValid = false;
+            alert('Select any one asset');
+        }
+        else if (mAsset.SiteId == null || mAsset.SiteId == undefined || mAsset.SiteId == '') {
+            alert('Select any one Site');
+            isValid = false;
+        }
+
+        if (isValid) {
+            window.location.href = "/RailwayBordDashbord/DownloadAnalyticsReportData?Id=" + mAsset.Id + "&SiteId=" + mAsset.SiteId + "&StartDate=" + mAsset.StartDate + "&EndDate=" + mAsset.EndDate + "&StartTime=" + mAsset.StartTime + "&EndTime=" + mAsset.EndTime;
+
+        }
+
+    }
+
+    function GetByAssest(siteId, assetTypeId) {
+        debugger;
+        if (siteId != null && siteId != undefined && siteId != '' && assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/RailwayBordDashbord/GetAssestBy',
+                type: 'POST',
+                data: '{siteId:' + siteId + ',assetTypeId:' + assetTypeId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpAnalyticsAsset").empty();
+                    $("#drpAnalyticsAsset").append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        $("#drpAnalyticsAsset").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+</script>
+

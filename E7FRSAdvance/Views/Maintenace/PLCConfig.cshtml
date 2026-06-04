@@ -1,0 +1,944 @@
+﻿
+@{
+    ViewBag.Title = "PLC Config";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<style>
+    .modalConfirm-dialog {
+        min-height: calc(100vh - 60px);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        overflow: auto;
+    }
+</style>
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">PLC Config</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="col-sm-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="row">
+                            <div class="col-sm-4">
+                                <h5>PLC Config</h5>
+                            </div>
+                            <div class="col-sm-4">
+                                <div class="pull-left">
+                                    <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                                </div>
+                                <div class="pull-left">
+                                    @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <table class="table table-striped">
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Role</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <label class="control-label">
+                                                <span>Update To Web Also</span>
+                                                <input type="checkbox" id="chkUpdateToWebAlso" style="vertical-align:sub" />
+                                            </label>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownLoadExportRole()" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <label class="control-label">
+                                                <span>Compare Role</span>
+                                                <input type="file" class="form-control" accept=".ini" onchange="fnCompareRoleINI(this)" />
+                                            </label>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Data Log</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownLoadExportDataLog()" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Device.INI</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <label class="control-label">
+                                                <span>Compare Device.INI</span>
+                                                <input type="file" class="form-control" accept=".ini" onchange="fnCompareDeviceINI(this)" />
+                                            </label>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownLoadExportDeviceINI()" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Autcal.INI</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownLoadExportAutINI()" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Pcal.INI</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownLoadExportPcalINI()"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Point Machine Config</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="#" onclick="fnDownLoadPointMachineConfig()" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Create Device Time</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <label class="control-label">
+                                                <input type="file" class="form-control" accept=".ini" onchange="fnUploadDeviceTimeRoleINI(this)" />
+                                            </label>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <input type="hidden" id="roles_hidden_field" />
+                                            <a href="#" onclick="fnConfirmDeviceTime()" class="btn btn-success">Create</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Export Log Scale</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownLoadExportLogScale()"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Pannel Test PDF</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownloadPannelTestPDF()"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Family Track</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownloadFamilyTrackPDF()"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Update ADC Real Time Value</h5>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <input type="file" class="form-control" accept=".ini" onchange="fnUploadDeviceTimeADCTimeValue(this)" />
+
+                                        </div>
+                                        <div class="col-sm-1">
+                                            <a href="#" onclick="fnUpdateADCTimeValue()" class="btn btn-success" data-bs-original-title="" title="">Update</a>
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownloadADCTimeValue()"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Back Up</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnDownloadBackUp()"><i class="fa fa-download"></i> Download Template Sheet</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Update Point Scale</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnUpdatePointScale()" class="btn btn-success" data-bs-original-title="" title="">Create</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Change Point ADC</h5>
+                                        </div>
+                                        <div class="col-sm-4">
+                                        </div>
+                                        <div class="col-sm-4">
+                                            <a href="javascript:void(0)" onclick="fnShowChangeADC(); return false;" class="btn btn-success" data-bs-original-title="" title="">View</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="">
+    <div class="">
+
+        <div id="divCompareRoleList">
+            @Html.Partial("_CompareRolePartial")
+        </div>
+
+    </div>
+</div>
+
+<div class="">
+    <div class="">
+
+        <div id="divCompareDeviceList">
+            @Html.Partial("_CompareDevicePartial")
+        </div>
+
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modelConfirmRole" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Download Role</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnDownLoadExportRoleNew()">New</button>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnDownLoadExportRoleExisting()">Existing</button>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnDownLoadAmendent()">Amendent</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal bounceIn animated" id="modelConfirmDeviceTime" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Confirm Device Time</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnCreateDeviceTime(true)">Override</button>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnCreateDeviceTime(false)">Blank</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="divYardConfigByAsset"></div>
+<script>
+    $(document).ready(function () {
+        if ($('#hdnCatListType').val() == 'Success') {
+            CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+        }
+        else if ($('#hdnCatListType').val() == 'Error') {
+            if ($('#hdnCatListMessage').val() == 'Forbidden!') {
+                window.location.href = "/Login/Index";
+            } else {
+                CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+            }
+        }
+    });
+
+
+    function fnDownLoadExportRole() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            $("#modelConfirmRole").modal('show');
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadExportRoleNew() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+             window.location.href = "@Url.Action("GetExportRole", "Maintenace")?siteId=" + $('#SiteId').val() + "&updateToWeb=" + $("#chkUpdateToWebAlso").prop('checked');
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadExportRoleExisting() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+             window.location.href = "@Url.Action("GetExistingExportRole", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadExportDataLog() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("GetExportDataLog", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadExportDeviceINI() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("GetExportDeviceINI", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadADCTimeValue() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadADCTimeValue", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    //function fnUploadExportAutINI($this) {
+    //    $("#loader").show();
+    //    var fileUpload = $($this).get(0);
+    //    var files = fileUpload.files;
+    //    var fileData = new FormData();
+    //    fileData.append(files[0].name, files[0]);
+
+    //    $.ajax({
+    //        url: "/Maintenace/UploadAutINI",
+    //        type: "POST",
+    //        contentType: false,
+    //        processData: false,
+    //        data: fileData,
+    //        async: true,
+    //        success: function (data) {
+    //            $("#loader").hide();
+    //            if (data != null && data != undefined && data != '') {
+    //                $("#hdnAutcalFileName").val(data);
+    //            }
+    //        },
+    //        error: function (xhr, error, status) {
+    //            $("#loader").hide();
+    //            CommonNotification("ERROR", "Internal server error.", "Error");
+    //        }
+    //    });
+    //}
+
+    function fnDownLoadExportAutINI() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownLoadExportAutINI", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadPointMachineConfig() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("GetExportPointMachineConfig", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnConfirmDeviceTime() {
+        $("#modelConfirmDeviceTime").modal("show");
+    }
+
+    function fnCreateDeviceTime(isOverride) {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var value = $('#roles_hidden_field').val();
+            if (value != null && value != '' && value != undefined) {
+                if (confirm('Are you sure you want to create device time asset')) {
+                    value = JSON.parse(value);
+
+                    var mDeviceTime = {
+                        SiteId: $('#SiteId').val(),
+                        IsOverride: isOverride,
+                        Roles: value
+                    };
+
+                    $("#loader").show();
+                    $.ajax({
+                        url: '/Maintenace/CreateDeviceTime',
+                        type: 'Post',
+                        //data: '{siteId:' + $('#SiteId').val() + ',isOverride:' + isOverride + '}',
+                        data: JSON.stringify(mDeviceTime),
+                        contentType: 'application/json',
+                        success: function (data) {
+                            $("#modelConfirmDeviceTime").modal("hide");
+                            $("#loader").hide();
+                            if (data != null && data != undefined && data.type != null && data.type == 'success') {
+                                CommonNotification("SUCCESS", "DeviceTime is Create", "success");
+                            }
+                            else {
+                                CommonNotification("ERROR", "internal server error.", "Error");
+                            }
+                        },
+                        error: function (response) {
+                            $("#loader").hide();
+                            $("#modelConfirmDeviceTime").modal("hide");
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+                    });
+                }
+            } else {
+                CommonNotification("ERROR", "Please select roles.ini file", "Error");
+            }
+
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnCompareRoleINI($this) {
+        $("#loader").show();
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var fileUpload = $($this).get(0);
+            var files = fileUpload.files;
+            var fileData = new FormData();
+            fileData.append("siteId", $('#SiteId').val());
+            fileData.append(files[0].name, files[0]);
+            $.ajax({
+                url: "/Maintenace/CompareRoleINI",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        $("#divCompareRoleList").empty().append(data);
+                        $("#modelCompareRole").modal('show');
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUpdateRole() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var i = 0;
+            var length = $('.chkUpdateRole:checked').length;
+            $(".chkUpdateRole").each(function () {
+                if ($(this).prop('checked') == true) {
+                    var dataStr = {
+                        SiteId: $('#SiteId').val(),
+                        Role: $(this).val(),
+                        Plc: $(this).data('plc')
+                    };
+
+                    $("#loader").show();
+                    $.ajax({
+                        url: '/Maintenace/UpdateCompareRole',
+                        type: 'Post',
+                        data: JSON.stringify(dataStr),
+                        contentType: 'application/json',
+                        success: function (data) {
+                            $("#loader").hide();
+
+                            i = i + 1;
+                            if (length == i) {
+                                CommonNotification("SUCCESS", "Role Update successfully.", "success");
+                            }
+                        },
+                        error: function (response) {
+                            $("#loader").hide();
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+                    });
+                    //do something
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnCompareDeviceINI($this) {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var fileUpload = $($this).get(0);
+            var files = fileUpload.files;
+            var fileData = new FormData();
+            fileData.append("siteId", $('#SiteId').val());
+            fileData.append(files[0].name, files[0]);
+            $("#loader").show();
+
+            $.ajax({
+                url: "/Maintenace/CompareDeviceINI",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        $("#divCompareDeviceList").empty().append(data);
+                        $("#modelCompareDevice").modal('show');
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUpdateDeviceINI() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var length = $('.chkUpdateDevice:checked').length;
+            var i = 0;
+            $(".chkUpdateDevice").each(function () {
+                if ($(this).prop('checked') == true) {
+                    var dataStr = {
+                        SiteId: $('#SiteId').val(),
+                        Plc: $(this).data('plc'),
+                        AssetInfoId: $(this).data('assetinfoid'),
+                    };
+
+                    $("#loader").show();
+                    $.ajax({
+                        url: '/Maintenace/UpdateCompareDeviceINI',
+                        type: 'Post',
+                        data: JSON.stringify(dataStr),
+                        contentType: 'application/json',
+                        success: function (data) {
+                            $("#loader").hide();
+                            i = i + 1;
+                            if (length == i) {
+                                CommonNotification("SUCCESS", "DeviceINI Update successfully.", "success");
+                            }
+                        },
+                        error: function (response) {
+                            $("#loader").hide();
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+                    });
+                    //do something
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUploadDeviceTimeRoleINI($this) {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var fileUpload = $($this).get(0);
+            var files = fileUpload.files;
+            var fileData = new FormData();
+            fileData.append("siteId", $('#SiteId').val());
+            fileData.append(files[0].name, files[0]);
+            $("#loader").show();
+
+            $.ajax({
+                url: "/Maintenace/UploadDeviceTimeRoleINI",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        var elems = [];
+                        $.each(data, function (key, val) {
+                            elems.push(val);
+                        });
+
+                        $('#roles_hidden_field').val(JSON.stringify(elems));
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadAmendent() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+             window.location.href = "@Url.Action("GetAmendentRole", "Maintenace")?siteId=" + $('#SiteId').val() + "&updateToWeb=" + $("#chkUpdateToWebAlso").prop('checked');
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadExportLogScale() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("GetExportLogScale", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadCalibrationPDF() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadCalibrationPDF", "Maintenace")?siteId=" + $('#SiteId').val() + "";
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadPannelTestPDF() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadPannelTestPDF", "Maintenace")?siteId=" + $('#SiteId').val() + "";
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadFamilyTrackPDF() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadFamilyTrackPDF", "Maintenace")?siteId=" + $('#SiteId').val() + "";
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUpdateADCTimeValue() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            if (confirm('Are you sure you want to Update ADC Real Time Value?')) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/Maintenace/UpdateADCTimeValue',
+                    data: { siteId: $('#SiteId').val() },
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null && data != undefined && data.type == 'success') {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        }
+                        else {
+                            CommonNotification("ERROR", data.result, "Error");
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUploadDeviceTimeADCTimeValue($this) {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            var fileUpload = $($this).get(0);
+            var files = fileUpload.files;
+            var fileData = new FormData();
+            fileData.append("siteId", $('#SiteId').val());
+            fileData.append(files[0].name, files[0]);
+            $("#loader").show();
+            $.ajax({
+                url: "/Maintenace/UploadDeviceTimeADCTimeValue",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                success: function (data) {
+                    $("#loader").hide();
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadBackUp() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadPLCBackUp", "Maintenace")?siteId=" + $('#SiteId').val();
+
+
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUpdatePointScale() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+
+            if (confirm('Are you sure you want to Update Point Scale?')) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/Maintenace/UpdatePointScale',
+                    data: { siteId: $('#SiteId').val() },
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null && data != undefined && data.type == 'success') {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        }
+                        else {
+                            CommonNotification("ERROR", data.result, "Error");
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnShowChangeADC() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetYardConfigByAssetType',
+                type: 'POST',
+                data: '{siteId:' + $('#SiteId').val() + ',assetTypeId:' + 3 + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divYardConfigByAsset").empty().append(data);
+                    $("#modelChangeADC").modal("show");
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnUpdateADCType(cardLineId) {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+
+            if (cardLineId != null && cardLineId != undefined && cardLineId != '') {
+                if (confirm('Are you sure you want to Update ADC Type?')) {
+                    $("#loader").show();
+                    var mCardLine = {};
+                    mCardLine.SiteId = $('#SiteId').val();
+                    mCardLine.Id = cardLineId;
+                    mCardLine.ADCId = $('#drpChangeADCType' + cardLineId).val();
+
+                    $.ajax({
+                        url: '/Maintenace/UpdateADCType',
+                        data: '{mCardLine:' + JSON.stringify(mCardLine) + '}',
+                        contentType: 'application/json',
+                        type: 'POST',
+                        success: function (data) {
+                            $("#loader").hide();
+                            if (data != null && data != undefined && data.type == 'success') {
+                                alert(data.result);
+                            }
+                            else {
+                                alert(data.result);
+                            }
+                        },
+                        error: function (response) {
+                            $("#loader").hide();
+                            alert("Something went wrong!");
+                        }
+                    });
+                }
+            }
+
+
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoadExportPcalINI() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadPcalScale", "Maintenace")?siteId=" + $('#SiteId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+</script>

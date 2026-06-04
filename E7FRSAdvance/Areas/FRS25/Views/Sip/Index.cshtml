@@ -1,0 +1,2888 @@
+﻿@model Domain.AssetLister
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+@*-----------------------------------------------------------------------------
+        SIP View — Aurora Editor (15-05-2026)
+        ---------------------------------------------------------------------
+        New vanilla-JS editor with Aurora SVG visuals.
+        Persistence: OLD Rappid { "cells": [...] } shape, written to the new
+        advancesipview table — so every existing site (already in this format)
+        stays compatible AND the existing Sview.cshtml runtime reads layouts
+        produced here with zero changes.
+
+        Library files (must load before this script block):
+          ~/Areas/FRS25/assets/sip/js/sip-library.js
+          ~/Areas/FRS25/assets/sip/js/sip-editor.js
+          ~/Areas/FRS25/assets/sip/css/sip-editor.css
+
+        Save endpoint  : /Site/SaveAdvSipView   → DB row in advancesipview
+        Load endpoint  : /Site/GetSipView       → prefers advancesipview, falls
+                                                  back to legacy sipview row
+    -----------------------------------------------------------------------------*@
+
+@*  Aurora theme uses Plus Jakarta Sans (body) + JetBrains Mono (interface)  *@
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+
+<script src="~/Areas/FRS25/assets/js/jquery-3.5.1.min.js"></script>
+<link href="~/Areas/FRS25/assets/sip/css/sip-editor.css" rel="stylesheet" />
+<style>
+    /* ---------------------------------------------------------------------
+       SIP Asset Detail Popup — scoped styles so the editor UI is untouched.
+       --------------------------------------------------------------------- */
+    #sipAssetPopupOverlay {
+        --sap-bg-panel: #0f1629;
+        --sap-bg-card: #141b2f;
+        --sap-bg-row-alt: #111827;
+        --sap-bg-row-hover: #1a2340;
+        --sap-bg-header: #0c1220;
+        --sap-border: #1e2a45;
+        --sap-border-glow: #2a3a5c;
+        --sap-text-primary: #e2e8f0;
+        --sap-text-secondary: #8b9dc3;
+        --sap-text-muted: #5a6a8a;
+        --sap-accent-cyan: #00d4ff;
+        --sap-accent-green: #22c55e;
+        --sap-accent-yellow: #f59e0b;
+        --sap-accent-orange: #f97316;
+        --sap-accent-red: #ef4444;
+        --sap-accent-blue: #3b82f6;
+        --sap-gradient-header: linear-gradient(135deg, #1a2744 0%, #0f1629 100%);
+        --sap-shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+        --sap-radius: 8px;
+        --sap-radius-sm: 4px;
+        --sap-radius-lg: 12px;
+        position: fixed;
+        inset: 0;
+        z-index: 5000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(5,8,18,0.72);
+        backdrop-filter: blur(6px);
+        font-family: 'IBM Plex Sans', 'Plus Jakarta Sans', sans-serif;
+        color: var(--sap-text-primary);
+    }
+
+        #sipAssetPopupOverlay.sap-show {
+            display: flex;
+        }
+
+        #sipAssetPopupOverlay * {
+            box-sizing: border-box;
+        }
+
+        #sipAssetPopupOverlay .sap-popup {
+            width: 1060px;
+            max-width: 97vw;
+            max-height: 70vh;
+            background: var(--sap-bg-panel);
+            border: 1px solid var(--sap-border);
+            border-radius: var(--sap-radius-lg);
+            box-shadow: var(--sap-shadow-card), 0 0 60px rgba(0,212,255,0.06);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: sapSlideUp .25s cubic-bezier(.16,1,.3,1);
+        }
+
+    @@keyframes sapSlideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px) scale(.985);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    #sipAssetPopupOverlay .sap-popup-header {
+        background: var(--sap-gradient-header);
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--sap-border);
+        flex-shrink: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-popup-header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-asset-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: var(--sap-radius);
+        background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(0,229,160,0.1));
+        border: 1px solid rgba(0,212,255,0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+        #sipAssetPopupOverlay .sap-asset-icon svg {
+            width: 18px;
+            height: 18px;
+            color: var(--sap-accent-cyan);
+        }
+
+    #sipAssetPopupOverlay .sap-asset-name {
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #fff;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #sipAssetPopupOverlay .sap-asset-location {
+        font-size: 12px;
+        color: var(--sap-text-secondary);
+        margin-top: 1px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #sipAssetPopupOverlay .sap-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    #sipAssetPopupOverlay .sap-maint-mode-btn,
+    #sipAssetPopupOverlay .sap-close-btn,
+    #sipAssetPopupOverlay .sap-btn,
+    #sipAssetPopupOverlay .sap-filter-apply,
+    #sipAssetPopupOverlay .sap-filter-clear,
+    #sipAssetPopupOverlay .sap-range-btn,
+    #sipAssetPopupOverlay .sap-m-btn {
+        font-family: inherit;
+        cursor: pointer;
+        transition: all .15s;
+    }
+
+    #sipAssetPopupOverlay .sap-maint-mode-btn {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 7px 16px;
+        border-radius: 20px;
+        border: 1px solid rgba(245,158,11,0.4);
+        background: rgba(245,158,11,0.1);
+        color: var(--sap-accent-yellow);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        #sipAssetPopupOverlay .sap-maint-mode-btn:hover {
+            background: rgba(245,158,11,0.2);
+            border-color: rgba(245,158,11,0.6);
+        }
+
+        #sipAssetPopupOverlay .sap-maint-mode-btn.sap-active-mode {
+            background: rgba(245,158,11,0.2);
+            border-color: var(--sap-accent-yellow);
+            box-shadow: 0 0 12px rgba(245,158,11,0.2);
+        }
+
+        #sipAssetPopupOverlay .sap-maint-mode-btn .sap-wrench {
+            width: 14px;
+            height: 14px;
+        }
+
+    #sipAssetPopupOverlay .sap-close-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--sap-radius);
+        border: 1px solid var(--sap-border);
+        background: rgba(255,255,255,0.03);
+        color: var(--sap-text-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        #sipAssetPopupOverlay .sap-close-btn:hover {
+            background: rgba(239,68,68,0.15);
+            color: var(--sap-accent-red);
+            border-color: rgba(239,68,68,0.3);
+        }
+
+    #sipAssetPopupOverlay .sap-tabs-bar {
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        background: var(--sap-bg-header);
+        border-bottom: 1px solid var(--sap-border);
+        gap: 2px;
+        flex-shrink: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-tab {
+        font-size: 13px;
+        font-weight: 500;
+        padding: 11px 16px;
+        color: var(--sap-text-muted);
+        cursor: pointer;
+        position: relative;
+        transition: color .2s;
+        user-select: none;
+        border: none;
+        background: none;
+        font-family: inherit;
+    }
+
+        #sipAssetPopupOverlay .sap-tab:hover {
+            color: var(--sap-text-secondary);
+        }
+
+        #sipAssetPopupOverlay .sap-tab.sap-active {
+            color: var(--sap-accent-cyan);
+        }
+
+            #sipAssetPopupOverlay .sap-tab.sap-active::after {
+                content: '';
+                position: absolute;
+                bottom: 0;
+                left: 12px;
+                right: 12px;
+                height: 2px;
+                background: var(--sap-accent-cyan);
+                border-radius: 2px 2px 0 0;
+            }
+
+    #sipAssetPopupOverlay .sap-tab-alarm {
+        color: var(--sap-accent-red) !important;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    #sipAssetPopupOverlay .sap-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--sap-accent-red);
+        animation: sapPulseDot 2s infinite;
+    }
+
+    @@keyframes sapPulseDot {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: .3;
+        }
+    }
+
+    #sipAssetPopupOverlay .sap-tab-content {
+        display: none;
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+    }
+
+        #sipAssetPopupOverlay .sap-tab-content.sap-active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #sipAssetPopupOverlay .sap-tab-content::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        #sipAssetPopupOverlay .sap-tab-content::-webkit-scrollbar-thumb {
+            background: var(--sap-border);
+            border-radius: 4px;
+        }
+
+    #sipAssetPopupOverlay .sap-telemetry-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background: linear-gradient(90deg, rgba(0,212,255,0.06), transparent);
+        border-bottom: 1px solid var(--sap-border);
+        flex-shrink: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-telemetry-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--sap-accent-cyan);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+
+    #sipAssetPopupOverlay .sap-live-dot {
+        width: 7px;
+        height: 7px;
+        background: var(--sap-accent-green);
+        border-radius: 50%;
+        box-shadow: 0 0 6px rgba(34,197,94,0.6);
+        animation: sapPulseDot 1.5s infinite;
+    }
+
+    #sipAssetPopupOverlay .sap-bell-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: var(--sap-radius);
+        background: rgba(0,212,255,0.08);
+        border: 1px solid rgba(0,212,255,0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--sap-accent-cyan);
+    }
+
+    #sipAssetPopupOverlay .sap-telemetry-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        flex: 1;
+        min-height: 180px;
+    }
+
+    #sipAssetPopupOverlay .sap-telemetry-col {
+        display: flex;
+        flex-direction: column;
+    }
+
+        #sipAssetPopupOverlay .sap-telemetry-col:first-child {
+            border-right: 1px solid var(--sap-border);
+        }
+
+    #sipAssetPopupOverlay .sap-telem-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+        padding: 11px 20px;
+        border-bottom: 1px solid rgba(30,42,69,0.5);
+        transition: background .12s;
+    }
+
+        #sipAssetPopupOverlay .sap-telem-row:hover {
+            background: var(--sap-bg-row-hover);
+        }
+
+        #sipAssetPopupOverlay .sap-telem-row:nth-child(even) {
+            background: var(--sap-bg-row-alt);
+        }
+
+            #sipAssetPopupOverlay .sap-telem-row:nth-child(even):hover {
+                background: var(--sap-bg-row-hover);
+            }
+
+    #sipAssetPopupOverlay .sap-telem-label {
+        font-size: 13px;
+        color: var(--sap-text-secondary);
+        font-weight: 500;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #sipAssetPopupOverlay .sap-telem-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--sap-text-primary);
+        text-align: right;
+        word-break: break-word;
+    }
+
+    #sipAssetPopupOverlay .sap-value-ok {
+        color: var(--sap-accent-green) !important;
+        font-family: 'IBM Plex Sans', 'Plus Jakarta Sans', sans-serif !important;
+        font-weight: 600 !important;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        #sipAssetPopupOverlay .sap-value-ok::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--sap-accent-green);
+            box-shadow: 0 0 8px rgba(34,197,94,0.5);
+        }
+
+    #sipAssetPopupOverlay .sap-value-warn {
+        color: var(--sap-accent-yellow) !important;
+    }
+
+    #sipAssetPopupOverlay .sap-value-danger {
+        color: var(--sap-accent-red) !important;
+    }
+
+    #sipAssetPopupOverlay .sap-empty-state {
+        grid-column: 1 / -1;
+        padding: 28px 20px;
+        color: var(--sap-text-muted);
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        line-height: 1.5;
+    }
+
+    #sipAssetPopupOverlay .sap-analytics-bar,
+    #sipAssetPopupOverlay .sap-graph-bar,
+    #sipAssetPopupOverlay .sap-event-bar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--sap-border);
+        flex-shrink: 0;
+        flex-wrap: wrap;
+    }
+
+    #sipAssetPopupOverlay .sap-filter-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    #sipAssetPopupOverlay .sap-filter-label {
+        font-size: 11px;
+        color: var(--sap-text-muted);
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    #sipAssetPopupOverlay .sap-date-input,
+    #sipAssetPopupOverlay .sap-graph-select {
+        font-family: inherit;
+        font-size: 11px;
+        padding: 5px 10px;
+        background: var(--sap-bg-card);
+        border: 1px solid var(--sap-border);
+        border-radius: var(--sap-radius-sm);
+        color: var(--sap-text-primary);
+        outline: none;
+        color-scheme: dark;
+    }
+
+    #sipAssetPopupOverlay .sap-filter-apply {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 5px 14px;
+        border-radius: var(--sap-radius-sm);
+        border: 1px solid rgba(0,212,255,0.3);
+        background: rgba(0,212,255,0.1);
+        color: var(--sap-accent-cyan);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    #sipAssetPopupOverlay .sap-filter-clear,
+    #sipAssetPopupOverlay .sap-range-btn {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 5px 10px;
+        border-radius: var(--sap-radius-sm);
+        border: 1px solid var(--sap-border);
+        background: transparent;
+        color: var(--sap-text-muted);
+    }
+
+        #sipAssetPopupOverlay .sap-filter-clear:hover,
+        #sipAssetPopupOverlay .sap-range-btn:hover {
+            color: var(--sap-text-secondary);
+            border-color: var(--sap-border-glow);
+        }
+
+        #sipAssetPopupOverlay .sap-range-btn.sap-active {
+            background: rgba(0,212,255,0.1);
+            color: var(--sap-accent-cyan);
+            border-color: rgba(0,212,255,0.3);
+        }
+
+    #sipAssetPopupOverlay .sap-graph-range-btns {
+        display: flex;
+        gap: 4px;
+        margin-left: auto;
+    }
+
+    #sipAssetPopupOverlay .sap-panel-body {
+        flex: 1;
+        padding: 16px 20px;
+        overflow-y: auto;
+    }
+
+    #sipAssetPopupOverlay .sap-section-tag {
+        padding: 8px 0 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--sap-accent-cyan);
+    }
+
+        #sipAssetPopupOverlay .sap-section-tag::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, rgba(0,212,255,.25), transparent);
+        }
+
+        #sipAssetPopupOverlay .sap-section-tag.sap-failure {
+            color: var(--sap-accent-red);
+        }
+
+            #sipAssetPopupOverlay .sap-section-tag.sap-failure::after {
+                background: linear-gradient(90deg, rgba(239,68,68,.25), transparent);
+            }
+
+    #sipAssetPopupOverlay .sap-cause-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px,1fr));
+        gap: 8px;
+    }
+
+    #sipAssetPopupOverlay .sap-cause-card {
+        background: var(--sap-bg-card);
+        border: 1px solid var(--sap-border);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+    #sipAssetPopupOverlay .sap-cc-head {
+        padding: 6px 8px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #fff;
+        line-height: 1.3;
+        min-height: 32px;
+        display: flex;
+        align-items: center;
+        background: linear-gradient(135deg, rgba(0,212,255,0.18), rgba(0,212,255,0.04));
+        border-bottom: 1px solid rgba(0,212,255,0.12);
+    }
+
+        #sipAssetPopupOverlay .sap-cc-head.sap-f {
+            background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(239,68,68,0.06));
+            border-bottom: 1px solid rgba(239,68,68,0.15);
+        }
+
+    #sipAssetPopupOverlay .sap-cc-body {
+        padding: 5px 8px 7px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    #sipAssetPopupOverlay .sap-cc-count {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+        #sipAssetPopupOverlay .sap-cc-count.sap-hot {
+            color: var(--sap-accent-red);
+        }
+
+    #sipAssetPopupOverlay .sap-cc-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 8px;
+        color: var(--sap-text-muted);
+        text-align: right;
+        line-height: 1.25;
+        word-break: break-word;
+    }
+
+    #sipAssetPopupOverlay .sap-chart-wrap {
+        flex: 1;
+        padding: 0 20px 20px;
+        min-height: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-chart-area {
+        height: 100%;
+        min-height: 240px;
+        background: var(--sap-bg-card);
+        border: 1px solid var(--sap-border);
+        border-radius: var(--sap-radius);
+        position: relative;
+        overflow: hidden;
+    }
+
+    #sipAssetPopupOverlay .sap-chart-canvas {
+        width: 100%;
+        height: 100%;
+    }
+
+    #sipAssetPopupOverlay .sap-event-log {
+        padding: 0 20px;
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    #sipAssetPopupOverlay .sap-event-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(30,42,69,0.4);
+    }
+
+    #sipAssetPopupOverlay .sap-event-time {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        color: var(--sap-text-muted);
+        white-space: nowrap;
+        padding-top: 2px;
+        min-width: 130px;
+    }
+
+    #sipAssetPopupOverlay .sap-event-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        margin-top: 5px;
+        background: var(--sap-accent-blue);
+    }
+
+        #sipAssetPopupOverlay .sap-event-dot.sap-warn {
+            background: var(--sap-accent-yellow);
+        }
+
+        #sipAssetPopupOverlay .sap-event-dot.sap-error {
+            background: var(--sap-accent-red);
+        }
+
+        #sipAssetPopupOverlay .sap-event-dot.sap-success {
+            background: var(--sap-accent-green);
+        }
+
+    #sipAssetPopupOverlay .sap-event-text {
+        font-size: 13px;
+        color: var(--sap-text-primary);
+        line-height: 1.5;
+    }
+
+    #sipAssetPopupOverlay .sap-code {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        background: rgba(0,212,255,0.08);
+        padding: 1px 6px;
+        border-radius: 3px;
+        color: var(--sap-accent-cyan);
+    }
+
+    #sipAssetPopupOverlay .sap-alarm-banner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        background: rgba(239,68,68,0.08);
+        border: 1px solid rgba(239,68,68,0.2);
+        border-radius: var(--sap-radius);
+        margin-bottom: 16px;
+    }
+
+    #sipAssetPopupOverlay .sap-alarm-banner-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: rgba(239,68,68,0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-alarm-banner-text {
+        font-size: 13px;
+        color: var(--sap-accent-red);
+        font-weight: 500;
+        line-height: 1.5;
+    }
+
+        #sipAssetPopupOverlay .sap-alarm-banner-text span {
+            font-weight: 400;
+            color: var(--sap-text-secondary);
+            display: block;
+            font-size: 12px;
+        }
+
+    #sipAssetPopupOverlay .sap-alarm-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+        #sipAssetPopupOverlay .sap-alarm-table th {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--sap-text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--sap-border);
+        }
+
+        #sipAssetPopupOverlay .sap-alarm-table td {
+            font-size: 12px;
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(30,42,69,0.4);
+            color: var(--sap-text-primary);
+        }
+
+    #sipAssetPopupOverlay .sap-alarm-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 3px 10px;
+        border-radius: 12px;
+        background: rgba(239,68,68,0.12);
+        color: var(--sap-accent-red);
+    }
+
+    #sipAssetPopupOverlay .sap-popup-footer {
+        padding: 10px 20px;
+        border-top: 1px solid var(--sap-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--sap-bg-header);
+        flex-shrink: 0;
+    }
+
+    #sipAssetPopupOverlay .sap-footer-meta {
+        font-size: 11px;
+        color: var(--sap-text-muted);
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+
+    #sipAssetPopupOverlay .sap-footer-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    #sipAssetPopupOverlay .sap-btn {
+        font-size: 12px;
+        font-weight: 500;
+        padding: 7px 16px;
+        border-radius: var(--sap-radius-sm);
+        border: 1px solid var(--sap-border);
+        background: transparent;
+        color: var(--sap-text-secondary);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        #sipAssetPopupOverlay .sap-btn:hover {
+            border-color: var(--sap-border-glow);
+            color: var(--sap-text-primary);
+        }
+
+    #sipAssetPopupOverlay .sap-btn-primary {
+        background: rgba(0,212,255,0.1);
+        border-color: rgba(0,212,255,0.3);
+        color: var(--sap-accent-cyan);
+    }
+
+    #sipAssetPopupOverlay .sap-maint-modal-bg {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 5010;
+        background: rgba(5,8,18,0.6);
+        backdrop-filter: blur(4px);
+        align-items: center;
+        justify-content: center;
+    }
+
+        #sipAssetPopupOverlay .sap-maint-modal-bg.sap-show {
+            display: flex;
+        }
+
+    #sipAssetPopupOverlay .sap-maint-modal {
+        width: 440px;
+        max-width: 92vw;
+        background: var(--sap-bg-panel);
+        border: 1px solid var(--sap-border);
+        border-radius: var(--sap-radius-lg);
+        box-shadow: var(--sap-shadow-card);
+        padding: 24px;
+        animation: sapSlideUp .25s ease;
+    }
+
+        #sipAssetPopupOverlay .sap-maint-modal h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #sipAssetPopupOverlay .sap-maint-modal .sap-sub {
+            font-size: 12px;
+            color: var(--sap-text-muted);
+            margin-bottom: 20px;
+        }
+
+    #sipAssetPopupOverlay .sap-maint-field {
+        margin-bottom: 14px;
+    }
+
+        #sipAssetPopupOverlay .sap-maint-field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--sap-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: 5px;
+        }
+
+        #sipAssetPopupOverlay .sap-maint-field input,
+        #sipAssetPopupOverlay .sap-maint-field textarea,
+        #sipAssetPopupOverlay .sap-maint-field select {
+            width: 100%;
+            font-family: inherit;
+            font-size: 13px;
+            padding: 8px 12px;
+            background: var(--sap-bg-card);
+            border: 1px solid var(--sap-border);
+            border-radius: var(--sap-radius-sm);
+            color: var(--sap-text-primary);
+            outline: none;
+            color-scheme: dark;
+        }
+
+        #sipAssetPopupOverlay .sap-maint-field textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+    #sipAssetPopupOverlay .sap-maint-row {
+        display: flex;
+        gap: 12px;
+    }
+
+        #sipAssetPopupOverlay .sap-maint-row .sap-maint-field {
+            flex: 1;
+        }
+
+    #sipAssetPopupOverlay .sap-maint-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 20px;
+    }
+
+    #sipAssetPopupOverlay .sap-m-btn {
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 20px;
+        border-radius: var(--sap-radius-sm);
+        border: 1px solid var(--sap-border);
+        background: transparent;
+        color: var(--sap-text-secondary);
+    }
+
+        #sipAssetPopupOverlay .sap-m-btn:hover {
+            border-color: var(--sap-border-glow);
+            color: var(--sap-text-primary);
+        }
+
+        #sipAssetPopupOverlay .sap-m-btn.sap-primary {
+            background: rgba(245,158,11,0.15);
+            border-color: rgba(245,158,11,0.4);
+            color: var(--sap-accent-yellow);
+        }
+
+    @@media (max-width: 760px) {
+        #sipAssetPopupOverlay {
+            padding: 10px;
+        }
+
+            #sipAssetPopupOverlay .sap-popup {
+                max-height: 88vh;
+            }
+
+            #sipAssetPopupOverlay .sap-telemetry-grid {
+                grid-template-columns: 1fr;
+            }
+
+            #sipAssetPopupOverlay .sap-telemetry-col:first-child {
+                border-right: none;
+            }
+
+            #sipAssetPopupOverlay .sap-tabs-bar {
+                overflow-x: auto;
+                padding: 0 10px;
+            }
+
+            #sipAssetPopupOverlay .sap-popup-footer {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 10px;
+            }
+    }
+    #canvas svg g.sip-asset,
+    #canvas svg g.editable {
+        cursor: pointer;
+        pointer-events: all;
+    }
+
+    #canvas svg .sip-rail-layer,
+    #canvas svg .sip-stand-layer,
+    #canvas svg .sip-breaker-layer,
+    #canvas svg .grid {
+        pointer-events: none;
+    }
+</style>
+
+<script>
+    (function () {
+        "use strict";
+
+        function esc(v) {
+            return String(v == null ? "" : v)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function getCellLabel(cell) {
+            return cell &&
+                cell.attrs &&
+                cell.attrs.label &&
+                cell.attrs.label.text
+                ? String(cell.attrs.label.text).trim()
+                : "";
+        }
+
+        function getAssetName(cell, detail) {
+            return (detail && detail.assetName)
+                || getCellLabel(cell)
+                || (cell && cell.id)
+                || "Selected Asset";
+        }
+
+        function getAssetType(cell, detail) {
+            return (detail && detail.cellType)
+                || (cell && cell.type)
+                || "";
+        }
+
+        function getLiveValues(assetName, detail) {
+            if (detail && detail.liveValues && Object.keys(detail.liveValues).length > 0) {
+                return detail.liveValues;
+            }
+
+            if (window.SipTelemetry &&
+                window.SipTelemetry._state &&
+                window.SipTelemetry._state.assetValues &&
+                window.SipTelemetry._state.assetValues[assetName]) {
+                return window.SipTelemetry._state.assetValues[assetName];
+            }
+
+            return {};
+        }
+
+        function ensurePopup() {
+            var existing = document.getElementById("sipAssetPopupOverlay");
+            if (existing) return existing;
+
+            var style = document.createElement("style");
+            style.id = "sipAssetPopupStyle";
+            style.innerHTML =
+                "#sipAssetPopupOverlay{" +
+                "position:fixed;inset:0;background:rgba(5,8,18,.72);" +
+                "z-index:999999;display:none;align-items:center;justify-content:center;" +
+                "font-family:Arial,Helvetica,sans-serif;" +
+                "}" +
+                "#sipAssetPopupBox{" +
+                "width:900px;max-width:96vw;max-height:80vh;background:#0f172a;" +
+                "border:1px solid #334155;border-radius:12px;overflow:hidden;" +
+                "box-shadow:0 20px 60px rgba(0,0,0,.45);color:#e2e8f0;" +
+                "}" +
+                "#sipAssetPopupHead{" +
+                "padding:14px 18px;background:#111827;border-bottom:1px solid #334155;" +
+                "display:flex;align-items:center;justify-content:space-between;" +
+                "}" +
+                "#sipAssetPopupTitle{font-size:17px;font-weight:700;color:#fff;}" +
+                "#sipAssetPopupSub{font-size:12px;color:#94a3b8;margin-top:3px;}" +
+                "#sipAssetPopupClose{" +
+                "border:1px solid #475569;background:#1e293b;color:#cbd5e1;" +
+                "width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:18px;" +
+                "}" +
+                "#sipAssetPopupTabs{display:flex;background:#020617;border-bottom:1px solid #334155;}" +
+                ".sip-popup-tab{padding:11px 16px;color:#94a3b8;font-size:13px;border:none;background:transparent;cursor:pointer;}" +
+                ".sip-popup-tab.active{color:#22d3ee;border-bottom:2px solid #22d3ee;}" +
+                "#sipAssetPopupBody{padding:16px;overflow:auto;max-height:58vh;}" +
+                ".sip-attr-table{width:100%;border-collapse:collapse;}" +
+                ".sip-attr-table th{" +
+                "text-align:left;font-size:12px;color:#94a3b8;text-transform:uppercase;" +
+                "padding:10px;border-bottom:1px solid #334155;" +
+                "}" +
+                ".sip-attr-table td{" +
+                "padding:10px;border-bottom:1px solid rgba(51,65,85,.6);" +
+                "font-size:13px;color:#e2e8f0;" +
+                "}" +
+                ".sip-attr-table td.value{font-family:Consolas,monospace;color:#86efac;}" +
+                ".sip-empty{padding:30px;text-align:center;color:#94a3b8;border:1px dashed #334155;border-radius:8px;}";
+            document.head.appendChild(style);
+
+            var overlay = document.createElement("div");
+            overlay.id = "sipAssetPopupOverlay";
+            overlay.innerHTML =
+                '<div id="sipAssetPopupBox">' +
+                '<div id="sipAssetPopupHead">' +
+                '<div>' +
+                '<div id="sipAssetPopupTitle">Selected Asset</div>' +
+                '<div id="sipAssetPopupSub">Live Attributes</div>' +
+                '</div>' +
+                '<button id="sipAssetPopupClose" type="button">×</button>' +
+                '</div>' +
+                '<div id="sipAssetPopupTabs">' +
+                '<button type="button" class="sip-popup-tab active" data-tab="live">Live Values</button>' +
+                '<button type="button" class="sip-popup-tab" data-tab="info">Asset Info</button>' +
+                '</div>' +
+                '<div id="sipAssetPopupBody"></div>' +
+                '</div>';
+
+            document.body.appendChild(overlay);
+
+            document.getElementById("sipAssetPopupClose").onclick = function () {
+                overlay.style.display = "none";
+            };
+
+            overlay.addEventListener("click", function (e) {
+                if (e.target === overlay) {
+                    overlay.style.display = "none";
+                }
+            });
+
+            return overlay;
+        }
+
+        function renderLiveValues(values) {
+            var keys = Object.keys(values || {});
+
+            if (!keys.length) {
+                return '<div class="sip-empty">No live attribute values received for this asset yet.</div>';
+            }
+
+            keys.sort();
+
+            var html = '<table class="sip-attr-table">' +
+                '<thead><tr><th>Attribute</th><th>Live Value</th></tr></thead><tbody>';
+
+            keys.forEach(function (key) {
+                html += '<tr>' +
+                    '<td>' + esc(key) + '</td>' +
+                    '<td class="value">' + esc(values[key]) + '</td>' +
+                    '</tr>';
+            });
+
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function renderAssetInfo(cell, detail, assetName, assetType) {
+            return '<table class="sip-attr-table">' +
+                '<tbody>' +
+                '<tr><td>Asset Name</td><td class="value">' + esc(assetName) + '</td></tr>' +
+                '<tr><td>Cell Id</td><td class="value">' + esc(cell && cell.id) + '</td></tr>' +
+                '<tr><td>Cell Type</td><td class="value">' + esc(assetType) + '</td></tr>' +
+                '<tr><td>Site Id</td><td class="value">' + esc(detail && detail.siteId) + '</td></tr>' +
+                '<tr><td>Source</td><td class="value">' + esc(detail && detail.source) + '</td></tr>' +
+                '</tbody>' +
+                '</table>';
+        }
+
+        window.OpenSipAssetPopupFromCell = function (cell, detail) {
+            var overlay = ensurePopup();
+
+            var assetName = getAssetName(cell, detail || {});
+            var assetType = getAssetType(cell, detail || {});
+            var liveValues = getLiveValues(assetName, detail || {});
+
+            document.getElementById("sipAssetPopupTitle").textContent = assetName;
+            document.getElementById("sipAssetPopupSub").textContent = assetType || "Live Attributes";
+
+            var body = document.getElementById("sipAssetPopupBody");
+            body.innerHTML = renderLiveValues(liveValues);
+
+            var tabs = overlay.querySelectorAll(".sip-popup-tab");
+            tabs.forEach(function (tab) {
+                tab.onclick = function () {
+                    tabs.forEach(function (t) { t.classList.remove("active"); });
+                    tab.classList.add("active");
+
+                    if (tab.getAttribute("data-tab") === "live") {
+                        body.innerHTML = renderLiveValues(getLiveValues(assetName, detail || {}));
+                    } else {
+                        body.innerHTML = renderAssetInfo(cell, detail || {}, assetName, assetType);
+                    }
+                };
+            });
+
+            overlay.style.display = "flex";
+
+            console.log("[sip-popup] popup opened", {
+                assetName: assetName,
+                assetType: assetType,
+                liveValues: liveValues,
+                cell: cell,
+                detail: detail
+            });
+        };
+
+        console.log("[sip-popup] window.OpenSipAssetPopupFromCell registered");
+    })();
+</script>
+<div class="container-fluid">
+
+    @{
+        var advSip = ViewBag.AdvSipView as Domain.AdvancedSIPView ?? new Domain.AdvancedSIPView();
+    }
+
+    <input type="hidden" id="hdnId" value="@(advSip.Id)" />
+    <input type="hidden" id="hdnSiteId" value="@(advSip.SiteId)" />
+    <input type="hidden" id="hdnSipViewData" value="@(advSip.SipView)" />
+
+    <div class="sip-app" style="height: 800px;">
+        <div class="app">
+
+            <header class="topbar">
+                <div class="brand">SIP <span class="accent">/</span> YARD EDITOR</div>
+                <div class="actions">
+                    <button class="tb primary" onclick="SaveSipView()" id="save">Save</button>
+                    <span class="sip-status" id="sipStatus"></span>
+                    <span class="sep"></span>
+                    <button class="tb" onclick="SipEditor.loadPreset('blank')">New</button>
+                    <button class="tb" onclick="SipEditor.loadPreset('sample')">Load Sample</button>
+                    <span class="sep"></span>
+                    <button class="tb" id="undo-btn" onclick="SipEditor.undo()">Undo</button>
+                    <button class="tb" id="redo-btn" onclick="SipEditor.redo()">Redo</button>
+                    <button class="tb" onclick="SipEditor.fitAll()">Fit All</button>
+                    <span class="sep"></span>
+                    <button class="tb" onclick="SipEditor.openImport()">Import</button>
+                    <button class="tb" onclick="SipEditor.exportLayoutJs()">Export .js</button>
+                    <button class="tb" onclick="SipEditor.exportSvg()">Export .svg</button>
+                    <span class="sep"></span>
+                    <button class="tb" id="fullscreen-btn" onclick="SipEditor.toggleFullscreen()">Fullscreen</button>
+                </div>
+            </header>
+
+            @* ---------------------------------------------------------------
+                Site filter — Zone → Division → Site cascade. Drives which
+                site the editor reads / writes against.  Changing the site
+                triggers GetSipView() so the canvas updates in-place.
+                Zones are rendered server-side from ViewBag.Zones;
+                Divisions and Sites load via /Sip/GetDivisionByZoneId and
+                /Sip/GetSiteByDivisionId on cascade.
+                ---------------------------------------------------------------*@
+            <div class="filterbar"
+                 style="display:flex; gap:12px; align-items:flex-end;
+                        padding:10px 14px;
+                        background:rgba(127,197,255,0.04);
+                        border-bottom:1px solid var(--line);">
+                <div class="field" style="margin:0; flex:1; max-width:220px;">
+                    <label>Zone</label>
+                    @Html.DropDownList("ZoneId",
+                                            (SelectList)ViewBag.Zones,
+                                            "— select zone —",
+                                            new { id = "zone-select" })
+                </div>
+                <div class="field" style="margin:0; flex:1; max-width:220px;">
+                    <label>Division</label>
+                    <select id="division-select" disabled><option value="">— select division —</option></select>
+                </div>
+                <div class="field" style="margin:0; flex:1; max-width:240px;">
+                    <label>Site</label>
+                    <select id="site-select" disabled><option value="">— select site —</option></select>
+                </div>
+                <div style="flex:1"></div>
+                <div style="padding-bottom:6px; font-size:11px; color:var(--muted); font-family:'JetBrains Mono', ui-monospace, monospace;">
+                    Active site:&nbsp;<span id="site-id-readout" style="color:var(--accent);">@(advSip.SiteId > 0 ? advSip.SiteId.ToString() : "—")</span>
+                </div>
+            </div>
+
+            <div class="workspace">
+
+                <aside class="toolbox">
+                    <div class="toolbox-grid" id="toolbox-grid"></div>
+
+                    <h3>Grid</h3>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="snap-toggle" checked />
+                        Snap to grid
+                    </label>
+                    <div class="field">
+                        <label>Snap size (units)</label>
+                        <input type="number" id="snap-size" value="10" min="1" max="100" />
+                    </div>
+
+                    <h3>Canvas</h3>
+                    <div class="field">
+                        <label>ViewBox</label>
+                        <input type="text" id="viewbox-input" value="0 0 2000 740" />
+                    </div>
+
+                    <div class="toolbox-info">
+                        <span class="kbd">Click</span> select &nbsp;·&nbsp;
+                        <span class="kbd">Drag</span> move<br />
+                        <span class="kbd">Del</span> remove &nbsp;·&nbsp;
+                        <span class="kbd">Esc</span> deselect<br />
+                        <span class="kbd">Ctrl+Z</span> undo &nbsp;·&nbsp;
+                        <span class="kbd">Ctrl+Y</span> redo<br />
+                        <span class="kbd">Ctrl+D</span> duplicate
+                    </div>
+                </aside>
+
+                <main class="canvas-wrap">
+                    <div class="canvas-host">
+                        <div id="canvas"></div>
+                    </div>
+                    <div class="statusbar">
+                        <span class="coords" id="cursor-coords">—</span>
+                        <span class="sep">·</span>
+                        <span id="element-count">0 elements</span>
+                        <span class="sep">·</span>
+                        <span id="selection-label">No selection</span>
+                        <span class="hint">SIP-LIB v2.0 · AURORA</span>
+                    </div>
+                </main>
+
+                <aside class="inspector">
+                    <h3>Inspector</h3>
+                    <div id="inspector-body">
+                        <p class="muted">Nothing selected.<br /><br />Click an element on the canvas, or add one from the toolbox.</p>
+                    </div>
+                </aside>
+
+            </div>
+        </div>
+
+        @*--- Modal (Import / Export .js / Export .svg) ---*@
+        <div class="modal-backdrop" id="modal">
+            <div class="modal">
+                <div class="modal-head">
+                    <div class="title">SIP <span class="accent">/</span> <span id="modal-title">EXPORT</span></div>
+                    <button class="tb" onclick="SipEditor.closeModal()">Close</button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="modal-text" spellcheck="false"></textarea>
+                </div>
+                <div class="modal-foot">
+                    <span class="left" id="modal-hint"></span>
+                    <button class="tb" onclick="SipEditor.copyModal()">Copy</button>
+                    <button class="tb" id="modal-action" onclick="SipEditor.downloadModal()">Download</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+    </div>
+
+</div>
+@*--- Asset Detail Popup: opens when an asset is clicked on the SIP canvas. ---*@
+<div id="sipAssetPopupOverlay" class="sip-asset-popup-overlay" style="display: none;" aria-hidden="true">
+    <div id="sipAssetPopup" class="sip-asset-popup" role="dialog" aria-modal="true" aria-labelledby="popupAssetName">
+        <div class="sap-popup-header">
+            <div class="sap-popup-header-left">
+                <div class="sap-asset-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 12h4" /><path d="M14 12h4" /></svg>
+                </div>
+                <div style="min-width:0;">
+                    <div class="sap-asset-name" id="sipAssetPopupAssetName">Selected Asset</div>
+                    <div class="sap-asset-location" id="sipAssetPopupAssetLocation">—</div>
+                </div>
+            </div>
+            <div class="sap-header-actions">
+                <button type="button" class="sap-maint-mode-btn" id="sipAssetMaintBtn">
+                    <svg class="sap-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" /></svg>
+                    Maintenance Mode
+                </button>
+                <button type="button" class="sap-close-btn" id="sipAssetPopupClose" aria-label="Close asset popup">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+            </div>
+        </div>
+        <button class="sap-close-btn" id="sipAssetPopupClose" onclick="closeAssetDetailPopup()">✕</button>
+        <div class="sap-tabs-bar">
+            <button type="button" class="sap-tab sap-active" data-sap-tab="live">Live</button>
+            <button type="button" class="sap-tab" data-sap-tab="analytics">Alert Analytics</button>
+            <button type="button" class="sap-tab" data-sap-tab="graph">Graph</button>
+            <button type="button" class="sap-tab" data-sap-tab="eventlog">Event Log</button>
+            <button type="button" class="sap-tab sap-tab-alarm" data-sap-tab="alarm"><span class="sap-dot"></span> Alarm</button>
+        </div>
+
+        <div class="sap-tab-content sap-active" id="sap-tab-live">
+            <div class="sap-telemetry-header">
+                <div class="sap-telemetry-title"><span class="sap-live-dot"></span><span id="sipAssetTelemetryTitle">Live Telemetry</span></div>
+                <div class="sap-bell-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg></div>
+            </div>
+            <div class="sap-telemetry-grid" id="sipAssetTelemetryGrid">
+                <div class="sap-empty-state">Click an asset on the SIP canvas to load its live attribute values.</div>
+            </div>
+        </div>
+
+        <div class="sap-tab-content" id="sap-tab-analytics">
+            <div class="sap-analytics-bar">
+                <div class="sap-filter-group"><span class="sap-filter-label">From</span><input type="date" class="sap-date-input" id="sipAssetAnalyticsFrom" /></div>
+                <div class="sap-filter-group"><span class="sap-filter-label">To</span><input type="date" class="sap-date-input" id="sipAssetAnalyticsTo" /></div>
+                <button type="button" class="sap-filter-apply">Apply</button>
+                <button type="button" class="sap-filter-clear">✕ Clear</button>
+            </div>
+            <div class="sap-panel-body">
+                <div class="sap-section-tag">Predictive</div>
+                <div class="sap-cause-grid">
+                    <div class="sap-cause-card"><div class="sap-cc-head">TR Volt Low / Under Enrg</div><div class="sap-cc-body"><span class="sap-cc-count sap-hot">1</span><span class="sap-cc-code">TC TR VOLT LOW</span></div></div>
+                    <div class="sap-cause-card"><div class="sap-cc-head">TFC Input Voltage Low</div><div class="sap-cc-body"><span class="sap-cc-count">0</span><span class="sap-cc-code">TC TFC I/P VOLT LOW</span></div></div>
+                    <div class="sap-cause-card"><div class="sap-cc-head">Batt Not Charging</div><div class="sap-cc-body"><span class="sap-cc-count">0</span><span class="sap-cc-code">TC BT CHG CURR LOW</span></div></div>
+                    <div class="sap-cause-card"><div class="sap-cc-head">Rail Res High</div><div class="sap-cc-body"><span class="sap-cc-count">0</span><span class="sap-cc-code">TC RAIL RES HIGH</span></div></div>
+                </div>
+                <div class="sap-section-tag sap-failure" style="margin-top:10px;">Failure</div>
+                <div class="sap-cause-grid">
+                    <div class="sap-cause-card"><div class="sap-cc-head sap-f">TFC O/P Volt Fail</div><div class="sap-cc-body"><span class="sap-cc-count sap-hot">2</span><span class="sap-cc-code">TC TFC O/P VOLT FAIL</span></div></div>
+                    <div class="sap-cause-card"><div class="sap-cc-head sap-f">Track Shorting</div><div class="sap-cc-body"><span class="sap-cc-count">0</span><span class="sap-cc-code">TC SHORT</span></div></div>
+                    <div class="sap-cause-card"><div class="sap-cc-head sap-f">Circuit Open</div><div class="sap-cc-body"><span class="sap-cc-count">0</span><span class="sap-cc-code">TC CKT OPEN</span></div></div>
+                    <div class="sap-cause-card"><div class="sap-cc-head sap-f">Reason Unknown</div><div class="sap-cc-body"><span class="sap-cc-count">0</span><span class="sap-cc-code">REASON UNKNOWN</span></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sap-tab-content" id="sap-tab-graph">
+            <div class="sap-graph-bar">
+                <select class="sap-graph-select" id="sipAssetParamSelect"><option>Live Value</option></select>
+                <div class="sap-filter-group"><span class="sap-filter-label">Date</span><input type="date" class="sap-date-input" id="sipAssetGraphDate" /></div>
+                <div class="sap-graph-range-btns">
+                    <button type="button" class="sap-range-btn" data-sap-range="1h">1H</button>
+                    <button type="button" class="sap-range-btn sap-active" data-sap-range="6h">6H</button>
+                    <button type="button" class="sap-range-btn" data-sap-range="12h">12H</button>
+                    <button type="button" class="sap-range-btn" data-sap-range="24h">24H</button>
+                </div>
+            </div>
+            <div class="sap-chart-wrap"><div class="sap-chart-area"><canvas class="sap-chart-canvas" id="sipAssetChartCanvas"></canvas></div></div>
+        </div>
+
+        <div class="sap-tab-content" id="sap-tab-eventlog">
+            <div class="sap-event-bar">
+                <div class="sap-filter-group"><span class="sap-filter-label">From</span><input type="date" class="sap-date-input" id="sipAssetEventFrom" /></div>
+                <div class="sap-filter-group"><span class="sap-filter-label">To</span><input type="date" class="sap-date-input" id="sipAssetEventTo" /></div>
+                <button type="button" class="sap-filter-apply">Apply</button>
+                <button type="button" class="sap-filter-clear">✕ Clear</button>
+            </div>
+            <div class="sap-event-log" id="sipAssetEventLog">
+                <div class="sap-event-row"><span class="sap-event-time">—</span><span class="sap-event-dot"></span><span class="sap-event-text">Select an asset to view related event history.</span></div>
+            </div>
+        </div>
+
+        <div class="sap-tab-content" id="sap-tab-alarm">
+            <div class="sap-panel-body">
+                <div class="sap-alarm-banner">
+                    <div class="sap-alarm-banner-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg></div>
+                    <div class="sap-alarm-banner-text" id="sipAssetAlarmBannerText">Alarm summary<span>Live alarm binding can be connected to your alarm endpoint.</span></div>
+                </div>
+                <table class="sap-alarm-table">
+                    <thead><tr><th>Alarm Code</th><th>Raised At</th><th>Duration</th><th>Severity</th><th>Status</th></tr></thead>
+                    <tbody id="sipAssetAlarmRows">
+                        <tr><td colspan="5" style="color:var(--sap-text-muted);">No alarm endpoint has been configured in this view.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="sap-popup-footer">
+            <div class="sap-footer-meta"><span id="sipAssetLastSync">Last sync: —</span><span id="sipAssetFooterType">Type: —</span><span>FRS: 25</span></div>
+            <div class="sap-footer-actions">
+                <button type="button" class="sap-btn" id="sipAssetExportBtn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg> Export</button>
+                <button type="button" class="sap-btn sap-btn-primary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg> SIP Report</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="sap-maint-modal-bg" id="sipAssetMaintModal">
+        <div class="sap-maint-modal">
+            <h3><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" /></svg>Create Maintenance Mode</h3>
+            <div class="sap-sub" id="sipAssetMaintSub">Put selected asset into maintenance mode to suppress alerts during scheduled work.</div>
+            <div class="sap-maint-row">
+                <div class="sap-maint-field"><label>Start Date & Time</label><input type="datetime-local" id="sipAssetMaintStart" /></div>
+                <div class="sap-maint-field"><label>End Date & Time</label><input type="datetime-local" id="sipAssetMaintEnd" /></div>
+            </div>
+            <div class="sap-maint-field"><label>Reason</label><select id="sipAssetMaintReason"><option>Scheduled Maintenance</option><option>Emergency Repair</option><option>Inspection</option><option>Component Replacement</option><option>Other</option></select></div>
+            <div class="sap-maint-field"><label>Maintainer</label><input type="text" id="sipAssetMaintainer" placeholder="Name or employee ID" /></div>
+            <div class="sap-maint-field"><label>Remarks</label><textarea id="sipAssetMaintRemarks" placeholder="Additional notes about this maintenance window..."></textarea></div>
+            <div class="sap-maint-actions">
+                <button type="button" class="sap-m-btn" id="sipAssetMaintCancel">Cancel</button>
+                <button type="button" class="sap-m-btn sap-primary" id="sipAssetMaintActivate">Activate</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@*=============================================================================
+        Editor library — MUST load before any SipEditor.* call.
+    =============================================================================*@
+<script src="~/Areas/FRS25/assets/sip/js/sip-library.js"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-editor.js"></script>
+
+<script>
+    /* =========================================================================
+       Page glue — just two AJAX calls. The editor itself works directly on the
+       OLD Rappid cell shape so there is NOTHING to convert on this side.
+       SipEditor.getLayout() returns { cells: [...] }; SipEditor.setLayout()
+       accepts the same shape (and the parsed JSON from the legacy table).
+       ========================================================================= */
+
+    $(document).ready(function () {
+        WireSiteFilters();
+        WireSipAssetPopup();
+        // The controller's Index action already bound the AdvancedSIPView for
+        // the requested siteId.  If hdnSipViewData has content, push it
+        // straight into the editor — no GetSipView AJAX needed.  If not, we
+        // fall back to AJAX so the legacy load path still works.
+        var siteId = parseInt($("#hdnSiteId").val() || '0', 10);
+        if (siteId > 0) {
+            $("#site-id-readout").text(siteId);
+            var pre = $("#hdnSipViewData").val();
+            if (pre) {
+                hydrateEditorFromString(pre);
+            } else {
+                // No saved layout for this site yet (create case) — the
+                // canvas just stays blank; first Save will create the row.
+                $("#sipStatus").text('New SIP — site ' + siteId);
+            }
+        }
+    });
+
+    /* Parse a server-supplied SIP view string and push it into the editor. */
+    function hydrateEditorFromString(viewStr) {
+        var parsed;
+        try { parsed = JSON.parse(viewStr); }
+        catch (e) {
+            console.error('[SIP] Could not parse pre-loaded layout:', e);
+            return;
+        }
+        waitForEditor(function () {
+            SipEditor.setLayout(parsed);
+            $("#sipStatus").text('Loaded · ' + ((parsed.cells || parsed || []).length || 0) + ' cells');
+        });
+    }
+
+    /* -------------------------------------------------------------------------
+       Zone / Division / Site cascade.
+       Zones are rendered server-side from ViewBag.Zones.  When a zone is
+       picked we POST { zoneId } to GetDivisionByZoneId; when a division is
+       picked we POST { divisionId } to GetSiteByDivisionId.  Same endpoint
+       names you're using elsewhere — see SipController.GetDivisionByZoneId
+       and SipController.GetSiteByDivisionId.
+       ------------------------------------------------------------------------- */
+    function LoadDivisions(zoneId) {
+        if (!zoneId) {
+            $('#division-select').prop('disabled', true).html('<option value="">— select division —</option>');
+            $('#site-select').prop('disabled', true).html('<option value="">— select site —</option>');
+            return;
+        }
+        $.ajax({
+            url: '/Sip/GetDivisionByZoneId',
+            type: 'Post',
+            data: '{zoneId:' + zoneId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                fillSelect('#division-select', data, '— select division —');
+                $('#division-select').prop('disabled', false);
+                $('#site-select').prop('disabled', true).html('<option value="">— select site —</option>');
+            },
+            error: function () {
+                fillSelect('#division-select', [], '— (no divisions) —');
+            }
+        });
+    }
+
+    function LoadSites(divisionId) {
+        if (!divisionId) {
+            $('#site-select').prop('disabled', true).html('<option value="">— select site —</option>');
+            return;
+        }
+        $.ajax({
+            url: '/Sip/GetSiteByDivisionId',
+            type: 'Post',
+            data: '{divisionId:' + divisionId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                fillSelect('#site-select', data, '— select site —');
+                $('#site-select').prop('disabled', false);
+            },
+            error: function () {
+                fillSelect('#site-select', [], '— (no sites) —');
+            }
+        });
+    }
+
+    function fillSelect(selector, data, placeholder) {
+        var html = '<option value="">' + placeholder + '</option>';
+        (data || []).forEach(function (item) {
+            var id = item.Id != null ? item.Id : (item.id != null ? item.id : '');
+            var name = item.Name != null ? item.Name : (item.name != null ? item.name : id);
+            html += '<option value="' + id + '">' + name + '</option>';
+        });
+        $(selector).html(html);
+    }
+
+    function WireSiteFilters() {
+        $('#zone-select').on('change', function () { LoadDivisions($(this).val()); });
+        $('#division-select').on('change', function () { LoadSites($(this).val()); });
+        $('#site-select').on('change', function () {
+            var siteId = parseInt($(this).val() || '0', 10);
+            $("#hdnSiteId").val(siteId || 0);
+            $("#hdnId").val(0);   // reset row id — GetSipView() will set it if a saved row exists
+            $("#site-id-readout").text(siteId || '—');
+            $("#sipStatus").text('');
+            if (!siteId) return;
+            // Clear the canvas before pulling the new site's layout so the user
+            // doesn't briefly see the previous site's geometry.
+            if (window.SipEditor && typeof SipEditor.loadPreset === 'function') {
+                SipEditor.loadPreset('blank');
+            }
+            GetSipView();
+        });
+    }
+
+    /* -------------------------------------------------------------------------
+       SaveSipView — POSTs { SiteId, Id, SipView } to /Site/SaveAdvSipView.
+       SipView is the stringified getLayout() output — i.e. exactly the
+       OLD Rappid { "cells": [...] } shape that the advancesipview table
+       and Sview.cshtml runtime both expect.
+       ------------------------------------------------------------------------- */
+    function SaveSipView() {
+        if (!window.SipEditor || typeof SipEditor.getLayout !== 'function') {
+            CommonNotification("ERROR", "Editor not ready yet.", "Error");
+            return;
+        }
+
+        var siteId = parseInt($("#hdnSiteId").val() || '0', 10);
+        if (!siteId) {
+            CommonNotification("warning", "Please select a Zone, Division and Site before saving.", "Site required");
+            return;
+        }
+
+        var layout = SipEditor.getLayout();   // { cells: [...] } — OLD RAPPID
+
+        var sipView = {
+            SiteId: siteId,
+            Id: $("#hdnId").val(),
+            SipView: JSON.stringify(layout)
+        };
+
+        $.ajax({
+            url: '/Sip/SaveAdvSipView',
+            type: 'Post',
+            data: '{sipView:' + JSON.stringify(sipView) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data === true) {
+                    $("#sipStatus").text('Saved · ' + (layout.cells || []).length + ' cells');
+                    CommonNotification("success", "SipView has been Saved.", "success");
+                } else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function () {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    /* -------------------------------------------------------------------------
+       GetSipView — fetches the saved layout (if any) and hands it to the
+       editor. The server endpoint should prefer advancesipview first and
+       fall back to the legacy sipview row so existing sites keep loading.
+
+       SipEditor.setLayout() accepts any of:
+         • { cells: [...] }                      — canonical OLD Rappid
+         • [<cell>, <cell>, ...]                 — bare cells array
+         • [{type, props, stencilType, ...}, …]  — older NEW-format saves
+       So we can safely pass whatever the server returned without inspection.
+       ------------------------------------------------------------------------- */
+    function GetSipView() {
+        var siteId = parseInt($("#hdnSiteId").val() || '0', 10);
+        if (!siteId) { return; }      // nothing to fetch until a site is picked
+        $.ajax({
+            url: '/Sip/GetSipView',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (!data || !data.Id || data.Id <= 0 || !data.SipView) {
+                    // Blank canvas for a site that has no saved layout yet.
+                    if (window.SipEditor && typeof SipEditor.loadPreset === 'function') {
+                        SipEditor.loadPreset('blank');
+                    }
+                    return;
+                }
+                $("#hdnId").val(data.Id);
+
+                var parsed;
+                try { parsed = JSON.parse(data.SipView); }
+                catch (e) {
+                    console.error('[SIP] Could not parse saved layout:', e);
+                    return;
+                }
+
+                waitForEditor(function () {
+                    SipEditor.setLayout(parsed);
+                    $("#sipStatus").text('Loaded · ' + ((parsed.cells || parsed || []).length || 0) + ' cells');
+                });
+            },
+            error: function () { /* silent on first load */ }
+        });
+    }
+
+    /* Wait until sip-editor.js has finished init() before pushing data into it. */
+    function waitForEditor(cb, tries) {
+        tries = tries || 0;
+        if (window.SipEditor && typeof SipEditor.setLayout === 'function') {
+            cb();
+        } else if (tries < 20) {
+            setTimeout(function () { waitForEditor(cb, tries + 1); }, 50);
+        } else {
+            console.error('[SIP] Editor failed to initialise.');
+        }
+    }
+
+    /* -------------------------------------------------------------------------
+       SipAssetSource — feeds the inspector's "Asset" dropdown.
+       Returns the existing assets of a given stencil type for the current
+       site so the operator can pick e.g. an existing track-circuit name
+       instead of typing it freehand.
+       ------------------------------------------------------------------------- */
+    window.SipAssetSource = function (stencilType, callback) {
+        $.ajax({
+            url: '/Sip/GetAllAssetWithAttribute',
+            type: 'Post',
+            data: '{stencilType:"' + stencilType + '",siteId:' + $("#hdnSiteId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                var list = (data || []).map(function (a) {
+                    return { id: a.Id || a.id || a.Name, name: a.Name || a.name };
+                });
+                callback(list);
+            },
+            error: function () { callback([]); }
+        });
+    };
+    /* -------------------------------------------------------------------------
+       SIP Asset Detail Popup
+       - Opens on click of any canvas asset.
+       - Resolves the clicked SIP cell, fetches live attributes through the
+         existing /Sip/GetAllAssetWithAttribute endpoint, and renders all
+         selected-asset attributes in the Live tab.
+       ------------------------------------------------------------------------- */
+    (function () {
+        var state = {
+            mouseDown: null,
+            currentContext: null,
+            currentLiveRows: [],
+            refreshTimer: null,
+            popupUiBound: false,
+            canvasBound: false,
+            editorEventBound: false,
+            lastOpenKey: '',
+            lastOpenAt: 0
+        };
+
+        window.WireSipAssetPopup = function () {
+            bindPopupUiOnce();
+            bindCanvasClickOnce();
+            bindEditorAssetClickEventOnce();
+            initialisePopupDates();
+        };
+
+        window.OpenSipAssetPopupFromCell = function (cellOrContext, sourceInfo) {
+            debugger;
+            bindPopupUiOnce();
+            bindEditorAssetClickEventOnce();
+            initialisePopupDates();
+
+            var context = resolveAssetContextFromCell(cellOrContext, sourceInfo);
+            if (!context) return false;
+
+            openAssetPopup(context);
+            return true;
+        };
+
+        function bindEditorAssetClickEventOnce() {
+            if (state.editorEventBound) return;
+            state.editorEventBound = true;
+
+            window.addEventListener('sip:asset-click', function (e) {
+                if (!e || !e.detail) return;
+                window.OpenSipAssetPopupFromCell(e.detail.cell || e.detail.context || e.detail, e.detail);
+            });
+        }
+
+        function bindCanvasClickOnce() {
+            var canvas = document.getElementById('canvas');
+            if (!canvas || state.canvasBound) return;
+            state.canvasBound = true;
+
+            canvas.addEventListener('mousedown', function (e) {
+                state.mouseDown = { x: e.clientX, y: e.clientY, target: e.target };
+            }, true);
+
+            canvas.addEventListener('click', function (e) {
+                if (!state.mouseDown) return;
+                var dx = Math.abs((e.clientX || 0) - state.mouseDown.x);
+                var dy = Math.abs((e.clientY || 0) - state.mouseDown.y);
+                if (dx > 5 || dy > 5) return; // drag/move inside editor, do not open popup
+
+                var context = resolveAssetContextFromClick(e.target);
+                if (!context) return;
+
+                setTimeout(function () { openAssetPopup(context); }, 0);
+            }, true);
+        }
+
+        function bindPopupUiOnce() {
+            if (state.popupUiBound) return;
+            var overlay = document.getElementById('sipAssetPopupOverlay');
+            if (!overlay) return;
+            state.popupUiBound = true;
+
+            document.getElementById('sipAssetPopupClose').addEventListener('click', closeAssetPopup);
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) closeAssetPopup();
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && overlay.classList.contains('sap-show')) closeAssetPopup();
+            });
+
+            overlay.querySelectorAll('.sap-tab').forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    activatePopupTab(tab.getAttribute('data-sap-tab'));
+                });
+            });
+
+            overlay.querySelectorAll('.sap-range-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    overlay.querySelectorAll('.sap-range-btn').forEach(function (b) { b.classList.remove('sap-active'); });
+                    btn.classList.add('sap-active');
+                    drawAssetChart();
+                });
+            });
+
+            var paramSelect = document.getElementById('sipAssetParamSelect');
+            if (paramSelect) paramSelect.addEventListener('change', drawAssetChart);
+            var graphDate = document.getElementById('sipAssetGraphDate');
+            if (graphDate) graphDate.addEventListener('change', drawAssetChart);
+
+            document.getElementById('sipAssetMaintBtn').addEventListener('click', function () {
+                document.getElementById('sipAssetMaintModal').classList.add('sap-show');
+            });
+            document.getElementById('sipAssetMaintCancel').addEventListener('click', function () {
+                document.getElementById('sipAssetMaintModal').classList.remove('sap-show');
+            });
+            document.getElementById('sipAssetMaintModal').addEventListener('click', function (e) {
+                if (e.target === this) this.classList.remove('sap-show');
+            });
+            document.getElementById('sipAssetMaintActivate').addEventListener('click', function () {
+                document.getElementById('sipAssetMaintModal').classList.remove('sap-show');
+                var btn = document.getElementById('sipAssetMaintBtn');
+                btn.classList.add('sap-active-mode');
+                btn.innerHTML = '<svg class="sap-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg> Maint. Mode Active';
+            });
+
+            var exportBtn = document.getElementById('sipAssetExportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function () {
+                    exportCurrentLiveRows();
+                });
+            }
+
+            window.addEventListener('resize', function () {
+                var graphTab = document.getElementById('sap-tab-graph');
+                if (graphTab && graphTab.classList.contains('sap-active')) drawAssetChart();
+            });
+        }
+
+        function initialisePopupDates() {
+            var now = new Date();
+            var today = toDateInput(now);
+            ['sipAssetAnalyticsFrom', 'sipAssetAnalyticsTo', 'sipAssetGraphDate', 'sipAssetEventFrom', 'sipAssetEventTo'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el && !el.value) el.value = today;
+            });
+
+            var start = document.getElementById('sipAssetMaintStart');
+            var end = document.getElementById('sipAssetMaintEnd');
+            if (start && !start.value) start.value = toDateTimeInput(now);
+            if (end && !end.value) {
+                var endDt = new Date(now.getTime() + (8 * 60 * 60 * 1000));
+                end.value = toDateTimeInput(endDt);
+            }
+        }
+
+        function resolveAssetContextFromCell(cellOrContext, sourceInfo) {
+            if (!cellOrContext) return null;
+
+            var explicit = cellOrContext || {};
+            var source = sourceInfo || {};
+            var cell = explicit.cell || explicit.Cell || cellOrContext;
+            var meta = extractCellMeta(cell);
+
+            meta.cell = cell || null;
+            meta.assetId = firstNonEmpty(explicit.assetId, explicit.AssetId, source.assetId, source.AssetId, meta.assetId);
+            meta.assetName = firstNonEmpty(explicit.assetName, explicit.AssetName, source.assetName, source.AssetName, meta.assetName, meta.label, meta.title, meta.cellId, 'Selected Asset');
+            meta.stencilType = firstNonEmpty(explicit.stencilType, explicit.StencilType, source.stencilType, source.StencilType, meta.stencilType, meta.type);
+            meta.type = firstNonEmpty(explicit.type, explicit.Type, source.type, source.Type, meta.type, meta.stencilType);
+            meta.location = firstNonEmpty(explicit.location, explicit.Location, source.location, source.Location, meta.location, getSelectedSitePath());
+            meta.cellId = firstNonEmpty(explicit.cellId, explicit.CellId, explicit.id, explicit.Id, source.cellId, source.CellId, source.id, source.Id, meta.cellId);
+
+            if (!meta.assetName && !meta.assetId && !meta.cellId) return null;
+            return meta;
+        }
+
+        function resolveAssetContextFromClick(target) {
+            var canvas = document.getElementById('canvas');
+            if (!canvas || !target || target === canvas) return null;
+
+            var svgCellEl = closestRenderableSvgNode(target, canvas);
+            if (!svgCellEl) return null;
+
+            var ids = collectDomIdentifiers(svgCellEl, canvas);
+            var domLabel = extractDomLabel(svgCellEl);
+            var layout = getCurrentSipLayout();
+            var cells = normalizeCells(layout);
+            var cell = findCellByIdentifiers(cells, ids) || findCellByLabel(cells, domLabel);
+            var meta = cell ? extractCellMeta(cell) : {};
+
+            meta.cell = cell || null;
+            meta.domElement = svgCellEl;
+            meta.domLabel = domLabel;
+            meta.assetId = firstNonEmpty(meta.assetId, ids.assetId);
+            meta.assetName = firstNonEmpty(meta.assetName, domLabel, ids.title);
+            meta.stencilType = firstNonEmpty(meta.stencilType, ids.stencilType, meta.type);
+            meta.type = firstNonEmpty(meta.type, meta.stencilType, ids.domType);
+            meta.location = firstNonEmpty(meta.location, getSelectedSitePath());
+            meta.cellId = firstNonEmpty(meta.cellId, ids.cellId, ids.domId);
+
+            if (!meta.assetName && !meta.assetId && !meta.cellId) return null;
+            return meta;
+        }
+
+        function closestRenderableSvgNode(target, boundary) {
+            var el = target.nodeType === 1 ? target : target.parentNode;
+            var fallbackWithId = null;
+            while (el && el !== boundary) {
+                if (el.nodeType !== 1) break;
+                var tag = (el.tagName || '').toLowerCase();
+                var hasSipData = el.getAttribute('data-cell-id') || el.getAttribute('model-id') || el.getAttribute('data-model-id') || el.getAttribute('data-id') || el.getAttribute('data-asset-id') || el.getAttribute('data-stencil-type');
+                if (hasSipData) return el;
+                if (tag === 'g') return el;
+                if (tag !== 'svg' && el.id && !fallbackWithId) fallbackWithId = el;
+                el = el.parentNode;
+            }
+            return fallbackWithId;
+        }
+
+        function collectDomIdentifiers(el, boundary) {
+            var ids = { raw: [] };
+            var node = el;
+            while (node && node !== boundary && node.nodeType === 1) {
+                pushIdentifier(ids.raw, node.getAttribute('data-cell-id'));
+                pushIdentifier(ids.raw, node.getAttribute('data-model-id'));
+                pushIdentifier(ids.raw, node.getAttribute('model-id'));
+                pushIdentifier(ids.raw, node.getAttribute('data-id'));
+                pushIdentifier(ids.raw, node.getAttribute('id'));
+                pushIdentifier(ids.raw, node.id);
+
+                ids.assetId = firstNonEmpty(ids.assetId, node.getAttribute('data-asset-id'), node.getAttribute('asset-id'));
+                ids.stencilType = firstNonEmpty(ids.stencilType, node.getAttribute('data-stencil-type'), node.getAttribute('stencil-type'));
+                ids.title = firstNonEmpty(ids.title, node.getAttribute('title'), node.getAttribute('aria-label'));
+                ids.domType = firstNonEmpty(ids.domType, node.getAttribute('data-type'), node.getAttribute('type'));
+                ids.cellId = firstNonEmpty(ids.cellId, node.getAttribute('data-cell-id'), node.getAttribute('data-model-id'), node.getAttribute('model-id'));
+                ids.domId = firstNonEmpty(ids.domId, node.getAttribute('id'), node.id);
+                node = node.parentNode;
+            }
+            ids.raw = uniqueStrings(ids.raw);
+            return ids;
+        }
+
+        function pushIdentifier(list, value) {
+            value = cleanString(value);
+            if (!value) return;
+            if (value === 'canvas') return;
+            list.push(value);
+        }
+
+        function getCurrentSipLayout() {
+            if (window.SipEditor && typeof SipEditor.getLayout === 'function') {
+                try { return SipEditor.getLayout(); } catch (e) { console.warn('[SIP] getLayout failed:', e); }
+            }
+            var pre = $('#hdnSipViewData').val();
+            if (pre) {
+                try { return JSON.parse(pre); } catch (ignore) { }
+            }
+            return { cells: [] };
+        }
+
+        function normalizeCells(layout) {
+            if (!layout) return [];
+            if (Array.isArray(layout)) return layout;
+            if (Array.isArray(layout.cells)) return layout.cells;
+            return [];
+        }
+
+        function findCellByIdentifiers(cells, ids) {
+            var raw = ids && ids.raw ? ids.raw : [];
+            if (!cells.length || !raw.length) return null;
+
+            for (var i = 0; i < raw.length; i++) {
+                var id = raw[i];
+                for (var c = 0; c < cells.length; c++) {
+                    var cell = cells[c];
+                    var cellIds = extractCellIdentifierCandidates(cell);
+                    for (var j = 0; j < cellIds.length; j++) {
+                        if (sameIdentifier(cellIds[j], id)) return cell;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function findCellByLabel(cells, label) {
+            label = normalizeText(label);
+            if (!cells.length || !label) return null;
+            for (var i = 0; i < cells.length; i++) {
+                var meta = extractCellMeta(cells[i]);
+                var name = normalizeText(firstNonEmpty(meta.assetName, meta.label, meta.title));
+                if (name && name === label) return cells[i];
+            }
+            return null;
+        }
+
+        function extractCellIdentifierCandidates(cell) {
+            var candidates = [];
+            ['id', 'Id', 'ID', 'cid', 'modelId', 'ModelId', 'assetId', 'AssetId', 'assetID'].forEach(function (key) {
+                if (cell && cell[key] != null) candidates.push(cell[key]);
+            });
+            if (cell && cell.props) {
+                ['id', 'Id', 'assetId', 'AssetId', 'modelId', 'ModelId'].forEach(function (key) {
+                    if (cell.props[key] != null) candidates.push(cell.props[key]);
+                });
+            }
+            if (cell && cell.data) {
+                ['id', 'Id', 'assetId', 'AssetId', 'modelId', 'ModelId'].forEach(function (key) {
+                    if (cell.data[key] != null) candidates.push(cell.data[key]);
+                });
+            }
+            return uniqueStrings(candidates.map(cleanString));
+        }
+
+        function sameIdentifier(a, b) {
+            a = cleanString(a);
+            b = cleanString(b);
+            if (!a || !b) return false;
+            if (a === b) return true;
+            if (a.length >= 8 && b.indexOf(a) >= 0) return true;
+            if (b.length >= 8 && a.indexOf(b) >= 0) return true;
+            return false;
+        }
+
+        function extractDomLabel(el) {
+            if (!el) return '';
+            var textEl = el.tagName && el.tagName.toLowerCase() === 'text' ? el : el.querySelector && el.querySelector('text');
+            var text = textEl ? cleanString(textEl.textContent) : '';
+            if (text && text.length <= 100) return text;
+
+            var labelAttrs = ['data-asset-name', 'asset-name', 'data-name', 'title', 'aria-label'];
+            for (var i = 0; i < labelAttrs.length; i++) {
+                text = cleanString(el.getAttribute(labelAttrs[i]));
+                if (text) return text;
+            }
+            return '';
+        }
+
+        function extractCellMeta(cell) {
+            cell = cell || {};
+            var props = cell.props || {};
+            var data = cell.data || {};
+            var attrs = cell.attrs || {};
+            var labelFromAttrs = extractLabelFromAttrs(attrs);
+
+            var meta = {
+                cellId: firstNonEmpty(cell.id, cell.Id, props.id, props.Id),
+                type: firstNonEmpty(cell.type, cell.Type, props.type, props.Type),
+                stencilType: firstNonEmpty(cell.stencilType, cell.StencilType, props.stencilType, props.StencilType, data.stencilType, data.StencilType),
+                assetId: firstNonEmpty(cell.assetId, cell.AssetId, props.assetId, props.AssetId, data.assetId, data.AssetId, deepFindValue(cell, ['assetid', 'assetmasterid', 'assetpk'], 4)),
+                assetName: firstNonEmpty(cell.assetName, cell.AssetName, props.assetName, props.AssetName, data.assetName, data.AssetName, cell.name, cell.Name, props.name, props.Name, labelFromAttrs, deepFindValue(cell, ['assetname', 'tagname'], 4)),
+                label: labelFromAttrs,
+                title: firstNonEmpty(cell.title, cell.Title, props.title, props.Title),
+                location: firstNonEmpty(cell.location, cell.Location, props.location, props.Location, data.location, data.Location)
+            };
+
+            meta.attributes = extractAttributeRows(cell);
+            return meta;
+        }
+
+        function extractLabelFromAttrs(attrs) {
+            if (!attrs || typeof attrs !== 'object') return '';
+            var preferredKeys = ['label', '.label', 'text', '.text', 'labelText', 'name', 'title'];
+            for (var i = 0; i < preferredKeys.length; i++) {
+                var v = attrs[preferredKeys[i]];
+                var text = extractPossibleText(v);
+                if (text) return text;
+            }
+            for (var key in attrs) {
+                if (!Object.prototype.hasOwnProperty.call(attrs, key)) continue;
+                var found = extractPossibleText(attrs[key]);
+                if (found) return found;
+            }
+            return '';
+        }
+
+        function extractPossibleText(value) {
+            if (typeof value === 'string' || typeof value === 'number') return cleanString(value);
+            if (!value || typeof value !== 'object') return '';
+            return firstNonEmpty(value.text, value.Text, value.label, value.Label, value.name, value.Name, value.title, value.Title, value['text/value']);
+        }
+
+        function openAssetPopup(context) {
+            var overlay = document.getElementById('sipAssetPopupOverlay');
+            if (!overlay) return;
+
+            var openKey = firstNonEmpty(context.cellId, context.assetId, context.assetName, context.stencilType, context.type);
+            var nowTick = Date.now ? Date.now() : new Date().getTime();
+            if (openKey && state.lastOpenKey === openKey && (nowTick - state.lastOpenAt) < 350) return;
+            state.lastOpenKey = openKey || '';
+            state.lastOpenAt = nowTick;
+
+            clearRefreshTimer();
+            state.currentContext = context;
+            state.currentLiveRows = [];
+
+            var name = firstNonEmpty(context.assetName, context.cellId, 'Selected Asset');
+            setText('sipAssetPopupAssetName', name);
+            setText('sipAssetPopupAssetLocation', firstNonEmpty(context.location, getSelectedSitePath(), 'Site ' + ($('#hdnSiteId').val() || '—')));
+            setText('sipAssetTelemetryTitle', 'Live Telemetry — ' + name);
+            setText('sipAssetFooterType', 'Type: ' + firstNonEmpty(context.stencilType, context.type, '—'));
+            setText('sipAssetMaintSub', 'Put ' + name + ' into maintenance mode to suppress alerts during scheduled work.');
+            setHtml('sipAssetAlarmBannerText', escapeHtml(name) + ' alarm summary<span>Live alarm binding can be connected to your alarm endpoint.</span>');
+
+            activatePopupTab('live');
+            overlay.classList.add('sap-show');
+            overlay.setAttribute('aria-hidden', 'false');
+            renderTelemetryLoading(name);
+            refreshAssetLiveValues(true);
+
+            state.refreshTimer = setInterval(function () {
+                refreshAssetLiveValues(false);
+            }, 30000);
+        }
+
+        function closeAssetPopup() {
+            var overlay = document.getElementById('sipAssetPopupOverlay');
+            if (!overlay) return;
+            overlay.classList.remove('sap-show');
+            overlay.setAttribute('aria-hidden', 'true');
+            document.getElementById('sipAssetMaintModal').classList.remove('sap-show');
+            clearRefreshTimer();
+        }
+
+        function clearRefreshTimer() {
+            if (state.refreshTimer) {
+                clearInterval(state.refreshTimer);
+                state.refreshTimer = null;
+            }
+        }
+
+        function activatePopupTab(tabName) {
+            var overlay = document.getElementById('sipAssetPopupOverlay');
+            if (!overlay) return;
+            overlay.querySelectorAll('.sap-tab').forEach(function (tab) {
+                tab.classList.toggle('sap-active', tab.getAttribute('data-sap-tab') === tabName);
+            });
+            overlay.querySelectorAll('.sap-tab-content').forEach(function (content) {
+                content.classList.toggle('sap-active', content.id === 'sap-tab-' + tabName);
+            });
+            if (tabName === 'graph') setTimeout(drawAssetChart, 50);
+        }
+
+        function refreshAssetLiveValues(showLoading) {
+            var context = state.currentContext;
+            if (!context) return;
+
+            var siteId = parseInt($('#hdnSiteId').val() || '0', 10);
+            var stencilType = firstNonEmpty(context.stencilType, context.type, '');
+            var fallbackRows = normalizeRows(context.attributes || []);
+
+            if (showLoading) renderTelemetryLoading(firstNonEmpty(context.assetName, context.cellId, 'selected asset'));
+
+            if (!siteId) {
+                renderTelemetryRows(fallbackRows, 'Select a Site before opening live values. Showing saved SIP-cell attributes only.');
+                return;
+            }
+
+            $.ajax({
+                url: '/Sip/GetAllAssetWithAttribute',
+                type: 'Post',
+                data: '{stencilType:' + JSON.stringify(stencilType || '') + ',siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    var assets = normalizeAssetList(data);
+                    var asset = findMatchingAsset(assets, context);
+                    var rows = asset ? extractAttributeRows(asset) : [];
+
+                    if (asset) {
+                        applyLiveAssetHeader(asset, context);
+                    }
+
+                    if (!rows.length && fallbackRows.length) {
+                        renderTelemetryRows(fallbackRows, 'Live source did not return attributes for this asset. Showing saved SIP-cell attributes.');
+                    } else if (!rows.length) {
+                        renderTelemetryRows([], 'No live attributes were returned for ' + firstNonEmpty(context.assetName, context.cellId, 'the selected asset') + '.');
+                    } else {
+                        renderTelemetryRows(rows, '');
+                    }
+                },
+                error: function () {
+                    if (fallbackRows.length) {
+                        renderTelemetryRows(fallbackRows, 'Could not reach the live attribute endpoint. Showing saved SIP-cell attributes.');
+                    } else {
+                        renderTelemetryRows([], 'Could not load live attributes from /Sip/GetAllAssetWithAttribute.');
+                    }
+                }
+            });
+        }
+
+        function normalizeAssetList(data) {
+            if (Array.isArray(data)) return data;
+            if (!data || typeof data !== 'object') return [];
+            var keys = ['Data', 'data', 'Result', 'result', 'Assets', 'assets', 'AssetList', 'assetList', 'Items', 'items'];
+            for (var i = 0; i < keys.length; i++) {
+                if (Array.isArray(data[keys[i]])) return data[keys[i]];
+            }
+            return [data];
+        }
+
+        function findMatchingAsset(assets, context) {
+            if (!assets || !assets.length) return null;
+            var targetId = normalizeIdentifier(firstNonEmpty(context.assetId, context.cellId));
+            var targetName = normalizeText(context.assetName);
+
+            if (targetId) {
+                for (var i = 0; i < assets.length; i++) {
+                    var id = normalizeIdentifier(firstNonEmpty(assets[i].Id, assets[i].id, assets[i].AssetId, assets[i].assetId, assets[i].AssetID, assets[i].assetID));
+                    if (id && id === targetId) return assets[i];
+                }
+            }
+
+            if (targetName) {
+                for (var j = 0; j < assets.length; j++) {
+                    var name = normalizeText(firstNonEmpty(assets[j].Name, assets[j].name, assets[j].AssetName, assets[j].assetName, assets[j].TagName, assets[j].tagName));
+                    if (name && name === targetName) return assets[j];
+                }
+            }
+
+            if (!targetName && !targetId && assets.length === 1) return assets[0];
+            return null;
+        }
+
+        function applyLiveAssetHeader(asset, context) {
+            var liveName = firstNonEmpty(asset.Name, asset.name, asset.AssetName, asset.assetName, asset.TagName, asset.tagName, context.assetName, context.cellId, 'Selected Asset');
+            var liveType = firstNonEmpty(asset.StencilType, asset.stencilType, asset.Type, asset.type, context.stencilType, context.type, '—');
+            var liveLocation = firstNonEmpty(
+                asset.Location, asset.location,
+                joinNonEmpty([asset.ZoneName || asset.zoneName, asset.DivisionName || asset.divisionName, asset.SiteName || asset.siteName], ' · '),
+                context.location,
+                getSelectedSitePath()
+            );
+
+            setText('sipAssetPopupAssetName', liveName);
+            setText('sipAssetPopupAssetLocation', liveLocation || '—');
+            setText('sipAssetTelemetryTitle', 'Live Telemetry — ' + liveName);
+            setText('sipAssetFooterType', 'Type: ' + liveType);
+            setText('sipAssetMaintSub', 'Put ' + liveName + ' into maintenance mode to suppress alerts during scheduled work.');
+            setHtml('sipAssetAlarmBannerText', escapeHtml(liveName) + ' alarm summary<span>Live alarm binding can be connected to your alarm endpoint.</span>');
+        }
+
+        function extractAttributeRows(source) {
+            if (!source) return [];
+            var rows = [];
+            var containers = [
+                source.Attributes, source.attributes,
+                source.AssetAttributes, source.assetAttributes,
+                source.AttributeValues, source.attributeValues,
+                source.LiveValues, source.liveValues,
+                source.LiveAttributes, source.liveAttributes,
+                source.Parameters, source.parameters,
+                source.Tags, source.tags,
+                source.Telemetry, source.telemetry,
+                source.DataValues, source.dataValues,
+                source.Data, source.data
+            ];
+
+            containers.forEach(function (container) {
+                rows = rows.concat(rowsFromContainer(container));
+            });
+
+            if (!rows.length && typeof source === 'object') {
+                rows = rows.concat(rowsFromDirectScalarFields(source));
+            }
+
+            return normalizeRows(rows);
+        }
+
+        function rowsFromContainer(container) {
+            var rows = [];
+            if (!container) return rows;
+
+            if (Array.isArray(container)) {
+                container.forEach(function (item) {
+                    var row = rowFromAttributeObject(item);
+                    if (row) rows.push(row);
+                });
+                return rows;
+            }
+
+            if (typeof container === 'object') {
+                Object.keys(container).forEach(function (key) {
+                    var value = container[key];
+                    if (Array.isArray(value)) {
+                        value.forEach(function (item) {
+                            var row = rowFromAttributeObject(item);
+                            if (row) rows.push(row);
+                        });
+                    } else if (value && typeof value === 'object') {
+                        var nestedRow = rowFromAttributeObject(value, key);
+                        if (nestedRow) rows.push(nestedRow);
+                    } else if (!isMetaKey(key)) {
+                        rows.push({ label: key, value: value, unit: '' });
+                    }
+                });
+            }
+            return rows;
+        }
+
+        function rowFromAttributeObject(item, fallbackLabel) {
+            if (item == null) return null;
+            if (typeof item !== 'object') {
+                return fallbackLabel ? { label: fallbackLabel, value: item, unit: '' } : null;
+            }
+
+            var label = firstNonEmpty(
+                item.Name, item.name,
+                item.AttributeName, item.attributeName,
+                item.DisplayName, item.displayName,
+                item.ParameterName, item.parameterName,
+                item.ParamName, item.paramName,
+                item.TagName, item.tagName,
+                item.ChannelName, item.channelName,
+                item.Key, item.key,
+                item.Code, item.code,
+                item.Label, item.label,
+                fallbackLabel
+            );
+
+            var value = firstDefined(
+                item.LiveValue, item.liveValue,
+                item.CurrentValue, item.currentValue,
+                item.Value, item.value,
+                item.AttributeValue, item.attributeValue,
+                item.Reading, item.reading,
+                item.Status, item.status,
+                item.State, item.state,
+                item.DataValue, item.dataValue,
+                item.AnalogValue, item.analogValue,
+                item.DigitalValue, item.digitalValue,
+                item.LastValue, item.lastValue
+            );
+
+            if (!label) {
+                var scalarKeys = Object.keys(item).filter(function (k) { return !isMetaKey(k) && isScalar(item[k]); });
+                if (scalarKeys.length === 1) {
+                    label = scalarKeys[0];
+                    value = item[scalarKeys[0]];
+                }
+            }
+
+            if (!label) return null;
+
+            var unit = firstNonEmpty(item.Unit, item.unit, item.UOM, item.uom, item.UnitName, item.unitName, item.MeasurementUnit, item.measurementUnit);
+            var updatedAt = firstNonEmpty(item.UpdatedAt, item.updatedAt, item.LastUpdated, item.lastUpdated, item.Timestamp, item.timestamp, item.TimeStamp, item.timeStamp);
+            return { label: cleanString(label), value: value, unit: cleanString(unit), updatedAt: updatedAt };
+        }
+
+        function rowsFromDirectScalarFields(source) {
+            var rows = [];
+            Object.keys(source).forEach(function (key) {
+                if (isMetaKey(key)) return;
+                var value = source[key];
+                if (isScalar(value)) rows.push({ label: key, value: value, unit: '' });
+            });
+            return rows;
+        }
+
+        function normalizeRows(rows) {
+            var out = [];
+            var seen = {};
+            (rows || []).forEach(function (row) {
+                if (!row || !cleanString(row.label)) return;
+                var key = normalizeText(row.label);
+                if (!key || seen[key]) return;
+                seen[key] = true;
+                out.push({
+                    label: cleanString(row.label),
+                    value: row.value,
+                    unit: cleanString(row.unit),
+                    updatedAt: row.updatedAt
+                });
+            });
+            return out;
+        }
+
+        function renderTelemetryLoading(assetName) {
+            var grid = document.getElementById('sipAssetTelemetryGrid');
+            if (!grid) return;
+            grid.innerHTML = '<div class="sap-empty-state">Loading live attributes for ' + escapeHtml(assetName) + '...</div>';
+        }
+
+        function renderTelemetryRows(rows, message) {
+            var grid = document.getElementById('sipAssetTelemetryGrid');
+            if (!grid) return;
+            rows = normalizeRows(rows);
+            state.currentLiveRows = rows;
+            setText('sipAssetLastSync', 'Last sync: ' + formatTime(new Date()));
+            updateGraphParameterOptions(rows);
+
+            if (!rows.length) {
+                grid.innerHTML = '<div class="sap-empty-state">' + escapeHtml(message || 'No attributes available for this asset.') + '</div>';
+                drawAssetChart();
+                return;
+            }
+
+            var midpoint = Math.ceil(rows.length / 2);
+            var left = rows.slice(0, midpoint).map(renderTelemetryRow).join('');
+            var right = rows.slice(midpoint).map(renderTelemetryRow).join('');
+            var note = message ? '<div class="sap-empty-state" style="grid-column:1/-1;padding:10px 20px;justify-content:flex-start;text-align:left;border-bottom:1px solid rgba(30,42,69,.5);">' + escapeHtml(message) + '</div>' : '';
+            grid.innerHTML = note + '<div class="sap-telemetry-col">' + left + '</div><div class="sap-telemetry-col">' + right + '</div>';
+            drawAssetChart();
+        }
+
+        function renderTelemetryRow(row) {
+            var displayValue = formatAttributeValue(row.value, row.unit);
+            var cls = valueClass(row.label, row.value);
+            return '<div class="sap-telem-row"><span class="sap-telem-label" title="' + escapeHtml(row.label) + '">' + escapeHtml(row.label) + '</span><span class="sap-telem-value ' + cls + '">' + escapeHtml(displayValue) + '</span></div>';
+        }
+
+        function updateGraphParameterOptions(rows) {
+            var select = document.getElementById('sipAssetParamSelect');
+            if (!select) return;
+            var current = select.value;
+            if (!rows || !rows.length) {
+                select.innerHTML = '<option>Live Value</option>';
+                return;
+            }
+            select.innerHTML = rows.map(function (row) {
+                return '<option value="' + escapeHtml(row.label) + '">' + escapeHtml(row.label) + '</option>';
+            }).join('');
+            if (rows.some(function (r) { return r.label === current; })) select.value = current;
+        }
+
+        function drawAssetChart() {
+            var canvas = document.getElementById('sipAssetChartCanvas');
+            if (!canvas) return;
+            var parent = canvas.parentElement;
+            var rect = parent.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+
+            var ctx = canvas.getContext('2d');
+            var dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            var W = rect.width, H = rect.height;
+            var pad = { top: 24, right: 20, bottom: 36, left: 52 };
+            var gw = W - pad.left - pad.right;
+            var gh = H - pad.top - pad.bottom;
+            ctx.clearRect(0, 0, W, H);
+
+            var selected = document.getElementById('sipAssetParamSelect') ? document.getElementById('sipAssetParamSelect').value : '';
+            var row = (state.currentLiveRows || []).filter(function (r) { return r.label === selected; })[0] || state.currentLiveRows[0];
+            var baseValue = parseNumeric(row ? row.value : 100);
+            if (!isFinite(baseValue)) baseValue = 100;
+            if (baseValue === 0) baseValue = 1;
+
+            var pts = 96;
+            var data = [];
+            for (var i = 0; i < pts; i++) {
+                data.push(baseValue + (Math.sin(i * 0.15) * Math.abs(baseValue) * 0.04) + ((Math.random() - 0.5) * Math.abs(baseValue) * 0.02));
+            }
+            var minV = Math.min.apply(null, data) - Math.abs(baseValue) * 0.02;
+            var maxV = Math.max.apply(null, data) + Math.abs(baseValue) * 0.02;
+            if (minV === maxV) { minV -= 1; maxV += 1; }
+
+            ctx.strokeStyle = 'rgba(30,42,69,0.6)';
+            ctx.lineWidth = 1;
+            for (var g = 0; g <= 4; g++) {
+                var y = pad.top + (gh / 4) * g;
+                ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + gw, y); ctx.stroke();
+                ctx.fillStyle = '#5a6a8a'; ctx.font = '10px JetBrains Mono'; ctx.textAlign = 'right';
+                ctx.fillText((maxV - (maxV - minV) * (g / 4)).toFixed(1), pad.left - 8, y + 3);
+            }
+
+            var hours = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'];
+            ctx.fillStyle = '#5a6a8a'; ctx.font = '10px JetBrains Mono'; ctx.textAlign = 'center';
+            hours.forEach(function (h, idx) { var x = pad.left + (gw / 6) * idx; ctx.fillText(h, x, H - pad.bottom + 18); });
+
+            var grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + gh);
+            grad.addColorStop(0, 'rgba(0,212,255,0.12)');
+            grad.addColorStop(1, 'rgba(0,212,255,0)');
+            ctx.beginPath();
+            data.forEach(function (v, idx) {
+                var x = pad.left + (gw / (pts - 1)) * idx;
+                var y = pad.top + gh - ((v - minV) / (maxV - minV)) * gh;
+                idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.lineTo(pad.left + gw, pad.top + gh); ctx.lineTo(pad.left, pad.top + gh); ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+
+            ctx.beginPath();
+            data.forEach(function (v, idx) {
+                var x = pad.left + (gw / (pts - 1)) * idx;
+                var y = pad.top + gh - ((v - minV) / (maxV - minV)) * gh;
+                idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 2; ctx.stroke();
+
+            var lx = pad.left + gw;
+            var ly = pad.top + gh - ((data[pts - 1] - minV) / (maxV - minV)) * gh;
+            ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2); ctx.fillStyle = '#00d4ff'; ctx.fill();
+        }
+
+        function exportCurrentLiveRows() {
+            var context = state.currentContext || {};
+            var name = firstNonEmpty(context.assetName, context.cellId, 'asset');
+            var rows = state.currentLiveRows || [];
+            if (!rows.length) {
+                if (typeof CommonNotification === 'function') CommonNotification('warning', 'No live rows available to export.', 'No data');
+                return;
+            }
+            var csv = 'Attribute,Value,Updated At\n' + rows.map(function (row) {
+                return [row.label, formatAttributeValue(row.value, row.unit), row.updatedAt || ''].map(csvEscape).join(',');
+            }).join('\n');
+            var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = name.replace(/[^a-z0-9_-]+/gi, '_') + '_live_attributes.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function csvEscape(value) {
+            value = cleanString(value);
+            if (/[",\n]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
+            return value;
+        }
+
+        function isMetaKey(key) {
+            var k = normalizeKey(key);
+            return !!{
+                id: 1, assetid: 1, assetmasterid: 1, siteid: 1, stationid: 1, divisionid: 1, zoneid: 1,
+                name: 1, assetname: 1, tagname: 1, type: 1, stenciltype: 1, cellid: 1, modelid: 1,
+                location: 1, zonename: 1, divisionname: 1, sitename: 1,
+                createdat: 1, updatedat: 1, modifiedat: 1, createdby: 1, modifiedby: 1,
+                attributes: 1, assetattributes: 1, attributevalues: 1, livevalues: 1, liveattributes: 1,
+                parameters: 1, tags: 1, telemetry: 1, data: 1, datavalues: 1
+            }[k];
+        }
+
+        function deepFindValue(obj, wantedKeys, maxDepth) {
+            if (!obj || maxDepth < 0) return '';
+            var wanted = {};
+            wantedKeys.forEach(function (k) { wanted[normalizeKey(k)] = true; });
+            var visited = [];
+
+            function walk(value, depth) {
+                if (!value || typeof value !== 'object' || depth > maxDepth) return '';
+                if (visited.indexOf(value) >= 0) return '';
+                visited.push(value);
+                for (var key in value) {
+                    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+                    if (wanted[normalizeKey(key)] && isScalar(value[key])) return cleanString(value[key]);
+                }
+                for (var key2 in value) {
+                    if (!Object.prototype.hasOwnProperty.call(value, key2)) continue;
+                    var found = walk(value[key2], depth + 1);
+                    if (found) return found;
+                }
+                return '';
+            }
+            return walk(obj, 0);
+        }
+
+        function valueClass(label, value) {
+            var combined = normalizeText(label + ' ' + cleanString(value));
+            if (/fail|failed|alarm|critical|danger|fault|down|bad/.test(combined)) return 'sap-value-danger';
+            if (/warn|warning|low|high|under|over/.test(combined)) return 'sap-value-warn';
+            if (/health|status|state/.test(normalizeText(label)) && /ok|healthy|normal|active|up/.test(normalizeText(value))) return 'sap-value-ok';
+            return '';
+        }
+
+        function formatAttributeValue(value, unit) {
+            if (value === null || value === undefined || value === '') return '—';
+            if (typeof value === 'boolean') return value ? 'True' : 'False';
+            if (typeof value === 'object') {
+                try { value = JSON.stringify(value); } catch (e) { value = String(value); }
+            }
+            var text = cleanString(value);
+            return unit ? (text + ' ' + unit) : text;
+        }
+
+        function firstDefined() {
+            for (var i = 0; i < arguments.length; i++) {
+                if (arguments[i] !== undefined && arguments[i] !== null && arguments[i] !== '') return arguments[i];
+            }
+            return '';
+        }
+
+        function firstNonEmpty() {
+            for (var i = 0; i < arguments.length; i++) {
+                var v = cleanString(arguments[i]);
+                if (v) return v;
+            }
+            return '';
+        }
+
+        function cleanString(value) {
+            if (value === null || value === undefined) return '';
+            return String(value).replace(/\s+/g, ' ').trim();
+        }
+
+        function normalizeKey(value) {
+            return cleanString(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function normalizeText(value) {
+            return cleanString(value).toLowerCase().replace(/\s+/g, ' ');
+        }
+
+        function normalizeIdentifier(value) {
+            return cleanString(value).toLowerCase();
+        }
+
+        function uniqueStrings(list) {
+            var seen = {};
+            var out = [];
+            (list || []).forEach(function (v) {
+                v = cleanString(v);
+                if (!v || seen[v]) return;
+                seen[v] = true;
+                out.push(v);
+            });
+            return out;
+        }
+
+        function isScalar(value) {
+            return value === null || ['string', 'number', 'boolean'].indexOf(typeof value) >= 0;
+        }
+
+        function parseNumeric(value) {
+            if (typeof value === 'number') return value;
+            var m = cleanString(value).replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+            return m ? parseFloat(m[0]) : NaN;
+        }
+
+        function escapeHtml(value) {
+            return cleanString(value).replace(/[&<>'"]/g, function (ch) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch];
+            });
+        }
+
+        function setText(id, text) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = text;
+        }
+
+        function setHtml(id, html) {
+            var el = document.getElementById(id);
+            if (el) el.innerHTML = html;
+        }
+
+        function joinNonEmpty(items, sep) {
+            return (items || []).map(cleanString).filter(Boolean).join(sep || ' ');
+        }
+
+        function getSelectedSitePath() {
+            var zone = $('#zone-select option:selected').text();
+            var division = $('#division-select option:selected').text();
+            var site = $('#site-select option:selected').text();
+            var items = [zone, division, site].filter(function (x) { x = cleanString(x); return x && x.indexOf('—') < 0; });
+            return items.join(' · ');
+        }
+
+        function formatTime(date) {
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+            return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+        }
+
+        function toDateInput(date) {
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+            return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+        }
+
+        function toDateTimeInput(date) {
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+            return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + 'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+        }
+    })();
+
+
+    (function () {
+        'use strict';
+
+        function getSipCells() {
+            try {
+                if (window.SipEditor && typeof window.SipEditor.getLayout === 'function') {
+                    var editorLayout = window.SipEditor.getLayout();
+                    if (editorLayout && Array.isArray(editorLayout.cells)) {
+                        return editorLayout.cells;
+                    }
+                }
+
+                if (window.currentSipLayout && Array.isArray(window.currentSipLayout.cells)) {
+                    return window.currentSipLayout.cells;
+                }
+
+                if (window.sipLayout && Array.isArray(window.sipLayout.cells)) {
+                    return window.sipLayout.cells;
+                }
+
+                if (window.SipLayout && Array.isArray(window.SipLayout.cells)) {
+                    return window.SipLayout.cells;
+                }
+            } catch (e) {
+                console.warn('Unable to read SIP cells:', e);
+            }
+
+            return [];
+        }
+
+        function getTextFromAssetGroup(assetGroup) {
+            if (!assetGroup) return '';
+
+            var textNodes = assetGroup.querySelectorAll('text');
+            var parts = [];
+
+            textNodes.forEach(function (node) {
+                var text = (node.textContent || '').trim();
+                if (text) parts.push(text);
+            });
+
+            return parts.join(' ').trim();
+        }
+
+        function buildCellFromClickedAsset(assetGroup) {
+            var id =
+                assetGroup.getAttribute('data-eid') ||
+                assetGroup.getAttribute('data-id') ||
+                '';
+
+            var type =
+                assetGroup.getAttribute('data-type') ||
+                '';
+
+            var cells = getSipCells();
+
+            var matchedCell = cells.find(function (cell) {
+                return String(cell.id) === String(id);
+            });
+
+            if (matchedCell) {
+                return matchedCell;
+            }
+
+            // Fallback for SIP View where only SVG metadata is available
+            return {
+                id: id,
+                type: type,
+                attrs: {
+                    label: {
+                        text: getTextFromAssetGroup(assetGroup)
+                    }
+                }
+            };
+        }
+
+        function findClickedSipAsset(target) {
+            if (!target || typeof target.closest !== 'function') {
+                return null;
+            }
+
+            // Editor mode: .editable[data-eid]
+            // View mode:   .sip-asset[data-id]
+            return target.closest('g.editable[data-eid], g.sip-asset[data-id]');
+        }
+
+        var pointerDownInfo = null;
+
+        document.addEventListener('pointerdown', function (evt) {
+            var assetGroup = findClickedSipAsset(evt.target);
+
+            if (!assetGroup) {
+                pointerDownInfo = null;
+                return;
+            }
+
+            pointerDownInfo = {
+                x: evt.clientX,
+                y: evt.clientY,
+                id: assetGroup.getAttribute('data-eid') || assetGroup.getAttribute('data-id'),
+                group: assetGroup
+            };
+        }, true);
+
+        document.addEventListener('pointerup', function (evt) {
+            if (!pointerDownInfo) return;
+
+            var assetGroup = findClickedSipAsset(evt.target) || pointerDownInfo.group;
+
+            if (!assetGroup) {
+                pointerDownInfo = null;
+                return;
+            }
+
+            var upId =
+                assetGroup.getAttribute('data-eid') ||
+                assetGroup.getAttribute('data-id');
+
+            var moved =
+                Math.abs(evt.clientX - pointerDownInfo.x) > 5 ||
+                Math.abs(evt.clientY - pointerDownInfo.y) > 5;
+
+            var sameAsset = String(upId) === String(pointerDownInfo.id);
+
+            pointerDownInfo = null;
+
+            if (moved || !sameAsset) {
+                return;
+            }
+
+            evt.preventDefault();
+            evt.stopPropagation();
+
+            var cell = buildCellFromClickedAsset(assetGroup);
+
+            console.log('SIP asset clicked:', cell);
+
+            if (typeof window.OpenSipAssetPopupFromCell === 'function') {
+                window.OpenSipAssetPopupFromCell(cell, {
+                    event: evt,
+                    source: 'sip-view-click'
+                });
+            } else {
+                console.error('OpenSipAssetPopupFromCell is not defined.');
+            }
+        }, true);
+    })();
+
+    let previousFocus = null;
+
+    function openAssetDetailPopup(asset) {
+        currentPopupAsset = asset;
+        const overlay = document.getElementById('sipAssetPopupOverlay');
+        const popup = document.getElementById('sipAssetPopup');
+
+        // Update content
+        document.getElementById('popupAssetName').innerText = asset.name || asset.label || 'Asset';
+        document.getElementById('popupAssetLocation').innerText = asset.location || `${asset.type || 'Asset'} · ${asset.siteId || '—'}`;
+        document.getElementById('popupAssetId').innerText = asset.id || '—';
+        document.getElementById('liveAssetName').innerText = asset.name || asset.label || 'Asset';
+
+        // Show modal
+        overlay.style.display = 'flex';
+        overlay.removeAttribute('aria-hidden');          // ✅ remove aria-hidden
+        popup.classList.add('sip-popup-visible');        // optional class for styling
+
+        // Hide main content from screen readers (accessibility)
+        document.querySelector('.at-page-header')?.setAttribute('aria-hidden', 'true');
+        document.querySelector('.at-table-card')?.setAttribute('aria-hidden', 'true');
+        document.querySelector('#sipCardSection')?.setAttribute('aria-hidden', 'true');
+
+        // Store previously focused element
+        previousFocus = document.activeElement;
+
+        // Move focus to close button
+        const closeBtn = document.getElementById('sipAssetPopupClose');
+        if (closeBtn) closeBtn.focus();
+
+        loadAssetLiveAttributesForPopup(asset);
+        initPopupTabs();
+    }
+
+    function closeAssetDetailPopup() {
+        const overlay = document.getElementById('sipAssetPopupOverlay');
+        if (!overlay) return;
+
+        overlay.style.display = 'none';
+        overlay.setAttribute('aria-hidden', 'true');     // ✅ restore aria-hidden
+
+        // Restore accessibility for main content
+        document.querySelector('.at-page-header')?.removeAttribute('aria-hidden');
+        document.querySelector('.at-table-card')?.removeAttribute('aria-hidden');
+        document.querySelector('#sipCardSection')?.removeAttribute('aria-hidden');
+
+        // Restore focus
+        if (previousFocus && previousFocus.focus) {
+            previousFocus.focus();
+        }
+        currentPopupAsset = null;
+    }
+
+</script>
+
+

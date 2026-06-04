@@ -1,0 +1,61 @@
+﻿@model Domain.MaintenanceModeLister
+@{ var items = (Model != null && Model.mMaintenanceModes != null)
+                              ? Model.mMaintenanceModes
+                              : new List<Domain.MaintenanceMode>();
+    // active only = InActiveTime is null OR still in the future
+    items = items.Where(x => !x.InActiveTime.HasValue || x.InActiveTime.Value > DateTime.Now).ToList(); }
+@if (!items.Any())
+{
+    <div style="text-align:center;padding:24px 12px;color:#94a3b8;font-size:13px;">
+        <i class="fas fa-wrench" style="font-size:24px;margin-bottom:8px;display:block;opacity:.35;"></i>
+        No active maintenance windows.
+    </div> }
+else
+{
+    foreach (var m in items)
+    {
+        var endTime = m.InActiveTime ?? m.ActiveTime.AddHours(1);
+        var minsLeft = (endTime - DateTime.Now).TotalMinutes;
+        var expiring = minsLeft > 0 && minsLeft <= 30;
+        // adapt these property names to whatever MaintenanceMode exposes:
+        var assetName = (m.Asset ?? "").ToString();
+        var assetType = (m.AssetType ?? "").ToString();
+        var station = !string.IsNullOrEmpty(m.Site) ? m.Site : (m.Site ?? "");
+        var assetDisp = string.IsNullOrEmpty(assetType) ? assetName : assetName + " (" + assetType + ")";
+        var dateStr = m.ActiveTime.ToString("dd/MM/yyyy");
+        var fromStr = m.ActiveTime.ToString("HH:mm");
+        var toStr = endTime.ToString("HH:mm");
+        // values passed to edit modal
+        var fromDisplay = m.ActiveTime.ToString("dd/MM/yyyy HH:mm");
+        var toDateISO = endTime.ToString("yyyy-MM-dd");
+        var toTimeStr = endTime.ToString("HH:mm");
+        var assetDispSafe = assetDisp.Replace("'", " ").Replace("\"", " ");
+        var stationSafe = station.Replace("'", " ").Replace("\"", " ");
+        //var byStr = (m.CreatedBy ?? "—") +
+        //              (string.IsNullOrEmpty(m.CreatedBy) ? "" : " (" + m.CreatedBy + ")");
+        var byStr = "abc";
+        <div class="alrt-maint-item @(expiring ? "expiring" : "")">
+            <div class="alrt-maint-item-info">
+                <span class="alrt-maint-item-asset">@assetDisp &bull; @station</span>
+                <span class="alrt-maint-item-time">@fromStr - @toStr (@dateStr)</span>
+                <span class="alrt-maint-item-by">By: @byStr</span>
+            </div>
+            <div class="alrt-maint-item-acts">
+                <button class="alrt-maint-btn edit" title="Edit"
+                        onclick="alrtOpenMaintModal(@m.Id,'@assetDispSafe','@stationSafe','@fromDisplay','@toDateISO','@toTimeStr')">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="alrt-maint-btn @(expiring ? "expiring" : "clear")"
+                        onclick="alrtClearMaint(@m.AssetId)">
+                    @(expiring ? "Expiring" : "Clear")
+                </button>
+            </div>
+        </div>}
+}
+<script>
+    (function () {
+        var n = @items.Count;
+        var el = document.getElementById('alrtMaintCountBadge');
+        if (el) el.textContent = n + ' Active';
+    })();
+</script>

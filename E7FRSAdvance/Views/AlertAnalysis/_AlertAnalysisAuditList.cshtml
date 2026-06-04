@@ -1,0 +1,332 @@
+﻿@model List<Domain.AlertAudit>
+
+@if (Model != null && Model.Count > 0)
+{
+    <div class="email-wrap email-main-wrapper">
+        <div class="row">
+            <div class="col-xxl-12 col-xl-12 box-col-12">
+                <div class="email-right-aside">
+                    <div class="card email-body email-list">
+                        <div class="mail-body-wrapper">
+                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                @if (Model != null && Model.Count > 0)
+                                {
+                                    foreach (var site in Model.GroupBy(x => new { x.SiteId, x.Site }).Select(x => x.Key).ToList())
+                                    {
+                                        int smsCount = Model.Where(x => x.SiteId == site.SiteId).Count();
+                                        int smsTrueCount = Model.Where(x => x.SiteId == site.SiteId && x.IsOpenClose).Count();
+                                        int smsFalseCount = Model.Where(x => x.SiteId == site.SiteId && !x.IsOpenClose).Count();
+                                        if (smsCount > 0)
+                                        {
+                                            <li class="inbox-data" style="background-color:#f4f8f8">
+                                                <div class="inbox-message">
+
+                                                    <div class="email-data">
+                                                        <span style="float:left;">@site.Site &nbsp;</span>
+                                                        <span class="span badge rounded-pill1 pill-badge-primary" style="color:white;">@smsCount</span>
+
+                                                    </div>
+                                                    <span class="pull-right">
+                                                        @*<span class="span badge rounded-pill1 pill-badge-success" style="color:white;">Open @smsTrueCount</span>
+                                                            <span class="span badge rounded-pill1 pill-badge-danger" style="color:white;">Close @smsFalseCount</span>*@
+                                                        <a href="#" data-bs-original-title="" title=""><i class="fa fa-angle-up fa-3x" onclick="fnShowAlertAnalysisRemarkBySite('@site.SiteId', this); return false;"></i></a>
+                                                    </span>
+                                                </div>
+                                            </li>
+
+                                        }
+
+                                        foreach (var assetType in Model.Where(x => x.SiteId == site.SiteId).GroupBy(x => new { x.AssetTypeId, x.AssetType }).Select(x => x.Key).ToList())
+                                        {
+
+                                            var smsAlertNameCount = Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId).Count();
+                                            <li class="inbox-data alertAnalysisRemarkBySite_@(site.SiteId)" style="display:none">
+                                                <div class="mail-body-wrapper" style="width:100%;">
+                                                    <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                        <li class="inbox-data" style="background-color: #4bacc6;">
+                                                            <div class="inbox-message">
+                                                                <div class="email-data">
+                                                                    <span style="float: left; color: white;">@assetType.AssetType  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAlertNameCount</span>
+                                                                </div>
+                                                                <span class="pull-right">
+                                                                    <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowAlertAnalysisRemarkByAssetType('@site.SiteId','@assetType.AssetTypeId', this); return false;"></i></a>
+                                                                </span>
+                                                            </div>
+                                                        </li>
+                                                        @foreach (var asset in Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId).GroupBy(x => new { x.AssetId, x.Asset }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                        {
+                                                            var smsAssetCount = Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId && x.AssetId == asset.AssetId).Count();
+                                                            <li class="inbox-data  alertAnalysisRemarkByAssetType_@(site.SiteId)_@(assetType.AssetTypeId)" style="display:none">
+                                                                <ul id="paginated-list" data-current-page="1" aria-live="polite" style="width:100%;">
+                                                                    <li class="inbox-data" style="background-color: #21596880; ">
+                                                                        <div class="inbox-message">
+                                                                            <div class="email-data">
+                                                                                <span style="float: left; color: white;">@asset.Asset  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                            </div>
+                                                                            <span class="pull-right">
+                                                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowAlertAnalysisRemarkByAsset('@site.SiteId','@assetType.AssetTypeId','@asset.AssetId', this); return false;"></i></a>
+                                                                            </span>
+                                                                        </div>
+                                                                    </li>
+
+
+
+                                                                    <li class="inbox-data  alertAnalysisRemarkByAsset_@(site.SiteId)_@(assetType.AssetTypeId)_@(asset.AssetId)" style="display:none">
+                                                                        <table class="table">
+                                                                            <thead>
+                                                                                <tr>
+                                                                                    <th>Alert</th>
+                                                                                    <th>Tabulation Remark</th>
+                                                                                    <th>Primary Remark</th>
+                                                                                    <th>Primary Status</th>
+                                                                                    @*<th class="text-center">Open / Close</th>*@
+                                                                                    <th>Time Stamp</th>
+                                                                                    <th>Created By</th>
+                                                                                    <th>Primary Remark Updated By</th>
+                                                                                    @*<th>Portfolio Remark Updated By</th>*@
+                                                                                    <th class="text-center">Action</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody>
+
+                                                                                @foreach (var item in Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId && x.AssetId == asset.AssetId).ToList())
+                                                                                {
+                                                                                    <tr>
+                                                                                        <td>
+                                                                                            @item.Alert
+                                                                                            <a href="Javascript:void(0)" onclick="fnShowAlertList('@item.SiteId','@item.AssetId','@item.AlertId','@item.CreatedDate.ToShortDateString()')">
+                                                                                                <img src="/assets/images/Vector.png" height="20">
+                                                                                            </a>
+                                                                                        </td>
+                                                                                        <td>@item.Remark</td>
+                                                                                        @*<td>@item.PortfolioRemark</td>*@
+                                                                                        <td>@item.MaintainerRemark</td>
+                                                                                        @*<td class="text-center icon-state">
+
+                                                                                                @if (item.IsOpenClose)
+                                                                                                {
+                                                                                                    <span class="span badge rounded-pill1 pill-badge-success" style="color:white;">Open</span>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <span class="span badge rounded-pill1 pill-badge-danger" style="color:white;">Close</span>
+                                                                                                }
+                                                                                            </td>*@
+                                                                                        <td class="text-center">
+                                                                                            @if (item.IsMaintainerAlert != null)
+                                                                                            {
+                                                                                                if (item.IsMaintainerAlert.Value)
+                                                                                                {
+                                                                                                    <span class="span badge rounded-pill1 pill-badge-success" style="color:white;">True</span>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <span class="span badge rounded-pill1 pill-badge-danger" style="color:white;">False</span>
+                                                                                                }
+                                                                                            }
+
+                                                                                        </td>
+                                                                                        <td>@item.CreatedDate</td>
+                                                                                        <td>@item.CreatedName</td>
+                                                                                        <td>
+                                                                                            @if (item.IsMaintainerAlert != null)
+                                                                                            {
+                                                                                                <span>@item.LastModifiedName</span>
+                                                                                            }
+
+                                                                                        </td>
+                                                                                        <td class="text-center">
+                                                                                            @if (item.IsMaintainerAlert == null)
+                                                                                            {
+                                                                                                <button class="btn btn-info" type="button" onclick="fnAddAlertAnalysisAuditRemark('@item.Id')">
+                                                                                                    Add Remark
+                                                                                                </button>
+                                                                                            }
+
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                }
+
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </li>
+
+
+                                                                </ul>
+                                                            </li>
+                                                        }
+
+
+                                                    </ul>
+                                                </div>
+                                            </li>
+
+
+                                        }
+
+
+
+                                    }
+
+                                }
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+}
+else
+{
+    <div class="row">
+        <div class="text-center">
+            <span>Alert not found!</span>
+        </div>
+    </div>
+}
+
+<script>
+
+    function fnShowAlertAnalysisRemarkBySite(siteId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined) {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.alertAnalysisRemarkBySite_' + siteId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.alertAnalysisRemarkBySite_' + siteId).hide();
+            }
+        }
+    }
+
+    function fnShowAlertAnalysisRemarkByAssetType(siteId, assetTypeId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.alertAnalysisRemarkByAssetType_' + siteId + '_' + assetTypeId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.alertAnalysisRemarkByAssetType_' + siteId + '_' + assetTypeId).hide();
+            }
+        }
+    }
+
+    function fnShowAlertAnalysisRemarkByAsset(siteId, assetTypeId, assetId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && assetTypeId != null && assetTypeId != undefined && assetTypeId != '' && assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.alertAnalysisRemarkByAsset_' + siteId + '_' + assetTypeId + '_' + assetId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.alertAnalysisRemarkByAsset_' + siteId + '_' + assetTypeId + '_' + assetId).hide();
+            }
+        }
+    }
+
+    function fnAddAlertAnalysisAuditRemark(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AlertAnalysis/_AddAlertAnalysisAuditRemark',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divUpdateAlertAnalysisAudit').empty().append(data);
+                $('#modalAlertAnalysisRemark').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnUpdateAlertAnalysisAudit(id) {
+        var isValid = true;
+        var mAlertAudit = {};
+        mAlertAudit.Id = id;
+        mAlertAudit.MaintainerRemark = $('#txtMaintainerRemark').val();
+        //if ($('#drpAlertAuditStatus').val() == 'Open') {
+        //    mAlertAudit.IsOpenClose = true;
+        //}
+        //else {
+        //    mAlertAudit.IsOpenClose = false;
+        //}
+
+
+        if ($("#drpMaintainerAlertStatus").val() == 'True') {
+            mAlertAudit.IsMaintainerAlert = true;
+            mAlertAudit.MaintainerRemark = '';
+        } else {
+            mAlertAudit.IsMaintainerAlert = false;
+        }
+        //  mAlertAudit.IsOpenClose = true;
+
+
+        if (!mAlertAudit.IsMaintainerAlert && (mAlertAudit.MaintainerRemark == null || mAlertAudit.MaintainerRemark == undefined || mAlertAudit.MaintainerRemark == '')) {
+            isValid = false;
+            alert('Remark is required!')
+        }
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/UpdateAlertAnalysisAudit',
+                type: 'Post',
+                data: '{mAlertAudit:' + JSON.stringify(mAlertAudit) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#modalAlertAnalysisRemark').modal('hide');
+                    if (data.type == "success") {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                  //  $('#frmAlertAnalysisAuditList').submit();
+                    fnSearchRemark();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+
+    }
+
+    function fnShowAlertList(siteId, assetId, alertTypeId, timeStamp) {
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.AlertTypeId = alertTypeId;
+        mSearchCriteria.TimeStamp = timeStamp;
+        //mSearchCriteria.EndDate = $('#txtToDate').val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/AlertAnalysis/_AlertList',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(mSearchCriteria),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertViewList").empty().append(data);
+                $("#modalAlertViewList").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+    }
+</script>
+

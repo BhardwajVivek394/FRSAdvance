@@ -1,0 +1,97 @@
+﻿@model List<Domain.ChannelConfig>
+
+<div class="row mt10">
+    <div class="col-sm-12">
+        <div class="table-responsive" style="max-height: 620px;">
+            <table class="table table-bordered">
+                <tbody id="siteSmstrigger">
+                    @{ 
+                        int i = 0;
+                    }
+                    @foreach (var item in Model)
+                    {
+                    <tr>
+                        <td class="text-center width60" style="vertical-align:middle">
+                            <a  style="cursor:pointer"><i class="fa fa-trash text-danger" onclick="DeleteChannel('@item.Id', this)"></i></a>
+                        </td>
+                        <td>
+                            <input type="hidden" id="hnsite@(i)" value="@item.SiteId" />
+                            <span id="cha@(i)"> @item.Channel</span>
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(item.MacId))
+                            {
+                                <input type="text" id="macId@(i)" class="form-control" value="@item.MacId" />
+                            }
+                            else
+                            {
+                                <input type="text" id="macId@(i)" class="form-control" />
+                            }
+
+                        <td style="width:100px;">
+                            <a class="btn btn-success" onclick="fnSaveChannel('@i')">Save</a>
+                        </td>
+                    </tr>
+                        i++;
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    function fnSaveChannel(rowId) {
+        var channels = {};
+        channels.SiteId = $("#hnsite" + rowId).val();
+        channels.Channel = $.trim( $("#cha" + rowId).text());
+        channels.MacId = $("#macId" + rowId).val();
+
+        if (channels.MacId == null || channels.MacId == undefined || channels.MacId  == "") {
+            CommonNotification("danger", "Please enter mac Id ","danger");
+        } else {
+            $.ajax({
+                url: '/Site/SaveChannelMacId',
+                type: 'Post',
+                data: '{channels:' + JSON.stringify(channels) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Mac Id has been saved.", "success");
+                        $("#frmSmsTriggerConfig").submit();
+                    } else {
+                        CommonNotification("danger", "Internal server error.", "danger");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("danger", "Internal server error.", "danger");
+                }
+            });
+        }
+    }
+    function DeleteChannel(id, $this) {
+        $("#loader").show();
+        if (true) {
+            $.ajax({
+                url: '/Site/DeleteChannelById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Mac Id has been deleted.", "success");
+                        $("#frmSmsTriggerConfig").submit();
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        } 
+    }
+</script>

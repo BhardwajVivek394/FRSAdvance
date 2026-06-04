@@ -1,0 +1,113 @@
+﻿@model Domain.RFStatusLister
+
+<div class="modal bounceIn animated" id="modal-RFStatus" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <div class="col-sm-12">
+                    <div class="row">
+                        <div class="col-sm-3">
+                            <h4 class="modal-title" id="myModalLabel"><span id="spHeader">RF Status</span></h4>
+
+                        </div>
+                        <div class="col-sm-2">
+                            <h5 class="pull-right">Search</h5>
+                        </div>
+                        <div class="col-sm-2">
+                            <input type="text" class="form-control" id="txtRFStatusFromDate" placeholder="From Date" />
+                        </div>
+                        <div class="col-sm-2">
+                            <input type="text" class="form-control" id="txtRFStatusEndDate" placeholder="End Date" />
+                        </div>
+                        <div class="col-sm-2">
+                            <button type="button" class="btn btn-success" onclick="fnShowRFStatus('@Model.SearchCriteria.SiteId')">Search</button>
+                        </div>
+                        <div class="col-sm-1">
+                            <button type="button" class="btn-close pull-right" data-bs-dismiss="modal" aria-hidden="true"></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="tablemodalFixHead">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th style="background-color: #215968;color:white;"></th>
+                                <th style="background-color: #215968;color:white;">SiteName</th>
+                                <th style="background-color: #215968;color:white;">DeviceName</th>
+                                <th style="background-color: #215968;color:white;">A10Id</th>
+                                <th style="background-color: #215968;color:white;">LastAccesstime</th>
+                                <th style="background-color: #215968;color:white;">TimeStamp</th>
+                            </tr>
+                        </thead>
+                        <tbody class="tbodyRFStatus">
+                            @if (Model.mRFStatus != null && Model.mRFStatus.Count > 0)
+                            {
+                                var a10Ids = Model.mRFStatus.GroupBy(x => x.A10Id).Select(x => x.Key).ToList();
+                                if (a10Ids != null && a10Ids.Count > 0)
+                                {
+                                    foreach (var a10Id in a10Ids)
+                                    {
+                                        foreach (var item in Model.mRFStatus.Where(x => x.A10Id == a10Id).OrderByDescending(x => x.TimeStamp).Take(1))
+                                        {
+                                            <tr class="table-light">
+                                                <td></td>
+                                                <td>@item.SiteName</td>
+                                                <td>@item.DeviceName</td>
+                                                <td>@item.A10Id</td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(item.LastAccesstime))
+                                                    {
+                                                        if (Convert.ToDecimal(item.LastAccesstime) <= 300)
+                                                        {
+                                                            <span class="text-warning">@item.LastAccesstime</span>
+                                                        }
+                                                        else if (Convert.ToDecimal(item.LastAccesstime) > 300)
+                                                        {
+                                                            <span class="text-danger">@item.LastAccesstime</span>
+
+
+                                                        }
+
+                                                    }
+                                                </td>
+                                                <td>@item.TimeStamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                            </tr>
+                                        }
+                                    }
+                                }
+
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#txtRFStatusFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtRFStatusEndDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+    });
+</script>

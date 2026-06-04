@@ -1,0 +1,644 @@
+﻿@model Domain.AssetLister
+
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    .progress {
+        height: 30px;
+        font-size: 18px;
+    }
+
+    .progress-bar-animated {
+        color: black !important;
+    }
+</style>
+@{
+    var bgColor = new string[] { "#215968", "#404040", "#4bacc6" };
+
+}
+
+<div class="card" id="listView">
+    <div class="card-header">
+        @Model.SearchCriteria.AssetTypeName
+    </div>
+    <div class="card-body listBody" style="padding:15px;">
+        <div class="tableFixHead">
+            <table class="table">
+                <thead class="bg-primary">
+                    @{
+                        List<Domain.AssetAttribute> mAssetAttribute = new List<Domain.AssetAttribute>();
+                        foreach (var item in Model.mAssets)
+                        {
+                            foreach (var assetAttribute in item.assetAttributes)
+                            {
+                                if (mAssetAttribute.Where(x => x.Title == assetAttribute.Title).Count() == 0)
+                                {
+                                    mAssetAttribute.Add(assetAttribute);
+                                }
+                            }
+                        }
+                    }
+
+                    @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                    {
+                        int i = 0;
+                        int j = 0;
+                        foreach (var item in Model.mAssets)
+                        {
+                            if (item.assetAttributes != null && item.assetAttributes.Count > 0 && i == 0)
+                            {
+                                i++;
+                                <tr>
+                                    <th style="background-color:#4bacc6;color:white;">
+                                        @item.AssetTypeName
+                                    </th>
+                                    @foreach (var assetAttribute in mAssetAttribute)
+                                    {
+
+
+                                        if (assetAttribute.Title.Contains("Last Update"))
+                                        {
+                                            <th style="background-color:@bgColor[j];color:white;width:120px;">
+
+                                                @assetAttribute.Title
+                                            </th>
+                                        }
+                                        else
+                                        {
+                                            string bgcolor = bgColor[j];
+                                            if (assetAttribute.Title.Contains("+ve"))
+                                            {
+                                                bgcolor = "darkorange";
+                                            }
+                                            if (assetAttribute.Title.Contains("-ve"))
+                                            {
+                                                bgcolor = "Black";
+                                            }
+                                            <th style="background-color:@bgcolor;color:white;">
+                                                @if (assetAttribute.Title.Contains("+ve"))
+                                                {
+                                                    <span style="color:white;font-weight:900">  @assetAttribute.Title</span>
+                                                }
+                                                else if (assetAttribute.Title.Contains("-ve"))
+                                                {
+                                                    <span style="color:white;font-weight:900">  @assetAttribute.Title</span>
+                                                }
+                                                else
+                                                {
+                                                    @assetAttribute.Title
+                                                }
+
+                                            </th>
+                                        }
+                                        if (j == 2)
+                                        { j = 0; }
+                                        else
+                                        { j++; }
+                                    }
+
+
+                                    @*<th style="background-color:#404040;color:white;width:150px;" colspan="3"></th>*@
+                                </tr>
+                            }
+
+                        }
+
+                    }
+
+                </thead>
+                <tbody style="max-height: 620px;overflow-y:auto;" id="tbodyAssetList">
+                    @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                    {
+
+                        foreach (var item in Model.mAssets)
+                        {
+                            if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                            {
+
+                                <tr data-id="@item.Id">
+                                    <td>
+                                        <a href="@item.HttpMisLink" target="_blank"> @item.Name</a>
+                                    </td>
+                                    @foreach (var attribute in mAssetAttribute)
+                                    {
+                                        string backgroundColor = string.Empty;
+
+                                        if (attribute.Title == "Vf" || attribute.Title == "If mA" || attribute.Title == "Choke V" || attribute.Title == "Charger V" || attribute.Title == "Charger mA")
+                                        {
+                                            backgroundColor = "#F9F9FD";
+                                        }
+                                        else if (attribute.Title == "Ir mA" || attribute.Title == "Vr")
+                                        {
+                                            backgroundColor = "#ffffff";
+                                        }
+                                        else if (attribute.Title == "TPR V")
+                                        {
+                                            backgroundColor = "#f4f8f8";
+                                        }
+                                        else if (attribute.Title.Contains("Last Update Feed End") || attribute.Title.Contains("Last Update Relay End"))
+                                        {
+                                            backgroundColor = "#fdfdff";
+                                        }
+
+                                        var attItem = item.assetAttributes.Where(x => x.Title == attribute.Title).FirstOrDefault();
+                                        if (Model.SearchCriteria.AssetTypeName.ToLower() == "Earth Fault".ToLower())
+                                        {
+
+                                            if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                            {
+                                                if (attItem != null)
+                                                {
+                                                    <td onclick="fnShowDetail('@item.Id','@attItem.Id')" class="hdnAttributeData@(attItem.Id)@(item.Id) fault-line">
+                                                        @attItem.Multiplication
+                                                    </td>
+                                                }
+                                                else
+                                                {
+                                                    <td class="hdnAttributeData@(attribute.Id)@(item.Id) fault-line">
+                                                        N/A
+                                                    </td>
+                                                }
+                                            }
+                                            if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode())
+                                            {
+                                                if (attItem != null)
+                                                {
+                                                    <td onclick="fnShowDetail('@item.Id','@attItem.Id')" class="hdnAttributeData@(attItem.Id)@(item.Id) fault-line">
+                                                        @attItem.Multiplication
+                                                    </td>
+                                                }
+                                                else
+                                                {
+                                                    <td class="hdnAttributeData@(attribute.Id)@(item.Id) fault-line">
+                                                        N/A
+                                                    </td>
+                                                }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (attItem != null)
+                                            {
+                                                <td onclick="fnShowDetail('@item.Id','@attItem.Id')" class="hdnAttributeData@(attItem.Id)@(item.Id) list@(attribute.Title.Replace(" ",""))" style="background-color:@backgroundColor">
+                                                    @attItem.Multiplication
+                                                </td>
+                                            }
+                                            else
+                                            {
+                                                <td class="hdnAttributeData@(attribute.Id)@(item.Id) list@(attribute.Title.Replace(" ",""))" style="background-color:@backgroundColor">
+                                                    N/A
+                                                </td>
+                                            }
+                                        }
+                                    }
+
+                                </tr>
+                            }
+                        }
+
+                    }
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+</div>
+
+<div id="divDetail"></div>
+@{
+    string type = string.Empty;
+    if (Model != null && Model.mAssets.Count > 0)
+    {
+        type = Model.mAssets[0].AssetTypeName;
+    }
+}
+
+<script>
+    var client = null;
+    var mQTT = null;
+    var json = "";
+    var channels = [];
+       var isSiteKeeping = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping');
+   var values = '@type';
+    $(document).ready(function () {
+        mQTT =@Html.Raw(Json.Encode(Model.MQTTDetail));
+         json = @Html.Raw(Json.Encode(Model));
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    });
+
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+        client.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    function stringToBool(val) {
+        return (val + '').toLowerCase() === 'true';
+    }
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i].toLowerCase());
+            }
+        }
+    }
+
+    function onMessageArrived(message) {
+        var channeldata = message.payloadString.split(',');
+        BindData(message.destinationName, channeldata);
+
+
+    }
+
+    function BindData(basePath, data) {
+        $.each(json.mAssets, function (id, item) {
+
+            var ifMa = 0;
+            var irMa = 0;
+            var plusV = 0
+            var minusV = 0;
+            var isLinkIssuelastUpdateFeedEnd = false;
+            var isLinkIssuelastUpdateRelayEnd = false;
+
+            var hdnAttributeDataFeedEndIds = [];
+            var hdnAttributeDataRelayEndIds = [];
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                var tprv = 0;
+                $.each(item.assetAttributes, function (idx, inItem) {
+                    if (inItem.Title == "A10 id") {
+                        $(".hdnAttributeData" + inItem.Id + item.Id).html(inItem.AssetInfoValue);
+                    }
+
+                    var str1 = basePath.toLowerCase();
+                    if (inItem.AssetInfoChannel != null) {
+                        var str2 = inItem.AssetInfoChannel.toLowerCase();
+                        if (str1.indexOf(str2) != -1) {
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
+
+                                if (inItem.Title == "If mA") {
+                                    hdnAttributeDataFeedEndIds.push(id);
+                                }
+                                else if (inItem.Title == "Choke V") {
+                                    hdnAttributeDataFeedEndIds.push(id);
+                                }
+                                else if (inItem.Title == "Charger mA") {
+                                    hdnAttributeDataFeedEndIds.push(id);
+                                }
+
+                                if (inItem.Title == "Ir mA") {
+                                    hdnAttributeDataRelayEndIds.push(id);
+                                }
+                                else if (inItem.Title == "Vr") {
+                                    hdnAttributeDataRelayEndIds.push(id);
+                                }
+
+
+                                if (infoMultiplication != null) {
+                                    if (inItem.Title == "Last Update Feed End( sec ago)" || inItem.Title == "Last Update Relay End( sec ago)" || inItem.Title == "Last Access (Sec)") {
+                                        var mainData = parseFloat(dataValue);
+                                        var v = (Math.round(mainData * 100) / 100).toFixed(1)
+                                       // $(id).html(v);
+                                        $(id).html(v + " - " + infoMultiplication);
+
+                                        if (inItem.Title == "Last Update Feed End( sec ago)") {
+                                            if (v > 300) {
+                                                isLinkIssuelastUpdateFeedEnd = true;
+                                            }
+                                        }
+                                        if (inItem.Title == "Last Update Relay End( sec ago)") {
+                                            if (v > 300) {
+                                                isLinkIssuelastUpdateRelayEnd = true;
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                        var v = (Math.round(mainData * 100) / 100).toFixed(1);
+
+                                        if (values == 'Earth Fault') {
+                                            if (inItem.Title == "+ve/Phase") {
+                                                plusV = parseFloat(v);
+                                                CalculateEarthFalt(item, inItem, plusV)
+                                            }
+                                            if (inItem.Title == "-ve/Neutral") {
+                                                minusV = parseFloat(v);
+                                                CalculateEarthFalt(item, inItem, minusV)
+                                            }
+
+                                        }
+                                        else {
+
+                                        }
+
+                                        if (inItem.Title == "Vr") {
+
+                                            if (v > 0.1 && v < 2.5 && tprv > 1) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else if (v > 4.2) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                        }
+                                        if (inItem.Title == "TPR V") {
+                                            tprv = v;
+                                            if (v > 0.1 && v < 20) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                            if (v < 1) {
+                                                $(".trackoc" + item.Id).addClass("text-danger").removeClass("text-success").html("O");
+                                                $(".lekage" + item.Id).addClass("text-danger").removeClass("text-danger")
+                                            }
+                                            else {
+                                                $(".trackoc" + item.Id).addClass("text-success").removeClass("text-danger").html("C");
+                                            }
+                                        }
+                                        if (inItem.Title == "Charger mA") {
+
+                                            if (v < 100) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                        }
+                                        if (inItem.Title == "Choke V") {
+                                            if (v > 1.8 && tprv > 1) {
+                                                $(id).addClass("text-danger");
+                                            }
+                                            else {
+                                                $(id).removeClass("text-danger");
+                                            }
+                                        }
+                                    }
+
+                                    if (values == 'Earth Fault') {
+                                        $(id).attr('data-val', v);
+                                    }
+                                    else {
+                                        $(id).html(v + " - " + infoMultiplication);
+                                        if (isLinkIssuelastUpdateFeedEnd) {
+                                            for (let index = 0; index < hdnAttributeDataFeedEndIds.length; ++index) {
+                                                $(hdnAttributeDataFeedEndIds[index]).addClass("text-danger");
+                                                $(hdnAttributeDataFeedEndIds[index]).html("Link Issue");
+                                            }
+                                        }
+                                        else {
+                                            $(id).removeClass("text-danger");
+                                        }
+                                        if (isLinkIssuelastUpdateRelayEnd) {
+                                            for (let index = 0; index < hdnAttributeDataRelayEndIds.length; ++index) {
+                                                $(hdnAttributeDataRelayEndIds[index]).addClass("text-danger");
+                                                $(hdnAttributeDataRelayEndIds[index]).html("Link Issue");
+                                            }
+                                        }
+                                        else {
+                                            $(id).removeClass("text-danger");
+                                        }
+                                    }
+                                }
+
+                            }
+                            else {
+                                var v = (Math.round(dataValue * 100) / 100).toFixed(1);
+                                if (inItem.Title == "Vr") {
+
+                                    if (v > 0.1 && v < 2.5) {
+                                        $(id).addClass("text-danger");
+                                    }
+                                    else if (v > 4.2) {
+                                        $(id).addClass("text-danger");
+                                    }
+                                    else {
+                                        $(id).removeClass("text-danger");
+                                    }
+                                }
+                                if (inItem.Title == "TPR V") {
+
+                                    if (v > 0.1 && v < 20) {
+                                        $(id).addClass("text-danger");
+                                    }
+                                    else {
+                                        $(id).removeClass("text-danger");
+                                    }
+                                }
+                                if (inItem.Title == "Charger mA") {
+
+                                    if (v < 100) {
+                                        $(id).addClass("text-danger");
+                                    }
+                                    else {
+                                        $(id).removeClass("text-danger");
+                                    }
+                                }
+                                if (inItem.Title == "Choke V") {
+                                    if (v > 1.8) {
+                                        $(id).addClass("text-danger");
+                                    }
+                                    else {
+                                        $(id).removeClass("text-danger");
+                                    }
+                                }
+                              //  $(id).html(v);
+                                $(id).html(v + " - " + infoMultiplication);
+                                if (isLinkIssuelastUpdateFeedEnd) {
+                                    for (let index = 0; index < hdnAttributeDataFeedEndIds.length; ++index) {
+                                        $(hdnAttributeDataFeedEndIds[index]).addClass("text-danger");
+                                        $(hdnAttributeDataFeedEndIds[index]).html("Link Issue");
+                                    }
+                                }
+                                else {
+                                    $(id).removeClass("text-danger");
+                                }
+                                if (isLinkIssuelastUpdateRelayEnd) {
+                                    for (let index = 0; index < hdnAttributeDataRelayEndIds.length; ++index) {
+                                        $(hdnAttributeDataRelayEndIds[index]).addClass("text-danger");
+                                        $(hdnAttributeDataRelayEndIds[index]).html("Link Issue");
+                                    }
+                                }
+                                else {
+                                    $(id).removeClass("text-danger");
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            //if (values == 'Earth Fault') {
+            //    if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+            //        var lg = 0;
+            //        var sm = 0;
+            //        var largeName = "";
+            //        var smallName = "";
+            //        if (plusV >= minusV) {
+            //            lg = plusV;
+            //            sm = minusV;
+            //            largeName = "+ve/Phase";
+            //            smallName = "-ve/Neutral";
+            //        }
+            //        if (minusV >= plusV) {
+            //            lg = minusV;
+            //            sm = plusV;
+            //            largeName = "-ve/Neutral";
+            //            smallName = "+ve/Phase";
+            //        }
+            //        $.each(item.assetAttributes, function (idx, inItem) {
+
+            //            var id = ".hdnAttributeData" + inItem.Id + item.Id;
+            //            var origbalvalue = parseFloat($(id).attr('data-val')).toFixed(2);
+
+
+            //            var diff = (parseFloat(lg) - parseFloat(sm)) / parseFloat(lg);
+            //            var maindif = diff * 100;
+
+            //            item.X = (parseFloat(item.X) * parseFloat(item.ReferenceValue)) / 100;
+            //            item.Y = (parseFloat(item.Y) * parseFloat(item.ReferenceValue)) / 100;
+
+            //            if (maindif > 0 && maindif < item.X) {
+
+            //                if (admin == 1) {
+            //                    $(id).empty().html(origbalvalue + '<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-success text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" >Healthy</div></div >');
+            //                }
+            //                else {
+            //                    $(id).empty().html('<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-success text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" >Healthy</div></div >');
+            //                }
+
+            //            }
+            //            else if (maindif > item.X && maindif < item.Y) {
+
+            //                if (admin == 1) {
+            //                    if (largeName == inItem.Title) {
+            //                        $(id).empty().html(origbalvalue + '<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-success text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100" >Healthy</div></div >');
+            //                    }
+            //                    if (smallName == inItem.Title) {
+            //                        $(id).empty().html(origbalvalue + '<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-warning text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100">Partial</div></div >');
+            //                    }
+
+            //                }
+            //                else {
+
+            //                    if (largeName == inItem.Title) {
+            //                        $(id).empty().html('<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-success text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100" >Healthy</div></div >');
+            //                    }
+            //                    if (smallName == inItem.Title) {
+            //                        $(id).empty().html('<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-warning text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100" >Partial</div></div >');
+            //                    }
+            //                }
+
+            //            }
+
+            //            else if (maindif > item.Y && maindif < item.ReferenceValue) {
+
+            //                if (admin == 1) {
+            //                    if (largeName == inItem.Title) {
+            //                        $(id).empty().html(origbalvalue + '<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-success text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100" >Healthy</div></div >');
+            //                    }
+            //                    if (smallName == inItem.Title) {
+            //                        $(id).empty().html(origbalvalue + '<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-danger text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100" >Full</div></div >');
+            //                    }
+
+            //                }
+            //                else {
+
+            //                    if (largeName == inItem.Title) {
+            //                        $(id).empty().html('<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-success text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100" >Healthy</div></div >');
+            //                    }
+            //                    if (smallName == inItem.Title) {
+            //                        $(id).empty().html('<div class="progress"><div class="progress-bar-animated progress-bar-striped bg-danger text-center" role ="progressbar" style= "width: 100%" aria-valuenow="100" aria-valuemin="0" aria - valuemax="100" >Full</div></div >');
+            //                    }
+            //                }
+
+            //            }
+
+            //        });
+
+            //    }
+            //}
+
+
+        });
+    }
+
+    function fnShowDetail(assetId, assetAttributeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/CalibrationDetail/_Detail',
+            type: 'Post',
+            data: '{assetId:' + assetId + ',assetAttributeId:' + assetAttributeId + ',date:"' + $("#searchFromDate").val() +'"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divDetail").empty().append(data);
+                $("#modal-show-detail").modal("show");
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>

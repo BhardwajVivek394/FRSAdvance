@@ -1,0 +1,1851 @@
+﻿@model Domain.Asset
+
+<div class="col-sm-12">
+    <input type="hidden" id="hdnName" value="@Model.AssetTypeName" />
+    @Html.HiddenFor(m => Model.Id, new { @id = "hdnAssetId" })
+    @Html.HiddenFor(m => Model.AssetTypeId, new { @id = "hdnAssetTypeId1" })
+    @Html.HiddenFor(m => Model.SiteId, new { @id = "hdnSiteId1" })
+
+
+    @if (Model.AssetTypeId == 3)
+    {
+        <div class="profile-right-body mt10">
+
+            <ul class="nav nav-tabs border-tab nav-primary" id="info-tab" role="tablist">
+                <li class="nav-item active">
+                    <a class="nav-link active" href="#Config" data-bs-toggle="tab" role="tab" aria-controls="Numbers" aria-selected="true" data-bs-original-title="" title="">
+                        <strong>Config</strong>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#Alerts" data-bs-toggle="tab" role="tab" aria-controls="Alerts" aria-selected="true" data-bs-original-title="" title=""><strong>Alerts</strong></a>
+                </li>
+                <li class="nav-item" style="display:none;">
+                    <a class="nav-link" href="#AlertsSeries" data-bs-toggle="tab" role="tab" aria-controls="AlertsSeriess" aria-selected="true" data-bs-original-title="" title=""><strong>Series Alerts</strong></a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#VibrationAlerts" data-bs-toggle="tab" role="tab" aria-controls="VibrationAlerts" aria-selected="true" data-bs-original-title="" title=""><strong>Vibration Alerts</strong></a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#FRSAlerts" data-bs-toggle="tab" role="tab" aria-controls="FRSAlertsConfig" aria-selected="true" data-bs-original-title="" title=""><strong>FRS Alerts</strong></a>
+                </li>
+
+            </ul>
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div class="tab-pane fade active show" id="Config" style="padding:0px">
+                    <div class="table-responsive" style="max-height: 600px;">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th>Attributes</th>
+                                    <th>Channels</th>
+                                    <th>Value</th>
+                                    <th>Multiplication</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyAttr">
+                                @if (Model.assetAttributes != null && Model.assetAttributes.Count > 0)
+                                {
+                                    foreach (var item in Model.assetAttributes)
+                                    {
+                                        <tr>
+                                            <td style="vertical-align:middle">
+                                                @item.Title
+                                                <input type="text" class="form-control" value="@item.HttpPostName" disabled />
+                                            </td>
+                                            <td style="vertical-align:middle">
+                                                @if (item.Title == "Name" || item.Title == "Widget#")
+                                                {
+                                                    <select class="form-control drpChannel" id="channel@(item.Id)" disabled>
+                                                        <option value="">Select Channel</option>
+                                                    </select>
+                                                }
+                                                else
+                                                {
+                                                    <select class="form-control drpChannel" id="channel@(item.Id)" disabled>
+                                                        <option value="">Select Channel</option>
+                                                        @for (int i = 1; i <= Model.MQTTNoOfChannels; i++)
+                                                        {
+                                                            string channel = "Channel" + i;
+                                                            if (item.AssetInfoChannel != null && item.AssetInfoChannel == channel)
+                                                            {
+                                                                <option value="Channel@(i)" selected>Channel @i</option>
+                                                            }
+                                                            else
+                                                            {
+                                                                <option value="Channel@(i)">Channel @i</option>
+                                                            }
+                                                        }
+                                                    </select>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (item.AssetInfoValue != null && item.AssetInfoValue != "")
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AssetInfoValue" disabled />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" disabled />
+                                                }
+                                            </td>
+                                            <td>
+
+
+                                                @if (item.DefaultMultiplication.HasValue && item.DefaultMultiplication.Value > 0)
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control multiplication" value="@item.DefaultMultiplication.Value" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control multiplication" />
+                                                }
+                                            </td>
+
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="Alerts" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive" style="max-height: 600px;">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Alert Name</th>
+                                    <th>Operators</th>
+                                    <th>Value</th>
+                                    <th>Thick Wave Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyOperators">
+                                @if (Model.mAlerts != null && Model.mAlerts.Count > 0)
+                                {
+                                    foreach (var item in Model.mAlerts.Where(x => x.AlertType != null && x.AlertType == "Parallel").ToList())
+                                    {
+                                        if (item.AlertName == "Over Current")
+                                        {
+                                            item.AlertValue = "3";
+                                            item.AlertThickWaveValue = "4";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Under Voltage")
+                                        {
+                                            item.AlertValue = "90";
+                                            item.AlertThickWaveValue = "90";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Operating Time")
+                                        {
+                                            item.AlertValue = "4000";
+                                            item.AlertThickWaveValue = "5000";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Under Current")
+                                        {
+                                            item.AlertValue = "0.8";
+                                            item.AlertThickWaveValue = "0.8";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Fail")
+                                        {
+                                            item.AlertValue = "1.2";
+                                            item.AlertThickWaveValue = "1.2";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Increase In Average Current")
+                                        {
+                                            item.AlertValue = "20";
+                                            item.AlertThickWaveValue = "20";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Increase in time of operation")
+                                        {
+                                            item.AlertValue = "20";
+                                            item.AlertThickWaveValue = "20";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Detection Voltage")
+                                        {
+                                            item.AlertValue = "2";
+                                            item.AlertThickWaveValue = "2";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Signature")
+                                        {
+                                            item.AlertValue = "2";
+                                            item.AlertThickWaveValue = "2";
+                                            item.OperatorId = 4;
+                                        }
+
+                                        <tr>
+                                            <td style="vertical-align:middle">
+                                                @if (item.IsActive)
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                                else
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(item.AlertName))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertName" readonly />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" readonly />
+                                                }
+                                            </td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpOperators" id="operators@(item.Id)">
+                                                    <option value="">Select Operator</option>
+                                                    @foreach (var operators in Model.mOperators)
+                                                    {
+                                                        if (item.OperatorId == operators.Id)
+                                                        {
+                                                            <option value="@operators.Id" selected>@operators.Value</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@operators.Id">@operators.Value</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertValue))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertValue" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertThickWaveValue))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertThickWaveValue" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="AlertsSeries" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive" style="max-height: 600px;">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Alert Name</th>
+                                    <th>Operators</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyOperators">
+                                @if (Model.mAlerts != null && Model.mAlerts.Count > 0)
+                                {
+                                    foreach (var item in Model.mAlerts.Where(x => x.AlertType != null && x.AlertType == "Series").ToList())
+                                    {
+                                        <tr>
+                                            <td style="vertical-align:middle">
+                                                @if (item.IsActive)
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                                else
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(item.AlertName))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertName" readonly />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" readonly />
+                                                }
+                                            </td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpOperators" id="operators@(item.Id)">
+                                                    <option value="">Select Operator</option>
+                                                    @foreach (var operators in Model.mOperators)
+                                                    {
+                                                        if (item.OperatorId == operators.Id)
+                                                        {
+                                                            <option value="@operators.Id" selected>@operators.Value</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@operators.Id">@operators.Value</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertValue))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertValue" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="VibrationAlerts" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive vh-100">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Alert Name</th>
+                                    <th>Operators</th>
+                                    <th>Min A</th>
+                                    <th>Max A</th>
+                                    <th>Min B</th>
+                                    <th>Max B</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyVibrationOperators">
+                                @if (Model.mAlerts != null && Model.mAlerts.Count > 0)
+                                {
+                                    foreach (var item in Model.mAlerts.Where(x => x.AlertType != null && x.AlertType == "Vibration").ToList())
+                                    {
+                                        <tr>
+                                            <td style="vertical-align:middle">
+                                                @if (item.IsActive)
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                                else
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(item.AlertName))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertName" readonly />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" readonly />
+                                                }
+                                            </td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpOperators" id="operators@(item.Id)">
+                                                    <option value="">Select Operator</option>
+                                                    @foreach (var operators in Model.mOperators)
+                                                    {
+                                                        if (item.OperatorId == operators.Id)
+                                                        {
+                                                            <option value="@operators.Id" selected>@operators.Value</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@operators.Id">@operators.Value</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertValue))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertValue" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.MaxValueA))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.MaxValueA" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertValueB))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertValueB" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.MaxValueB))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.MaxValueB" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+
+                <div class="tab-pane fade" id="FRSAlerts" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive vh-100">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th>ATTRIBUTES</th>
+                                    <th>Max Safe Value</th>
+                                    <th>Average Value</th>
+                                    <th>Min Safe Value</th>
+                                    <th>Min Fail Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyFRSAlert">
+                                @if (ViewBag.AssetAttributes != null)
+                                {
+                                    var assetAttributes = ViewBag.AssetAttributes as List<Domain.AssetAttribute>;
+                                    foreach (var item in assetAttributes)
+                                    {
+                                        string MaxSafeValue = string.Empty;
+                                        string AverageValue = string.Empty;
+                                        string MinSafeValue = string.Empty;
+                                        string MinFailValue = string.Empty;
+
+                                        if (item.Title == "A End - NWKR" || item.Title == "B End - NWKR")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "24";
+                                            MinSafeValue = "20";
+                                            MinFailValue = "18";
+                                        }
+                                        else if (item.Title == "A End - RWKR" || item.Title == "B End - RWKR")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "24";
+                                            MinSafeValue = "20";
+                                            MinFailValue = "18";
+                                        }
+                                        else if (item.Title == "A End - NW-V" || item.Title == "B End - NW-V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "110";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "80";
+                                        }
+                                        else if (item.Title == "A End - RW-V" || item.Title == "B End - RW-V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "110";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "80";
+                                        }
+                                        else if (item.Title == "A End - NW-C" || item.Title == "B End - NW-C")
+                                        {
+                                            MaxSafeValue = "4.5";
+                                            AverageValue = "2";
+                                            MinSafeValue = "1.2";
+                                            MinFailValue = "0.8";
+                                        }
+                                        else if (item.Title == "A End - RW-C" || item.Title == "B End - RW-C")
+                                        {
+                                            MaxSafeValue = "4.5";
+                                            AverageValue = "2";
+                                            MinSafeValue = "1.2";
+                                            MinFailValue = "0.8";
+                                        }
+                                        else if (item.Title == "A End - NW-T" || item.Title == "B End - NW-T")
+                                        {
+                                            MaxSafeValue = "9";
+                                            AverageValue = "6";
+                                            MinSafeValue = "3";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "A End - RW-T" || item.Title == "B End - RW-T")
+                                        {
+                                            MaxSafeValue = "9";
+                                            AverageValue = "6";
+                                            MinSafeValue = "3";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "A End - NWKR (Loc)" || item.Title == "B End - NWKR (Loc)")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "28.8";
+                                            MinSafeValue = "23";
+                                            MinFailValue = "21.6";
+                                        }
+                                        else if (item.Title == "A End - RWKR (Loc)" || item.Title == "B End - RWKR (Loc)")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "28.8";
+                                            MinSafeValue = "23";
+                                            MinFailValue = "21.6";
+                                        }
+                                        <tr>
+                                            <td>
+                                                <input type="hidden" value="@item.Id" />
+                                                @item.Title
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MaxSafeValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@AverageValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MinSafeValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MinFailValue" />
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    }
+    else if (Model.AssetTypeId == 2)
+    {
+        <div class="profile-right-body mt20">
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs border-tab nav-primary" id="info-tab" role="tablist">
+                <li class="nav-item active"><a class="nav-link" href="#Config" data-bs-toggle="tab"><strong>Config</strong></a></li>
+                <li class="nav-item"><a class="nav-link" href="#Alerts" data-bs-toggle="tab"><strong>Alerts</strong></a></li>
+                <li class="nav-item"><a class="nav-link" href="#DefaultConfig" data-bs-toggle="tab"><strong>Default Config</strong></a></li>
+                <li class="nav-item"><a class="nav-link" href="#FRSAlerts" data-bs-toggle="tab"><strong>FRS Alerts</strong></a></li>
+
+            </ul>
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div class="tab-pane fade active show" id="Config" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive mt10" style="max-height: 550px;" id="tblSignal">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th>ATTRIBUTES</th>
+                                    <th>CHANNELS</th>
+                                    <th>VALUE</th>
+                                    <th>MULTIPLICATION</th>
+                                    <th style="display:none"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodySignalAttr">
+                                @if (Model.assetAttributes != null && Model.assetAttributes.Count > 0)
+                                {
+                                    foreach (var item in Model.assetAttributes)
+                                    {
+                                        <tr>
+                                            <td style="vertical-align:middle">@item.Title  <input type="text" class="form-control" value="@item.HttpPostName" disabled /></td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpChannel" id="channel@(item.Id)" disabled>
+                                                    <option value="">Select Channel</option>
+                                                    @for (int i = 1; i <= Model.MQTTNoOfChannels; i++)
+                                                    {
+                                                        string channel = "Channel" + i;
+                                                        if (item.AssetInfoChannel != null && item.AssetInfoChannel == channel)
+                                                        {
+                                                            <option value="Channel@(i)" selected>Channel @i</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="Channel@(i)">Channel @i</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                @if (item.AssetInfoValue != null && item.AssetInfoValue != "")
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AssetInfoValue" disabled />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" disabled />
+                                                }
+                                            </td>
+                                            <td>
+
+                                                @if (item.DefaultMultiplication != null && item.DefaultMultiplication != null)
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.DefaultMultiplication" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+
+                                            </td>
+                                            <td style="display:none"></td>
+                                        </tr>
+                                    }
+                                }
+
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade " id="Alerts" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive" style="max-height: 600px;">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Alert Name</th>
+                                    <th>Operators</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyOperators">
+                                @if (Model.mAlerts != null && Model.mAlerts.Count > 0)
+                                {
+                                    foreach (var item in Model.mAlerts)
+                                    {
+                                        if (item.AlertName == "Aspect Under current")
+                                        {
+                                            item.AlertValue = "105";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Aspect  Under Voltage")
+                                        {
+                                            item.AlertValue = "100";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Aspect Failed")
+                                        {
+                                            item.AlertValue = "30";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Aspect Over current")
+                                        {
+                                            item.AlertValue = "150";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Signal Blank")
+                                        {
+                                            item.AlertValue = "10";
+                                            item.OperatorId = 2;
+                                        }
+
+                                        <tr>
+                                            <td style="vertical-align:middle">
+                                                @if (item.IsActive)
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                                else
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(item.AlertName))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertName" readonly />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" readonly />
+                                                }
+                                            </td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpOperators" id="operators@(item.Id)">
+                                                    <option value="">Select Operator</option>
+                                                    @foreach (var operators in Model.mOperators)
+                                                    {
+                                                        if (item.OperatorId == operators.Id)
+                                                        {
+                                                            <option value="@operators.Id" selected>@operators.Value</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@operators.Id">@operators.Value</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertValue))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertValue" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade " id="DefaultConfig" style="padding:0px;margin-top:20px;">
+                    @if (Model.mGlobalConfigs != null && Model.mGlobalConfigs.Count > 0)
+                    {
+                        foreach (var item in Model.mGlobalConfigs)
+                        {
+                            if (item.AttributeName == "Last Updated")
+                            {
+                                item.Value = 10;
+                            }
+                            else if (item.AttributeName == "Zero offset")
+                            {
+                                item.Value = 30;
+                            }
+                            <div class="row globalConfig" data-attrId="@item.AssetAttributeId">
+                                <div class="col-sm-5 mb20">
+                                    @item.AttributeName
+                                </div>
+                                <div class="col-sm-7 mb20">
+                                    @if (item.Value != null)
+                                    {
+                                        <input type="text" data-attrId="@item.AssetAttributeId" id="default@(item.AssetAttributeId)" class="form-control defaultName" value="@item.Value" />
+                                    }
+                                    else
+                                    {
+                                        <input type="text" data-attrId="@item.AssetAttributeId" id="default@(item.AssetAttributeId)" class="form-control defaultValue" />
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    <div class="row">
+                        <div class="col-sm-5">
+
+                        </div>
+                        <div class="col-sm-7">
+
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="FRSAlerts" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive vh-100">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th>ATTRIBUTES</th>
+                                    <th>Max Safe Value</th>
+                                    <th>Average Value</th>
+                                    <th>Min Safe Value</th>
+                                    <th>Min Fail Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyFRSAlert">
+                                @if (ViewBag.AssetAttributes != null)
+                                {
+                                    var assetAttributes = ViewBag.AssetAttributes as List<Domain.AssetAttribute>;
+                                    foreach (var item in assetAttributes)
+                                    {
+                                        string MaxSafeValue = string.Empty;
+                                        string AverageValue = string.Empty;
+                                        string MinSafeValue = string.Empty;
+                                        string MinFailValue = string.Empty;
+
+                                        if (item.Title == "DPR")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "26";
+                                            MinSafeValue = "21";
+                                            MinFailValue = "18";
+                                        }
+                                        else if (item.Title == "HPR")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "26";
+                                            MinSafeValue = "21";
+                                            MinFailValue = "18";
+                                        }
+                                        else if (item.Title == "HHPR")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "26";
+                                            MinSafeValue = "21";
+                                            MinFailValue = "18";
+                                        }
+                                        else if (item.Title == "DG mA")
+                                        {
+                                            MaxSafeValue = "150";
+                                            AverageValue = "130";
+                                            MinSafeValue = "110";
+                                            MinFailValue = "108";
+                                        }
+                                        else if (item.Title == "HG mA")
+                                        {
+                                            MaxSafeValue = "150";
+                                            AverageValue = "130";
+                                            MinSafeValue = "110";
+                                            MinFailValue = "108";
+                                        }
+                                        else if (item.Title == "HHG mA")
+                                        {
+                                            MaxSafeValue = "150";
+                                            AverageValue = "130";
+                                            MinSafeValue = "110";
+                                            MinFailValue = "108";
+                                        }
+                                        else if (item.Title == "RG mA")
+                                        {
+                                            MaxSafeValue = "150";
+                                            AverageValue = "130";
+                                            MinSafeValue = "110";
+                                            MinFailValue = "108";
+                                        }
+                                        else if (item.Title == "DG V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "110";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "82";
+                                        }
+                                        else if (item.Title == "HG V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "110";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "82";
+                                        }
+                                        else if (item.Title == "HHG V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "110";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "82";
+                                        }
+                                        else if (item.Title == "RG V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "110";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "82";
+                                        }
+                                        <tr>
+                                            <td>
+                                                <input type="hidden" value="@item.Id" />
+                                                @item.Title
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MaxSafeValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@AverageValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MinSafeValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MinFailValue" />
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    }
+    else
+    {
+        <div class="profile-right-body mt10">
+            <!-- Nav tabs -->
+            <ul class="nav nav-tabs border-tab nav-primary" id="info-tab" role="tablist">
+                <li class="nav-item active"><a href="#Config" data-bs-toggle="tab"><strong>Config</strong></a></li>
+                @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                {
+                    <li class="nav-item"><a class="nav-link" href="#Assets" data-bs-toggle="tab"><strong>Family Track</strong></a></li>
+                }
+                <li class="nav-item"><a class="nav-link" href="#Alerts" data-bs-toggle="tab"><strong>Alerts</strong></a></li>
+                @if (!string.IsNullOrEmpty(Model.AssetTypeName) && Model.AssetTypeName.ToLower() == "AXLE COUNTER".ToLower())
+                {
+                    if (Model.mErrorCodeIdentifier != null && Model.mErrorCodeIdentifier.Id > 0)
+                    {
+                        <li class="nav-item"><a class="nav-link" href="#errorCode" data-bs-toggle="tab"><strong>Error codes</strong></a></li>
+                    }
+                    else
+                    {
+                        <li class="nav-item" style="display:none;"><a class="nav-link" href="#errorCode" data-bs-toggle="tab"><strong>Error codes</strong></a></li>
+                    }
+                }
+
+                <li class="nav-item"><a class="nav-link" href="#FRSAlerts" data-bs-toggle="tab"><strong>FRS Alerts</strong></a></li>
+
+            </ul>
+            <!-- Tab panes -->
+            <div class="tab-content">
+                <div class="tab-pane active" id="Config" style="padding:0px">
+                    <div class="table-responsive" style="max-height: 550px;">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th>Attributes</th>
+                                    <th>Channels</th>
+                                    <th>Value</th>
+                                    <th>Multiplication</th>
+                                    <th style="display:none">Threshold</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyAttr">
+                                @if (Model.assetAttributes != null && Model.assetAttributes.Count > 0)
+                                {
+                                    foreach (var item in Model.assetAttributes)
+                                    {
+                                        <tr>
+                                            <td style="vertical-align:middle">@item.Title  <input type="text" class="form-control" value="@item.HttpPostName" disabled /></td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpChannel" id="channel@(item.Id)" disabled>
+                                                    <option value="">Select Channel</option>
+                                                    @for (int i = 1; i <= Model.MQTTNoOfChannels; i++)
+                                                    {
+                                                        string channel = "Channel" + i;
+                                                        if (item.AssetInfoChannel != null && item.AssetInfoChannel == channel)
+                                                        {
+                                                            <option value="Channel@(i)" selected>Channel @i</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="Channel@(i)">Channel @i</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (item.AssetInfoValue != null && item.AssetInfoValue != "")
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control assetValue" value="@item.AssetInfoValue" disabled />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control assetValue" disabled />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (item.DefaultMultiplication.HasValue && item.DefaultMultiplication.Value > 0)
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control multiplication" value="@item.DefaultMultiplication.Value" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control multiplication" />
+                                                }
+                                            </td>
+                                            <td style="display:none">
+                                                @if (item.ThresHold.HasValue && item.ThresHold.Value > 0)
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control thresHold" value="@item.ThresHold.Value" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control thresHold" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                {
+                    <div class="tab-pane" id="Assets" style="padding:0px">
+                        <div class="table-responsive" style="max-height: 550px;">
+                            <table class="table mt20">
+                                <thead>
+                                    <tr>
+                                        <th>Family Track</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbodyAssets">
+                                    @if (Model.mFamilyTracks != null && Model.mFamilyTracks.Count > 0)
+                                    {
+                                        int cnt = Model.mFamilyTracks.Count;
+                                        foreach (var familyTrack in Model.mFamilyTracks)
+                                        {
+                                            <tr>
+                                                <td style="vertical-align:middle">
+                                                    <select class="form-control drpAssets" id="asset@(familyTrack.Id)">
+                                                        <option value="">Select Track</option>
+                                                        @foreach (var asset in Model.mAssets)
+                                                        {
+                                                            if (familyTrack.TrackFamilyId == asset.Id)
+                                                            {
+                                                                <option data-familyId="@familyTrack.Id" value="@asset.Id" selected>@asset.Name</option>
+                                                            }
+                                                            else
+                                                            {
+                                                                <option data-familyId="@familyTrack.Id" value="@asset.Id">@asset.Name</option>
+                                                            }
+                                                        }
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        }
+                                        if (cnt < 8)
+                                        {
+                                            cnt = 8 - cnt;
+                                            for (int i = 1; i <= cnt; i++)
+                                            {
+                                                <tr>
+                                                    <td style="vertical-align:middle">
+                                                        <select class="form-control drpAssets" id="asset@(i)">
+                                                            <option value="">Select Track</option>
+                                                            @foreach (var asset in Model.mAssets)
+                                                            {
+                                                                <option data-familyId="0" value="@asset.Id">@asset.Name</option>
+                                                            }
+                                                        </select>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        for (int i = 1; i < 9; i++)
+                                        {
+                                            <tr>
+                                                <td style="vertical-align:middle">
+                                                    <select class="form-control drpAssets" id="asset@(i)">
+                                                        <option value="">Select Track</option>
+                                                        @foreach (var asset in Model.mAssets)
+                                                        {
+                                                            <option data-familyId="0" value="@asset.Id">@asset.Name</option>
+                                                        }
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+
+                <div class="tab-pane" id="Alerts" style="padding:0px">
+                    <div class="table-responsive" style="max-height: 550px;">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>Alert Name</th>
+                                    <th>Operators</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyOperators">
+                                @if (Model.mAlerts != null && Model.mAlerts.Count > 0)
+                                {
+                                    foreach (var item in Model.mAlerts)
+                                    {
+                                        if (item.AlertName == "Charger Under Charging")
+                                        {
+                                            item.AlertValue = "100";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Charger Defective")
+                                        {
+                                            item.AlertValue = "50";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Choke Shorting")
+                                        {
+                                            item.AlertValue = "0.2";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Choke Under Voltage")
+                                        {
+                                            item.AlertValue = "0.4";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Choke Over Voltage")
+                                        {
+                                            item.AlertValue = "1.8";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Choke Over Voltage On Train")
+                                        {
+                                            item.AlertValue = "3.8";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Variable Resistor Short")
+                                        {
+                                            item.AlertValue = "5";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Track TPR Under Voltage")
+                                        {
+                                            item.AlertValue = "20";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Track TPR Over Voltage")
+                                        {
+                                            item.AlertValue = "30";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName.Contains("Track TPR Drop but TR pick up"))
+                                        {
+                                            item.AlertValue = "0.2";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Track Fail")
+                                        {
+                                            item.AlertValue = "0.2";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Track Under Energize")
+                                        {
+                                            item.AlertValue = "2.5";
+                                            item.OperatorId = 2;
+                                        }
+                                        else if (item.AlertName == "Track Over Energize")
+                                        {
+                                            item.AlertValue = "4.2";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Track Leakage")
+                                        {
+                                            item.AlertValue = "150";
+                                            item.OperatorId = 4;
+                                        }
+                                        else if (item.AlertName == "Track Battery Defective")
+                                        {
+                                            item.AlertValue = "2000";
+                                            item.OperatorId = 4;
+                                        }
+                                        <tr>
+                                            <td style="vertical-align:middle">
+                                                @if (item.IsActive)
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                                else
+                                                {
+                                                    <input style="cursor:pointer;vertical-align:sub" class="chkAlert" type="checkbox" data-id="@item.Id" id="chkAlert('@item.Id')" checked />
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (!string.IsNullOrEmpty(item.AlertName))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertName" readonly />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" readonly />
+                                                }
+                                            </td>
+                                            <td style="vertical-align:middle">
+                                                <select class="form-control drpOperators" id="operators@(item.Id)">
+                                                    <option value="">Select Operator</option>
+                                                    @foreach (var operators in Model.mOperators)
+                                                    {
+                                                        if (item.OperatorId == operators.Id)
+                                                        {
+                                                            <option value="@operators.Id" selected>@operators.Value</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@operators.Id">@operators.Value</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td style="width:100px">
+                                                @if (!string.IsNullOrEmpty(item.AlertValue))
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" value="@item.AlertValue" />
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" data-id="@item.Id" class="form-control" />
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="4" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(Model.AssetTypeName) && Model.AssetTypeName.ToLower() == "AXLE COUNTER".ToLower())
+                {
+                    <div class="tab-pane" id="errorCode" style="margin-top:10px">
+                        <div class="row">
+                            <div class="col-sm-3 mb15 text-right" style="padding-top:10px;">
+                                <label>Identifier</label>
+                            </div>
+                            <div class="col-sm-5 mb15">
+                                @if (Model.mErrorCodeIdentifier != null && Model.mErrorCodeIdentifier.Id > 0)
+                                {
+                                    <input value="@Model.mErrorCodeIdentifier.IdentifierName" type="text" class="form-control" id="txtIdentifier" />
+
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control" id="txtIdentifier" />
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-sm-12 text-right mb15">
+                                <a class="btn btn-primary" onclick="AddErrorCode()">Add Word</a>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-sm-12 mb15">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>
+                                                Word
+                                            </th>
+                                            <th style="width:100px;">
+                                                Action
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tblErrorcode">
+                                        @if (Model.mErrorCodes != null && Model.mErrorCodes.Count > 0)
+                                        {
+                                            foreach (var item in Model.mErrorCodes)
+                                            {
+                                                <tr data-id="@(item.Id)" id='tre@(item.Id)'>
+                                                    <td id='tde@(item.Id)'>
+                                                        @item.ErrorCodeWord
+                                                    </td>
+                                                    <td>
+                                                        <a onclick="EditErrorCode(this)">
+                                                            <i class="glyphicon glyphicon-edit text-vision"></i>
+                                                        </a>
+                                                        <a onclick="DeleteErrorCode(this)" style="margin-left:10px;">
+                                                            <i class="glyphicon glyphicon-trash text-danger"></i>
+                                                        </a>
+                                                    </td>
+
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+
+                <div class="tab-pane fade" id="FRSAlerts" style="padding:0px;margin-top:20px;">
+                    <div class="table-responsive vh-100">
+                        <table class="table mt20">
+                            <thead>
+                                <tr>
+                                    <th>Attributes</th>
+                                    <th>Max Safe Value</th>
+                                    <th>Average Value</th>
+                                    <th>Min Safe Value</th>
+                                    <th>Min Fail Value</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyFRSAlert">
+                                @if (ViewBag.AssetAttributes != null && ViewBag.AssetAttributes.Count > 0)
+                                {
+                                    var assetAttributes = ViewBag.AssetAttributes as List<Domain.AssetAttribute>;
+                                    foreach (var item in assetAttributes)
+                                    {
+                                        string MaxSafeValue = string.Empty;
+                                        string AverageValue = string.Empty;
+                                        string MinSafeValue = string.Empty;
+                                        string MinFailValue = string.Empty;
+
+                                        if (item.Title == "TPR V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "24";
+                                            MinSafeValue = "20";
+                                            MinFailValue = "18";
+                                        }
+                                        else if (item.Title == "Charger V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "100";
+                                            MinSafeValue = "90";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "Charger OP V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "6.8";
+                                            MinSafeValue = "4.5";
+                                            MinFailValue = "4";
+                                        }
+                                        else if (item.Title == "Charger mA")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "300";
+                                            MinSafeValue = "50";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "Choke V")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "1.8";
+                                            MinSafeValue = "0.6";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "Vf")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "5";
+                                            MinSafeValue = "2.5";
+                                            MinFailValue = "1.5";
+                                        }
+                                        else if (item.Title == "If mA")
+                                        {
+                                            MaxSafeValue = "500";
+                                            AverageValue = "350";
+                                            MinSafeValue = "250";
+                                            MinFailValue = "240";
+                                        }
+                                        else if (item.Title == "VTC RELAY END")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "";
+                                            MinSafeValue = "";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "Ir mA")
+                                        {
+                                            MaxSafeValue = "400";
+                                            AverageValue = "350";
+                                            MinSafeValue = "210";
+                                            MinFailValue = "200";
+                                        }
+                                        else if (item.Title == "Vr")
+                                        {
+                                            MaxSafeValue = "4.2";
+                                            AverageValue = "3.5";
+                                            MinSafeValue = "2.1";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "TR V (Relay)")
+                                        {
+                                            MaxSafeValue = "4.2";
+                                            AverageValue = "3.5";
+                                            MinSafeValue = "2.1";
+                                            MinFailValue = "";
+                                        }
+                                        else if (item.Title == "TPR V (Loc)")
+                                        {
+                                            MaxSafeValue = "";
+                                            AverageValue = "25";
+                                            MinSafeValue = "23";
+                                            MinFailValue = "21";
+                                        }
+                                        <tr>
+                                            <td>
+                                                <input type="hidden" value="@item.Id" />
+                                                @item.Title
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MaxSafeValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@AverageValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MinSafeValue" />
+                                            </td>
+                                            <td>
+                                                <input type="text" class="form-control" value="@MinFailValue" />
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found!
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    }
+
+
+
+</div>
+
+<script>
+    function fnSaveAsset(isOverride) {
+        if ($("#SiteId").val() == null || $("#SiteId").val() == undefined || $("#SiteId").val() == '' || $("#SiteId").val() == "0") {
+            CommonNotification("ERROR", "Please select Site", "error");
+        }
+        else if ($("#AssetTypeId").val() == null || $("#AssetTypeId").val() == undefined || $("#AssetTypeId").val() == '' || $("#AssetTypeId").val() == "0") {
+            CommonNotification("ERROR", "Please select Asset Type", "error");
+        }
+        else {
+            var siteId = $("#hdnSiteId1").val();
+            var Asset = {};
+            Asset.Id = $("#hdnAssetId").val();
+            Asset.AssetTypeId = $("#hdnAssetTypeId1").val();
+            Asset.SiteId = $("#hdnSiteId1").val();
+            Asset.Name = $("#txtName").val();
+            Asset.HttpMisLink = $("#txtHttpLink").val();
+            if (isOverride != null && isOverride != undefined && isOverride != '') {
+                Asset.IsOverride = isOverride;
+            }
+            if ($('#refVal').length) {
+                Asset.ReferenceValue = $("#txtReferenceValue").val();
+            }
+
+            if ($("#hdnName").val().toLowerCase().trim() == "signal".toLowerCase().trim()) {
+
+                var AssetInfos = [];
+                $("#tbodySignalAttr tr").each(function () {
+                    var assetInfos = {};
+                    assetInfos.Value = $(this).find("td").eq(2).children("input").val();
+                    assetInfos.Channels = $(this).find("td").eq(1).children("select").children("option:selected").val();
+                    assetInfos.AssetAttributeId = $(this).find("td").eq(2).children("input").attr("data-id");
+                    assetInfos.Multiplication = $(this).find("td").eq(3).children("input").val();
+                    assetInfos.ThresHold = $(this).find("td").eq(4).children("input").val();
+                    assetInfos.HttpPostName = $(this).find("td").eq(0).children("input").val();
+                    AssetInfos.push(assetInfos);
+                });
+
+                var Alerts = [];
+                $("#tbodyOperators tr").each(function () {
+                    var alert = {};
+                    alert.IsActive = $(this).find("td").eq(0).children("input").prop("checked");
+                    alert.AlertName = $(this).find("td").eq(1).children("input").val();
+                    alert.Id = $(this).find("td").eq(1).children("input").attr("data-id");
+                    alert.OperatorId = $(this).find("td").eq(2).children("select").children("option:selected").val();
+                    alert.AlertValue = $(this).find("td").eq(3).children("input").val();
+                    Alerts.push(alert);
+                });
+                if ($("#Alerts").hasClass("active")) {
+                    Asset.mAlerts = [];
+                    Asset.mAlerts = Alerts;
+                }
+
+                if ($("#Config").hasClass("active")) {
+                    Asset.mAssetInfos = [];
+                    Asset.mAssetInfos = AssetInfos;
+                }
+
+                var AssetFRSAlertInfos = [];
+                $("#tbodyFRSAlert tr").each(function () {
+                    var assetInfo = {};
+                    assetInfo.AssetAttributeId = $(this).find("td").eq(0).children("input").val();
+                    assetInfo.MaxSafeValue = $(this).find("td").eq(1).children("input").val();
+                    assetInfo.AverageValue = $(this).find("td").eq(2).children("input").val();
+                    assetInfo.MinSafeValue = $(this).find("td").eq(3).children("input").val();
+                    assetInfo.MinFailValue = $(this).find("td").eq(4).children("input").val();
+
+                    if (assetInfo.MaxSafeValue == '' && assetInfo.AverageValue == '' && assetInfo.MinSafeValue == '' && assetInfo.MinFailValue == '') {
+
+                    } else {
+                        AssetFRSAlertInfos.push(assetInfo);
+                    }
+                });
+                if ($("#FRSAlerts").hasClass("active")) {
+                    //Asset.mAssetInfos = [];
+                    //Asset.mAssetInfos = AssetFRSAlertInfos;
+                    Asset.mFRSAttributeRanges = [];
+                    Asset.mFRSAttributeRanges = AssetFRSAlertInfos;
+                }
+
+                var Defaultconfig = [];
+                $(".globalConfig").each(function () {
+                    var LastUpdateValue = {};
+                    LastUpdateValue.AssetId = $("#hdnAssetId").val();
+                    LastUpdateValue.AssetAttributeId = $(this).attr("data-attrId");
+                    LastUpdateValue.Value = $("#default" + LastUpdateValue.AssetAttributeId).val();
+                    Defaultconfig.push(LastUpdateValue)
+                });
+                if ($("#DefaultConfig").hasClass("active")) {
+                    Asset.mGlobalConfigs = [];
+                    Asset.mGlobalConfigs = Defaultconfig;
+                }
+
+
+            }
+            else if ($("#hdnName").val().toLowerCase().trim() == "point machine".toLowerCase().trim()) {
+                var AssetInfos = [];
+                $("#tbodyAttr tr").each(function () {
+                    var assetInfo = {};
+                    assetInfo.Value = $(this).find("td").eq(2).children("input").val();
+                    assetInfo.Channels = $(this).find("td").eq(1).children("select").children("option:selected").val();
+                    assetInfo.AssetAttributeId = $(this).find("td").eq(2).children("input").attr("data-id");
+                    assetInfo.HttpPostName = $(this).find("td").eq(0).children("input").val();
+                    assetInfo.Multiplication = $(this).find("td").eq(3).children("input").val();
+                    AssetInfos.push(assetInfo);
+                });
+                if ($("#Config").hasClass("active")) {
+                    Asset.mAssetInfos = [];
+                    Asset.mAssetInfos = AssetInfos;
+                }
+
+                var Alerts = [];
+                var VibrationAlerts = [];
+                $("#tbodyOperators tr").each(function () {
+                    var alert = {};
+                    alert.IsActive = $(this).find("td").eq(0).children("input").prop("checked");
+                    alert.AlertName = $(this).find("td").eq(1).children("input").val();
+                    alert.Id = $(this).find("td").eq(1).children("input").attr("data-id");
+                    alert.OperatorId = $(this).find("td").eq(2).children("select").children("option:selected").val();
+                    alert.AlertValue = $(this).find("td").eq(3).children("input").val();
+                    alert.AlertThickWaveValue = $(this).find("td").eq(4).children("input").val();
+
+                    Alerts.push(alert);
+                });
+
+                $("#tbodyVibrationOperators tr").each(function () {
+                    var alert = {};
+                    alert.IsActive = $(this).find("td").eq(0).children("input").prop("checked");
+                    alert.AlertName = $(this).find("td").eq(1).children("input").val();
+                    alert.Id = $(this).find("td").eq(1).children("input").attr("data-id");
+                    alert.OperatorId = $(this).find("td").eq(2).children("select").children("option:selected").val();
+                    alert.AlertValue = $(this).find("td").eq(3).children("input").val();
+                    alert.MaxValueA = $(this).find("td").eq(4).children("input").val();
+                    alert.AlertValueB = $(this).find("td").eq(5).children("input").val();
+                    alert.MaxValueB = $(this).find("td").eq(6).children("input").val();
+
+                    VibrationAlerts.push(alert);
+                });
+
+                var AssetFRSAlertInfos = [];
+                $("#tbodyFRSAlert tr").each(function () {
+                    var assetInfo = {};
+                    assetInfo.AssetAttributeId = $(this).find("td").eq(0).children("input").val();
+                    assetInfo.MaxSafeValue = $(this).find("td").eq(1).children("input").val();
+                    assetInfo.AverageValue = $(this).find("td").eq(2).children("input").val();
+                    assetInfo.MinSafeValue = $(this).find("td").eq(3).children("input").val();
+                    assetInfo.MinFailValue = $(this).find("td").eq(4).children("input").val();
+
+                    if (assetInfo.MaxSafeValue == '' && assetInfo.AverageValue == '' && assetInfo.MinSafeValue == '' && assetInfo.MinFailValue == '') {
+
+                    } else {
+                        AssetFRSAlertInfos.push(assetInfo);
+                    }
+                });
+                if ($("#FRSAlerts").hasClass("active")) {
+
+                    Asset.mFRSAttributeRanges = [];
+                    Asset.mFRSAttributeRanges = AssetFRSAlertInfos;
+                }
+
+
+                if ($("#Alerts").hasClass("active")) {
+                    Asset.mAlerts = [];
+                    Asset.mAlerts = Alerts;
+                }
+
+                if ($("#VibrationAlerts").hasClass("active")) {
+                    Asset.mAlerts = [];
+                    Asset.mAlerts = VibrationAlerts;
+                }
+
+                if ($('#chkHalfPointMachine').is(":checked")) {
+                    Asset.IsHalfPointMachine = true;
+                } else {
+                    Asset.IsHalfPointMachine = false;
+                }
+            }
+            else {
+
+                var AssetInfos = [];
+                $("#tbodyAttr tr").each(function () {
+                    var assetInfos = {};
+                    assetInfos.Value = $(this).find("td").eq(2).children("input").val();
+                    assetInfos.Channels = $(this).find("td").eq(1).children("select").children("option:selected").val();
+                    assetInfos.AssetAttributeId = $(this).find("td").eq(2).children("input").attr("data-id");
+                    assetInfos.Multiplication = $(this).find("td").eq(3).children("input").val();
+                    assetInfos.ThresHold = $(this).find("td").eq(4).children("input").val();
+                    assetInfos.HttpPostName = $(this).find("td").eq(0).children("input").val();
+                    AssetInfos.push(assetInfos);
+                });
+
+                if ($("#Config").hasClass("active")) {
+                    Asset.mAssetInfos = [];
+                    Asset.mAssetInfos = AssetInfos;
+                }
+
+
+                var Alerts = [];
+                $("#tbodyOperators tr").each(function () {
+                    var alert = {};
+                    alert.IsActive = $(this).find("td").eq(0).children("input").prop("checked");
+                    alert.AlertName = $(this).find("td").eq(1).children("input").val();
+                    alert.Id = $(this).find("td").eq(1).children("input").attr("data-id");
+                    alert.OperatorId = $(this).find("td").eq(2).children("select").children("option:selected").val();
+                    alert.AlertValue = $(this).find("td").eq(3).children("input").val();
+                    Alerts.push(alert);
+                });
+
+                if ($("#Alerts").hasClass("active")) {
+                    Asset.mAlerts = [];
+                    Asset.mAlerts = Alerts;
+                }
+
+
+                var FamilyTracks = [];
+                $("#tbodyAssets tr").each(function () {
+                    var familyTrack = {};
+                    familyTrack.Id = $(this).find("td").eq(0).children("select").children("option:selected").attr("data-familyId");
+                    familyTrack.TrackFamilyId = $(this).find("td").eq(0).children("select").children("option:selected").val();
+                    FamilyTracks.push(familyTrack);
+                });
+
+                Asset.mFamilyTracks = [];
+                Asset.mFamilyTracks = FamilyTracks;
+
+                var AssetFRSAlertInfos = [];
+                $("#tbodyFRSAlert tr").each(function () {
+                    var assetInfo = {};
+                    assetInfo.AssetAttributeId = $(this).find("td").eq(0).children("input").val();
+                    assetInfo.MaxSafeValue = $(this).find("td").eq(1).children("input").val();
+                    assetInfo.AverageValue = $(this).find("td").eq(2).children("input").val();
+                    assetInfo.MinSafeValue = $(this).find("td").eq(3).children("input").val();
+                    assetInfo.MinFailValue = $(this).find("td").eq(4).children("input").val();
+                    if (assetInfo.MaxSafeValue == '' && assetInfo.AverageValue == '' && assetInfo.MinSafeValue == '' && assetInfo.MinFailValue == '') {
+
+                    } else {
+                        AssetFRSAlertInfos.push(assetInfo);
+                    }
+                });
+                if ($("#FRSAlerts").hasClass("active")) {
+                    Asset.mFRSAttributeRanges = [];
+                    Asset.mFRSAttributeRanges = AssetFRSAlertInfos;
+                }
+            }
+
+            if ($("#hdnName").val().toLowerCase().trim() == "AXLE COUNTER".toLowerCase().trim()) {
+
+                var ErrorCodeIdentifier = {};
+                ErrorCodeIdentifier.IdentifierName = $("#txtIdentifier").val();
+
+                var errorCodes = [];
+                $("#tblErrorcode tr").each(function () {
+                    var errorCode = {};
+                    errorCode.ErrorCodeWord = $.trim($(this).find("td").eq(0).html());
+                    errorCodes.push(errorCode);
+                });
+
+                Asset.mErrorCodeIdentifier = ErrorCodeIdentifier;
+                Asset.mErrorCodes = [];
+                Asset.mErrorCodes = errorCodes;
+
+            }
+
+            if ($("#chkIsMapRG").prop('checked') == true) {
+                Asset.IsMapRG = true;
+            }
+
+            if (confirm('Are you sure you want to update this default value?')) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/Maintenace/SaveAssetType',
+                    type: 'Post',
+                    data: '{mAsset:' + JSON.stringify(Asset) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null && data.IsSuccess == true) {
+                            CommonNotification("SUCCESS", data.Message, "success");
+                            $("#modal-add-asset").modal('hide');
+                            $("#modelConfirmDefaultValue").modal("hide");
+                            //$("[class*='modal-backdrop in']").remove();
+                            fnGetAsset(siteId);
+                        } else {
+                            CommonNotification("ERROR", data.Message, "error");
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+
+
+        }
+
+    }
+
+    //function fnShowAlertInfo(id, $this) {
+    //    if (id != null && id != '' && id != undefined) {
+    //        if ($($this).hasClass("fa fa-plus")) {
+    //            $($this).removeClass("fa fa-plus").addClass("fa fa-minus");
+    //            $('.trFrsAlert_' + id).show();
+    //        } else {
+    //            $($this).removeClass("fa fa-minus").addClass("fa fa-plus");
+    //            $('.trFrsAlert_' + id).hide();
+    //        }
+    //    }
+    //}
+
+    //function fnAddFrsAlert(alertInfoId, assetTypeId) {
+
+    //    $("#loader").show();
+    //    $.ajax({
+    //        url: '/Site/GetAllAssetAttributeBy',
+    //        type: 'Post',
+    //        data: '{assetTypeId:' + assetTypeId + '}',
+    //        contentType: 'application/json',
+    //        success: function (data) {
+    //            $("#loader").hide();
+
+    //            var drpval = '<option value="0">Select</option>';
+    //            $.each(data, function (key, value) {
+    //                drpval += '<option value="' + value.Id + '">' + value.Title + '</option>';
+
+    //            });
+    //            var tbl = '<tr>';
+    //            tbl += '<td style="display:none">' + alertInfoId + '</td>';
+    //            tbl += '<td><select class="form-control">' + drpval + '</select></td>';
+    //            tbl += '<td><input type="number" class="form-control" /></td>';
+    //            tbl += '<td><input type="number" class="form-control" /></td>';
+    //            tbl += '<td><input type="number" class="form-control" /></td>';
+    //            tbl += '<td><input type="number" class="form-control" /></td>';
+    //            tbl += '<td><input type="number" class="form-control" /></td>';
+    //            $('.clsFRSAlert' + alertInfoId).prepend(tbl);
+    //        },
+    //        error: function (response) {
+    //            $("#loader").hide();
+    //            CommonNotification("ERROR", "Something went wrong!", "Error");
+    //        }
+    //    });
+
+    //}
+</script>

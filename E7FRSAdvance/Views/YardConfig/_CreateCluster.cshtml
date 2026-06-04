@@ -1,0 +1,556 @@
+﻿@model Domain.Cluster
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+
+<div class="modal bounceIn animated" id="modal-add-cluster" tabindex="-1" aria-labelledby="modal-add-cluster" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content bradius4">
+            @Html.HiddenFor(m => Model.Id, new { @id = "hdnId" })
+            @Html.HiddenFor(m => Model.SiteId, new { @id = "hdnSiteId" })
+            <div class="modal-header">
+                @if (Model.Id == 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Add Cluster</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"> Edit Cluster</span></h4>
+                }
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close" data-bs-original-title="" title=""></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-4">
+                            <label class="control-label">RF cluster <span class="text-danger">*</span></label>
+                            <div class="mb-1">
+                                <select class="form-control" name="state" id="RFcluster" tabindex="1">
+                                    @for (int i = 1; i <= 50; i++)
+                                    {
+                                        <option value="cluster_@i">@i</option>
+                                    }
+
+                                </select>
+                                <span id="spRole" class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Location name <span class="text-danger">*</span></label>
+                            <div class="mb-1">
+                                <input type="text" id="Locationname" class="form-control" value="@Model.Name" tabindex="2" />
+                                <span id="spRole" class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Power Supply</label>
+                            <div class="mb-1">
+                                @Html.DropDownListFor(m => m.PowerSupplyId, (IEnumerable<SelectListItem>)ViewBag.PowerSupplyTypeList, "Select", new { @class = "form-control", tabindex = 3 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Modem Id</label>
+                            <div class="mb-1">
+                                @Html.TextBoxFor(m => m.ModemId, new { @class = "form-control", tabindex = 4 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Modem Name</label>
+                            <div class="mb-1">
+                                @Html.TextBoxFor(m => m.ModemName, new { @class = "form-control", tabindex = 5 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Sim Number</label>
+                            <div class="mb-1">
+                                @Html.TextBoxFor(m => m.SimNumber, new { @class = "form-control", tabindex = 6 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Connector Status</label>
+                            <div class="mb-1">
+                                <select id="ConnectorStatus" class="form-control" tabindex="7">
+                                    <option value="">Select</option>
+                                    <option value="Yes" @(Model.ConnectorStatus == "Yes" ? "selected" : "")>Yes</option>
+                                    <option value="No" @(Model.ConnectorStatus == "No" ? "selected" : "")>No</option>
+                                    <option value="N/A" @(Model.ConnectorStatus == "N/A" ? "selected" : "")>N/A</option>
+                                </select>
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Modem Version <span class="text-danger">*</span></label>
+                            <div class="mb-1">
+                                @Html.DropDownListFor(m => m.ModemVersion, (IEnumerable<SelectListItem>)ViewBag.ModemVersionList, "Select", new { @class = "form-control", tabindex = 3 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">IP</label>
+                            <div class="mb-1">
+                                @Html.TextBoxFor(m => m.IP, new { @class = "form-control", tabindex = 3 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="control-label">Password</label>
+                            <div class="mb-1">
+                                @Html.TextBoxFor(m => m.Password, new { @class = "form-control", tabindex = 3 })
+
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <label class="control-label">Current Card</label>
+                            <a onclick="fnAddCurrentCardNumbers()" class="btn btn-xs btn-primary"><i class="fa fa-plus"></i></a>
+                            <div class="mb-1">
+                                @*@Html.DropDownList("CurrentCardNumbers", ViewBag.CurrentCardNumbers as SelectList, new { @class = "js-example-basic-multiple", @multiple = "multiple" })*@
+                                <select id="CurrentCardNumbers" tabindex="8" class="js-example-basic-multiple" multiple>
+                                    @if (ViewBag.CurrentCardNumbers != null)
+                                    {
+                                        foreach (var item in ViewBag.CurrentCardNumbers as List<string>)
+                                        {
+                                            var last = item.Split('-').LastOrDefault();
+                                            <option value="@last">@item</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <label class="control-label">Mint Card</label>
+                            <a onclick="fnAddMintCardNumbers()" class="btn btn-xs btn-primary"><i class="fa fa-plus"></i></a>
+                            <div class="mb-1">
+                                <select id="MintCardNumbers" tabindex="9" class="js-example-basic-multiple" multiple>
+                                    @if (ViewBag.MintCardNumbers != null)
+                                    {
+                                        foreach (var item in ViewBag.MintCardNumbers as List<string>)
+                                        {
+                                            var last = item.Split('-').LastOrDefault();
+                                            <option value="@last">@item</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <label class="control-label">V5</label>
+                            <a onclick="fnAddV5Numbers()" class="btn btn-xs btn-primary"><i class="fa fa-plus"></i></a>
+                            <div class="mb-1">
+                                <select id="V5Numbers" tabindex="9" class="js-example-basic-multiple" multiple>
+                                    @if (ViewBag.V5Numbers != null)
+                                    {
+                                        foreach (var item in ViewBag.V5Numbers as List<string>)
+                                        {
+                                            var last = item.Split('-').LastOrDefault();
+                                            <option value="@last">@item</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <label class="control-label">V8</label>
+                            <a onclick="fnAddV82Numbers()" class="btn btn-xs btn-primary"><i class="fa fa-plus"></i></a>
+                            <div class="mb-1">
+                                <select id="V82Numbers" tabindex="10" class="js-example-basic-multiple" multiple>
+                                    @if (ViewBag.V82Numbers != null)
+                                    {
+                                        foreach (var item in ViewBag.V82Numbers as List<string>)
+                                        {
+                                            var last = item.Split('-').LastOrDefault();
+                                            <option value="@last">@item</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <label class="control-label">DI</label>
+                            <a onclick="fnAddDINumbers()" class="btn btn-xs btn-primary"><i class="fa fa-plus"></i></a>
+                            <div class="mb-1">
+                                <select id="DINumbers" tabindex="11" class="js-example-basic-multiple" multiple>
+                                    @if (ViewBag.DINumbers != null)
+                                    {
+                                        foreach (var item in ViewBag.DINumbers as List<string>)
+                                        {
+                                            var last = item.Split('-').LastOrDefault();
+                                            <option value="@last">@item</option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <label class="control-label">Add ADC <a onclick="fnAddADC()" class="btn btn-xs btn-primary"><i class="fa fa-plus"></i></a></label>
+                        </div>
+                        <div class="col-sm-12">
+                            <table class="table" id="tblADC">
+                                <tbody id="tbodyADC">
+                                    @if (Model.ADCs != null && Model.ADCs.Count > 0)
+                                    {
+                                        foreach (var adc in Model.ADCs)
+                                        {
+                                            <tr id="tr_@adc.SequenceNumber">
+                                                <td><label>ADC @adc.SequenceNumber</label></td>
+                                                <td><input type="text" class="form-control txtADCValue" data-new-Id="@adc.SequenceNumber" data-adcId="@adc.Id" placeholder="Enter ADC Value" value="@adc.ADCNumber" /></td>
+                                                <td>
+                                                    <select class="form-control drpADCType" data-new-Id="@adc.SequenceNumber">
+                                                        <option>Select Type</option>
+                                                        @if (adc.ADCTypeId == 1)
+                                                        {
+                                                            <option value="1" selected>Special 1056</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="1">Special 1056</option>
+                                                        }
+
+                                                        @if (adc.ADCTypeId == 2)
+                                                        {
+                                                            <option value="2" selected>Normal</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="2">Normal</option>
+                                                        }
+
+                                                        @if (adc.ADCTypeId == 3)
+                                                        {
+                                                            <option value="3" selected>Special 1507</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="3">Special 1507</option>
+                                                        }
+                                                    </select>
+                                                </td>
+                                                <td><a class="btn btn-xs btn-primary" onclick="fnDeleteADC('@adc.Id')"><i class="fa fa-minus"></i></a></td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" aria-label="Close" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="CreateCluster()" id="btnSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#CurrentCardNumbers').select2();
+        $('#MintCardNumbers').select2();
+        $('#V5Numbers').select2();
+        $('#V82Numbers').select2();
+        $('#DINumbers').select2();
+       // $('#RFcluster').select2();
+
+        if ('@Model.Id' != '0') {
+            if ('@Model.CurrentCardNumbers' != null) {
+                  var javascriptArray = @Html.Raw(Json.Encode(Model.CurrentCardNumbers));
+                $('#CurrentCardNumbers').select2().val(javascriptArray).trigger('change');
+            }
+
+            if ('@Model.MintCardNumbers' != null) {
+                var javascriptArray = @Html.Raw(Json.Encode(Model.MintCardNumbers));
+                $('#MintCardNumbers').select2().val(javascriptArray).trigger('change');
+            }
+
+            if ('@Model.V5Numbers' != null) {
+                var javascriptArray = @Html.Raw(Json.Encode(Model.V5Numbers));
+                $('#V5Numbers').select2().val(javascriptArray).trigger('change');
+            }
+
+            if ('@Model.V82Numbers' != null) {
+                var javascriptArray = @Html.Raw(Json.Encode(Model.V82Numbers));
+                $('#V82Numbers').select2().val(javascriptArray).trigger('change');
+            }
+
+            if ('@Model.DINumbers' != null) {
+                var javascriptArray = @Html.Raw(Json.Encode(Model.DINumbers));
+                $('#DINumbers').select2().val(javascriptArray).trigger('change');
+            }
+
+            if ('@Model.RFClusterId' != null && '@Model.RFClusterId' != '0') {
+                $('#RFcluster').val("cluster_@Model.RFClusterId");
+            }
+        }
+    });
+
+    function fnAddCurrentCardNumbers() {
+        var count = 0;
+        var arrCurrentCardNumbers = $('#CurrentCardNumbers').val();
+        if (arrCurrentCardNumbers != null && arrCurrentCardNumbers.length > 0) {
+            var i = 0;
+            $(arrCurrentCardNumbers).each(function (d, val) {
+                i++;
+                count = parseInt(val);
+                if (i != count) {
+                    count = i - 1;
+                    return false;
+                }
+            });
+            count++;
+            arrCurrentCardNumbers.push("" + count + "");
+            $('#CurrentCardNumbers').select2().val(arrCurrentCardNumbers).trigger('change');
+        } else {
+            $('#CurrentCardNumbers').select2().val(1).trigger('change');
+        }
+    }
+
+    function fnAddMintCardNumbers() {
+        var count = 0;
+        var arrMintCardNumbers = $('#MintCardNumbers').val();
+        if (arrMintCardNumbers != null && arrMintCardNumbers.length > 0) {
+            var i = 0;
+            $(arrMintCardNumbers).each(function (d, val) {
+                i++;
+                count = parseInt(val);
+                if (i != count) {
+                    count = i - 1;
+                    return false;
+                }
+            });
+            count++;
+            arrMintCardNumbers.push("" + count + "");
+            $('#MintCardNumbers').select2().val(arrMintCardNumbers).trigger('change');
+        } else {
+            $('#MintCardNumbers').select2().val(1).trigger('change');
+        }
+    }
+
+    function fnAddV5Numbers() {
+        var count = 0;
+        var arrV5Numbers = $('#V5Numbers').val();
+        if (arrV5Numbers != null && arrV5Numbers.length > 0) {
+            var i = 0;
+            $(arrV5Numbers).each(function (d, val) {
+                i++;
+                count = parseInt(val);
+                if (i != count) {
+                    count = i - 1;
+                    return false;
+                }
+            });
+            count++;
+            arrV5Numbers.push("" + count + "");
+            $('#V5Numbers').select2().val(arrV5Numbers).trigger('change');
+        } else {
+            $('#V5Numbers').select2().val(1).trigger('change');
+        }
+    }
+
+    function fnAddV82Numbers() {
+        var count = 0;
+        var arrV82Numbers = $('#V82Numbers').val();
+        if (arrV82Numbers != null && arrV82Numbers.length > 0) {
+            var i = 0;
+            $(arrV82Numbers).each(function (d, val) {
+                i++;
+                count = parseInt(val);
+                if (i != count) {
+                    count = i - 1;
+                    return false;
+                }
+            });
+            count++;
+            arrV82Numbers.push("" + count + "");
+            $('#V82Numbers').select2().val(arrV82Numbers).trigger('change');
+        } else {
+            $('#V82Numbers').select2().val(1).trigger('change');
+        }
+    }
+
+    function fnAddDINumbers() {
+        var count = 0;
+        var arrDINumbers = $('#DINumbers').val();
+        if (arrDINumbers != null && arrDINumbers.length > 0) {
+            var i = 0;
+            $(arrDINumbers).each(function (d, val) {
+                i++;
+                count = parseInt(val);
+                if (i != count) {
+                    count = i - 1;
+                    return false;
+                }
+            });
+            count++;
+            arrDINumbers.push("" + count + "");
+            $('#DINumbers').select2().val(arrDINumbers).trigger('change');
+        } else {
+            $('#DINumbers').select2().val(1).trigger('change');
+        }
+    }
+
+
+    function fnAddADC() {
+        var id = 1;
+        $('.txtADCValue').each(function () {
+            if ($(this).attr('data-new-Id') != null && $(this).attr('data-new-Id') != '' && $(this).attr('data-new-Id') != undefined) {
+                id = parseInt($(this).attr('data-new-Id'));
+                id++;
+            }
+
+        });
+
+        var remark = '<tr id="tr_' + id + '">';
+        remark += '<td><label>ADC ' + id + '</label></td>';
+        remark += '<td><input type="text" class="form-control txtADCValue" data-new-Id="' + id + '" placeholder="Enter ADC Value"/></td>';
+        remark += '<td><select class="form-control drpADCType" data-new-Id="' + id + '" ><option>Select Type</option><option value="1">Special 1056</option><option value="2">Normal</option><option value="3">Special 1507</option></select></td>';
+        remark += '<td><button type="Button" class="btn btn-xs btn-primary" onclick="RemoveADC(' + id + ')"><i class="fa fa-minus"></i></button></td>';
+        remark += '<tr>';
+        $('#tbodyADC').append(remark);
+    }
+
+    function CreateCluster() {
+        var mCluster = {}
+        mCluster.Id = $('#hdnId').val();
+        mCluster.SiteId = $('#hdnSiteId').val();
+        mCluster.Name = $("#RFcluster").val() + '/' + $("#Locationname").val();
+
+        mCluster.CurrentCard = $('#CurrentCardNumbers').val().length;
+        mCluster.MintCard = $('#MintCardNumbers').val().length;
+        mCluster.V5 = $('#V5Numbers').val().length;
+        mCluster.V82 = $('#V82Numbers').val().length;
+        mCluster.DI = $('#DINumbers').val().length;
+
+        mCluster.CurrentCardNumbers = $('#CurrentCardNumbers').val();
+        mCluster.MintCardNumbers = $('#MintCardNumbers').val();
+        mCluster.V5Numbers = $('#V5Numbers').val();
+        mCluster.V82Numbers = $('#V82Numbers').val();
+        mCluster.DINumbers = $('#DINumbers').val();
+        mCluster.PowerSupplyId = $('#PowerSupplyId').val();
+        mCluster.ModemVersion = $('#ModemVersion').val();
+
+        mCluster.ModemId = $('#ModemId').val();
+        mCluster.ModemName = $('#ModemName').val();
+        mCluster.SimNumber = $('#SimNumber').val();
+        mCluster.ConnectorStatus = $('#ConnectorStatus').val();
+
+
+        mCluster.IP = $('#IP').val();
+        mCluster.Password = $('#Password').val();
+
+        var isValid = true;
+        if ($("#Locationname").val() == null || $("#Locationname").val() == undefined || $("#Locationname").val() == '') {
+            alert("Location Name is required!");
+            isValid = false;
+        }
+        else if ($("#RFcluster").val() == null || $("#RFcluster").val() == undefined || $("#RFcluster").val() == '') {
+            alert("RF Cluster is required!");
+            isValid = false;
+        }
+        if (mCluster.ModemId != null && mCluster.ModemId != undefined && mCluster.ModemId != '') {
+            if ($("#ModemVersion").val() == null || $("#ModemVersion").val() == undefined || $("#ModemVersion").val() == '') {
+                alert("Modem Version is required!");
+                isValid = false;
+            }
+        }
+      
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/YardConfig/CreateCluster',
+                type: 'Post',
+                data: '{mCluster:' + JSON.stringify(mCluster) + '}',
+                contentType: 'application/json',
+                success: function (mCluster) {
+                    $("#loader").hide();
+                    if (mCluster != null && mCluster.Id > 0) {
+                        $("#modal-add-cluster").modal('hide');
+                        fnGetClusterList($('#hdnSiteId').val());
+                        CommonNotification("SUCCESS", "Cluster has been created.", "success");
+                        CreateADC(mCluster.Id);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                }
+            });
+
+        }
+    }
+
+    function CreateADC(clusterId) {
+        var mADCs = [];
+        $('#tblADC > tbody  > tr').each(function (i) {
+            var id = $(this).find('input:text.txtADCValue').data('adcId');
+            var adcNumber = $(this).find('input:text.txtADCValue').val();
+            var adcType = $(this).find('select.drpADCType').val();
+            var sequence = $(this).find('input:text.txtADCValue').attr('data-new-Id');
+
+            if (adcNumber != null && adcNumber != undefined && adcNumber != '' && adcType != null && adcType != undefined && adcType != '') {
+                var mADC = {}
+                if (id != null && id != undefined && id != '') {
+                    mADC.Id = id;
+                }
+                mADC.ClusterId = clusterId;
+                mADC.SequenceNumber = sequence;
+                mADC.ADCNumber = adcNumber;
+                mADC.ADCTypeId = adcType;
+                mADCs.push(mADC);
+            }
+        });
+        if (mADCs != null && mADCs.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/YardConfig/CreateADC',
+                type: 'Post',
+                data: '{mADCs:' + JSON.stringify(mADCs) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                }
+            });
+        }
+
+    }
+
+    function fnDeleteADC(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/YardConfig/DeleteADC',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        $("#modal-add-cluster").modal('hide');
+                        fnEditCluster($('#hdnId').val());
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+</script>

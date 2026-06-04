@@ -1,0 +1,213 @@
+﻿@model Domain.SiteNumberLister
+<div class="row">
+    <div class="col-sm-12 text-end mb-3">
+        <a id="btnAddNumber" class="btn btn-dark btn-sm btn-quirk" onclick="AddNumberRow()"><span class="fa fa-plus"></span> Add Number</a>
+    </div>
+</div>
+<div class="row mt10">
+    <div class="col-sm-12">
+        <div class="table-responsive" style="max-height: 620px;">
+            <table class="table table-bordered">
+                <tbody id="siteNumberBody">
+                    @if (Model.SiteNumbers != null && Model.SiteNumbers.Count > 0)
+                    {
+                        int i = 1;
+                        foreach (var item in Model.SiteNumbers)
+                        {
+                            <tr data-rowId="@i">
+                                <input type="hidden" id="hdnSiteNumber@(i)" value="@item.Id" />
+                                <td class="text-center width60" style="vertical-align:middle">
+                                    <a data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete" style="cursor:pointer"><i class="fa fa-trash text-danger" onclick="DeleteSiteNumberById('@item.Id', this)"></i></a>
+                                </td>
+                                <td>
+                                    <select id="userClass@(i)" class="form-control userClass">
+                                        @if (Model.SearchCriteria.UserClasses != null && Model.SearchCriteria.UserClasses.Count > 0)
+                                        {
+                                            foreach (var userClass in Model.SearchCriteria.UserClasses)
+                                            {
+                                                if (item.UserClassId == userClass.Id)
+                                                {
+                                                    <option value="@userClass.Id" selected>@userClass.ClassName</option>
+                                                }
+                                                else
+                                                {
+                                                    <option value="@userClass.Id">@userClass.ClassName</option>
+                                                }
+                                            }
+                                        }
+                                    </select>
+                                </td>
+                                <td style="width:330px">
+                                    <div class="row">
+                                        <div class="col-sm-3">
+                                            <input type="text" class="form-control" value="+91" readonly />
+                                        </div>
+                                        <div class="col-sm-9">
+                                            <input type="text" id="mobileNumber@(i)" class="form-control m-input digits mobileNumber" value="@item.MobileNumber" placeholder="Mobile number" />
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="text-center width60">
+                                    <button type="button" onclick="fnSaveSiteNumber('@i')" class="btn btn-primary btn-quirk">Add</button>
+                                </td>
+                            </tr>
+                            i++;
+                        }
+                    }
+                    else
+                    {
+                        <tr data-rowId="0">
+                            <input type="hidden" id="hdnSiteNumber0" value="0" />
+                            <td class="text-center width60" style="vertical-align:middle">
+                                <a data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete" style="cursor:pointer"><i class="fa fa-trash text-danger" onclick="DeleteSiteNumberById('0',this)"></i></a>
+                            </td>
+                            <td>
+                                <select id="userClass0" class="form-control userClass">
+                                    @if (Model.SearchCriteria.UserClasses != null && Model.SearchCriteria.UserClasses.Count > 0)
+                                    {
+                                        foreach (var userClass in Model.SearchCriteria.UserClasses)
+                                        {
+                                            <option value="@userClass.Id">@userClass.ClassName</option>
+                                        }
+                                    }
+                                </select>
+                            </td>
+                            <td style="width:330px">
+                                <div class="row">
+                                    <div class="col-sm-3">
+                                        <input type="text" class="form-control" value="+91" readonly />
+                                    </div>
+                                    <div class="col-sm-9">
+                                        <input type="text" id="mobileNumber0" class="form-control m-input digits mobileNumber" placeholder="Mobile number" />
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-center width60">
+                                <button type="button" onclick="fnSaveSiteNumber('0')" class="btn btn-success btn-quirk">Add</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+     //   $(".userClass").select2({ minimumResultsForSearch: Infinity, width: '100%' });
+        //$('.mobileNumber').mask('00000 00000');
+    });
+
+    function fnSaveSiteNumber(rowId) {
+        var SiteNumber = {};
+        SiteNumber.Id = $("#hdnSiteNumber" + rowId).val();
+        SiteNumber.SiteId = $("#hdnSiteId").val();
+        SiteNumber.UserClassId = $("#userClass" + rowId).val();
+        SiteNumber.MobileNumber = $("#mobileNumber" + rowId).val();
+        if (SiteNumber.MobileNumber == null || SiteNumber.MobileNumber == undefined || SiteNumber.MobileNumber == "") {
+            CommonNotification("ERROR", "Please enter mobile number!", "error");
+        } else {
+            $.ajax({
+                url: '/Site/SaveSiteNumber',
+                type: 'Post',
+                data: '{mSiteNumber:' + JSON.stringify(SiteNumber) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Site number has been saved.", "success");
+                        $("#frmNumbers").submit();
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+
+    function AddNumberRow() {
+        var rowId = 0;
+        $('#siteNumberBody tr').each(function (id, val) {
+            if (parseInt($(this).attr("data-rowId")) > rowId) {
+                rowId = parseInt($(this).attr("data-rowId"));
+            }
+        });
+        rowId = parseInt(rowId) + 1;
+        $.ajax({
+            url: '/Site/GetUserClasses',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.length > 0) {
+                    var temp = '';
+                    temp += "<tr data-rowId=" + rowId + ">";
+                    temp += "<input type='hidden' id='hdnSiteNumber" + rowId + "' value='0' />";
+                    temp += "<td class='text-center width60' style='vertical-align:middle'>";
+                    temp += "<a data-placement='top' data-toggle='tooltip' class='tooltips' data-original-title='Delete' style='cursor: pointer'><i class='fa fa-trash text-danger' onclick='DeleteSiteNumberById(" + 0 + ",this)'></i></a>";
+                    temp += "</td>";
+                    temp += "<td>";
+                    temp += "<select id='userClass" + rowId + "' class='form-control userClass'>";
+                    $.each(data, function (id, val) {
+                        temp += "<option value=" + val.Id + ">" + val.ClassName + "</option>";
+                    });
+                    temp += "</select>";
+                    temp += "</td>";
+                    temp += "<td style='width:330px'>";
+                    temp += "<div class='row'>";
+                    temp += "<div class='col-sm-3'><input type='text' class='form-control' value='+91' readonly /></div>";
+                    temp += "<div class='col-sm-9'><input type='text' id='mobileNumber" + rowId + "' class='form-control mobileNumber' placeholder='Mobile number' /></div>";
+                    temp += "</div>";
+                    temp += "</td>";
+                    temp += "<td class='text-center width60'>";
+                    temp += "<button type='button' onclick='fnSaveSiteNumber(" + rowId + ")' class='btn btn-success btn-quirk'>Add</button>";
+                    temp += "</td>";
+                    temp += "</tr>";
+                    $("#siteNumberBody").append(temp);
+                  //  $(".userClass").select2({ minimumResultsForSearch: Infinity, width: '100%' });
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function DeleteSiteNumberById(id, $this) {
+        var rowCount = $('#siteNumberBody tr').length;
+        $("#loader").show();
+        if (id > 0 && rowCount > 1) {
+            $.ajax({
+                url: '/Site/DeleteSiteNumberById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Site number has been deleted.", "success");
+                        $("#frmNumbers").submit();
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        } else if (rowCount > 1 && id == 0) {
+            $("#loader").hide();
+            $($this).parent().parent().parent().remove();
+        }
+        else {
+            $("#loader").hide();
+            CommonNotification("ERROR", "Can not delete last row", "error");
+        }
+    }
+</script>

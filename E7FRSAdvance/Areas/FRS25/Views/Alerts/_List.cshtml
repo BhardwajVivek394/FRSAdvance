@@ -1,0 +1,2058 @@
+﻿@model Domain.FRSAlertLister
+@{
+    var alerts = (Model != null && Model.mFRSAlerts != null) ? Model.mFRSAlerts : new List<Domain.FRSAlert>();
+    var totalCount = (Model != null && Model.Pager != null) ? Model.Pager.TotalRecord : 0;
+    var pageSize = (Model != null && Model.Pager != null && Model.Pager.PageSize > 0) ? Model.Pager.PageSize : 10;
+    var skip = (Model != null && Model.Pager != null) ? Model.Pager.Skip : 0;
+    var currentPage = (skip / pageSize) + 1;
+    var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+    var fromRec = totalCount > 0 ? skip + 1 : 0;
+    var toRec = Math.Min(skip + pageSize, totalCount);
+    int winSize = 5;
+    int startPg = Math.Max(1, currentPage - winSize / 2);
+    int endPg = Math.Min(totalPages, startPg + winSize - 1);
+    if (endPg - startPg < winSize - 1) { startPg = Math.Max(1, endPg - winSize + 1); }
+}
+
+@if (!alerts.Any())
+{
+    <div style="text-align:center;padding:48px;color:#94a3b8;">
+        <i class="fas fa-bell-slash" style="font-size:32px;margin-bottom:12px;display:block;opacity:.35;"></i>
+        No active alerts found for the selected filters.
+    </div>
+}
+else
+{
+    <div class="alrt-table-wrap">
+        <table class="alrt-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Asset / Cause</th>
+                    <th>Incidence Time</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Feedback</th>
+                    <th>Maintainer</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in alerts)
+                {
+                    var alertTypeStr = a.AlertType ?? "";
+                    var typeLbl = !string.IsNullOrEmpty(alertTypeStr)
+                                    ? alertTypeStr
+                                    : a.AlertTypeId == 1 ? "Predictive"
+                                    : a.AlertTypeId == 2 ? "Failure"
+                                    : "Unknown";
+                    var alertTypeLow = typeLbl.ToLower();
+                    var typeCss = a.AlertTypeId == 1 ? "predictive"
+                                : a.AlertTypeId == 2 ? "failure"
+                                : "unknown";
+                    var typeIco = alertTypeLow.Contains("predict") ? "chart-line" : alertTypeLow.Contains("health") ? "heartbeat" : "exclamation-circle";
+
+                    var isCleared = a.ResetTimeStamp.HasValue;
+                    var stLbl = isCleared ? "Cleared" : "Active";
+                    var stCss = isCleared ? "cleared" : "pending";
+                    var stIco = isCleared ? "check-circle" : "clock";
+
+                    var endTime = a.ResetTimeStamp.HasValue ? a.ResetTimeStamp.Value : DateTime.Now;
+                    var diff = endTime - a.SetTimeStamp;
+                    if (diff.TotalSeconds < 0) { diff = TimeSpan.Zero; }
+                    var totalHrs = (int)diff.TotalHours;
+                    var dur = string.Format("{0:D2}:{1:D2}:{2:D2}", totalHrs, diff.Minutes, diff.Seconds);
+                    var durSecs = diff.TotalSeconds;
+                    var dCss = durSecs > 10800 ? "critical" : durSecs > 3600 ? "warning" : "ok";
+                    var isUrgent = !isCleared && durSecs > 10800;
+
+                    var fb = a.TempRemark ?? "";
+                    var fbUp = fb.Trim().ToUpper();
+                    var fbCss = (fbUp == "T") ? "fb-true" : (fbUp == "PT") ? "fb-partial" : (fbUp == "F") ? "fb-false" : (fbUp == "M") ? "fb-maint" : "fb-none";
+                    var fbLbl = string.IsNullOrEmpty(fb) ? "—" : fb;
+
+                    var assetName = a.AssetName ?? "";
+                    var assetType = a.AssetType ?? "";
+                    var assetDisp = string.IsNullOrEmpty(assetType) ? assetName : assetName + " (" + assetType + ")";
+                    var cause = !string.IsNullOrEmpty(a.CauseCode) ? a.CauseCode : (a.PossibleCause ?? "");
+                    var station = !string.IsNullOrEmpty(a.StationCode) ? a.StationCode : (a.SiteName ?? "");
+
+                    var mName = a.MaintainerName ?? "";
+                    var mDesig = a.MaintainerDesignation ?? "";
+                    var mMob = a.MaintainerMobileNumber ?? "";
+                    var mParts = mName.Trim().Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    var mIni = mParts.Length == 0 ? "?" : mParts.Length == 1
+                                    ? mParts[0][0].ToString().ToUpper()
+                                    : mParts[0][0].ToString().ToUpper() + mParts[1][0].ToString().ToUpper();
+
+                    var incTime = a.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss");
+                    var isLocked = !string.IsNullOrEmpty(fb);
+
+                    <tr class>
+
+                        @* TYPE *@
+                        <td>
+                            <span class="alrt-type-badge @typeCss">
+                                <i class="fas fa-@typeIco"></i>&nbsp;@typeLbl
+                            </span>
+                        </td>
+
+                        @* ASSET / CAUSE *@
+                        <td>
+                            <div class="alrt-asset-info">
+                                <span class="alrt-asset-name">@assetDisp</span>
+                                <span class="alrt-asset-loc">
+                                    <i class="fas fa-map-marker-alt"></i>&nbsp;@station
+                                    @if (!string.IsNullOrEmpty(a.DivisionName))
+                                    {
+                                        <text>&nbsp;&bull;&nbsp;@a.DivisionName</text>
+                                    }
+                                    @if (!string.IsNullOrEmpty(a.ZoneName))
+                                    {
+                                        <text>&nbsp;&bull;&nbsp;@a.ZoneName</text>
+                                    }
+                                </span>
+                                @if (!string.IsNullOrEmpty(cause))
+                                {
+                                    <span class="alrt-cause-code">
+                                        <a href="javascript:void(0)" onclick="fnShowAlertMessage('@a.Id')" style="color:inherit;text-decoration:underline dotted;">@cause</a>
+                                    </span>
+                                }
+                                <span id="spnAlertmsg@(a.Id)" style="display:none">@a.SetAlertMessage</span>
+                                <span id="spnAlertDescription@(a.Id)" style="display:none">@Html.Raw(a.Description)</span>
+                                <span id="spnResetAlertmsg@(a.Id)" style="display:none">@Html.Raw(a.ResetAlertMessage)</span>
+                            </div>
+                        </td>
+
+                        @* INCIDENCE TIME *@
+                        <td>
+                            <div class="alrt-time-cell">
+                                <span class="alrt-time-main">@incTime</span>
+                                @if (a.ResetTimeStamp.HasValue)
+                                {
+                                    <span class="alrt-time-rel" style="color:var(--done);">
+                                        Reset: @a.ResetTimeStamp.Value.ToString("HH:mm:ss")
+                                    </span>
+                                }
+                            </div>
+                        </td>
+
+                        @* DURATION *@
+                        <td>
+                            <span class="alrt-dur @dCss">@dur</span>
+                        </td>
+
+                        @* STATUS *@
+                        <td>
+                            <span class="alrt-status @stCss">
+                                <i class="fas fa-@stIco"></i>&nbsp;@stLbl
+                            </span>
+                        </td>
+                        @* FEEDBACK *@
+                        <td>
+                            @{
+                                bool isDisable = false;
+                                bool isShowbtn = true;
+
+                                var mAppConfigs = ViewBag.AppConfigs as List<Domain.AppConfig> ?? new List<Domain.AppConfig>();
+                                var mFRSAlertRemarks = ViewBag.FRSAlertRemarks as List<Domain.FRSAlertRemark> ?? new List<Domain.FRSAlertRemark>();
+
+                                if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId ==
+                                    E7FRSAdvance.Utility.Utility.Role.User.GetHashCode())
+                                {
+                                    var userClassId = E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId;
+
+                                    bool isEligible =
+                                        userClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode()
+                                     || userClassId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode()
+                                     || userClassId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode()
+                                     || userClassId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode();
+
+                                    if (isEligible)
+                                    {
+                                        // Check AppConfig time window
+                                        if (mAppConfigs.Any())
+                                        {
+                                            var mAppConfig = mAppConfigs.FirstOrDefault(x =>
+                                                x.ZoneId == a.ZoneId &&
+                                                x.AssetTypeId == a.AssetTypeId &&
+                                                x.UserClassId == userClassId &&
+                                                x.AlertInfoId == a.AlertTypeId);
+
+                                            if (mAppConfig != null && mAppConfig.Id > 0)
+                                            {
+                                                try
+                                                {
+                                                    var ackSetTimeStamp = a.SetTimeStamp.AddHours(Convert.ToInt32(mAppConfig.AppValue));
+                                                    if (ackSetTimeStamp < DateTime.Now) { isShowbtn = false; }
+                                                }
+                                                catch { isShowbtn = false; }
+                                            }
+                                        }
+
+                                        // Already submitted by this user class
+                                        if (mFRSAlertRemarks.Any(x => x.FRSAlertId == a.Id && x.MaintainerId == userClassId))
+                                        {
+                                            isShowbtn = false;
+                                        }
+
+                                        // Determine role action
+                                        if (isShowbtn)
+                                        {
+                                            if (userClassId != E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode())
+                                            {
+                                                isDisable = true;   // ESM / JE / SSECSI → show pill row
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // ── Resolve badge state from AcknowledgemenStatusId ──
+                                var displayStatusId = a.AcknowledgemenStatusId;
+                                string displayFbText = "";
+                                string displayFbClass = "fb-none";
+
+                                if (displayStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode())
+                                { displayFbText = "T"; displayFbClass = "fb-true"; }
+                                else if (displayStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode())
+                                { displayFbText = "PT"; displayFbClass = "fb-partial"; }
+                                else if (displayStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode())
+                                { displayFbText = "F"; displayFbClass = "fb-false"; }
+                                else if (displayStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode())
+                                { displayFbText = "M"; displayFbClass = "fb-maint"; }
+
+                                bool hasFeedback = !string.IsNullOrEmpty(displayFbText);
+                                bool hasRemark = !string.IsNullOrEmpty(a.Remark);
+                            }
+
+                            <div class="fb-cell">
+
+                                @* ── 1. Primary feedback badge ── *@
+                                @if (hasFeedback)
+                                {
+                                    if (hasRemark)
+                                    {
+                                        @* Has extra remarks → dot indicator + hover tooltip + click to view all *@
+                                        <span class="fb-badge @displayFbClass has-more"
+                                              onclick="fnShowRemark('@a.Id')">
+                                            @displayFbText
+                                            <span class="fb-dot"></span>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        @* Single feedback, no further remarks → static badge *@
+                                        <span class="fb-badge @displayFbClass">
+                                            @displayFbText
+                                        </span>
+                                    }
+                                }
+                                else
+                                {
+                                    @* No feedback submitted yet → dashed dash badge *@
+                                    <span class="fb-badge fb-none">—</span>
+                                }
+
+                                @* ── 2. Add Remark link — ENERGY7CONTROL only, when ESM/JE gave PT or F ── *@
+                                @if (isShowbtn && !isDisable)
+                                {
+                                    var ctrlId = E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId;
+
+                                    if (ctrlId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode())
+                                    {
+                                        var esmRemark = mFRSAlertRemarks.FirstOrDefault(x =>
+                                            x.FRSAlertId == a.Id &&
+                                            (x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode()
+                                          || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode()
+                                          || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode()));
+
+                                        if (esmRemark != null &&
+                                           (esmRemark.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()
+                                         || esmRemark.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()))
+                                        {
+                                            <span class="fb-add-remark"
+                                                  onclick="openFeedbackSlidePanel('@a.Id','remarkOnly','@esmRemark.AcknowledgementStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
+                                                + Remark
+                                            </span>
+                                        }
+                                    }
+                                }
+
+                                @* ── 3. Pill row — ESM / JE / SSECSI (field users who can still submit) ── *@
+                                
+
+                            </div>
+                        </td>
+                        @* FEEDBACK *@
+                        @*<td>
+            <div class="feedback-actions-wrap">
+                @{
+                    bool isDisable = false;
+                    bool isShowbtn = true;
+
+                    var mAppConfigs = ViewBag.AppConfigs as List<Domain.AppConfig> ?? new List<Domain.AppConfig>();
+                    var mFRSAlertRemarks = ViewBag.FRSAlertRemarks as List<Domain.FRSAlertRemark> ?? new List<Domain.FRSAlertRemark>();
+                }
+
+                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode())
+                {
+                    var userClassId = E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId;
+
+                    if (userClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode()
+                     || userClassId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode()
+                     || userClassId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode()
+                     || userClassId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode())
+                    {
+                        if (mAppConfigs.Any())
+                        {
+                            var mAppConfig = mAppConfigs.FirstOrDefault(x =>
+                                x.ZoneId == a.ZoneId &&
+                                x.AssetTypeId == a.AssetTypeId &&
+                                x.UserClassId == userClassId &&
+                                x.AlertInfoId == a.AlertTypeId);
+
+                            if (mAppConfig != null && mAppConfig.Id > 0)
+                            {
+                                try
+                                {
+                                    var ackSetTimeStamp = a.SetTimeStamp.AddHours(Convert.ToInt32(mAppConfig.AppValue));
+                                    if (ackSetTimeStamp < DateTime.Now)
+                                    {
+                                        isShowbtn = false;
+                                    }
+                                }
+                                catch
+                                {
+                                    isShowbtn = false;
+                                }
+                            }
+                        }
+
+                        if (mFRSAlertRemarks.Any(x => x.FRSAlertId == a.Id && x.MaintainerId == userClassId))
+                        {
+                            isShowbtn = false;
+                        }
+
+                        if (isShowbtn)
+                        {
+                            if (userClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode())
+                            {
+                                var esmRemarks = mFRSAlertRemarks.FirstOrDefault(x =>
+                                    x.FRSAlertId == a.Id &&
+                                    (x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode()
+                                  || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode()
+                                  || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode()));
+
+                                if (esmRemarks != null &&
+                                   (esmRemarks.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()
+                                 || esmRemarks.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()))
+                                {
+                                    <div class="d-flex gap-10 justify-content-center action-pills-row">
+                                        <span class="badge badge-pill pill-green"
+                                              onclick="openFeedbackSlidePanel('@a.Id','remarkOnly','@esmRemarks.AcknowledgementStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
+                                            Add Remark
+                                        </span>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                isDisable = true;
+                            }
+                        }
+                    }
+                }
+
+                @if (isDisable)
+                {
+                    <div class="d-flex gap-10 justify-content-center action-pills-row">
+                        <span class="badge badge-pill @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode() ? "pill-yellow-bg cursorpointer" : "pill-yellow")">PT</span>
+
+                        <span class="badge badge-pill @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode() ? "pill-green-bg cursorpointer" : "pill-green")">T</span>
+
+                        <span class="badge badge-pill @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode() ? "pill-red-bg cursorpointer" : "pill-red")">F</span>
+
+                        <span class="badge badge-pill @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode() ? "pill-yellow-bg cursorpointer" : "pill-yellow")">M</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex gap-10 justify-content-center action-pills-row">
+                        <span class="badge badge-pill pill-yellow @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode() ? "pill-yellow-bg" : "disabled-span")">PT</span>
+                        <span class="badge badge-pill pill-green @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode() ? "pill-green-bg" : "disabled-span")">T</span>
+                        <span class="badge badge-pill pill-red @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode() ? "pill-red-bg" : "disabled-span")">F</span>
+                        <span class="badge badge-pill pill-yellow @(a.AcknowledgemenStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode() ? "pill-yellow-bg" : "disabled-span")">M</span>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(a.Remark))
+                {
+                    <div class="d-flex justify-content-center remark-row">
+                        <span class="badge badge-pill pill-blue"
+                              title="Remark"
+                              onclick="fnShowRemark('@a.Id')">
+                            See all Feedback &amp; Remarks
+                        </span>
+                    </div>
+                }
+            </div>
+        </td>*@
+
+                        @* MAINTAINER *@
+                        <td>
+                            @if (a.AcknowledgemenTimeStamp.HasValue)
+                            {
+                                <div class="alrt-maintainer-cell">
+                                    <div class="alrt-maint-avatar">@mIni</div>
+                                    <div>
+                                        <div class="alrt-maint-name">@(string.IsNullOrEmpty(mName) ? "—" : mName)</div>
+                                        <div class="alrt-maint-role">@mDesig</div>
+                                        <div class="alrt-maint-mob">@mMob</div>
+                                    </div>
+                                </div>
+                            }
+
+                            else
+                            {
+                                <span style="color:rgba(255,255,255,.25);font-size:13px;">—</span>
+
+                            }
+
+
+                        </td>
+
+                        @* ACTIONS *@
+                        <td>
+                            <div class="alrt-action-btns">
+                                @*<button class="alrt-act-btn @(!isCleared ? "btn-primary" : "")"
+                        title="@(!isCleared ? "Give Feedback" : "View Feedback")"
+                        onclick="alrtOpenFeedback(@a.Id)"
+                        data-id="@a.Id"s
+                        data-asset="@assetDisp"
+                        data-station="@station"
+                        data-cause="@cause"
+                        data-time="@incTime"
+                        data-duration="@dur"
+                        data-type="@typeLbl"
+                        data-feedback="@fb"
+                        data-locked="@(isLocked ? "true" : "false")">
+                    <i class="fas fa-comment-dots"></i>
+                </button>*@
+                                <button class="alrt-act-btn @(!isCleared ? "btn-primary" : "")"
+                                        title="@(!isCleared ? "Give Feedback" : "View Feedback")"
+                                        onclick="openFeedbackSlidePanel('@a.Id','full','@a.AcknowledgemenStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
+                                <button class="alrt-act-btn"
+                                        title="Alert Analysis"
+                                        style="background:#0077cc;color:#fff;border-color:#0077cc;"
+                                        onclick="alrtOpenAnalysis(@a.Id)">
+                                    <i class="fas fa-chart-bar"></i>
+                                </button>
+                                <button class="alrt-act-btn"
+                                        title="Escalation Timeline"
+                                        style="background:#4f46e5;color:#fff;border-color:#4f46e5;"
+                                        onclick="alrtLoadEscalation(@a.Id, '@Html.AttributeEncode(station)', '@Html.AttributeEncode(cause)')">
+                                    <i class="fas fa-arrow-up-right-dots"></i>
+                                </button>
+                            </div>
+                        </td>
+
+                    </tr>
+                }
+
+            </tbody>
+        </table>
+    </div>
+
+    @* PAGINATION *@
+    <div class="alrt-table-footer">
+        <div class="alrt-table-info">
+            Showing <strong>@fromRec</strong>&ndash;<strong>@toRec</strong>
+            of <strong>@Convert.ToInt32(totalCount)</strong> alerts
+        </div>
+        <div class="alrt-pagination">
+            @if (currentPage > 1)
+            {
+                <button class="alrt-page-btn" onclick="alrtGoPage(@(currentPage - 1))">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            }
+            else
+            {
+                <button class="alrt-page-btn disabled" disabled="disabled">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            }
+
+            @if (startPg > 1)
+            {
+                <button class="alrt-page-btn" onclick="alrtGoPage(1)">1</button>
+                if (startPg > 2)
+                {
+                    <span style="padding:0 4px;line-height:28px;color:var(--text-muted);">...</span>
+                }
+            }
+
+            @for (int pg = startPg; pg <= endPg; pg++)
+            {
+                <button class="alrt-page-btn @(pg == currentPage ? "active" : "")"
+                        onclick="alrtGoPage(@pg)">
+                    @pg
+                </button>
+            }
+
+            @if (endPg < totalPages)
+            {
+                if (endPg < totalPages - 1)
+                {
+                    <span style="padding:0 4px;line-height:28px;color:var(--text-muted);">...</span>
+                }
+                <button class="alrt-page-btn" onclick="alrtGoPage(@totalPages)">@totalPages</button>
+            }
+
+            @if (currentPage < totalPages)
+            {
+                <button class="alrt-page-btn" onclick="alrtGoPage(@(currentPage + 1))">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            }
+            else
+            {
+                <button class="alrt-page-btn disabled" disabled="disabled">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@* ── ANALYSIS ROW DATA ── *@
+<script>
+    window._alrtAnalysisRows = {};
+@foreach (var dbgA in alerts)
+{
+    var dbgTypeLbl = !string.IsNullOrEmpty(dbgA.AlertType) ? dbgA.AlertType
+                   : dbgA.AlertTypeId == 1 ? "Predictive"
+                   : dbgA.AlertTypeId == 2 ? "Failure" : "Unknown";
+
+    string dbgRectDate = "-";
+    if (dbgA.ResetTimeStamp.HasValue)
+    {
+        dbgRectDate = dbgA.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss");
+    }
+
+    var dbgEndTime = dbgA.ResetTimeStamp.HasValue ? dbgA.ResetTimeStamp.Value : DateTime.Now;
+    var dbgDiff    = dbgEndTime - dbgA.SetTimeStamp;
+    if (dbgDiff.TotalSeconds < 0) { dbgDiff = TimeSpan.Zero; }
+    var dbgDurStr  = string.Format("{0:D2}:{1:D2}:{2:D2}", (int)dbgDiff.TotalHours, dbgDiff.Minutes, dbgDiff.Seconds);
+    var dbgStation = !string.IsNullOrEmpty(dbgA.StationCode) ? dbgA.StationCode : (dbgA.SiteName ?? "");
+    var dbgCause   = !string.IsNullOrEmpty(dbgA.CauseCode)   ? dbgA.CauseCode   : (dbgA.PossibleCause ?? "");
+
+    <text>
+_alrtAnalysisRows[@dbgA.Id] = {
+    id:          @dbgA.Id,
+    assetId:     @(dbgA.AssetId),
+    assetTypeId: @(dbgA.AssetTypeId),
+    siteId:      @(dbgA.SiteId),
+    zone:        @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.ZoneName     ?? "")),
+    division:    @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.DivisionName ?? "")),
+    station:     @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgStation)),
+    alertType:   @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgTypeLbl)),
+    assetType:   @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.AssetType   ?? "-")),
+    assetNo:     @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.AssetName   ?? "-")),
+    incDate:     @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss"))),
+    duration:    @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgDurStr)),
+    rectDate:    @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgRectDate)),
+    causeCode:   @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgCause)),
+    setMsg:      @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.SetAlertMessage   ?? "")),
+    desc:        @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.Description       ?? "")),
+    resetMsg:    @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(dbgA.ResetAlertMessage ?? ""))
+};
+    </text>
+}
+</script>
+
+<script>
+(function () {
+    var counts = {
+        failure:           @(Model != null ? Model.FailCount              : 0),
+        predictive:        @(Model != null ? Model.PredictiveCount        : 0),
+        total:             @(Model != null && Model.Pager != null ? Model.Pager.TotalRecord : 0),
+        failurePending:    @(Model != null ? Model.FailurePendingCount    : 0),
+        failureCleared:    @(Model != null ? Model.FailureClearedCount    : 0),
+        predictivePending: @(Model != null ? Model.PredictivePendingCount : 0),
+        predictiveCleared: @(Model != null ? Model.PredictiveClearedCount : 0)
+    };
+    if (typeof alrtUpdateCounts === 'function') alrtUpdateCounts(counts);
+    window._alertCurrentSkip = @skip;
+})();
+
+function fnUpdateAckStatus(alertId, acknowledgemenStatusId) {
+    if (!confirm('Are you sure you want to update acknowledgement?')) return;
+    var mFRSAlert = { Id: alertId, AcknowledgemenStatusId: acknowledgemenStatusId };
+    $("#loader").show();
+    $.ajax({
+        url: '/FRS25/Alerts/UpdateAcknowledgementStatus',
+        type: 'POST', contentType: 'application/json',
+        data: JSON.stringify(mFRSAlert), dataType: 'json',
+        success: function (data) {
+            $("#loader").hide();
+            if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(@skip);
+            else location.reload();
+            if (data != null) {
+                if (data.type === 'success') CommonNotification("SUCCESS", data.result, "success");
+                else if (data.type === 'error') CommonNotification("ERROR", data.result, "error");
+            }
+        },
+        error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+    });
+}
+
+function AddRemark(id, statusId) {
+    if (id == null || id === '') return;
+    $("#loader").show();
+    $.ajax({
+        url: '/FRS25/Alerts/GetBy',
+        type: 'POST', data: '{id:' + id + '}', contentType: 'application/json',
+        success: function (data) {
+            $("#loader").hide();
+            if (data != null && data.Id > 0) {
+                $('#hdnAlertRemarkId').val(id);
+                $('#txtAlertRemark').val(data.Remark);
+                $('#hdnAlertAlertStatusId').val(statusId);
+            }
+            if (data.mAlertInfos != null && data.mAlertInfos.length > 0
+                && statusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
+                $('#divRemarkAlertInfo').show();
+                $('#drpRemarkAlertInfo').empty().append($("<option></option>").val('').html('Select'));
+                $(data.mAlertInfos).each(function (d, value) {
+                    $('#drpRemarkAlertInfo').append($("<option></option>").val(value.Id).html(value.Name));
+                });
+            } else {
+                $('#drpRemarkAlertInfo').empty();
+                $('#divRemarkAlertInfo').hide();
+            }
+            $('#modelAddRemark').modal('show');
+        },
+        error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+    });
+}
+
+function fnUpdateRemark() {
+    var remarkVal = $('#txtAlertRemark').val();
+    if (!remarkVal) { alert('Remark is required.'); return; }
+    var mFRSAlert = {};
+    mFRSAlert.Id = $('#hdnAlertRemarkId').val();
+    mFRSAlert.Remark = remarkVal;
+    mFRSAlert.AcknowledgemenStatusId = $('#hdnAlertAlertStatusId').val();
+    var rectificationValue = $('#txtRectificationDateTime').val();
+    if (rectificationValue) {
+        var rectDate = new Date(rectificationValue);
+        if (rectDate > new Date()) { alert("Future date & time is not allowed."); return; }
+        mFRSAlert.RectificationDateTime = rectDate.toISOString();
+    }
+    if (mFRSAlert.AcknowledgemenStatusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
+        mFRSAlert.PTAlertInfoId = $('#drpRemarkAlertInfo').val();
+        if (!mFRSAlert.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+    }
+    $("#loader").show();
+    $.ajax({
+        url: '/FRS25/Alerts/UpdateRemark',
+        type: 'POST', contentType: 'application/json',
+        data: JSON.stringify(mFRSAlert), dataType: 'json',
+        success: function (data) {
+            $("#loader").hide();
+            $('#modelAddRemark').modal('hide');
+            if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(@skip);
+            else location.reload();
+            if (data != null) {
+                var msg = data.result || '';
+                if (data.type === 'success') CommonNotification("SUCCESS", msg, "success");
+                else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
+            }
+        },
+        error: function () { $('#modelAddRemark').modal('hide'); $("#loader").hide(); alert("Something went wrong!"); }
+    });
+}
+
+function AddRemarkWithoutFeedback(id, statusId) {
+    if (id == null || id === '') return;
+    $('#hdnAlertRemarkWithOutFeedbackId').val(id);
+    $('#hdnAlertAlertStatusWithOutFeedbackId').val(statusId);
+    $('#modelAddRemarkWithOutFeedback').modal('show');
+}
+
+function fnUpdateRemarkWithoutFeedback() {
+    var remarkVal = $('#txtAlertRemarkWithOutFeedback').val();
+    if (!remarkVal) { alert('Remark is required.'); return; }
+    var mFRSAlert = {};
+    mFRSAlert.Id = $('#hdnAlertRemarkWithOutFeedbackId').val();
+    mFRSAlert.Remark = remarkVal;
+    mFRSAlert.AcknowledgemenStatusId = $('#hdnAlertAlertStatusWithOutFeedbackId').val();
+    $("#loader").show();
+    $.ajax({
+        url: '/FRS25/Alerts/UpdateRemark',
+        type: 'POST', contentType: 'application/json',
+        data: JSON.stringify(mFRSAlert), dataType: 'json',
+        success: function (data) {
+            $("#loader").hide();
+            $('#modelAddRemarkWithOutFeedback').modal('hide');
+            if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(@skip);
+            else location.reload();
+            if (data != null) {
+                var msg = data.result || '';
+                if (data.type === 'success') CommonNotification("SUCCESS", msg, "success");
+                else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
+            }
+        },
+        error: function () { $('#modelAddRemarkWithOutFeedback').modal('hide'); $("#loader").hide(); alert("Something went wrong!"); }
+    });
+}
+
+function fnShowRemark(id) {
+    $("#loader").show();
+    $.ajax({
+        url: '/FRS25/Alerts/_FRSRemark',
+        type: 'POST', dataType: 'html',
+        data: '{id:' + id + '}', contentType: 'application/json',
+        success: function (data) {
+            $("#loader").hide();
+            $("#divFRSAlertRemark").empty().append(data);
+            $('#modalFRSAlertRemark').modal('show');
+        },
+        error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+    });
+}
+
+function fnShowAlertMessage(id) {
+    var alertmsg  = $('#spnAlertmsg'         + id).text();
+    var alertDesc = $('#spnAlertDescription' + id).text();
+    var resetDesc = $('#spnResetAlertmsg'    + id).text();
+    var msg = alertmsg.replace(/\n/g, '') + '<br>' + alertDesc.replace(/\n/g, '');
+    if (resetDesc) { msg += '<br><b>Reset Message</b><br>' + resetDesc.replace(/\n/g, ''); }
+    $('#spnAlertMessage').html(msg.replace(/\n/g, '<br>'));
+    $('#modelShowAlertMessage').modal('show');
+}
+
+function fnUpdateMaintenanceInActiveMode(assetId) {
+    if (!confirm('Clear this maintenance window now? Alerts will resume immediately.')) return;
+    $("#loader").show();
+    $.ajax({
+        url: '/FRS25/MaintenanceMode/UpdateMaintenanceInActiveMode',
+        type: 'POST', contentType: 'application/json',
+        data: JSON.stringify({ AssetId: assetId }), dataType: 'json',
+        success: function (data) {
+            $("#loader").hide();
+            if (data && data.type === 'success') {
+                showSuccess(data.result || 'Maintenance cleared. Alerts have resumed.', 'Cleared');
+                setTimeout(function () { location.reload(); }, 800);
+            } else {
+                showError((data && data.result) || 'Server rejected the request.', 'Clear Failed');
+            }
+        },
+        error: function () { $("#loader").hide(); showError('Network error. Please try again.', 'Error'); }
+    });
+}
+</script>
+
+
+<script>
+    (function ($) {
+        if (window._frsDrawerBound) return;
+        window._frsDrawerBound = true;
+
+        var IDS = ['modelAddRemark', 'modelAddRemarkWithOutFeedback', 'modalFRSAlertRemark', 'modelShowAlertMessage'];
+        var _activeId = null;
+
+        /* ── 1. Drawer HTML into <body> ───────────────────────────── */
+        if (!document.getElementById('frsCustomDrawer')) {
+            document.body.insertAdjacentHTML('beforeend',
+                '<div id="frsCustomDrawer"><div id="frsDrawerContent"></div></div>' +
+                '<div id="frsDrawerBdrop"></div>'
+            );
+        }
+
+        /* ── 2. CSS into <head> ───────────────────────────────────── */
+        if (!document.getElementById('frsDrawerStyles')) {
+            var css = [
+                /* Shell */
+                '#frsCustomDrawer{',
+                'position:fixed;top:0;right:-520px;bottom:0;',
+                'width:480px;max-width:100vw;',
+                'background:linear-gradient(175deg,#0c1228 0%,#080c1c 100%);',
+                'border-left:1px solid rgba(34,211,238,.18);',
+                'box-shadow:-20px 0 70px rgba(0,0,0,.80),inset 1px 0 0 rgba(34,211,238,.06);',
+                'z-index:1070;display:flex;flex-direction:column;overflow:hidden;',
+                'transition:right .38s cubic-bezier(.22,1,.36,1);',
+                '}',
+                '#frsCustomDrawer.open{right:0;}',
+
+                /* Tri-colour top bar */
+                '#frsCustomDrawer::before{',
+                'content:"";display:block;position:absolute;top:0;left:0;right:0;',
+                'height:3px;z-index:2;',
+                'background:linear-gradient(90deg,#22d3ee 0%,#818cf8 45%,#f472b6 100%);',
+                'box-shadow:0 0 20px rgba(34,211,238,.35);',
+                '}',
+
+                /* Content container */
+                '#frsDrawerContent{flex:1;display:flex;flex-direction:column;overflow:hidden;margin-top:3px;}',
+
+                /* Backdrop */
+                '#frsDrawerBdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);',
+                'backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);',
+                'z-index:1065;opacity:0;pointer-events:none;transition:opacity .3s;}',
+                '#frsDrawerBdrop.show{opacity:1;pointer-events:auto;}',
+
+                /* ── HEADER ── */
+                '#frsDrawerContent .modal-header{',
+                'flex-shrink:0;',
+                'padding:22px 22px 18px!important;',
+                'background:linear-gradient(135deg,rgba(34,211,238,.10) 0%,rgba(129,140,248,.06) 100%)!important;',
+                'border-bottom:1px solid rgba(255,255,255,.07)!important;',
+                'border-radius:0!important;',
+                'display:flex!important;align-items:center!important;gap:14px!important;',
+                '}',
+                '#frsDrawerContent .modal-title{',
+                'font-size:15.5px!important;font-weight:700!important;letter-spacing:-.025em!important;',
+                'color:#fff!important;margin:0!important;',
+                'display:flex!important;align-items:center!important;gap:12px!important;',
+                '}',
+                /* Icon box inside title */
+                '#frsDrawerContent .modal-title i{',
+                'display:inline-flex!important;align-items:center!important;justify-content:center!important;',
+                'width:34px!important;height:34px!important;border-radius:10px!important;',
+                'background:linear-gradient(135deg,rgba(34,211,238,.25) 0%,rgba(129,140,248,.20) 100%)!important;',
+                'border:1px solid rgba(34,211,238,.30)!important;',
+                'color:#22d3ee!important;font-size:14px!important;flex-shrink:0!important;',
+                'box-shadow:0 0 16px rgba(34,211,238,.20)!important;',
+                '}',
+                /* Close button */
+                '#frsDrawerContent .btn-close-frs{',
+                'width:32px!important;height:32px!important;',
+                'display:inline-flex!important;align-items:center!important;justify-content:center!important;',
+                'border-radius:8px!important;',
+                'background:rgba(255,255,255,.06)!important;',
+                'border:1px solid rgba(255,255,255,.10)!important;',
+                'color:rgba(255,255,255,.45)!important;font-size:14px!important;',
+                'cursor:pointer!important;padding:0!important;transition:all .18s!important;',
+                'margin-left:auto!important;flex-shrink:0!important;',
+                '}',
+                '#frsDrawerContent .btn-close-frs:hover{',
+                'background:rgba(251,113,133,.18)!important;',
+                'border-color:rgba(251,113,133,.38)!important;',
+                'color:#fb7185!important;transform:scale(1.05)!important;',
+                '}',
+
+                /* ── BODY ── */
+                '#frsDrawerContent .modal-body{',
+                'flex:1!important;overflow-y:auto!important;overflow-x:hidden!important;',
+                'padding:24px 22px 16px!important;background:transparent!important;',
+                'scrollbar-width:thin;scrollbar-color:rgba(34,211,238,.15) transparent;',
+                '}',
+                '#frsDrawerContent .modal-body::-webkit-scrollbar{width:4px;}',
+                '#frsDrawerContent .modal-body::-webkit-scrollbar-track{background:transparent;}',
+                '#frsDrawerContent .modal-body::-webkit-scrollbar-thumb{background:rgba(34,211,238,.18);border-radius:2px;}',
+
+                /* ── PILLS GRID ── */
+                '#frsDrawerContent .frs-pills-strip{',
+                'display:grid!important;grid-template-columns:1fr 1fr!important;',
+                'gap:10px!important;padding:0!important;margin-bottom:22px!important;',
+                'background:transparent!important;border:none!important;',
+                '}',
+                '#frsDrawerContent .frs-pill{',
+                'display:flex!important;align-items:center!important;',
+                'justify-content:center!important;gap:9px!important;',
+                'padding:14px 16px!important;border-radius:13px!important;',
+                'font-size:13px!important;font-weight:700!important;',
+                'letter-spacing:.01em!important;white-space:nowrap!important;',
+                'transition:all .20s cubic-bezier(.22,1,.36,1)!important;',
+                'cursor:default!important;',
+                '}',
+                '#frsDrawerContent .frs-pill .dot{',
+                'width:9px!important;height:9px!important;border-radius:50%!important;',
+                'flex-shrink:0!important;transition:all .20s!important;',
+                '}',
+
+                /* PT amber */
+                '#frsDrawerContent .frs-pill-pt{',
+                'background:rgba(251,191,36,.10)!important;',
+                'border:1.5px solid rgba(251,191,36,.30)!important;',
+                'color:#fbbf24!important;',
+                '}',
+                '#frsDrawerContent .frs-pill-pt .dot{',
+                'background:#fbbf24!important;',
+                'box-shadow:0 0 8px rgba(251,191,36,.70)!important;',
+                '}',
+
+                /* T emerald */
+                '#frsDrawerContent .frs-pill-t{',
+                'background:rgba(74,222,128,.09)!important;',
+                'border:1.5px solid rgba(74,222,128,.28)!important;',
+                'color:#4ade80!important;',
+                '}',
+                '#frsDrawerContent .frs-pill-t .dot{',
+                'background:#4ade80!important;',
+                'box-shadow:0 0 8px rgba(74,222,128,.70)!important;',
+                '}',
+
+                /* F rose */
+                '#frsDrawerContent .frs-pill-f{',
+                'background:rgba(248,113,113,.09)!important;',
+                'border:1.5px solid rgba(248,113,113,.28)!important;',
+                'color:#f87171!important;',
+                '}',
+                '#frsDrawerContent .frs-pill-f .dot{',
+                'background:#f87171!important;',
+                'box-shadow:0 0 8px rgba(248,113,113,.70)!important;',
+                '}',
+
+                /* M violet */
+                '#frsDrawerContent .frs-pill-m{',
+                'background:rgba(167,139,250,.09)!important;',
+                'border:1.5px solid rgba(167,139,250,.28)!important;',
+                'color:#a78bfa!important;',
+                '}',
+                '#frsDrawerContent .frs-pill-m .dot{',
+                'background:#a78bfa!important;',
+                'box-shadow:0 0 8px rgba(167,139,250,.70)!important;',
+                '}',
+
+                /* ── LABELS ── */
+                '#frsDrawerContent .frs-label{',
+                'display:flex!important;align-items:center!important;gap:6px!important;',
+                'font-size:10.5px!important;font-weight:800!important;',
+                'letter-spacing:.14em!important;text-transform:uppercase!important;',
+                'color:rgba(34,211,238,.60)!important;margin-bottom:8px!important;',
+                '}',
+                '#frsDrawerContent .frs-label::before{',
+                'content:"";display:inline-block;',
+                'width:3px;height:12px;border-radius:2px;flex-shrink:0;',
+                'background:linear-gradient(180deg,#22d3ee,#818cf8);',
+                '}',
+                '#frsDrawerContent .frs-label .req{color:#fb7185!important;margin-left:1px!important;}',
+                '#frsDrawerContent .frs-field{margin-bottom:18px!important;}',
+                '#frsDrawerContent .frs-field:last-child{margin-bottom:0!important;}',
+
+                /* ── INPUTS ── */
+                '#frsDrawerContent .frs-input,',
+                '#frsDrawerContent .frs-select,',
+                '#frsDrawerContent .frs-textarea{',
+                'width:100%!important;',
+                'background:rgba(255,255,255,.05)!important;',
+                'border:1.5px solid rgba(255,255,255,.09)!important;',
+                'border-radius:11px!important;padding:12px 15px!important;',
+                'font-size:13.5px!important;font-family:inherit!important;',
+                'color:rgba(255,255,255,.88)!important;color-scheme:dark!important;',
+                'box-shadow:none!important;outline:none!important;',
+                'transition:border-color .20s,box-shadow .20s,background .20s!important;',
+                'box-sizing:border-box!important;',
+                '}',
+                '#frsDrawerContent .frs-textarea{',
+                'resize:vertical!important;min-height:100px!important;line-height:1.65!important;',
+                '}',
+                '#frsDrawerContent .frs-input:focus,',
+                '#frsDrawerContent .frs-select:focus,',
+                '#frsDrawerContent .frs-textarea:focus{',
+                'border-color:rgba(34,211,238,.55)!important;',
+                'background:rgba(34,211,238,.04)!important;',
+                'box-shadow:0 0 0 3px rgba(34,211,238,.12),inset 0 1px 0 rgba(34,211,238,.05)!important;',
+                'color:#fff!important;',
+                '}',
+                '#frsDrawerContent .frs-input::placeholder,',
+                '#frsDrawerContent .frs-textarea::placeholder{color:rgba(255,255,255,.20)!important;}',
+                '#frsDrawerContent .frs-select option{background:#0d1220!important;color:rgba(255,255,255,.90)!important;}',
+                '#frsDrawerContent .frs-input[type=datetime-local]::-webkit-calendar-picker-indicator{',
+                'filter:invert(.7) sepia(1) saturate(3) hue-rotate(165deg)!important;opacity:.7!important;cursor:pointer!important;',
+                '}',
+
+                /* ── FOOTER ── */
+                '#frsDrawerContent .modal-footer{',
+                'flex-shrink:0!important;',
+                'padding:16px 22px!important;',
+                'background:rgba(0,0,0,.30)!important;',
+                'border-top:1px solid rgba(255,255,255,.06)!important;',
+                'border-radius:0!important;',
+                'display:flex!important;justify-content:flex-end!important;',
+                'align-items:center!important;gap:10px!important;',
+                '}',
+
+                /* Save button — aurora gradient */
+                '#frsDrawerContent .frs-btn-save{',
+                'display:inline-flex!important;align-items:center!important;gap:7px!important;',
+                'background:linear-gradient(135deg,#22d3ee 0%,#818cf8 55%,#a78bfa 100%)!important;',
+                'border:none!important;color:#fff!important;',
+                'font-size:13.5px!important;font-weight:700!important;letter-spacing:.02em!important;',
+                'padding:11px 26px!important;border-radius:11px!important;',
+                'box-shadow:0 4px 20px -4px rgba(34,211,238,.55),0 0 0 1px rgba(34,211,238,.15)!important;',
+                'transition:all .20s!important;cursor:pointer!important;',
+                '}',
+                '#frsDrawerContent .frs-btn-save:hover{',
+                'opacity:.88!important;transform:translateY(-2px)!important;',
+                'box-shadow:0 8px 28px -4px rgba(34,211,238,.60),0 0 0 1px rgba(34,211,238,.20)!important;',
+                '}',
+                '#frsDrawerContent .frs-btn-save:active{transform:translateY(0)!important;opacity:.82!important;}',
+
+                /* Cancel button — ghost */
+                '#frsDrawerContent .frs-btn-cancel{',
+                'display:inline-flex!important;align-items:center!important;gap:7px!important;',
+                'background:rgba(255,255,255,.06)!important;',
+                'border:1.5px solid rgba(255,255,255,.11)!important;',
+                'color:rgba(255,255,255,.55)!important;',
+                'font-size:13.5px!important;font-weight:600!important;',
+                'padding:10px 20px!important;border-radius:11px!important;',
+                'transition:all .18s!important;cursor:pointer!important;',
+                '}',
+                '#frsDrawerContent .frs-btn-cancel:hover{',
+                'background:rgba(255,255,255,.11)!important;',
+                'border-color:rgba(255,255,255,.20)!important;',
+                'color:rgba(255,255,255,.85)!important;',
+                '}',
+
+                /* ── MISC ── */
+                '#frsDrawerContent .modal-body hr{border:none!important;border-top:1px solid rgba(255,255,255,.06)!important;margin:16px 0!important;}',
+                '#frsDrawerContent #spnAlertMessage{color:rgba(255,255,255,.82)!important;line-height:1.8!important;font-size:13.5px!important;}',
+                '#frsDrawerContent #divFRSAlertRemark{color:rgba(255,255,255,.80)!important;}',
+                '#frsDrawerContent #divFRSAlertRemark table{width:100%!important;border-collapse:collapse!important;}',
+                '#frsDrawerContent #divFRSAlertRemark table th{font-size:10px!important;font-weight:800!important;text-transform:uppercase!important;letter-spacing:.14em!important;color:rgba(34,211,238,.60)!important;border-bottom:1px solid rgba(255,255,255,.07)!important;padding:8px 10px!important;background:transparent!important;}',
+                '#frsDrawerContent #divFRSAlertRemark table td{padding:11px 10px!important;border-bottom:1px solid rgba(255,255,255,.04)!important;font-size:13px!important;color:rgba(255,255,255,.78)!important;}',
+                '#frsDrawerContent #divFRSAlertRemark table tbody tr:hover td{background:rgba(34,211,238,.04)!important;}',
+
+                '@@media(max-width:600px){#frsCustomDrawer{width:100%;right:-100%;}}'
+            ].join('');
+
+            var s = document.createElement('style');
+            s.id = 'frsDrawerStyles';
+            s.textContent = css;
+            document.head.appendChild(s);
+        }
+
+        /* ── 3. Open / close ─────────────────────────────────────── */
+        function openDrawer(modalId) {
+            var modal = document.getElementById(modalId);
+            if (!modal) return;
+            var mc = modal.querySelector('.modal-content');
+            if (!mc) return;
+            var dc = document.getElementById('frsDrawerContent');
+            dc.innerHTML = '';
+            while (mc.firstChild) dc.appendChild(mc.firstChild);
+            _activeId = modalId;
+            document.getElementById('frsCustomDrawer').classList.add('open');
+            document.getElementById('frsDrawerBdrop').classList.add('show');
+        }
+
+        function closeDrawer() {
+            document.getElementById('frsCustomDrawer').classList.remove('open');
+            document.getElementById('frsDrawerBdrop').classList.remove('show');
+            if (_activeId) {
+                var modal = document.getElementById(_activeId);
+                var mc = modal && modal.querySelector('.modal-content');
+                var dc = document.getElementById('frsDrawerContent');
+                if (mc && dc) while (dc.firstChild) mc.appendChild(dc.firstChild);
+                _activeId = null;
+            }
+        }
+
+        /* ── 4. Override $.fn.modal ──────────────────────────────── */
+        var _orig = $.fn.modal;
+        $.fn.modal = function (opt) {
+            var id = this[0] && this[0].id;
+            if (IDS.indexOf(id) !== -1) {
+                if (opt === 'show') { openDrawer(id); return this; }
+                if (opt === 'hide') { closeDrawer(); return this; }
+                return this;
+            }
+            return _orig.apply(this, arguments);
+        };
+
+        /* ── 5. Close triggers ───────────────────────────────────── */
+        document.getElementById('frsDrawerBdrop').addEventListener('click', closeDrawer);
+        $(document).on('click', '#frsDrawerContent [data-dismiss="modal"]', function (e) {
+            e.stopPropagation();
+            closeDrawer();
+        });
+
+    }(jQuery));
+</script>
+
+@* ══════════════════════════════════════════════════════════════════
+    FEEDBACK SLIDE PANEL
+    - Injected into <body> once via window._fbPanelReady guard
+    - Survives AJAX reloads of this partial
+    - openFeedbackSlidePanel() called by PT/T/F pills and Add Remark btn
+    - Internally calls same endpoints as AddRemark / AddRemarkWithoutFeedback
+    ══════════════════════════════════════════════════════════════════ *@
+@*<script>
+(function ($) {
+    if (window._fbPanelReady) return;
+    window._fbPanelReady = true;
+
+    var ptId    = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()';
+    var trueId  = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()';
+    var falseId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()';
+    var maintId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()';
+
+    /* ── Inject panel HTML into body ── */
+    document.body.insertAdjacentHTML('beforeend',
+        '<div id="fbBdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);z-index:1065;"></div>' +
+        '<div id="fbPanel" style="position:fixed;top:0;right:-580px;width:560px;max-width:100vw;height:100vh;' +
+            'background:linear-gradient(175deg,#0c1228 0%,#080c1c 100%);' +
+            'border-left:1px solid rgba(34,211,238,.18);box-shadow:-20px 0 60px rgba(0,0,0,.80);' +
+            'z-index:1070;display:flex;flex-direction:column;transition:right .38s cubic-bezier(.22,1,.36,1);">' +
+          /* top bar */
+          '<div style="height:3px;flex-shrink:0;background:linear-gradient(90deg,#22d3ee,#818cf8,#f472b6);"></div>' +
+          /* header */
+          '<div style="flex-shrink:0;padding:20px 24px 16px;background:linear-gradient(135deg,rgba(34,211,238,.10),rgba(129,140,248,.06));border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:flex-start;">' +
+            '<div>' +
+              '<div style="font-size:17px;font-weight:700;color:#fff;">Provide Alert Feedback</div>' +
+              '<div style="font-size:12px;color:rgba(255,255,255,.45);margin-top:3px;">Annexure D — Section 6 &amp; 7</div>' +
+            '</div>' +
+            '<button onclick="closeFbPanel()" style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.5);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">&#x2715;</button>' +
+          '</div>' +
+          /* scrollable body */
+          '<div id="fbBody" style="flex:1;overflow-y:auto;padding:20px 24px;">' +
+            /* summary card */
+            '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;margin-bottom:20px;">' +
+              '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">' +
+                '<div>' +
+                  '<div id="fbAlertId" style="font-family:monospace;font-size:11px;color:rgba(255,255,255,.35);margin-bottom:4px;"></div>' +
+                  '<div id="fbAssetName" style="font-size:16px;font-weight:700;color:#fff;"></div>' +
+                '</div>' +
+                '<span id="fbTypeBadge" style="padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;"></span>' +
+              '</div>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+                '<div><div class="fb-lbl">Station</div><div id="fbStation" class="fb-val"></div></div>' +
+                '<div><div class="fb-lbl">Division / Zone</div><div id="fbDivZone" class="fb-val"></div></div>' +
+                '<div><div class="fb-lbl">Cause Code</div><div id="fbCause" style="font-size:13px;font-weight:600;color:#22d3ee;font-family:monospace;"></div></div>' +
+                '<div><div class="fb-lbl">Incidence Time</div><div id="fbIncTime" class="fb-val"></div></div>' +
+                '<div><div class="fb-lbl">Duration</div><div id="fbDuration" style="font-size:13px;font-weight:600;color:#ef4444;"></div></div>' +
+              '</div>' +
+            '</div>' +
+            /* full feedback mode */
+            '<div id="fbFullMode">' +
+              '<div class="fb-section-title"><i class="fas fa-check-circle" style="color:#22d3ee;margin-right:6px;"></i>Select Feedback Type <span style="color:#fb7185;">*</span></div>' +
+              '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;">' +
+                '<div class="fb-opt" data-sid="'+ptId+'" onclick="selectFbOpt(this)">' +
+                  '<div style="width:36px;height:36px;border-radius:50%;background:rgba(251,191,36,.15);color:#fbbf24;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">PT</div>' +
+                  '<div class="fb-opt-lbl">Partially True</div>' +
+                  '<div class="fb-opt-desc">Failure but cause differs</div>' +
+                '</div>' +
+                '<div class="fb-opt" data-sid="'+trueId+'" onclick="selectFbOpt(this)">' +
+                  '<div style="width:36px;height:36px;border-radius:50%;background:rgba(74,222,128,.15);color:#4ade80;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">T</div>' +
+                  '<div class="fb-opt-lbl">True</div>' +
+                  '<div class="fb-opt-desc">Failure and cause match</div>' +
+                '</div>' +
+                '<div class="fb-opt" data-sid="'+falseId+'" onclick="selectFbOpt(this)">' +
+                  '<div style="width:36px;height:36px;border-radius:50%;background:rgba(248,113,113,.15);color:#f87171;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">F</div>' +
+                  '<div class="fb-opt-lbl">False</div>' +
+                  '<div class="fb-opt-desc">No actual failure at site</div>' +
+                '</div>' +
+                '<div class="fb-opt" data-sid="'+maintId+'" onclick="selectFbOptM(this)">' +
+                  '<div style="width:36px;height:36px;border-radius:50%;background:rgba(167,139,250,.15);color:#a78bfa;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">M</div>' +
+                  '<div class="fb-opt-lbl">Maintenance</div>' +
+                  '<div class="fb-opt-desc">Alert during maintenance</div>' +
+                '</div>' +
+              '</div>' +
+              /* cause code (PT only) */
+              '<div id="fbCauseRow" style="display:none;margin-bottom:18px;">' +
+                '<div class="fb-lbl" style="margin-bottom:6px;">Cause Code <span style="color:#fb7185;">*</span></div>' +
+                '<select id="fbDrpCause" class="fb-input"></select>' +
+              '</div>' +
+              /* rectification */
+              '<div style="margin-bottom:18px;">' +
+                '<div class="fb-lbl" style="margin-bottom:6px;">Rectification Date &amp; Time</div>' +
+                '<input type="datetime-local" id="fbRectDate" class="fb-input" />' +
+              '</div>' +
+              /* remark */
+              '<div style="margin-bottom:6px;">' +
+                '<div class="fb-lbl" style="margin-bottom:6px;">Remark <span style="color:#fb7185;">*</span></div>' +
+                '<textarea id="fbRemark" rows="4" placeholder="Describe action taken, root cause, observations..." class="fb-input" style="resize:vertical;line-height:1.6;"></textarea>' +
+              '</div>' +
+              '<input type="hidden" id="fbHdnAlertId" />' +
+              '<input type="hidden" id="fbHdnStatusId" />' +
+            '</div>' +
+            /* remark-only mode */
+            '<div id="fbRemarkOnlyMode" style="display:none;">' +
+              '<div class="fb-lbl" style="margin-bottom:6px;">Remark <span style="color:#fb7185;">*</span></div>' +
+              '<textarea id="fbRemarkOnly" rows="4" placeholder="Enter your remark..." class="fb-input" style="resize:vertical;line-height:1.6;"></textarea>' +
+              '<input type="hidden" id="fbHdnROAlertId" />' +
+              '<input type="hidden" id="fbHdnROStatusId" />' +
+            '</div>' +
+          '</div>' +
+          /* footer */
+          '<div style="flex-shrink:0;padding:14px 24px;background:rgba(0,0,0,.30);border-top:1px solid rgba(255,255,255,.07);display:flex;justify-content:flex-end;gap:10px;">' +
+            '<button onclick="closeFbPanel()" style="padding:10px 20px;border-radius:10px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.11);color:rgba(255,255,255,.55);font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>' +
+            '<button id="fbSubmitBtn" onclick="submitFbPanel()" style="padding:10px 26px;border-radius:10px;background:linear-gradient(135deg,#22d3ee,#818cf8,#a78bfa);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;"><i class="fas fa-paper-plane"></i><span>Submit Feedback</span></button>' +
+          '</div>' +
+        '</div>'
+    );
+
+    /* ── Panel CSS ── */
+    var s = document.createElement('style');
+    s.textContent =
+        '.fb-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(34,211,238,.55);}' +
+        '.fb-val{font-size:13px;font-weight:600;color:rgba(255,255,255,.85);}' +
+        '.fb-section-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}' +
+        '.fb-input{width:100%;background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.09);border-radius:10px;padding:11px 14px;font-size:13px;color:rgba(255,255,255,.88);color-scheme:dark;outline:none;box-sizing:border-box;font-family:inherit;}' +
+        '.fb-opt{padding:14px 6px;border-radius:10px;border:2px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);cursor:pointer;text-align:center;transition:all .2s;}' +
+        '.fb-opt:hover{transform:translateY(-2px);}' +
+        '.fb-opt-lbl{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-bottom:2px;}' +
+        '.fb-opt-desc{font-size:9px;color:rgba(255,255,255,.30);line-height:1.3;}' +
+        '#fbBody::-webkit-scrollbar{width:4px;}' +
+        '#fbBody::-webkit-scrollbar-thumb{background:rgba(34,211,238,.18);border-radius:2px;}' +
+        '@@media(max-width:600px){#fbPanel{width:100%;right:-100%;}}';
+    document.head.appendChild(s);
+
+    /* ── Backdrop closes panel ── */
+    document.getElementById('fbBdrop').addEventListener('click', closeFbPanel);
+
+    /* ── Highlight colours per option ── */
+    var optColors = {};
+    optColors[ptId]    = { b: 'rgba(251,191,36,.5)',  bg: 'rgba(251,191,36,.10)' };
+    optColors[trueId]  = { b: 'rgba(74,222,128,.5)',  bg: 'rgba(74,222,128,.10)' };
+    optColors[falseId] = { b: 'rgba(248,113,113,.5)', bg: 'rgba(248,113,113,.10)' };
+    optColors[maintId] = { b: 'rgba(167,139,250,.5)', bg: 'rgba(167,139,250,.10)' };
+
+    function resetOpts() {
+        document.querySelectorAll('.fb-opt').forEach(function (o) {
+            o.style.border = '2px solid rgba(255,255,255,.08)';
+            o.style.background = 'rgba(255,255,255,.03)';
+        });
+    }
+    function highlightOpt(el) {
+        var sid = el.getAttribute('data-sid');
+        if (optColors[sid]) {
+            el.style.border = '2px solid ' + optColors[sid].b;
+            el.style.background = optColors[sid].bg;
+        }
+    }
+
+    /* ══════════ PUBLIC API ══════════ */
+
+    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone) {
+        /* summary */
+        document.getElementById('fbAlertId').textContent   = '#' + alertId;
+        document.getElementById('fbAssetName').textContent = asset    || '—';
+        document.getElementById('fbStation').textContent   = station  || '—';
+        document.getElementById('fbDivZone').textContent   = [division, zone].filter(Boolean).join(' / ') || '—';
+        document.getElementById('fbCause').textContent     = cause    || '—';
+        document.getElementById('fbIncTime').textContent   = incTime  || '—';
+        document.getElementById('fbDuration').textContent  = duration || '—';
+
+        /* type badge */
+        var tl = (typeLbl || '').toLowerCase();
+        var badge = document.getElementById('fbTypeBadge');
+        badge.textContent = typeLbl || '—';
+        badge.style.cssText = tl.indexOf('fail') >= 0
+            ? 'padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(239,68,68,.15);color:#ef4444;'
+            : tl.indexOf('predict') >= 0
+            ? 'padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(245,158,11,.15);color:#f59e0b;'
+            : 'padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:rgba(100,116,139,.15);color:#94a3b8;';
+
+        if (mode === 'full') {
+            document.getElementById('fbFullMode').style.display = 'block';
+            document.getElementById('fbRemarkOnlyMode').style.display = 'none';
+            document.getElementById('fbSubmitBtn').querySelector('span').textContent = 'Submit Feedback';
+
+            /* reset */
+            resetOpts();
+            document.getElementById('fbRemark').value = '';
+            document.getElementById('fbRectDate').value = '';
+            document.getElementById('fbCauseRow').style.display = 'none';
+            document.getElementById('fbHdnAlertId').value = alertId;
+            document.getElementById('fbHdnStatusId').value = statusId || '';
+
+            /* pre-select current status */
+            if (statusId) {
+                var match = document.querySelector('.fb-opt[data-sid="' + statusId + '"]');
+                if (match) highlightOpt(match);
+                if (statusId === ptId) document.getElementById('fbCauseRow').style.display = 'block';
+            }
+
+            /* load existing remark + cause codes from server */
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/Alerts/GetBy', type: 'POST',
+                data: '{id:' + alertId + '}', contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data && data.Id > 0) {
+                        if (data.Remark) document.getElementById('fbRemark').value = data.Remark;
+                        document.getElementById('fbHdnStatusId').value = statusId;
+                    }
+                    if (data.mAlertInfos && data.mAlertInfos.length > 0 && statusId == ptId) {
+                        document.getElementById('fbCauseRow').style.display = 'block';
+                        var drp = document.getElementById('fbDrpCause');
+                        drp.innerHTML = '<option value="">Select</option>';
+                        data.mAlertInfos.forEach(function (x) {
+                            drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
+                        });
+                    }
+                },
+                error: function () { $("#loader").hide(); }
+            });
+
+        } else {
+            /* remarkOnly mode */
+            document.getElementById('fbFullMode').style.display = 'none';
+            document.getElementById('fbRemarkOnlyMode').style.display = 'block';
+            document.getElementById('fbSubmitBtn').querySelector('span').textContent = 'Submit Remark';
+            document.getElementById('fbRemarkOnly').value = '';
+            document.getElementById('fbHdnROAlertId').value = alertId;
+            document.getElementById('fbHdnROStatusId').value = statusId;
+        }
+
+        document.getElementById('fbBdrop').style.display = 'block';
+        document.getElementById('fbPanel').style.right = '0';
+    };
+
+    window.closeFbPanel = function () {
+        document.getElementById('fbPanel').style.right = '-580px';
+        document.getElementById('fbBdrop').style.display = 'none';
+    };
+
+    window.selectFbOpt = function (el) {
+        resetOpts();
+        highlightOpt(el);
+        var sid = el.getAttribute('data-sid');
+        document.getElementById('fbHdnStatusId').value = sid;
+        document.getElementById('fbCauseRow').style.display = (sid === ptId) ? 'block' : 'none';
+        if (sid === ptId) {
+            var drp = document.getElementById('fbDrpCause');
+            if (drp.options.length <= 1) {
+                var alertId = document.getElementById('fbHdnAlertId').value;
+                $.ajax({
+                    url: '/FRS25/Alerts/GetBy', type: 'POST',
+                    data: '{id:' + alertId + '}', contentType: 'application/json',
+                    success: function (data) {
+                        if (data.mAlertInfos && data.mAlertInfos.length > 0) {
+                            drp.innerHTML = '<option value="">Select</option>';
+                            data.mAlertInfos.forEach(function (x) {
+                                drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
+                            });
+                        }
+                    }
+                });
+            }
+        }
+    };
+
+    window.selectFbOptM = function (el) {
+        var alertId = document.getElementById('fbHdnAlertId').value;
+        var sid = el.getAttribute('data-sid');
+        window.closeFbPanel();
+        fnUpdateAckStatus(alertId, sid);   /* original function — unchanged */
+    };
+
+    window.submitFbPanel = function () {
+        var skip = window._alertCurrentSkip || 0;
+        var isFullMode = document.getElementById('fbFullMode').style.display !== 'none';
+
+        if (isFullMode) {
+            var remark   = document.getElementById('fbRemark').value.trim();
+            var statusId = document.getElementById('fbHdnStatusId').value;
+            if (!remark)   { alert('Remark is required.'); return; }
+            if (!statusId) { alert('Please select a feedback type.'); return; }
+
+            var payload = {
+                Id: document.getElementById('fbHdnAlertId').value,
+                Remark: remark,
+                AcknowledgemenStatusId: statusId
+            };
+            var rectVal = document.getElementById('fbRectDate').value;
+            if (rectVal) {
+                var rd = new Date(rectVal);
+                if (rd > new Date()) { alert('Future date & time is not allowed.'); return; }
+                payload.RectificationDateTime = rd.toISOString();
+            }
+            if (statusId === ptId) {
+                payload.PTAlertInfoId = document.getElementById('fbDrpCause').value;
+                if (!payload.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+            }
+        } else {
+            var remark = document.getElementById('fbRemarkOnly').value.trim();
+            if (!remark) { alert('Remark is required.'); return; }
+            var payload = {
+                Id: document.getElementById('fbHdnROAlertId').value,
+                Remark: remark,
+                AcknowledgemenStatusId: document.getElementById('fbHdnROStatusId').value
+            };
+        }
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/Alerts/UpdateRemark',
+            type: 'POST', contentType: 'application/json', dataType: 'json',
+            data: JSON.stringify(payload),
+            success: function (data) {
+                $("#loader").hide();
+                window.closeFbPanel();
+                if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
+                else location.reload();
+                if (data != null) {
+                    var msg = data.result || '';
+                    if (data.type === 'success') CommonNotification("SUCCESS", msg, "success");
+                    else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
+                }
+            },
+            error: function () { $("#loader").hide(); window.closeFbPanel(); alert("Something went wrong!"); }
+        });
+    };
+
+}(jQuery));
+</script>*@
+<script>
+(function ($) {
+    if (window._fbPanelReady) return;
+    window._fbPanelReady = true;
+
+    var ptId    = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()';
+    var trueId  = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()';
+    var falseId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()';
+    var maintId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()';
+
+    /* ── Define globals FIRST before any DOM work ── */
+    window.closeFbPanel = function () {
+        window._fbPhotos = [];
+        var preview = document.getElementById('fbPhotoPreview');
+        var count = document.getElementById('fbPhotoCount');
+        if (preview) preview.innerHTML = '';
+        if (count) count.textContent = '';
+        var panel = document.getElementById('fbPanel');
+        var bdrop = document.getElementById('fbBdrop');
+        if (panel) panel.style.right = '-580px';
+        if (bdrop) bdrop.style.display = 'none';
+    };
+
+    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone) {
+
+        // Reset photos on each open
+        window._fbPhotos = [];
+        fbRenderPhotoPreview();
+        var panel = document.getElementById('fbPanel');
+        var bdrop = document.getElementById('fbBdrop');
+        if (!panel) return;
+
+        document.getElementById('fbAlertId').textContent   = '#' + alertId;
+        document.getElementById('fbAssetName').textContent = asset    || '—';
+        document.getElementById('fbStation').textContent   = station  || '—';
+        document.getElementById('fbDivZone').textContent   = [division, zone].filter(Boolean).join(' / ') || '—';
+        document.getElementById('fbCause').textContent     = cause    || '—';
+        document.getElementById('fbIncTime').textContent   = incTime  || '—';
+        document.getElementById('fbDuration').textContent  = duration || '—';
+
+        var tl    = (typeLbl || '').toLowerCase();
+        var badge = document.getElementById('fbTypeBadge');
+        badge.textContent = typeLbl || '—';
+        badge.style.cssText = tl.indexOf('fail') >= 0
+            ? 'padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fee2e2;color:#ef4444;'
+            : tl.indexOf('predict') >= 0
+            ? 'padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#fef3c7;color:#f59e0b;'
+            : 'padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:#f1f5f9;color:#64748b;';
+
+        if (mode === 'full') {
+            document.getElementById('fbFullMode').style.display      = 'block';
+            document.getElementById('fbRemarkOnlyMode').style.display = 'none';
+            document.getElementById('fbSubmitBtn').querySelector('span').textContent = 'Submit Feedback';
+
+            resetOpts();
+            document.getElementById('fbRemark').value    = '';
+            document.getElementById('fbRectDate').value  = '';
+            document.getElementById('fbCauseRow').style.display = 'none';
+            document.getElementById('fbHdnAlertId').value  = alertId;
+            document.getElementById('fbHdnStatusId').value = statusId || '';
+
+            if (statusId) {
+                var match = document.querySelector('.fb-opt[data-sid="' + statusId + '"]');
+                if (match) highlightOpt(match);
+                if (statusId === ptId) document.getElementById('fbCauseRow').style.display = 'block';
+            }
+
+            $("#loader").show();
+            //$.ajax({
+            //    url: '/FRS25/Alerts/GetBy', type: 'POST',
+            //    data: '{id:' + alertId + '}', contentType: 'application/json',
+            //    //success: function (data) {
+            //    //    $("#loader").hide();
+            //    //    if (data && data.Id > 0 && data.Remark) {
+            //    //        document.getElementById('fbRemark').value = data.Remark;
+            //    //    }
+            //    //    document.getElementById('fbHdnStatusId').value = statusId;
+            //    //    if (data.mAlertInfos && data.mAlertInfos.length > 0 && statusId == ptId) {
+            //    //        document.getElementById('fbCauseRow').style.display = 'block';
+            //    //        var drp = document.getElementById('fbDrpCause');
+            //    //        drp.innerHTML = '<option value="">Select</option>';
+            //    //        data.mAlertInfos.forEach(function (x) {
+            //    //            drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
+            //    //        });
+            //    //    }
+            //    //},
+            //    success: function (data) {
+            //        $("#loader").hide();
+            //        console.log('Alert data:', data);
+            //        if (data && data.Id > 0) {
+
+            //            // ── Remark ──
+            //            document.getElementById('fbRemark').value = data.Remark || '';
+
+            //            // ── Rectification DateTime ──
+            //            var rectRaw = data.RectificationDateTime || null;
+
+            //            if (rectRaw) {
+            //                // Handle Microsoft /Date(1234567890000)/ format
+            //                if (typeof rectRaw === 'string' && rectRaw.indexOf('/Date(') === 0) {
+            //                    var ticks = parseInt(rectRaw.replace(/\/Date\((\d+)\)\//, '$1'), 10);
+            //                    rectRaw = new Date(ticks);
+            //                } else {
+            //                    rectRaw = new Date(rectRaw);
+            //                }
+
+            //                if (!isNaN(rectRaw.getTime())) {
+            //                    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+            //                    var local = rectRaw.getFullYear() + '-' +
+            //                        pad(rectRaw.getMonth() + 1) + '-' +
+            //                        pad(rectRaw.getDate()) + 'T' +
+            //                        pad(rectRaw.getHours()) + ':' +
+            //                        pad(rectRaw.getMinutes());
+            //                    document.getElementById('fbRectDate').value = local;
+            //                } else {
+            //                    document.getElementById('fbRectDate').value = '';
+            //                }
+            //            } else {
+            //                document.getElementById('fbRectDate').value = '';
+            //            }
+
+            //            // ── Status ID ──
+            //            document.getElementById('fbHdnStatusId').value = statusId;
+
+            //            // ── Cause code dropdown (PT only) ──
+            //            // ── Cause code dropdown (PT only) ──
+            //            if (data.mAlertInfos && data.mAlertInfos.length > 0 && statusId == ptId) {
+            //                document.getElementById('fbCauseRow').style.display = 'block';
+            //                var drp = document.getElementById('fbDrpCause');
+            //                drp.innerHTML = '<option value="">Select</option>';
+            //                data.mAlertInfos.forEach(function (x) {
+            //                    drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
+            //                });
+
+            //                // Try every possible field that could hold the saved PT cause ID
+            //                var savedId = data.PTAlertInfoId
+            //                    || data.PTCauseCodeId
+            //                    || data.CauseCodeId
+            //                    || data.SelectedAlertInfoId
+            //                    || data.FeedbackAlertInfoId
+            //                    || null;
+
+            //                console.log('Trying savedId:', savedId);
+            //                console.log('Full data keys:', Object.keys(data));
+
+            //                if (savedId) {
+            //                    drp.value = String(savedId);
+            //                    // If still not matched, loop by value
+            //                    if (!drp.value || drp.value === '') {
+            //                        for (var i = 0; i < drp.options.length; i++) {
+            //                            if (String(drp.options[i].value) === String(savedId)) {
+            //                                drp.selectedIndex = i;
+            //                                break;
+            //                            }
+            //                        }
+            //                    }
+            //                }
+            //            }
+            //        }
+            //    },
+            //    error: function () { $("#loader").hide(); }
+            //});
+            resetOpts();
+            document.getElementById('fbRemark').value = '';
+            document.getElementById('fbRectDate').value = '';
+            document.getElementById('fbHdnAlertId').value = alertId;
+            document.getElementById('fbHdnStatusId').value = statusId || '';
+            document.getElementById('fbCauseRow').style.display = 'none';
+        } else {
+            document.getElementById('fbFullMode').style.display      = 'none';
+            document.getElementById('fbRemarkOnlyMode').style.display = 'block';
+            document.getElementById('fbSubmitBtn').querySelector('span').textContent = 'Submit Remark';
+            document.getElementById('fbRemarkOnly').value       = '';
+            document.getElementById('fbHdnROAlertId').value     = alertId;
+            document.getElementById('fbHdnROStatusId').value    = statusId;
+        }
+
+        if (bdrop) bdrop.style.display = 'block';
+        panel.style.right = '0';
+    };
+
+    window.selectFbOpt = function (el) {
+        resetOpts();
+        highlightOpt(el);
+        var sid = el.getAttribute('data-sid');
+        document.getElementById('fbHdnStatusId').value = sid;
+        document.getElementById('fbCauseRow').style.display = (sid === ptId) ? 'block' : 'none';
+        if (sid === ptId) {
+            var drp = document.getElementById('fbDrpCause');
+            if (drp.options.length <= 1) {
+                var alertId = document.getElementById('fbHdnAlertId').value;
+                $.ajax({
+                    url: '/FRS25/Alerts/GetBy', type: 'POST',
+                    data: '{id:' + alertId + '}', contentType: 'application/json',
+                    success: function (data) {
+                        if (data.mAlertInfos && data.mAlertInfos.length > 0) {
+                            drp.innerHTML = '<option value="">Select</option>';
+                            data.mAlertInfos.forEach(function (x) {
+                                drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
+                            });
+                        }
+                    }
+                });
+            }
+        }
+    };
+
+    window.selectFbOptM = function (el) {
+        var alertId = document.getElementById('fbHdnAlertId').value;
+        var sid     = el.getAttribute('data-sid');
+        window.closeFbPanel();
+        fnUpdateAckStatus(alertId, sid);
+    };
+    // Convert a File to base64 string (async)
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(',')[1]); // pure base64 without data:image/...;base64,
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+    //window.submitFbPanel = function () {
+    //    var skip = window._alertCurrentSkip || 0;
+    //    var isFullMode = document.getElementById('fbFullMode').style.display !== 'none';
+    //    var payload;
+
+    //    if (isFullMode) {
+    //        var remark = document.getElementById('fbRemark').value.trim();
+    //        var statusId = document.getElementById('fbHdnStatusId').value;
+    //        if (!remark) { alert('Remark is required.'); return; }
+    //        if (!statusId) { alert('Please select a feedback type.'); return; }
+
+    //        payload = {
+    //            Id: document.getElementById('fbHdnAlertId').value,
+    //            Remark: remark,
+    //            AcknowledgemenStatusId: statusId,
+    //            PhotoEvidence: null   // filled after upload below
+    //        };
+
+    //        var rectVal = document.getElementById('fbRectDate').value;
+    //        if (rectVal) {
+    //            var rd = new Date(rectVal);
+    //            if (rd > new Date()) { alert('Future date & time is not allowed.'); return; }
+    //            payload.RectificationDateTime = rd.toISOString();
+    //        }
+
+    //        if (statusId === ptId) {
+    //            payload.PTAlertInfoId = document.getElementById('fbDrpCause').value;
+    //            if (!payload.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+    //        }
+
+    //    } else {
+    //        var remark = document.getElementById('fbRemarkOnly').value.trim();
+    //        if (!remark) { alert('Remark is required.'); return; }
+    //        payload = {
+    //            Id: document.getElementById('fbHdnROAlertId').value,
+    //            Remark: remark,
+    //            AcknowledgemenStatusId: document.getElementById('fbHdnROStatusId').value,
+    //            PhotoEvidence: null
+    //        };
+    //    }
+
+    //    // ── Step 1: If photos selected → upload first, get filename → then UpdateRemark ──
+    //    if (window._fbPhotos && window._fbPhotos.length > 0) {
+
+    //        var formData = new FormData();
+    //        window._fbPhotos.forEach(function (p) {
+    //            formData.append('photos', p.file, p.file.name);
+    //        });
+
+    //        $("#loader").show();
+    //        $.ajax({
+    //            url: '/FRS25/Alerts/UploadPhotoEvidence',
+    //            type: 'POST',
+    //            data: formData,
+    //            processData: false,
+    //            contentType: false,
+    //            dataType: 'json',
+    //            success: function (uploadResult) {
+    //                $("#loader").hide();
+    //                if (uploadResult && uploadResult.success && uploadResult.fileNames) {
+    //                    // comma-separated filenames → stored in PhotoEvidence column
+    //                    // e.g. "20260123143520_abc.png,20260123143521_xyz.jpg"
+    //                    payload.PhotoEvidenceBase64 = uploadResult.fileNames.join(',');
+    //                } else {
+    //                    alert(uploadResult.message || 'Photo upload failed.');
+    //                    return;
+    //                }
+    //                // ── Step 2: Now call UpdateRemark with PhotoEvidence in payload ──
+    //                fbSubmitRemarkPayload(payload, skip);
+    //            },
+    //            error: function () {
+    //                $("#loader").hide();
+    //                alert('Photo upload failed. Please try again.');
+    //            }
+    //        });
+
+    //    } else {
+    //        // No photos — call UpdateRemark directly with PhotoEvidence = null
+    //        fbSubmitRemarkPayload(payload, skip);
+    //    }
+    //};
+
+    window.submitFbPanel = async function () {
+        const skip = window._alertCurrentSkip || 0;
+        const isFullMode = document.getElementById('fbFullMode').style.display !== 'none';
+        let payload;
+
+        if (isFullMode) {
+            const remark = document.getElementById('fbRemark').value.trim();
+            const statusId = document.getElementById('fbHdnStatusId').value;
+            if (!remark) { alert('Remark is required.'); return; }
+            if (!statusId) { alert('Please select a feedback type.'); return; }
+
+            payload = {
+                Id: document.getElementById('fbHdnAlertId').value,
+                Remark: remark,
+                AcknowledgemenStatusId: statusId,
+                PhotoEvidenceBase64: null
+            };
+
+            const rectVal = document.getElementById('fbRectDate').value;
+            if (rectVal) {
+                const rd = new Date(rectVal);
+                if (rd > new Date()) { alert('Future date & time is not allowed.'); return; }
+                payload.RectificationDateTime = rd.toISOString();
+            }
+
+            if (statusId === ptId) {
+                payload.PTAlertInfoId = document.getElementById('fbDrpCause').value;
+                if (!payload.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+            }
+        } else {
+            const remark = document.getElementById('fbRemarkOnly').value.trim();
+            if (!remark) { alert('Remark is required.'); return; }
+            payload = {
+                Id: document.getElementById('fbHdnROAlertId').value,
+                Remark: remark,
+                AcknowledgemenStatusId: document.getElementById('fbHdnROStatusId').value,
+                PhotoEvidenceBase64: null
+            };
+        }
+
+        // ── Convert photos to base64 (if any) ──
+        if (window._fbPhotos && window._fbPhotos.length > 0) {
+            try {
+                const base64List = await Promise.all(window._fbPhotos.map(p => fileToBase64(p.file)));
+                // Send as comma-separated base64 strings, or as JSON array – match your backend expectation
+                payload.PhotoEvidenceBase64 = base64List.join(','); // adjust separator as needed
+            } catch (err) {
+                alert('Failed to encode images: ' + err.message);
+                return;
+            }
+        }
+
+        // ── Single AJAX call to UpdateRemark ──
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/Alerts/UpdateRemark',
+            type: 'POST',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify(payload),
+            success: function (data) {
+                $("#loader").hide();
+                window.closeFbPanel();
+                if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
+                else location.reload();
+                if (data != null) {
+                    if (data.type === 'success') CommonNotification("SUCCESS", data.result || '', "success");
+                    else if (data.type === 'error') CommonNotification("ERROR", data.result || '', "error");
+                }
+            },
+            error: function () {
+                $("#loader").hide();
+                window.closeFbPanel();
+                alert("Something went wrong!");
+            }
+        });
+    };
+
+    // ── Calls existing UpdateRemark endpoint with full payload including PhotoEvidence ──
+    function fbSubmitRemarkPayload(payload, skip) {
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/Alerts/UpdateRemark',
+            type: 'POST',
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify(payload),
+            success: function (data) {
+                $("#loader").hide();
+                window.closeFbPanel();
+                if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
+                else location.reload();
+                if (data != null) {
+                    if (data.type === 'success') CommonNotification("SUCCESS", data.result || '', "success");
+                    else if (data.type === 'error') CommonNotification("ERROR", data.result || '', "error");
+                }
+            },
+            error: function () {
+                $("#loader").hide();
+                window.closeFbPanel();
+                alert("Something went wrong!");
+            }
+        });
+    }
+    /* ── Internal helpers ── */
+    var optColors = {};
+    optColors[ptId]    = { b: 'rgba(245,158,11,.5)',   bg: 'rgba(245,158,11,.10)'  };
+    optColors[trueId]  = { b: 'rgba(16,185,129,.5)',   bg: 'rgba(16,185,129,.10)'  };
+    optColors[falseId] = { b: 'rgba(239,68,68,.5)',    bg: 'rgba(239,68,68,.10)'   };
+    optColors[maintId] = { b: 'rgba(139,92,246,.5)',   bg: 'rgba(139,92,246,.10)'  };
+
+    function resetOpts() {
+        document.querySelectorAll('.fb-opt').forEach(function (o) {
+            o.style.border     = '2px solid rgba(255,255,255,.08)';
+            o.style.background = 'rgba(255,255,255,.03)';
+        });
+    }
+
+    function highlightOpt(el) {
+        var sid = el.getAttribute('data-sid');
+        if (optColors[sid]) {
+            el.style.border     = '2px solid ' + optColors[sid].b;
+            el.style.background = optColors[sid].bg;
+        }
+    }
+
+    /* ── Inject panel HTML once ── */
+    if (!document.getElementById('fbPanel')) {
+        document.body.insertAdjacentHTML('beforeend',
+            '<div id="fbBdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(3px);z-index:1065;"></div>' +
+            '<div id="fbPanel" style="position:fixed;top:0;right:-580px;width:560px;max-width:100vw;height:100vh;' +
+                'background:linear-gradient(175deg,#0c1228 0%,#080c1c 100%);' +
+                'border-left:1px solid rgba(34,211,238,.18);box-shadow:-20px 0 60px rgba(0,0,0,.80);' +
+                'z-index:1070;display:flex;flex-direction:column;transition:right .38s cubic-bezier(.22,1,.36,1);">' +
+              '<div style="height:3px;flex-shrink:0;background:linear-gradient(90deg,#22d3ee,#818cf8,#f472b6);"></div>' +
+              '<div style="flex-shrink:0;padding:20px 24px 16px;background:linear-gradient(135deg,rgba(34,211,238,.10),rgba(129,140,248,.06));border-bottom:1px solid rgba(255,255,255,.07);display:flex;justify-content:space-between;align-items:flex-start;">' +
+                '<div>' +
+                  '<div style="font-size:17px;font-weight:700;color:#fff;">Provide Alert Feedback</div>' +
+                  '<div style="font-size:12px;color:rgba(255,255,255,.45);margin-top:3px;">Annexure D — Section 6 &amp; 7</div>' +
+                '</div>' +
+                '<button onclick="window.closeFbPanel()" style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);color:rgba(255,255,255,.5);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;">&#x2715;</button>' +
+              '</div>' +
+              '<div id="fbBody" style="flex:1;overflow-y:auto;padding:20px 24px;">' +
+                '<div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;margin-bottom:20px;">' +
+                  '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">' +
+                    '<div>' +
+                      '<div id="fbAlertId" style="font-family:monospace;font-size:11px;color:rgba(255,255,255,.35);margin-bottom:4px;"></div>' +
+                      '<div id="fbAssetName" style="font-size:16px;font-weight:700;color:#fff;"></div>' +
+                    '</div>' +
+                    '<span id="fbTypeBadge"></span>' +
+                  '</div>' +
+                  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+                    '<div><div class="fb-lbl">Station</div><div id="fbStation" class="fb-val"></div></div>' +
+                    '<div><div class="fb-lbl">Division / Zone</div><div id="fbDivZone" class="fb-val"></div></div>' +
+                    '<div><div class="fb-lbl">Cause Code</div><div id="fbCause" style="font-size:13px;font-weight:600;color:#22d3ee;font-family:monospace;"></div></div>' +
+                    '<div><div class="fb-lbl">Incidence Time</div><div id="fbIncTime" class="fb-val"></div></div>' +
+                    '<div><div class="fb-lbl">Duration</div><div id="fbDuration" style="font-size:13px;font-weight:600;color:#ef4444;"></div></div>' +
+                  '</div>' +
+                '</div>' +
+                '<div id="fbFullMode">' +
+                  '<div class="fb-section-title"><i class="fas fa-check-circle" style="color:#22d3ee;margin-right:6px;"></i>Select Feedback Type <span style="color:#fb7185;">*</span></div>' +
+                  '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;">' +
+                    '<div class="fb-opt" data-sid="'+ptId+'" onclick="window.selectFbOpt(this)">' +
+                      '<div style="width:36px;height:36px;border-radius:50%;background:rgba(245,158,11,.15);color:#f59e0b;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">PT</div>' +
+                      '<div class="fb-opt-lbl">Partially True</div><div class="fb-opt-desc">Failure but cause differs</div>' +
+                    '</div>' +
+                    '<div class="fb-opt" data-sid="'+trueId+'" onclick="window.selectFbOpt(this)">' +
+                      '<div style="width:36px;height:36px;border-radius:50%;background:rgba(16,185,129,.15);color:#4ade80;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">T</div>' +
+                      '<div class="fb-opt-lbl">True</div><div class="fb-opt-desc">Failure and cause match</div>' +
+                    '</div>' +
+                    '<div class="fb-opt" data-sid="'+falseId+'" onclick="window.selectFbOpt(this)">' +
+                      '<div style="width:36px;height:36px;border-radius:50%;background:rgba(239,68,68,.15);color:#f87171;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">F</div>' +
+                      '<div class="fb-opt-lbl">False</div><div class="fb-opt-desc">No actual failure at site</div>' +
+                    '</div>' +
+                    '<div class="fb-opt" data-sid="'+maintId+'" onclick="window.selectFbOptM(this)">' +
+                      '<div style="width:36px;height:36px;border-radius:50%;background:rgba(139,92,246,.15);color:#a78bfa;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;margin:0 auto 7px;">M</div>' +
+                      '<div class="fb-opt-lbl">Maintenance</div><div class="fb-opt-desc">Alert during maintenance</div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div id="fbCauseRow" style="display:none;margin-bottom:18px;">' +
+                    '<div class="fb-lbl" style="margin-bottom:6px;">Cause Code <span style="color:#fb7185;">*</span></div>' +
+                    '<select id="fbDrpCause" class="fb-input"></select>' +
+                  '</div>' +
+                  '<div style="margin-bottom:18px;">' +
+                    '<div class="fb-lbl" style="margin-bottom:6px;">Rectification Date &amp; Time</div>' +
+                    '<input type="datetime-local" id="fbRectDate" class="fb-input" />' +
+                  '</div>' +
+            '<div style="margin-bottom:18px;">' +
+            '<div class="fb-lbl" style="margin-bottom:6px;">Remark <span style="color:#fb7185;">*</span></div>' +
+            '<textarea id="fbRemark" rows="4" placeholder="Describe action taken, root cause, observations..." class="fb-input" style="resize:vertical;line-height:1.6;"></textarea>' +
+            '</div>' +
+
+            '<div class="fb-photo-section">' +
+            '<div class="fb-lbl" style="margin-bottom:8px;"><i class="fas fa-camera" style="margin-right:5px;"></i>Photo Evidence <span style="color:rgba(255,255,255,.30);font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;">(Optional — max 5 photos, 5MB each)</span></div>' +
+            '<div class="fb-photo-zone" id="fbPhotoZone" onclick="document.getElementById(\'fbPhotoInput\').click()">' +
+            '<i class="fas fa-cloud-upload-alt"></i>' +
+            '<div class="fb-photo-zone-text"><span>Click to upload</span> or drag &amp; drop<br>JPG, PNG, PDF — up to 5MB each</div>' +
+            '<input type="file" id="fbPhotoInput" accept="image/*,.pdf" multiple style="display:none;" onchange="fbHandlePhotos(this)" />' +
+            '</div>' +
+            '<div class="fb-photo-preview" id="fbPhotoPreview"></div>' +
+            '<div class="fb-photo-count" id="fbPhotoCount"></div>' +
+            '</div>' +
+
+            '<input type="hidden" id="fbHdnAlertId" />' +
+            '<input type="hidden" id="fbHdnStatusId" />' +
+                '</div>' +
+                '<div id="fbRemarkOnlyMode" style="display:none;">' +
+                  '<div class="fb-lbl" style="margin-bottom:6px;">Remark <span style="color:#fb7185;">*</span></div>' +
+                  '<textarea id="fbRemarkOnly" rows="4" placeholder="Enter your remark..." class="fb-input" style="resize:vertical;line-height:1.6;"></textarea>' +
+                  '<input type="hidden" id="fbHdnROAlertId" />' +
+                  '<input type="hidden" id="fbHdnROStatusId" />' +
+                '</div>' +
+              '</div>' +
+              '<div style="flex-shrink:0;padding:14px 24px;background:rgba(0,0,0,.30);border-top:1px solid rgba(255,255,255,.07);display:flex;justify-content:flex-end;gap:10px;">' +
+                '<button onclick="window.closeFbPanel()" style="padding:10px 20px;border-radius:10px;background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.11);color:rgba(255,255,255,.55);font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>' +
+                '<button id="fbSubmitBtn" onclick="window.submitFbPanel()" style="padding:10px 26px;border-radius:10px;background:linear-gradient(135deg,#22d3ee,#818cf8,#a78bfa);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:7px;"><i class="fas fa-paper-plane"></i><span>Submit Feedback</span></button>' +
+              '</div>' +
+            '</div>'
+        );
+
+        /* Panel CSS */
+        var s = document.createElement('style');
+        s.textContent =
+            '.fb-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(34,211,238,.55);}' +
+            '.fb-val{font-size:13px;font-weight:600;color:rgba(255,255,255,.85);}' +
+            '.fb-section-title{font-size:12px;font-weight:700;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;}' +
+            '.fb-input{width:100%;background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.09);border-radius:10px;padding:11px 14px;font-size:13px;color:rgba(255,255,255,.88);color-scheme:dark;outline:none;box-sizing:border-box;font-family:inherit;}' +
+            '.fb-input:focus{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.04);}' +
+            '.fb-opt{padding:14px 6px;border-radius:10px;border:2px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);cursor:pointer;text-align:center;transition:all .2s;}' +
+            '.fb-opt:hover{transform:translateY(-2px);}' +
+            '.fb-opt-lbl{font-size:11px;font-weight:700;color:rgba(255,255,255,.75);margin-bottom:2px;}' +
+            '.fb-opt-desc{font-size:9px;color:rgba(255,255,255,.30);line-height:1.3;}' +
+            '#fbBody::-webkit-scrollbar{width:4px;}' +
+            '#fbBody::-webkit-scrollbar-thumb{background:rgba(34,211,238,.18);border-radius:2px;}' +
+            '@@media(max-width:600px){#fbPanel{width:100%;right:-100%;}}';
+        document.head.appendChild(s);
+
+        /* Backdrop click closes panel */
+        document.getElementById('fbBdrop').addEventListener('click', window.closeFbPanel);
+    }
+
+}(jQuery));
+
+    // ── Photo Evidence helpers ──
+    window._fbPhotos = []; // holds { file, dataUrl } objects
+
+    window.fbHandlePhotos = function (input) {
+        var files = Array.prototype.slice.call(input.files);
+        files.forEach(function (file) {
+            if (window._fbPhotos.length >= 5) {
+                alert('Maximum 5 photos allowed.');
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                alert(file.name + ' exceeds 5MB limit.');
+                return;
+            }
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                window._fbPhotos.push({ file: file, dataUrl: e.target.result });
+                fbRenderPhotoPreview();
+            };
+            reader.readAsDataURL(file);
+        });
+        // Reset input so same file can be re-added after removal
+        input.value = '';
+    };
+
+    window.fbRemovePhoto = function (idx) {
+        window._fbPhotos.splice(idx, 1);
+        fbRenderPhotoPreview();
+    };
+
+    function fbRenderPhotoPreview() {
+        var preview = document.getElementById('fbPhotoPreview');
+        var count = document.getElementById('fbPhotoCount');
+        if (!preview) return;
+        preview.innerHTML = '';
+        window._fbPhotos.forEach(function (p, i) {
+            var isImage = p.file.type.indexOf('image') === 0;
+            var thumb = document.createElement('div');
+            thumb.className = 'fb-photo-thumb';
+            thumb.innerHTML = isImage
+                ? '<img src="' + p.dataUrl + '" alt="photo-' + i + '" />'
+                : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:rgba(139,92,246,.15);color:#a78bfa;font-size:10px;font-weight:700;text-align:center;padding:4px;">PDF</div>';
+            var btn = document.createElement('button');
+            btn.className = 'fb-photo-remove';
+            btn.innerHTML = '&#x2715;';
+            btn.setAttribute('type', 'button');
+            btn.onclick = (function (idx) {
+                return function (e) { e.stopPropagation(); fbRemovePhoto(idx); };
+            }(i));
+            thumb.appendChild(btn);
+            preview.appendChild(thumb);
+        });
+        if (count) {
+            count.textContent = window._fbPhotos.length > 0
+                ? window._fbPhotos.length + ' / 5 photo(s) attached'
+                : '';
+        }
+    }
+
+    // Drag and drop support
+    document.addEventListener('DOMContentLoaded', function () {
+        fbBindPhotoDrop();
+    });
+    // Also bind after panel first opens (panel injected dynamically)
+    var _fbDropBound = false;
+    var _fbDropInterval = setInterval(function () {
+        if (document.getElementById('fbPhotoZone') && !_fbDropBound) {
+            fbBindPhotoDrop();
+            clearInterval(_fbDropInterval);
+        }
+    }, 300);
+
+    function fbBindPhotoDrop() {
+        var zone = document.getElementById('fbPhotoZone');
+        if (!zone || _fbDropBound) return;
+        _fbDropBound = true;
+        zone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            zone.style.borderColor = 'rgba(34,211,238,.80)';
+            zone.style.background = 'rgba(34,211,238,.08)';
+        });
+        zone.addEventListener('dragleave', function () {
+            zone.style.borderColor = 'rgba(34,211,238,.30)';
+            zone.style.background = 'rgba(34,211,238,.03)';
+        });
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            zone.style.borderColor = 'rgba(34,211,238,.30)';
+            zone.style.background = 'rgba(34,211,238,.03)';
+            var dt = e.dataTransfer;
+            var files = Array.prototype.slice.call(dt.files);
+            files.forEach(function (file) {
+                if (window._fbPhotos.length >= 5) return;
+                if (file.size > 5 * 1024 * 1024) { alert(file.name + ' exceeds 5MB.'); return; }
+                var reader = new FileReader();
+                reader.onload = function (ev) {
+                    window._fbPhotos.push({ file: file, dataUrl: ev.target.result });
+                    fbRenderPhotoPreview();
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+    }
+
+</script>
+
+

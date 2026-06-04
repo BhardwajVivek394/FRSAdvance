@@ -1,0 +1,174 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                   
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item">Data Logger</li>
+                    <li class="breadcrumb-item active">Asset Type</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="">
+    <div class="">
+
+        @using (Ajax.BeginForm("List", "DataloggerAssetType", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divDataloggerAssetTypeList",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader"
+        }, new { id = "frmGetDataloggerAssetTypeList" }))
+        {
+            { HtmlHelper.ClientValidationEnabled = false; }
+            <div id="divDataloggerAssetTypeList">
+                @Html.Action("List")
+            </div>
+        }
+
+
+        @using (Ajax.BeginForm("Save", "DataloggerAssetType", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divSaveDataloggerAssetType",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader"
+        }, new { id = "frmSaveDataloggerAssetType" }))
+        {
+            <div id="divSaveDataloggerAssetType">
+                @Html.Partial("_Add", new Domain.DataloggerAssetType())
+            </div>
+        }
+
+        @using (Ajax.BeginForm("SaveAttributes", "DataloggerAssetType", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divSaveAttribute",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+
+        }, new { id = "frmSaveAttribute" }))
+        {
+            <div id="divSaveAttribute">
+                @Html.Partial("_AddAttributesPartial", new Domain.DataloggerAttribute())
+            </div>
+        }
+
+    </div>
+</div>
+
+
+<script>
+
+    function GetAssestAttributes(id, $this) {
+        if ($($this).hasClass("fa-plus")) {
+            $($this).removeClass("fa-plus").addClass("fa-minus");
+           
+            $("#loader").show();
+            $.ajax({
+                url: '/DataloggerAssetType/GetAttributesByAssestId',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                dataType: "html",
+                success: function (response) {
+                    $("#loader").hide();
+                    $("#trAssestAttribute_" + id).after(response);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            $($this).removeClass("fa-minus").addClass("fa-plus");
+            $("#trDataloggerAttributeRemove" + id).hide();
+        }
+    }
+
+    function fnSaveAttributes() {
+        if (ValidationAttributes()) {
+            $('#frmSaveAttribute').submit();
+        }
+    }
+
+    function ValidationAttributes() {
+        var result = true;
+
+        if ($.trim($("#Title").val()).length == 0) {
+            $("#Title").next("span").html("Title is required");
+            result = false;
+        }
+        else {
+            $("#Title").next("span").html("");
+        }
+
+        return result;
+    }
+
+    //function GetAttributesById(id, isAlert) {
+    //    $("#loader").show();
+    //    $.ajax({
+    //        url: '/AssetType/GetAttributesById',
+    //        type: 'Post',
+    //        data: '{id:' + id + '}',
+    //        dataType: 'html',
+    //        contentType: 'application/json',
+    //        success: function (data) {
+    //            $("#loader").hide();
+    //            $("#divSaveAttributes").empty().append(data);
+    //            $("#modal-add-attribute").modal('show');
+    //            $("#hdnalert").val(isAlert);
+    //            if (isAlert == "True") {
+    //                $(".min-th,.max-th,.zero-th").show();
+    //            } else {
+    //                $(".min-th,.max-th,.zero-th").hide();
+    //            }
+    //        },
+    //        error: function (response) {
+    //            $("#loader").hide();
+    //            CommonNotification("ERROR", "Something went wrong!", "Error");
+    //        }
+    //    });
+    //}
+
+    function DeleteAttributesById(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            var assetId = $("#DeleteAttributes" + id).attr("data-id");
+            $("#loader").show();
+            $.ajax({
+                url: '/DataloggerAssetType/DeleteAttributesById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data.type == "success") {
+                        CommonNotification("SUCCESS", "Attribute has been deleted.", "success");
+                        $('#frmGetDataloggerAssetTypeList').submit();
+                    } else if (data.type == "error") {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+</script>

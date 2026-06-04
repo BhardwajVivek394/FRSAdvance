@@ -1,0 +1,1224 @@
+﻿
+@{
+    ViewBag.Title = "MaintenacePDF";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Maintenace PDF</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <table class="table table-striped">
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Status</h5>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                            <input type="text" class="form-control" id="searchDate" />
+
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Select PDF</strong>
+                                            <select class="form-control" id="drpPDF">
+                                                <option value="SiteStatus">Site Status</option>
+                                                <option value="RFStatus">RF Status</option>
+                                                <option value="PointMachineStatus">Point Machine Status</option>
+                                                <option value="PreviousDaysAlert">Previous Days Alert</option>
+                                                <option value="UtilityLogsStatus">Utility Logs Status</option>
+                                                <option value="Reboot">Reboot</option>
+                                                <option value="SiteSummary">Site Summary</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnGeneratePDF()">Download</a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Portfolio</h5>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                            <input type="text" class="form-control" id="searchPortfolioDate" />
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Backend Portfolio</strong>
+                                            <select class="form-control" id="drpBackendPortfolioUser">
+                                                @if (ViewBag.Users != null)
+                                                {
+                                                    <option value="">Select User</option>
+                                                    var mUsers = ViewBag.Users as List<Domain.User>;
+                                                    if (mUsers != null && mUsers.Count > 0)
+                                                    {
+                                                        foreach (var mUser in mUsers)
+                                                        {
+                                                            <option value="@mUser.Id">@mUser.FirstName @mUser.LastName</option>
+                                                        }
+                                                    }
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnGeneratePortfolioCSV()">Download</a>
+                                            <a class="btn btn-info btn-quirk mt-4" onclick="fnPortfolioAlertAudit()">Alert Audit</a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download AI Status</h5>
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Select Year</strong>
+                                            @Html.DropDownList("Year", ViewBag.Years as SelectList, "Select Year", new { @class = "form-control", @id = "ProbabilityYear" })
+                                        </div>
+                                        <div class="col-sm-3">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Select Month</strong>
+                                            @Html.DropDownList("Month", ViewBag.Months as SelectList, "Select Month", new { @class = "form-control", @id = "ProbabilityMonth" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadProbabilityStatusPDF()">Download</a>
+                                            @*<a href="javascript:void(0)" onclick="fnGeneratePDF()" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download</a>*@
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+
+
+
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Division PDF New</h5>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                            @Html.DropDownList("drpNewDivisionZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                            @Html.DropDownList("drpNewDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                            <input type="text" class="form-control" id="searchNewDivisionDate" />
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadNewDivisionReportPDF()">Download</a>
+                                            <a class="btn btn-primary btn-quirk mt-4" title="Regenerate" onclick="fnRegenerateNewDivisionReportPDF()"><i class="fa fa-refresh"></i></a>
+                                            <a class="btn btn-info btn-quirk mt-4" title="Division Report Last Update Time" onclick="fnNewDivisionReportLastTime()"><i class="fa fa-clock-o"></i></a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download Division PDF</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                        @Html.DropDownList("drpDivisionZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                        <input type="text" class="form-control" id="searchDivisionDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadDivisionReportPDF()">Download</a>
+                                        <a class="btn btn-primary btn-quirk mt-4" title="Regenerate" onclick="fnRegenerateDivisionReportPDF()"><i class="fa fa-refresh"></i></a>
+                                        <a class="btn btn-default btn-quirk mt-4" title="Regenerate Without Point Machine" onclick="fnRegenerateDivisionReportPDFWithoutPM()"><i class="fa fa-refresh"></i></a>
+                                        <a class="btn btn-info btn-quirk mt-4" title="Division Report Last Update Time" onclick="fnDivisionReportLastTime()"><i class="fa fa-clock-o"></i></a>
+                                    </div>
+
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download User Report</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                        @Html.DropDownList("drpUserZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpUserDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                        <input type="text" class="form-control" id="searchUserDivisionDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadUserReportPDF()">Download</a>
+                                    </div>
+
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download Performance Report</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpPerformanceDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Site</strong>
+                                        @Html.DropDownList("PerformanceSiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                        <input type="text" class="form-control" id="searchPerformanceDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadPerformanceReportPDF()">Download</a>
+                                    </div>
+
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download Point Machine Graph Report</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                        @Html.DropDownList("drpPointMachineZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpPointMachineDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                        <input type="text" class="form-control" id="searchPointMachineDivisionDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadPointMachineReportPDF()">Download</a>
+                                    </div>
+
+                                </div>
+                            </td>
+                        </tr>
+
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Calibration PDF</h5>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Site</strong>
+                                            @Html.DropDownList("CalibrationSiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                                            <input type="text" class="form-control" id="searchCalibrationDate" />
+                                        </div>
+                                        <div class="col-sm-2">
+
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadCalibrationPDF()">Download</a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download Alert Tabulation PDF</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                        @Html.DropDownList("drpTabulationZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpTabulationDivision", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">From Date</strong>
+                                        <input type="text" class="form-control" id="searchTabulationFromDate" />
+
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">To Date</strong>
+                                        <input type="text" class="form-control" id="searchTabulationToDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadTabulationReportPDF()">Download</a>
+                                        <a class="btn btn-primary btn-info mt-4" onclick="fnGetTabulationeport()" href="javascript:void(0)"><i class="fa fa-eye"></i></a>
+
+                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                        {
+                                            <a class="btn btn-primary btn-quirk mt-4" onclick="fnEditTabulationeport()" href="javascript:void(0)"><i class="fa fa-pencil"></i></a>
+                                        }
+                                    </div>
+
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download Railway Report PDF</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpRailwayDivision", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Site</strong>
+                                        @Html.DropDownList("drpRailwaySite", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">From Date</strong>
+                                        <input type="text" class="form-control" id="searchRailwayFromDate" />
+
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">To Date</strong>
+                                        <input type="text" class="form-control" id="searchRailwayToDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadRailwayReportPDF()">Download</a>
+                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                        {
+                                            <a class="btn btn-primary btn-quirk mt-4" onclick="fnGetRailwayReport()" href="javascript:void(0)"><i class="fa fa-pencil"></i></a>
+                                        }
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download True Audit Alert PDF</h5>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                            @Html.DropDownList("drpTrueAuditAlertZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                            @Html.DropDownList("drpTrueAuditAlertDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">From Date</strong>
+                                            <input type="text" class="form-control" id="searchTrueAuditAlertFromDate" />
+
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">To Date</strong>
+                                            <input type="text" class="form-control" id="searchFalseAuditAlertToDate" />
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadTrueAuditAlertPDF()">Download</a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+
+
+                        <tr>
+                            <td>
+                                <div class="row">
+                                    <div class="col-sm-4">
+                                        <h5>Download FeedBack Alert PDF</h5>
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                        @Html.DropDownList("drpFeedBackAlertZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                        @Html.DropDownList("drpFeedBackAlertDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">From Date</strong>
+                                        <input type="text" class="form-control" id="searchFeedBackAlertFromDate" />
+
+                                        <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">To Date</strong>
+                                        <input type="text" class="form-control" id="searchFeedBackAlertToDate" />
+                                    </div>
+                                    <div class="col-sm-2">
+                                        <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadFeedBackFRSAlertPDF()">Download</a>
+                                    </div>
+
+                                </div>
+                            </td>
+                        </tr>
+
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download Faulty Material List PDF</h5>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                            @Html.DropDownList("drpFaultyMaterialZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                            @Html.DropDownList("drpFaultyMaterialDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Site</strong>
+                                            @Html.DropDownList("drpFaultyMaterialSites", ViewBag.Sites as SelectList, "Select", new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-1">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">From Date</strong>
+                                            <input type="text" class="form-control" id="searchFaultyMaterialFromDate" />
+
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">To Date</strong>
+                                            <input type="text" class="form-control" id="searchFaultyMaterialToDate" />
+                                        </div>
+                                        <div class="col-sm-1">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadFaultyMaterial()">Download</a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <td>
+                                    <div class="row">
+                                        <div class="col-sm-4">
+                                            <h5>Download FRSAlert With Instance</h5>
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+                                            @Html.DropDownList("drpFRSAlertInstanceZones", ViewBag.Zones as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+                                            @Html.DropDownList("drpFRSAlertInstanceDivisions", ViewBag.Divisions as SelectList, new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-2">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Site</strong>
+                                            @Html.DropDownList("drpFFRSAlertInstanceSites", ViewBag.Sites as SelectList, "Select", new { @class = "form-control" })
+                                        </div>
+                                        <div class="col-sm-1">
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">From Date</strong>
+                                            <input type="text" class="form-control" id="searchFRSAlertInstanceFromDate" />
+
+                                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">To Date</strong>
+                                            <input type="text" class="form-control" id="searchFRSAlertInstanceToDate" />
+                                        </div>
+                                        <div class="col-sm-1">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnDownloadFRSAlertInstance()">Download</a>
+                                        </div>
+
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+
+                    </table>
+
+                    @*<div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Select Month</strong>
+                        </div>
+                        <div class="pull-left">
+
+                        </div>
+                        <div class="pull-left" style="margin-left:10px;">
+
+                        </div>*@
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div id="customConfirm" class="confirmBox">
+    <div class="confirmContent">
+        <h6 id="confirmMessage">Are you sure?</h6>
+        <button id="confirmYes">With Alert Insight</button>
+        <button id="confirmNo">Without Alert Insight</button>
+    </div>
+</div>
+
+
+<script>
+    $(document).ready(function () {
+        $('#searchDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchDivisionDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchUserDivisionDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchPerformanceDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchPointMachineDivisionDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchCalibrationDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchTabulationFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchTabulationToDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchRailwayFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+
+        $('#searchRailwayToDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchPortfolioDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchTrueAuditAlertFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+
+        $('#searchFalseAuditAlertToDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchFeedBackAlertFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+
+        $('#searchFeedBackAlertToDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchFaultyMaterialFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchFaultyMaterialToDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchFRSAlertInstanceFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchFRSAlertInstanceToDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchNewDivisionDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#drpUserZones').change(function () {
+            GetUserDivisionByZone($(this).val());
+        });
+
+        $('#drpDivisionZones').change(function () {
+            GetDivisionByZone($(this).val());
+        });
+
+        $('#drpTabulationZones').change(function () {
+            GetTabulationDivisionByZone($(this).val());
+        });
+
+        $('#drpPerformanceDivisions').change(function () {
+            GetPerformanceSiteByDivisionId($(this).val());
+        });
+
+        $('#drpPointMachineZones').change(function () {
+            GetPointMachineDivisionByZone($(this).val());
+        });
+
+        $('#drpRailwayDivision').change(function () {
+            GetRailwayReportByDivisionId($(this).val());
+        });
+
+        $('#drpTrueAuditAlertZones').change(function () {
+            GetTrueAuditAlertDivisionByZone($(this).val());
+        });
+
+        $('#drpFeedBackAlertZones').change(function () {
+            GetFeedBackAlertDivisionByZone($(this).val());
+        });
+
+        $('#drpFaultyMaterialZones').change(function () {
+            GetFaultyMaterialDivisionByZone($(this).val());
+        });
+
+        $('#drpNewDivisionZones').change(function () {
+            GetNewDivisionByZone($(this).val());
+        });
+
+        if ($('#hdnCatListType').val() == 'Success') {
+            CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+        }
+        else if ($('#hdnCatListType').val() == 'Error') {
+            if ($('#hdnCatListMessage').val() == 'Forbidden!') {
+                window.location.href = "/Login/Index";
+            } else {
+                CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+            }
+        }
+    });
+
+
+    function fnGeneratePDF() {
+        var date = $('#searchDate').val();
+        if (date != null && date != undefined && date != '') {
+            date = date.replaceAll("/", "-");
+        }
+        window.location.href = "@Url.Action("DownloadPDF")?date=" + date + "&type=" + $('#drpPDF').val() + "";
+
+    }
+
+
+    function fnDownloadProbabilityStatusPDF() {
+        if ($('#ProbabilityYear').val() != null && $('#ProbabilityYear').val() != undefined && $('#ProbabilityYear').val() != '' && $('#ProbabilityMonth').val() != null && $('#ProbabilityMonth').val() != undefined && $('#ProbabilityMonth').val() != '') {
+
+            window.location.href = "@Url.Action("DownloadProbabilityStatusPDF")?year=" + $('#ProbabilityYear').val() + "&month=" + $('#ProbabilityMonth').val();
+
+        } else {
+            CommonNotification("error", "Please select year and month");
+        }
+
+    }
+
+    function fnDownloadDivisionReportPDF() {
+        if ($('#drpDivisions').val() != null && $('#drpDivisions').val() != undefined && $('#drpDivisions').val() != '' && $('#drpDivisions').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadDivisionReportPDF")?divisionId=" + $('#drpDivisions').val() + "&date=" + $("#searchDivisionDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+
+    }
+
+    function fnDownloadNewDivisionReportPDF() {
+
+        showConfirm("Download Division PDF For", function (result) {
+            debugger;
+            if (result) {
+
+                if ($('#drpNewDivisions').val() != null && $('#drpNewDivisions').val() != undefined && $('#drpNewDivisions').val() != '' && $('#drpNewDivisions').val() != '0') {
+                    window.location.href = "@Url.Action("DownloadNewDivisionReportPDF")?divisionId=" + $('#drpNewDivisions').val() + "&date=" + $("#searchNewDivisionDate").val() + "&isAlertInsight=" + true;
+                } else {
+                    CommonNotification("error", "Please select Divisions");
+                }
+            } else {
+
+                if ($('#drpNewDivisions').val() != null && $('#drpNewDivisions').val() != undefined && $('#drpNewDivisions').val() != '' && $('#drpNewDivisions').val() != '0') {
+                    window.location.href = "@Url.Action("DownloadNewDivisionReportPDF")?divisionId=" + $('#drpNewDivisions').val() + "&date=" + $("#searchNewDivisionDate").val() + "&isAlertInsight=" + false;
+                } else {
+                    CommonNotification("error", "Please select Divisions");
+                }
+
+            }
+        });
+
+  }
+
+    function fnRegenerateDivisionReportPDF() {
+        if ($('#drpDivisions').val() != null && $('#drpDivisions').val() != undefined && $('#drpDivisions').val() != '' && $('#drpDivisions').val() != '0') {
+
+            window.location.href = "@Url.Action("RegenerateDivisionReportPDF")?divisionId=" + $('#drpDivisions').val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnRegenerateNewDivisionReportPDF()
+    {
+        if ($('#drpNewDivisions').val() != null && $('#drpNewDivisions').val() != undefined && $('#drpNewDivisions').val() != '' && $('#drpNewDivisions').val() != '0') {
+            window.location.href = "@Url.Action("RegenerateDivisionReportPDF")?divisionId=" + $('#drpNewDivisions').val();
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnRegenerateDivisionReportPDFWithoutPM() {
+        if ($('#drpDivisions').val() != null && $('#drpDivisions').val() != undefined && $('#drpDivisions').val() != '' && $('#drpDivisions').val() != '0') {
+            window.location.href = "@Url.Action("RegenerateDivisionReportPDFWithoutPM")?divisionId=" + $('#drpDivisions').val();
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnDivisionReportLastTime() {
+        if ($('#drpDivisions').val() != null && $('#drpDivisions').val() != undefined && $('#drpDivisions').val() != '' && $('#drpDivisions').val() != '0') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetDivisionReportLastTime',
+                type: 'POST',
+                data: '{divisionId:' + $('#drpDivisions').val() + ',date:"' + $("#searchDivisionDate").val() +'"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        alert(data);
+                    } else {
+                        alert('File not found.');
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnNewDivisionReportLastTime() {
+        if ($('#drpNewDivisions').val() != null && $('#drpNewDivisions').val() != undefined && $('#drpNewDivisions').val() != '' && $('#drpNewDivisions').val() != '0') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetDivisionReportLastTime',
+                type: 'POST',
+                data: '{divisionId:' + $('#drpNewDivisions').val() + ',date:"' + $("#searchDivisionDate").val() + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        alert(data);
+                    } else {
+                        alert('File not found.');
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnDownloadUserReportPDF() {
+        if ($('#drpUserDivisions').val() != null && $('#drpUserDivisions').val() != undefined && $('#drpUserDivisions').val() != '' && $('#drpUserDivisions').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadUserReportPDF")?divisionId=" + $('#drpUserDivisions').val() + "&date=" + $("#searchUserDivisionDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnDownloadCalibrationPDF() {
+        if ($('#CalibrationSiteId').val() != null && $('#CalibrationSiteId').val() != undefined && $('#CalibrationSiteId').val() != "" && $('#CalibrationSiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadCalibrationPDF", "Maintenace")?siteId=" + $('#CalibrationSiteId').val() + "&date=" + $("#searchCalibrationDate").val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadPerformanceReportPDF() {
+        if ($('#drpPerformanceDivisions').val() != "0" && ($('#PerformanceSiteId').val() == "" || $('#PerformanceSiteId').val() == "0")) {
+            window.location.href = "@Url.Action("DownloadDivisionPerformanceReportPDF", "Maintenace")?divisionId=" + $('#drpPerformanceDivisions').val() + "&date=" + $("#searchPerformanceDate").val();
+        }
+        else if ($('#PerformanceSiteId').val() != null && $('#PerformanceSiteId').val() != "" && $('#PerformanceSiteId').val() != "0") {
+            window.location.href = "@Url.Action("DownloadPerformanceReportPDF", "Maintenace")?siteId=" + $('#PerformanceSiteId').val() + "&date=" + $("#searchPerformanceDate").val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownloadPointMachineGraphsPDF() {
+        if ($('#drpUserDivisions').val() != null && $('#drpUserDivisions').val() != undefined && $('#drpUserDivisions').val() != '' && $('#drpUserDivisions').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadUserReportPDF")?divisionId=" + $('#drpUserDivisions').val() + "&date=" + $("#searchUserDivisionDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnDownloadTabulationReportPDF() {
+        window.location.href = "@Url.Action("DownloadTabulationPDF")?zoneId=" + $('#drpTabulationZones').val() + "&divisionId=" + $('#drpTabulationDivision').val() + "&startdate=" + $("#searchTabulationFromDate").val() + "&endDate=" + $("#searchTabulationToDate").val();
+    }
+
+    function fnDownloadRailwayReportPDF() {
+        if ($('#drpRailwayDivision').val() != null && $('#drpRailwayDivision').val() != undefined && $('#drpRailwayDivision').val() != '' && $('#drpRailwayDivision').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadRailwayReportPDF")?divisionId=" + $('#drpRailwayDivision').val() + "&siteId=" + $('#drpRailwaySite').val() + "&startdate=" + $("#searchRailwayFromDate").val() + "&endDate=" + $("#searchRailwayToDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnGetRailwayReport() {
+        if ($('#drpRailwayDivision').val() != null && $('#drpRailwayDivision').val() != undefined && $('#drpRailwayDivision').val() != '' && $('#drpRailwayDivision').val() != '0') {
+
+            window.location.href = "@Url.Action("GetRailwayReport")?divisionId=" + $('#drpRailwayDivision').val() + "&startdate=" + $("#searchRailwayFromDate").val() + "&endDate=" + $("#searchRailwayToDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnGetTabulationeport() {
+
+        window.open(
+            "@Url.Action("ViewTabulationDetail")?zoneId=" + $('#drpTabulationZones').val() + "&divisionId=" + $('#drpTabulationDivision').val() + "&startdate=" + $("#searchTabulationFromDate").val() + "&endDate=" + $("#searchTabulationToDate").val(),
+            "_blank" // <- This is what makes it open in a new window.
+        );
+    }
+
+    function fnEditTabulationeport() {
+
+        window.open(
+            "@Url.Action("EditTabulationDetail")?zoneId=" + $('#drpTabulationZones').val() + "&divisionId=" + $('#drpTabulationDivision').val() + "&startdate=" + $("#searchTabulationFromDate").val() + "&endDate=" + $("#searchTabulationToDate").val(),
+            "_blank" // <- This is what makes it open in a new window.
+        );
+    }
+
+    function GetUserDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpUserDivisions").empty();
+                    $("#drpUserDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpUserDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpDivisions").empty();
+                    $("#drpDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetTabulationDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpTabulationDivision").empty();
+                    $("#drpTabulationDivision").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpTabulationDivision").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetPerformanceSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#PerformanceSiteId").empty();
+                    $("#PerformanceSiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#PerformanceSiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetPointMachineDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpPointMachineDivisions").empty();
+                    $("#drpPointMachineDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpPointMachineDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetTrueAuditAlertDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpTrueAuditAlertDivisions").empty();
+                    $("#drpTrueAuditAlertDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpTrueAuditAlertDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetFeedBackAlertDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpFeedBackAlertDivisions").empty();
+                    $("#drpFeedBackAlertDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpFeedBackAlertDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetFaultyMaterialDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpFaultyMaterialDivisions").empty();
+                    $("#drpFaultyMaterialDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpFaultyMaterialDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnDownloadPointMachineReportPDF() {
+        if ($('#drpPointMachineDivisions').val() != null && $('#drpPointMachineDivisions').val() != undefined && $('#drpPointMachineDivisions').val() != '' && $('#drpPointMachineDivisions').val() != '0') {
+            window.location.href = "@Url.Action("DownloadPointMachineGraphsPDF")?divisionId=" + $('#drpPointMachineDivisions').val() + "&date=" + $("#searchPointMachineDivisionDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnGeneratePortfolioCSV() {
+        if ($('#drpBackendPortfolioUser').val() != null && $('#drpBackendPortfolioUser').val() != undefined && $('#drpBackendPortfolioUser').val() != '' && $('#drpBackendPortfolioUser').val() != '0') {
+            window.location.href = "@Url.Action("DownloadPortfolioCSV")?userId=" + $('#drpBackendPortfolioUser').val() + "&searchDate=" + $("#searchPointMachineDivisionDate").val();
+
+        } else {
+            CommonNotification("error", "Please select backend portfolio");
+        }
+    }
+
+    function fnPortfolioAlertAudit() {
+        if ($('#drpBackendPortfolioUser').val() != null && $('#drpBackendPortfolioUser').val() != undefined && $('#drpBackendPortfolioUser').val() != '' && $('#drpBackendPortfolioUser').val() != '0') {
+            window.open(
+                "@Url.Action("PortfolioAlertAudit")?userId=" + $('#drpBackendPortfolioUser').val() + "&searchDate=" + $("#searchPortfolioDate").val(),
+                "_blank" // <- This is what makes it open in a new window.
+            );
+        } else {
+            CommonNotification("error", "Please select backend portfolio");
+        }
+    }
+
+    function fnDownloadTrueAuditAlertPDF() {
+
+        if ($('#drpTrueAuditAlertDivisions').val() != null && $('#drpTrueAuditAlertDivisions').val() != undefined && $('#drpTrueAuditAlertDivisions').val() != '' && $('#drpTrueAuditAlertDivisions').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadTrueFRSAlertPDF")?divisionId=" + $('#drpTrueAuditAlertDivisions').val() + "&startdate=" + $("#searchTrueAuditAlertFromDate").val() + "&endDate=" + $("#searchFalseAuditAlertToDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnDownloadFeedBackFRSAlertPDF() {
+        if ($('#drpFeedBackAlertDivisions').val() != null && $('#drpFeedBackAlertDivisions').val() != undefined && $('#drpFeedBackAlertDivisions').val() != '' && $('#drpFeedBackAlertDivisions').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadFeedBackFRSAlertPDF")?divisionId=" + $('#drpFeedBackAlertDivisions').val() + "&startdate=" + $("#searchFeedBackAlertFromDate").val() + "&endDate=" + $("#searchFeedBackAlertToDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function fnDownloadFaultyMaterial() {
+        if ($('#drpFaultyMaterialSites').val() != null && $('#drpFaultyMaterialSites').val() != undefined && $('#drpFaultyMaterialSites').val() != '' && $('#drpFaultyMaterialSites').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadFaultyMaterial")?siteId=" + $('#drpFaultyMaterialSites').val() + "&startdate=" + $("#searchFaultyMaterialFromDate").val() + "&endDate=" + $("#searchFaultyMaterialToDate").val();
+
+        } else {
+            CommonNotification("error", "Please select site");
+        }
+    }
+
+    function GetRailwayReportByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpRailwaySite").empty();
+                    $("#drpRailwaySite").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#drpRailwaySite").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function showConfirm(message, callback) {
+        document.getElementById("confirmMessage").innerText = message;
+        const box = document.getElementById("customConfirm");
+        box.style.display = "flex";
+
+        document.getElementById("confirmYes").onclick = function () {
+            box.style.display = "none";
+            callback(true);
+        };
+
+        document.getElementById("confirmNo").onclick = function () {
+            box.style.display = "none";
+            callback(false);
+        };
+    }
+
+    function GetNewDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpNewDivisions").empty();
+                    $("#drpNewDivisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        $("#drpNewDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnDownloadFRSAlertInstance() {
+        if ($('#drpFFRSAlertInstanceSites').val() != null && $('#drpFFRSAlertInstanceSites').val() != undefined && $('#drpFFRSAlertInstanceSites').val() != '' && $('#drpFFRSAlertInstanceSites').val() != '0') {
+
+            window.location.href = "@Url.Action("DownloadFRSAlertWithInstancePDF")?siteId=" + $('#drpFFRSAlertInstanceSites').val() + "&startdate=" + $("#searchFRSAlertInstanceFromDate").val() + "&endDate=" + $("#searchFRSAlertInstanceToDate").val();
+
+        } else {
+            CommonNotification("error", "Please select site");
+        }
+    }
+</script>

@@ -1,0 +1,67 @@
+﻿@model List<Domain.UserSite>
+
+<div class="row mt10">
+    <div class="col-sm-12">
+        <div class="table-responsive" style="max-height: 620px;">
+            <table class="table table-bordered">
+                <tbody id="siteNumberBody">
+                    @if (Model != null && Model.Count > 0)
+                    {
+                        int i = 1;
+                        foreach (var item in Model)
+                        {
+                            <tr data-rowId="@i">
+                                <td class="text-center">
+                                    @if (item.IsShowDeviceLastAccessTime != null && item.IsShowDeviceLastAccessTime == true)
+                                    {
+                                        <input type="checkbox" checked onclick="fnShowDeviceLassAccessTime(this)" data-userId="@item.UserId" data-siteId="@item.SiteId" />
+                                    }
+                                    else
+                                    {
+                                        <input type="checkbox"  onclick="fnShowDeviceLassAccessTime(this)" data-userId="@item.UserId" data-siteId="@item.SiteId" />
+                                    }
+                                </td>
+                                <td>
+                                    @item.UserName
+                                </td>
+                            </tr>
+                            i++;
+                        }
+                    }
+
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+        //   $(".userClass").select2({ minimumResultsForSearch: Infinity, width: '100%' });
+        //$('.mobileNumber').mask('00000 00000');
+    });
+    function fnShowDeviceLassAccessTime($this) {
+        var mUserSite = {};
+        mUserSite.SiteId = $($this).attr("data-siteId");
+        mUserSite.UserId = $($this).attr("data-userId");
+        mUserSite.IsShowDeviceLastAccessTime = $($this).is(":checked");
+        $.ajax({
+            url: '/Site/SaveAssignUser',
+            type: 'Post',
+            data: '{mUserSite:' + JSON.stringify(mUserSite) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data.Value === true) {
+                    CommonNotification("SUCCESS", "Record has been saved.", "success");
+                    $("#frmDeviceTime").submit();
+                } else {
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+</script>

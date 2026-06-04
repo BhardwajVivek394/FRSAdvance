@@ -1,0 +1,586 @@
+﻿@model Domain.DivisionLister
+
+@{
+    var sites = new List<Domain.Site>();
+}
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive tableFixHead">
+                        <table id="myTable" class="table">
+                            <thead>
+                                <tr>
+                                    <th style="background-color:#4bacc6;color:white;" class="th-count">Zone</th>
+                                    <th style="background-color:#215968;color:white;" class="th-count">Division name</th>
+                                    <th class="text-center" style="background-color:#4bacc6;color:white;" onclick="sortTable(5)">Division PDF Count</th>
+                                    <th class="text-center" style="background-color:#215968;color:white;" onclick="sortTable(6)">Total A10 status issue</th>
+
+                                    @if (Model.SearchCriteria.FromDate != null && Model.SearchCriteria.FromDate != DateTime.MinValue && Model.SearchCriteria.ToDate != null && Model.SearchCriteria.ToDate != DateTime.MinValue)
+                                    {
+                                        <th class="text-center" style="background-color:#215968;color:white;" width="300">Total Alert</th>
+                                    }
+                                    else
+                                    {
+                                        <th class="text-center" style="background-color:#4bacc6;color:white;" onclick="sortTable(7)">Total Alert Message Previous day</th>
+                                        <th class="text-center" style="background-color:#215968;color:white;" width="300">Total Alert Message 30 Days</th>
+                                    }
+
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model != null && Model != null && Model.mDivisions.Count > 0)
+                                {
+                                    var dateGrouped = Model.mDivisions.GroupBy(p => new { p.ZoneName }).Select(d => new { d.Key.ZoneName }).ToList();
+                                    foreach (var zone in dateGrouped)
+                                    {
+
+                                        foreach (var item in Model.mDivisions)
+                                        {
+                                            if (item.ZoneName == zone.ZoneName)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        @item.ZoneName
+                                                    </td>
+                                                    <td>
+                                                        <a href="javascript:void(0)" onclick="fnDownloadDivisionReportPDF('@item.Id')">@item.Name</a>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <a href="javascript:void(0)" onclick="fnShowPreviousDayDivisionCount('@item.Id')">
+                                                            @item.DivisionPDFCount
+                                                        </a>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        @*<a href="javascript:void(0)" onclick="fnShowA10Status('@item.Id')" id="spnDivisionLinkIssue_@item.Id">   @item.TotalA10StatusCount</a>*@
+                                                        <a id="spnDivisionLinkIssue_@item.Id" href="javascript:void(0)" onclick="fnShowA10Status('@item.Id')"></a>
+                                                        @*<div style="display:none" id="hdndivDivisionLinkIssue_@item.Id"></div>*@
+                                                    </td>
+                                                    @if (Model.SearchCriteria.FromDate != null && Model.SearchCriteria.FromDate != DateTime.MinValue && Model.SearchCriteria.ToDate != null && Model.SearchCriteria.ToDate != DateTime.MinValue)
+                                                    {
+                                                        <td class="text-center">
+                                                            <a href="javascript:void(0)" onclick="fnLoadFilterAlert('@item.Id')">
+                                                                @item.PreviousDayCount
+                                                            </a>
+                                                        </td>
+                                                    }
+                                                    else
+                                                    {
+                                                        <td class="text-center">
+                                                            <a href="javascript:void(0)" onclick="fnLoadPreviousAlert('@item.Id')">
+                                                                @item.PreviousDayCount
+                                                            </a>
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <a href="javascript:void(0)" onclick="fnLoadLast30Alert('@item.Id')">
+                                                                @item.Yesterday30Count
+                                                            </a>
+                                                        </td>
+
+                                                    }
+
+                                                </tr>
+                                            }
+                                        }
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<table class="table" style="display:none">
+    @if (ViewBag.Site != null)
+    {
+        sites = ViewBag.Site as List<Domain.Site>;
+        if (sites != null && sites.Count > 0)
+        {
+            foreach (var site in sites)
+            {
+                <tr>
+                    <td>
+                        @site.DivisionId
+                    </td>
+                    <td>
+                        <span class="clsLinkIssuedivision" data-divisionid="@site.DivisionId" id="spnLinkIssue_@(site.MQTTBasePath.Replace(" ","").Replace("/",""))a10"></span>
+                        <div class="clsLinkIssuedivisiontabledata" data-site="@site.Name" data-divisionid="@site.DivisionId" id="divLinkIssuetabledata_@(site.MQTTBasePath.Replace(" ","").Replace("/",""))a10"></div>
+                    </td>
+                </tr>
+            }
+
+        }
+    }
+
+
+</table>
+
+<input type="hidden" id="hdnDivisionDate" value="@DateTime.Now.ToString("d-M-yyyy")" />
+
+<div class="modal bounceIn animated" id="modal-A10Status" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title">A10 Status<span id="A10Statusheader"></span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div>
+                    <h5>
+                        Last Update :  <span id="A10StatusheaderTime"></span>
+                    </h5>
+
+                </div>
+                @if (Model != null && Model != null && Model.mDivisions.Count > 0)
+                {
+                    var dateGrouped = Model.mDivisions.GroupBy(p => new { p.ZoneName }).Select(d => new { d.Key.ZoneName }).ToList();
+                    foreach (var zone in dateGrouped)
+                    {
+
+                        foreach (var item in Model.mDivisions)
+                        {
+                            <div id="divModalA10Status_@item.Id" class="mt-2 tablemodalFixHead" style="display:none">
+                            </div>
+                        }
+                    }
+                }
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    var zones = [];
+    var mQQTPaths = [];
+    var divisions = [];
+    $(document).ready(function () {
+
+        json = @Html.Raw(Json.Encode(Model));
+
+        mQTT = @Html.Raw(Json.Encode(ViewBag.MQTTDetail));
+
+        if (json != null && json.mDivisions != null && json.mDivisions != undefined) {
+            $(json.mDivisions).each(function (v, text) {
+                //mQQTPaths.push(text.MQTTBasePath);
+                divisions.push(text.Id);
+
+                zones.push(text.ZoneName);
+            });
+
+        }
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    });
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+        client.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        //client.subscribe('/WR/Mumbai/Surat/a10');
+        client.subscribe('/#');
+        //for (var i = 0; i < mQQTPaths.length; i++) {
+        //    if (mQQTPaths[i] != null && mQQTPaths[i] != "null" && mQQTPaths[i] != "") {
+
+
+        //    }
+        //}
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        if (message.payloadString.includes("devices")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['devices'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindData(message.destinationName, array);
+                }
+            }
+        }
+    }
+
+    function BindData(basePath, data) {
+        if (data != null && data.length > 0) {
+
+
+            var count = 0;
+            var table = '<table class="table">';
+            table += '<tr>';
+            table += '<thead class="bg-primary">';
+            table += '<th style="background-color:#215968;color:white;">id</th>';
+            table += '<th style="background-color:#4bacc6;color:white;">name</th>';
+            table += '<th style="background-color:#215968;color:white;">last_response</th>';
+            table += '<th style="background-color:#4bacc6;color:white;" class="text-center">status</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">exceptions</th>';
+            table += '<th style="background-color:#4bacc6;color:white;" class="text-center">poll_time</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">params</th>';
+            table += '</tr>';
+            table += '</thead>';
+            table += '<tbody>';
+
+            $(data).each(function (id, item) {
+                var seconds = parseFloat(item.last_response);      
+
+                if (parseInt(item.id) > 0 && seconds > 50) {
+                    count++;
+
+                    table += '<tr>';
+                    table += '<td>' + item.id + '</td>';
+                    table += '<td>' + item.name + '</td>';
+                    table += '<td class="text-danger">' + seconds + '</td>';
+                    table += '<td class="text-danger text-center">Error</td>';
+                    table += '<td class="text-center">' + item.exceptions + '</td>';
+                    table += '<td class="text-center">' + item.poll_time + '</td>';
+
+
+                    var param = parseInt(item.params);
+                    var minusparam = param - 1;
+                    if (param == 0) {
+                        table += '<td class="text-center">Wm1</td>';
+                    } else if (param == 1) {
+                        table += '<td class="text-center">Wm2</td>';
+                    } else if (param > 1) {
+                        table += '<td class="text-center">TCP' + minusparam + '</td>';
+                    }
+
+                    table += '</tr>';
+
+                    //BindRFStatusLive(item);
+                }
+            });
+            table += '</tbody>';
+            table += '</table>';
+
+            if (count > 0) {
+                $('#divLinkIssuetabledata_' + basePath.replaceAll(" ", "").replaceAll("/", "")).empty().append(table);
+                var d = new Date();
+                var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                $("#A10StatusheaderTime").html(time);
+            } else {
+                $('#divLinkIssuetabledata_' + basePath.replaceAll(" ", "").replaceAll("/", "")).empty();
+
+            }
+            //if ($('#divLinkIssuetabledata_' + basePath.replaceAll(" ", "").replaceAll("/", "")).length > 0) {
+
+
+            //    var d = new Date();
+            //    var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+            //    $("#A10StatusheaderTime").html(time);
+            //}
+            $('#spnLinkIssue_' + basePath.replaceAll(" ", "").replaceAll("/", "")).text(count);
+            $('#hdnLinkIssue_' + basePath.replaceAll(" ", "").replaceAll("/", "")).val(count);
+
+
+            $(divisions).each(function (c, divdata) {
+                var count = 0;
+                $('.clsLinkIssuedivision').each(function () {
+                    var divisionid = $(this).data('divisionid');
+                    if (divdata == divisionid) {
+
+                        var val = $(this).text();
+                        if (val != null && val != '' && val != undefined) {
+
+                            count += parseInt(val);
+                        }
+
+                    }
+
+                });
+                $('#spnDivisionLinkIssue_' + divdata).text(count);
+
+                var tbl = '';
+                $('.clsLinkIssuedivisiontabledata').each(function () {
+                    var divisionid = $(this).data('divisionid');
+                    var site = $(this).data('site');
+                    if (divdata == divisionid) {
+                        var val = $(this).html();
+                        if (val != null && val != '' && val != undefined) {
+
+                            tbl += '<table class="mt-3"><tr><td><h5><u>' + site +'</u></h5></td></tr></table>';
+                            tbl += val;
+
+                        }
+
+                    }
+
+                });
+
+                $('#divModalA10Status_' + divdata).empty().append(tbl);
+            });
+
+        }
+
+    }
+
+
+    function fnSearch() {
+
+        $('#frmDivisionDashboardList').submit();
+    }
+
+    function fnLoadPreviousAlert(divisionId) {
+        var mSMSLogLister = {};
+        var searchCriteria = {};
+
+        searchCriteria.DivisionId = divisionId;
+        mSMSLogLister.SearchCriteria = searchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: "/DivisionDashboard/_PreviousDayAlertList",
+            type: "POST",
+            data: '{mSMSLogLister:' + JSON.stringify(mSMSLogLister) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDaySMSLog").empty().append(data);
+                $("#modalProbabilityAlert").modal("show");
+
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function fnLoadFilterAlert(divisionId) {
+        var mSMSLogLister = {};
+        var searchCriteria = {};
+
+        searchCriteria.DivisionId = divisionId;
+        searchCriteria.FromDate = $('#txtFromDate').val();
+        searchCriteria.ToDate = $('#txtToDate').val();
+        mSMSLogLister.SearchCriteria = searchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: "/DivisionDashboard/_FilterAlertList",
+            type: "POST",
+            data: '{mSMSLogLister:' + JSON.stringify(mSMSLogLister) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDaySMSLog").empty().append(data);
+                $("#modalProbabilityAlert").modal("show");
+
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function fnLoadLast30Alert(divisionId) {
+        var mSMSLogLister = {};
+        var searchCriteria = {};
+
+        searchCriteria.DivisionId = divisionId;
+        mSMSLogLister.SearchCriteria = searchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: "/DivisionDashboard/_Last30AlertList",
+            type: "POST",
+            data: '{mSMSLogLister:' + JSON.stringify(mSMSLogLister) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDaySMSLog").empty().append(data);
+                $("#modalProbabilityAlert").modal("show");
+
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+
+
+    }
+
+    function fnShowPreviousDayDivisionCount(divisionId) {
+        var mDivisionReportModelLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.DivisionId = divisionId;
+        mSearchCriteria.StartDate = $('#txtFromDate').val();
+        mSearchCriteria.EndDate = $('#txtToDate').val();
+        mDivisionReportModelLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/DivisionDashboard/_DivisionReport',
+            type: 'Post',
+            data: '{mDivisionReportModelLister:' + JSON.stringify(mDivisionReportModelLister) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPreviousDayDivisionReport").empty().append(data);
+                $("#modal-division-report-model").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowA10Status(seldivisionId) {
+       // $("#loader").show();
+
+        var table = '';
+
+        $('.tablemodalFixHead').each(function () {
+            $(this).hide();
+        });
+
+        $('#divModalA10Status_' + seldivisionId).show();
+
+        //var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        //$("#A10StatusheaderTime").html(time);
+
+        $("#modal-A10Status").modal('show');
+
+        //$.ajax({
+        //    url: '/DivisionDashboard/GetA10Status',
+        //    type: 'Post',
+        //    data: '{divisionId:' + divisionId + '}',
+        //    contentType: 'application/json',
+        //    success: function (data) {
+        //        $("#loader").hide();
+        //        var table = '<table class="table">';
+        //        table += '<tr>';
+        //        table += '<thead class="bg-primary">';
+        //        table += '<th style="background-color:#4bacc6;color:white;">Site Name</th>'
+        //        table += '<th style="background-color:#215968;color:white;">id</th>';
+        //        table += '<th style="background-color:#4bacc6;color:white;">name</th>';
+        //        table += '<th style="background-color:#215968;color:white;">last_response</th>';
+        //        table += '<th style="background-color:#4bacc6;color:white;" class="text-center">status</th>';
+        //        table += '<th style="background-color:#215968;color:white;" class="text-center">exceptions</th>';
+        //        table += '<th style="background-color:#4bacc6;color:white;" class="text-center">poll_time</th>';
+        //        table += '<th style="background-color:#215968;color:white;" class="text-center">params</th>';
+        //        table += '</tr>';
+        //        table += '</thead>';
+        //        table += '<tbody>';
+        //        var d = new Date();
+        //        $(data).each(function (id, item) {
+        //            var seconds = parseFloat(item.last_response);
+
+        //            if (parseInt(item.id) > 0 && seconds > 50) {
+        //                table += '<tr>';
+        //                table += '<td>' + item.SiteName + '</td>';
+        //                table += '<td>' + item.id + '</td>';
+        //                table += '<td>' + item.name + '</td>';
+        //                table += '<td class="text-danger">' + seconds + '</td>';
+        //                table += '<td class="text-danger text-center">Error</td>';
+        //                table += '<td class="text-center">' + item.exceptions + '</td>';
+        //                table += '<td class="text-center">' + item.poll_time + '</td>';
+
+        //                table += '<td class="text-center">' + item.paramsvalue + '</td>';
+        //                table += '</tr>';
+        //                d = new Date(item.timestamp);
+        //               // BindRFStatusLive(item);
+        //            }
+        //        });
+
+        //        table += '</tbody>';
+        //        table += '</table>';
+
+        //        $('#divModalA10Status').empty().append(table);
+
+        //        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        //        $("#A10StatusheaderTime").html(time);
+
+        //        $("#modal-A10Status").modal('show');
+        //    },
+        //    error: function (response) {
+        //        $("#loader").hide();
+        //        CommonNotification("ERROR", "Something went wrong!", "Error");
+        //    }
+        //});
+
+
+    }
+
+    function BindRFStatusLive(item) {
+        $('.tbodyRFStatus tr').each(function () {
+            //$(this).find("td").eq(0).html('');
+            var clusterName = $.trim($(this).find("td").eq(2).html());
+            if (clusterName != null && clusterName != undefined && clusterName != '') {
+                var clsname = item.name.replaceAll('/', '_');
+                if (clsname == clusterName) {
+                    $(this).find("td").eq(0).html('<img src="/assets/images/Live.png" />');
+
+                } else {
+                    //$(this).find("td").eq(0).html('');
+                }
+            }
+
+
+        });
+    }
+
+
+    function fnDownloadDivisionReportPDF(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+
+            window.location.href = "@Url.Action("DownloadDivisionReportPDF")?divisionId=" + divisionId + "&date=" + $("#hdnDivisionDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+
+    }
+
+    function fnConvertUTCDate(currentdate) {
+
+        return "" + (currentdate.getUTCMonth() + 1) + "/"
+            + currentdate.getUTCDate() + "/"
+            + currentdate.getUTCFullYear() + " "
+            + currentdate.getUTCHours() + ":"
+            + currentdate.getUTCMinutes() + ":"
+            + currentdate.getUTCSeconds();
+    }
+</script>

@@ -1,0 +1,589 @@
+﻿@model Domain.AssetLister
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+@*-----------------------------------------------------------------------------
+        SIP View — vanilla-JS editor (sip-library.js + sip-editor.js).
+        AURORA EDITION (14-05-2026): refreshed asset visuals + cyan/violet theme.
+
+        Replaces the old Rappid/JointJS implementation.
+        All editor styles live under .sip-app so they don't bleed into the host.
+    -----------------------------------------------------------------------------*@
+
+@*  Aurora theme uses Plus Jakarta Sans (body) + JetBrains Mono (interface)  *@
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+
+<link href="~/Areas/FRS25/assets/sip/css/sip-editor.css" rel="stylesheet" />
+
+<div class="container-fluid">
+
+    <input type="hidden" id="hdnId" value="0" />
+    <input type="hidden" id="hdnSiteId" value="@Model.SearchCriteria.SiteId" />
+
+    @*--- Editor container (everything inside .sip-app is scoped CSS) ---*@
+    <div class="sip-app" style="height: 800px;">
+        <div class="app">
+
+            <header class="topbar">
+                <div class="brand">SIP <span class="accent">/</span> YARD EDITOR</div>
+                <div class="actions">
+                    <button class="tb primary" onclick="SaveSipView()" id="save">Save</button>
+                    <span class="sip-status" id="sipStatus"></span>
+                    <span class="sep"></span>
+                    <button class="tb" onclick="SipEditor.loadPreset('blank')">New</button>
+                    <button class="tb" onclick="SipEditor.loadPreset('arnetha')">Load Sample</button>
+                    <span class="sep"></span>
+                    <button class="tb" id="undo-btn" onclick="SipEditor.undo()">Undo</button>
+                    <button class="tb" id="redo-btn" onclick="SipEditor.redo()">Redo</button>
+                    <span class="sep"></span>
+                    <button class="tb" onclick="SipEditor.openImport()">Import</button>
+                    <button class="tb" onclick="SipEditor.exportLayoutJs()">Export .js</button>
+                    <button class="tb" onclick="SipEditor.exportSvg()">Export .svg</button>
+                    <span class="sep"></span>
+                    <button class="tb" id="fullscreen-btn" onclick="SipEditor.toggleFullscreen()">Fullscreen</button>
+                </div>
+            </header>
+
+            <div class="workspace">
+
+                <aside class="toolbox">
+                    <div class="toolbox-grid" id="toolbox-grid"></div>
+
+                    <h3>Grid</h3>
+                    <label class="checkbox-row">
+                        <input type="checkbox" id="snap-toggle" checked />
+                        Snap to grid
+                    </label>
+                    <div class="field">
+                        <label>Snap size (units)</label>
+                        <input type="number" id="snap-size" value="10" min="1" max="100" />
+                    </div>
+
+                    <h3>Canvas</h3>
+                    <div class="field">
+                        <label>ViewBox</label>
+                        <input type="text" id="viewbox-input" value="0 0 2000 740" />
+                    </div>
+
+                    <div class="toolbox-info">
+                        <span class="kbd">Click</span> select &nbsp;·&nbsp;
+                        <span class="kbd">Drag</span> move<br />
+                        <span class="kbd">Del</span> remove &nbsp;·&nbsp;
+                        <span class="kbd">Esc</span> deselect<br />
+                        <span class="kbd">Ctrl+Z</span> undo &nbsp;·&nbsp;
+                        <span class="kbd">Ctrl+Y</span> redo<br />
+                        <span class="kbd">Ctrl+D</span> duplicate
+                    </div>
+                </aside>
+
+                <main class="canvas-wrap">
+                    <div class="canvas-host">
+                        <div id="canvas"></div>
+                    </div>
+                    <div class="statusbar">
+                        <span class="coords" id="cursor-coords">—</span>
+                        <span class="sep">·</span>
+                        <span id="element-count">0 elements</span>
+                        <span class="sep">·</span>
+                        <span id="selection-label">No selection</span>
+                        <span class="hint">SIP-LIB v1.1 · AURORA</span>
+                    </div>
+                </main>
+
+                <aside class="inspector">
+                    <h3>Inspector</h3>
+                    <div id="inspector-body">
+                        <p class="muted">Nothing selected.<br /><br />Click an element on the canvas, or add one from the toolbox.</p>
+                    </div>
+                </aside>
+
+            </div>
+        </div>
+
+        @*--- Modal (used for Import / Export .js / Export .svg) ---*@
+        <div class="modal-backdrop" id="modal">
+            <div class="modal">
+                <div class="modal-head">
+                    <div class="title">SIP <span class="accent">/</span> <span id="modal-title">EXPORT</span></div>
+                    <button class="tb" onclick="SipEditor.closeModal()">Close</button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="modal-text" spellcheck="false"></textarea>
+                </div>
+                <div class="modal-foot">
+                    <span class="left" id="modal-hint"></span>
+                    <button class="tb" onclick="SipEditor.copyModal()">Copy</button>
+                    <button class="tb" id="modal-action" onclick="SipEditor.downloadModal()">Download</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="toast" id="toast"></div>
+    </div>
+
+</div>
+
+@*--- jQuery is already loaded by the parent layout; no need to re-include ---*@
+
+@*===========================================================================
+        SIP Editor scripts. Library MUST load before editor.
+    ===========================================================================*@
+<script src="~/Areas/FRS25/assets/sip/js/sip-library.js"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-editor.js"></script>
+
+<script>
+    $(document).ready(function () {
+        GetSipView();
+    });
+
+    /* -------------------------------------------------------------------------
+       SaveSipView — POSTs the layout to /Site/SaveAdvSipView (Advanced SIP View
+       endpoint). The MVC action signature is:
+
+           public JsonResult SaveAdvSipView(Domain.AdvancedSIPView sipView)
+
+       It serialises an AdvancedSIPView, forwards it to the API, and returns a
+       boolean (true on the API's "Success" reply, false otherwise).
+
+       Assumption: Domain.AdvancedSIPView has the same SiteId / Id / SipView1
+       property names as the old SipView model. If the property names differ
+       (e.g. the payload field is "AdvSipView1" instead of "SipView1"), update
+       the object literal below to match — the AJAX framing stays the same.
+       ------------------------------------------------------------------------- */
+    function SaveSipView() {
+        if (!window.SipEditor || typeof SipEditor.getLayout !== 'function') {
+            CommonNotification("ERROR", "Editor not ready yet.", "Error");
+            return;
+        }
+
+        var sipView = {
+            SiteId: $("#hdnSiteId").val(),
+            Id: $("#hdnId").val(),
+            // JSON-stringified array of { type, props } elements — same payload
+            // the new editor exposes via SipEditor.getLayout().
+            SipView1: JSON.stringify(SipEditor.getLayout())
+        };
+
+        $.ajax({
+            url: '/Site/SaveAdvSipView',
+            type: 'Post',
+            data: '{sipView:' + JSON.stringify(sipView) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                // The controller returns Json(isSuccess) — true when the
+                // upstream API replied "Success", false otherwise.
+                if (data === true) {
+                    CommonNotification("success", "SipView has been Saved.", "success");
+                } else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function () {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    /* -------------------------------------------------------------------------
+       GetSipView — loads the saved layout (if any) and hands it to the editor.
+
+       Handles BOTH formats:
+         • New format — a JSON array of { type, props } elements. Loaded as-is.
+         • Old Rappid format — a JSON object with a "cells" array. Auto-converted
+           in the browser by convertOldRappidLayout() below. The conversion is
+           one-shot per page-load; clicking Save re-writes the record in the
+           new format so subsequent loads skip the conversion path.
+
+       Falls back to a blank canvas on first use.
+       ------------------------------------------------------------------------- */
+    function GetSipView() {
+        $.ajax({
+            url: '/Site/GetSipView',
+            type: 'Post',
+            data: '{siteId:' + $("#hdnSiteId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (!data || !data.Id || data.Id <= 0 || !data.SipView1) {
+                    // No saved view yet — leave the editor on its default empty canvas.
+                    return;
+                }
+                $("#hdnId").val(data.Id);
+
+                var layout;
+                try {
+                    layout = JSON.parse(data.SipView1);
+                } catch (e) {
+                    console.error('[SIP] Could not parse saved layout:', e);
+                    return;
+                }
+
+                var elements = null;
+                var viewBox = null;
+
+                if (Array.isArray(layout)) {
+                    // Already in the new format.
+                    elements = layout;
+                } else if (layout && Array.isArray(layout.cells)) {
+                    // Old Rappid/JointJS format — convert in-browser.
+                    var conv = convertOldRappidLayout(layout);
+                    if (conv) {
+                        elements = conv.elements;
+                        viewBox  = conv.viewBox;
+                        $("#sipStatus").text('Converted from old format — review then Save to upgrade.');
+                        console.info('[SIP] Migrated ' + layout.cells.length +
+                                     ' old cells → ' + elements.length + ' new elements.');
+                    }
+                } else {
+                    console.warn('[SIP] Saved layout has an unrecognised shape; ignoring.');
+                    $("#sipStatus").text('Unrecognised saved format — starting blank.');
+                }
+
+                if (elements) {
+                    waitForEditor(function () {
+                        if (viewBox) {
+                            var vbInput = document.getElementById('viewbox-input');
+                            if (vbInput) {
+                                vbInput.value = viewBox;
+                                vbInput.dispatchEvent(new Event('change'));
+                            }
+                        }
+                        SipEditor.setLayout(elements);
+                    });
+                }
+            },
+            error: function () {
+                // Silent on first load — no saved view yet is a normal case.
+            }
+        });
+    }
+
+    /* -------------------------------------------------------------------------
+       convertOldRappidLayout (v4) — translates old Rappid/JointJS layouts to
+       the new SIP format.
+
+       Behaviour:
+         • Rail-band clustering — track Y centres clustered with ±40 tolerance
+           collapse the same logical rail into one band; one continuous rail
+           per band carries every cell.
+         • PointMachine cells emit a `crossover` diagonal between the two rail
+           bands it spans, plus a small `point` indicator below the lower rail.
+         • Signal aspect cells are GROUPED by label prefix ("S18 RG"+"S18 HG"
+           +"S18 DG" → group "S18") and combined into ONE multi-aspect signal
+           with `lamps='RYG'` etc. — aspects sorted by X so "G,R" vs "R,Y,G"
+           reflects the head's original facing.
+         • Every produced element carries `stencilType` (like "examples.Track",
+           "examples.Signald90") and `assetName` (human-readable like "Track",
+           "RG", "S18 (RYG)") so the backend can identify the stencil that
+           produced each element — the same role the JointJS `type` field
+           played in the old data.
+
+       Old → new asset production:
+         examples.Track/Track1/Track2  → rail + section pill
+         examples.PointMachine[1]      → crossover + point
+         examples.Post / Post1         → sidingLabel (only when visible)
+         examples.Signald90/45/90 grouped → multi-aspect signal + topLine/bottomLine
+         examples.Shaunt               → shunt state='1'
+         examples.Shaunt2              → shunt state='2'
+         examples.BusBar               → sidingLabel
+       ------------------------------------------------------------------------- */
+    function convertOldRappidLayout(oldData) {
+        if (!oldData || !Array.isArray(oldData.cells)) return null;
+
+        var TRACK_TYPES  = { 'examples.Track': 1, 'examples.Track1': 1, 'examples.Track2': 1 };
+        var PM_TYPES     = { 'examples.PointMachine': 1, 'examples.PointMachine1': 1 };
+        var LAMP_MAP     = { 'examples.Signald90': 'R', 'examples.Signal45': 'Y', 'examples.Signal90': 'G' };
+        var OLD_ASSET_NAME = {
+            'examples.Track':         'Track',
+            'examples.Track1':        'Track',
+            'examples.Track2':        'Track',
+            'examples.PointMachine':  'Point Machine',
+            'examples.PointMachine1': 'Point Machine',
+            'examples.Post':          'Post',
+            'examples.Post1':         'Post',
+            'examples.Signald90':     'RG',
+            'examples.Signal45':      'HG',
+            'examples.Signal90':      'DG',
+            'examples.Shaunt':        'Shunt',
+            'examples.Shaunt2':       'Shunt 2',
+            'examples.BusBar':        'Bus Bar'
+        };
+        var Y_CLUSTER_TOL = 40;
+        var RAIL_PADDING  = 10;
+
+        var out = [];
+        var maxX = 0, maxY = 0;
+
+        function centreOf(cell) {
+            var w = (+(cell.size && cell.size.width))  || 60;
+            var h = (+(cell.size && cell.size.height)) || 0;
+            var x = (+(cell.position && cell.position.x)) || 0;
+            var y = (+(cell.position && cell.position.y)) || 0;
+            return { cx: x + w/2, cy: y + h/2, w: w, h: h, xLeft: x, yTop: y };
+        }
+        function labelOf(cell, requireVisible) {
+            var l = cell.attrs && cell.attrs.label;
+            if (!l) return '';
+            var t = l.text ? String(l.text) : '';
+            if (requireVisible && l.fill === 'transparent') return '';
+            return t;
+        }
+        function clusterY(values, tol) {
+            if (!values.length) return [];
+            var sorted = values.slice().sort(function (a, b) { return a - b; });
+            var clusters = [];
+            var cur = { values: [sorted[0]], min: sorted[0], max: sorted[0] };
+            for (var i = 1; i < sorted.length; i++) {
+                if (sorted[i] - cur.max <= tol) { cur.values.push(sorted[i]); cur.max = sorted[i]; }
+                else { clusters.push(cur); cur = { values: [sorted[i]], min: sorted[i], max: sorted[i] }; }
+            }
+            clusters.push(cur);
+            for (var k = 0; k < clusters.length; k++) {
+                var c = clusters[k], sum = 0;
+                for (var j = 0; j < c.values.length; j++) sum += c.values[j];
+                c.mean = Math.round(sum / c.values.length);
+            }
+            return clusters;
+        }
+        function snapToBand(y, bands) {
+            if (!bands.length) return y;
+            var best = bands[0], bd = Math.abs(y - bands[0].mean);
+            for (var i = 0; i < bands.length; i++) {
+                var d = Math.abs(y - bands[i].mean);
+                if (d < bd) { bd = d; best = bands[i]; }
+            }
+            return best.mean;
+        }
+
+        // ---- Step 1: rail bands from track Y centres ----
+        var trackCells = [];
+        for (var i = 0; i < oldData.cells.length; i++) {
+            var cell = oldData.cells[i];
+            if (!cell || !TRACK_TYPES[cell.type]) continue;
+            var c = centreOf(cell);
+            trackCells.push({
+                sourceType: cell.type,
+                xLeft: c.xLeft, xRight: c.xLeft + c.w,
+                yCentre: c.cy,
+                label: labelOf(cell, false)
+            });
+        }
+        var ys = []; for (var i = 0; i < trackCells.length; i++) ys.push(trackCells[i].yCentre);
+        var bands = clusterY(ys, Y_CLUSTER_TOL);
+        for (var i = 0; i < trackCells.length; i++) trackCells[i].bandY = snapToBand(trackCells[i].yCentre, bands);
+
+        // ---- Step 2: one rail per band + section pills ----
+        var byBand = {};
+        for (var i = 0; i < trackCells.length; i++) {
+            var t = trackCells[i];
+            (byBand[t.bandY] = byBand[t.bandY] || []).push(t);
+        }
+        for (var bandKey in byBand) {
+            if (!byBand.hasOwnProperty(bandKey)) continue;
+            var cells = byBand[bandKey];
+            var bandY = +bandKey;
+            cells.sort(function (a, b) { return a.xLeft - b.xLeft; });
+            var xLeft  = cells[0].xLeft  - RAIL_PADDING;
+            var xRight = cells[cells.length - 1].xRight + RAIL_PADDING;
+            out.push({
+                type: 'rail',
+                stencilType: 'examples.Track',
+                assetName:   'Track',
+                props: { x: xLeft, y: bandY, width: xRight - xLeft }
+            });
+            for (var i2 = 0; i2 < cells.length; i2++) {
+                var tt = cells[i2];
+                var cx = (tt.xLeft + tt.xRight) / 2;
+                var pill = { x: cx, y: bandY, label: tt.label || 'T', status: 'clear' };
+                if (tt.sourceType === 'examples.Track1') pill.width = tt.xRight - tt.xLeft;
+                out.push({
+                    type: 'section',
+                    stencilType: tt.sourceType,
+                    assetName:   OLD_ASSET_NAME[tt.sourceType] || 'Section',
+                    props: pill
+                });
+                if (cx + 60 > maxX) maxX = cx + 60;
+                if (bandY + 40 > maxY) maxY = bandY + 40;
+            }
+        }
+
+        // ---- Step 3: PointMachine → crossover + point ----
+        for (var i = 0; i < oldData.cells.length; i++) {
+            var cell = oldData.cells[i];
+            if (!cell || !PM_TYPES[cell.type]) continue;
+            var c = centreOf(cell);
+            var x1 = c.xLeft, x2 = c.xLeft + c.w;
+            var topRailY    = snapToBand(c.yTop,         bands);
+            var bottomRailY = snapToBand(c.yTop + c.h,   bands);
+            if (topRailY === bottomRailY) bottomRailY = topRailY + 50;
+
+            var pmAsset = OLD_ASSET_NAME[cell.type] || 'Point Machine';
+            out.push({
+                type: 'crossover',
+                stencilType: cell.type,
+                assetName:   pmAsset,
+                props: { x1: x1, y1: topRailY, x2: x2, y2: bottomRailY, label: '' }
+            });
+            out.push({
+                type: 'point',
+                stencilType: cell.type,
+                assetName:   pmAsset,
+                props: {
+                    x: (x1 + x2) / 2, y: bottomRailY + 30,
+                    label: labelOf(cell, false) || '', labelSide: 'right'
+                }
+            });
+            if (x2 + 60          > maxX) maxX = x2 + 60;
+            if (bottomRailY + 60 > maxY) maxY = bottomRailY + 60;
+        }
+
+        // ---- Step 4: signal aspects — group + combine ----
+        var signalGroups = {};
+        var singletonSignals = [];
+        for (var i = 0; i < oldData.cells.length; i++) {
+            var cell = oldData.cells[i];
+            if (!cell || !LAMP_MAP[cell.type]) continue;
+            var c = centreOf(cell);
+            var labelTxt = labelOf(cell, false);
+            var prefix   = labelTxt ? labelTxt.split(' ')[0] : '';
+            var lamp     = LAMP_MAP[cell.type];
+            if (prefix) {
+                (signalGroups[prefix] = signalGroups[prefix] || []).push({ c: c, lamp: lamp, sourceType: cell.type });
+            } else {
+                singletonSignals.push({ c: c, lamp: lamp, sourceType: cell.type });
+            }
+        }
+        for (var prefix in signalGroups) {
+            if (!signalGroups.hasOwnProperty(prefix)) continue;
+            var aspects = signalGroups[prefix];
+            aspects.sort(function (a, b) { return a.c.cx - b.c.cx; });
+            var lamps = '';
+            var sumX = 0, sumY = 0, minX = Infinity, maxXg = -Infinity;
+            for (var k = 0; k < aspects.length; k++) {
+                lamps += aspects[k].lamp;
+                sumX  += aspects[k].c.cx;
+                sumY  += aspects[k].c.cy;
+                if (aspects[k].c.cx < minX)  minX  = aspects[k].c.cx;
+                if (aspects[k].c.cx > maxXg) maxXg = aspects[k].c.cx;
+            }
+            var gx = sumX / aspects.length, gy = sumY / aspects.length;
+            out.push({
+                type: 'signal',
+                stencilType: 'examples.Signal' + lamps.toUpperCase(),
+                assetName:   prefix + ' (' + lamps + ')',
+                props: { x: gx, y: gy, label: prefix, lamps: lamps }
+            });
+            if (gx + 60 > maxX) maxX = gx + 60;
+            if (gy + 40 > maxY) maxY = gy + 40;
+
+            // Route indicator
+            var railY = snapToBand(gy, bands);
+            if (Math.abs(railY - gy) >= 12) {
+                if (gy < railY) {
+                    var len = Math.min(80, Math.max(30, railY - gy - 8));
+                    out.push({
+                        type: 'topLine',
+                        stencilType: 'examples.TopLine',
+                        assetName:   'Top Line',
+                        props: { x: maxXg + 14, y: gy + 4, length: len }
+                    });
+                } else {
+                    var len = Math.min(80, Math.max(30, gy - railY - 8));
+                    out.push({
+                        type: 'bottomLine',
+                        stencilType: 'examples.BottomLine',
+                        assetName:   'Bottom Line',
+                        props: { x: minX - 14, y: gy - 4, length: len }
+                    });
+                }
+            }
+        }
+        for (var s = 0; s < singletonSignals.length; s++) {
+            var sg = singletonSignals[s];
+            out.push({
+                type: 'signal',
+                stencilType: sg.sourceType,
+                assetName:   OLD_ASSET_NAME[sg.sourceType] || 'Signal',
+                props: { x: sg.c.cx, y: sg.c.cy, label: '', lamps: sg.lamp }
+            });
+        }
+
+        // ---- Step 5: everything else (posts, shunts, bus bars) ----
+        for (var i = 0; i < oldData.cells.length; i++) {
+            var cell = oldData.cells[i];
+            if (!cell || !cell.type) continue;
+            if (TRACK_TYPES[cell.type])  continue;
+            if (PM_TYPES[cell.type])     continue;
+            if (LAMP_MAP[cell.type])     continue;
+
+            var c = centreOf(cell);
+            var visibleLabel = labelOf(cell, true);
+            var rawLabel     = labelOf(cell, false);
+
+            switch (cell.type) {
+                case 'examples.Post':
+                case 'examples.Post1':
+                    if (visibleLabel) {
+                        out.push({
+                            type: 'sidingLabel',
+                            stencilType: cell.type,
+                            assetName:   OLD_ASSET_NAME[cell.type] || 'Post',
+                            props: { x: c.cx, y: c.cy, text: visibleLabel }
+                        });
+                    }
+                    break;
+                case 'examples.Shaunt':
+                    out.push({
+                        type: 'shunt',
+                        stencilType: 'examples.Shaunt',
+                        assetName:   'Shunt',
+                        props: { x: c.cx, y: c.cy, label: visibleLabel, state: '1' }
+                    });
+                    break;
+                case 'examples.Shaunt2':
+                    out.push({
+                        type: 'shunt',
+                        stencilType: 'examples.Shaunt2',
+                        assetName:   'Shunt 2',
+                        props: { x: c.cx, y: c.cy, label: visibleLabel, state: '2' }
+                    });
+                    break;
+                case 'examples.BusBar':
+                    out.push({
+                        type: 'sidingLabel',
+                        stencilType: 'examples.BusBar',
+                        assetName:   'Bus Bar',
+                        props: { x: c.cx, y: c.cy, text: rawLabel || 'BUS' }
+                    });
+                    break;
+                default:
+                    if (typeof console !== 'undefined') {
+                        console.warn('[SIP migrate] skipping unknown cell type:', cell.type);
+                    }
+            }
+            if (c.cx + 60 > maxX) maxX = c.cx + 60;
+            if (c.cy + 40 > maxY) maxY = c.cy + 40;
+        }
+
+        var vbW = Math.max(2000, Math.ceil((maxX + 80) / 100) * 100);
+        var vbH = Math.max(740,  Math.ceil((maxY + 80) / 100) * 100);
+        return { elements: out, viewBox: '0 0 ' + vbW + ' ' + vbH };
+    }
+
+    /* The editor initialises on DOMContentLoaded, which usually fires before our
+       AJAX completes, but defensive code never hurt anyone. */
+    function waitForEditor(cb, tries) {
+        tries = tries || 0;
+        if (window.SipEditor && typeof SipEditor.setLayout === 'function') {
+            cb();
+        } else if (tries < 20) {
+            setTimeout(function () { waitForEditor(cb, tries + 1); }, 50);
+        } else {
+            console.error('[SIP] Editor failed to initialise.');
+        }
+    }
+</script>

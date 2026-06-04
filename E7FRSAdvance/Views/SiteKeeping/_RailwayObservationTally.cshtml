@@ -1,0 +1,292 @@
+﻿@model Domain.DivisionReportModelLister
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                            <label>Division</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", style = "width:100%", tabindex = 1 })
+                        </div>
+                        <div class="pull-left m-l-10">
+                            <label>Site</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select Site", new { @class = "form-control", style = "width:100%", tabindex = 2 })
+                        </div>
+                        <div class="pull-left m-l-10">
+                            <label>Start Date</label>
+                            @Html.TextBoxFor(m => m.SearchCriteria.StartDate, "{0:d}", new { @class = "form-control", style = "width:100%", tabindex = 3 })
+                        </div>
+                        <div class="pull-left m-l-10">
+                            <label>End Date</label>
+                            @Html.TextBoxFor(m => m.SearchCriteria.EndDate, "{0:d}", new { @class = "form-control", style = "width:100%", tabindex = 4 })
+                        </div>
+                        <div class="pull-left m-l-10 mt-4">
+                            <button type="button" class="btn btn-success" onclick="fnSearchDivisionReport()">Search</button>
+                        </div>
+                        <div class="pull-left m-l-10 mt-4">
+                            <button type="button" class="btn btn-success" onclick="fnDownloadDivisionReport()">Download</button>
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.DivisionReportModels.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Railway Observation Tally </span>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="card-body " style="padding:15px;">
+                        <div class="table-responsive" style="max-height: 620px;">
+                            <table class="table">
+                                <thead class="bg-primary">
+                                    <tr>
+                                        <th>Action</th>
+                                        <th data-sortcolumn="TimeStamp" onclick="SortList('TimeStamp');">Time Stamp</th>
+                                        <th data-sortcolumn="SiteName" onclick="SortList('SiteName');">Site</th>
+                                        <th data-sortcolumn="AssetTypeName" onclick="SortList('AssetTypeName');">Asset Type</th>
+                                        <th data-sortcolumn="AssetName" onclick="SortList('AssetName');">Asset</th>
+                                        <th data-sortcolumn="ThresholdViolations" onclick="SortList('ThresholdViolations');">Threshold Violations</th>
+                                        <th data-sortcolumn="UnderAIModels" onclick="SortList('UnderAIModels');">Under AI Models</th>
+                                        <th data-sortcolumn="Remark" onclick="SortList('Remark');">Remark</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.DivisionReportModels != null && Model.DivisionReportModels.Count > 0)
+                                    {
+                                        foreach (var mDivisionReportModel in Model.DivisionReportModels)
+                                        {
+                                            <tr class="table-light">
+                                                <td>
+                                                    <a onclick="fnEditDivisionReportModel('@mDivisionReportModel.SiteId','@mDivisionReportModel.AssetTypeId','@mDivisionReportModel.AssetId','@mDivisionReportModel.TimeStamp.ToShortDateString()')"><i class="fa fa-pencil"></i></a>
+                                                </td>
+                                                <td>@mDivisionReportModel.TimeStamp</td>
+                                                <td>@mDivisionReportModel.SiteName</td>
+                                                <td>@mDivisionReportModel.AssetTypeName</td>
+                                                <td>@mDivisionReportModel.AssetName</td>
+                                                <td>@mDivisionReportModel.ThresholdViolations</td>
+                                                <td>@mDivisionReportModel.UnderAIModels</td>
+                                                <td>@mDivisionReportModel.Remark</td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="8" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modelEditDivisionReport" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Edit Remark</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <input type="hidden" id="hdnDivisionReportAssetId" />
+                    <input type="hidden" id="hdnDivisionReportAssetTypeId" />
+                    <input type="hidden" id="hdnDivisionReportSiteId" />
+                    <input type="hidden" id="hdnDivisionReportTimestamp" />
+                    <label>Remark</label>
+                    <textarea class="form-control" id="txtDivisionReportRemark"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary ls-1-2" onclick="UpdateDivisionReportModel()">Update</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmGetRailwayObservationTallyList").submit();
+        });
+
+        var startDate = new Date('@Model.SearchCriteria.StartDate.ToString("yyyy-MM-ddTHH:mm:ss")');
+        $('#SearchCriteria_StartDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", startDate);
+
+        var endDate = new Date('@Model.SearchCriteria.EndDate.ToString("yyyy-MM-ddTHH:mm:ss")');
+        $('#SearchCriteria_EndDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", endDate);
+
+
+        GetSiteByDivisionId($('#SearchCriteria_DivisionId').val());
+
+        $('#SearchCriteria_DivisionId').change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+    });
+
+    function fnEditDivisionReportModel(siteId, assetTypeId, assetId, timestamp) {
+        $('#hdnDivisionReportSiteId').val(siteId);
+        $('#hdnDivisionReportAssetTypeId').val(assetTypeId);
+        $('#hdnDivisionReportAssetId').val(assetId);
+        $('#hdnDivisionReportTimestamp').val(timestamp);
+        $('#modelEditDivisionReport').modal('show');
+    }
+
+    function UpdateDivisionReportModel() {
+        debugger;
+        if ($('#txtDivisionReportRemark').val() != null && $('#txtDivisionReportRemark').val() != undefined && $('#txtDivisionReportRemark').val() != '') {
+            var mDivisionReportModel = {};
+            mDivisionReportModel.DivisionId = $('#SearchCriteria_DivisionId').val();
+            mDivisionReportModel.SiteId = $('#hdnDivisionReportSiteId').val();
+            mDivisionReportModel.AssetTypeId = $('#hdnDivisionReportAssetTypeId').val();
+            mDivisionReportModel.AssetId = $('#hdnDivisionReportAssetId').val();
+            mDivisionReportModel.TimeStamp = $('#hdnDivisionReportTimestamp').val();
+            mDivisionReportModel.Remark = $('#txtDivisionReportRemark').val();
+
+            if (mDivisionReportModel != null && mDivisionReportModel != undefined) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/SiteKeeping/UpdateRailwayObservationTally',
+                    type: 'Post',
+                    data: '{mDivisionReportModel:' + JSON.stringify(mDivisionReportModel) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null) {
+                            $('#modelEditDivisionReport').modal('hide');
+                            if (data.type == "success") {
+                                $("#frmGetRailwayObservationTallyList").submit();
+                                CommonNotification("SUCCESS", data.result, "success");
+                            } else {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        $('#modelEditDivisionReport').modal('hide');
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+
+            }
+            else {
+                $('#modelEditDivisionReport').modal('hide');
+                CommonNotification("ERROR", "Please select any status and issue", "Error");
+            }
+        }
+    }
+
+    function fnSearchDivisionReport() {
+        $("#hdnSkip").val('0');
+        $("#frmGetRailwayObservationTallyList").submit();
+    }
+
+    function fnDownloadDivisionReport() {
+        if ($('#SearchCriteria_DivisionId').val() != null && $('#SearchCriteria_DivisionId').val() != undefined && $('#SearchCriteria_DivisionId').val() != '' && $('#SearchCriteria_DivisionId').val() != '0') {
+            window.location.href = "@Url.Action("DownloadRailwayObservationTally")?divisionId=" + $('#SearchCriteria_DivisionId').val() + "&startDate=" + $("#SearchCriteria_StartDate").val() + "&endDate=" + $("#SearchCriteria_EndDate").val();
+
+        } else {
+            CommonNotification("error", "Please select Divisions");
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetRailwayObservationTallyList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetRailwayObservationTallyList").submit();
+            }
+        }
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/SiteKeeping/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_SiteId").empty();
+                    $("#SearchCriteria_SiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if (value.Id == '@Model.SearchCriteria.SiteId') {
+                            $("#SearchCriteria_SiteId").append("<option value='" + value.Id +"' selected>" + value.Name +"</option>");
+                        } else {
+                            $("#SearchCriteria_SiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+</script>

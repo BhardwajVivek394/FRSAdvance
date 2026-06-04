@@ -1,0 +1,145 @@
+﻿@model List<Domain.FRSWatchList>
+@{
+    int counter = 0;
+    string siteName = string.Empty;
+    if (Model != null && Model.Count > 0)
+    {
+        siteName = Model.Select(x => x.SiteName).FirstOrDefault();
+    }
+}
+
+<div class="modal bounceIn animated" id="modal-view-FRSWatchList" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl ">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span>FRS Watch List - @siteName</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+
+                <div class="tablemodalFixHead">
+                    @if (Model != null && Model.Count > 0)
+                    {
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="background-color: #215968; color: white;">Asset Type</th>
+                                    <th style="background-color: #215968; color: white;">Asset</th>
+                                    <th style="background-color: #215968; color: white;">Cause Code</th>
+                                    <th style="background-color: #215968; color: white;"></th>
+                                    <th style="background-color: #215968; color: white;">Description</th>
+                                    <th style="background-color: #215968; color: white;" class="text-center">Is Set</th>
+                                    <th style="background-color: #215968; color: white;">Remark</th>
+                                    <th class="text-center" style="background-color: #215968; color: white;">Alert Instance</th>
+                                    <th style="background-color: #215968; color: white;">Issue Type</th>
+                                    <th style="background-color: #215968; color: white;">Alert Date</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="tbodyFRSWatchList">
+                                @foreach (var item in Model.Where(x => x.IsSet))
+                                {
+                                    counter++;
+                                    <tr data-id="@item.Id" data-assetid="@item.AssetId" data-alertinfoid="@item.AlertInfoId">
+                                        <td>@item.AssetType</td>
+                                        <td>
+                                            <a href="javascript:void(0)" onclick="fnGetLiveData('@item.SiteName','@item.AssetId','@item.AssetTypeId')">@item.Asset</a>
+                                        </td>
+                                        <td>
+                                            <span> @item.CauseCode</span>
+                                        </td>
+                                        <td>
+                                            <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= item.SiteId,assetId = item.AssetId, timeStamp = item.CreatedDate})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+                                        </td>
+
+                                        <td>@item.Description</td>
+                                        <td class="text-center">
+                                            @if (item.IsSet)
+                                            {
+                                                <input type="checkbox" checked />
+                                            }
+                                            else
+                                            {
+                                                <input type="checkbox" />
+                                            }
+                                        </td>
+                                        <td>
+                                            <textarea class="form-control">@item.Remark</textarea>
+                                        </td>
+                                        <td class="text-center">
+                                            @if (item.AlertInstanceCount > 0)
+                                            {
+                                                <div>
+                                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowWatchListFRSAlertInstance('@item.AssetId','@item.AlertInfoId'); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="/assets/images/Vector.png"></a>
+                                                </div>
+                                            }
+                                            <div>
+                                                <span>@item.AlertInstanceCount</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if (ViewBag.FRSAlertAudits != null)
+                                            {
+                                                var frsAlertAudits = ViewBag.FRSAlertAudits as List<Domain.FRSAlertAudit>;
+                                                if (frsAlertAudits != null && frsAlertAudits.Count > 0)
+                                                {
+                                                    var frsAlertAudit = frsAlertAudits.Where(x => x.AssetId == item.AssetId && x.AlertInfoId == item.AlertInfoId).OrderByDescending(x => x.Id).FirstOrDefault();
+                                                    if (frsAlertAudit != null && frsAlertAudit.IssueTypeId != null && frsAlertAudit.IssueTypeId.Value > 0)
+                                                    {
+                                                        <span>
+                                                            @((E7FRSAdvance.Utility.Utility.FRSAlertIssue)Enum.ToObject(typeof(E7FRSAdvance.Utility.Utility.FRSAlertIssue), frsAlertAudit.IssueTypeId))
+                                                        </span>
+                                                    }
+                                                }
+                                            }
+                                        </td>
+                                        <td>
+
+                                            @{
+                                                var isAudit = false;
+                                            }
+                                            @if (ViewBag.FRSAlertAudits != null)
+                                            {
+                                                var frsAlertAudits = ViewBag.FRSAlertAudits as List<Domain.FRSAlertAudit>;
+                                                if (frsAlertAudits != null && frsAlertAudits.Count > 0)
+                                                {
+                                                    var frsAlertAudit = frsAlertAudits.Where(x => x.AssetId == item.AssetId && x.AlertInfoId == item.AlertInfoId).OrderByDescending(x => x.Id).FirstOrDefault();
+                                                    if (frsAlertAudit != null && frsAlertAudit.IssueTypeId != null && frsAlertAudit.IssueTypeId.Value > 0 && frsAlertAudit.TimeStamp != null)
+                                                    {
+                                                        isAudit = true;
+                                                        <span>
+                                                            @(frsAlertAudit.TimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss"))
+                                                        </span>
+                                                    }
+                                                }
+                                            }
+
+                                            @if (!isAudit)
+                                            {
+                                                <span>
+                                                    @(item.CreatedDate.ToString("dd/MM/yyyy HH:mm:ss"))
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+
+
+                        </table>
+
+                    }
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-primary" href="javascript:void(0)" onclick="fnUpdateFRSWatch()">Update</a>
+                <a class="btn btn-success" href="javascript:void(0)" onclick="fnDownloadFRSWatchList()">Download</a>
+                <button class="btn btn-default" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+

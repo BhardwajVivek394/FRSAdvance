@@ -1,0 +1,1041 @@
+﻿@model Domain.RDPMSHealthLiveLister
+
+<div class="col px-0">
+
+    <!-- WS Status Bar -->
+    <div id="wsStatusBar" style="display:none;"></div>
+    <!-- mainview: inline stat table -->
+    <div id="mainview" class="mb-3">
+        <div class="rdpms-stat-table-wrap">
+            <table class="rdpms-stat-table">
+                <thead>
+                    <tr class="rdpms-group-row">
+                        <th colspan="2" class="rdpms-group-header rdpms-gh-blue">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3" /><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" /></svg>
+                            Sensor
+                        </th>
+                        <th colspan="2" class="rdpms-group-header rdpms-gh-green">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+                            IoTs
+                        </th>
+                        <th colspan="2" class="rdpms-group-header rdpms-gh-amber">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></svg>
+                            Network
+                        </th>
+                        <th colspan="2" class="rdpms-group-header rdpms-gh-purple rdpms-no-right-border">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+                            Stn Gateway
+                        </th>
+                    </tr>
+                    <tr class="rdpms-sub-row">
+                        <th class="rdpms-sub-header">Total</th>
+                        <th class="rdpms-sub-header rdpms-sep-solid">Faulty</th>
+                        <th class="rdpms-sub-header">Total</th>
+                        <th class="rdpms-sub-header rdpms-sep-solid">Faulty</th>
+                        <th class="rdpms-sub-header">Total</th>
+                        <th class="rdpms-sub-header rdpms-sep-solid">Faulty</th>
+                        <th class="rdpms-sub-header">Total</th>
+                        <th class="rdpms-sub-header rdpms-no-right-border">Faulty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="rdpms-val-cell green">
+                            @if (Model.mAssetInfos != null)
+                            {<text>@Model.mAssetInfos.Count()</text>}
+                        else
+                        {<text>0</text>}
+                        </td>
+                        <td class="rdpms-val-cell red rdpms-sep-solid"><span id="spnTotalFaultySensor">0</span></td>
+                        <td class="rdpms-val-cell green">
+                            @if (Model.mADCs != null)
+                            {<text>@Model.mADCs.Count()</text>}
+                        else
+                        {<text>0</text>}
+                        </td>
+                        <td class="rdpms-val-cell red rdpms-sep-solid"><span id="spnTotalFaultyIoTs">0</span></td>
+                        <td class="rdpms-val-cell green">
+                            @if (Model.mClusters != null)
+                            {<text>@Model.mClusters.Count()</text>}
+                        else
+                        {<text>0</text>}
+                        </td>
+                        <td class="rdpms-val-cell red rdpms-sep-solid"><span id="spnTotalFaultyNetwork">0</span></td>
+                        <td class="rdpms-val-cell green">
+                            @if (Model.GatewaySiteId != null)
+                            {<text>@Model.GatewaySiteId.Count()</text>}
+                        else
+                        {<text>0</text>}
+                        </td>
+                        <td class="rdpms-val-cell red rdpms-no-right-border"><span id="spnTotalFaultyGatewaySite">0</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- listView: table card -->
+    <div id="listView" class="rdpms-list-card">
+        <div class="table-responsive">
+            <table class="table rdpms-table" id="tblRDPMSHealthLive">
+                <thead>
+                    <tr>
+                        <th>Sr.No</th>
+                        <th>Zone</th>
+                        <th>Division</th>
+                        <th>Station</th>
+                        <th>Asset Type</th>
+                        <th>Asset Number</th>
+                        <th class="text-center">Faulty Sensor description</th>
+                        <th class="text-center">Faulty IOT description</th>
+                        <th class="text-center">Faulty Network description</th>
+                        <th class="text-center">Faulty Station gateway</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyRDPMSHealthLive">
+                    @if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
+                    {
+                        int counter = 0;
+                        foreach (var item in Model.mAssets)
+                        {
+                            counter++;
+                            <tr data-modemid="@(item.ModemIdStr)"
+                                data-a10id="@(item.A10IdStr)"
+                                data-siteid="@item.SiteId"
+                                data-assetid="@item.AssetId"
+                                style="display:none;">
+                                <td>@counter</td>
+                                <td>@item.Zone</td>
+                                <td>@item.Division</td>
+                                <td>@item.SiteName</td>
+                                <td>@item.AssetTypeName</td>
+                                <td>@item.Name</td>
+                                <td class="text-center"><span id="spnSensor@(item.AssetId)"></span></td>
+                                <td class="text-center"><span id="spnA10@(item.A10IdStr)"></span></td>
+                                <td class="text-center"><span id="spnModem@(item.ModemIdStr)"></span></td>
+                                <td class="text-center"><span id="spnGW@(item.SiteId)"></span></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="rdpms-pager-wrap">
+            <nav>
+                <ul class="pagination justify-content-end mb-0" id="pager">
+                    <li class="page-item" data-page="prev"><a class="page-link" href="#">Previous</a></li>
+                    <li class="page-item" data-page="next"><a class="page-link" href="#">Next</a></li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    #mainview {
+        gap: 16px;
+    }
+    .rdpms-stat-table-wrap {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .rdpms-stat-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        table-layout: fixed;
+    }
+
+    .rdpms-group-row th,
+    .rdpms-sub-row th {
+        background: #f8fafc;
+    }
+
+    .rdpms-group-header {
+        padding: 9px 10px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 11.5px;
+        letter-spacing: 0.3px;
+        border-right: 1px solid #e2e8f0;
+        border-bottom: 2px solid currentColor;
+    }
+
+    .rdpms-gh-blue {
+        color: #378ADD;
+    }
+
+    .rdpms-gh-green {
+        color: #1D9E75;
+    }
+
+    .rdpms-gh-amber {
+        color: #BA7517;
+    }
+
+    .rdpms-gh-purple {
+        color: #534AB7;
+    }
+
+    .rdpms-group-header svg {
+        vertical-align: middle;
+        margin-right: 4px;
+    }
+
+    .rdpms-sub-header {
+        padding: 6px 10px;
+        text-align: center;
+        font-weight: 500;
+        font-size: 11px;
+        color: #475569;
+        border-bottom: 1px solid #e2e8f0;
+        border-right: 1px dashed #e2e8f0;
+    }
+
+    .rdpms-val-cell {
+        padding: 13px 10px;
+        text-align: center;
+        font-size: 20px;
+        font-weight: 600;
+        border-right: 1px dashed #e2e8f0;
+    }
+
+        .rdpms-val-cell.green {
+            color: #16a34a;
+        }
+
+        .rdpms-val-cell.red {
+            color: #dc2626;
+        }
+
+    .rdpms-sep-solid {
+        border-right: 1px solid #e2e8f0 !important;
+    }
+
+    .rdpms-no-right-border {
+        border-right: none !important;
+    }
+
+    .rdpms-stat-card {
+        flex: 1 1 200px;
+        min-width: 180px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .rdpms-stat-title {
+        font-weight: 700;
+        font-size: 15px;
+        color: #1e293b;
+        margin-bottom: 12px;
+    }
+
+    .rdpms-stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+        font-size: 13.5px;
+    }
+
+    .rdpms-stat-label {
+        color: #64748b;
+    }
+
+    .rdpms-stat-val {
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+        .rdpms-stat-val.green {
+            color: #16a34a;
+        }
+
+        .rdpms-stat-val.red {
+            color: #dc2626;
+        }
+
+    .rdpms-list-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 8px 0 12px 0;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        overflow: hidden;
+    }
+
+    .rdpms-table {
+        margin-bottom: 0;
+        font-size: 13.5px;
+        color: #1e293b;
+    }
+
+        .rdpms-table thead tr {
+            background: transparent;
+            border-bottom: 2px solid #f1f5f9;
+        }
+
+        .rdpms-table thead th {
+            font-weight: 600;
+            font-size: 13px;
+            color: #475569;
+            border: none;
+            padding: 12px 14px;
+            white-space: nowrap;
+        }
+
+        .rdpms-table tbody tr {
+            border-bottom: 1px solid #f8fafc;
+            transition: background 0.15s;
+        }
+
+            .rdpms-table tbody tr:hover {
+                background: #f8fafc;
+            }
+
+        .rdpms-table tbody td {
+            padding: 11px 14px;
+            border: none;
+            vertical-align: middle;
+        }
+
+    .rdpms-pager-wrap {
+        padding: 12px 16px 4px 16px;
+    }
+
+        .rdpms-pager-wrap .page-link {
+            border-radius: 6px !important;
+            margin: 0 2px;
+            font-size: 13px;
+            color: #475569;
+            border-color: #e2e8f0;
+        }
+
+        .rdpms-pager-wrap .page-item.active .page-link {
+            background-color: #6366f1;
+            border-color: #6366f1;
+            color: #fff;
+        }
+
+        .rdpms-pager-wrap .page-item.disabled .page-link {
+            color: #cbd5e1;
+        }
+
+    .badge-danger {
+        background-color: #fee2e2;
+        color: #dc2626;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 5px;
+        font-size: 12px;
+    }
+
+    .badge-success {
+        background-color: #dcfce7;
+        color: #16a34a;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 5px;
+        font-size: 12px;
+    }
+
+    .ws-status-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 8px;
+        font-size: 13px;
+        margin-bottom: 10px;
+    }
+
+    .ws-live {
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        color: #166534;
+    }
+
+    .ws-connecting {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
+    }
+
+    .ws-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+    }
+
+    .ws-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+        .ws-dot.live {
+            background: #16a34a;
+            box-shadow: 0 0 0 2px #bbf7d0;
+        }
+
+        .ws-dot.orange {
+            background: #f59e0b;
+        }
+
+        .ws-dot.red {
+            background: #dc2626;
+        }
+</style>
+
+<script>
+    var json = "";
+    var isSecure = window.location.protocol === "https:";
+    var APP_CONFIG = {};
+    if (isSecure) {
+        APP_CONFIG = {
+            ProxyBaseUrl: '@System.Configuration.ConfigurationManager.AppSettings["ProxyBaseUrlSSL"]',
+            WebSocketBaseUrl: '@System.Configuration.ConfigurationManager.AppSettings["WebSocketBaseUrlSSL"]',
+            WebSocketAuthToken: '@System.Configuration.ConfigurationManager.AppSettings["WebSocketAuthToken"]'
+        };
+    } else {
+        APP_CONFIG = {
+            ProxyBaseUrl: '@System.Configuration.ConfigurationManager.AppSettings["ProxyBaseUrl"]',
+            WebSocketBaseUrl: '@System.Configuration.ConfigurationManager.AppSettings["WebSocketBaseUrl"]',
+            WebSocketAuth: null
+        };
+    }
+
+    // =========================================================================
+    // MULTI-SITE WEBSOCKET
+    // All state is stored per siteId key — no shared single-connection variables
+    // =========================================================================
+    var wsConnections        = {};  // wsConnections[key]        = WebSocket
+    var wsReconnectTimers    = {};  // wsReconnectTimers[key]    = setTimeout handle
+    var wsReconnectAttempts  = {};  // wsReconnectAttempts[key]  = number
+    var wsIsConnected        = {};  // wsIsConnected[key]        = bool
+    var wsHeartbeatIntervals = {};  // wsHeartbeatIntervals[key] = setInterval handle
+    var wsLastMessageTimes   = {};  // wsLastMessageTimes[key]   = ms timestamp
+
+    var MAX_RECONNECT_ATTEMPTS = 15;
+    var RECONNECT_DELAY        = 3000;   // ms
+    var WS_HEARTBEAT_TIMEOUT   = 30000;  // ms
+
+    // Per-site fault accumulator
+    // wsSiteFaults[key] = {
+    //   faultySensor  : [ { siteId, assetId, attributeId } ]
+    //   faltyIotArray : [ { siteId, a10Id } ]
+    //   faultyNetwork : [ { siteId, modemId } ]
+    //   faultyGW      : bool
+    //   received      : bool
+    // }
+    var wsSiteFaults = {};
+
+    $(document).ready(function () {
+       
+        json = @Html.Raw(Json.Encode(Model));
+        connectWebSocket();
+    });
+
+
+    // =========================================================================
+    // connectWebSocket — entry point: opens one socket per GatewaySiteId
+    // =========================================================================
+    function connectWebSocket() {
+        debugger;
+        disconnectWebSocket();
+        wsSiteFaults = {};
+
+        if (!json.GatewaySiteId || json.GatewaySiteId.length === 0) {
+            console.warn('[WS] No GatewaySiteId found — no connections opened');
+            showWsStatus('error');
+            return;
+        }
+
+        console.log('[WS] Opening ' + json.GatewaySiteId.length + ' connections:', json.GatewaySiteId);
+
+        json.GatewaySiteId.forEach(function (siteId) {
+            openWsConnection(siteId);
+        });
+    }
+
+    // =========================================================================
+    // openWsConnection — opens ONE socket for siteId
+    // =========================================================================
+    function openWsConnection(siteId) {
+        var key   = siteId.toString();
+
+        debugger;
+        var wsUrl = window.APP_CONFIG.WebSocketBaseUrl + '/subscribe/AlertLiveSnapshot/' + key;
+        if (window.isSecure && window.APP_CONFIG && window.APP_CONFIG.WebSocketAuthToken) {
+            var separator = wsUrl.indexOf('?') > -1 ? '&' : '?';
+            wsUrl = wsUrl + separator + 'token=' + encodeURIComponent(APP_CONFIG.WebSocketAuthToken);
+        }
+
+        // Initialise per-key counters
+        wsReconnectAttempts[key] = wsReconnectAttempts[key] || 0;
+        wsLastMessageTimes[key]  = Date.now();
+        wsIsConnected[key]       = false;
+
+        // Empty fault bucket for this site
+        wsSiteFaults[key] = {
+            faultySensor  : [],
+            faltyIotArray : [],
+            faultyNetwork : [],
+            faultyGW      : false,
+            received      : false
+        };
+
+        console.log('[WS][Site:' + key + '] Connecting → ' + wsUrl);
+
+        try {
+            // IMPORTANT: store in wsConnections[key], NOT a local variable
+            wsConnections[key] = new WebSocket(wsUrl);
+
+            // ── onopen ────────────────────────────────────────────────
+            wsConnections[key].onopen = function () {
+                wsIsConnected[key]       = true;
+                wsReconnectAttempts[key] = 0;
+                wsLastMessageTimes[key]  = Date.now();
+                console.log('[WS][Site:' + key + '] Connected');
+                updateStatusBar();
+
+                // Per-connection heartbeat watchdog
+                if (wsHeartbeatIntervals[key]) clearInterval(wsHeartbeatIntervals[key]);
+                wsHeartbeatIntervals[key] = setInterval(function () {
+                    if (wsIsConnected[key] && (Date.now() - wsLastMessageTimes[key] > WS_HEARTBEAT_TIMEOUT)) {
+                        console.warn('[WS][Site:' + key + '] Heartbeat timeout — reconnecting');
+                        var conn = wsConnections[key];
+                        if (conn) { conn.onclose = null; conn.close(); }
+                        wsConnections[key] = null;
+                        wsIsConnected[key] = false;
+                        wsReconnectAttempts[key]++;
+                        openWsConnection(siteId);
+                    }
+                }, 10000);
+            };
+
+            // ── onmessage ─────────────────────────────────────────────
+            wsConnections[key].onmessage = function (event) {
+                wsLastMessageTimes[key] = Date.now();
+                try {
+                    var batch = typeof event.data === 'string'
+                        ? JSON.parse(event.data)
+                        : event.data;
+                    handleWsMessage(key, batch);
+                } catch (e) {
+                    console.error('[WS][Site:' + key + '] Parse error:', e);
+                }
+            };
+
+            // ── onclose ───────────────────────────────────────────────
+            wsConnections[key].onclose = function (event) {
+                wsIsConnected[key] = false;
+                updateStatusBar();
+                console.warn('[WS][Site:' + key + '] Closed. Code:', event.code);
+
+                var fatalCodes = [1008, 4001, 4003, 401];
+                if (fatalCodes.indexOf(event.code) > -1) {
+                    console.error('[WS][Site:' + key + '] Fatal — not reconnecting');
+                    return;
+                }
+
+                if (event.code !== 1000 && wsReconnectAttempts[key] < MAX_RECONNECT_ATTEMPTS) {
+                    wsReconnectAttempts[key]++;
+                    var delay = RECONNECT_DELAY * Math.min(wsReconnectAttempts[key], 5);
+                    console.log('[WS][Site:' + key + '] Retry in ' + delay + 'ms (attempt ' + wsReconnectAttempts[key] + ')');
+                    wsReconnectTimers[key] = setTimeout(function () {
+                        openWsConnection(siteId);
+                    }, delay);
+                } else if (wsReconnectAttempts[key] >= MAX_RECONNECT_ATTEMPTS) {
+                    console.error('[WS][Site:' + key + '] Max retries reached');
+                    updateStatusBar();
+                }
+            };
+
+            // ── onerror ───────────────────────────────────────────────
+            wsConnections[key].onerror = function (err) {
+                wsIsConnected[key] = false;
+                console.error('[WS][Site:' + key + '] Error:', err);
+                updateStatusBar();
+            };
+
+        } catch (e) {
+            console.error('[WS][Site:' + key + '] Failed to open:', e);
+        }
+    }
+
+    // =========================================================================
+    // handleWsMessage — processes one site's message
+    // =========================================================================
+    function handleWsMessage(siteId, batch) {
+
+        if (batch.MessageType === 'InitialSnapshot') {
+
+            // Even empty snapshot — mark received so UI refreshes
+            if (!Array.isArray(batch.Alerts) || batch.Alerts.length === 0) {
+                console.log('[WS][Site:' + siteId + '] InitialSnapshot — 0 alerts');
+                markSiteReceived(siteId);
+                return;
+            }
+
+            console.log('[WS][Site:' + siteId + '] InitialSnapshot — ' + batch.Alerts.length + ' alerts');
+
+            var siteFaultySensor  = [];
+            var siteFaultyIot     = [];
+            var siteFaultyNetwork = [];
+            var siteFaultyGW      = false;
+
+            // ── Tag → Sensor faults ───────────────────────────────────
+            batch.Alerts.filter(function (a) { return a.sourceType === 'Tag'; })
+                .forEach(function (a) {
+                    if (!a.alertDescription)       return;
+                    if (a.alertState !== 'Active') return;
+
+                    var assetIdMatch = a.alertDescription.match(/AssetId:(\d+)/);
+                    var attrIdMatch  = a.alertDescription.match(/AttributeId:(\d+)/);
+                    if (!assetIdMatch || !attrIdMatch) return;
+
+                    var assetId     = assetIdMatch[1];
+                    var attributeId = attrIdMatch[1];
+
+                    if (json.mAssetInfos) {
+                        var match = json.mAssetInfos.filter(function (info) {
+                            return info.SiteId == a.siteId
+                                && info.AssetId == assetId
+                                && info.AssetAttributeId == attributeId;
+                        })[0];
+                        if (match) {
+                            siteFaultySensor.push({
+                                siteId     : a.siteId.toString(),
+                                assetId    : assetId.toString(),
+                                attributeId: attributeId.toString()
+                            });
+                        }
+                    }
+                });
+
+            // ── Modem_MQTT → Network faults ───────────────────────────
+            batch.Alerts.filter(function (a) { return a.sourceType === 'Modem_MQTT'; })
+                .forEach(function (a) {
+                    if (!a.alertIdentifier)        return;
+                    if (a.alertState !== 'Active') return;
+
+                    var modemId = '';
+                    var parts   = a.alertIdentifier.split('|');
+                    $.each(parts, function (i, item) {
+                        var kv = item.split(':');
+                        if (kv[0] === 'deviceId') { modemId = kv[1]; }
+                    });
+
+                    if (json.mClusters && modemId) {
+                        var match = json.mClusters.filter(function (c) {
+                            return c.SiteId == a.siteId && c.ModemId == modemId;
+                        })[0];
+                        if (match) {
+                            siteFaultyNetwork.push({
+                                siteId : a.siteId.toString(),
+                                modemId: modemId.toString()
+                            });
+                        }
+                    }
+                });
+
+            // ── A10_MQTT → IOT faults ─────────────────────────────────
+            batch.Alerts.filter(function (a) { return a.sourceType === 'A10_MQTT'; })
+                .forEach(function (a) {
+                    if (!a.alertIdentifier)        return;
+                    if (a.alertState !== 'Active') return;
+
+                    var a10Id = '', clusterId = '';
+                    var parts = a.alertIdentifier.split('|');
+                    $.each(parts, function (i, item) {
+                        var kv = item.split(':');
+                        if (kv[0] === 'deviceId')  { a10Id     = kv[1]; }
+                        if (kv[0] === 'clusterId') { clusterId = kv[1]; }
+                    });
+
+                    if (json.mADCs && a10Id) {
+                        var match = null;
+                        if (clusterId) {
+                            match = json.mADCs.filter(function (adc) {
+                                return adc.SiteId == a.siteId
+                                    && adc.ADCNumber == a10Id
+                                    && adc.ClusterId == clusterId;
+                            })[0];
+                        } else {
+                            match = json.mADCs.filter(function (adc) {
+                                return adc.SiteId == a.siteId
+                                    && adc.ADCNumber == parseInt(a10Id);
+                            })[0];
+                        }
+                        if (match) {
+                            siteFaultyIot.push({
+                                siteId: a.siteId.toString(),
+                                a10Id : a10Id.toString()
+                            });
+                        }
+                    }
+                });
+
+            // ── GatewayHealth → Gateway faults ───────────────────────
+            batch.Alerts.filter(function (a) { return a.sourceType === 'GatewayHealth'; })
+                .forEach(function (a) {
+                    if (a.alertState !== 'Active') return;
+                    if (json.GatewaySiteId) {
+                        var found = json.GatewaySiteId.filter(function (sid) {
+                            return sid == a.siteId;
+                        })[0];
+                        if (found) { siteFaultyGW = true; }
+                    }
+                });
+
+            // Store per-site results
+            wsSiteFaults[siteId] = {
+                faultySensor  : siteFaultySensor,
+                faltyIotArray : siteFaultyIot,
+                faultyNetwork : siteFaultyNetwork,
+                faultyGW      : siteFaultyGW,
+                received      : true
+            };
+
+            markSiteReceived(siteId);
+
+        } else if (batch.MessageType === 'Batch') {
+            try {
+                var innerBatch = JSON.parse(batch.Messages);
+                if (innerBatch && innerBatch.sourceType === 'DFIHealth') {
+                    console.log('[WS][Site:' + siteId + '] Batch DFIHealth update');
+                    // TODO: handle incremental gateway update
+                }
+            } catch (e) {
+                console.error('[WS][Site:' + siteId + '] Batch parse error:', e);
+            }
+        }
+    }
+
+    // =========================================================================
+    // markSiteReceived — called after each site reports; triggers UI update
+    // =========================================================================
+    function markSiteReceived(siteId) {
+        if (!wsSiteFaults[siteId]) {
+            wsSiteFaults[siteId] = {
+                faultySensor: [], faltyIotArray: [], faultyNetwork: [],
+                faultyGW: false, received: false
+            };
+        }
+        wsSiteFaults[siteId].received = true;
+
+        var totalSites    = Object.keys(wsConnections).length;
+        var receivedSites = Object.keys(wsSiteFaults).filter(function (k) {
+            return wsSiteFaults[k].received;
+        }).length;
+
+        console.log('[WS] Sites received: ' + receivedSites + '/' + totalSites);
+
+        // Update UI progressively — don't wait for all sites
+        aggregateAndUpdateUI();
+    }
+
+    // =========================================================================
+    // aggregateAndUpdateUI — merges all site faults → updates stat cards + table
+    // =========================================================================
+    function aggregateAndUpdateUI() {
+        var allFaultySensor  = [];
+        var allFaultyIot     = [];
+        var allFaultyNetwork = [];
+        var totalFaultyGW    = 0;
+        var faultyGWSiteIds  = [];
+
+        Object.keys(wsSiteFaults).forEach(function (key) {
+            var f = wsSiteFaults[key];
+            if (f.faultySensor)  allFaultySensor  = allFaultySensor.concat(f.faultySensor);
+            if (f.faltyIotArray) allFaultyIot      = allFaultyIot.concat(f.faltyIotArray);
+            if (f.faultyNetwork) allFaultyNetwork  = allFaultyNetwork.concat(f.faultyNetwork);
+            if (f.faultyGW) {
+                totalFaultyGW++;
+                faultyGWSiteIds.push(key);
+            }
+        });
+
+        // Deduplicate Sensor  (siteId + assetId + attributeId)
+        var sensorSeen = {};
+        allFaultySensor = allFaultySensor.filter(function (item) {
+            var k = item.siteId + '_' + item.assetId + '_' + item.attributeId;
+            if (sensorSeen[k]) return false;
+            sensorSeen[k] = true;
+            return true;
+        });
+
+        // Deduplicate IOT  (siteId + a10Id)
+        var iotSeen = {};
+        allFaultyIot = allFaultyIot.filter(function (item) {
+            var k = item.siteId + '_' + item.a10Id;
+            if (iotSeen[k]) return false;
+            iotSeen[k] = true;
+            return true;
+        });
+
+        // Deduplicate Network  (siteId + modemId)
+        var netSeen = {};
+        allFaultyNetwork = allFaultyNetwork.filter(function (item) {
+            var k = item.siteId + '_' + item.modemId;
+            if (netSeen[k]) return false;
+            netSeen[k] = true;
+            return true;
+        });
+
+        // Update stat cards
+        $('#spnTotalFaultySensor').text(allFaultySensor.length);
+        $('#spnTotalFaultyIoTs').text(allFaultyIot.length);
+        $('#spnTotalFaultyNetwork').text(allFaultyNetwork.length);
+        $('#spnTotalFaultyGatewaySite').text(totalFaultyGW);
+
+        // Update table rows + pagination
+        fnUpdateTableData(allFaultyNetwork, allFaultyIot, allFaultySensor, faultyGWSiteIds);
+        fnRefreshTable();
+    }
+
+    // =========================================================================
+    // fnUpdateTableData — writes badges on each row, shows/hides rows
+    // modemIds        = [ { siteId, modemId } ]
+    // aIds            = [ { siteId, a10Id } ]
+    // sensorIds       = [ { siteId, assetId, attributeId } ]
+    // faultyGWSiteIds = [ siteId, ... ]
+    // =========================================================================
+    function fnUpdateTableData(modemIds, aIds, sensorIds, faultyGWSiteIds) {
+        modemIds        = modemIds        || [];
+        aIds            = aIds            || [];
+        sensorIds       = sensorIds       || [];
+        faultyGWSiteIds = faultyGWSiteIds || [];
+
+        var hasAnyFault = modemIds.length > 0 || aIds.length > 0
+                       || sensorIds.length > 0 || faultyGWSiteIds.length > 0;
+
+        if (!hasAnyFault) {
+            $('#tbodyRDPMSHealthLive tr').hide();
+            return;
+        }
+
+        $('#tbodyRDPMSHealthLive tr').each(function () {
+            var row        = $(this);
+            var rowSiteId  = (row.data('siteid')  != null) ? row.data('siteid').toString()  : '';
+            var rowAssetId = (row.data('assetid') != null) ? row.data('assetid').toString() : '';
+
+            var rowModemIds = (row.data('modemid') != null && row.data('modemid') !== '')
+                ? row.data('modemid').toString().split(',') : [];
+            var rowA10Ids = (row.data('a10id') != null && row.data('a10id') !== '')
+                ? row.data('a10id').toString().split(',') : [];
+
+            // ── Modem match ──────────────────────────────────────────
+            var modemMatch = false;
+            if (modemIds.length > 0 && rowSiteId) {
+                for (var m = 0; m < rowModemIds.length; m++) {
+                    var tm = rowModemIds[m].trim();
+                    for (var n = 0; n < modemIds.length; n++) {
+                        if (modemIds[n].siteId === rowSiteId && modemIds[n].modemId === tm) {
+                            modemMatch = true; break;
+                        }
+                    }
+                    if (modemMatch) break;
+                }
+            }
+
+            // ── A10 / IOT match ──────────────────────────────────────
+            var a10Match = false;
+            if (aIds.length > 0 && rowSiteId) {
+                for (var a = 0; a < rowA10Ids.length; a++) {
+                    var ta = rowA10Ids[a].trim();
+                    for (var b = 0; b < aIds.length; b++) {
+                        if (aIds[b].siteId === rowSiteId && aIds[b].a10Id === ta) {
+                            a10Match = true; break;
+                        }
+                    }
+                    if (a10Match) break;
+                }
+            }
+
+            // ── Sensor match  (uses data-assetid on the <tr>) ────────
+            var sensorMatch = false;
+            if (sensorIds.length > 0 && rowSiteId && rowAssetId) {
+                for (var s = 0; s < sensorIds.length; s++) {
+                    if (sensorIds[s].siteId === rowSiteId && sensorIds[s].assetId === rowAssetId) {
+                        sensorMatch = true; break;
+                    }
+                }
+            }
+
+            // ── Gateway match ────────────────────────────────────────
+            var gwMatch = false;
+            if (faultyGWSiteIds.length > 0 && rowSiteId) {
+                gwMatch = faultyGWSiteIds.indexOf(rowSiteId) > -1;
+            }
+
+            // ── Write badges ─────────────────────────────────────────
+            // td[6] = Sensor
+            row.find('td').eq(6).find('span[id^="spnSensor"]').html(
+                sensorMatch
+                    ? '<span class="badge badge-danger">Faulty</span>'
+                    : '<span class="badge badge-success">Healthy</span>'
+            );
+            // td[7] = IOT
+            row.find('td').eq(7).find('span[id^="spnA10"]').html(
+                a10Match
+                    ? '<span class="badge badge-danger">Faulty</span>'
+                    : '<span class="badge badge-success">Healthy</span>'
+            );
+            // td[8] = Network
+            row.find('td').eq(8).find('span[id^="spnModem"]').html(
+                modemMatch
+                    ? '<span class="badge badge-danger">Faulty</span>'
+                    : '<span class="badge badge-success">Healthy</span>'
+            );
+            // td[9] = Gateway
+            row.find('td').eq(9).find('span[id^="spnGW"]').html(
+                gwMatch
+                    ? '<span class="badge badge-danger">Faulty</span>'
+                    : '<span class="badge badge-success">Healthy</span>'
+            );
+
+            // Show row when at least one fault matched (including GW)
+            if (modemMatch || a10Match || sensorMatch || gwMatch) {
+                row.show();
+            } else {
+                row.hide();
+            }
+        });
+    }
+
+    // =========================================================================
+    // disconnectWebSocket — cleanly closes ALL per-site connections
+    // =========================================================================
+    function disconnectWebSocket() {
+        Object.keys(wsConnections).forEach(function (key) {
+            if (wsReconnectTimers[key])    { clearTimeout(wsReconnectTimers[key]);     wsReconnectTimers[key]    = null; }
+            if (wsHeartbeatIntervals[key]) { clearInterval(wsHeartbeatIntervals[key]); wsHeartbeatIntervals[key] = null; }
+            var conn = wsConnections[key];
+            if (conn) { conn.onclose = null; conn.onerror = null; conn.close(1000); }
+            wsConnections[key] = null;
+            wsIsConnected[key] = false;
+        });
+        wsConnections = {};
+        wsSiteFaults  = {};
+        $('#wsStatusBar').hide().empty();
+    }
+
+    // =========================================================================
+    // Status bar
+    // =========================================================================
+    function updateStatusBar() {
+        var keys      = Object.keys(wsConnections);
+        var connected = keys.filter(function (k) { return wsIsConnected[k]; });
+        var total     = keys.length;
+        var $bar      = $('#wsStatusBar');
+
+        if (total === 0) {
+            $bar.html('<div class="ws-status-bar ws-error"><span class="ws-dot red"></span><strong>No connections</strong></div>').show();
+            return;
+        }
+        if (connected.length === total) {
+            $bar.html(
+                '<div class="ws-status-bar ws-live">' +
+                '<span class="ws-dot live"></span>' +
+                '<strong>Live</strong> — ' + total + '/' + total + ' sites connected' +
+                ' <small style="opacity:.7">[ Sites: ' + connected.join(', ') + ' ]</small>' +
+                '</div>'
+            ).show();
+        } else if (connected.length > 0) {
+            $bar.html(
+                '<div class="ws-status-bar ws-connecting">' +
+                '<span class="ws-dot orange"></span>' +
+                '<strong>Partial</strong> — ' + connected.length + '/' + total + ' sites' +
+                ' <small style="opacity:.7">[ OK: ' + connected.join(', ') + ' ]</small>' +
+                '</div>'
+            ).show();
+        } else {
+            $bar.html(
+                '<div class="ws-status-bar ws-error"><span class="ws-dot red"></span>' +
+                '<strong>Disconnected</strong> — 0/' + total + ' sites</div>'
+            ).show();
+        }
+    }
+
+    function showWsStatus(status) {
+        if (status === 'connecting') {
+            $('#wsStatusBar').html('<div class="ws-status-bar ws-connecting"><span class="ws-dot orange"></span><strong>Connecting...</strong></div>').show();
+        } else if (status === 'error') {
+            $('#wsStatusBar').html('<div class="ws-status-bar ws-error"><span class="ws-dot red"></span><strong>Disconnected</strong></div>').show();
+        }
+    }
+</script>
+
+<script>
+    // =========================================================================
+    // Pagination
+    // =========================================================================
+    var rowsPerPage = 10;
+    var rows, totalRows, totalPages, currentPage, pager;
+
+    function fnRefreshTable() {
+        rows = $('#tblRDPMSHealthLive tbody tr:visible');
+        totalRows = rows.length;
+        totalPages = Math.ceil(totalRows / rowsPerPage);
+        currentPage = 1;
+        pager = $('#pager');
+
+        pager.off('click', '.page-link').on('click', '.page-link', function (e) {
+            e.preventDefault();
+            var li = $(this).parent();
+            if (li.hasClass('disabled') || li.hasClass('active')) return;
+            if (li.data('page') === 'prev') showPage(currentPage - 1);
+            else if (li.data('page') === 'next') showPage(currentPage + 1);
+            else showPage(parseInt($(this).text()));
+        });
+
+        showPage(1);
+    }
+
+    function showPage(page) {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        var start = (page - 1) * rowsPerPage;
+        var end = start + rowsPerPage;
+        rows.hide().slice(start, end).show();
+        renderPager();
+    }
+
+    function renderPager() {
+        pager.find('.page-number, .ellipsis').remove();
+
+        function addPage(p) {
+            $('<li class="page-item page-number ' + (p === currentPage ? 'active' : '') + '">' +
+                '<a class="page-link" href="#">' + p + '</a></li>')
+                .insertBefore(pager.find('[data-page="next"]'));
+        }
+
+        function addEllipsis() {
+            $('<li class="page-item disabled ellipsis"><span class="page-link">...</span></li>')
+                .insertBefore(pager.find('[data-page="next"]'));
+        }
+
+        for (var i = 1; i <= Math.min(3, totalPages); i++) addPage(i);
+        if (currentPage > 5) addEllipsis();
+        for (var i = currentPage - 1; i <= currentPage + 1; i++) {
+            if (i > 3 && i < totalPages - 2) addPage(i);
+        }
+        if (currentPage < totalPages - 4) addEllipsis();
+        for (var i = Math.max(totalPages - 2, 4); i <= totalPages; i++) addPage(i);
+
+        pager.find('[data-page="prev"]').toggleClass('disabled', currentPage === 1);
+        pager.find('[data-page="next"]').toggleClass('disabled', currentPage === totalPages);
+    }
+</script>

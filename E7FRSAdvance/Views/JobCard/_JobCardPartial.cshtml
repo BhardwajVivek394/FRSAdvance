@@ -1,0 +1,295 @@
+﻿@model Domain.JobCard
+
+<style>
+    .vertical-line {
+        border-left: 2px solid #000;
+        height: 100%;
+        margin: 0 auto;
+    }
+
+    .card.jobCardDescription {
+        margin-bottom: 10px;
+    }
+</style>
+<div class="jobcard-viewable-@Model.Id">
+    <div class="card">
+        <div class="card-header bg-secondary collapseView_@Model.Id" style="border-radius:15px;">
+            <div class="pull-right">
+                @{
+                    var mJobCardStatus = new Domain.JobCardStatus();
+                    if (Model.mJobCardStatuses != null && Model.mJobCardStatuses.Count > 0)
+                    {
+                        mJobCardStatus = Model.mJobCardStatuses.FirstOrDefault();
+                    }
+                }
+                <a href="javascript:void(0)" title="Start" style="@(mJobCardStatus.TypeId==(int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Pause?"":"display:none")" onclick="fnChangeWorkStatus('@Model.Id','@E7FRSAdvance.Utility.Utility.JobCardStatusType.PauseStart.GetHashCode()')">
+                    <img src="@Url.Content("~/assets/images/JobCard/Play.png")" />
+                </a>
+                <a href="javascript:void(0)" title="Pause" style="@(mJobCardStatus.TypeId==(int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Start || mJobCardStatus.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.PauseStart?"":"display:none")" onclick="fnPauseWork('@Model.Id','@E7FRSAdvance.Utility.Utility.JobCardStatusType.Pause.GetHashCode()')">
+                    <img src="@Url.Content("~/assets/images/JobCard/Pause.png")" />
+                </a>
+                <a class="m-l-10" title="Stop" onclick="fnChangeWorkStatus('@Model.Id','@E7FRSAdvance.Utility.Utility.JobCardStatusType.Stop.GetHashCode()')" style="@(mJobCardStatus.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Start || mJobCardStatus.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Pause || mJobCardStatus.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.PauseStart?"":"display:none")" href="javascript:void(0)">
+                    <img src="@Url.Content("~/assets/images/JobCard/Stop.png")" />
+                </a>
+                <a href="javascript:void(0)" title="Start" onclick="fnChangeWorkStatus('@Model.Id','@E7FRSAdvance.Utility.Utility.JobCardStatusType.Start.GetHashCode()')" style="@(mJobCardStatus.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Stop || mJobCardStatus.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.NotStart?"":"display:none")">
+                    <img src="@Url.Content("~/assets/images/JobCard/Play.png")" />
+                </a>
+
+                <a class="m-l-10" href="javascript:void(0)" onclick="fnRefreshJobCard('@Model.Id')">
+                    <img src="@Url.Content("~/assets/images/JobCard/refresh.png")" />
+                </a>
+                <a class="m-l-10" href="@Url.Action("DownloadJobCardPDF", new {jobCardId = Model.Id})" title="Download">
+                    <img src="@Url.Content("~/assets/images/JobCard/download.png")" />
+                </a>
+
+                @if (Model.mJobCardOverallTargets != null && Model.mJobCardOverallTargets.Count > 0 && Model.mJobCardOverallTargets.Count == Model.mJobCardOverallTargets.Where(x => x.IsResolved).Count())
+                {
+                    if (Model.IsLock)
+                    {
+                        <img class="m-l-10" src="@Url.Content("~/assets/images/JobCard/Lock_green.png")" />
+                    }
+                    else
+                    {
+                        if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                        {
+                            <a class="m-l-10" href="javascript:void(0)" onclick="fnUpdateLockJobCard('@Model.Id')">
+                                <img src="@Url.Content("~/assets/images/JobCard/Unlock_Yellow.png")" />
+                            </a>
+                        }
+                        else
+                        {
+                            <img class="m-l-10" src="@Url.Content("~/assets/images/JobCard/Unlock_Yellow.png")" />
+                        }
+                    }
+
+                }
+                else
+                {
+                    <img class="m-l-10" src="@Url.Content("~/assets/images/JobCard/Unlock_blue.png")" />
+                }
+            </div>
+            <div class="text-left">
+              
+
+                <div class="row">
+                    <div class="col-lg-2">
+                        <h4>Job Card</h4>
+                    </div>
+                    <div class="col-lg-1">
+                        <a class="btn btn-primary pull-right" type="button" onclick="fnShowJobCardStatus('@Model.Id')">Summary</a>
+                    </div>
+                    <div class="col-lg-2">
+                        <a class="btn btn-primary pull-left m-r-10" type="button" onclick="fnShowJobCardMaterial('@Model.Id')">
+                            Material
+
+                        </a>
+                        @if (Model.mJobCardMaterials != null && Model.mJobCardMaterials.Count > 0)
+                        {
+                            <h5 style="margin-top:5px">@Model.mJobCardMaterials.Where(x => x.IsArrived).Count()/@Model.mJobCardMaterials.Count()</h5>
+                        }
+                    </div>
+
+                </div>
+            </div>
+            <div class="mt-3">
+                <div class="row"><div class="col-md-6"><h4>@(Model.StationCode)@(Model.CreatedDate.ToString("ddMMyy"))</h4></div><div class="col-md-6"><h6 class="pull-right">Created on - @(Model.CreatedDate.ToString("dd/MM/yy"))</h6></div></div>
+            </div>
+
+        </div>
+        <div class="collapse cardView_@Model.Id">
+            <div class="card-body">
+                <div class="row">
+                    @*<div class="col-12">
+                            <button class="btn btn-primary" type="button" onclick="fnShowJobCardStatus('@jobCard.Id')">Summary</button>
+
+                        </div>*@
+                    <div class="col-12">
+                        <h5 class="text-left">Dates</h5>
+                    </div>
+                    <div class="col-12 mt-3">
+                        @if (Model.mJobCardDescriptions != null && Model.mJobCardDescriptions.Count > 0)
+                        {
+                            var last = Model.mJobCardDescriptions.GroupBy(x => x.CreatedDate.Date).Select(x => x.Key).Max();
+                            foreach (var jd in Model.mJobCardDescriptions.GroupBy(x => x.CreatedDate.Date))
+                            {
+                                <a class="@(jd.Key.Equals(last)?"btn btn-info":"btn btn-primary") clsbtnSearchDates@(Model.Id)" onclick="fnGetJobCardDescription('@Model.Id','@jd.Key.ToShortDateString().Replace("/","-")')">@jd.Key.ToShortDateString()</a>
+                            }
+                        }
+                    </div>
+                    <hr class="mt-3" />
+                    <div class="col-lg-6">
+                        <div class="row">
+                            <div class="col-12">
+                                <h5 class="text-left">
+                                    Site Keeping Users
+                                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                    {
+                                        <a href="javascript:void(0)" title="Add Users" onclick="fnAssignUser('@Model.Id')"><i class="fa fa-plus f-20"></i></a>
+                                    }
+                                </h5>
+                            </div>
+                            <div class="col-12 mt-3">
+                                @if (Model.mJobCardUsers != null && Model.mJobCardUsers.Count > 0)
+                                {
+                                    foreach (var jd in Model.mJobCardUsers)
+                                    {
+                                        <a class="btn btn-success m-1">@jd.Name</a>
+
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="row">
+                            <div class="col-12">
+                                <h5 class="text-left">
+                                    Maintainer Users
+                                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                    {
+                                        <a href="javascript:void(0)" title="Add Maintainer Users" onclick="fnShowAssignMaintainerUser('@Model.Id')"><i class="fa fa-plus f-20"></i></a>
+                                    }
+                                </h5>
+                            </div>
+                            <div class="col-12 mt-3">
+                                @if (Model.mJobCardMaintainerUsers != null && Model.mJobCardMaintainerUsers.Count > 0)
+                                {
+                                    foreach (var jd in Model.mJobCardMaintainerUsers)
+                                    {
+                                        <a class="btn btn-success m-1">@jd.Name</a>
+
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    <hr class="mt-3" />
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-12">
+                                <h5 class="pull-left">
+                                    Overall Targets
+                                    <a href="javascript:void(0)" title="Add Overall Target" onclick="fnOverallTargets('@Model.SiteId','@Model.Id')"><i class="fa fa-plus f-20"></i></a>
+                                    @if (Model.mJobCardOverallTargets != null && Model.mJobCardOverallTargets.Count > 0)
+                                    {
+                                        <a class="m-l-10" onclick="fnSiteKeepingOverallTargets('@Model.Id')"><i class="fa fa-eye f-20"></i></a>
+
+                                    }
+                                </h5>
+                                <h5 class="pull-right">
+                                    @Model.mJobCardOverallTargets.Where(x => x.IsResolved).Count()/@Model.mJobCardOverallTargets.Count()
+
+                                </h5>
+                            </div>
+                        </div>
+                    </div>
+                    <hr class="mt-3" />
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="row">
+                                    <div class="col-lg-6 mb-4">
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <h5 class="text-left">
+                                                    Daily Work
+                                                    <span class="addDailyWork">
+                                                        <a href="javascript:void(0)" title="Add Daily Work" class="dailyWork" onclick="fnAddDailyWork(@Model.Id)"><i class="fa fa-plus f-20"></i></a>
+                                                    </span>
+                                                </h5>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 mb-4">
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <h5 class="text-left">
+                                                    Remark
+
+                                                </h5>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @if (Model.mJobCardDescriptions != null && Model.mJobCardDescriptions.Count > 0)
+                                    {
+                                        <div class="viewJobCardDescription_@Model.Id">
+                                            @{var maxDate = Model.mJobCardDescriptions.Max(x => x.CreatedDate);}
+                                            @foreach (var jobCardDescription in Model.mJobCardDescriptions.Where(x => x.CreatedDate.Date == maxDate.Date))
+                                            {
+                                                <div class="col-12">
+                                                    <div class="card jobCardDescription">
+                                                        <div class="card-body">
+                                                            <div class="row">
+                                                                <div class="col-md-5">
+                                                                    <span class="spnDailywork_@Model.Id">
+                                                                        @jobCardDescription.DailyWork
+                                                                    </span>
+                                                                </div>
+                                                                <div class="col-md-1">
+                                                                    <div class="vertical-line"></div>
+                                                                </div>
+                                                                @if (string.IsNullOrEmpty(jobCardDescription.Remark) && maxDate.Date == DateTime.Now.Date)
+                                                                {
+                                                                    <div class="col-md-6">
+                                                                        <h5>
+                                                                            
+                                                                            <a href="javascript:void(0)" title="Update Remark" onclick="fnAddRemark(@jobCardDescription.Id)">
+                                                                                Update Remark
+                                                                            </a>
+                                                                        </h5>
+                                                                    </div>
+
+
+                                                                }
+                                                                else
+                                                                {
+                                                                    <div class="col-md-6">
+                                                                        <span class="spnRemark_@Model.Id">
+                                                                            @jobCardDescription.Remark
+                                                                        </span>
+                                                                    </div>
+
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            @*<div class="col-6">
+                                    <div class="col-12">
+                                        <h5 class="text-left">Remark</h5>
+                                    </div>
+                                    @if (Model.mJobCardDescriptions != null && Model.mJobCardDescriptions.Count > 0)
+                                    {
+                                        <div class="col-12">
+                                            <span class="spnRemark_@Model.Id">
+                                                @Model.mJobCardDescriptions.LastOrDefault().Remark
+                                            </span>
+                                        </div>
+                                    }
+                                </div>*@
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $(".collapseView_@Model.Id").click(function (e) {
+
+            if (e.target.tagName === 'A') return;
+            if (e.target.tagName === 'IMG') return;
+
+           $(".cardView_@Model.Id").collapse('toggle');
+        });
+
+    });
+
+</script>

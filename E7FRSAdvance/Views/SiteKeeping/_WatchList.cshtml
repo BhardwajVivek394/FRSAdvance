@@ -1,0 +1,607 @@
+﻿@model Domain.WatchListLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-10">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                            @*<a class="btn btn-success" href="#" data-toggle="modal" data-target="#modelConfirmCluster">Download</a>*@
+                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modelConfirmCluster">Download</button>
+                        </div>
+
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnWatchListSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "form-control", id = "drpPageSizeWatchList" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+
+                            <button type="button" class="btn btn-outline-dark" onclick="GetWatchListPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetWatchListPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.WatchLists.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Watch List</span>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        <table class="table" id="tblWatchList">
+                            <thead class="bg-primary">
+                                <tr>
+                                    <th></th>
+                                    <th></th>
+                                    <th data-sortcolumn="SerialNumber" class="sorting text-center" id="thSerialNumber" onclick="SortList('SerialNumber');">Serial Number</th>
+                                    <th data-sortcolumn="SiteName" class="sorting" id="thSiteName" onclick="SortList('SiteName');">Site Name</th>
+                                    <th data-sortcolumn="AssetTypeName" class="sorting" id="thAssetTypeName" onclick="SortList('AssetTypeName');">Asset Type Name</th>
+                                    <th data-sortcolumn="AssetTypeName" class="sorting" id="thAssetTypeName" onclick="SortList('AssetTypeName');">Cluster Name</th>
+                                    <th data-sortcolumn="AssetName" class="sorting" id="thAssetName" onclick="SortList('AssetName');">Asset Name</th>
+                                    <th data-sortcolumn="AttributeName" class="sorting" id="thAttributeName" onclick="SortList('AttributeName');">Attribute Name</th>
+                                    <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">TimeStamp</th>
+
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.WatchLists != null && Model.WatchLists.Count > 0)
+                                {
+                                    foreach (var item in Model.WatchLists)
+                                    {
+                                        <tr class="table-light">
+                                            <td>
+                                                @if (item.CardLines != null && item.CardLines.Count > 0)
+                                                {
+                                                    <a href="#"><i class="fa fa-plus text-vision" onclick="fnGetCluster('@item.SerialNumber',this)"></i></a>
+                                                }
+                                            </td>
+                                            <td><a href="#" data-placement="top" onclick="fnGetAssetAttribute('@item.SiteName','@item.AssetId','@item.AssetTypeId')"><i class="fa fa-eye text-vision"></i></a></td>
+                                            <td class="text-center">@item.SerialNumber</td>
+                                            <td>@item.SiteName</td>
+                                            <td>@item.AssetTypeName</td>
+                                            <td>@item.ClusterName</td>
+                                            <td>@item.AssetName</td>
+                                            <td>@item.AttributeName</td>
+                                            <td>@item.CreatedDate.ToString()</td>
+                                        </tr>
+                                        if (item.CardLines != null && item.CardLines.Count > 0)
+                                        {
+                                            var attributeNameGroup = item.CardLines.Where(x => x.AttributeName != null).GroupBy(x => x.AttributeName).ToList();
+                                            <tr style="display:none" class="trAsset_@item.SerialNumber">
+                                                <td colspan="9">
+                                                    <table class="table">
+                                                        <thead class="bg-primary">
+                                                            <tr>
+                                                                <th></th>
+                                                                @foreach (var attributeName in attributeNameGroup)
+                                                                {
+                                                                    <th>@attributeName.Key</th>
+                                                                }
+                                                            </tr>
+
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr>
+                                                                <td><b>Cluster</b></td>
+                                                                @foreach (var attributeName in attributeNameGroup)
+                                                                {
+                                                                    foreach (var cardItem in item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()))
+                                                                    {
+                                                                        <td>@cardItem.ClusterName</td>
+                                                                    }
+                                                                    if (item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()).Count() <= 0)
+                                                                    {
+                                                                        <td></td>
+                                                                    }
+                                                                }
+                                                            </tr>
+
+                                                            <tr>
+                                                                <td><b>Card</b></td>
+                                                                @foreach (var attributeName in attributeNameGroup)
+                                                                {
+                                                                    foreach (var cardItem in item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()))
+                                                                    {
+                                                                        <td>@cardItem.CardName (@cardItem.Number)</td>
+                                                                    }
+                                                                    if (item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()).Count() <= 0)
+                                                                    {
+                                                                        <td></td>
+                                                                    }
+                                                                }
+                                                            </tr>
+                                                            <tr>
+                                                                <td><b>ADC</b></td>
+                                                                @foreach (var attributeName in attributeNameGroup)
+                                                                {
+                                                                    foreach (var cardItem in item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()))
+                                                                    {
+                                                                        <td>
+                                                                            ADC @cardItem.SequenceNumber<br />
+                                                                            (@cardItem.ADCNumber)
+                                                                        </td>
+                                                                    }
+                                                                    if (item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()).Count() <= 0)
+                                                                    {
+                                                                        <td></td>
+                                                                    }
+                                                                }
+                                                            </tr>
+                                                            <tr>
+                                                                <td><b>Pin</b></td>
+                                                                @foreach (var attributeName in attributeNameGroup)
+                                                                {
+                                                                    foreach (var cardItem in item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()))
+                                                                    {
+                                                                        <td>
+                                                                            @cardItem.Pin
+                                                                        </td>
+
+                                                                    }
+                                                                    if (item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()).Count() <= 0)
+                                                                    {
+                                                                        <td></td>
+                                                                    }
+                                                                }
+                                                            </tr>
+                                                            <tr>
+                                                                <td><b>Role</b></td>
+                                                                @foreach (var attributeName in attributeNameGroup)
+                                                                {
+                                                                    foreach (var cardItem in item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()))
+                                                                    {
+                                                                        <td>
+                                                                            @cardItem.Role
+                                                                        </td>
+
+                                                                    }
+                                                                    if (item.CardLines.Where(x => x.AssetId == item.AssetId && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()).Count() <= 0)
+                                                                    {
+                                                                        <td></td>
+                                                                    }
+                                                                }
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </td>
+                                            </tr>
+                                        }
+
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="9" class="text-center">
+                                            No record found
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-2 xl-40">
+            <div class="row">
+                <div class="col-xl-12 default-according style-1 faq-accordion job-accordion">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <a class="btn btn-link">Search Watch List</a>
+                            </h5>
+                        </div>
+                        <div class="card-body filter-cards-view animate-chk">
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">TimeStamp:</label>
+                                @*@Html.TextBoxFor(m => m.SearchCriteria.TimeStamp, new { @class = "form-control", type = "text", id = "txtSearchTimeStamp"})*@
+                                <input type="text" class="form-control" id="txtSearchTimeStampWatchList" name="SearchCriteria.TimeStamp" value="@Model.SearchCriteria.CreatedDate.ToShortDateString()" />
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Zone:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", id = "zoneAdd1", tabindex = 1 })
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Division:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "divisions", tabindex = 1 })
+                                @*<select class="form-control" id=""></select>*@
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Site:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites,"Select Site", new { @class = "form-control", id = "siteId", tabindex = 1 })
+                            </div>
+
+                            <div class="form-group">
+                                <div class="row">
+                                    <div class="col-sm-6">
+                                        <a class="btn btn-success" onclick="SearchWatchList()">Search</a>
+                                    </div>
+                                    @*<div class="col-sm-6">
+                                            <a class="btn btn-default btn-quirk btn-block" onclick="Clear()">Clear</a>
+                                        </div>*@
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modelConfirmCluster" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Confirm Cluster</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnDownloadWatchList(true)">With Cluster</button>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnDownloadWatchList(false)">Without Cluster</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#drpPageSizeWatchList').change(function (e) {
+            $("#hdnWatchListSkip").val('0');
+            $("#frmWatchList").submit();
+        });
+
+        $("#txtSearchTimeStampWatchList").keyup(function (e) {
+            e.preventDefault();
+            if (e.keyCode === 13) {
+                if ($.trim($("#txtSearchTitle").val()) !== "") {
+                    $("#hdnWatchListSkip").val('0');
+                    $("#frmWatchList").submit();
+                }
+                else {
+                    $("#hdnTake").val(parseInt($("#drpPageSizeWatchList").val()));
+                    $("#frmWatchList").submit();
+                }
+            }
+        });
+
+        $('#txtSearchTimeStampWatchList').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtSearchTimeStampWatchList').val() == "@DateTime.MinValue") {
+            $('#txtSearchTimeStampWatchList').val('');
+        }
+
+        $('#txtSearchTimeStampWatchList').change(function () {
+            $("#frmWatchList").submit();
+        });
+
+
+
+        $("#zoneAdd1").change(function () {
+            GetDivisionByZone($(this).val());
+        });
+
+        $("#divisions").change(function () {
+            fnGetAllSites($("#zoneAdd1").val(), $(this).val());
+        });
+
+        GetDivisionByZone($("#zoneAdd1").val());
+
+        fnGetAllSites($("#zoneAdd1").val(), $("#divisions").val());
+
+    });
+
+   
+
+
+    function GetWatchListPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnWatchListSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnWatchListSkip").val(skip);
+                $("#frmWatchList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnWatchListSkip").val(skip);
+                $("#frmWatchList").submit();
+            }
+        }
+    }
+    function PageSize() {
+        $("#hdnWatchListSkip").val('0');
+        $("#frmWatchList").submit();
+    }
+
+    function SearchWatchList() {
+        $("#hdnWatchListSkip").val('0');
+        $("#frmWatchList").submit();
+    }
+
+    function SortList(columnName) {
+        $("#hdnColumnName").val(columnName);
+        if ($("#th" + columnName).hasClass("sorting")) {
+            $("#hdnSortDirection").val("ASC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_desc');
+        }
+        else if ($("#th" + columnName).hasClass("sorting_desc")) {
+            $("#hdnSortDirection").val("DESC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_asc');
+        }
+        else if ($("#th" + columnName).hasClass("sorting_asc")) {
+            $("#hdnSortDirection").val("ASC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_desc');
+        }
+        $("#frmWatchList").submit();
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/SiteKeeping/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divisions").empty();
+                    $("#divisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        if ('@Model.SearchCriteria.DivisionId' != '0' && '@Model.SearchCriteria.DivisionId' == value.Id) {
+                            $("#divisions").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#divisions").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnGetAllSites(zoneId, divisionId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '' && divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/SiteKeeping/GetSites',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + ',divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#siteId").empty();
+                    $("#siteId").append($("<option></option>").val('0').html('Select Sites'));
+                    $.each(data, function (key, value) {
+                        if ('@Model.SearchCriteria.SiteId' != '0' && '@Model.SearchCriteria.SiteId' == value.Id) {
+                            $("#siteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#siteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnGetCluster(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trAsset_' + assetId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trAsset_' + assetId).hide();
+            }
+        }
+    }
+
+    function fnGetAssetAttribute(siteName, assetId, assetTypeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + siteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+                
+    }
+
+    function fnDownloadWatchList(isWithCluster) {
+        $("#modelConfirmCluster").modal("hide");
+        if (isWithCluster) {
+            window.location.href = "@Url.Action("DownloadWatchListCSV", "SiteKeeping", new { isWithCluster = true })";
+        } else {
+            window.location.href = "@Url.Action("DownloadWatchListCSV", "SiteKeeping", new { isWithCluster = false })";
+        }
+
+    }
+
+
+    function DownloadFile() {
+        var titles = [];
+        var data = [];
+
+        $('#tblWatchList > thead > tr > th').each(function () {
+            if ($.trim($(this).text()) != '') {
+                titles.push($.trim($(this).text()));
+            }
+        });
+
+        $('#tblWatchList > tbody > tr').each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+
+                var ds = $($(this).closest('table').closest('table tr')[0]);
+
+                if (id == 14 && $.trim($(ele).text()) != '') {
+                    var item = "'" + $.trim($(ele).text())
+                    data.push(item);
+                }
+                else if (id == 15 && $.trim($(ele).text()) != '') {
+                    var item = "'" + $.trim($(ele).text())
+                    data.push(item);
+                }
+                else {
+                    data.push($.trim($(ele).text()));
+                }
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "WatchList" + GenerateUniqueCode() + ".csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+
+    function fnGetCurrentDate() {
+        var today = new Date();
+        return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    }
+
+    function fnGetFirstDate() {
+        var today = new Date();
+        return new Date(today.getFullYear(), today.getMonth(), 1);
+    }
+
+</script>

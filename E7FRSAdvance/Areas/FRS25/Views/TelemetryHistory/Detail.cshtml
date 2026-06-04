@@ -1,0 +1,405 @@
+@{ ViewBag.Title = "Telemetry History";
+                Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/paho-mqtt.js"></script>
+
+<style>
+    /* ══ TELEMETRY HISTORY DETAIL — Aurora Theme ══ */
+    #tablePager {
+        text-align: right;
+        padding: 8px 16px;
+    }
+
+    .at-row-count {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        font-family: 'JetBrains Mono',monospace;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: rgba(34,211,238,0.12);
+        border: 1px solid rgba(34,211,238,0.25);
+        color: #22d3ee;
+    }
+
+    /* Date pill */
+    .at-date-pill {
+        display: flex;
+        align-items: center;
+        height: 38px;
+        background: var(--at-g1,rgba(255,255,255,0.04));
+        border: 1px solid var(--at-edge,rgba(255,255,255,0.10));
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+        .at-date-pill input {
+            height: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--at-t1,rgba(255,255,255,0.96));
+            font-size: 12.5px;
+            padding: 0 10px;
+            font-family: 'JetBrains Mono',monospace;
+            min-width: 0;
+        }
+
+            .at-date-pill input::placeholder {
+                color: var(--at-t4,rgba(255,255,255,0.30));
+            }
+
+        .at-date-pill .at-sep {
+            color: var(--at-t4,rgba(255,255,255,0.28));
+            font-size: 12px;
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        .at-date-pill:focus-within {
+            border-color: var(--at-brand,#22d3ee);
+            box-shadow: 0 0 0 3px rgba(34,211,238,0.15);
+        }
+
+    /* Result table */
+    #listView .history-table-wrapper {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 62vh;
+    }
+
+    #listView table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        font-family: 'JetBrains Mono',monospace;
+    }
+
+        #listView table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: rgba(15,25,55,0.97);
+            color: rgba(255,255,255,0.90);
+            padding: 9px 12px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 11.5px;
+            border-bottom: 2px solid rgba(34,211,238,0.30);
+            white-space: nowrap;
+        }
+
+        #listView table tbody tr {
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: background .12s;
+        }
+
+            #listView table tbody tr:hover {
+                background: rgba(34,211,238,0.06);
+            }
+
+            #listView table tbody tr:nth-child(even) {
+                background: rgba(255,255,255,0.02);
+            }
+
+        #listView table tbody td {
+            padding: 7px 10px;
+            text-align: center;
+            color: rgba(255,255,255,0.72);
+            white-space: nowrap;
+        }
+
+            #listView table tbody td:first-child {
+                color: rgba(255,255,255,0.90);
+                font-weight: 600;
+                text-align: left;
+            }
+
+            #listView table tbody td.val-changed {
+                color: #34d399 !important;
+                font-weight: 700;
+            }
+
+            #listView table tbody td.val-unchanged {
+                color: rgba(255,255,255,0.30) !important;
+            }
+
+        #listView table thead th.derived-col {
+            background: rgba(139,92,246,0.18) !important;
+            color: rgba(167,139,250,0.95);
+            border-left: 2px solid rgba(139,92,246,0.45);
+        }
+
+        #listView table tbody td.derived-val {
+            background: rgba(139,92,246,0.06);
+            color: rgba(167,139,250,0.85);
+            font-weight: 500;
+            border-left: 1px solid rgba(139,92,246,0.15);
+        }
+
+    .dl-pickup {
+        color: #34d399 !important;
+        font-weight: 700;
+    }
+
+    .dl-drop {
+        color: #fb7185 !important;
+        font-weight: 700;
+    }
+
+    /* Pagination */
+    #tablePager .pagination {
+        display: flex;
+        gap: 4px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        justify-content: flex-end;
+    }
+
+    #tablePager .page-link {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.72);
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 6px;
+        text-decoration: none;
+        transition: all .18s;
+        min-width: 34px;
+        height: 32px;
+        font-family: 'JetBrains Mono',monospace;
+    }
+
+        #tablePager .page-link:hover {
+            background: rgba(34,211,238,0.12);
+            border-color: rgba(34,211,238,0.30);
+            color: #22d3ee;
+        }
+
+    #tablePager .page-item.active .page-link {
+        background: rgba(34,211,238,0.20);
+        color: #22d3ee;
+        border-color: rgba(34,211,238,0.45);
+    }
+
+    #tablePager .page-item.disabled .page-link {
+        opacity: .30;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    /* Light theme */
+    body[data-aurora="light"] .at-date-pill {
+        background: rgba(255,255,255,0.80) !important;
+        border-color: rgba(15,23,42,0.14) !important;
+    }
+
+        body[data-aurora="light"] .at-date-pill input {
+            color: #0b1530 !important;
+        }
+
+    body[data-aurora="light"] #listView table tbody tr:hover {
+        background: rgba(34,211,238,0.06) !important;
+    }
+
+    body[data-aurora="light"] #listView table tbody tr:nth-child(even) {
+        background: rgba(15,23,42,0.03) !important;
+    }
+
+    body[data-aurora="light"] #listView table tbody td {
+        color: #334155 !important;
+    }
+
+        body[data-aurora="light"] #listView table tbody td:first-child {
+            color: #0b1530 !important;
+        }
+
+    body[data-aurora="light"] #tablePager .page-link {
+        background: rgba(255,255,255,0.80) !important;
+        border-color: rgba(15,23,42,0.14) !important;
+        color: #334155 !important;
+    }
+
+    body[data-aurora="light"] #tablePager .page-item.active .page-link {
+        background: rgba(34,211,238,0.15) !important;
+        color: #0891b2 !important;
+    }
+
+    body[data-aurora="light"] .at-row-count {
+        background: rgba(8,145,178,0.10) !important;
+        border-color: rgba(8,145,178,0.22) !important;
+        color: #0891b2 !important;
+    }
+</style>
+
+@* PAGE HEADER *@
+<div class="at-page-header">
+    <div>
+        <div class="at-page-eyebrow"><i class="fas fa-history"></i> RDPMS &middot; Telemetry</div>
+        <h1 class="at-page-title">Telemetry History</h1>
+        <p class="at-page-sub">Historical asset readings with date-range search</p>
+    </div>
+</div>
+
+@* FILTER BAR *@
+<div class="at-filter-bar">
+    <span class="at-filter-label"><i class="fas fa-filter"></i> Filters</span>
+    <div class="at-filter-sep"></div>
+    <div class="at-field at-field-select">
+        <span>Zone</span>
+        @Html.DropDownList("ZoneId", (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", @id = "drpZones", tabindex = 1 })
+    </div>
+    <div class="at-field at-field-select">
+        <span>Division</span>
+        @Html.DropDownList("DivisionId", (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", @id = "drpDivisions", tabindex = 2 })
+    </div>
+    <div class="at-field at-field-select">
+        <span>Site</span>
+        @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", @id = "drpSite", tabindex = 3 })
+    </div>
+    <div class="at-field at-field-select">
+        <span>Asset Type</span>
+        @Html.DropDownList("AssetTypeId", (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "All", new { @class = "form-control", @id = "drpAssetType", tabindex = 4 })
+    </div>
+    <div class="at-field at-field-select">
+        <span>Asset No.</span>
+        <select class="form-control" id="drpAsset"></select>
+    </div>
+    <div class="at-filter-sep"></div>
+    <div class="at-field at-field-date">
+        <span>From</span>
+        <div class="at-date-pill">
+            <input type="text" id="txtFromDate" placeholder="Date" tabindex="5" />
+            <span class="at-sep">&middot;</span>
+            <input type="text" id="txtFromTime" placeholder="00:00" tabindex="6" style="width:72px;" />
+        </div>
+    </div>
+    <div class="at-field at-field-date">
+        <span>To</span>
+        <div class="at-date-pill">
+            <input type="text" id="txtToDate" placeholder="Date" tabindex="7" />
+            <span class="at-sep">&middot;</span>
+            <input type="text" id="txtToTime" placeholder="00:00" tabindex="8" style="width:72px;" />
+        </div>
+    </div>
+    <div class="at-filter-sep"></div>
+    <button type="button" class="at-btn at-btn-primary" onclick="fnSearchView()" style="align-self:flex-end;margin-bottom:0;">
+        <i class="fas fa-search"></i> Search
+    </button>
+    <div id="downloadContainer" style="display:none;align-self:flex-end;">
+        <button class="at-btn at-btn-sm" id="btn2" title="Export">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24">
+                <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
+            </svg>
+            Export
+        </button>
+    </div>
+</div>
+
+@* RESULTS CARD *@
+<div class="at-table-card">
+    <div class="at-table-card-head">
+        <div class="at-table-card-title">
+            <span class="at-t-icon"><i class="fas fa-history"></i></span>
+            Historical Readings
+        </div>
+        <div class="at-table-card-actions">
+            <span class="at-row-count" id="atHistRowCount" style="display:none;">—</span>
+            <div id="tablePager"></div>
+        </div>
+    </div>
+    <div class="at-table-scroll">
+        <div id="listView"></div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#txtFromDate').datepicker({ dateFormat: 'm/d/yy', autoClose: true });
+        $('#txtToDate').datepicker({ dateFormat: 'm/d/yy', autoClose: true });
+        $('#txtFromTime').clockpicker({ placement: 'bottom', align: 'right', autoclose: true, 'default': '00:00' });
+        $('#txtToTime').clockpicker({ placement: 'bottom', align: 'right', autoclose: true, 'default': '00:00' });
+        $('#drpZones').change(function () { GetDivisionByZone($(this).val()); });
+        $('#drpDivisions').change(function () { GetByDivisionId($(this).val()); });
+        $('#drpAssetType').change(function () { GetByAssest($('#drpSite').val(), $(this).val()); });
+    });
+
+    function GetDivisionByZone(zoneId) {
+        if (!zoneId) return;
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/Telemetry/GetDivisionByZoneId', type: 'POST', data: '{zoneId:' + zoneId + '}', contentType: 'application/json',
+            success: function (data) { $("#loader").hide(); $("#drpDivisions").empty().append($("<option></option>").val('0').html('All')); $.each(data, function (k, v) { $("#drpDivisions").append($("<option></option>").val(v.Id).html(v.Name)); }); },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+    function GetByDivisionId(divisionId) {
+        if (!divisionId) return;
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/Telemetry/GetSiteByDivisionId', type: 'POST', data: '{divisionId:' + divisionId + '}', contentType: 'application/json',
+            success: function (data) { $("#loader").hide(); $("#drpSite").empty().append($("<option></option>").val('0').html('All')); $.each(data, function (k, v) { $("#drpSite").append($("<option></option>").val(v.Id).html(v.Name)); }); },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+    function GetByAssest(siteId, assetTypeId) {
+        if (!siteId || !assetTypeId) return;
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/Telemetry/GetAssestBy', type: 'POST', data: '{siteId:' + siteId + ',assetTypeId:' + assetTypeId + '}', contentType: 'application/json',
+            success: function (data) { $("#loader").hide(); $("#drpAsset").empty().append($("<option></option>").val('0').html('All')); $.each(data, function (k, v) { $("#drpAsset").append($("<option></option>").val(v.Id).html(v.Name)); }); },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+
+    function fnSearchView() {
+        var isValid = true;
+        var mAsset = {};
+        mAsset.Id = $('#drpAsset').val(); mAsset.SiteId = $('#drpSite').val();
+        mAsset.AssetTypeId = $('#drpAssetType').val();
+        mAsset.StartDate = $('#txtFromDate').val(); mAsset.EndDate = $('#txtToDate').val();
+        mAsset.StartTime = $('#txtFromTime').val(); mAsset.EndTime = $('#txtToTime').val();
+        mAsset.IsReadHttpPost = false;
+        if (!mAsset.SiteId) { isValid = false; alert('Please select a site'); }
+        else if (!mAsset.AssetTypeId) { isValid = false; alert('Please select an asset type'); }
+        else if (!mAsset.Id) { isValid = false; alert('Please select an asset'); }
+        else if (!mAsset.StartDate) { isValid = false; alert('Please select From Date'); }
+        else if (!mAsset.EndDate) { isValid = false; alert('Please select To Date'); }
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/Telemetry/_DetailList', type: 'Post',
+                data: '{asset:' + JSON.stringify(mAsset) + '}', contentType: 'application/json', dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide(); $('#listView').empty().append(data); $('#downloadContainer').show();
+                    var rows = $('#listView table tbody tr').length;
+                    if (rows > 0) { $('#atHistRowCount').text(rows + ' record' + (rows !== 1 ? 's' : '')).show(); }
+                },
+                error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+            });
+        }
+    }
+    function fnBindTable() {
+        var m = { SearchCriteria: { SiteId: $('#drpSite').val(), Id: $('#drpAsset').val(), AssetTypeId: $('#drpAssetType').val() } };
+        $.ajax({
+            url: '/FRS25/Telemetry/_Table', type: 'POST', contentType: 'application/json', data: JSON.stringify(m),
+            success: function (data) { $('#divTelemetryLive').empty().append(data); },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+    function fnBindYard() {
+        var m = { SiteId: $('#drpSite').val(), Id: $('#drpAsset').val(), AssetTypeId: $('#drpAssetType').val() };
+        $.ajax({
+            url: '/FRS25/Telemetry/_Yard', type: 'POST', contentType: 'application/json', data: JSON.stringify(m),
+            success: function (data) { $('#divTelemetryLive').empty().append(data); },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+</script>

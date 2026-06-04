@@ -1,0 +1,176 @@
+﻿@model Domain.AssetLister
+@{
+    ViewBag.Title = "SipView1";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link href="~/assets/sip/css/rappid.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.css" rel="stylesheet" />
+<link href="~/assets/sip/css/theme-picker.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.dark.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.material.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.modern.css" rel="stylesheet" />
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<div class="container-fluid">
+
+    <input type="hidden" id="hdnId" value="0" />
+    <input type="hidden" id="hdnSiteId" value="@Model.SearchCriteria.SiteId" />
+    <button class="btn btn-success" onclick="SaveSipView()" id="save">Save</button>
+
+    <div id="app" style="height:800px">
+        <div class="app-header">
+            <div class="app-title">
+
+            </div>
+            <div class="toolbar-container"></div>
+        </div>
+        <div class="app-body mt-2">
+            <div class="stencil-container"></div>
+            <div class="paper-container"></div>
+            <div class="inspector-container"></div>
+            <div class="navigator-container"></div>
+        </div>
+    </div>
+
+</div>
+<div class="modal bounceIn animated" id="modal-add-asset" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-add-asset" style="overflow-y:hidden">
+    <div class="modal-dialog  modal-lg">
+        <div class="modal-content bradius4">
+
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"></span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body">
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSaveAsset()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<script>
+    var assetNames = null;
+    var isInteractive = true;
+    $(document).ready(function () {
+        assetNames = [
+            { value: '3T1', content: '<span>3T1</span>' },
+            { value: '06', content: '<span>06</span>' },
+            { value: '05', content: '<span>05</span>' }
+        ]
+    });
+</script>
+
+
+
+<script src="~/assets/sip/js/lodash.js"></script>
+<script src="~/assets/sip/js/backbone.js"></script>
+<script src="~/assets/sip/js/graphlib.core.js"></script>
+<script src="~/assets/sip/js/dagre.core.js"></script>
+@*<script src="~/assets/sip/js/rappid.js"></script>*@
+<script src="~/assets/sip/js/JavaScript.js"></script>
+
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<!-- Application files:  -->
+<script src="~/assets/sip/js/halo.js"></script>
+<script src="~/assets/sip/js/selection.js"></script>
+<script src="~/assets/sip/js/inspector.js"></script>
+<script src="~/assets/sip/js/stencil.js"></script>
+@*<script src="~/assets/sip/js/toolbar.js"></script>*@
+<script src="~/assets/sip/js/toolbar-main.js"></script>
+@*<script src="~/assets/sip/js/sample-graphs.js"></script>*@
+<script src="~/assets/sip/js/main.js"></script>
+<script src="~/assets/sip/js/theme-picker.js"></script>
+<script src="~/assets/sip/js/joint.shapes.app.js"></script>
+<script src="~/assets/sip/js/navigator.js"></script>
+
+<script>
+    var app = null;
+    var parseJson = null
+    $(document).ready(function () {
+        joint.setTheme('modern');
+        app = new App.MainView({ el: '#app' });
+        themePicker = new App.ThemePicker({ mainView: app });
+        themePicker.render().$el.appendTo(document.body);
+        //window.addEventListener('load', function () {
+        //    app.graph.fromJSON(JSON.parse(App.config.sampleGraphs.emergencyProcedure));
+        //});
+
+        GetSipView();
+
+    })
+
+    function SaveSipView() {
+        var sipView = {};
+        sipView.SiteId = $("#hdnSiteId").val();
+        sipView.Id = $("#hdnId").val();
+        sipView.SiteId = $("#hdnSiteId").val();
+        sipView.SipView1 = JSON.stringify(app.graph.toJSON());// JSON.stringify(sipViewJson);
+        //   console.log(sipView.SipView1)
+        $.ajax({
+            url: '/Site/SaveSipView',
+            type: 'Post',
+            data: '{sipView:' + JSON.stringify(sipView) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data == true) {
+                    CommonNotification("success", "SipView has been Saved.", "success");
+                }
+                else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function GetSipView() {
+        $.ajax({
+            url: '/Site/GetSipView',
+            type: 'Post',
+            data: '{siteId:' + $("#hdnSiteId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.Id > 0) {
+                    parseJson = JSON.parse(data.SipView1);
+                    app.graph.fromJSON(parseJson);
+                }
+                else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>
+<script>
+    (function () {
+        var fs = (document.location.protocol === 'file:');
+        var ff = (navigator.userAgent.toLowerCase().indexOf('firefox') !== -1);
+        if (fs && !ff) {
+            (new joint.ui.Dialog({
+                width: 300,
+                type: 'alert',
+                title: 'Local File',
+                content: $('#message-fs').show()
+            })).open();
+        }
+    })();
+</script>

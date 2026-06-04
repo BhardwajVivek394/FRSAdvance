@@ -1,0 +1,121 @@
+﻿@model List<Domain.Datalogger>
+
+<div class="modal bounceIn animated" id="modalDataloggerLogs" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-lg">
+        <div class="modal-content bradius4 modal-lg">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel">
+                    @if (ViewBag.AssetName != null)
+                    {
+                        <span id="spHeader">Deadband - @ViewBag.AssetName</span>
+                    }
+                    else
+                    {
+                        <span id="spHeader">Deadband</span>
+                    }
+                </h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="row">
+                    <div class="col-sm-6">
+
+                    </div>
+
+                    <div class="col-sm-4">
+                        @if (ViewBag.AssetId != null)
+                        {
+                            <input type="text" class="form-control" placeholder="Search Date" id="searchDataloggerDate" onchange="fnGetAssetEventLog('@ViewBag.SiteId','@ViewBag.AssetId', true)" />
+                        }
+                        else
+                        {
+                            <input type="text" class="form-control" placeholder="Search Date" id="searchDataloggerDate" onchange="fnGetEventLog('@ViewBag.SiteId')" />
+                        }
+                    </div>
+                    <div class="col-sm-2">
+                        <button type="button" class="btn btn-success" onclick="DownloadDatalogger()">Download</button>
+                    </div>
+
+                    <div class="col-sm-12" id="deadbandDataByDate">
+                        @Html.Partial("_EventGraphDeadband", Model)
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    $('#searchDataloggerDate').datepicker({
+        dateFormat: 'd/m/yy',
+        autoClose: true
+    }).datepicker("setDate", new Date());
+
+    function DownloadDatalogger() {
+
+        var titles = [];
+        var data = [];
+
+        $('#tblDatalogger > thead > tr > th').each(function () {
+            titles.push($.trim($(this).text()));
+        });
+
+        $('#tblDatalogger > tbody > tr').each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+
+                data.push($.trim($(ele).text()));
+
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "DataLogger.csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+</script>

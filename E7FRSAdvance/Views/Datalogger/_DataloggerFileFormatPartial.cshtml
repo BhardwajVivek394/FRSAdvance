@@ -1,0 +1,207 @@
+﻿@model List<Domain.DataloggerFileFormat>
+
+<div class="row">
+    <div class="col-xl-12">
+        <h5 id="spnLastUpdate"></h5>
+    </div>
+    <div class="col-xl-12">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>SrNo</th>
+                    <th>Relay Name</th>
+                    <th>Contact Type</th>
+                    @*<th>Asset Type</th>
+                    <th>Asset Name</th>
+                    <th>Attribute</th>
+                    <th>Action</th>*@
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model != null && Model.Count > 0)
+                {
+                    foreach (var item in Model)
+                    {
+                        if (item.SrNo > 0)
+                        {
+                            <tr class="mainrowdata main-row-@item.SrNo">
+                                <td></td>
+                                <td>@item.SrNo</td>
+                                <td>@item.RelayName</td>
+                                <td>@item.ContactType</td>
+                                @*<td>
+                                    @item.AssetTypeName
+                                </td>
+                                <td>
+                                    @item.Name
+                                </td>
+                                <td>
+                                    @item.AttributeName
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-success" onclick="fnEditDataloggerAsset('@item.SrNo')">Edit</button>
+                                </td>*@
+                            </tr>
+
+
+                        }
+
+
+
+                    }
+
+
+                }
+
+            </tbody>
+
+        </table>
+    </div>
+
+   
+</div>
+
+
+<script>
+    var mQTT = null;
+    var mQQTPath = "";
+    var json = "";
+    var isDataLoggerJsonReverse = "@ViewBag.IsDataLoggerJsonReverse";
+    $(document).ready(function () {
+        //mQTT = {
+        //    "Id": 1,
+        //    "MQTTUri": "energy7.in",
+        //    "MQTTUsername": "energy7",
+        //    "MQTTPassword": "k3806557",
+        //    "MQTTPort": 1883,
+        //    "Type": "Web"
+        //};
+        json = @Html.Raw(Json.Encode(ViewBag.MQTTBasePath));
+        mQTT =@Html.Raw(Json.Encode(ViewBag.MQTTDetail));
+
+        if (json != null && json != '') {
+            mQQTPath = json;
+        }
+
+        // mQQTPath = "/WR/Mumbai/Bhestan/";
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+    });
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        client.subscribe(mQQTPath + 'dl/#');
+    }
+
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+        client.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    function DisconnectClient() {
+        if (client && client.isConnected()) {
+            // Unsubscribe from all topics you manually subscribed to
+            client.unsubscribe(mQQTPath + 'dl/#', {
+                onSuccess: function () {
+                    // Now disconnect the client
+                    if (client && client.isConnected()) {
+                        try {
+                            client.disconnect();
+                        } catch (err) {
+                        }
+                    }
+                },
+                onFailure: function (error) {
+                    console.log("Failed to unsubscribe:", error);
+                }
+            });
+        } else {
+            console.log("Client not connected.");
+        }
+    }
+
+    function onMessageArrived(message) {
+        var parseJson = JSON.parse(message.payloadString);
+        if (parseJson != null && parseJson != undefined && parseJson != '') {
+            var jsonData = parseJson['bits'];
+            if (jsonData != null && jsonData != undefined && jsonData.length > 0) {
+                //var channeldata = message.payloadString.split(',');
+                var jsonArrayString = '';
+                for (var i = 0; i < jsonData.length; i++) {
+                    var decimalNumber = decimalToBinary(jsonData[i]);
+                    if (decimalNumber != null) {
+                        if (decimalNumber.length != 8) {
+                            decimalNumber = ("00000000" + decimalNumber.toString(2)).substr(-8)
+                        }
+
+                        const reversedString = decimalNumber.split("").reduce((acc, char) => char + acc, "");
+                        // let number = parseInt(decimalNumber, 10);
+                        jsonArrayString += reversedString;
+                    }
+                }
+                var jsonArray = jsonArrayString.split('');
+                if (jsonArray != null && jsonArray != undefined && jsonArray.length > 0) {
+                    $('.mainrowdata').each(function () {
+                        var srNo = parseInt($.trim($(this).find("td").eq(1).html()));
+                        var dataValue = jsonArray[srNo - 1];
+                        if (isDataLoggerJsonReverse == "True") {
+
+                            if (dataValue == "0") {
+                                dataValue = "1";
+                            }
+                            else if (dataValue == "1") {
+                                dataValue = "0";
+                            }
+                        }
+
+                        $(this).find("td").eq(0).html(dataValue);
+
+                    });
+                }
+
+
+            }
+
+
+            var d = new Date();
+            var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+            $("#spnLastUpdate").html("Last Update: " + time);
+            $("#spnJsonViewLastUpdate").html(time);
+        }
+
+    }
+
+    function decimalToBinary(num) {
+        let binary = "";
+        while (num > 0) {
+            let digit = num % 2;
+            binary = "" + digit + binary;
+            num = parseInt(num / 2);
+        }
+        return binary.padStart(8, '0');
+    }
+
+</script>

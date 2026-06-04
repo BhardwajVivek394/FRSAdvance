@@ -1,0 +1,251 @@
+﻿@model Domain.AssetLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    .progress {
+        height: 30px;
+        font-size: 18px;
+    }
+
+    .progress-bar-animated {
+        color: black !important;
+    }
+</style>
+
+@{
+    var bgColor = new string[] { "#215968", "#404040", "#4bacc6" };
+}
+
+@if (Model.mAssets != null && Model.mAssets.Count > 0)
+{
+    foreach (var item in Model.mAssets)
+    {
+        int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+
+        var isErrorCode = false;
+        if (item.mErrorCodeIdentifier != null && item.mErrorCodeIdentifier.Id > 0)
+        {
+            isErrorCode = true;
+        }
+
+
+        <div class="col-xl-3 xl-50 news box-col-6">
+            <div class="card card-border">
+                <div class="bg-primary main-header" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                    <div class="" style="width:80%;float:left;padding:10px;border-top-left-radius:15px;">
+                        <h6 style="margin-left:12px;">
+                            <a target="_blank" class="text-white" href="@item.HttpMisLink"> @item.AssetTypeName : @item.Name</a>
+
+                        </h6>
+                        @if (Model.SearchCriteria.AssetTypeName.ToLower() == "Earth Fault".ToLower())
+                        {
+                            @*<br />*@
+                            <span style="margin-left:11px;">Index Score: @item.IndexScore</span>
+                        }
+                    </div>
+                    <div class="text-center bg-dark" style="width:20%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:@(isErrorCode?"60px":"50px");">
+
+                        @if (item.UnderMaintence == true)
+                        {
+                            <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                        }
+                        else
+                        {
+                            <div class="text-center">
+                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                            </div>
+                        }
+                        <a onclick="fnGetAssetGraph('@item.SiteId', '@item.Id', '@Json.Encode(item.mFamilyTracks)')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>
+                        <a onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                    </div>
+
+                </div>
+                <div class="card-body gridBody" style="padding:5px;">
+                    <div class="table-responsive width100p tblAssetData">
+
+                        <table class="table table-striped">
+                            <tbody id="tblAttributeData@(item.Id)" class="tblAttributes tblAttributeData@(item.Id)" data-id="@item.Id">
+                                @if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                                {
+                                    foreach (var assetAttribute in item.assetAttributes)
+                                    {
+                                        <tr>
+                                            <td style="width:50%">
+
+                                                @if (assetAttribute.Title.Contains("+ve"))
+                                                {
+                                                    <span style="color:darkorange;font-weight:900;font-size:18px;">  @assetAttribute.Title</span>
+                                                }
+                                                else if (assetAttribute.Title.Contains("-ve"))
+                                                {
+                                                    <span style="color: black; font-weight: 900; font-size: 18px;">  @assetAttribute.Title</span>
+                                                }
+                                                else
+                                                {
+                                                    @assetAttribute.Title
+                                                }
+
+
+
+                                            </td>
+                                            @if (Model.SearchCriteria.AssetTypeName.ToLower() == "Earth Fault".ToLower())
+                                            {
+
+                                                if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                                {
+                                                    <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(item.Id) fault-line">
+                                                        @assetAttribute.AttributeData
+                                                    </td>
+                                                }
+                                                if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode())
+                                                {
+                                                    <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(item.Id) fault-line">
+                                                        @assetAttribute.AttributeData
+                                                    </td>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                    @assetAttribute.AttributeData
+                                                </td>
+                                            }
+
+
+
+                                        </tr>
+                                    }
+                                    if (Model.SearchCriteria.AssetTypeName.ToLower() == "Track".ToLower())
+                                    {
+                                        <tr>
+                                            <td style="width:50%">
+                                                Index Score
+
+                                            </td>
+                                            <td style="width:50%" class="@(item.IndexScore<7?"text-danger":"")">
+                                                @item.IndexScore
+                                            </td>
+                                        </tr>
+                                        <tr class="leakge">
+                                            <td style="width:50%">
+                                                Leakage
+
+                                            </td>
+                                            <td style="width:50%" class="lekage@(item.Id)">
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="width:50%">
+                                                HEALTH
+
+                                            </td>
+                                            <td style="width:50%" data-id="@item.Id" class="checkHealth@(item.Id) tdHealth">
+                                                @if (item.IsAlarm)
+                                                {
+                                                    <span style='cursor:pointer' onclick="GetLogByAssetId(@item.Id)" class="text-danger">Alarm</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-success">Ok</span>
+                                                }
+                                            </td>
+
+                                        </tr>
+                                        <tr>
+                                            <td style="width:50%">
+                                                TRACK O/C
+                                            </td>
+                                            <td style="width:50%" data-id="@item.Id">
+                                                <span class="text-success trackoc@(item.Id)">C</span>
+                                            </td>
+                                        </tr>
+                                    }
+
+
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td class="text-center" colspan="2">No attributes found!</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    }
+}
+
+
+
+<script>
+    $(document).ready(function () {
+        if (isMultipleAssets) {
+            if (parseInt("@Model.mAssets.Count") < 30) {
+                isMultipleAssets = false;
+            }
+            fnGetMultipleAssetDetails();
+
+            var string2 = $("#asset_hidden_field").val();
+            var string1 = '@Html.Raw(Json.Encode(Model.mAssets))';
+
+            var obj = JSON.parse(string2);
+            var obj1 = JSON.parse(string1);
+
+            $.each(obj1, function (key, value) {
+                json.mAssets.push(value)
+            });
+
+           // json = obj;
+
+
+
+        }
+
+    });
+
+
+    function updateJsonString(oldString, newString) {
+        var oldObj = JSON.parse(oldString), newObj = JSON.parse(newString);
+        for (prop in newObj) {
+            var ds = newObj[prop];
+            console.log(ds);
+            oldObj[prop] = newObj[prop];
+            //if (newObj.hasOwnProp(prop)) {
+            //    if (!oldObj.hasOwnProp(prop)) {
+            //        oldObj[prop] = newObj[prop];
+            //    }
+            //}
+        }
+
+        return JSON.stringify(oldObj);
+    }
+
+
+</script>

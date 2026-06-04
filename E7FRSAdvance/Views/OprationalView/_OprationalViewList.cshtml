@@ -1,0 +1,264 @@
+﻿@model Domain.DeadbandLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-10">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                          
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.SearchCriteria.SiteId)
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.mDeadbands.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                    <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Deadbands</span>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        <table class="table">
+                            <thead class="bg-primary">
+                                <tr>
+                                    <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">TimeStamp</th>
+                                    <th data-sortcolumn="AssetName" class="sorting" id="thAssetName" onclick="SortList('AssetName');">AssetName</th>
+                                    <th data-sortcolumn="AttributeName" class="sorting" id="thAttributeName" onclick="SortList('AttributeName');">AttributeName</th>
+                                    <th data-sortcolumn="CurrentValue" class="sorting" id="thCurrentValue" onclick="SortList('CurrentValue');">CurrentValue</th>
+                                    <th data-sortcolumn="PreviousValue" class="sorting" id="thPreviousValue" onclick="SortList('PreviousValue');">PreviousValue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.mDeadbands != null && Model.mDeadbands.Count > 0)
+                                {
+                                    foreach (var item in Model.mDeadbands)
+                                    {
+                                        <tr class="table-light">                                          
+
+                                            <td>@item.TimeStamp</td>
+                                            <td>@item.AssetName</td>
+                                            <td>@item.AttributeName</td>
+                                            <td>@item.CurrentValue</td>
+                                            <td>@item.PreviousValue</td>
+                                            
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center">
+                                            No record found
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-2 xl-40">
+            <div class="row">
+                <div class="col-xl-12 default-according style-1 faq-accordion job-accordion">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <a class="btn btn-link">Search Deadband</a>
+                            </h5>
+                        </div>
+                        <div class="card-body filter-cards-view animate-chk">
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Date:</label>
+                                @Html.TextBoxFor(m => m.SearchCriteria.Date, "{0:d}", new { @class = "form-control", type = "text", id = "txtSearchDate" })
+                            </div>
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Time:</label>
+                                @Html.TextBoxFor(m => m.SearchCriteria.Time, new { @class = "form-control", type = "text", id = "txtSearchTime" })
+                            </div>
+                            <div class="form-group">
+                                <div class="row">
+                                    <div class="col-sm-6">
+                                        <a class="btn btn-success" onclick="Search()">Search</a>
+                                    </div>
+                                    @*<div class="col-sm-6">
+                    <a class="btn btn-default btn-quirk btn-block" onclick="Clear()">Clear</a>
+                </div>*@
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmOprationalViewList").submit();
+        });
+
+        $('#txtSearchDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        $('#txtSearchTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        if ($('#txtSearchDate').val() == "@DateTime.MinValue") {
+            $('#txtSearchDate').val('');
+        }
+
+        if ($('#txtSearchTime').val() == "@TimeSpan.Zero") {
+            $('#txtSearchTime').val('');
+        }
+
+        //$('#txtSearchDate').change(function () {
+        //    $("#hdnSkip").val('0');
+        //    $("#frmOprationalViewList").submit();
+        //});
+
+    });
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmOprationalViewList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmOprationalViewList").submit();
+            }
+        }
+    }
+    function PageSize() {
+        $("#hdnSkip").val('0');
+        $("#frmOprationalViewList").submit();
+    }
+
+    function Search() {
+        $("#hdnSkip").val('0');
+        $("#frmOprationalViewList").submit();
+    }
+
+    function Clear() {
+        $("#hdnSkip").val('0');
+        $("#txtSearchDate").val("");
+        $("#frmOprationalViewList").submit();
+    }
+
+    function SortList(columnName) {
+        $("#hdnColumnName").val(columnName);
+        if ($("#th" + columnName).hasClass("sorting")) {
+            $("#hdnSortDirection").val("ASC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_desc');
+        }
+        else if ($("#th" + columnName).hasClass("sorting_desc")) {
+            $("#hdnSortDirection").val("DESC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_asc');
+        }
+        else if ($("#th" + columnName).hasClass("sorting_asc")) {
+            $("#hdnSortDirection").val("ASC");
+            var upClass = document.querySelectorAll('.sorting_asc');
+            for (var i = 0; i < upClass.length; i++) {
+                var upElement = upClass[i].id;
+                $("#" + upElement).removeClass('sorting_asc');
+                $("#" + upElement).addClass('sorting');
+            }
+            var downClass = document.querySelectorAll('.sorting_desc');
+            for (var i = 0; i < downClass.length; i++) {
+                var downElement = downClass[i].id;
+                $("#" + downElement).removeClass('sorting_desc');
+                $("#" + downElement).addClass('sorting');
+            }
+            $("#th" + columnName).removeClass('sorting');
+            $("#th" + columnName).addClass('sorting_desc');
+        }
+        $("#frmOprationalViewList").submit();
+    }
+
+</script>

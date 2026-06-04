@@ -1,0 +1,96 @@
+﻿@model Domain.AssetLister
+
+<style>
+    td {
+        padding: 10px;
+    }
+</style>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="col-md-1">
+                            <strong style="margin-bottom:10px;margin-right:10px;">Search</strong>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-2 mt-2">
+                                <span>Zone</span>
+                                @Html.DropDownList("drpAssetDetailZone", (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Division</span>
+                                <input type="hidden" id="hdnAssetDetailDivisionId" value="" />
+                                @Html.DropDownList("drpAssetDetailDivision", (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", tabindex = 2 })
+                            </div>
+                            @*<div class="col-lg-2 mt-2">
+                                    <span>Section</span>
+                                    @Html.DropDownList("drpAssetDetailSection", Enumerable.Empty<SelectListItem>(), "Select", new { @class = "form-control", tabindex = 3 })
+                                </div>*@
+                            <div class="col-lg-2 mt-2">
+                                <span>Site</span>
+                                <input type="hidden" id="hdnAssetDetailSiteId" value="" />
+                                @Html.DropDownList("drpAssetDetailSites", (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", tabindex = 4 })
+                            </div>
+                            <div class="col-lg-2 mt-2">
+                                <span>Asset Type</span>
+                                @Html.DropDownList("drpAssetDetailAssetType", (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "All", new { @class = "form-control", tabindex = 5 })
+                            </div>
+
+                        </div>
+                        <div class="pull-right mt-2">
+                            <a class="btn btn-success btn-quirk" onclick="fnGetAssetList()">Search</a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        @*<th>Zone</th>
+                            <th>Division</th>*@
+                        <th>Site</th>
+                        <th>Asset Type</th>
+                        <th>Count</th>
+                    </tr>
+                    @if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
+                    {
+                        foreach (var site in Model.mAssets.GroupBy(x => new { x.SiteId, x.SiteName }).Select(x => x.Key).ToList())
+                        {
+                            foreach (var assetType in Model.mAssets.Where(x => x.SiteId == site.SiteId).GroupBy(x => new { x.AssetTypeId, x.AssetTypeName }).Select(x => x.Key).ToList())
+                            {
+                                var assetCount = Model.mAssets.Where(x => x.SiteId == site.SiteId && x.AssetTypeId == assetType.AssetTypeId).Count();
+                                <tr>
+                                    <td>@site.SiteName</td>
+                                    <td>@assetType.AssetTypeName</td>
+                                    <td>@assetCount</td>
+                                </tr>
+                            }
+
+                        }
+
+                    }
+                </table>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    GetDivisionByZone($("#drpAssetDetailZone").val(), $('#drpAssetDetailDivision'), $('#hdnAssetDetailDivisionId'));
+
+    GetSiteByDivisionId($("#drpAssetDetailDivision").val(), $('#drpAssetDetailSites'), $('#hdnAssetDetailSiteId'));
+
+    $("#drpAssetDetailZone").change(function () {
+        GetDivisionByZone($(this).val(), $('#drpAssetDetailDivision'));
+
+    });
+
+    $("#drpAssetDetailDivision").change(function () {
+        GetSiteByDivisionId($(this).val(), $('#drpAssetDetailSites'));
+    });
+</script>

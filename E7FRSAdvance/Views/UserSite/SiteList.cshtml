@@ -1,0 +1,430 @@
+﻿@model Domain.SiteLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+<style>
+    .cardRed {
+        box-shadow: 1px 1px 5px 1px #ff4d4f;
+    }
+
+        .cardRed:hover {
+            box-shadow: 2px 2px 15px 2px #ff4d4f;
+        }
+
+    .cardGreen {
+        box-shadow: 1px 1px 5px 1px #51bb25;
+    }
+
+        .cardGreen:hover {
+            box-shadow: 2px 2px 15px 2px #51bb25;
+        }
+
+    .card-body {
+        padding: 25px !important;
+    }
+
+    .card-footer {
+        padding: 25px !important;
+    }
+
+    /*.card .card-footer {
+          margin-left: auto !important;
+      }*/
+    .p-r-10 {
+        padding-right: 7px;
+    }
+
+    /*.notification-badge {
+        position: relative;
+        color: #ffffff;*/
+    /*background-color: #cd2626;*/
+    /*background-color: #00b7e9;
+        border-radius: 50%;
+        padding: 1px 5px;
+        font-family: "icofont";
+        float: right;
+        margin-right: 4px;
+        font-size: medium;
+        float: left;
+    }*/
+    .notification-badge {
+        position: relative;
+        color: #ffffff;
+        background-color: #ff4d4f;
+        border-radius: 14px;
+        padding: 1px 5px;
+        font-family: "icofont";
+        margin-right: 4px;
+        font-size: medium;
+    }
+</style>
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-2">
+            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zone</strong>
+            @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", id = "zoneAdd1", tabindex = 1 })
+        </div>
+        <div class="col-md-2">
+            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Division</strong>
+            <input type="hidden" id="hdnSearchDivisionId" value="@Model.SearchCriteria.DivisionId" />
+            @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "divisions", tabindex = 1 })
+        </div>
+        <div class="col-md-2 mt-4">
+            <a class="btn btn-success btn-quirk" onclick="Search()">Search</a>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+
+        @if (Model.mSites != null && Model.mSites.Count > 0)
+        {
+            foreach (var item in Model.mSites)
+            {
+                <div class="col-xl-4 col-lg-6 col-md-6 col-sm-6 col-xs-12">
+                    <div class="card cardGreen" id="divSite_@item.Id" data-sitename="@item.Name" style=" height: 92%;">
+                        <div class="card-header card-header-sitelist">
+                            <div class="people-options clearfix">
+                                <div class="text-center">
+                                    <h5 style="text-align: center;">
+                                        @item.Name
+                                    </h5>
+
+
+                                </div>
+                            </div>
+                        </div>
+                        <div style=" margin-bottom: -16px;">
+
+                        </div>
+                        <div class="card-body">
+
+                            <div class="people-options clearfix">
+
+                                <div class="pull-left">
+                                    <a href="@Url.Action("SiteAssetData","Site",new { siteId = item.Id})" class="btn btn-success">View</a>
+                                </div>
+
+                                <div class="pull-right">
+                                    @if (item.IsDatalogger)
+                                    {
+                                        <a class="btn btn-warning" href="@Url.Action("DataLogger","UserSite",new { siteId = item.Id})">Data Logger</a>
+                                    }
+                                    @if (!item.IsSipView)
+                                    {
+                                        <a href="@Url.Action("Sview","Site",new { siteId = item.Id})" class="btn btn-dark">Sip View</a>
+                                    }
+                                </div>
+                            </div>
+                            <div class="people-options clearfix">
+                                <div class="text-center">
+                                    <img id="imgSite_@item.Id" src="~/assets/images/imgGreen.png" height="100" width="100" />
+                                </div>
+                                <div class="text-center mt-3">
+                                    @if (item.TrackCount > 0)
+                                    {
+                                        <span class="span notification-badge"><a href="javascript:void(0)" style="color:white;" onclick="fnGetSiteSummaryView('@item.Name','@E7FRSAdvance.Utility.Utility.AssetType.TRACK.GetHashCode()')">T: @item.TrackCount </a></span>
+                                    }
+                                    @if (item.PointMachineCount > 0)
+                                    {
+                                        <span class="span notification-badge"><a href="javascript:void(0)" style="color:white;" onclick="fnGetSiteSummaryView('@item.Name','@E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode()')">P: @item.PointMachineCount </a></span>
+                                    }
+                                    @if (item.SignalCount > 0)
+                                    {
+                                        <span class="span notification-badge"><a href="javascript:void(0)" style="color:white;" onclick="fnGetSiteSummaryView('@item.Name','@E7FRSAdvance.Utility.Utility.AssetType.SIGNAL.GetHashCode()')">S: @item.SignalCount </a></span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="people-options clearfix text-center">
+                                @*<button class="btn btn-warning" type="button" onclick="fnDownLoadRoster('@item.Id')">Roster</button>*@
+                                <a href="@Url.Action("Summary","UserSite",new { siteId = item.Id})" class="btn btn-primary">Probability</a>
+                                <a class="btn btn-warning" href="@Url.Action("UserHistory","UserSite",new { siteId = item.Id})">User History</a>
+                                <button class="btn btn-primary" type="button" onclick="fnShowPerformance('@item.Id')">Performance</button>
+
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            }
+        }
+
+    </div>
+
+</div>
+@{
+    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+    serializer.MaxJsonLength = Int32.MaxValue;
+}
+<script>
+    var json = "";
+    $(document).ready(function () {
+        if ($('#hdnCatListType').val() == 'Success') {
+            CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+        }
+        else if ($('#hdnCatListType').val() == 'Error') {
+            if ($('#hdnCatListMessage').val() == 'Forbidden!') {
+                window.location.href = "/Login/Index";
+            } else {
+                CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
+            }
+        }
+
+        GetDivisionByZone($("#zoneAdd1").val());
+
+        $("#zoneAdd1").change(function () {
+            GetDivisionByZone($(this).val());
+        });
+
+        json = @Html.Raw(serializer.Serialize(Model));
+        var dataInterval = parseFloat('@Model.HooterSetting.DataInterval');
+        fnAllSiteCheckChannelDown();
+        setInterval(function () {
+            fnAllSiteCheckChannelDown();
+        }, dataInterval);
+
+    });
+
+    function fnShowSMSLog(siteId) {
+        if ($('#divSite_' + siteId).hasClass('cardRed')) {
+            if ($('#divSite_' + siteId).hasClass('cardGreen')) {
+                $('#divSite_' + siteId).removeClass('cardGreen').addClass('cardRed');
+                $('#imgSite_' + siteId).attr("src", "/assets/images/gifDangerAlarm.gif");
+
+            } else {
+                $('#divSite_' + siteId).removeClass('cardRed').addClass('cardGreen');
+                $('#imgSite_' + siteId).attr("src", "/assets/images/imgGreen.png");
+            }
+        }
+
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_SMSLogLister',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSMSLogLister").empty().append(data);
+                $("#modal-add-smslogs").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnAllSiteCheckChannelDown() {
+        var siteIds = [];
+        $.each(json.mSites, function (id, item) {
+            siteIds.push(item.Id);
+        });
+
+        $.ajax({
+            url: '/UserSite/GetSMSLogList',
+            type: 'Post',
+            data: JSON.stringify(siteIds),
+            contentType: 'application/json',
+            success: function (smsSiteIds) {
+                $("#loader").hide();
+                if (smsSiteIds != null && smsSiteIds != undefined && smsSiteIds.length > 0) {
+                    var isPlay = false;
+                    var audioDuration = parseInt('@Model.HooterSetting.AudioDuration');
+                    $.each(smsSiteIds, function (data, SiteId) {
+                        isPlay = true;
+                        if ($('#divSite_' + SiteId).hasClass('cardGreen')) {
+                            $('#divSite_' + SiteId).removeClass('cardGreen').addClass('cardRed');
+                            $('#imgSite_' + SiteId).attr("src", "/assets/images/gifDangerAlarm.gif");
+                        } else {
+                            $('#divSite_' + SiteId).removeClass('cardRed').addClass('cardGreen');
+                            $('#imgSite_' + SiteId).attr("src", "/assets/images/imgGreen.png");
+                        }
+                        $('#divSite_' + SiteId).attr('onClick', 'fnShowSMSLog(' + SiteId + ')');
+                    });
+                    if (isPlay && '@Model.HooterSetting.AlertSound' == 'True') {
+                        var myaudio = document.getElementById("alarm-ring");
+                        fnLoadAudio(myaudio, audioDuration, '@Model.HooterSetting.ReminderFrequency');
+
+                    }
+                }
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnPlaySound(target, RepeatCount) {
+        var fnSoundRepeat = function () {
+
+            RepeatCount--;
+            target.currentTime = 0;
+            if (RepeatCount > 0 && $('.cardRed').length > 0)
+                target.play();
+            else
+                target.removeEventListener('ended', fnSoundRepeat);
+        }
+
+        target.addEventListener('ended', fnSoundRepeat)
+        target.play();
+    }
+
+    function fnLoadAudio(audio, numberOfTimes, delay) {
+        if ($('.cardRed').length > 0) {
+            fnPlaySound(audio, numberOfTimes * $('.cardRed').length);
+        }
+
+        var interval = setInterval(function () {
+            if ($('.cardRed').length > 0) {
+                fnPlaySound(audio, numberOfTimes * $('.cardRed').length);
+            }
+            else {
+                audio.pause();
+                clearInterval(interval);
+            }
+        }, delay);
+    }
+
+    function fnDownLoadRoster(siteId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/DownloadRosterPDF',
+            type: 'Post',
+            data: '{siteId:' + siteId + '}',
+            contentType: 'application/json',
+            success: function (filePath) {
+                $("#loader").hide();
+                if (filePath != null && filePath != undefined && filePath != '') {
+                    const link = document.createElement('a')
+                    link.setAttribute('download', 'test')
+                    link.setAttribute('href', filePath)
+                    link.click()
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowPerformance(siteId) {
+        var mPerformanceLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mPerformanceLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/_PerformanceLister',
+            type: 'Post',
+            data: JSON.stringify(mPerformanceLister),
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divPerformanceList").empty().append(data);
+                $("#modal-Performances").modal('show');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+</script>
+
+<script>
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetSiteList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetSiteList").submit();
+            }
+        }
+    }
+
+
+    function Search() {
+        $("#frmGetSiteList").submit();
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divisions").empty();
+                    $("#divisions").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#divisions").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#divisions").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnGetSiteSummaryView(siteName, assetTypeId) {
+        var assetGroup = {};
+        assetGroup.SiteName = siteName;
+        assetGroup.AssetTypeId = assetTypeId;
+        $("#loader").show();
+        $.ajax({
+            url: "/UserSite/_SummaryView",
+            type: "POST",
+            data: '{assetGroup:' + JSON.stringify(assetGroup) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSummaryView").empty().append(data);
+                $("#modalSummaryView").modal("show");
+
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+
+    }
+</script>
+

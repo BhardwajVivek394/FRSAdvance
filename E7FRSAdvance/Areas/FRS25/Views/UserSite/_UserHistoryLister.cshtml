@@ -1,0 +1,553 @@
+﻿@model Domain.AppAccessLister
+@{
+    int totalDuration = 0;
+}
+
+<style>
+    /* ============================================
+       USER LIST + DETAIL MODAL — AURORA THEME
+       ============================================ */
+
+    /* --- User chip grid --- */
+    .uhl-user-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
+        padding: 4px;
+    }
+
+    .uhl-user-chip {
+        background: linear-gradient(135deg, rgba(37, 157, 171, 0.15) 0%, rgba(99, 179, 237, 0.1) 100%);
+        border: 1px solid rgba(99, 179, 237, 0.25);
+        border-radius: 12px;
+        padding: 14px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #fff !important;
+        text-decoration: none;
+        position: relative;
+        overflow: hidden;
+    }
+
+        .uhl-user-chip::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #259dab, #79c1f5, #b78dff);
+            opacity: 0.7;
+        }
+
+        .uhl-user-chip:hover {
+            transform: translateY(-2px);
+            border-color: rgba(99, 179, 237, 0.5);
+            box-shadow: 0 8px 22px rgba(37, 157, 171, 0.25);
+            color: #fff !important;
+        }
+
+    .uhl-avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #259dab, #1d7a85);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 700;
+        flex-shrink: 0;
+        box-shadow: 0 2px 8px rgba(37, 157, 171, 0.4);
+    }
+
+    .uhl-user-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+        .uhl-user-info .uhl-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .uhl-user-info .uhl-duration {
+            font-size: 11px;
+            color: rgba(230, 237, 246, 0.65);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 2px;
+        }
+
+            .uhl-user-info .uhl-duration i {
+                font-size: 10px;
+                color: #79c1f5;
+            }
+
+    .uhl-arrow {
+        color: rgba(230, 237, 246, 0.4);
+        font-size: 12px;
+        transition: transform 0.2s ease;
+    }
+
+    .uhl-user-chip:hover .uhl-arrow {
+        color: #79c1f5;
+        transform: translateX(3px);
+    }
+
+    /* --- Modal --- */
+    #modal-add-SingleUserHistory .modal-content {
+        background: linear-gradient(135deg, #0a1628 0%, #14132a 100%);
+        border: 1px solid rgba(99, 179, 237, 0.2);
+        border-radius: 16px;
+        color: #e6edf6;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+    }
+
+    #modal-add-SingleUserHistory .modal-header {
+        background: linear-gradient(135deg, #0e2b42 0%, #1a3a5a 50%, #2a1f4a 100%) !important;
+        border-bottom: 1px solid rgba(99, 179, 237, 0.2);
+        padding: 18px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: relative;
+    }
+
+        #modal-add-SingleUserHistory .modal-header::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #259dab, #b78dff, transparent);
+        }
+
+    #modal-add-SingleUserHistory .modal-title {
+        color: #fff !important;
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        #modal-add-SingleUserHistory .modal-title.isEdit {
+            font-size: 18px;
+        }
+
+            #modal-add-SingleUserHistory .modal-title.isEdit::before {
+                content: '';
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+                background: rgba(99, 179, 237, 0.2);
+                display: inline-flex;
+            }
+
+    .uhl-modal-totalpill {
+        background: rgba(37, 157, 171, 0.2);
+        border: 1px solid rgba(37, 157, 171, 0.4);
+        color: #79c1f5 !important;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    #modal-add-SingleUserHistory .modal-header .uhl-modal-close {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        border: none;
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        padding: 0;
+    }
+
+        #modal-add-SingleUserHistory .modal-header .uhl-modal-close:hover {
+            background: rgba(255, 77, 79, 0.25);
+            color: #ff7a7c;
+        }
+
+        #modal-add-SingleUserHistory .modal-header .uhl-modal-close:focus {
+            outline: 2px solid rgba(99, 179, 237, 0.5);
+            outline-offset: 2px;
+        }
+
+    #modal-add-SingleUserHistory .modal-body {
+        padding: 22px;
+        max-height: 70vh;
+        overflow-y: auto;
+        background: transparent;
+    }
+
+    #modal-add-SingleUserHistory .modal-footer {
+        background: rgba(15, 23, 41, 0.5);
+        border-top: 1px solid rgba(99, 179, 237, 0.1);
+        padding: 14px 22px;
+    }
+
+        #modal-add-SingleUserHistory .modal-footer .btn-default {
+            background: rgba(255, 255, 255, 0.06);
+            color: #e6edf6 !important;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 9px 22px;
+            border-radius: 9px;
+            font-size: 13px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.15s ease;
+            cursor: pointer;
+        }
+
+            #modal-add-SingleUserHistory .modal-footer .btn-default:hover {
+                background: rgba(255, 255, 255, 0.12);
+                color: #fff !important;
+            }
+
+    /* --- Session table cards --- */
+    .uhl-session-card {
+        background: rgba(15, 23, 41, 0.5);
+        border: 1px solid rgba(99, 179, 237, 0.15);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 14px;
+    }
+
+    .uhl-session-head {
+        background: linear-gradient(135deg, rgba(37, 157, 171, 0.25) 0%, rgba(99, 179, 237, 0.15) 100%);
+        padding: 12px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(99, 179, 237, 0.15);
+    }
+
+    .uhl-session-date {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+        .uhl-session-date i {
+            color: #79c1f5;
+            font-size: 13px;
+        }
+
+    .uhl-session-total {
+        background: rgba(99, 179, 237, 0.18);
+        color: #b3dafa;
+        padding: 4px 12px;
+        border-radius: 14px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .uhl-session-table {
+        width: 100%;
+        margin: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+        .uhl-session-table thead {
+            display: none; /* original had no header row for body */
+        }
+
+        .uhl-session-table tbody tr {
+            transition: background 0.15s ease;
+        }
+
+            .uhl-session-table tbody tr:hover {
+                background: rgba(99, 179, 237, 0.05);
+            }
+
+            .uhl-session-table tbody tr:not(:last-child) td {
+                border-bottom: 1px solid rgba(99, 179, 237, 0.08);
+            }
+
+        .uhl-session-table tbody td {
+            padding: 10px 18px;
+            font-size: 12.5px;
+            color: rgba(230, 237, 246, 0.85);
+            vertical-align: middle;
+        }
+
+            .uhl-session-table tbody td:first-child {
+                color: #79c1f5;
+                font-family: 'Courier New', monospace;
+                font-weight: 600;
+                width: 35%;
+            }
+
+            .uhl-session-table tbody td:nth-child(2) {
+                color: #d4a3ff;
+                font-family: 'Courier New', monospace;
+                font-weight: 600;
+                width: 35%;
+            }
+
+                .uhl-session-table tbody td:nth-child(2)::before {
+                    content: '→ ';
+                    color: rgba(230, 237, 246, 0.4);
+                    margin-right: 4px;
+                }
+
+            .uhl-session-table tbody td:last-child {
+                text-align: right;
+                font-weight: 600;
+                color: #fff;
+            }
+
+                .uhl-session-table tbody td:last-child::after {
+                    content: ' min';
+                    font-size: 10px;
+                    color: rgba(230, 237, 246, 0.5);
+                    font-weight: 400;
+                    margin-left: 3px;
+                }
+
+    /* Hide all single-user blocks by default; JS reveals the active one */
+    .clsSingleUserHistory {
+        display: none;
+    }
+
+    /* Empty state inside modal */
+    .uhl-modal-empty {
+        text-align: center;
+        padding: 50px 20px;
+        color: rgba(230, 237, 246, 0.5);
+    }
+
+        .uhl-modal-empty i {
+            font-size: 40px;
+            margin-bottom: 12px;
+            color: #79c1f5;
+            opacity: 0.6;
+        }
+
+    /* Scrollbar styling */
+    #modal-add-SingleUserHistory .modal-body::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    #modal-add-SingleUserHistory .modal-body::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 4px;
+    }
+
+    #modal-add-SingleUserHistory .modal-body::-webkit-scrollbar-thumb {
+        background: rgba(99, 179, 237, 0.2);
+        border-radius: 4px;
+    }
+
+        #modal-add-SingleUserHistory .modal-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 179, 237, 0.35);
+        }
+
+    /* Empty state for the user grid */
+    .uhl-grid-empty {
+        text-align: center;
+        padding: 50px 20px;
+        color: rgba(230, 237, 246, 0.5);
+    }
+
+        .uhl-grid-empty i {
+            font-size: 48px;
+            color: #79c1f5;
+            opacity: 0.5;
+            margin-bottom: 14px;
+        }
+
+        .uhl-grid-empty h5 {
+            color: #e6edf6;
+            margin: 0 0 6px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .uhl-grid-empty p {
+            margin: 0;
+            font-size: 13px;
+        }
+</style>
+
+<div class="row">
+    <div class="col-12">
+        @if (Model != null && Model.mUser != null && Model.mUser.Count > 0)
+        {
+            <div class="uhl-user-grid">
+                @foreach (var user in Model.mUser)
+                {
+                    totalDuration += user.Duration;
+
+                    // Build initials for avatar
+                    var nameForInitials = (user.Name ?? "?").Trim();
+                    var parts = nameForInitials.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    var initials = "";
+                    if (parts.Length > 0)
+                    {
+                        initials += parts[0].Substring(0, 1).ToUpper();
+                    }
+                    if (parts.Length > 1)
+                    {
+                        initials += parts[1].Substring(0, 1).ToUpper();
+                    }
+                    else if (parts.Length == 1 && parts[0].Length > 1)
+                    {
+                        initials += parts[0].Substring(1, 1).ToUpper();
+                    }
+
+                    <a href="javascript:void(0)" class="uhl-user-chip clsDivIndexAlertLogs"
+                       onclick="fnShowUserHistory(@user.Id,'@user.Name')">
+                        <div class="uhl-avatar">@initials</div>
+                        <div class="uhl-user-info">
+                            <span class="uhl-name">@user.Name</span>
+                            <span class="uhl-duration"><i class="fa fa-clock"></i> @user.Duration min</span>
+                        </div>
+                        <i class="fa fa-chevron-right uhl-arrow"></i>
+                    </a>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="uhl-grid-empty">
+                <i class="fa fa-user-clock"></i>
+                <h5>No user activity</h5>
+                <p>Select a date range to view user history.</p>
+            </div>
+        }
+    </div>
+</div>
+
+
+<!-- ============ SINGLE USER HISTORY MODAL ============ -->
+<div class="modal fade bd-example-modal-lg" id="modal-add-SingleUserHistory" tabindex="-1" role="dialog"
+     aria-labelledby="modal-add-SingleUserHistory" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+
+            <!-- Header -->
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel">
+                    <span id="spSingleUserHistoryHeader"></span>
+                </h4>
+                <h4 class="modal-title uhl-modal-totalpill" id="myModalLabel">
+                    <i class="fa fa-stopwatch"></i>
+                    Total: <span id="spTotalDuration"></span> min
+                </h4>
+                <button type="button" class="uhl-modal-close" data-bs-dismiss="modal" aria-label="Close">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="modal-body">
+                @if (Model != null && Model.mUser != null && Model.mUser.Count > 0 && Model.mAppAccess != null && Model.mAppAccess.Count > 0)
+                {
+                    foreach (var user in Model.mUser)
+                    {
+                        var mGroupsAppAccess = Model.mAppAccess.Where(x => x.UserId == user.Id).GroupBy(x => x.StartTime.Date).OrderByDescending(g => g.Key).ToList();
+                        var userTotalDuration = Model.mAppAccess.Where(x => x.UserId == user.Id).Select(x => x.Duration).Sum();
+
+                        <div class="clsSingleUserHistory" id="divSingleUserHistory_@user.Id">
+                            <input type="hidden" value="@userTotalDuration" id="hdnUserDuration_@user.Id" />
+
+                            @if (mGroupsAppAccess.Count > 0)
+                            {
+                                foreach (var groupAppAccess in mGroupsAppAccess)
+                                {
+                                    var dailyTotal = groupAppAccess.Select(x => x.Duration).Sum();
+
+                                    <div class="uhl-session-card">
+                                        <div class="uhl-session-head">
+                                            <div class="uhl-session-date">
+                                                <i class="fa fa-calendar-day"></i>
+                                                <span>@groupAppAccess.Key.ToString("dddd, dd MMM yyyy")</span>
+                                            </div>
+                                            <span class="uhl-session-total">
+                                                <i class="fa fa-clock"></i>
+                                                @dailyTotal min
+                                            </span>
+                                        </div>
+                                        <table class="uhl-session-table">
+                                            <tbody>
+                                                @foreach (var gluedlog in groupAppAccess.OrderBy(x => x.StartTime).ToList())
+                                                {
+                                                    <tr>
+                                                        <td>@gluedlog.StartTime.ToLongTimeString()</td>
+                                                        <td>@gluedlog.EndTime.ToLongTimeString()</td>
+                                                        <td>@gluedlog.Duration</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="uhl-modal-empty">
+                                    <i class="fa fa-folder-open"></i>
+                                    <p>No session records for this user in the selected range.</p>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- Footer -->
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('#spnTotalDuration').text('@totalDuration');
+    });
+
+    function fnShowUserHistory(userId, userName) {
+        $(".clsSingleUserHistory").hide();
+        $("#divSingleUserHistory_" + userId).show();
+        $("#spSingleUserHistoryHeader").text(userName);
+        $("#spTotalDuration").text($('#hdnUserDuration_' + userId).val());
+        $("#modal-add-SingleUserHistory").modal("show");
+    }
+</script>

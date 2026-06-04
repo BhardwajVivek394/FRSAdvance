@@ -1,0 +1,1252 @@
+﻿@model Domain.AssetLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+</style>
+
+@if (Model.mAssets != null && Model.mAssets.Count > 0)
+{
+    //var ai_status_A = Model.mAssets.SelectMany(h => h.mPointMachineData)
+    //  .Select(rt => rt.AI_status_A)
+    //  .Distinct()
+    //  .ToArray();
+
+    //var ai_status_B = Model.mAssets.SelectMany(h => h.mPointMachineData)
+    // .Select(rt => rt.AI_status_B)
+    // .Distinct()
+    // .ToArray();
+
+    //var ai_ClusterA = Model.mAssets.SelectMany(h => h.mPointMachineData)
+    // .Select(rt => rt.ClusterA)
+    // .Distinct()
+    // .ToArray();
+
+    //var ai_ClusterB = Model.mAssets.SelectMany(h => h.mPointMachineData)
+    // .Select(rt => rt.ClusterB)
+    // .Distinct()
+    // .ToArray();
+    var countClusterA = Model.mAssets.SelectMany(d => d.mPointMachineData).GroupBy(x => x.ClusterA).Select(x =>
+       new
+       {
+           Key = x.Key,
+           Count = x.Count()
+       });
+
+    var countClusterB = Model.mAssets.SelectMany(d => d.mPointMachineData).GroupBy(x => x.ClusterB).Select(x =>
+       new
+       {
+           Key = x.Key,
+           Count = x.Count()
+       });
+
+    bool isThickWave = false;
+    if (Model.mAssets.Where(x => x.IsThickWave == true).Count() == Model.mAssets.Count())
+    {
+        isThickWave = true;
+    }
+
+    var mAssetListerTemp = TempData.Peek("tempAIVisualizationPointMachine");
+    if (mAssetListerTemp != null)
+    {
+        var mTempAssetLister = mAssetListerTemp as Domain.AssetLister;
+        if (mTempAssetLister != null && mTempAssetLister.mAssets != null)
+        {
+            var aStatus = new List<string>
+    ();
+            var bStatus = new List<string>
+                ();
+
+            var aCluster = new List<string>
+                ();
+            var bCluster = new List<string>
+                ();
+            foreach (var item in mTempAssetLister.mAssets)
+            {
+                if (item.mPointMachineData != null && item.mPointMachineData.Count > 0)
+                {
+                    aStatus.AddRange(item.mPointMachineData.Where(x => !aStatus.Contains(x.AI_status_A)).GroupBy(x => x.AI_status_A).Select(x => x.Key).ToList());
+                    bStatus.AddRange(item.mPointMachineData.Where(x => !bStatus.Contains(x.AI_status_B)).GroupBy(x => x.AI_status_B).Select(x => x.Key).ToList());
+
+
+                    aCluster.AddRange(item.mPointMachineData.Where(x => !aCluster.Contains(x.ClusterA)).GroupBy(x => x.ClusterA).Select(x => x.Key).ToList());
+                    bCluster.AddRange(item.mPointMachineData.Where(x => !bCluster.Contains(x.ClusterB)).GroupBy(x => x.ClusterB).Select(x => x.Key).ToList());
+                }
+            }
+
+            <div class="col-sm-12 col-md-12 col-lg-12">
+                <div class="row">
+                    <div class="col-sm-2 mb-1">
+                        <label>A Status</label>
+                        <select class="form-control" id="drpAStatus">
+                            <option value="">Select</option>
+                            @if (aStatus != null && aStatus.Count > 0)
+                            {
+                                foreach (var item in aStatus)
+                                {
+                                    <option value="@item">@item</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-sm-2 mb-1">
+                        <label>B Status</label>
+                        <select class="form-control" id="drpBStatus">
+                            <option value="">Select</option>
+                            @if (bStatus != null && bStatus.Count > 0)
+                            {
+                                foreach (var item in bStatus)
+                                {
+                                    <option value="@item">@item</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-sm-2 mb-1">
+                        <label>Cluster A</label>
+                        <select class="form-control" id="drpaCluster">
+                            <option value="">Select</option>
+                            @if (aCluster != null && aCluster.Count > 0)
+                            {
+                                foreach (var item in aCluster)
+                                {
+                                    var count = countClusterA.Where(x => x.Key == item).Select(x => x.Count).FirstOrDefault();
+                                    <option value="@item">@item (count: @count)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-sm-2 mb-1">
+                        <label>Cluster B</label>
+                        <select class="form-control" id="drpbCluster">
+                            <option value="">Select</option>
+                            @if (bCluster != null && bCluster.Count > 0)
+                            {
+                                foreach (var item in bCluster)
+                                {
+                                    var count = countClusterB.Where(x => x.Key == item).Select(x => x.Count).FirstOrDefault();
+
+                                    <option value="@item">@item (count: @count)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-sm-2 mt-4">
+                        <label for="IsThickWave">Is Thick Wave</label>
+                        @if (isThickWave)
+                        {
+                            <input type="checkbox" id="chkIsThickWave" checked />
+                        }
+                        else
+                        {
+                            <input type="checkbox" id="chkIsThickWave" />
+                        }
+                    </div>
+                    <div class="col-sm-2 mt-4">
+                        <button class="btn btn-success" type="button" onclick="fnFilterPointMachine()">Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-3 mb-1 mt-4">
+                @if (Model.mAssets != null && Model.mAssets.Where(x => x.IsSeriesOpration != null && x.IsSeriesOpration.Value).Count() > 0)
+                {
+                    <a class="btn btn-default" href="javascript:;" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','CC','Normal')">C/N</a>
+                    <a class="btn btn-default" href="javascript:;" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','CC','Reverse')">C/R</a>
+                }
+                <a class="btn btn-default" href="javascript:;" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','AC','Normal')">A/N</a>|
+                <a class="btn btn-default" href="javascript:;" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','AC','Reverse')">A/R</a>
+                &nbsp;
+                <a class="btn btn-default" href="javascript:;" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','BC','Normal')">B/N</a>|
+                <a class="btn btn-default" href="javascript:;" onclick="fnShowMultipleGraphBySite('@Model.SearchCriteria.SiteId','BC','Reverse')">B/R</a>
+            </div>
+        }
+    }
+
+
+
+    foreach (var item in Model.mAssets)
+    {
+        int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+        var vibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration")).ToList();
+        bool isVibration = false;
+        if (vibration != null && vibration.Count > 0)
+        {
+            isVibration = true;
+        }
+
+
+        <div class="col-sm-12 col-md-12 col-lg-12">
+            <div class="card">
+                <div class="col-xl-12 news box-col-12">
+                    <div class="card card-border">
+                        <div class="bg-primary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                            <div class="" style="width:60%;float:left;padding:10px;border-top-left-radius:15px;">
+                                <h6 style="margin-left:10px">
+                                    <a target="_blank" class="text-white"> @item.AssetTypeName : @item.Name</a>
+
+                                </h6>
+                            </div>
+                            <div class="" style="width:40%;float:right;padding:10px;border-top-left-radius:15px;">
+                                <h6 style="margin-left:10px">
+                                    <span>Site: @item.SiteName</span>
+
+                                </h6>
+                            </div>
+
+                        </div>
+                        <div class="card-body" style="padding:10px;margin-bottom:-15px">
+
+                            <div class="table-responsive width100p tblAssetData">
+                                <table class="table table-bordered table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>@item.Name</th>
+                                            @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                            {
+                                                if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                                {
+                                                    <th>Direction:@item.AliasDirectionA</th>
+                                                }
+                                                else
+                                                {
+                                                    <th>Direction:A</th>
+                                                }
+                                                if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                                {
+                                                    <th>Direction:@item.AliasDirectionB</th>
+                                                }
+                                                else
+                                                {
+                                                    <th>Direction:B</th>
+                                                }
+                                                if (isVibration)
+                                                {
+                                                    <th>VibrationA(x/y/z)</th>
+                                                    <th>VibrationB(x/y/z)</th>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <th>Direction</th>
+                                                <th></th>
+                                                if (isVibration)
+                                                {
+                                                    <th></th>
+                                                    <th></th>
+                                                }
+                                            }
+
+                                        </tr>
+                                    </thead>
+
+                                </table>
+                            </div>
+                            <div class="table-responsive width100p tblAssetData m-b-20" style="overflow:auto;max-height:420px;">
+
+                                <table class="table table-bordered table-striped" id="tblPoint@(item.Id)">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Name</th>
+                                            <th>Direction</th>
+                                            @if (item.IsSeriesOpration != null && item.IsSeriesOpration.Value)
+                                            {
+                                                <th>Combine</th>
+                                            }
+
+                                            @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                            {
+
+                                                <th>
+                                                    A Current(Max/Avg)
+                                                    <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'AC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','AC');return false;">R</a>
+                                                </th>
+                                                <th>A Voltage</th>
+                                                <th>A Time (ms)</th>
+                                                <th>A Status</th>
+                                                <th>A Cluster</th>
+                                            }
+                                            else
+                                            {
+                                                <th>
+                                                    Current(Max/Avg)
+                                                    <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'AC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','AC');return false;">R</a>
+                                                </th>
+                                                <th>Voltage</th>
+                                                <th>A Status</th>
+                                                <th>A Cluster</th>
+                                            }
+
+
+                                            @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                            {
+                                                <th>
+                                                    B Current(Max/Avg)
+                                                    <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Normal','BC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','BC');return false;">R</a>
+                                                </th>
+                                                <th>B Voltage</th>
+                                                <th>B Time (ms)</th>
+                                                <th>B Status</th>
+                                                <th>B Cluster</th>
+                                            }
+
+                                        </tr>
+                                    </thead>
+                                    <tbody class="fbody@(item.Id)">
+                                        @Html.Partial("_PointMachineDatePartial", item)
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <p style="font-size:15px">No record found!</p>
+}
+
+<script>
+    var chart;
+    function fnShowMultipleGraph(assetId, datevalue, type) {
+        $('#hdnPMAssetId').val(assetId);
+        var searchCriteria = {
+            AssetId: assetId,
+            Status_A: $('#drpAStatus').find(":selected").val(),
+            Status_B: $('#drpBStatus').find(":selected").val(),
+            ClusterA: $('#drpaCluster').find(":selected").val(),
+            ClusterB: $('#drpbCluster').find(":selected").val(),
+            Direction: datevalue,
+            IsThickWave: $("#chkIsThickWave").is(":checked") ? "true" : "false"
+        };
+
+        $.ajax({
+            url: '/AIVisualization/GetSitePointMachineGraph',
+            type: 'Post',
+            data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                fnBindMultipleSignatureGragh(data, type, datevalue, assetId);
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+
+    }
+
+    function fnBindMultipleSignatureGragh(data, type, datevalue) {
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        $('#pointmachine-select-mainId').empty();
+        var datasets = [];
+        var label = [];
+        var clusterA = [];
+        var clusterB = [];
+        var lineColor;
+        if (data != null && data != undefined && data != '') {
+            $(data).each(function (data, val) {
+                var legends = '';
+                var array = [];
+                var clusterName = '';
+                if (type.includes("A")) {
+                    if (clusterA.indexOf(val.ClusterA) == -1) {
+                        lineColor = fnGetDarkColor();
+                        $('#pointmachine-select-mainId').append("<div class='col-sm-2'><input type='checkbox' class='chkPointMachineGraphA' id='chkcluster_" + val.ClusterA + "' value='" + val.ClusterA + "' data-color='" + lineColor + "' onchange=fnFilterPointMachineGraph('" + type + "','" + datevalue +"') checked/><label for='chk" + val.ClusterA + "'>" + val.ClusterA + "</label></div>");
+                    }
+                    clusterName = val.ClusterA;
+                    clusterA.push(val.ClusterA);
+                }
+                if (type.includes("B")) {
+                    if (clusterB.indexOf(val.ClusterB) == -1) {
+                        lineColor = fnGetDarkColor();
+                        $('#pointmachine-select-mainId').append("<div class='col-sm-2'><input type='checkbox' class='chkPointMachineGraphB' id='chkcluster_" + val.ClusterB + "' value='" + val.ClusterB + "' data-color='" + lineColor + "' onchange=fnFilterPointMachineGraph('" + type + "','" + datevalue +"') checked/><label for='chk" + val.ClusterB + "'>" + val.ClusterB + "</label></div>");                        
+                    }
+                    clusterName = val.ClusterB;
+                    clusterB.push(val.ClusterB);
+                }
+                const d = new Date(val.Date);
+                legends = clusterName + " | " + d.getDate() + "-" + (d.getMonth() + 1) + "-" + d.getFullYear() + " " + d.getHours() + ":" + d.getMinutes() + "";
+                var j = val.PointMachineJson;
+                // var array = [];
+                var labels = "";
+                var total = 0;
+                if (type == "CC") {
+                    labels = "Combine C";
+                    $.each(j.A_C, function (id, val) {
+                        var num = parseInt(val);
+                        // if (num > total) {
+                        total += num;
+                        // }
+                        array.push(val);
+                    });
+
+                    $.each(j.B_C, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                if (type == "CV") {
+                    labels = "Combine V";
+                    $.each(j.A_V, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+
+                    $.each(j.B_V, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                if (type == "AC") {
+                    labels = "A End";
+                    $.each(j.A_C, function (id, val) {
+                        var num = parseInt(val);
+                        // if (num > total) {
+                        total += num;
+                        // }
+                        array.push(val);
+                    });
+                }
+
+                if (type == "BC") {
+                    labels = "B End";
+                    $.each(j.B_C, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                if (type == "AV") {
+                    labels = "A End";
+                    $.each(j.A_V, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                if (type == "BV") {
+                    labels = "B End";
+                    $.each(j.B_V, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                var marker = total / array.length;
+                var time = j.A_C_TIME;
+                var len = parseInt(j.A_C_TIME) / parseInt(1000);
+                var loop = parseInt(array.length / 2) + 1;
+
+                for (var i = 0; i <= array.length; i++) {
+                    var xVal = (i) * (100);
+                    if (label.indexOf(xVal) == -1) {
+                        label.push(xVal);
+                    }
+                }
+
+                var ds = {
+                    label: legends,
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: "rgba(75,192,192,0.4)",
+                    borderColor: lineColor,
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: lineColor,
+                    pointBackgroundColor: "#fff",
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: lineColor,
+                    pointHoverBorderColor: "rgba(220,220,220,1)",
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array,
+                    markLine: {
+                        data: [{
+                            type: 'average',
+                            name: '???'
+                        }]
+                    }
+                };
+
+
+                datasets.push(ds);
+
+            });
+        }
+   
+        var pieChartContent = document.getElementById('pointmachine-mainId');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot" style="height: 263px"><canvas>');
+
+        var canvas = $("#pointmachine-basicflot").get(0).getContext("2d");
+
+        // do some drawing
+
+        var data = {
+            labels: label,
+            datasets: datasets
+        };
+
+        var option = {
+            showLines: true,
+            legend: { display: false }
+        };
+        var myLineChart = Chart.Line(canvas, {
+            data: data,
+            options: option
+        });
+        $("#modal-pointmachine-graph").modal("show");
+    }
+
+    function fnFilterPointMachineGraph(type, datevalue) {
+        var aClusterIds = [];
+        var bClusterIds = [];
+        //var chkLength = $('.chkPointMachineGraph:checkbox:checked').length;
+
+        $('.chkPointMachineGraphA:checkbox:checked').each(function () {
+            aClusterIds.push(parseInt($(this).val()));
+        });
+
+        $('.chkPointMachineGraphB:checkbox:checked').each(function () {
+            bClusterIds.push(parseInt($(this).val()));
+        });
+
+        if ((aClusterIds != null && aClusterIds.length > 0) || bClusterIds != null && bClusterIds.length > 0) {
+            var searchCriteria = {
+                MultipleClusterA: aClusterIds,
+                MultipleClusterB: bClusterIds,
+                AssetId: $('#hdnPMAssetId').val(),
+                Direction: datevalue,
+                IsThickWave: $("#chkIsThickWave").is(":checked") ? "true" : "false"
+            };
+
+            $("#loader").show();
+            $.ajax({
+                url: '/AIVisualization/GetSitePointMachineGraph',
+                type: 'Post',
+                data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var datasets = [];
+                    var label = [];
+                    var clusterA = [];
+                    var clusterB = [];
+                    var lineColor = '';
+                    if (chart != null && chart != "" && chart != undefined) {
+                        chart.dispose();
+                    }                  
+                    if (data != null && data != undefined && data != '') {
+                        $(data).each(function (data, val) {
+                            var legends = '';
+                            var array = [];
+                            var clusterName = '';                           
+                            if (type.includes("A")) {    
+                                if (clusterA.indexOf(val.ClusterA) == -1) {
+                                    var clusterColor = $('#chkcluster_' + val.ClusterA).data('color')
+                                    if (clusterColor != null && clusterColor != undefined && clusterColor != '') {
+                                        lineColor = clusterColor;                                       
+                                    } else {
+                                        lineColor = fnGetDarkColor();
+                                    }
+                                }
+                                clusterA.push(val.ClusterA);
+                                clusterName = val.ClusterA;
+                            }
+                            if (type.includes("B")) {     
+                                if (clusterB.indexOf(val.ClusterB) == -1) {
+                                    var clusterColor = $('#chkcluster_' + val.ClusterB).data('color')
+                                    if (clusterColor != null && clusterColor != undefined && clusterColor != '') {
+                                        lineColor = clusterColor;
+                                    } else {
+                                        lineColor = fnGetDarkColor();
+                                    }
+                                }
+                                clusterB.push(val.ClusterB);
+                                clusterName = val.ClusterB;
+                            }
+
+                            const d = new Date(val.Date);
+                            legends = clusterName + " | " + d.getDate() + "-" + (d.getMonth() + 1) + "-" + d.getFullYear() + " " + d.getHours() + ":" + d.getMinutes() + "";
+                            var j = val.PointMachineJson;
+                            // var array = [];
+                            var labels = "";
+                            var total = 0;
+                            if (type == "CC") {
+                                labels = "Combine C";
+                                $.each(j.A_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    // if (num > total) {
+                                    total += num;
+                                    // }
+                                    array.push(val);
+                                });
+
+                                $.each(j.B_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "CV") {
+                                labels = "Combine V";
+                                $.each(j.A_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+
+                                $.each(j.B_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "AC") {
+                                labels = "A End";
+                                $.each(j.A_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    // if (num > total) {
+                                    total += num;
+                                    // }
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "BC") {
+                                labels = "B End";
+                                $.each(j.B_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "AV") {
+                                labels = "A End";
+                                $.each(j.A_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "BV") {
+                                labels = "B End";
+                                $.each(j.B_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            var marker = total / array.length;
+                            var time = j.A_C_TIME;
+                            var len = parseInt(j.A_C_TIME) / parseInt(1000);
+                            var loop = parseInt(array.length / 2) + 1;
+
+                            for (var i = 0; i <= array.length; i++) {
+                                var xVal = (i) * (100);
+                                if (label.indexOf(xVal) == -1) {
+                                    label.push(xVal);
+                                }
+                            }
+
+                           // var lineColor = fnGetDarkColor();
+                            var ds = {
+                                label: legends,
+                                fill: false,
+                                lineTension: 0.1,
+                                backgroundColor: "rgba(75,192,192,0.4)",
+                                borderColor: lineColor,
+                                borderCapStyle: 'butt',
+                                borderDash: [],
+                                borderDashOffset: 0.0,
+                                borderJoinStyle: 'miter',
+                                pointBorderColor: lineColor,
+                                pointBackgroundColor: "#fff",
+                                pointBorderWidth: 0.5,
+                                pointHoverRadius: 5,
+                                pointHoverBackgroundColor: lineColor,
+                                pointHoverBorderColor: "rgba(220,220,220,1)",
+                                pointHoverBorderWidth: 1,
+                                pointRadius: 5,
+                                pointHitRadius: 10,
+                                data: array,
+                                markLine: {
+                                    data: [{
+                                        type: 'average',
+                                        name: '???'
+                                    }]
+                                }
+                            };
+
+
+                            datasets.push(ds);
+
+                        });
+                    }
+
+                    var pieChartContent = document.getElementById('pointmachine-mainId');
+                    pieChartContent.innerHTML = '&nbsp;';
+                    $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot" style="height: 263px"><canvas>');
+
+                    var canvas = $("#pointmachine-basicflot").get(0).getContext("2d");
+
+                    // do some drawing
+
+                    var data = {
+                        labels: label,
+                        datasets: datasets
+                    };
+
+                    var option = {
+                        showLines: true,
+                        legend: { display: false }
+                    };
+                    var myLineChart = Chart.Line(canvas, {
+                        data: data,
+                        options: option
+                    });
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+        else {
+            var pieChartContent = document.getElementById('pointmachine-mainId');
+            pieChartContent.innerHTML = '&nbsp;';
+            $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot" style="height: 263px"><canvas>');
+
+            /* $('#pointmachine-select-mainId').empty();*/
+        }
+
+    }
+
+
+    function fnShowMultipleGraphBySite(siteId, type, datevalue) {
+        var searchCriteria = {
+            Status_A: $('#drpAStatus').find(":selected").val(),
+            Status_B: $('#drpBStatus').find(":selected").val(),
+            ClusterA: $('#drpaCluster').find(":selected").val(),
+            ClusterB: $('#drpbCluster').find(":selected").val(),
+            Direction: datevalue,
+            IsThickWave: $("#chkIsThickWave").is(":checked") ? "true" : "false"
+        };
+
+        $("#loader").show();
+        $.ajax({
+            url: '/AIVisualization/GetAllSitePointMachineGraph',
+            type: 'Post',
+            data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                fnBindMultipleSignatureGraghBySite(data, type, datevalue, siteId);
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+
+    }
+
+    function fnBindMultipleSignatureGraghBySite(data, type, datevalue) {
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        $('#pointmachine-select-mainId').empty();
+        var datasets = [];
+        var isValid = true;
+        var label = [];
+        var assetName = [];
+        var legendsMultipleSignatureGragh = [];
+        var legendsMonth = [];
+        var clusterA = [];
+        var clusterB = [];
+
+        if (data != null && data != undefined && data != '') {
+            var legends = '';
+            var lineColor = '';
+            var count = 0;
+            $(data).each(function (data, val) {
+                var array = [];
+                count++;
+                var clusterName = '';
+                if (type.includes("A")) {
+                    if (clusterA.indexOf(val.ClusterA) == -1) {
+                        lineColor = fnGetDarkColor();
+                        $('#pointmachine-select-mainId').append("<div class='col-sm-2'><input type='checkbox' class='chkPointMachineGraphA' id='chkcluster_" + val.ClusterA + "' value='" + val.ClusterA + "' data-color='" + lineColor + "' onchange=fnFilterPointMachineGraphBySite('" + type + "','" + datevalue + "') checked/><label for='chk" + val.ClusterA + "'>" + val.ClusterA + "</label></div>");
+                    }
+                    clusterName = val.ClusterA;
+                    clusterA.push(val.ClusterA);
+                }
+                if (type.includes("B")) {
+                    if (clusterB.indexOf(val.ClusterB) == -1) {
+                        lineColor = fnGetDarkColor();
+                        $('#pointmachine-select-mainId').append("<div class='col-sm-2'><input type='checkbox' class='chkPointMachineGraphB' id='chkcluster_" + val.ClusterB + "' value='" + val.ClusterA + "' data-color='" + lineColor + "' onchange=fnFilterPointMachineGraphBySite('" + type + "','" + datevalue + "') checked/><label for='chk" + val.ClusterB + "'>" + val.ClusterB + "</label></div>");
+                    }
+                    clusterName = val.ClusterB;
+                    clusterB.push(val.ClusterB);
+                }
+
+                const d = new Date(val.Date);
+                var month = (d.getMonth() + 1);
+                legends = clusterName + " | " + val.AssetType + " | " + d.getDate() + "-" + month + "-" + d.getFullYear() + " " + d.getHours() + ":" + d.getMinutes() + "";
+
+                assetName.push(val.AssetType);
+                legendsMultipleSignatureGragh.push(legends);
+                if (legendsMonth.indexOf(month)) {
+                    legendsMonth.push(month);
+                }
+                var j = val.PointMachineJson;
+                // var array = [];
+                var labels = "";
+                var total = 0;
+
+                if (type == "CC") {
+                    labels = "Combine C";
+                    $.each(j.A_C, function (id, val) {
+                        var num = parseInt(val);
+                        // if (num > total) {
+                        total += num;
+                        // }
+                        array.push(val);
+                    });
+
+                    $.each(j.B_C, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                if (type == "CV") {
+                    labels = "Combine V";
+                    $.each(j.A_V, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+
+                    $.each(j.B_V, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+                if (type == "AC") {
+                    labels = "A End";
+                    $.each(j.A_C, function (id, val) {
+                        var num = parseInt(val);
+                        // if (num > total) {
+                        total += num;
+                        // }
+                        array.push(val);
+                    });
+                }
+
+                if (type == "BC") {
+                    labels = "B End";
+                    $.each(j.B_C, function (id, val) {
+                        var num = parseInt(val);
+                        //if (num > total) {
+                        total += num;
+                        //}
+                        array.push(val);
+                    });
+                }
+
+
+                var marker = total / array.length;
+                var time = j.A_C_TIME;
+                var len = parseInt(j.A_C_TIME) / parseInt(1000);
+                var loop = parseInt(array.length / 2) + 1;
+
+                for (var i = 0; i <= array.length; i++) {
+                    var xVal = (i) * (100);
+                    if (label.indexOf(xVal) == -1) {
+                        label.push(xVal);
+                    }
+                }
+
+                var ds = {
+                    label: legends,
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: "rgba(75,192,192,0.4)",
+                    borderColor: lineColor,
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: lineColor,
+                    pointBackgroundColor: "#fff",
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: lineColor,
+                    pointHoverBorderColor: "rgba(220,220,220,1)",
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array,
+                    markLine: {
+                        data: [{
+                            type: 'average',
+                            name: '???'
+                        }]
+                    }
+                };
+                datasets.push(ds);
+
+            });
+
+        }
+
+        var pieChartContent = document.getElementById('pointmachine-mainId');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot"style="height: 263px"><canvas>');
+
+        var canvas = $("#pointmachine-basicflot").get(0).getContext("2d");
+
+        // do some drawing
+
+        var data = {
+            labels: label,
+            datasets: datasets
+        };
+
+        var option = {
+            showLines: true,
+            legend: { display: false }
+        };
+        var myLineChart = Chart.Line(canvas, {
+            data: data,
+            options: option
+        });
+
+        $("#modal-pointmachine-graph").modal("show");
+    }
+
+    function fnFilterPointMachineGraphBySite(type, datevalue) {
+        var aClusterIds = [];
+        var bClusterIds = [];
+        var chkLength = $('.chkPointMachineGraphA:checkbox:checked').length;
+        $('.chkPointMachineGraphA:checkbox:checked').each(function () {
+            aClusterIds.push(parseInt($(this).val()));
+        });
+
+        $('.chkPointMachineGraphB:checkbox:checked').each(function () {
+            bClusterIds.push(parseInt($(this).val()));
+        });
+
+        if (aClusterIds != null && aClusterIds.length > 0) {
+            var searchCriteria = {
+                MultipleClusterA: aClusterIds,
+                MultipleClusterB: bClusterIds,
+                Direction: datevalue,
+                IsThickWave: $("#chkIsThickWave").is(":checked") ? "true" : "false"
+            };
+
+
+            $("#loader").show();
+            $.ajax({
+                url: '/AIVisualization/GetAllSitePointMachineGraph',
+                type: 'Post',
+                data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var clusterA = [];
+                    var clusterB = [];
+                    var datasets = [];
+                    var label = [];
+                    var lineColor = '';
+
+                    if (chart != null && chart != "" && chart != undefined) {
+                        chart.dispose();
+                    }
+                    if (data != null && data != undefined && data != '') {
+                        $(data).each(function (data, val) {
+                            var legends = '';
+                            var array = [];
+                            var clusterName = '';
+                            if (type.includes("A")) {
+                                if (clusterA.indexOf(val.ClusterA) == -1) {       
+                                    var clusterColor = $('#chkcluster_' + val.ClusterA).val()
+                                    if (clusterColor != null && clusterColor != undefined && clusterColor != '') {
+                                        lineColor = clusterColor;
+                                    } else {
+                                        lineColor = fnGetDarkColor();
+                                    }
+
+                                }
+                                clusterName = val.ClusterA;
+                                clusterA.push(val.ClusterA);
+                            }
+                            if (type.includes("B")) {
+                                if (clusterB.indexOf(val.ClusterB) == -1) {                                  
+
+                                    var clusterColor = $('#chkcluster_' + val.ClusterB).val()
+                                    if (clusterColor != null && clusterColor != undefined && clusterColor != '') {
+                                        lineColor = clusterColor;
+                                    } else {
+                                        lineColor = fnGetDarkColor();
+                                    }
+
+                                }
+                                clusterName = val.ClusterB;
+                                clusterB.push(val.ClusterB);
+                            }
+
+                            const d = new Date(val.Date);
+                            legends = clusterName + " | " + val.AssetType + " | " + d.getDate() + "-" + (d.getMonth() + 1) + "-" + d.getFullYear() + " " + d.getHours() + ":" + d.getMinutes() + "";
+                            var j = val.PointMachineJson;
+                            // var array = [];
+                            var labels = "";
+                            var total = 0;
+                            if (type == "CC") {
+                                labels = "Combine C";
+                                $.each(j.A_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    // if (num > total) {
+                                    total += num;
+                                    // }
+                                    array.push(val);
+                                });
+
+                                $.each(j.B_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "CV") {
+                                labels = "Combine V";
+                                $.each(j.A_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+
+                                $.each(j.B_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "AC") {
+                                labels = "A End";
+                                $.each(j.A_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    // if (num > total) {
+                                    total += num;
+                                    // }
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "BC") {
+                                labels = "B End";
+                                $.each(j.B_C, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "AV") {
+                                labels = "A End";
+                                $.each(j.A_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            if (type == "BV") {
+                                labels = "B End";
+                                $.each(j.B_V, function (id, val) {
+                                    var num = parseInt(val);
+                                    //if (num > total) {
+                                    total += num;
+                                    //}
+                                    array.push(val);
+                                });
+                            }
+
+                            var marker = total / array.length;
+                            var time = j.A_C_TIME;
+                            var len = parseInt(j.A_C_TIME) / parseInt(1000);
+                            var loop = parseInt(array.length / 2) + 1;
+
+                            for (var i = 0; i <= array.length; i++) {
+                                var xVal = (i) * (100);
+                                if (label.indexOf(xVal) == -1) {
+                                    label.push(xVal);
+                                }
+                            }
+
+                            var ds = {
+                                label: legends,
+                                fill: false,
+                                lineTension: 0.1,
+                                backgroundColor: "rgba(75,192,192,0.4)",
+                                borderColor: lineColor,
+                                borderCapStyle: 'butt',
+                                borderDash: [],
+                                borderDashOffset: 0.0,
+                                borderJoinStyle: 'miter',
+                                pointBorderColor: lineColor,
+                                pointBackgroundColor: "#fff",
+                                pointBorderWidth: 0.5,
+                                pointHoverRadius: 5,
+                                pointHoverBackgroundColor: lineColor,
+                                pointHoverBorderColor: "rgba(220,220,220,1)",
+                                pointHoverBorderWidth: 1,
+                                pointRadius: 5,
+                                pointHitRadius: 10,
+                                data: array,
+                                markLine: {
+                                    data: [{
+                                        type: 'average',
+                                        name: '???'
+                                    }]
+                                }
+                            };
+
+
+                            datasets.push(ds);
+
+                        });
+                    }
+
+                    var pieChartContent = document.getElementById('pointmachine-mainId');
+                    pieChartContent.innerHTML = '&nbsp;';
+                    $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot" style="height: 263px"><canvas>');
+
+                    var canvas = $("#pointmachine-basicflot").get(0).getContext("2d");
+
+                    // do some drawing
+
+                    var data = {
+                        labels: label,
+                        datasets: datasets
+                    };
+
+                    var option = {
+                        showLines: true,
+                        legend: { display: false }
+                    };
+                    var myLineChart = Chart.Line(canvas, {
+                        data: data,
+                        options: option
+                    });
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+        else {
+            var pieChartContent = document.getElementById('pointmachine-mainId');
+            pieChartContent.innerHTML = '&nbsp;';
+            $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot" style="height: 263px"><canvas>');
+
+            /* $('#pointmachine-select-mainId').empty();*/
+        }
+
+    }
+
+    function fnGetDarkColor() {
+        var allowed = "ABCDEF0123456789", S = "#";
+
+        while (S.length < 7) {
+            S += allowed.charAt(Math.floor((Math.random() * 16) + 1));
+        }
+        return S;
+    }
+</script>

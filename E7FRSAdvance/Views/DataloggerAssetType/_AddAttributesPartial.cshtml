@@ -1,0 +1,206 @@
+﻿@model Domain.DataloggerAttribute
+@using System.ComponentModel.DataAnnotations;
+@using System.Linq;
+@using System.Reflection;
+
+<input type="hidden" id="hdnSaveAttributeType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveAttributeMessage" value="@ViewBag.Message" />
+
+<div class="modal bounceIn animated" id="modal-add-attribute" tabindex="-1" aria-labelledby="modal-add-attribute" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content bradius4">
+            @*@Html.HiddenFor(m => Model.Id, new { @id = "hdnId" })*@
+            <input type="hidden" name="Id" value="@Model.Id" />
+            @Html.HiddenFor(m => Model.DataloggerAssetTypeId, new { @id = "hdnAssetTypeId" })
+            <div class="modal-header">
+                @if (Model.Id == 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Add Attribute</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"> Edit Attribute</span></h4>
+                }
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true">×</button>
+
+            </div>
+            <div class="modal-body">
+                <div class="form-horizontal">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="">
+                                <label class="control-label">Name <span class="text-danger">*</span></label>
+                                <div class="mb-3">
+                                    @Html.TextBoxFor(m => Model.Title, new { @class = "form-control", tabindex = 2 })
+                                    <span class="text-danger"></span>
+                                </div>
+                            </div>
+
+                        </div>
+                        @if (Model.DataloggerAssetTypeId == (int)E7FRSAdvance.Utility.Utility.DLAssetType.Signal)
+                        {
+                            <div class="col-sm-12">
+                                <div class="">
+                                    <label class="control-label">Attribute Type</label>
+                                    @{
+
+                                        var enumAttributeType = (from E7FRSAdvance.Utility.Utility.AttributeType e in Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.AttributeType))
+                                                                 let displayAttr = e.GetType()
+                                                                                     .GetField(e.ToString())
+                                                                                     .GetCustomAttribute<DisplayAttribute>()
+                                                                 select new
+                                                                 {
+                                                                     Id = (int)e,
+                                                                     Name = e.ToString().Replace("_", " "),
+                                                                     DisplayName = displayAttr.Name ?? e.ToString()
+                                                                 }).ToList();
+                                    }
+                                    <select class="form-control" id="drpAttributeType" name="Type">
+                                        @if (enumAttributeType != null)
+                                        {
+                                            <option value="">Select</option>
+                                            foreach (var item in enumAttributeType)
+                                            {
+                                                if (Model.Type != null && Model.Type.Value == item.Id)
+                                                {
+                                                    <option data-code="@item.DisplayName" value="@item.Id" selected>@item.Name</option>
+                                                }
+                                                else
+                                                {
+                                                    <option data-code="@item.DisplayName" value="@item.Id">@item.Name</option>
+                                                }
+
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="">
+                            <div class="">
+                                <label class="control-label">FRS Attribute</label>
+                                <select class="form-control" id="drpRepresentationCode" name="RepresentationCode">
+                                </select>
+                            </div>
+                        </div>
+                        @{
+                            var paramTypes = E7FRSAdvance.Utility.ExtensionMethod.BuildParamTypes();
+                        }
+                        <div class="">
+                            <div class="">
+                                <label class="control-label">FRS Unit</label>
+                                <select class="form-control" id="drpParameterRepresentationCode" name="ParameterRepresentationCode">
+                                    <option value="">Select</option>
+                                    @if (paramTypes != null && paramTypes.Count > 0)
+                                    {
+                                        foreach (var paramType in paramTypes)
+                                        {
+                                            if (paramType.Id == "40")
+                                            {
+                                                if (Model.ParameterRepresentationCode == paramType.Id)
+                                                {
+                                                    <option value="@paramType.Id" selected>@paramType.Name</option>
+                                                }
+                                                else
+                                                {
+                                                    <option value="@paramType.Id">@paramType.Name</option>
+                                                }
+                                            }
+
+                                        }
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSaveAttributes()" id="btnSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        if ($('#hdnSaveAttributeType').val() == 'Success') {
+
+            CommonNotification($("#hdnSaveAttributeType").val().toUpperCase(), $("#hdnSaveAttributeMessage").val(), $("#hdnSaveAttributeType").val());
+
+            $("[class*='modal-backdrop']").remove();
+            $('body').removeClass('modal-open');
+        }
+        else if ($('#hdnSaveAttributeType').val() == 'Error') {
+            CommonNotification($("#hdnSaveAttributeType").val().toUpperCase(), $("#hdnSaveAttributeMessage").val(), $("#hdnSaveAttributeType").val());
+
+            $('body').removeClass('modal-open');
+        }
+        $('#drpAttributeType').change(function () {
+
+            var code = $(this).find(":selected").data("code");
+            if (code != null && code != undefined && code != '') {
+                GetFRSAttributeByType(code);
+            }
+        });
+
+
+        if ($('#drpAttributeType').val() != null && $('#drpAttributeType').val() != undefined && $('#drpAttributeType').val() != '') {
+            GetFRSAttributeByType($('#drpAttributeType').find(":selected").data("code"));
+        } else {
+            GetFRSAttributeByType('@Model.AssetTypeRepresentationCode');
+        }
+
+    });
+
+    function fnSave() {
+        if (Validate()) {
+            $("#frmSaveDataloggerAssetType").submit();
+        }
+    }
+
+    function Validate() {
+        var result = true;
+
+        if ($.trim($("#Name").val()).length == 0) {
+            $("#Name").next("span").html("Name is required");
+            result = false;
+        }
+        else {
+            $("#Name").next("span").html("");
+        }
+
+        return result;
+    }
+
+
+   function GetFRSAttributeByType(code) {
+       if (code != null && code != undefined && code != '') {
+           $("#loader").show();
+           $.ajax({
+               url: '/AssetType/GetFRSAttribute',
+               type: 'POST',
+               data: '{code:"' + code + '"}',
+               contentType: 'application/json',
+               success: function (data) {
+                   $("#loader").hide();
+                   $("#drpRepresentationCode").empty();
+                   $("#drpRepresentationCode").append($("<option></option>").val('0').html('Select'));
+                   $.each(data, function (key, value) {
+                       $("#drpRepresentationCode").append($("<option></option>").val(value.Id).html(value.Name));
+                   });
+
+                   $("#drpRepresentationCode").val('@Model.RepresentationCode');
+               },
+               error: function (response) {
+                   $("#loader").hide();
+                   CommonNotification("ERROR", "Something went wrong!", "Error");
+               }
+           });
+       }
+
+   }
+</script>

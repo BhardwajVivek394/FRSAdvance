@@ -1,0 +1,284 @@
+﻿@model Domain.SMSLogLister
+
+<style>
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+</style>
+
+<div class="row" id="SiteView">
+    <div class="col-12">
+        <div class="card-body">
+            @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+            {
+                var grouByAssetType = Model.mSMSLogs.GroupBy(x => new { x.AssetTypeName }).Select(x => x.Key.AssetTypeName).ToList();
+
+                foreach (var assetType in grouByAssetType)
+                {
+                    if (assetType == "POINT MACHINE" || assetType == "SIGNAL" || assetType == "TRACK")
+                    {
+                        var sites = Model.mSMSLogs.Where(x => x.AssetTypeName == assetType).GroupBy(x => new { x.SiteName, x.SiteId }).Select(x => new { x.Key.SiteName, x.Key.SiteId }).ToList();
+                        var groupAlertName = Model.mSMSLogs.Where(x => x.AssetTypeName == assetType).GroupBy(x => new { x.AlertName, x.AlertTypeId }).Select(x => new { x.Key.AlertName, x.Key.AlertTypeId }).ToList();
+
+                        <div class="row">
+                            <div class="col-xl-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="col-md-12">
+                                            <h6 class="mb-1">@assetType</h6>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        @{var srNo = 1;
+                                            var total = 0;}
+                                        <div class="table-responsive tableFixHead mb-4" style="max-height: 620px;">
+                                            <table class="table">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="bg-primary">Sr.No</th>
+                                                        <th class="bg-primary">Site</th>
+                                                        @foreach (var header in groupAlertName)
+                                                        {
+                                                            <th class="text-center bg-primary">@header.AlertName</th>
+                                                        }
+                                                        <th class="bg-primary">Total</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody style="max-height:620px; overflow-y:auto;">
+                                                    @foreach (var item in sites)
+                                                    {
+                                                        <tr>
+                                                            <td>@srNo</td>
+                                                            <td>@item.SiteName</td>
+                                                            @foreach (var alrt in groupAlertName)
+                                                            {
+                                                                var count = Model.mSMSLogs.Where(x => x.SiteName == item.SiteName && x.AssetTypeName == assetType && x.AlertName == alrt.AlertName).Count();
+
+                                                                if (count > 0)
+                                                                {
+                                                                    <td class="text-center"><a href="javascript:void(0)" onclick="ShowAlertAnalysisDetails('@item.SiteId','@alrt.AlertTypeId')">@count</a></td>
+                                                                    total += count;
+                                                                }
+                                                                else
+                                                                {
+                                                                    <td class="text-center">0</td>
+                                                                }
+                                                            }
+
+                                                            <td class="text-center">@total</td>
+                                                        </tr>
+                                                        total = 0;
+                                                        srNo++;
+                                                    }
+
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row" id="AlertView" style="display:none;">
+    <div class="col-12">
+        <div class="card-body">
+            @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+            {
+                var grouByAssetType = Model.mSMSLogs.GroupBy(x => new { x.AssetTypeName }).Select(x => x.Key.AssetTypeName).ToList();
+
+                foreach (var assetType in grouByAssetType)
+                {
+                    if (assetType == "POINT MACHINE" || assetType == "SIGNAL" || assetType == "TRACK")
+                    {
+                        var sites = Model.mSMSLogs.Where(x => x.AssetTypeName == assetType).GroupBy(x => new { x.SiteName, x.SiteId }).Select(x => new { x.Key.SiteName, x.Key.SiteId }).ToList();
+                        var groupAlertName = Model.mSMSLogs.Where(x => x.AssetTypeName == assetType).GroupBy(x => new { x.AlertName, x.AlertTypeId, }).Select(x => new { x.Key.AlertName, x.Key.AlertTypeId }).ToList();
+
+                        <div class="row">
+                            <div class="col-xl-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <div class="col-md-12">
+                                            <h6 class="mb-1">@assetType</h6>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        @{var srNo = 1;}
+                                        <div class="table-responsive tableFixHead mb-4" style="max-height: 220px;">
+                                            <table class="table">
+                                                <thead>
+                                                    <tr>
+                                                        <th class="bg-primary">Sr.No</th>
+                                                        <th class="bg-primary">Alert Name</th>
+                                                        <th class="bg-primary th-count">Count</th>
+                                                        <th class="bg-primary"></th>
+                                                        <th class="bg-primary"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody style="max-height:220px; overflow-y:auto;">
+                                                    @foreach (var alrt in groupAlertName)
+                                                    {
+                                                        <tr>
+                                                            <td>@srNo</td>
+                                                            <td>@alrt.AlertName</td>
+                                                            @{
+                                                                var count = Model.mSMSLogs.Where(x => x.AssetTypeName == assetType && x.AlertName == alrt.AlertName).Count();
+                                                                var divisionId = Model.mSMSLogs.Where(x => x.AssetTypeName == assetType && x.AlertName == alrt.AlertName).GroupBy(x => x.DivisionId).Select(x => x.Key).FirstOrDefault();
+                                                            }
+                                                            <td>
+                                                                @count
+
+                                                                <input type="hidden" value="@count" />
+                                                            </td>
+                                                            <td><a href="javascript:void(0)" onclick="ShowAllAlertAnalysisByZone('@alrt.AlertTypeId','@divisionId',this)">Zone</a></td>
+                                                            <td><a href="javascript:void(0)" onclick="ShowAllAlertAnalysisByDivision('@alrt.AlertTypeId','@divisionId',this)">Division</a></td>
+                                                        </tr>
+                                                        srNo++;
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        $('.th-count').click(function () {
+            var table = $(this).parents('table').eq(0)
+            var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
+            this.asc = !this.asc
+            if (!this.asc) { rows = rows.reverse() }
+            var th = $(this);
+            th.siblings().find(".sort-symbol").remove();
+            th.find('.sort-symbol').remove();
+            th.append(`<span class="sort-symbol">${this.asc ? '▲' : '▼'}</span>`);
+            for (var i = 0; i < rows.length; i++) { table.append(rows[i]) }
+        })
+    });
+    function comparer(index) {
+        return function (a, b) {
+            var valA = getCellValue(a, index), valB = getCellValue(b, index)
+            return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
+        }
+    }
+    function getCellValue(row, index) {
+        return $(row).children('td').eq(index).find('input[type=hidden]').val();
+    }
+    function ShowAlertAnalysisDetails(siteId, alertTypeId, $this) {
+
+        var mSearchCriteria = {};
+        var mSMSLogLister = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.ToDate = $("#searchAlertAnalysisToDate").val()
+        mSearchCriteria.FromDate = $("#searchAlertAnalysisFromDate").val()
+        mSearchCriteria.AssetId = $("#hdnlapAssetId").val();
+        mSearchCriteria.AlertTypeId = alertTypeId;
+        mSMSLogLister.SearchCriteria = mSearchCriteria;
+        if (siteId != null && siteId != undefined && siteId > 0 && alertTypeId != null && alertTypeId != undefined && alertTypeId > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/_EditAlertAnalysisList',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(mSMSLogLister),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divProbabilityAlert").empty().append(data);
+                    $("#modalProbabilityAlert").modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+    }
+
+    function ShowAllAlertAnalysisByDivision(alertTypeId, divisionId, $this) {
+        if ($("#drpAlertAnalysisDivision").val() == '0') {
+            divisionId = 0
+        }
+        var mSearchCriteria = {};
+        var mSMSLogLister = {};
+        mSearchCriteria.ToDate = $("#searchAlertAnalysisToDate").val()
+        mSearchCriteria.FromDate = $("#searchAlertAnalysisFromDate").val()
+        mSearchCriteria.AlertTypeId = alertTypeId;
+        mSearchCriteria.DivisionId = divisionId;
+        mSMSLogLister.SearchCriteria = mSearchCriteria;
+        if (alertTypeId != null && alertTypeId != undefined && alertTypeId > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/_EditAllAlertAnalysisList',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(mSMSLogLister),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divProbabilityAlert").empty().append(data);
+                    $("#modalProbabilityAlert").modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+    }
+
+    function ShowAllAlertAnalysisByZone(alertTypeId, divisionId, $this) {
+        debugger
+        if ($("#drpAlertAnalysisDivision").val() == '0') {
+            divisionId = 0
+        }
+        var mSearchCriteria = {};
+        var mSMSLogLister = {};
+        mSearchCriteria.ToDate = $("#searchAlertAnalysisToDate").val()
+        mSearchCriteria.FromDate = $("#searchAlertAnalysisFromDate").val()
+        mSearchCriteria.AlertTypeId = alertTypeId;
+        mSearchCriteria.DivisionId = divisionId;
+        mSMSLogLister.SearchCriteria = mSearchCriteria;
+        if (alertTypeId != null && alertTypeId != undefined && alertTypeId > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/_EditAllAlertAnalysisListByZone',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(mSMSLogLister),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divProbabilityAlert").empty().append(data);
+                    $("#modalAlertByZone").modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+    }
+
+</script>

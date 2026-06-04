@@ -1,0 +1,340 @@
+﻿
+@model Domain.SectionLister
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-10">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                            <a id="btnAddSection" class="btn btn-primary btn-quirk" data-bs-toggle="modal" data-bs-target="#modal-add-section">Add Section</a>
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+
+                        <div class="btn-group pull-right">
+
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.mSections.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Sections</span>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        <table class="table">
+                            <thead class="bg-primary">
+                                <tr>
+                                    <th colspan="2" class="text-center">Action</th>
+                                    <th data-sortcolumn="Name" class="sorting" id="thName" onclick="SortList('Name');">Name</th>
+                                    <th data-sortcolumn="Description" class="sorting" id="thDescription" onclick="SortList('Description');">Description</th>
+                                    <th data-sortcolumn="IsActive" class="sorting" id="thIsActive" onclick="SortList('IsActive');" style="width:100px">Active?</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.mSections != null && Model.mSections.Count > 0)
+                                {
+                                    foreach (var item in Model.mSections)
+                                    {
+                                        <tr class="table-light">
+                                            @*<td class="text-center width60">
+                                                <a href="#"><i class="fa fa-plus text-vision" data-Id="@item.Id" onclick="GetZoneDivision('807',this)"></i></a>
+                                            </td>*@
+                                            <td class="text-center" style="width:50px;">
+                                                <a title="Edit">
+                                                    <i class="text-vision fa fa-edit" onclick="GetSectionById('@item.Id')"></i>
+                                                </a>
+                                            </td>
+                                            <td class="text-center " style="width:50px;">
+                                                <a title="Delete">
+                                                    <i class="text-danger fa fa-trash" onclick="DeleteSectionById('@item.Id')"></i>
+                                                </a>
+
+                                            </td>
+
+                                            <td>@item.Name</td>
+                                            <td>@item.Description</td>
+                                            <td class="">
+                                                @if (item.IsActive)
+                                                {
+                                                    <span class="span badge rounded-pill pill-badge-success">Active</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="span badge rounded-pill pill-badge-yellow">In Active</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                        <tr id="trSites807" style="display:none;">
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center">
+                                            No record found
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-2 xl-40">
+            <div class="row">
+                <div class="col-xl-12 default-according style-1 faq-accordion job-accordion">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <a class="btn btn-link">Search Section</a>
+                            </h5>
+                        </div>
+                        <div class="card-body filter-cards-view animate-chk">
+                            <div class="form-group mb-4">
+                                <label class="control-label center-block">Name:</label>
+                                @Html.TextBoxFor(m => m.SearchCriteria.Name, new { @class = "form-control", type = "text", id = "txtSearchName" })
+                            </div>
+                            <div class="form-group">
+                                <div class="row">
+                                    <div class="col-sm-6">
+                                        <a class="btn btn-success" onclick="Search()">Search</a>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <a class="btn btn-default btn-quirk btn-block" onclick="Clear()">Clear</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script src="~/Content/PageJS/Section/SectionList.js"></script>
+<script>
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetSectionList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetSectionList").submit();
+            }
+        }
+    }
+
+
+    function GetZoneDivision(id, $this) {
+        debugger
+        userId = id;
+
+        if ($($this).hasClass("fa-plus")) {
+            $($this).removeClass("fa-plus").addClass("fa-minus");
+            var html = "";
+            html += "<td colspan='10'>";
+            html += "<div class='card card-inverse' style='padding:10px;'>"
+            html += "<div class='card-heading'>"
+            html += "<h3 class='card-title'>Sites</h3>"
+            html += "</div>"
+            html += "<div class='card-body'>"
+            html += "<div class='row'>"
+            html += "<div class='col-lg-4 col-md-2' style='padding:5px'>"
+            html += "</div >"
+            html += "<div class='col-lg-2 col-md-2 col-sm-2' style='padding:8px'>"
+            html += "<label class='control-label' style='font-size:15px'>Filter by:</label>"
+            html += "</div >"
+            html += "<div class='col-lg-3 col-md-4 col-sm-4' style='margin-bottom:14px'>"
+            html += "<div class='row'>"
+            html += "<div class='col-sm-4' style='padding:8px'>"
+            html += "<label class='control-label' style='font-size:15px'>Zone:</label>"
+            html += "</div >"
+            html += "<div class='col-sm-8' style='margin-bottom:14px'>"
+            html += "<select name='ZoneId' id='drpZonePanel" + id + "' class='form-control' data-Id=" + id + " style='width:100%' onchange='GetDivisionByZoneId(this)'>"
+            html += "</select>"
+            html += "</div >"
+            html += "</div >"
+            html += "</div >"
+            html += "<div class='col-lg-3 col-md-4 col-sm-4' style='margin-bottom:14px'>"
+            html += "<div class='row'>"
+            html += "<div class='col-sm-4' style='padding:8px'>"
+            html += "<label class='control-label' style='font-size:15px'>Division:</label>"
+            html += "</div >"
+            html += "<div class='col-sm-8' style='margin-bottom:14px'>"
+            html += "<select name='DivisionId' id='drpDivisionPanel" + id + "' data-Id=" + id + " class='form-control' style='width:100%' onchange='fnGetSites(this)'>"
+            html += "</select>"
+            html += "</div >"
+            html += "</div >"
+            html += "</div >"
+            html += "</div >"
+            html += "<div class='row' id='sites" + id + "'>"
+            html += "</div>";
+            html += "</div>";
+            html += "</td>";
+            $("#trSites" + id).empty().append(html);
+            $("#trSites" + id).show();
+            GetAllZones();
+        } else {
+            $($this).removeClass("fa-minus").addClass("fa-plus");
+            $("#trSites" + id).hide();
+            $("#trSites" + id).empty();
+        }
+    }
+    function GetAllZones() {
+        $("#loader").show();
+        $.ajax({
+            type: 'POST',
+            url: '/User/GetAllZones',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                var temp = '';
+                if (data != null) {
+                    $.each(data, function (key, value) {
+                        temp += '<option value="' + value.Id + '">' + value.Name + '</option>';
+                    });
+                }
+                $("#drpZonePanel" + userId + "").empty().append(temp);
+                $("#drpZonePanel" + userId + "").val($("#drpZonePanel" + userId + " option:first").val());
+                //  $("#drpZonePanel" + userId + "").select2({ minimumResultsForSearch: Infinity });
+                GetDivisionByZoneId($("#drpZonePanel" + userId + ""));
+                $("#loader").hide();
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function GetDivisionByZoneId($this) {
+        var zoneId = $($this).val();
+        var divisionId = $($this).attr("data-Id");
+        if (zoneId != null) {
+            $("#loader").show();
+            $.ajax({
+                type: 'POST',
+                url: '/Site/GetDivisionByZoneId',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var temp = '';
+                    if (data != null) {
+                        $.each(data, function (key, value) {
+                            temp += '<option value="' + value.Id + '">' + value.Name + '</option>';
+                        });
+                    }
+                    $("#drpDivisionPanel" + divisionId + "").empty().append(temp);
+                    $("#drpDivisionPanel" + divisionId + "").val($("#drpDivisionPanel" + divisionId + " option:first").val());
+                    // $("#drpDivisionPanel" + divisionId + "").select2({ minimumResultsForSearch: Infinity });
+                    $("#loader").hide();
+                    fnGetSites($("#drpDivisionPanel" + divisionId + ""));
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        } else {
+            var temp = '';
+            $("#drpDivisionPanel" + divisionId + "").empty().append(temp);
+            // $("#drpDivisionPanel" + divisionId + "").select2({ minimumResultsForSearch: Infinity });
+        }
+    }
+
+    function fnGetSites($this) {
+        var uId = $($this).attr("data-Id");
+        var zoneId = $("#drpZonePanel" + uId + "").val();
+        var divisionId = $("#drpDivisionPanel" + uId + "").val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/User/GetSites',
+            type: 'Post',
+            data: '{zoneId:' + zoneId + ',divisionId:' + divisionId + ',userId:' + uId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                var temp = "";
+                if (data != null && data.length > 0) {
+                    $.each(data, function (id, val) {
+                        if (val.IsAssignSite) {
+                            temp += "<div class='col-sm-3' style='margin-top:14px'>";
+                            temp += "<label class='checkbox-inline' style='font-size:15px'><input style='margin-top:4px' checked type='checkbox' data-userId=" + uId + "   data-siteId=" + val.Id + " onclick='fnAssignSite(" + userId + "," + val.Id + ",this)'  />" + val.Name + "</label>";
+                            temp += "</div>";
+                        }
+                        else {
+                            temp += "<div class='col-sm-3' style='margin-top:14px'>";
+                            temp += "<label class='checkbox-inline' style='font-size:15px'><input style='margin-top:4px' type='checkbox' data-userId=" + uId + "   data-siteId=" + val.Id + " onclick='fnAssignSite(" + userId + "," + val.Id + ",this)'  />" + val.Name + "</label>";
+                            temp += "</div>";
+                        }
+                    });
+                    $("#sites" + uId).empty().append(temp);
+                } else {
+                    temp += "<label class='text-center' style='font-size:15px;margin:10px'>No sites found!</label>";
+                    $("#sites" + uId).empty().append(temp);
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+</script>
+

@@ -1,0 +1,415 @@
+﻿@model Domain.PMDataTableLister
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<input type="hidden" id="hdnPMDataTableImageBase64"/>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row mt-3">
+                        <div class="col-sm-2 mb15">
+                            <label>Site</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select Site", new { @class = "form-control", id = "pmdtSiteId", tabindex = 1 })
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            <label>Asset</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.AssetId, new SelectList(Model.Assets, "Id", "Name"), "All", new { @class = "form-control", id = "pmdtAssetId", tabindex = 2 })
+
+                        </div>
+                        @if (Model.Direction != null && Model.Direction.Count > 0)
+                        {
+                            <div class="col-sm-2 mb15">
+                                <label>Direction</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.Direction, new SelectList(Model.Direction), "Select", new { @class = "form-control", id = "pmdDirection", tabindex = 3 })
+
+                            </div>
+                        }
+
+                        @if (Model.PMDataTables != null && Model.PMDataTables.Count > 0)
+                        {
+                            <div class="col-sm-2 mb15">
+                                <label>Remark</label>
+                                @if (!string.IsNullOrEmpty(Model.Remark))
+                                {
+                                    <input type="text" id="pmDataTablesRemark" class="form-control" value="@Model.Remark" disabled />
+                                }
+                                else
+                                {
+                                    <input type="text" id="pmDataTablesRemark" class="form-control" />
+                                }
+                            </div>
+                            <div class="col-sm-2 mb15">
+                                <label>Upload Image</label>
+                                <input type="file" class="form-control" accept="image/jpeg" onchange="fnEncodeImageFilePMDataTable(this)" />
+                            </div>
+                            <div class="col-sm-2 mt-4">
+                                <button type="button" class="btn btn-primary" onclick="fnOnShowPMDRemark()">Edit</button>
+                                <button type="button" class="btn btn-primary" onclick="fnApplyPMDataTable()">Apply</button>
+                            </div>
+                        }
+
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="col-sm-12 mainclass" id="pointmachine-mainId">
+                        <canvas id='pointmachine-basicflot'></canvas>
+                    </div>
+                    @*<div id="chart-PMDataTable" style="width:100%">
+                        </div>
+                        <div class="apache-cotainer" id="area-PMDataTable-echart">
+
+                        </div>*@
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var json = "";
+    var chart;
+    $(document).ready(function () {
+        $('#pmdtSiteId').change(function () {
+            $("#frmPointMachineSignature").submit();
+        });
+
+        $('#pmdtAssetId').change(function () {
+            $("#frmPointMachineSignature").submit();
+        });
+
+        $('#pmdDirection').change(function () {
+            $("#frmPointMachineSignature").submit();
+        });
+
+        json = @Html.Raw(Json.Encode(Model));
+        DemoPointMachineSignature()
+
+    });
+
+    function fnOnShowPMDRemark() {
+        $('#pmDataTablesRemark').prop('disabled', false)
+    }
+
+    function fnEncodeImageFilePMDataTable($this) {
+        var file = $this.files[0];
+        var fileType = file["type"];
+        var validImageTypes = ["image/jpeg"];
+        if ($.inArray(fileType, validImageTypes) < 0) {
+            $("#hdnPMDataTableImageBase64").val("");
+            alert("Upload only jpeg file");
+        }
+        else {
+            $("#hdnPMDataTableImageBase64").val("");
+            var formdata = new FormData(); var file = $($this).get(0).files; if (file.length > 0) {
+                formdata.append('file', file[0]);
+                var reader = new FileReader();
+                reader.readAsDataURL(file[0]);
+                reader.onload = function () {
+
+                    if (reader != null && reader != undefined && reader.result != null && reader.result != undefined) {
+                        var base64String = reader.result.replace("data:", "").replace(/^.+,/, "");
+                        $("#hdnPMDataTableImageBase64").val(base64String);
+                    }
+                };
+            }
+        }
+
+        //  $('#hdnTrmImageBase64').val(imagebase64);
+    }
+
+    function DemoPointMachineSignature() {
+
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        $('#pointmachine-select-mainId').empty();
+        var datasets = [];
+        var label = [];
+        if (json.PMDataTables != null && json.PMDataTables.length > 0) {
+            $(json.PMDataTables).each(function (data, val) {
+                var legends = '';
+
+                var array = [];
+                var d = parseDate(val.TimeStamp);
+                // var d = parseJsonDate(val.Date);
+                legends = d.getHours() + ":" + d.getMinutes() + "";
+                if ($('#pmdtAssetId').val() == null || $('#pmdtAssetId').val() == '' || $('#pmdtAssetId').val() == undefined) {
+                    legends = val.AssetName + "|" + legends;
+                }
+                if (val.PointMachineData != null && val.PointMachineData != undefined) {
+                    var j = val.PointMachineData.PointMachineJson;
+                    // var array = [];
+                    var labels = "";
+                    var total = 0;
+
+                    var type = '';
+                    if (val.Direction.includes("A")) {
+                        type = "AC";
+                    }
+                    else if (val.Direction.includes("B")) {
+                        type = "BC";
+                    }
+
+                    if (type == "CC") {
+                        labels = "Combine C";
+                        $.each(j.A_C, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+
+                        $.each(j.B_C, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+                    }
+
+                    if (type == "CV") {
+                        labels = "Combine V";
+                        $.each(j.A_V, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+
+                        $.each(j.B_V, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+
+                        });
+                    }
+
+                    if (type == "AC") {
+                        labels = "A End";
+                        $.each(j.A_C, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+                    }
+
+                    if (type == "BC") {
+                        labels = "B End";
+                        $.each(j.B_C, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+                    }
+
+                    if (type == "AV") {
+                        labels = "A End";
+                        $.each(j.A_V, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+                    }
+
+                    if (type == "BV") {
+                        labels = "B End";
+                        $.each(j.B_V, function (id, val) {
+                            if (val != null && val != undefined && val != '') {
+                                var num = parseInt(val);
+                                total += num;
+                                array.push(val);
+                            }
+                        });
+                    }
+
+                    var marker = total / array.length;
+                    var time = j.A_C_TIME;
+                    var len = parseInt(j.A_C_TIME) / parseInt(1000);
+                    var loop = parseInt(array.length / 2) + 1;
+
+                    for (var i = 0; i <= array.length; i++) {
+                        var xVal = (i) * (100);
+                        if (label.indexOf(xVal) == -1) {
+                            label.push(xVal);
+                        }
+                    }
+
+                    var lineColor = fnGetDarkColor();
+
+                    var ds = {
+                        label: legends,
+                        fill: false,
+                        lineTension: 0.1,
+                        backgroundColor: "rgba(75,192,192,0.4)",
+                        borderColor: lineColor,
+                        borderCapStyle: 'butt',
+                        borderDash: [],
+                        borderDashOffset: 0.0,
+                        borderJoinStyle: 'miter',
+                        pointBorderColor: lineColor,
+                        pointBackgroundColor: "#fff",
+                        pointBorderWidth: 0.5,
+                        pointHoverRadius: 5,
+                        pointHoverBackgroundColor: lineColor,
+                        pointHoverBorderColor: "rgba(220,220,220,1)",
+                        pointHoverBorderWidth: 1,
+                        pointRadius: 5,
+                        pointHitRadius: 10,
+                        data: array,
+                        markLine: {
+                            data: [{
+                                type: 'average',
+                                name: '???'
+                            }]
+                        }
+                    };
+
+
+                    datasets.push(ds);
+                }
+
+            });
+        }
+
+        var pieChartContent = document.getElementById('pointmachine-mainId');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#pointmachine-mainId').append('<canvas id="pointmachine-basicflot" style="height: 263px"><canvas>');
+
+        var canvas = $("#pointmachine-basicflot").get(0).getContext("2d");
+
+        // do some drawing
+
+        var data = {
+            labels: label,
+            datasets: datasets
+        };
+
+        var option = {
+            showLines: true,
+
+        };
+        var myLineChart = Chart.Line(canvas, {
+            data: data,
+            options: option
+        });
+        $("#modal-pointmachine-graph").modal("show");
+
+       // window.onresize = chart.resize;
+    }
+
+    function parseDate(date) {
+        return new Date(parseInt(/-?\d+/.exec(date)[0]))
+    }
+
+    function fnApplyPMDataTable() {
+        if ($('#pmdtSiteId').val() == "0") {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+        else if ($('#pmdtAssetId').val() == null || $('#pmdtAssetId').val() == undefined || $('#pmdtAssetId').val() == "") {
+            CommonNotification("ERROR", "Please select asset", "Error");
+        }
+        else {
+            if (confirm('Are you sure you want to apply')) {
+                var mMaintenanceInput = {};
+                mMaintenanceInput.SiteId = $('#pmdtSiteId').val();
+                mMaintenanceInput.AssetId = $('#pmdtAssetId').val();
+                mMaintenanceInput.IndexScore = 6;
+                mMaintenanceInput.MaintenenceInput = $('#pmDataTablesRemark').val();
+
+                $.ajax({
+                    url: '/SiteKeeping/ApplyMaintenanceInput',
+                    type: 'Post',
+                    data: JSON.stringify(mMaintenanceInput),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != undefined && data != null && data.type != null && data.type != '') {
+                            if (data.type == 'success') {
+                                UploadPMDataTableImage();
+                                SavePMDataTable();
+                                CommonNotification("SUCCESS", data.result, "success");
+                            }
+                            else {
+                                CommonNotification("ERROR", data.result, "Error");
+                            }
+                        } else {
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+
+    }
+
+    function fnGetDarkColor() {
+        var allowed = "ABCDEF0123456789", S = "#";
+
+        while (S.length < 7) {
+            S += allowed.charAt(Math.floor((Math.random() * 16) + 1));
+        }
+        return S;
+    }
+
+    function UploadPMDataTableImage() {
+        if ($('#pmdtSiteId').val() != null && $('#pmdtSiteId').val() != '0' && $('#pmdtAssetId').val() != null && $('#pmdtAssetId').val() != undefined && $('#pmdtAssetId').val() != "") {
+            var mSiteKeeping = {};
+            mSiteKeeping.SiteId = $('#pmdtSiteId').val();
+            mSiteKeeping.AssetId = $('#pmdtAssetId').val();
+            mSiteKeeping.Type = 'Signature';
+            mSiteKeeping.ImageBase64 = $('#hdnPMDataTableImageBase64').val();
+
+            $.ajax({
+                url: '/SiteKeeping/UploadImage',
+                type: 'Post',
+                data: JSON.stringify(mSiteKeeping),
+                contentType: 'application/json',
+                success: function (data) {
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                }
+            });
+        }
+
+    }
+
+    function SavePMDataTable() {
+        var mAppKey = {};
+        mAppKey.Number = '@E7FRSAdvance.Utility.Utility.AppKeyEnum.PointMachineDataTableRemark.GetHashCode()';
+        mAppKey.AppValue = $('#pmDataTablesRemark').val();
+
+        $.ajax({
+            url: '/SiteKeeping/SaveAppKey',
+            type: 'Post',
+            data: JSON.stringify(mAppKey),
+            contentType: 'application/json',
+            success: function (data) {
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>

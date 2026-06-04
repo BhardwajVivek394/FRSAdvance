@@ -1,0 +1,141 @@
+﻿@model List<Domain.Dto.A10StatusModemVM>
+@{
+    // C# 5 compatible - Group by A10Id to get both TCP and MQTT status for each device
+    var groupedA10 = Model
+        .GroupBy(x => x.A10Id)
+        .Select(g => new
+        {
+            A10Id = g.Key,
+            TcpOnline = g.Any(x => x.TypeId == 1 && x.Status == true),
+            MqttOnline = g.Any(x => x.TypeId == 2 && x.Status == true),
+            TcpTimestamp = g.Where(x => x.TypeId == 1).OrderByDescending(x => x.TimeStamp).Select(x => x.TimeStamp).FirstOrDefault(),
+            MqttTimestamp = g.Where(x => x.TypeId == 2).OrderByDescending(x => x.TimeStamp).Select(x => x.TimeStamp).FirstOrDefault(),
+            LatestTimestamp = g.OrderByDescending(x => x.TimeStamp).Select(x => x.TimeStamp).FirstOrDefault()
+        })
+        .ToList();
+    int deviceCount = groupedA10.Count;
+}
+
+<div class="a10-status-panel">
+    <h6 class="section-title">
+        Connected A10 Devices (@deviceCount)
+    </h6>
+
+    @if (deviceCount == 0)
+    {
+        <div class="no-devices-msg small text-center py-3">No A10 devices found</div>
+    }
+    else
+    {
+        <div class="d-flex flex-column gap-2">
+            @foreach (var a10 in groupedA10)
+            {
+                // C# 5 compatible - use explicit variables
+                bool isAnyOnline = a10.TcpOnline || a10.MqttOnline;
+                string statusDotClass = isAnyOnline ? "online" : "offline";
+                string tcpStatusClass = a10.TcpOnline ? "status-online" : "status-offline";
+                string mqttStatusClass = a10.MqttOnline ? "status-online" : "status-offline";
+                string tcpSymbol = a10.TcpOnline ? "✓" : "✕";
+                string mqttSymbol = a10.MqttOnline ? "✓" : "✕";
+                bool hasTimestamp = a10.LatestTimestamp != default(DateTime);
+                string timestampStr = hasTimestamp ? a10.LatestTimestamp.ToString("dd-MM-yyyy HH:mm") : "--";
+
+                <div class="card card-elevated p-2 a10-status-card">
+                    <div class="d-flex flex-row align-items-center">
+                        <span class="status-dot @statusDotClass me-2"></span>
+                        <span class="flex-grow-1 small fw-semibold a10-id">A10-@a10.A10Id</span>
+                        <small class="me-2 protocol-status @tcpStatusClass" data-protocol="tcp">
+                            TCP @tcpSymbol
+                        </small>
+                        <small class="protocol-status @mqttStatusClass" data-protocol="mqtt">
+                            MQTT @mqttSymbol
+                        </small>
+                    </div>
+                    <div class="d-flex flex-row mt-1 gap-3 timestamp-row">
+                        <span class="timestamp-text">
+                            <i class="bi bi-clock me-1"></i>@timestampStr
+                        </span>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    /* ============================================================
+       A10 STATUS PANEL - THEME AWARE STYLES
+       ============================================================ */
+
+    /* Section Title */
+    .a10-status-panel .section-title {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        color: var(--muted-color);
+        margin-bottom: 0.5rem;
+        letter-spacing: 0.05em;
+    }
+
+    /* No Devices Message */
+    .a10-status-panel .no-devices-msg {
+        color: var(--muted-color);
+    }
+
+    /* A10 Status Card */
+    .a10-status-panel .a10-status-card {
+        background: var(--card-elevated-bg) !important;
+        border: 1px solid var(--border-light) !important;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+        .a10-status-panel .a10-status-card:hover {
+            background: var(--hover-bg) !important;
+            border-color: var(--border-color) !important;
+        }
+
+    /* A10 ID Text */
+    .a10-status-panel .a10-id {
+        color: var(--body-color);
+    }
+
+    /* Protocol Status - Online */
+    .a10-status-panel .protocol-status.status-online[data-protocol="tcp"] {
+        color: var(--tcp-color);
+    }
+
+    .a10-status-panel .protocol-status.status-online[data-protocol="mqtt"] {
+        color: var(--mqtt-color);
+    }
+
+    /* Protocol Status - Offline */
+    .a10-status-panel .protocol-status.status-offline {
+        color: #ef4444;
+    }
+
+    /* Timestamp Row */
+    .a10-status-panel .timestamp-row {
+        font-size: 0.55rem;
+    }
+
+    /* Timestamp Text */
+    .a10-status-panel .timestamp-text {
+        color: var(--muted-color);
+    }
+
+    /* Status Dot - Inherits from parent theme */
+    .a10-status-panel .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+        .a10-status-panel .status-dot.online {
+            background: #22c55e;
+            box-shadow: 0 0 6px #22c55e;
+        }
+
+        .a10-status-panel .status-dot.offline {
+            background: #ef4444;
+        }
+</style>

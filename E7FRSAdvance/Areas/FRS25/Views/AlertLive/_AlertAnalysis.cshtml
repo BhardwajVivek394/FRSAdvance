@@ -1,0 +1,4241 @@
+﻿@model Domain.FRSAlertLister
+
+@{
+    var allAlerts = Model.mFRSAlerts.ToList();
+    int failCount = Model.mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
+    int predCount = Model.mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).Count();
+    int totalCount = failCount + predCount;
+
+    var assetGroups = allAlerts.GroupBy(x => x.AssetType ?? "Unknown").ToList();
+
+    var totalByAsset = assetGroups.ToDictionary(g => g.Key, g => g.Count());
+    var predByAsset = assetGroups.ToDictionary(g => g.Key,
+        g => g.Count(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive));
+    var failByAsset = assetGroups.ToDictionary(g => g.Key,
+        g => g.Count(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure));
+
+    var causeSummary = assetGroups.ToDictionary(
+        g => g.Key,
+        g => g.GroupBy(x => x.CauseCode ?? "-")
+              .Select(cg => new
+              {
+                  code = cg.Key,
+                  total = cg.Count(),
+                  pred = cg.Count(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive),
+                  fail = cg.Count(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+              })
+              .OrderByDescending(c => c.total)
+              .ToList()
+    );
+
+    var mFRSAlertRemarks = (ViewBag.FRSAlertRemarks as List<Domain.FRSAlertRemark>) ?? new List<Domain.FRSAlertRemark>();
+
+    var rowsJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+        allAlerts.Select((item, i) =>
+        {
+            string rectDate = "-";
+            if (item.ResetTimeStamp != null && item.ResetTimeStamp.Value != DateTime.MinValue)
+                rectDate = item.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss");
+            else
+            {
+                var remark = mFRSAlertRemarks.Where(x => x.FRSAlertId == item.Id).OrderByDescending(x => x.Id).FirstOrDefault();
+                if (remark != null && remark.RectificationDateTime != null)
+                    rectDate = remark.RectificationDateTime.Value.ToString("dd/MM/yyyy HH:mm:ss");
+            }
+            string durStr = "-";
+            if (item.ResetTimeStamp != null && item.ResetTimeStamp.Value != DateTime.MinValue)
+            {
+                var span = item.ResetTimeStamp.Value.Subtract(item.SetTimeStamp);
+                durStr = span.Days + "-" + span.Hours.ToString("D2") + ":" + span.Minutes.ToString("D2") + ":" + span.Seconds.ToString("D2");
+            }
+            bool isPred = item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive;
+            return new
+            {
+                id = item.Id,
+                assetId = item.AssetId,
+                assetTypeId = item.AssetTypeId,
+                siteId = item.SiteId,
+                zone = item.ZoneName,
+                division = item.DivisionName,
+                station = item.SiteName,
+                alertType = isPred ? "Predictive" : "Failure",
+                assetType = item.AssetType ?? "-",
+                assetNo = item.AssetName ?? "-",
+                incDate = item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss"),
+                duration = durStr,
+                rectDate = rectDate,
+                causeCode = item.CauseCode ?? "-",
+                setMsg = item.SetAlertMessage ?? "",
+                desc = item.Description ?? "",
+                resetMsg = item.ResetAlertMessage ?? ""
+            };
+        }).ToList()
+    );
+
+    var causeSummaryJson = Newtonsoft.Json.JsonConvert.SerializeObject(causeSummary);
+}
+
+<style>
+    /* ── PDF PROGRESS BAR ── */
+    .frs-pdf-progress {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: #fee2e2;
+        z-index: 200000;
+    }
+
+    .frs-pdf-progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg,#c0392b,#e74c3c);
+        width: 0%;
+        transition: width .3s ease;
+        border-radius: 0 2px 2px 0;
+    }
+
+    /* ── PDF TOOLBAR ── */
+    .frs-pdf-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+        padding: 10px 16px;
+        background: #fff;
+        border: 1px solid #d1dce8;
+        border-radius: 10px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .frs-pdf-toolbar-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+
+    .frs-pdf-toolbar-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+        .frs-pdf-toolbar-title i {
+            color: #0077cc;
+        }
+
+    .frs-pdf-toolbar-meta {
+        font-size: 11px;
+        color: #6b7280;
+        font-style: italic;
+    }
+
+    .frs-btn-pdf {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        background: linear-gradient(135deg,#c0392b,#e74c3c);
+        border: none;
+        border-radius: 7px;
+        padding: 8px 18px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #fff;
+        cursor: pointer;
+        letter-spacing: .04em;
+        transition: opacity .2s,transform .15s;
+        box-shadow: 0 2px 8px rgba(220,38,38,.25);
+        white-space: nowrap;
+    }
+
+        .frs-btn-pdf:hover {
+            opacity: .88;
+            transform: translateY(-1px);
+        }
+
+        .frs-btn-pdf:active {
+            transform: translateY(0);
+        }
+
+        .frs-btn-pdf:disabled {
+            opacity: .5;
+            cursor: default;
+            transform: none;
+        }
+
+    /* ── MESSAGE COLUMN ── */
+    .frs-th-msg {
+        min-width: 200px;
+        max-width: 280px;
+    }
+
+    .frs-td-msg {
+        max-width: 280px;
+        white-space: normal !important;
+        vertical-align: top;
+        padding: 8px 12px !important;
+    }
+
+    .frs-msg-line {
+        font-size: 11px;
+        line-height: 1.5;
+        color: #475569;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 2px;
+    }
+
+        .frs-msg-line:last-child {
+            margin-bottom: 0;
+        }
+
+    .frs-msg-set {
+        color: #1e293b;
+        font-weight: 500;
+    }
+
+    .frs-msg-desc {
+        color: #475569;
+    }
+
+    .frs-msg-reset {
+        color: #dc2626;
+        font-size: 10px;
+    }
+
+    @@media print {
+        .frs-msg-line {
+            -webkit-line-clamp: unset;
+            overflow: visible;
+            display: block;
+        }
+    }
+
+    /* ── SUMMARY CARDS ── */
+    .frs-summary {
+        display: grid;
+        grid-template-columns: repeat(3,1fr);
+        gap: 14px;
+        margin: 0 0 14px;
+    }
+
+    .frs-card {
+        background: #fff;
+        border: 1px solid #d1dce8;
+        border-radius: 10px;
+        padding: 16px 18px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+
+        .frs-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+        }
+
+        .frs-card.ct::before {
+            background: #16a34a;
+        }
+
+        .frs-card.cp::before {
+            background: #d97706;
+        }
+
+        .frs-card.cf::before {
+            background: #dc2626;
+        }
+
+    .frs-card-lbl {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .15em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+
+    .frs-card.ct .frs-card-lbl {
+        color: #16a34a;
+    }
+
+    .frs-card.cp .frs-card-lbl {
+        color: #d97706;
+    }
+
+    .frs-card.cf .frs-card-lbl {
+        color: #dc2626;
+    }
+
+    .frs-card-big {
+        font-size: 26px;
+        font-weight: 700;
+        margin-bottom: 10px;
+        line-height: 1;
+        font-family: monospace;
+    }
+
+    .frs-card.ct .frs-card-big {
+        color: #16a34a;
+    }
+
+    .frs-card.cp .frs-card-big {
+        color: #d97706;
+    }
+
+    .frs-card.cf .frs-card-big {
+        color: #dc2626;
+    }
+
+    .frs-chip-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .frs-chip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #f8fafc;
+        border: 1px solid #d1dce8;
+        border-radius: 6px;
+        padding: 5px 10px;
+        cursor: pointer;
+        transition: border-color .2s,background .2s;
+        user-select: none;
+    }
+
+        .frs-chip:hover, .frs-chip.active {
+            border-color: #0077cc;
+            background: #e8f4ff;
+        }
+
+    .frs-chip-name {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #475569;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        .frs-chip-name i {
+            font-size: 9px;
+            color: #0077cc;
+            transition: transform .2s;
+        }
+
+    .frs-chip.active .frs-chip-name i {
+        transform: rotate(90deg);
+    }
+
+    .frs-chip-count {
+        font-family: monospace;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .frs-card.ct .frs-chip-count {
+        color: #16a34a;
+    }
+
+    .frs-card.cp .frs-chip-count {
+        color: #d97706;
+    }
+
+    .frs-card.cf .frs-chip-count {
+        color: #dc2626;
+    }
+
+    /* ── CAUSE PANEL ── */
+    .frs-cause-panel {
+        background: #fff;
+        border: 1px solid #0077cc;
+        border-radius: 10px;
+        padding: 16px 18px;
+        margin-bottom: 14px;
+        animation: cpSlide .25s ease;
+        box-shadow: 0 2px 8px rgba(0,119,204,.1);
+    }
+
+    @@keyframes cpSlide {
+        from {
+            opacity: 0;
+            transform: translateY(-6px)
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0)
+        }
+    }
+
+    .frs-cp-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+
+    .frs-cp-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #0077cc;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .frs-cp-close {
+        background: none;
+        border: none;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+        .frs-cp-close:hover {
+            color: #1e293b;
+        }
+
+    .frs-cause-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .frs-cause-item {
+        background: #f8fafc;
+        border: 1px solid #d1dce8;
+        border-radius: 8px;
+        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        min-width: 115px;
+        cursor: pointer;
+        transition: border-color .2s,background .2s;
+    }
+
+        .frs-cause-item:hover {
+            border-color: #0077cc;
+            background: #e8f4ff;
+            box-shadow: 0 2px 8px rgba(0,119,204,.1);
+        }
+
+    .frs-ci-name {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: #475569;
+        text-align: center;
+    }
+
+    .frs-ci-count {
+        font-family: monospace;
+        font-size: 20px;
+        font-weight: 700;
+        color: #0077cc;
+    }
+
+    .frs-ci-bar {
+        width: 100%;
+        height: 3px;
+        border-radius: 2px;
+        background: #d1dce8;
+        margin-top: 3px;
+        overflow: hidden;
+    }
+
+    .frs-ci-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: #0077cc;
+    }
+
+    .frs-ci-hint {
+        font-size: 9px;
+        color: #9ca3af;
+        margin-top: 2px;
+    }
+
+    /* ── TABLE ── */
+    .frs-table-wrap {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #d1dce8;
+    }
+
+    .frs-table-scroll {
+        overflow-x: auto;
+    }
+
+    .frs-tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+        .frs-tbl thead tr {
+            background: #e8f0f8;
+        }
+
+        .frs-tbl thead th {
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: #6b7280;
+            white-space: nowrap;
+            border-bottom: 2px solid #d1dce8;
+        }
+
+        .frs-tbl tbody tr {
+            border-bottom: 1px solid #e5edf5;
+            transition: background .12s;
+        }
+
+            .frs-tbl tbody tr:hover {
+                background: #f0f7ff;
+            }
+
+        .frs-tbl td {
+            padding: 9px 12px;
+            white-space: nowrap;
+            color: #1e293b;
+            font-size: 12px;
+        }
+
+    .frs-badge {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 12px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .05em;
+    }
+
+    .frs-badge-pred {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fcd34d;
+    }
+
+    .frs-badge-fail {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+
+    .frs-cause-btn {
+        background: none;
+        border: none;
+        border-bottom: 1px dotted #0077cc;
+        color: #0077cc;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0;
+        font-family: inherit;
+    }
+
+        .frs-cause-btn:hover {
+            color: #005fa3;
+        }
+
+    /* ── PAGER ── */
+    .frs-pager {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-top: 1px solid #d1dce8;
+        background: #e8f0f8;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .frs-pager-info {
+        font-size: 12px;
+        color: #475569;
+    }
+
+        .frs-pager-info b {
+            color: #1e293b;
+            font-family: monospace;
+        }
+
+    .frs-pager-btns {
+        display: flex;
+        gap: 3px;
+        flex-wrap: wrap;
+    }
+
+        .frs-pager-btns button {
+            background: #fff;
+            border: 1px solid #d1dce8;
+            color: #475569;
+            border-radius: 5px;
+            padding: 4px 9px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: monospace;
+            min-width: 30px;
+            transition: all .15s;
+        }
+
+            .frs-pager-btns button:hover:not(:disabled) {
+                border-color: #0077cc;
+                color: #0077cc;
+            }
+
+            .frs-pager-btns button.active {
+                background: #0077cc;
+                color: #fff;
+                border-color: #0077cc;
+                font-weight: 700;
+            }
+
+            .frs-pager-btns button:disabled {
+                opacity: .4;
+                cursor: default;
+            }
+
+        .frs-pager-btns .frs-ell {
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+        }
+
+    .frs-psize {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #475569;
+    }
+
+        .frs-psize select {
+            background: #fff;
+            border: 1px solid #d1dce8;
+            color: #1e293b;
+            border-radius: 5px;
+            padding: 3px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+    /* ── CAUSE DETAIL MODAL ── */
+    .frs-modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0,0,0,.55);
+        z-index: 100000;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+    }
+
+        .frs-modal-overlay.open {
+            display: flex;
+        }
+
+    .frs-modal-box {
+        background: #fff;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 1200px;
+        max-height: 90vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 20px 60px rgba(0,0,0,.2);
+        animation: frsPopIn .2s ease;
+    }
+
+    @@keyframes frsPopIn {
+        from {
+            opacity: 0;
+            transform: scale(.94)
+        }
+
+        to {
+            opacity: 1;
+            transform: scale(1)
+        }
+    }
+
+    .frs-modal-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        border-bottom: 1px solid #d1dce8;
+        background: #f8fafc;
+        flex-shrink: 0;
+    }
+
+    .frs-modal-tag {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .15em;
+        text-transform: uppercase;
+        color: #0077cc;
+        margin-bottom: 2px;
+    }
+
+    .frs-modal-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1e293b;
+    }
+
+    .frs-modal-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #6b7280;
+        font-size: 18px;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+
+        .frs-modal-close:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+
+    .frs-modal-body {
+        padding: 18px 20px;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .frs-modal-foot {
+        padding: 12px 20px;
+        border-top: 1px solid #d1dce8;
+        background: #f8fafc;
+        display: flex;
+        justify-content: flex-end;
+        flex-shrink: 0;
+    }
+
+    .frs-btn-close {
+        background: #fff;
+        border: 1px solid #d1dce8;
+        color: #475569;
+        border-radius: 6px;
+        padding: 7px 16px;
+        font-size: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all .15s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        .frs-btn-close:hover {
+            border-color: #0077cc;
+            color: #0077cc;
+        }
+
+    .frs-modal-stats {
+        display: grid;
+        grid-template-columns: repeat(3,1fr);
+        gap: 10px;
+        margin-bottom: 18px;
+    }
+
+    .frs-ms {
+        background: #f8fafc;
+        border: 1px solid #d1dce8;
+        border-radius: 8px;
+        padding: 12px;
+        text-align: center;
+    }
+
+    .frs-ms-lbl {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+
+    .frs-ms-val {
+        font-family: monospace;
+        font-size: 22px;
+        font-weight: 700;
+    }
+
+    .frs-ms.tot .frs-ms-lbl {
+        color: #16a34a;
+    }
+
+    .frs-ms.tot .frs-ms-val {
+        color: #16a34a;
+    }
+
+    .frs-ms.prd .frs-ms-lbl {
+        color: #d97706;
+    }
+
+    .frs-ms.prd .frs-ms-val {
+        color: #d97706;
+    }
+
+    .frs-ms.fal .frs-ms-lbl {
+        color: #dc2626;
+    }
+
+    .frs-ms.fal .frs-ms-val {
+        color: #dc2626;
+    }
+
+    .frs-sec-title {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #6b7280;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .frs-bkdn {
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        margin-bottom: 18px;
+    }
+
+    .frs-bkdn-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .frs-bkdn-lbl {
+        font-size: 11px;
+        font-weight: 600;
+        color: #475569;
+        width: 130px;
+        flex-shrink: 0;
+        text-align: right;
+    }
+
+    .frs-bkdn-bar-wrap {
+        flex: 1;
+        background: #d1dce8;
+        border-radius: 4px;
+        height: 10px;
+        overflow: hidden;
+    }
+
+    .frs-bkdn-bar {
+        height: 100%;
+        border-radius: 4px;
+        background: #0077cc;
+    }
+
+    .frs-bkdn-count {
+        font-family: monospace;
+        font-size: 11px;
+        font-weight: 600;
+        color: #1e293b;
+        width: 50px;
+    }
+
+    .frs-modal-tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+    }
+
+        .frs-modal-tbl thead tr {
+            background: #e8f0f8;
+        }
+
+        .frs-modal-tbl th {
+            padding: 7px 10px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+
+        .frs-modal-tbl td {
+            padding: 6px 10px;
+            border-bottom: 1px solid #e5edf5;
+            white-space: nowrap;
+        }
+
+        .frs-modal-tbl tbody tr:hover {
+            background: #f0f7ff;
+        }
+
+    /* ── ASSET NO GROUP ROW ── */
+    .frs-group-row {
+        background: #eef4fb !important;
+        cursor: pointer;
+        user-select: none;
+    }
+
+        .frs-group-row:hover {
+            background: #dbeafe !important;
+        }
+
+        .frs-group-row td {
+            padding: 7px 10px !important;
+            font-weight: 700;
+            color: #1e40af;
+            font-size: 11px;
+        }
+
+    .frs-group-toggle {
+        font-size: 10px;
+        margin-right: 6px;
+        display: inline-block;
+        transition: transform .2s;
+    }
+
+        .frs-group-toggle.open {
+            transform: rotate(90deg);
+        }
+
+    .frs-group-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #3b82f6;
+        color: #fff;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 7px;
+        margin-left: 6px;
+    }
+
+    .frs-detail-row {
+        transition: background .1s;
+    }
+
+        .frs-detail-row.hidden {
+            display: none;
+        }
+
+    /* ── DEBUG BUTTON ── */
+    .frs-btn-debug {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        color: #475569;
+        border-radius: 5px;
+        padding: 3px 8px;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background .15s,border-color .15s,color .15s;
+    }
+
+        .frs-btn-debug:hover {
+            background: #e0f2fe;
+            border-color: #0077cc;
+            color: #0077cc;
+        }
+
+        .frs-btn-debug i {
+            font-size: 9px;
+        }
+
+    /* ── DEBUG POPUP ── */
+    .frs-debug-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0,0,0,.6);
+        z-index: 200001;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+
+        .frs-debug-overlay.open {
+            display: flex;
+        }
+
+        /* ── DEBUG POPUP FULLSCREEN MODE ── */
+        .frs-debug-overlay.fullscreen {
+            padding: 0;
+        }
+
+            .frs-debug-overlay.fullscreen .frs-debug-box {
+                max-width: 100vw;
+                max-height: 100vh;
+                width: 100vw;
+                height: 100vh;
+                border-radius: 0;
+                border-top: 4px solid #0077cc;
+            }
+
+            .frs-debug-overlay.fullscreen .frs-debug-body {
+                flex: 1;
+                overflow: hidden;
+            }
+
+            .frs-debug-overlay.fullscreen .frs-debug-panel.active {
+                height: calc(100vh - 130px); /* header + tabs + footer */
+                overflow-y: auto;
+            }
+
+            /* ── Fullscreen: expand telemetry & TPR table body ── */
+            /* ── Fullscreen: allow horizontal scroll, keep fixed col widths ── */
+            .frs-debug-overlay.fullscreen #teleBodyScroll,
+            .frs-debug-overlay.fullscreen #tprBodyScroll {
+                overflow-x: auto !important;
+                overflow-y: auto !important;
+            }
+
+            .frs-debug-overlay.fullscreen #teleHeaderTable,
+            .frs-debug-overlay.fullscreen #tprHeaderScroll {
+                overflow-x: auto !important;
+            }
+
+                .frs-debug-overlay.fullscreen #teleBodyScroll th,
+                .frs-debug-overlay.fullscreen #tprBodyScroll th,
+                .frs-debug-overlay.fullscreen #teleHeaderTable th,
+                .frs-debug-overlay.fullscreen #tprHeaderScroll th {
+                    max-width: none !important;
+                    white-space: normal !important;
+                }
+
+    .frs-debug-box {
+        background: #fff;
+        border-radius: 12px;
+        width: 100%;
+        max-width: 1000px;
+        max-height: 88vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 24px 64px rgba(0,0,0,.25);
+        animation: dbgPop .2s ease;
+        border-top: 4px solid #0077cc;
+    }
+
+    @@keyframes dbgPop {
+        from {
+            opacity: 0;
+            transform: translateY(16px) scale(.96)
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1)
+        }
+    }
+
+    .frs-debug-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        border-bottom: 1px solid #e5edf5;
+        background: #f8fafc;
+        flex-shrink: 0;
+    }
+
+    .frs-debug-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .frs-debug-title i {
+            color: #0077cc;
+        }
+
+    .frs-debug-sub {
+        font-size: 11px;
+        color: #6b7280;
+        margin-top: 2px;
+    }
+
+    .frs-debug-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #6b7280;
+        font-size: 18px;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+
+        .frs-debug-close:hover {
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+
+    /* ── DEBUG TABS ── */
+    .frs-debug-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 2px solid #e5edf5;
+        background: #f8fafc;
+        flex-shrink: 0;
+        overflow-x: auto;
+    }
+
+    .frs-debug-tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        border: none;
+        background: none;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
+        white-space: nowrap;
+        transition: color .15s,border-color .15s;
+        font-family: inherit;
+    }
+
+        .frs-debug-tab:hover {
+            color: #0077cc;
+        }
+
+        .frs-debug-tab.active {
+            color: #0077cc;
+            border-bottom-color: #0077cc;
+            background: #fff;
+        }
+
+        .frs-debug-tab i {
+            font-size: 11px;
+        }
+
+        .frs-debug-tab .tab-badge {
+            background: #e0f2fe;
+            color: #0369a1;
+            border-radius: 8px;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 5px;
+        }
+
+        .frs-debug-tab.active .tab-badge {
+            background: #0077cc;
+            color: #fff;
+        }
+
+    /* ── DEBUG TAB CONTENT ── */
+    .frs-debug-body {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .frs-debug-panel {
+        display: none;
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 20px;
+    }
+
+        .frs-debug-panel.active {
+            display: block;
+        }
+
+    /* Tab: Info */
+    .frs-debug-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .frs-debug-card {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px 14px;
+    }
+
+    .frs-debug-card-lbl {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #94a3b8;
+        margin-bottom: 4px;
+    }
+
+    .frs-debug-card-val {
+        font-size: 12px;
+        font-weight: 600;
+        color: #1e293b;
+        word-break: break-all;
+    }
+
+    .frs-debug-msg-box {
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+    }
+
+    .frs-debug-msg-lbl {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #b45309;
+        margin-bottom: 6px;
+    }
+
+    .frs-debug-msg-val {
+        font-size: 12px;
+        color: #78350f;
+        line-height: 1.65;
+        word-break: break-word;
+    }
+
+    .frs-debug-reset-box {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+
+    .frs-debug-reset-lbl {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #991b1b;
+        margin-bottom: 6px;
+    }
+
+    .frs-debug-reset-val {
+        font-size: 12px;
+        color: #7f1d1d;
+        line-height: 1.65;
+        word-break: break-word;
+    }
+
+    /* Tab: Telemetry / MQTT / Datalogger / Alert JSON — shared loading/error/content */
+    .frs-tab-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 20px;
+        gap: 10px;
+        color: #64748b;
+    }
+
+        .frs-tab-loading .spin {
+            font-size: 22px;
+            color: #0077cc;
+            animation: frsSpinA 0.8s linear infinite;
+        }
+
+    @@keyframes frsSpinA {
+        to {
+            transform: rotate(360deg)
+        }
+    }
+
+    .frs-tab-loading p {
+        font-size: 13px;
+        margin: 0;
+    }
+
+    .frs-tab-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 14px 16px;
+        color: #991b1b;
+        font-size: 12px;
+    }
+
+    .frs-tab-empty {
+        text-align: center;
+        padding: 40px;
+        color: #94a3b8;
+        font-size: 13px;
+    }
+
+    /* Telemetry table */
+    .frs-tele-tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+    }
+
+        .frs-tele-tbl thead tr {
+            background: #e8f0f8;
+        }
+
+        .frs-tele-tbl th {
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+
+        .frs-tele-tbl td {
+            padding: 7px 10px;
+            border-bottom: 1px solid #e5edf5;
+            font-size: 11px;
+        }
+
+        .frs-tele-tbl tbody tr:hover {
+            background: #f0f7ff;
+        }
+
+    .frs-tele-badge {
+        display: inline-block;
+        padding: 2px 7px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 700;
+    }
+
+    .frs-tele-ok {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .frs-tele-warn {
+        background: #fef9c3;
+        color: #854d0e;
+    }
+
+    .frs-tele-err {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    /* MQTT Graph placeholder */
+    .frs-mqtt-chart-wrap {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        min-height: 220px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+    }
+
+    /* Alert JSON */
+    .frs-json-wrap {
+        background: #0f172a;
+        border-radius: 8px;
+        padding: 14px 16px;
+        overflow-x: auto;
+    }
+
+        .frs-json-wrap pre {
+            color: #e2e8f0;
+            font-size: 11px;
+            font-family: monospace;
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+    .frs-json-key {
+        color: #7dd3fc;
+    }
+
+    .frs-json-str {
+        color: #86efac;
+    }
+
+    .frs-json-num {
+        color: #fda4af;
+    }
+
+    .frs-json-bool {
+        color: #f9a8d4;
+        font-weight: bold;
+    }
+
+    .frs-json-null {
+        color: #94a3b8;
+        font-style: italic;
+    }
+
+    .frs-debug-foot {
+        padding: 12px 20px;
+        border-top: 1px solid #e5edf5;
+        background: #f8fafc;
+        display: flex;
+        justify-content: flex-end;
+        flex-shrink: 0;
+    }
+
+    @@media(max-width:768px) {
+        .frs-summary {
+            grid-template-columns: 1fr;
+        }
+
+        .frs-modal-stats {
+            grid-template-columns: 1fr;
+        }
+
+        .frs-debug-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<!-- ── PDF PROGRESS BAR ── -->
+<div class="frs-pdf-progress" id="frsPdfProgress">
+    <div class="frs-pdf-progress-bar" id="frsPdfProgressBar"></div>
+</div>
+
+<!-- ════ PDF CAPTURE WRAPPER ════ -->
+<div id="frsPdfCapture">
+
+    <!-- ── PDF TOOLBAR ── -->
+    <div class="frs-pdf-toolbar" id="frsPdfToolbar">
+        <div class="frs-pdf-toolbar-left">
+            <span class="frs-pdf-toolbar-title"><i class="fas fa-chart-bar"></i> Alert Analysis Report</span>
+            <span class="frs-pdf-toolbar-meta" id="frsPdfMeta"></span>
+        </div>
+        <button class="frs-btn-pdf" id="frsBtnPdf" onclick="fnDownloadAlertPDF()">
+            <i class="fas fa-file-pdf"></i> Download PDF
+        </button>
+    </div>
+
+    <!-- ── SUMMARY CARDS ── -->
+    <div class="frs-summary">
+        <div class="frs-card ct">
+            <div class="frs-card-lbl">Total Alerts</div>
+            <div class="frs-card-big">@totalCount.ToString("N0")</div>
+            <div class="frs-chip-wrap" id="chipsTotal">
+                @foreach (var kv in totalByAsset.OrderByDescending(x => x.Value))
+                {
+                    <div class="frs-chip" data-asset="@kv.Key" data-card="total" onclick="onChipClick(this)">
+                        <span class="frs-chip-name"><i class="fas fa-chevron-right"></i>@kv.Key</span>
+                        <span class="frs-chip-count">@kv.Value.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="frs-card cp">
+            <div class="frs-card-lbl">Predictive</div>
+            <div class="frs-card-big">@predCount.ToString("N0")</div>
+            <div class="frs-chip-wrap" id="chipsPred">
+                @foreach (var kv in predByAsset.OrderByDescending(x => x.Value))
+                {
+                    <div class="frs-chip" data-asset="@kv.Key" data-card="predictive" onclick="onChipClick(this)">
+                        <span class="frs-chip-name"><i class="fas fa-chevron-right"></i>@kv.Key</span>
+                        <span class="frs-chip-count">@kv.Value.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="frs-card cf">
+            <div class="frs-card-lbl">Failure</div>
+            <div class="frs-card-big">@failCount.ToString("N0")</div>
+            <div class="frs-chip-wrap" id="chipsFail">
+                @foreach (var kv in failByAsset.OrderByDescending(x => x.Value))
+                {
+                    <div class="frs-chip" data-asset="@kv.Key" data-card="failure" onclick="onChipClick(this)">
+                        <span class="frs-chip-name"><i class="fas fa-chevron-right"></i>@kv.Key</span>
+                        <span class="frs-chip-count">@kv.Value.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CAUSE CODE PANEL ── -->
+    <div class="frs-cause-panel" id="frsCausePanel" style="display:none">
+        <div class="frs-cp-head">
+            <div class="frs-cp-title"><i class="fas fa-sitemap"></i><span id="frsCpTitle"></span></div>
+            <button class="frs-cp-close" onclick="closeCausePanel()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="frs-cause-grid" id="frsCauseGrid"></div>
+    </div>
+
+    <!-- ── ALERT TABLE ── -->
+    <div class="frs-table-wrap">
+        <div class="frs-table-scroll">
+            <table class="frs-tbl" id="frsAlertTable">
+                <thead>
+                    <tr>
+                        <th>Sr.No</th>
+                        <th>Zone</th>
+                        <th>Division</th>
+                        <th>Station</th>
+                        <th>Alert Type</th>
+                        <th>Asset Type</th>
+                        <th>Asset No.</th>
+                        <th>Incidence Date &amp; Time</th>
+                        <th>Duration (day-hh:mm:ss)</th>
+                        <th>Rectification Date &amp; Time</th>
+                        <th>Cause of Asset Failure</th>
+                        <th class="frs-th-msg">Message &amp; Description</th>
+                    </tr>
+                </thead>
+                <tbody id="frsAlertBody">
+                    <tr>
+                        <td colspan="12" style="text-align:center;padding:30px;color:#6b7280">
+                            <i class="fas fa-circle-notch fa-spin"></i> Loading...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="frs-pager" id="frsPagerBar"></div>
+    </div>
+
+</div><!-- /#frsPdfCapture -->
+<!-- ── CAUSE CODE DETAIL MODAL ── -->
+<div class="frs-modal-overlay" id="frsCauseModal">
+    <div class="frs-modal-box">
+        <div class="frs-modal-head">
+            <div>
+                <div class="frs-modal-tag"><i class="fas fa-tag"></i> Cause Code Detail</div>
+                <div class="frs-modal-title" id="frsMdTitle">—</div>
+            </div>
+            <button class="frs-modal-close" onclick="closeCauseModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="frs-modal-body">
+            <div class="frs-modal-stats" id="frsMdStats"></div>
+            <div class="frs-sec-title"><i class="fas fa-chart-bar"></i> Asset Type Breakdown</div>
+            <div class="frs-bkdn" id="frsMdBreakdown"></div>
+            <div class="frs-sec-title">
+                <i class="fas fa-layer-group"></i> Records grouped by Asset No.
+                <span id="frsMdRecCount" style="font-weight:normal;color:#9ca3af"></span>
+            </div>
+            <div style="overflow-x:auto">
+                <table class="frs-modal-tbl" id="frsMdTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Zone</th>
+                            <th>Division</th>
+                            <th>Station</th>
+                            <th>Alert Type</th>
+                            <th>Asset Type</th>
+                            <th>Incidence Date &amp; Time</th>
+                            <th>Duration</th>
+                            <th>Message</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="frsMdRows"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="frs-modal-foot">
+            <button class="frs-btn-close" onclick="closeCauseModal()"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── DEBUG POPUP ── -->
+<div class="frs-debug-overlay" id="frsDebugOverlay">
+    <div class="frs-debug-box">
+
+        <!-- Header -->
+        <div class="frs-debug-head">
+            <div>
+                <div class="frs-debug-title"><i class="fas fa-bug"></i> Alert Debug Info</div>
+                <div class="frs-debug-sub" id="frsDbgSub"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <!-- ← Add fullscreen button -->
+                <button class="frs-debug-close" id="frsDbgFullscreenBtn"
+                        onclick="toggleDebugFullscreen()" title="Toggle Fullscreen">
+                    <i class="fas fa-expand" id="frsDbgFullscreenIcon"></i>
+                </button>
+                <button class="frs-debug-close" onclick="closeDebugPopup()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="frs-debug-tabs" id="frsDbgTabs">
+            <button class="frs-debug-tab active" data-tab="info"
+                    onclick="switchDbgTab('info',this)">
+                <i class="fas fa-info-circle"></i> Info
+            </button>
+            <button class="frs-debug-tab" data-tab="telemetry"
+                    onclick="switchDbgTab('telemetry',this)">
+                <i class="fas fa-satellite-dish"></i> Telemetry Live
+            </button>
+            <button class="frs-debug-tab" data-tab="mqtt"
+                    onclick="switchDbgTab('mqtt',this)">
+                <i class="fas fa-chart-line"></i> MQTT Graph
+            </button>
+            <button class="frs-debug-tab" data-tab="datalogger"
+                    onclick="switchDbgTab('datalogger',this)">
+                <i class="fas fa-database"></i> Datalogger Log
+            </button>
+            <button class="frs-debug-tab" data-tab="alertjson"
+                    onclick="switchDbgTab('alertjson',this)">
+                <i class="fas fa-code"></i> Alert JSON
+            </button>
+            <button class="frs-debug-tab" data-tab="debugtpr" onclick="switchDbgTab('debugtpr',this)">
+                <i class="fas fa-broadcast-tower"></i> Debug TPR
+            </button>
+            <button class="frs-debug-tab" data-tab="network" 
+                    onclick="switchDbgTab('network',this)">
+                <i class="fas fa-network-wired"></i> Network
+            </button>
+        </div>
+
+        <!-- Body: panels -->
+        <div class="frs-debug-body">
+
+            <!-- ① INFO -->
+            <div class="frs-debug-panel active" id="frsDbgPanel_info">
+                <div class="frs-debug-grid" id="frsDbgGrid"></div>
+                <div class="frs-debug-msg-box" id="frsDbgMsgBox" style="display:none">
+                    <div class="frs-debug-msg-lbl"><i class="fas fa-bell" style="margin-right:4px"></i>Set Alert Message</div>
+                    <div class="frs-debug-msg-val" id="frsDbgMsg"></div>
+                </div>
+                <div class="frs-debug-msg-box" id="frsDbgDescBox" style="display:none;margin-top:10px">
+                    <div class="frs-debug-msg-lbl"><i class="fas fa-info-circle" style="margin-right:4px"></i>Description</div>
+                    <div class="frs-debug-msg-val" id="frsDbgDesc"></div>
+                </div>
+                <div class="frs-debug-reset-box" id="frsDbgResetBox" style="display:none;margin-top:10px">
+                    <div class="frs-debug-reset-lbl"><i class="fas fa-undo" style="margin-right:4px"></i>Reset Alert Message</div>
+                    <div class="frs-debug-reset-val" id="frsDbgReset"></div>
+                </div>
+            </div>
+
+            <!-- ② TELEMETRY LIVE -->
+            <div class="frs-debug-panel" id="frsDbgPanel_telemetry">
+                <div id="frsDbgTelemetryContent">
+                    <div class="frs-tab-loading">
+                        <i class="fas fa-circle-notch spin"></i>
+                        <p>Loading telemetry data…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ③ MQTT GRAPH -->
+            <div class="frs-debug-panel" id="frsDbgPanel_mqtt">
+                <div id="frsDbgMqttContent">
+                    <div class="frs-tab-loading">
+                        <i class="fas fa-circle-notch spin"></i>
+                        <p>Loading MQTT graph data…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ④ DATALOGGER LOG -->
+            <div class="frs-debug-panel" id="frsDbgPanel_datalogger">
+                <div id="frsDbgDataloggerContent">
+                    <div class="frs-tab-loading">
+                        <i class="fas fa-circle-notch spin"></i>
+                        <p>Loading datalogger log…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ⑤ ALERT JSON -->
+            <div class="frs-debug-panel" id="frsDbgPanel_alertjson">
+                <div id="frsDbgAlertJsonContent">
+                    <div class="frs-tab-loading">
+                        <i class="fas fa-circle-notch spin"></i>
+                        <p>Loading alert JSON…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ⑥ DEBUG TPR -->
+            <div class="frs-debug-panel" id="frsDbgPanel_debugtpr">
+                <div id="frsDbgDebugtprContent">
+                    <div class="frs-tab-loading">
+                        <i class="fas fa-circle-notch spin"></i>
+                        <p>Loading TPR data…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ⑦ NETWORK -->
+            <div class="frs-debug-panel" id="frsDbgPanel_network">
+                <div id="frsDbgNetworkContent">
+                    <div class="frs-tab-loading">
+                        <i class="fas fa-circle-notch spin"></i>
+                        <p>Loading network data…</p>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /.frs-debug-body -->
+
+        <div class="frs-debug-foot">
+            <button class="frs-btn-close" onclick="closeDebugPopup()"><i class="fas fa-times"></i> Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  DATA
+// ════════════════════════════════════════════════════════════
+var _allRows      = @Html.Raw(rowsJson);
+var _causeSummary = @Html.Raw(causeSummaryJson);
+window._alertCurrentSkip = 0;
+
+// ════════════════════════════════════════════════════════════
+//  CHIP / CAUSE PANEL
+// ════════════════════════════════════════════════════════════
+var _activeChip = null;
+
+function onChipClick(chipEl) {
+  if (_activeChip === chipEl) { closeCausePanel(); return; }
+  if (_activeChip) _activeChip.classList.remove('active');
+  chipEl.classList.add('active');
+  _activeChip = chipEl;
+  showCausePanel(chipEl.dataset.asset, chipEl.dataset.card);
+}
+function closeCausePanel() {
+  document.getElementById('frsCausePanel').style.display = 'none';
+  if (_activeChip) { _activeChip.classList.remove('active'); _activeChip = null; }
+}
+function showCausePanel(assetType, cardType) {
+  var lblMap = { total:'Total', predictive:'Predictive', failure:'Failure' };
+  document.getElementById('frsCpTitle').textContent = assetType + '  ·  ' + lblMap[cardType] + ' — Cause Code Breakdown';
+  var codes  = _causeSummary[assetType] || [];
+  var keyMap = { predictive:'pred', failure:'fail', total:'total' };
+  var key    = keyMap[cardType] || 'total';
+  var maxVal = Math.max.apply(null, codes.map(function(c){ return c[key]; }).concat([1]));
+  var grid   = document.getElementById('frsCauseGrid');
+  grid.innerHTML = '';
+  codes.forEach(function(c) {
+    var val  = c[key];
+    var pct  = Math.round((val/maxVal)*100);
+    var item = document.createElement('div');
+    item.className = 'frs-cause-item';
+    item.innerHTML =
+      '<div class="frs-ci-name">'  + escHtml(c.code) + '</div>' +
+      '<div class="frs-ci-count">' + val.toLocaleString() + '</div>' +
+      '<div class="frs-ci-bar"><div class="frs-ci-fill" style="width:'+pct+'%"></div></div>' +
+      '<div class="frs-ci-hint"><i class="fas fa-mouse-pointer"></i> click for details</div>';
+    item.addEventListener('click', function(){ openCauseModal(c.code); });
+    grid.appendChild(item);
+  });
+  document.getElementById('frsCausePanel').style.display = 'block';
+}
+
+// ════════════════════════════════════════════════════════════
+//  CAUSE CODE DETAIL MODAL  — with AssetNo grouping + Debug
+// ════════════════════════════════════════════════════════════
+    function openCauseModal(causeCode) {
+        if (typeof closeDD === 'function') { try { closeDD(); } catch (e) { } }
+        document.querySelectorAll('.filter-dropdown').forEach(function (el) {
+            el.classList.remove('open'); el.style.display = 'none';
+        });
+        var bd = document.getElementById('backdrop');
+        if (bd) { bd.classList.remove('show'); bd.style.display = 'none'; }
+
+        var overlay = document.getElementById('frsCauseModal');
+        if (overlay.parentNode !== document.body) {
+            document.body.appendChild(overlay);
+            if (!overlay._closeListenerAdded) {
+                overlay.addEventListener('click', function (e) {
+                    if (e.target === overlay) closeCauseModal();
+                });
+                overlay._closeListenerAdded = true;
+            }
+        }
+
+        var matching = _allRows.filter(function (r) { return r.causeCode === causeCode; });
+        var total = matching.length;
+        var pred = matching.filter(function (r) { return r.alertType === 'Predictive'; }).length;
+        var fail = total - pred;
+
+        document.getElementById('frsMdTitle').textContent = causeCode;
+        document.getElementById('frsMdStats').innerHTML =
+            '<div class="frs-ms tot"><div class="frs-ms-lbl">Total</div><div class="frs-ms-val">' + total.toLocaleString() + '</div></div>' +
+            '<div class="frs-ms prd"><div class="frs-ms-lbl">Predictive</div><div class="frs-ms-val">' + pred.toLocaleString() + '</div></div>' +
+            '<div class="frs-ms fal"><div class="frs-ms-lbl">Failure</div><div class="frs-ms-val">' + fail.toLocaleString() + '</div></div>';
+
+        // Asset type breakdown
+        var bkdn = {};
+        matching.forEach(function (r) { bkdn[r.assetType] = (bkdn[r.assetType] || 0) + 1; });
+        var bkdnArr = Object.keys(bkdn).map(function (k) { return { asset: k, count: bkdn[k] }; }).sort(function (a, b) { return b.count - a.count; });
+        var maxB = Math.max.apply(null, bkdnArr.map(function (b) { return b.count; }).concat([1]));
+        document.getElementById('frsMdBreakdown').innerHTML = bkdnArr.map(function (b) {
+            var pct = Math.round((b.count / maxB) * 100);
+            return '<div class="frs-bkdn-row">' +
+                '<div class="frs-bkdn-lbl">' + escHtml(b.asset) + '</div>' +
+                '<div class="frs-bkdn-bar-wrap"><div class="frs-bkdn-bar" style="width:' + pct + '%"></div></div>' +
+                '<div class="frs-bkdn-count">' + b.count.toLocaleString() + '</div></div>';
+        }).join('');
+
+        // ── Group by Asset No ──────────────────────────────────────
+        var display = matching.slice(0, 200);
+        document.getElementById('frsMdRecCount').textContent =
+            '(showing ' + display.length + ' of ' + total + ')';
+
+        // Build groups: { assetNo: [rows] }
+        var groups = {}, groupOrder = [];
+        display.forEach(function (r) {
+            var key = r.assetNo || '-';
+            if (!groups[key]) { groups[key] = []; groupOrder.push(key); }
+            groups[key].push(r);
+        });
+
+        var rowIdx = 0;
+        var html = '';
+        groupOrder.forEach(function (assetNo) {
+            var rows = groups[assetNo];
+            var groupId = 'grp_' + assetNo.replace(/[^a-zA-Z0-9]/g, '_') + '_' + rowIdx;
+
+            // ── Group header row ──
+            html += '<tr class="frs-group-row" onclick="toggleGroup(\'' + groupId + '\')">' +
+                '<td colspan="10">' +
+                '<span class="frs-group-toggle open" id="tog_' + groupId + '">\u25B6</span>' +
+                '<strong>' + escHtml(assetNo) + '</strong>' +
+                '<span class="frs-group-badge">' + rows.length + '</span>' +
+                '</td>' +
+                '</tr>';
+
+            // ── Detail rows ──
+            rows.forEach(function (r, i) {
+                var badgeCls = r.alertType === 'Predictive' ? 'frs-badge-pred' : 'frs-badge-fail';
+                // Store row data for debug popup
+                var dataAttr = 'data-idx="' + rowIdx + '"';
+                _debugRows[rowIdx] = r;
+                html += '<tr class="frs-detail-row" data-group="' + groupId + '">' +
+                    '<td style="font-family:monospace;color:#6b7280;padding-left:22px">' + (rowIdx + 1) + '</td>' +
+                    '<td>' + escHtml(r.zone) + '</td>' +
+                    '<td>' + escHtml(r.division) + '</td>' +
+                    '<td>' + escHtml(r.station) + '</td>' +
+                    '<td><span class="frs-badge ' + badgeCls + '">' + r.alertType + '</span></td>' +
+                    '<td style="font-weight:600">' + escHtml(r.assetType) + '</td>' +
+                    '<td style="font-family:monospace;color:#475569">' + r.incDate + '</td>' +
+                    '<td style="font-family:monospace;color:#6b7280">' + r.duration + '</td>' +
+                    '<td style="color:#475569;max-width:200px;white-space:normal">' +
+                    sanitizeMsg(r.setMsg) +
+                    (r.desc ? '<br><span style="color:#64748b">' + sanitizeMsg(r.desc) + '</span>' : '') +
+                    '</td>' +
+                    '<td>' +
+                    '<button class="frs-btn-debug" ' + dataAttr + ' onclick="openDebugPopup(' + rowIdx + ');event.stopPropagation()">' +
+                    '<i class="fas fa-bug"></i> Debug' +
+                    '</button>' +
+                    '</td>' +
+                    '</tr>';
+                rowIdx++;
+            });
+        });
+
+        document.getElementById('frsMdRows').innerHTML = html;
+        overlay.classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+
+// Toggle group expand/collapse
+    function toggleGroup(groupId) {
+        var rows = document.querySelectorAll('[data-group="' + groupId + '"]');
+        var toggle = document.getElementById('tog_' + groupId);
+        var isOpen = toggle.classList.contains('open');
+        rows.forEach(function (r) { r.classList.toggle('hidden', isOpen); });
+        toggle.classList.toggle('open', !isOpen);
+    }
+
+    // ── Toggle fullscreen for debug popup ─────────────────────
+    function toggleDebugFullscreen() {
+        var overlay = document.getElementById('frsDebugOverlay');
+        var icon = document.getElementById('frsDbgFullscreenIcon');
+        var box = overlay ? overlay.querySelector('.frs-debug-box') : null;
+
+        if (!overlay) return;
+
+        var isFullscreen = overlay.classList.contains('fullscreen');
+
+        if (isFullscreen) {
+            // ── Exit fullscreen ──────────────────────────────
+            overlay.classList.remove('fullscreen');
+            if (icon) {
+                icon.classList.remove('fa-compress');
+                icon.classList.add('fa-expand');
+            }
+            if (box) {
+                box.style.width = '';
+                box.style.height = '';
+                box.style.maxWidth = '';
+                box.style.maxHeight = '';
+            }
+
+            // ── Restore table heights ────────────────────────
+            var teleBody = document.getElementById('teleBodyScroll');
+            var tprBody = document.getElementById('tprBodyScroll');
+            if (teleBody) teleBody.style.maxHeight = '390px';
+            if (tprBody) tprBody.style.maxHeight = '390px';
+
+            [teleHeader, tprHeader, teleBodyEl, tprBodyEl].forEach(function (el) {
+                if (el) {
+                    var parent = el.parentElement;
+                    if (parent) parent.style.minWidth = '0';
+                }
+            });
+
+        } else {
+            // ── Enter fullscreen ─────────────────────────────
+            overlay.classList.add('fullscreen');
+            if (icon) {
+                icon.classList.remove('fa-expand');
+                icon.classList.add('fa-compress');
+            }
+
+            // ── Expand table heights ─────────────────────────
+            setTimeout(function () {
+                var teleBody = document.getElementById('teleBodyScroll');
+                var tprBody = document.getElementById('tprBodyScroll');
+                var newH = (window.innerHeight - 240) + 'px';
+                if (teleBody) teleBody.style.maxHeight = newH;
+                if (tprBody) tprBody.style.maxHeight = newH;
+
+                // ── Expand outer container divs to full width ──
+                var teleHeader = document.getElementById('teleHeaderTable');
+                var tprHeader = document.getElementById('tprHeaderScroll');
+                var teleBodyEl = document.getElementById('teleBodyScroll');
+                var tprBodyEl = document.getElementById('tprBodyScroll');
+
+                [teleHeader, tprHeader, teleBodyEl, tprBodyEl].forEach(function (el) {
+                    if (el) {
+                        // find parent container div and remove fixed width
+                        var parent = el.parentElement;
+                        if (parent) parent.style.minWidth = '0';
+                    }
+                });
+            }, 50);
+        }
+
+        // ── Resize ECharts ────────────────────────────────────
+        setTimeout(function () {
+            if (window._mqttChart) { try { window._mqttChart.resize(); } catch (e) { } }
+            if (window._netChart) { try { window._netChart.resize(); } catch (e) { } }
+        }, 100);
+    }
+
+    function closeCauseModal() {
+        document.getElementById('frsCauseModal').classList.remove('open');
+        document.body.style.overflow = '';
+        var bd = document.getElementById('backdrop');
+        if (bd) { bd.style.display = ''; }
+    }
+    document.getElementById('frsCauseModal').addEventListener('click', function (e) {
+        if (e.target === this) closeCauseModal();
+    });
+
+// ════════════════════════════════════════════════════════════
+//  DEBUG POPUP — 4 tabs with AJAX
+// ════════════════════════════════════════════════════════════
+var _debugRows   = {};   // populated when cause modal opens
+var _dbgCurrent  = null; // current row data
+var _dbgLoaded   = {};   // { tabKey: true } — tracks which tabs have loaded for current row
+
+    function openDebugPopup(idx) {
+        var r = _debugRows[idx];
+        if (!r) return;
+        _dbgCurrent = r;
+        _dbgLoaded = {};  // reset loaded state for new row
+
+        // Move to body (above cause modal z-index)
+        var overlay = document.getElementById('frsDebugOverlay');
+        if (overlay.parentNode !== document.body) {
+            document.body.appendChild(overlay);
+            if (!overlay._closeListenerAdded) {
+                overlay.addEventListener('click', function (e) {
+                    if (e.target === overlay) closeDebugPopup();
+                });
+                overlay._closeListenerAdded = true;
+            }
+        }
+
+        // ── Populate Info tab ──────────────────────────────────
+        document.getElementById('frsDbgSub').textContent =
+            r.assetNo + '  ·  ' + r.assetType + '  ·  ' + r.causeCode;
+
+        document.getElementById('frsDbgGrid').innerHTML =
+            dbgCard('Zone', r.zone) +
+            dbgCard('Division', r.division) +
+            dbgCard('Station', r.station) +
+            dbgCard('Alert Type', r.alertType) +
+            dbgCard('Asset Type', r.assetType) +
+            dbgCard('Asset No.', r.assetNo) +
+            dbgCard('Cause Code', r.causeCode) +
+            dbgCard('Incidence', r.incDate) +
+            dbgCard('Duration', r.duration) +
+            dbgCard('Rectification', r.rectDate);
+
+        var msgBox = document.getElementById('frsDbgMsgBox');
+        if (r.setMsg) { document.getElementById('frsDbgMsg').innerHTML = sanitizeMsg(r.setMsg); msgBox.style.display = 'block'; }
+        else { msgBox.style.display = 'none'; }
+
+        var descBox = document.getElementById('frsDbgDescBox');
+        if (r.desc) { document.getElementById('frsDbgDesc').innerHTML = sanitizeMsg(r.desc); descBox.style.display = 'block'; }
+        else { descBox.style.display = 'none'; }
+
+        var resetBox = document.getElementById('frsDbgResetBox');
+        if (r.resetMsg) { document.getElementById('frsDbgReset').innerHTML = sanitizeMsg(r.resetMsg); resetBox.style.display = 'block'; }
+        else { resetBox.style.display = 'none'; }
+
+        resetTabPanel('telemetry', '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading telemetry data\u2026</p></div>');
+
+        resetTabPanel('mqtt', '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading MQTT graph data\u2026</p></div>');
+
+        resetTabPanel('datalogger', '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading datalogger log\u2026</p></div>');
+
+        // resetTabPanel('alertjson', '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading alert JSON\u2026</p></div>');
+
+        resetTabPanel('debugtpr', '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading debug tpr\u2026</p></div>');
+
+        resetTabPanel('network', '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading network data\u2026</p></div>');
+
+        switchDbgTab('info', document.querySelector('.frs-debug-tab[data-tab="info"]'));
+
+
+        overlay.classList.add('open');
+    }
+
+    function dbgCard(lbl, val) {
+        return '<div class="frs-debug-card">' +
+            '<div class="frs-debug-card-lbl">' + lbl + '</div>' +
+            '<div class="frs-debug-card-val">' + escHtml(val || '-') + '</div>' +
+            '</div>';
+    }
+
+    function resetTabPanel(tabKey, html) {
+        var el = document.getElementById('frsDbgPanel_' + tabKey);
+        if (el) {
+            var inner = el.querySelector('[id^="frsDbg"]') || el.firstElementChild;
+            // find the content div by id pattern
+            var cid = 'frsDbg' + tabKey.charAt(0).toUpperCase() + tabKey.slice(1) + 'Content';
+            var cdiv = document.getElementById(cid);
+            if (cdiv) cdiv.innerHTML = html;
+            else el.innerHTML = html;
+        }
+    }
+
+// ── Tab switcher ──────────────────────────────────────────
+function switchDbgTab(tabKey, btnEl) {
+  // Update tab buttons
+  document.querySelectorAll('.frs-debug-tab').forEach(function(b){ b.classList.remove('active'); });
+  if (btnEl) btnEl.classList.add('active');
+
+  // Update panels
+  document.querySelectorAll('.frs-debug-panel').forEach(function(p){ p.classList.remove('active'); });
+  var panel = document.getElementById('frsDbgPanel_' + tabKey);
+  if (panel) panel.classList.add('active');
+
+  // Load data on first visit
+  if (tabKey !== 'info' && !_dbgLoaded[tabKey] && _dbgCurrent) {
+    _dbgLoaded[tabKey] = true;
+    loadDebugTab(tabKey, _dbgCurrent);
+  }
+}
+
+// ── AJAX loader for each tab ──────────────────────────────
+function loadDebugTab(tabKey, r) {
+    var handlers = {
+        telemetry: loadTelemetryTab,
+        mqtt: loadMqttTab,
+        datalogger: loadDataloggerTab,
+        alertjson: loadAlertJsonTab,
+        debugtpr: loadDebugtprTab,
+        network: loadNetworkTab  
+    };
+  if (handlers[tabKey]) handlers[tabKey](r);
+}
+
+    // ── ① TELEMETRY LIVE — HTML Table from CSV ────────────────
+    function loadTelemetryTab(r) {
+        var cid = 'frsDbgTelemetryContent';
+        var startDate = formatDateTimeMinusForAPI(r.incDate, 30);
+        var endDate = formatDateTimeAddForAPI(r.incDate, 30);
+
+        document.getElementById(cid).innerHTML =
+            '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading telemetry data…</p></div>';
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetTelemetryHistoryData',
+            type: 'POST',
+            data: {
+                frsAlertId: r.id,
+                siteId: r.siteId,
+                assetId: r.assetId,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            },
+            dataType: 'json',
+            success: function (csv) {
+                if (!csv || csv.trim() === '') {
+                    document.getElementById(cid).innerHTML =
+                        '<div class="frs-tab-empty">' +
+                        '<i class="fas fa-satellite-dish" style="font-size:28px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No telemetry data available.</div>';
+                    return;
+                }
+
+                var lines = csv.trim().split('\n').filter(function (l) { return l.trim() !== ''; });
+                if (lines.length < 2) {
+                    document.getElementById(cid).innerHTML = '<div class="frs-tab-empty">No rows in telemetry data.</div>';
+                    return;
+                }
+
+                var headers = lines[0].split(',').map(function (h) { return h.trim(); });
+                if (headers[headers.length - 1] === '') headers.pop();
+
+                // ── Parse rows into array ──────────────────────────────
+                var dataRows = [];
+                for (var i = 1; i < lines.length; i++) {
+                    var cols = lines[i].split(',');
+                    if (cols[cols.length - 1].trim() === '') cols.pop();
+                    dataRows.push(cols);
+                }
+
+                // ── ① Sort by Date (col index 1) DESCENDING ───────────
+                dataRows.sort(function (a, b) {
+                    return new Date((b[1] || '').trim()) - new Date((a[1] || '').trim());
+                });
+
+                // ── ② Build col widths array ───────────────────────────
+                var colWidths = headers.map(function (h, ci) {
+                    if (ci === 1) return 170;   // Date column
+                    if (ci === 0) return 90;    // Site Name
+                    if (ci === 2) return 140;   // Asset Type
+                    return 90;
+                });
+                var totalW = colWidths.reduce(function (a, b) { return a + b; }, 0);
+
+                // ── ③ Build colgroup HTML ──────────────────────────────
+                var colGroupHtml = '<colgroup>';
+                colWidths.forEach(function (w) { colGroupHtml += '<col style="width:' + w + 'px;min-width:' + w + 'px">'; });
+                colGroupHtml += '</colgroup>';
+
+                // ── ④ FIXED HEADER TABLE ───────────────────────────────
+                var thStyle = [
+                    'background:#1e3a5f',
+                    'color:#fff',
+                    'padding:9px 10px',
+                    'font-size:10px',
+                    'font-weight:700',
+                    'letter-spacing:.06em',
+                    'text-transform:uppercase',
+                    'white-space:normal',
+                    'overflow:hidden',
+                    'text-overflow:ellipsis',
+                    'max-width:140px',
+                    'word-break:break-word',
+                    'border-right:1px solid #2d5a8e',
+                    'border-bottom:2px solid #0077cc',
+                    'text-align:left'
+                ].join(';');
+
+                var headerHtml = '<thead><tr>';
+                headers.forEach(function (h) {
+                  // headerHtml += '<th style="' + thStyle + '">' + escHtml(h) + '</th>';
+
+                    let updatedH = h.replace(r.assetNo, '');  // replace all occurrences
+                    headerHtml += '<th style="' + thStyle + '" title="' + escHtml(updatedH.trim()) + '">' + escHtml(updatedH) + '</th>';
+                });
+                headerHtml += '</tr></thead>';
+
+                // ── ⑤ BODY ROWS ───────────────────────────────────────
+                var bodyHtml = '<tbody>';
+                dataRows.forEach(function (cols, ri) {
+                    bodyHtml += '<tr style="background:' + (ri % 2 === 0 ? '#fff' : '#f8fafc') + '">';
+                    cols.forEach(function (col, ci) {
+                        var val = col.trim();
+                        var valLow = val.toLowerCase();
+                        var tdStyle = 'padding:7px 10px;border-bottom:1px solid #e5edf5;border-right:1px solid #f1f5f9;font-size:11px;white-space:nowrap;';
+                        var cellHtml = '';
+
+                        if (valLow === 'pickup') {
+                            cellHtml = '<span style="display:inline-block;padding:3px 10px;border-radius:4px;' +
+                                'font-size:11px;font-weight:700;letter-spacing:.04em;' +
+                                'background:#16a34a;color:#fff;">Pickup</span>';
+
+                        } else if (valLow === 'drop') {
+                            cellHtml = '<span style="display:inline-block;padding:3px 10px;border-radius:4px;' +
+                                'font-size:11px;font-weight:700;letter-spacing:.04em;' +
+                                'background:#f59e0b;color:#fff;">DROP</span>';
+
+                        } else {
+                            if (ci >= 3) {
+                                var num = parseFloat(val);
+                                if (!isNaN(num)) {
+                                    tdStyle += num === 0
+                                        ? 'color:#94a3b8;font-family:monospace;'
+                                        : 'font-family:monospace;font-weight:500;color:#1e293b;';
+                                }
+                            } else if (ci === 1) {
+                                tdStyle += 'font-family:monospace;font-size:10px;color:#475569;';
+                            } else if (ci === 0 || ci === 2) {
+                                tdStyle += 'color:#6b7280;font-size:10px;';
+                            }
+                            cellHtml = escHtml(val);
+                        }
+
+                        bodyHtml += '<td style="' + tdStyle + '">' + cellHtml + '</td>';
+                    });
+                    bodyHtml += '</tr>';
+                });
+                bodyHtml += '</tbody>';
+
+                // ── ⑥ Assemble final HTML ──────────────────────────────
+                var html =
+                    // Info bar
+                    '<div style="font-size:11px;color:#64748b;margin-bottom:8px;padding:4px 0;">' +
+                    '<i class="fas fa-satellite-dish" style="margin-right:4px;color:#0077cc"></i>' +
+                    'Asset: <b>' + escHtml(r.assetNo || ('Asset ' + r.assetId)) + '</b>' +
+                    ' &nbsp;|&nbsp; Station: <b>' + escHtml(r.station || '') + '</b>' +
+                    ' &nbsp;|&nbsp; <b>' + dataRows.length + '</b> records' +
+                    ' &nbsp;|&nbsp; <span style="color:#16a34a;font-weight:600">' +
+                    '<i class="fas fa-sort-amount-down" style="margin-right:3px"></i>Latest first' +
+                    '</span>' +
+                    '</div>' +
+
+                    // ── Outer container ──
+                    '<div style="border:1px solid #d1dce8;border-radius:8px;overflow:hidden;">' +
+
+                    // ── FIXED HEADER (no scroll) ──
+                    '<div style="overflow:hidden;background:#1e3a5f;">' +
+                    '<table style="width:' + totalW + 'px;border-collapse:collapse;table-layout:fixed;" id="teleHeaderTable">' +
+                    colGroupHtml +
+                    headerHtml +
+                    '</table>' +
+                    '</div>' +
+
+                    // ── SCROLLABLE BODY ──
+                    '<div id="teleBodyScroll" style="overflow-y:auto;overflow-x:auto;max-height:390px;"' +
+                    ' onscroll="syncTeleScroll(this)">' +
+                    '<table style="width:' + totalW + 'px;border-collapse:collapse;table-layout:fixed;">' +
+                    colGroupHtml +
+                    bodyHtml +
+                    '</table>' +
+                    '</div>' +
+
+                    '</div>';
+
+                document.getElementById(cid).innerHTML = html;
+                // ── Apply fullscreen height if already in fullscreen ──
+                var overlay = document.getElementById('frsDebugOverlay');
+                if (overlay && overlay.classList.contains('fullscreen')) {
+                    setTimeout(function () {
+                        var tprBody = document.getElementById('teleBodyScroll');
+                        if (tprBody) tprBody.style.maxHeight = (window.innerHeight - 240) + 'px';
+                    }, 50);
+                }
+            },
+            error: function (xhr) {
+                document.getElementById(cid).innerHTML =
+                    '<div class="frs-tab-error">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Failed to load telemetry data (HTTP ' + xhr.status + ').</div>';
+            }
+        });
+    }
+
+    function syncTeleScroll(bodyEl) {
+        var headerDiv = bodyEl.previousElementSibling;
+        if (headerDiv) headerDiv.scrollLeft = bodyEl.scrollLeft;
+    }
+// ── ② MQTT GRAPH ──────────────────────────────────────────
+    // ── ② MQTT GRAPH — ECharts (same CSV source as Telemetry) ─
+    var _mqttChart = null;
+
+    function loadMqttTab(r) {
+        var cid = 'frsDbgMqttContent';
+        var startDate = formatDateTimeMinusForAPI(r.incDate, 30);
+        var endDate = formatDateTimeAddForAPI(r.incDate, 30);
+
+        document.getElementById(cid).innerHTML =
+            '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading MQTT graph…</p></div>';
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetMQTTHistoryGraphData',
+            type: 'POST',
+            data: {
+                siteId: r.siteId,
+                assetId: r.assetId,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            },
+            dataType: 'json',
+            success: function (csv) {
+                if (!csv || csv.trim() === '') {
+                    document.getElementById(cid).innerHTML =
+                        '<div class="frs-tab-empty">' +
+                        '<i class="fas fa-chart-line" style="font-size:28px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No MQTT graph data available.</div>';
+                    return;
+                }
+                renderMqttEChart(cid, csv, r);
+            },
+            error: function (xhr) {
+                document.getElementById(cid).innerHTML =
+                    '<div class="frs-tab-error">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Failed to load MQTT graph data (HTTP ' + xhr.status + ').</div>';
+            }
+        });
+    }
+
+    function renderMqttEChart(cid, csv, r) {
+        // ── 1. Parse CSV ──────────────────────────────────────────
+
+        var lines = csv.trim().split('\n').filter(function (line) {
+            return line.trim() !== '';
+        });
+        if (lines.length < 2) {
+            document.getElementById(cid).innerHTML =
+                '<div class="frs-tab-empty">No rows in MQTT data.</div>';
+            return;
+        }
+
+        var headers = lines[0].split(',').map(function (h) { return h.trim(); });
+        if (headers[headers.length - 1] === '') headers.pop();
+
+        var dataStartIdx = 3; // skip Site Name, Date, Asset Type
+        var xValues = [];
+        var seriesMap = {};
+
+        headers.slice(dataStartIdx).forEach(function (h) { seriesMap[h] = []; });
+
+        for (var i = 1; i < lines.length; i++) {
+            var cols = lines[i].split(',');
+            if (cols[cols.length - 1].trim() === '') cols.pop();
+
+            var rawDate = (cols[1] || '').trim();
+            var parts = rawDate.split(' ');
+            var timeLabel = parts.length >= 2 ? parts[1] + (parts[2] ? ' ' + parts[2] : '') : rawDate;
+            xValues.push(timeLabel);
+
+            headers.slice(dataStartIdx).forEach(function (h, hi) {
+                var val = parseFloat((cols[dataStartIdx + hi] || '').trim());
+                seriesMap[h].push(isNaN(val) ? null : val);
+            });
+        }
+
+        // ── 2. Build series with dual axis ───────────────────────
+        var colors = [
+            '#4bacc6', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#e67e22', '#3498db', '#e91e63', '#00bcd4', '#ff5722'
+        ];
+
+        var series = [];
+        var legends = [];
+        var laryMax = 0;
+        var raryMax = 0;
+        var colorIdx = 0;
+
+        headers.slice(dataStartIdx).forEach(function (colName) {
+            var values = seriesMap[colName];
+            var hasV = colName.indexOf('V') > -1;
+            var axisIdx = hasV ? 1 : 0;
+
+            var colMax = Math.max.apply(null, values.filter(function (v) { return v !== null; }).concat([0]));
+            if (axisIdx === 0 && colMax > laryMax) laryMax = colMax;
+            if (axisIdx === 1 && colMax > raryMax) raryMax = colMax;
+
+            legends.push(colName);
+            series.push({
+                name: colName,
+                type: 'line',
+                smooth: false,
+                symbol: 'none',
+                connectNulls: true,
+                yAxisIndex: axisIdx,
+                lineStyle: { width: 1.5 },
+                itemStyle: { color: colors[colorIdx % colors.length] },
+                color: colors[colorIdx % colors.length],
+                data: values
+            });
+            colorIdx++;
+        });
+
+        // ── 3. Build container HTML ───────────────────────────────
+        document.getElementById(cid).innerHTML =
+            '<div style="padding:4px 0 8px;">' +
+            '<div style="font-size:11px;color:#64748b;margin-bottom:6px;">' +
+            '<i class="fas fa-chart-line" style="margin-right:4px;color:#0077cc"></i>' +
+            'Asset: <b>' + escHtml(r.assetNo || ('Asset ' + r.assetId)) + '</b>' +
+            ' &nbsp;|&nbsp; Station: <b>' + escHtml(r.station || '') + '</b>' +
+            ' &nbsp;|&nbsp; ' + xValues.length + ' data points' +
+            '</div>' +
+            '<div id="frsDbgMqttChart" style="width:100%;height:340px;"></div>' +
+            '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">' +
+            '<button class="frs-btn-debug" id="mqttBtnAll" ' +
+            'style="background:#0077cc;color:#fff;border-color:#0077cc" ' +
+            'onclick="mqttChartFilter(\'all\')">All Series</button>' +
+            '<button class="frs-btn-debug" id="mqttBtnMA" onclick="mqttChartFilter(\'ma\')">' +
+            '<i class="fas fa-bolt"></i> mA Only</button>' +
+            '<button class="frs-btn-debug" id="mqttBtnV"  onclick="mqttChartFilter(\'v\')">' +
+            '<i class="fas fa-wave-square"></i> Voltage Only</button>' +
+            '</div>' +
+            '</div>';
+
+        // ── 4. Init ECharts ───────────────────────────────────────
+        if (_mqttChart) {
+            try { _mqttChart.dispose(); } catch (e) { }
+            _mqttChart = null;
+        }
+
+        function initMqttChart() {
+            var dom = document.getElementById('frsDbgMqttChart');
+            if (!dom) return;
+
+            _mqttChart = echarts.init(dom, null, { renderer: 'canvas' });
+            window._mqttSeriesAll = series; // keep for filter
+
+            _mqttChart.setOption({
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    confine: true,
+                    axisPointer: {
+                        type: 'cross',
+                        label: { backgroundColor: '#1e293b' }
+                    },
+                    formatter: function (params) {
+                        var html = '<div style="font-size:11px;min-width:180px;">' +
+                            '<div style="font-weight:700;color:#1e293b;margin-bottom:5px;' +
+                            'padding-bottom:4px;border-bottom:1px solid #e2e8f0">' +
+                            params[0].axisValue + '</div>';
+                        params.forEach(function (p) {
+                            if (p.value === null) return;
+                            html +=
+                                '<div style="display:flex;justify-content:space-between;gap:16px;margin:2px 0">' +
+                                '<span>' + p.marker + p.seriesName + '</span>' +
+                                '<span style="font-weight:700;font-family:monospace">' + p.value + '</span>' +
+                                '</div>';
+                        });
+                        return html + '</div>';
+                    }
+                },
+                legend: {
+                    data: legends,
+                    type: 'scroll',
+                    top: 0,
+                    left: 0,
+                    right: 40,
+                    textStyle: { fontSize: 10, color: '#475569' },
+                    itemWidth: 12,
+                    itemHeight: 8,
+                    pageTextStyle: { color: '#6b7280' }
+                },
+                toolbox: {
+                    right: 4,
+                    top: 0,
+                    feature: {
+                        dataZoom: { yAxisIndex: 'none', title: { zoom: 'Zoom', back: 'Undo' } },
+                        restore: { title: 'Restore' },
+                        saveAsImage: { title: 'Save PNG' }
+                    }
+                },
+                grid: {
+                    top: 50,
+                    left: 60,
+                    right: 60,
+                    bottom: 60,
+                    containLabel: false
+                },
+                xAxis: [{
+                    type: 'category',
+                    boundaryGap: false,
+                    data: xValues,
+                    axisLine: { lineStyle: { color: '#d1dce8' } },
+                    axisLabel: {
+                        fontSize: 9,
+                        color: '#6b7280',
+                        rotate: 30,
+                        interval: Math.max(0, Math.floor(xValues.length / 12) - 1)
+                    },
+                    splitLine: { show: false }
+                }],
+                yAxis: [
+                    {
+                        // LEFT — mA
+                        type: 'value',
+                        name: 'mA',
+                        nameTextStyle: { fontSize: 10, color: '#475569', padding: [0, 0, 0, -30] },
+                        min: 0,
+                        max: Math.ceil(laryMax * 1.05) || 1500,
+                        axisLine: { lineStyle: { color: '#d1dce8' } },
+                        axisLabel: { fontSize: 9, color: '#475569' },
+                        splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+                    },
+                    {
+                        // RIGHT — Voltage
+                        type: 'value',
+                        name: 'V',
+                        nameTextStyle: { fontSize: 10, color: '#475569', padding: [0, -20, 0, 0] },
+                        min: 0,
+                        max: Math.ceil(raryMax * 1.1) || 120,
+                        axisLine: { lineStyle: { color: '#d1dce8' } },
+                        axisLabel: { fontSize: 9, color: '#475569' },
+                        splitLine: { show: false }
+                    }
+                ],
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        bottom: 4,
+                        height: 22,
+                        start: 0,
+                        end: 100,
+                        fillerColor: 'rgba(0,119,204,0.08)',
+                        borderColor: '#d1dce8',
+                        handleStyle: { color: '#0077cc' },
+                        textStyle: { color: '#6b7280', fontSize: 9 }
+                    },
+                    { type: 'inside', start: 0, end: 100 }
+                ],
+                color: colors,
+                series: series
+            });
+
+            setTimeout(function () {
+                if (_mqttChart) _mqttChart.resize();
+            }, 100);
+        }
+
+        if (typeof echarts !== 'undefined') {
+            initMqttChart();
+        } else {
+            var s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js';
+            s.onload = function () { initMqttChart(); };
+            document.head.appendChild(s);
+        }
+    }
+
+    // ── MQTT filter buttons ───────────────────────────────────
+    function mqttChartFilter(type) {
+        if (!_mqttChart || !window._mqttSeriesAll) return;
+
+        var btnMap = { all: 'mqttBtnAll', ma: 'mqttBtnMA', v: 'mqttBtnV' };
+        Object.keys(btnMap).forEach(function (k) {
+            var el = document.getElementById(btnMap[k]);
+            if (!el) return;
+            var active = (k === type);
+            el.style.background = active ? '#0077cc' : '';
+            el.style.color = active ? '#fff' : '';
+            el.style.borderColor = active ? '#0077cc' : '';
+        });
+
+        var filtered = window._mqttSeriesAll.filter(function (s) {
+            if (type === 'all') return true;
+            var hasV = s.name.indexOf('V') > -1;
+            return type === 'v' ? hasV : !hasV;
+        });
+
+        _mqttChart.setOption({ series: filtered }, { replaceMerge: ['series'] });
+    }
+
+    // ── ③ DATALOGGER LOG ──────────────────────────────────────
+    function loadDataloggerTab(r) {
+        var cid = 'frsDbgDataloggerContent';
+        var startDate = formatDateTimeMinusForAPI(r.incDate, 30);
+        var endDate = formatDateTimeAddForAPI(r.incDate, 30);
+
+        document.getElementById(cid).innerHTML =
+            '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading datalogger data…</p></div>';
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GeDataLoggerJSONData',
+            type: 'POST',
+            data: {
+                siteId: r.siteId,
+                assetId: r.assetId,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            },
+            success: function (data) {
+                if (!data || (Array.isArray(data) && data.length === 0)) {
+                    document.getElementById(cid).innerHTML =
+                        '<div class="frs-tab-empty">' +
+                        '<i class="fas fa-database" style="font-size:28px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No datalogger log entries.</div>';
+                    return;
+                }
+
+                var rows = Array.isArray(data) ? data : (data.logs || data.Logs || data.data || [data]);
+
+                // ── Sort by Timestamp DESCENDING ──────────────────────────
+                rows.sort(function (a, b) {
+                    var tsA = new Date(a.Timestamp || a.timestamp || 0);
+                    var tsB = new Date(b.Timestamp || b.timestamp || 0);
+                    return tsB.getTime() - tsA.getTime();
+                });
+
+                if (!rows || rows.length === 0) {
+                    document.getElementById(cid).innerHTML =
+                        '<div class="frs-tab-empty">' +
+                        '<i class="fas fa-database" style="font-size:28px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No datalogger log entries.</div>';
+                    return;
+                }
+
+                // ── Build table ────────────────────────────────
+                var html =
+                    '<div style="overflow-x:auto;">' +
+                    '<div style="font-size:11px;color:#64748b;margin-bottom:8px;padding:4px 0;">' +
+                    '<i class="fas fa-database" style="margin-right:4px;color:#0077cc"></i>' +
+                    'Asset: <b>' + escHtml(r.assetNo || '') + '</b>' +
+                    ' &nbsp;|&nbsp; Station: <b>' + escHtml(r.station || '') + '</b>' +
+                    ' &nbsp;|&nbsp; <b>' + rows.length + '</b> records' +
+                    '</div>' +
+
+                    // ── inline styles scoped to this table ──
+                    '<style>' +
+                    '#dlTable { width:100%; border-collapse:collapse; font-size:12px; }' +
+                    '#dlTable thead tr { background:#1a6b64; }' +
+                    '#dlTable thead th { padding:10px 12px; text-align:left; font-size:11px; font-weight:700; color:#fff; white-space:nowrap; letter-spacing:.04em; }' +
+                    '#dlTable tbody tr { border-bottom:1px solid #e5edf5; transition:background .12s; }' +
+                    '#dlTable tbody tr:hover { background:#f0f7ff; }' +
+                    '#dlTable tbody td { padding:9px 12px; white-space:nowrap; color:#1e293b; font-size:12px; }' +
+                    '.dl-badge { display:inline-block; padding:3px 10px; border-radius:4px; font-size:11px; font-weight:700; letter-spacing:.04em; }' +
+                    '.dl-pickup { background:#16a34a; color:#fff; }' +
+                    '.dl-drop   { background:#f59e0b; color:#fff; }' +
+                    '.dl-other  { background:#64748b; color:#fff; }' +
+                    '</style>' +
+
+                    '<table id="dlTable">' +
+                    '<thead><tr>' +
+                    '<th>SR No.</th>' +
+                    '<th>Asset</th>' +
+                    '<th>Attribute</th>' +
+                    '<th>Current Value</th>' +
+                    '<th>Time Stamp</th>' +
+                    '<th>Update Time</th>' +
+                    '</tr></thead>' +
+                    '<tbody>';
+
+                rows.forEach(function (row) {
+                    // ── Current Value badge ──
+                    var rawVal = (row.CurrentValue || row.currentValue || '').toString().trim();
+                    var valHtml = '';
+                    var valLow = rawVal.toLowerCase();
+
+                    if (valLow === '1' || valLow === 'pickup') {
+                        valHtml = '<span class="dl-badge dl-pickup">Pickup</span>';
+                    } else if (valLow === '0' || valLow === 'drop') {
+                        valHtml = '<span class="dl-badge dl-drop">DROP</span>';
+                    } else if (rawVal !== '') {
+                        valHtml = '<span class="dl-badge dl-other">' + escHtml(rawVal) + '</span>';
+                    } else {
+                        valHtml = '<span style="color:#94a3b8">—</span>';
+                    }
+
+                    // ── Timestamp (full with ms) ──
+                    var ts = row.Timestamp || row.timestamp || '';
+                    var updTime = row.CurrentDate || row.currentDate || row.Date || row.date || '';
+                    // ── Fix ASP.NET /Date(ms)/ format ──────────────────────
+                    if (updTime && typeof updTime === 'string' && updTime.indexOf('/Date(') > -1) {
+                        var ms = parseInt(updTime.replace('/Date(', '').replace(')/', ''));
+                        if (!isNaN(ms)) updTime = new Date(ms);
+                    }
+
+                    // Format UpdateTime: show only date + HH:MM
+                    var updFormatted = '';
+                    if (updTime) {
+                        try {
+                            var d = new Date(updTime);
+                            if (!isNaN(d.getTime())) {
+                                var day = pad2(d.getDate());
+                                var mon = pad2(d.getMonth() + 1);
+                                var yr = d.getFullYear();
+                                var hh = pad2(d.getHours());
+                                var mm = pad2(d.getMinutes());
+                                var ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+                                var hr12 = d.getHours() % 12 || 12;
+                                var ss = pad2(d.getSeconds());
+                                updFormatted = day + '/' + mon + '/' + yr + ' ' + pad2(hr12) + ':' + mm + ':' + ss + ' ' + ampm;
+                            } else {
+                                updFormatted = escHtml(String(updTime));
+                            }
+                        } catch (e) { updFormatted = escHtml(String(updTime)); }
+                    }
+
+                    html +=
+                        '<tr>' +
+                        '<td style="font-family:monospace;color:#6b7280">' + escHtml(String(row.SrNo || row.srNo || '')) + '</td>' +
+                        '<td style="font-weight:600">' + escHtml(row.AssetName || row.assetName || '-') + '</td>' +
+                        '<td style="color:#475569">' + escHtml(row.AttributeName || row.attributeName || '-') + '</td>' +
+                        '<td>' + valHtml + '</td>' +
+                        '<td style="font-family:monospace;font-size:11px;color:#475569">' + escHtml(String(ts)) + '</td>' +
+                        '<td style="font-family:monospace;font-size:11px;color:#475569">' + updFormatted + '</td>' +
+                        '</tr>';
+                });
+
+                html += '</tbody></table></div>';
+                document.getElementById(cid).innerHTML = html;
+            },
+            error: function (xhr) {
+                document.getElementById(cid).innerHTML =
+                    '<div class="frs-tab-error">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Failed to load datalogger log (HTTP ' + xhr.status + ').</div>';
+            }
+        });
+    }
+
+    // ── ⑤ ALERT JSON ──────────────────────────────────────────
+    function loadAlertJsonTab(r) {
+        var cid = 'frsDbgAlertJsonContent';
+
+        document.getElementById(cid).innerHTML =
+            '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading alert JSON…</p></div>';
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetFRSAlertById',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ id: r.id }),
+            success: function (data) {
+                var obj = (typeof data === 'string') ? tryParseJson(data) : data;
+                var rawJson = obj.RawJsonData || obj.rawJsonData || null;
+                var rstJson = obj.ResetRawJsonData || obj.resetRawJsonData || null;
+
+                var rawObj = rawJson ? tryParseJson(rawJson) : null;
+                var rstObj = rstJson ? tryParseJson(rstJson) : null;
+
+                var html =
+                    '<div style="display:flex;flex-direction:column;gap:20px;">' +
+
+                    // ── SET SECTION ──────────────────────────────
+                    '<div>' +
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
+                    '<span style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;' +
+                    'font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;' +
+                    'padding:3px 10px;border-radius:5px;">' +
+                    '<i class="fas fa-bell" style="margin-right:4px"></i>SET — Raw JSON Data' +
+                    '</span>' +
+                    (rawObj ? '<span style="font-size:10px;color:#64748b">' + countKeys(rawObj) + '</span>' : '') +
+                    '</div>' +
+                    (rawObj
+                        ? buildJsonBoxGrid(rawObj)
+                        : '<div class="frs-tab-empty" style="padding:16px">No RawJsonData available.</div>') +
+                    '</div>' +
+
+                    // ── RESET SECTION ─────────────────────────────
+                    '<div>' +
+                    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
+                    '<span style="background:#f0fdf4;border:1px solid #86efac;color:#166534;' +
+                    'font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;' +
+                    'padding:3px 10px;border-radius:5px;">' +
+                    '<i class="fas fa-undo" style="margin-right:4px"></i>RESET — Raw JSON Data' +
+                    '</span>' +
+                    (rstObj ? '<span style="font-size:10px;color:#64748b">' + countKeys(rstObj) + '</span>' : '') +
+                    '</div>' +
+                    (rstObj
+                        ? buildJsonBoxGrid(rstObj)
+                        : '<div class="frs-tab-empty" style="padding:16px">No ResetRawJsonData available.</div>') +
+                    '</div>' +
+
+                    '</div>';
+
+                document.getElementById(cid).innerHTML = html;
+            },
+            error: function (xhr) {
+                var fallback = syntaxHighlightJson(JSON.stringify(r, null, 2));
+                document.getElementById(cid).innerHTML =
+                    '<div class="frs-tab-error" style="margin-bottom:10px">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Could not load from server (HTTP ' + xhr.status + '). Showing local row data:</div>' +
+                    '<div class="frs-json-wrap"><pre>' + fallback + '</pre></div>';
+            }
+        });
+    }
+
+    // ── Build light-theme card grid from object ───────────────
+    function buildJsonBoxGrid(obj) {
+        if (!obj || typeof obj !== 'object') return '';
+
+        var triggerVal = null;
+        var flatKeys = [];
+        var sectionKeys = {};
+
+        var attributesArr = null;
+
+        Object.keys(obj).forEach(function (k) {
+            var v = obj[k];
+            if (k === 'Trigger' && v && typeof v === 'object') {
+                triggerVal = v;
+            } else if (k === 'Attributes' && Array.isArray(v)) {
+                attributesArr = v;
+            } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+                sectionKeys[k] = v;
+            } else {
+                flatKeys.push(k);
+            }
+        });
+
+        var html = '';
+
+        // ── ① Flat key/value cards ────────────────────────────
+        if (flatKeys.length > 0) {
+            html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">';
+            flatKeys.forEach(function (k) {
+                html += buildSingleBox(k, obj[k]);
+            });
+            html += '</div>';
+        }
+
+        // ── ② Trigger section ─────────────────────────────────
+        if (triggerVal) {
+            html +=
+                '<div style="margin-bottom:12px;">' +
+                '<div style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;' +
+                'color:#6b7280;margin-bottom:8px;display:flex;align-items:center;gap:6px;">' +
+                '<i class="fas fa-bolt" style="color:#d97706"></i>TRIGGERING CONDITION' +
+                '</div>' +
+                '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">' +
+                buildSingleBox('Cause Code', triggerVal.CauseCode || '-') +
+                buildSingleBox('Attribute', triggerVal.Attribute || '-') +
+                buildSingleBox('Value', triggerVal.Value !== undefined ? triggerVal.Value : '-') +
+                buildSingleBox('Threshold (LD1)', triggerVal.Threshold !== undefined ? triggerVal.Threshold : '-') +
+                buildSingleBox('Comparison',
+                    (triggerVal.Value || '') + ' ' +
+                    (triggerVal.Comparison || '') + ' ' +
+                    (triggerVal.Threshold || '')) +
+                buildSingleBox('Threshold Type',
+                    triggerVal.IsLowerThreshold ? 'Lower (LD1)' : 'Upper',
+                    triggerVal.IsLowerThreshold ? 'fail' : 'ok') +
+                '</div>' +
+                '</div>';
+        }
+
+        // ── ③ Attributes array table ──────────────────────────
+        if (attributesArr && attributesArr.length > 0) {
+            html +=
+                '<div style="margin-bottom:12px;">' +
+                '<div style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;' +
+                'color:#6b7280;margin-bottom:8px;display:flex;align-items:center;gap:6px;">' +
+                '<i class="fas fa-list" style="color:#0077cc"></i>ATTRIBUTES' +
+                ' <span style="font-weight:400;color:#94a3b8">(' + attributesArr.length + ' items)</span>' +
+                '</div>' +
+                '<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;">' +
+                '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
+                '<thead>' +
+                '<tr style="background:#1e3a5f;">' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;border-right:1px solid #2d5a8e;">ID</th>' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;border-right:1px solid #2d5a8e;">Attribute Name</th>' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;border-right:1px solid #2d5a8e;">Value</th>' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;border-right:1px solid #2d5a8e;">Timestamp</th>' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;border-right:1px solid #2d5a8e;">EdgeX Time</th>' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;border-right:1px solid #2d5a8e;">Source</th>' +
+                '<th style="padding:8px 10px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.06em;text-align:left;white-space:nowrap;">Fresh</th>' +
+                '</tr>' +
+                '</thead>' +
+                '<tbody>';
+
+            attributesArr.forEach(function (attr, idx) {
+                var bg = idx % 2 === 0 ? '#fff' : '#f8fafc';
+
+                // Format timestamps
+                function fmtTs(ts) {
+                    if (!ts) return '<span style="color:#94a3b8">—</span>';
+                    try {
+                        var d = new Date(ts);
+                        if (isNaN(d.getTime())) return escHtml(ts);
+                        return '<span style="font-family:monospace;font-size:10px;color:#475569">' +
+                            pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() +
+                            '<br>' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) +
+                            '</span>';
+                    } catch (e) { return escHtml(ts); }
+                }
+
+                // Value coloring
+                var rawVal = attr.value !== null && attr.value !== undefined ? String(attr.value) : null;
+                var valHtml = '';
+
+                if (rawVal === null || rawVal === 'null') {
+                    valHtml = '<span style="color:#94a3b8;font-style:italic">null</span>';
+                } else if (rawVal.toLowerCase() === 'pickup') {
+                    valHtml = '<span style="background:#16a34a;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">Pickup</span>';
+                } else if (rawVal.toLowerCase() === 'drop') {
+                    valHtml = '<span style="background:#f59e0b;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">DROP</span>';
+                } else {
+                    var num = parseFloat(rawVal);
+                    var isDL = (attr.dataSource || '').toString().toUpperCase() === 'DL';
+                    if (!isNaN(num)) {
+                        if (isDL && num === 1) {
+                            // DL source + value 1/1.0 → Pickup
+                            valHtml = '<span style="background:#16a34a;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">Pickup</span>';
+                        } else if (isDL && num === 0) {
+                            // DL source + value 0/0.0 → DROP
+                            valHtml = '<span style="background:#f59e0b;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;">DROP</span>';
+                        } else {
+                            // Non-DL source or decimal → show as number
+                            var numColor = num < 0 ? '#dc2626' : '#0077cc';
+                            var decVal = Number.isInteger(num) ? String(num) : num.toString();
+                            valHtml = '<span style="font-family:monospace;font-weight:700;color:' + numColor + '">' + escHtml(decVal) + '</span>';
+                        }
+                    } else {
+                        valHtml = '<span style="font-weight:600;color:#1e293b;">' + escHtml(rawVal) + '</span>';
+                    }
+                }
+
+                // Fresh badge
+                var freshHtml = attr.isFresh
+                    ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;">Yes</span>'
+                    : '<span style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;">No</span>';
+
+                // Source badge
+                var srcColor = (attr.source || '').toLowerCase() === 'websocket' ? '#0369a1' : '#475569';
+                var srcBg = (attr.source || '').toLowerCase() === 'websocket' ? '#e0f2fe' : '#f1f5f9';
+                var srcBorder = (attr.source || '').toLowerCase() === 'websocket' ? '#bae6fd' : '#cbd5e1';
+                var srcHtml = attr.source
+                    ? '<span style="background:' + srcBg + ';color:' + srcColor + ';border:1px solid ' + srcBorder + ';' +
+                    'padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;">' + escHtml(attr.source) + '</span>'
+                    : '<span style="color:#94a3b8">—</span>';
+
+                var tdBase = 'padding:8px 10px;border-bottom:1px solid #e5edf5;border-right:1px solid #f1f5f9;vertical-align:middle;';
+
+                html +=
+                    '<tr style="background:' + bg + '">' +
+                    '<td style="' + tdBase + 'font-family:monospace;color:#6b7280;font-size:10px;">' + escHtml(String(attr.attributeId || '')) + '</td>' +
+                    '<td style="' + tdBase + 'font-weight:600;color:#1e293b;white-space:nowrap;">' + escHtml(attr.attributeName || '-') + '</td>' +
+                    '<td style="' + tdBase + '">' + valHtml + '</td>' +
+                    '<td style="' + tdBase + '">' + fmtTs(attr.timestamp) + '</td>' +
+                    '<td style="' + tdBase + '">' + fmtTs(attr.timestampEdgeX) + '</td>' +
+                    '<td style="' + tdBase + '">' + srcHtml + '</td>' +
+                    '<td style="padding:8px 10px;border-bottom:1px solid #e5edf5;vertical-align:middle;">' + freshHtml + '</td>' +
+                    '</tr>';
+            });
+
+            html += '</tbody></table></div></div>';
+        }
+
+        // ── ③ Other nested objects ────────────────────────────
+        Object.keys(sectionKeys).forEach(function (sk) {
+            var sub = sectionKeys[sk];
+            html +=
+                '<div style="margin-bottom:12px;">' +
+                '<div style="font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;' +
+                'color:#6b7280;margin-bottom:8px;">' + escHtml(sk) + '</div>' +
+                '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+            Object.keys(sub).forEach(function (subK) {
+                html += buildSingleBox(subK, sub[subK]);
+            });
+            html += '</div></div>';
+        });
+
+        return html;
+    }
+
+    // ── Single light-theme box card ───────────────────────────
+    function buildSingleBox(label, val, hint) {
+        var displayVal = '';
+
+        if (val === null || val === undefined) {
+            displayVal = '<span style="color:#94a3b8;font-style:italic">null</span>';
+
+        } else if (typeof val === 'boolean') {
+            displayVal = val
+                ? '<span style="color:#16a34a;font-weight:700">true</span>'
+                : '<span style="color:#dc2626;font-weight:700">false</span>';
+
+        } else if (typeof val === 'number') {
+            var numColor = val < 0 ? '#dc2626' : '#0077cc';
+            displayVal = '<span style="color:' + numColor + ';font-weight:700;font-family:monospace">' +
+                escHtml(String(val)) + '</span>';
+
+        } else if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T/)) {
+            try {
+                var d = new Date(val);
+                var ds = pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() +
+                    ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+                displayVal = '<span style="color:#7c3aed;font-size:11px;font-family:monospace">' + escHtml(ds) + '</span>';
+            } catch (e) {
+                displayVal = '<span style="color:#7c3aed">' + escHtml(String(val)) + '</span>';
+            }
+
+        } else {
+            // hint = 'fail' → red, 'ok' → green, default → dark
+            var strColor = hint === 'fail' ? '#dc2626'
+                : hint === 'ok' ? '#16a34a'
+                    : '#1e293b';
+            displayVal = '<span style="color:' + strColor + ';font-weight:600">' +
+                escHtml(String(val)) + '</span>';
+        }
+
+        return (
+            '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;' +
+            'padding:10px 12px;display:flex;flex-direction:column;gap:5px;">' +
+            '<div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;' +
+            'color:#94a3b8;">' + escHtml(String(label)) + '</div>' +
+            '<div style="font-size:13px;line-height:1.3;word-break:break-all;">' + displayVal + '</div>' +
+            '</div>'
+        );
+    }
+
+    // ── Build a two-column key/value card from parsed JSON obj ─
+    function buildJsonCard(obj) {
+        if (!obj || typeof obj !== 'object') {
+            return '<div class="frs-json-wrap"><pre>' + syntaxHighlightJson(JSON.stringify(obj, null, 2)) + '</pre></div>';
+        }
+
+        var html =
+            '<div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">' +
+            '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+
+        Object.keys(obj).forEach(function (key, idx) {
+            var val = obj[key];
+            var isEven = idx % 2 === 0;
+            var bgColor = isEven ? '#f8fafc' : '#fff';
+
+            // Special rendering
+            var valHtml = '';
+
+            if (key === 'Trigger' && val !== null && typeof val === 'object') {
+                // Render Trigger block as a nested mini-card
+                valHtml = buildTriggerBadge(val);
+            } else if (val === null || val === undefined) {
+                valHtml = '<span style="color:#94a3b8;font-style:italic">null</span>';
+            } else if (typeof val === 'boolean') {
+                valHtml = val
+                    ? '<span style="background:#dcfce7;color:#166534;border:1px solid #86efac;' +
+                    'padding:2px 8px;border-radius:4px;font-weight:700;font-size:10px;">true</span>'
+                    : '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;' +
+                    'padding:2px 8px;border-radius:4px;font-weight:700;font-size:10px;">false</span>';
+            } else if (typeof val === 'number') {
+                valHtml = '<span style="font-family:monospace;font-weight:600;color:#0077cc">' +
+                    escHtml(String(val)) + '</span>';
+            } else if (typeof val === 'string' && val.match(/^\d{4}-\d{2}-\d{2}T/)) {
+                // ISO date
+                valHtml = '<span style="font-family:monospace;color:#7c3aed">' + escHtml(val) + '</span>';
+            } else {
+                valHtml = '<span style="color:#1e293b">' + escHtml(String(val)) + '</span>';
+            }
+
+            html +=
+                '<tr style="background:' + bgColor + ';border-bottom:1px solid #e5edf5;">' +
+                '<td style="padding:7px 12px;width:38%;font-weight:600;color:#475569;' +
+                'font-size:10px;letter-spacing:.04em;border-right:1px solid #e5edf5;' +
+                'white-space:nowrap;vertical-align:top;">' +
+                escHtml(key) +
+                '</td>' +
+                '<td style="padding:7px 12px;vertical-align:top;">' + valHtml + '</td>' +
+                '</tr>';
+        });
+
+        html += '</table></div>';
+        return html;
+    }
+
+    // ── Render Trigger object as a styled badge block ──────────
+    function buildTriggerBadge(trigger) {
+        if (!trigger) return '<span style="color:#94a3b8;font-style:italic">null</span>';
+        return (
+            '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;' +
+            'padding:8px 12px;display:inline-flex;flex-wrap:wrap;gap:8px;align-items:center;">' +
+
+            // Cause Code
+            '<span style="background:#1e293b;color:#f8fafc;padding:3px 9px;' +
+            'border-radius:4px;font-size:10px;font-weight:700;">' +
+            escHtml(trigger.CauseCode || '-') +
+            '</span>' +
+
+            // Attribute
+            '<span style="background:#e0f2fe;color:#0369a1;padding:3px 9px;' +
+            'border-radius:4px;font-size:10px;font-weight:600;">' +
+            '<i class="fas fa-tag" style="margin-right:3px;font-size:9px"></i>' +
+            escHtml(trigger.Attribute || '-') +
+            '</span>' +
+
+            // Comparison expression: Value Comparison Threshold
+            '<span style="font-family:monospace;font-size:11px;font-weight:700;color:#b45309;">' +
+            escHtml(String(trigger.Value || '')) + ' ' +
+            escHtml(trigger.Comparison || '') + ' ' +
+            escHtml(String(trigger.Threshold || '')) +
+            '</span>' +
+
+            // IsLowerThreshold flag
+            '<span style="background:' + (trigger.IsLowerThreshold ? '#fee2e2' : '#f0fdf4') + ';' +
+            'color:' + (trigger.IsLowerThreshold ? '#991b1b' : '#166534') + ';' +
+            'border:1px solid ' + (trigger.IsLowerThreshold ? '#fca5a5' : '#86efac') + ';' +
+            'padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">' +
+            (trigger.IsLowerThreshold ? 'Lower Threshold' : 'Upper Threshold') +
+            '</span>' +
+
+            '</div>'
+        );
+    }
+
+    // ── Count top-level keys in an object ─────────────────────
+    function countKeys(obj) {
+        if (!obj || typeof obj !== 'object') return '0 fields';
+        return Object.keys(obj).length + ' fields';
+    }
+
+    // ── ⑥ DEBUG TPR — Telemetry Table (AssetTypeId=1 & Failure only) ──
+    function loadDebugtprTab(r) {
+        var cid = 'frsDbgDebugtprContent';
+        // ── Guard: only show for AssetTypeId=1 AND Failure ────────
+        // r.assetTypeId must equal 1 AND r.alertType must be 'Failure'
+        var assetTypeId = parseInt(r.assetTypeId || r.AssetTypeId || 0);
+        var alertType = (r.alertType || '').toString().trim();
+
+        if (assetTypeId !== 1 || alertType !== 'Failure') {
+            document.getElementById(cid).innerHTML =
+                '<div class="frs-tab-empty">' +
+                '<i class="fas fa-broadcast-tower" style="font-size:28px;display:block;margin-bottom:10px;color:#cbd5e1"></i>' +
+                '<div style="font-weight:600;color:#94a3b8;margin-bottom:6px;">Not Applicable</div>' +
+                '<div style="font-size:11px;color:#b0bec5">' +
+                'Debug TPR is only available for<br>' +
+                '<b>Asset Type ID = 1</b> and <b>Alert Type = Failure</b>.<br><br>' +
+                'Current record: AssetTypeId = <b>' + (r.assetTypeId || '-') + '</b>' +
+                ' &nbsp;|&nbsp; Alert Type = <b>' + alertType + '</b>' +
+                '</div>' +
+                '</div>';
+            return;
+        }
+
+        // ── Load telemetry CSV & render as HTML table ──────────────
+        var startDate = formatDateTimeMinusForAPI(r.incDate, 30);
+        var endDate = formatDateTimeAddForAPI(r.incDate, 30);
+
+        document.getElementById(cid).innerHTML =
+            '<div class="frs-tab-loading"><i class="fas fa-circle-notch spin"></i><p>Loading TPR telemetry data…</p></div>';
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetTPRJSONData',
+            type: 'POST',
+            data: {
+                siteId: r.siteId,
+                assetId: r.assetId,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            },
+            dataType: 'json',
+            success: function (csv) {
+                if (!csv || csv.trim() === '') {
+                    document.getElementById(cid).innerHTML =
+                        '<div class="frs-tab-empty">' +
+                        '<i class="fas fa-broadcast-tower" style="font-size:28px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No TPR telemetry data available.</div>';
+                    return;
+                }
+
+                var lines = csv.trim().split('\n').filter(function (l) { return l.trim() !== ''; });
+                if (lines.length < 2) {
+                    document.getElementById(cid).innerHTML =
+                        '<div class="frs-tab-empty">No rows in TPR telemetry data.</div>';
+                    return;
+                }
+
+                var headers = lines[0].split(',').map(function (h) { return h.trim(); });
+                if (headers[headers.length - 1] === '') headers.pop();
+
+                // ── Parse rows into array ──────────────────────────────
+                var dataRows = [];
+                for (var i = 1; i < lines.length; i++) {
+                    var cols = lines[i].split(',');
+                    if (cols[cols.length - 1].trim() === '') cols.pop();
+                    dataRows.push(cols);
+                }
+
+                // ── ① Sort by Date (col index 1) DESCENDING ───────────
+                dataRows.sort(function (a, b) {
+                    return new Date((b[1] || '').trim()) - new Date((a[1] || '').trim());
+                });
+
+                // ── ② Build col widths ─────────────────────────────────
+                var colWidths = headers.map(function (h, ci) {
+                    if (ci === 1) return 165;
+                    if (ci === 0 || ci === 2) return 85;
+                    return 90;
+                });
+                var totalW = colWidths.reduce(function (a, b) { return a + b; }, 0);
+
+                // ── ③ Colgroup HTML ────────────────────────────────────
+                var colGroupHtml = '<colgroup>';
+                colWidths.forEach(function (w) {
+                    colGroupHtml += '<col style="width:' + w + 'px;min-width:' + w + 'px">';
+                });
+                colGroupHtml += '</colgroup>';
+
+                // ── ④ Fixed header table ───────────────────────────────
+                var thStyle = [
+                    'background:#1e3a5f',
+                    'color:#fff',
+                    'padding:9px 10px',
+                    'font-size:10px',
+                    'font-weight:700',
+                    'letter-spacing:.06em',
+                    'text-transform:uppercase',
+                    'white-space:normal',
+                    'overflow:hidden',
+                    'text-overflow:ellipsis',
+                    'max-width:140px',
+                    'word-break:break-word',
+                    'border-right:1px solid #2d5a8e',
+                    'border-bottom:2px solid #dc2626',
+                    'text-align:left'
+                ].join(';');
+
+                var headerHtml = '<thead><tr>';
+                headers.forEach(function (h) {
+                    headerHtml += '<th style="' + thStyle + '" title="' + escHtml(h.trim()) + '">' + escHtml(h) + '</th>';
+                });
+                headerHtml += '</tr></thead>';
+
+                // ── ⑤ Body rows ────────────────────────────────────────
+                var bodyHtml = '<tbody>';
+                dataRows.forEach(function (cols, ri) {
+                    bodyHtml += '<tr style="background:' + (ri % 2 === 0 ? '#fff' : '#f8fafc') + '">';
+                    cols.forEach(function (col, ci) {
+                        var val = col.trim();
+                        var valLow = val.toLowerCase();
+                        var tdStyle = 'padding:7px 10px;border-bottom:1px solid #e5edf5;border-right:1px solid #f1f5f9;font-size:11px;white-space:nowrap;';
+                        var cellHtml = '';
+
+                        if (valLow === 'pickup') {
+                            cellHtml = '<span style="display:inline-block;padding:3px 10px;border-radius:4px;' +
+                                'font-size:11px;font-weight:700;letter-spacing:.04em;' +
+                                'background:#16a34a;color:#fff;">Pickup</span>';
+
+                        } else if (valLow === 'drop') {
+                            cellHtml = '<span style="display:inline-block;padding:3px 10px;border-radius:4px;' +
+                                'font-size:11px;font-weight:700;letter-spacing:.04em;' +
+                                'background:#f59e0b;color:#fff;">DROP</span>';
+
+                        } else {
+                            if (ci >= 3) {
+                                var num = parseFloat(val);
+                                if (!isNaN(num)) {
+                                    tdStyle += num === 0
+                                        ? 'color:#94a3b8;font-family:monospace;'
+                                        : 'font-family:monospace;font-weight:500;color:#1e293b;';
+                                }
+                            } else if (ci === 1) {
+                                tdStyle += 'font-family:monospace;font-size:10px;color:#475569;';
+                            } else if (ci === 0 || ci === 2) {
+                                tdStyle += 'color:#6b7280;font-size:10px;';
+                            }
+                            cellHtml = escHtml(val);
+                        }
+
+                        bodyHtml += '<td style="' + tdStyle + '">' + cellHtml + '</td>';
+                    });
+                    bodyHtml += '</tr>';
+                });
+                bodyHtml += '</tbody>';
+
+                // ── ⑥ Assemble final HTML ──────────────────────────────
+                var html =
+                    // Info bar
+                    '<div style="font-size:11px;color:#64748b;margin-bottom:8px;padding:4px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">' +
+                    '<span><i class="fas fa-broadcast-tower" style="margin-right:4px;color:#0077cc"></i>' +
+                    'Asset: <b>' + escHtml(r.assetNo || ('Asset ' + r.assetId)) + '</b></span>' +
+                    '<span>Station: <b>' + escHtml(r.station || '') + '</b></span>' +
+                    '<span><b>' + dataRows.length + '</b> records</span>' +
+                    '<span style="color:#16a34a;font-weight:600">' +
+                    '<i class="fas fa-sort-amount-down" style="margin-right:3px"></i>Latest first' +
+                    '</span>' +
+                    // TPR·FAILURE badge
+                    '<span style="display:inline-flex;align-items:center;gap:5px;background:#fee2e2;' +
+                    'border:1px solid #fca5a5;border-radius:6px;padding:2px 10px;">' +
+                    '<i class="fas fa-exclamation-triangle" style="color:#dc2626;font-size:10px"></i>' +
+                    '<span style="color:#991b1b;font-weight:700;font-size:10px;letter-spacing:.06em">TPR · FAILURE</span>' +
+                    '</span>' +
+                    '</div>' +
+
+                    // Outer container
+                    '<div style="border:1px solid #d1dce8;border-radius:8px;overflow:hidden;">' +
+
+                    // FIXED HEADER (no vertical scroll)
+                    '<div id="tprHeaderScroll" style="overflow:hidden;background:#1e3a5f;">' +
+                    '<table style="width:' + totalW + 'px;border-collapse:collapse;table-layout:fixed;">' +
+                    colGroupHtml +
+                    headerHtml +
+                    '</table>' +
+                    '</div>' +
+
+                    // SCROLLABLE BODY
+                    '<div id="tprBodyScroll" style="overflow-y:auto;overflow-x:auto;max-height:390px;"' +
+                    ' onscroll="syncTprScroll(this)">' +
+                    '<table style="width:' + totalW + 'px;border-collapse:collapse;table-layout:fixed;">' +
+                    colGroupHtml +
+                    bodyHtml +
+                    '</table>' +
+                    '</div>' +
+
+                    '</div>';
+
+                document.getElementById(cid).innerHTML = html;
+
+                // ── Apply fullscreen height if already in fullscreen ──
+                var overlay = document.getElementById('frsDebugOverlay');
+                if (overlay && overlay.classList.contains('fullscreen')) {
+                    setTimeout(function () {
+                        var tprBody = document.getElementById('tprBodyScroll');
+                        if (tprBody) tprBody.style.maxHeight = (window.innerHeight - 240) + 'px';
+                    }, 50);
+                }
+            },
+            error: function (xhr) {
+                document.getElementById(cid).innerHTML =
+                    '<div class="frs-tab-error">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Failed to load TPR telemetry data (HTTP ' + xhr.status + ').</div>';
+            }
+        });
+    }
+
+    function syncTprScroll(bodyEl) {
+        var headerDiv = document.getElementById('tprHeaderScroll');
+        if (headerDiv) headerDiv.scrollLeft = bodyEl.scrollLeft;
+    }
+    // ── ⑦ NETWORK TAB ─────────────────────────────────────────
+    function loadNetworkTab(r) {
+        var cid = 'frsDbgNetworkContent';
+
+        // ── Build initial UI with Type dropdown ───────────────
+        var html =
+            '<div style="padding:4px 0;">' +
+
+            // Info bar
+            '<div style="font-size:11px;color:#64748b;margin-bottom:12px;">' +
+            '<i class="fas fa-network-wired" style="margin-right:4px;color:#0077cc"></i>' +
+            'Asset: <b>' + escHtml(r.assetNo || ('Asset ' + r.assetId)) + '</b>' +
+            ' &nbsp;|&nbsp; Station: <b>' + escHtml(r.station || '') + '</b>' +
+            '</div>' +
+
+            // Filter row
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;' +
+            'padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">' +
+
+            // ── Type dropdown ──
+            '<div style="display:flex;flex-direction:column;gap:4px;">' +
+            '<label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.06em;text-transform:uppercase;">Type</label>' +
+            '<select id="netTypeSelect" onchange="onNetTypeChange(this)" ' +
+            'style="border:1px solid #d1dce8;border-radius:6px;padding:6px 12px;' +
+            'font-size:12px;color:#1e293b;background:#fff;min-width:120px;cursor:pointer;">' +
+            '<option value="">-- Select --</option>' +
+            '<option value="A10">A10</option>' +
+            '<option value="Modem">Modem</option>' +
+            '</select>' +
+            '</div>' +
+
+            // ── Protocol dropdown (hidden initially) ──
+            '<div id="netProtocolWrap" style="display:none;flex-direction:column;gap:4px;">' +
+            '<label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.06em;text-transform:uppercase;">Protocol</label>' +
+            '<select id="netProtocolSelect" onchange="onNetProtocolChange(this)" ' +
+            'style="border:1px solid #d1dce8;border-radius:6px;padding:6px 12px;' +
+            'font-size:12px;color:#1e293b;background:#fff;min-width:120px;cursor:pointer;">' +
+            '<option value="">-- Select --</option>' +
+            '<option value="TCP">TCP</option>' +
+            '<option value="MQTT">MQTT</option>' +
+            '</select>' +
+            '</div>' +
+
+            // ── Loading spinner (hidden initially) ──
+            '<div id="netFilterSpinner" style="display:none;align-items:center;gap:6px;font-size:12px;color:#64748b;">' +
+            '<i class="fas fa-circle-notch fa-spin" style="color:#0077cc"></i> Loading...' +
+            '</div>' +
+
+            '</div>' +
+
+            // ── A10 Number list area ──
+            '<div id="netNumberList" style="margin-bottom:16px;"></div>' +
+
+            // ── Graph area ──
+            '<div id="netGraphArea"></div>' +
+
+            '</div>';
+
+        safeSet(cid, html);
+
+        // Store row data for use in nested handlers
+        window._netCurrentRow = r;
+    }
+
+    // Missing from your code — causes "safeSet is not defined" error
+    function safeSet(cid, html) {
+        var el = document.getElementById(cid);
+        if (el) el.innerHTML = html;
+        else console.warn('safeSet: element not found →', cid);
+    }
+
+    // ── Type dropdown change ───────────────────────────────────
+    function onNetTypeChange(sel) {
+        var type = sel.value;
+
+        // Reset downstream
+        var protocolWrap = document.getElementById('netProtocolWrap');
+        var protocolSel = document.getElementById('netProtocolSelect');
+        var numberList = document.getElementById('netNumberList');
+        var graphArea = document.getElementById('netGraphArea');
+
+        if (numberList) numberList.innerHTML = '';
+        if (graphArea) graphArea.innerHTML = '';
+        if (protocolSel) protocolSel.value = '';
+
+        if (!type) {
+            if (protocolWrap) protocolWrap.style.display = 'none';
+            return;
+        }
+
+        // Show protocol dropdown
+        if (protocolWrap) {
+            protocolWrap.style.display = 'flex';
+        }
+    }
+
+    // ── Protocol dropdown change → load A10 number list ───────
+    function onNetProtocolChange(sel) {
+        var protocol = sel.value;
+        var typeVal = document.getElementById('netTypeSelect')
+            ? document.getElementById('netTypeSelect').value : '';
+        var numberList = document.getElementById('netNumberList');
+        var graphArea = document.getElementById('netGraphArea');
+        var spinner = document.getElementById('netFilterSpinner');
+        var r = window._netCurrentRow;
+
+        if (graphArea) graphArea.innerHTML = '';
+        if (numberList) numberList.innerHTML = '';
+
+        if (!protocol || !typeVal || !r) return;
+
+        // Show spinner
+        if (spinner) spinner.style.display = 'flex';
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetNetworkNumberList',
+            type: 'POST',
+            data: {
+                siteId: r.siteId,
+                assetId: r.assetId,
+                type: typeVal,
+                protocol: protocol
+            },
+            success: function (data) {
+                if (spinner) spinner.style.display = 'none';
+
+                var items = Array.isArray(data) ? data : (data.items || data.data || data.list || []);
+
+                if (!items || items.length === 0) {
+                    if (numberList) numberList.innerHTML =
+                        '<div class="frs-tab-empty" style="padding:20px;">' +
+                        '<i class="fas fa-list" style="font-size:24px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No ' + escHtml(typeVal) + ' numbers found for <b>' + escHtml(protocol) + '</b>.</div>';
+                    return;
+                }
+
+                // Build number list as clickable cards
+                var listHtml =
+                    '<div style="margin-bottom:8px;font-size:10px;font-weight:700;color:#64748b;' +
+                    'letter-spacing:.08em;text-transform:uppercase;">' +
+                    '<i class="fas fa-list" style="margin-right:4px;color:#0077cc"></i>' +
+                    escHtml(typeVal) + ' Numbers &nbsp;·&nbsp; ' + escHtml(protocol) +
+                    ' <span style="color:#94a3b8;font-weight:400">(' + items.length + ' found)</span>' +
+                    '</div>' +
+                    '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
+
+                items.forEach(function (item) {
+                    // Support both string and object response
+                    var num = typeof item === 'object'
+                        ? (item.Number || item.number || item.Name || item.name || item.Id || item.id || JSON.stringify(item))
+                        : String(item);
+                    var display = typeof item === 'object'
+                        ? (item.DisplayName || item.displayName || num)
+                        : num;
+                    var status = typeof item === 'object'
+                        ? (item.Status || item.status || '')
+                        : '';
+
+                    var statusDot = '';
+                    if (status) {
+                        var dotColor = status.toLowerCase() === 'online' ? '#16a34a' :
+                            status.toLowerCase() === 'offline' ? '#dc2626' : '#94a3b8';
+                        statusDot = '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;' +
+                            'background:' + dotColor + ';margin-right:5px;vertical-align:middle;"></span>';
+                    }
+
+                    listHtml +=
+                        '<div class="frs-net-num-card" ' +
+                    'onclick="onNetNumberClick(this,\'' + escJs(num) + '\',\'' + escJs(typeVal) + '\',\'' + escJs(protocol) + '\',\'' + escJs(item.ClusterId) + '\')" ' +
+                        'style="display:inline-flex;align-items:center;gap:4px;' +
+                        'background:#fff;border:1px solid #d1dce8;border-radius:7px;' +
+                        'padding:7px 14px;cursor:pointer;font-size:12px;font-weight:600;' +
+                        'color:#1e293b;transition:all .15s;user-select:none;">' +
+                        statusDot +
+                        escHtml(display) +
+                        '</div>';
+                });
+
+                listHtml += '</div>';
+
+                if (numberList) numberList.innerHTML = listHtml;
+            },
+            error: function (xhr) {
+                if (spinner) spinner.style.display = 'none';
+                if (numberList) numberList.innerHTML =
+                    '<div class="frs-tab-error">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Failed to load numbers (HTTP ' + xhr.status + ').</div>';
+            }
+        });
+    }
+
+    // ── A10 Number card click → load graph ────────────────────
+    function onNetNumberClick(cardEl, number, type, protocol, clusterId) {
+        var graphArea = document.getElementById('netGraphArea');
+        var r = window._netCurrentRow;
+        if (!graphArea || !r) return;
+
+        // Highlight selected card
+        document.querySelectorAll('.frs-net-num-card').forEach(function (c) {
+            c.style.background = '#fff';
+            c.style.borderColor = '#d1dce8';
+            c.style.color = '#1e293b';
+            c.style.boxShadow = '';
+        });
+        cardEl.style.background = '#0077cc';
+        cardEl.style.borderColor = '#0077cc';
+        cardEl.style.color = '#fff';
+        cardEl.style.boxShadow = '0 2px 8px rgba(0,119,204,.3)';
+
+        // Show loading
+        graphArea.innerHTML =
+            '<div class="frs-tab-loading" style="padding:30px;">' +
+            '<i class="fas fa-circle-notch spin"></i>' +
+            '<p>Loading graph for <b>' + escHtml(number) + '</b>…</p></div>';
+
+        var startDate = formatDateTimeMinusForAPI(r.incDate, 30);
+        var endDate = formatDateTimeAddForAPI(r.incDate, 30);
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetNetworkGraphData',
+            type: 'POST',
+            data: {
+                clusterId: clusterId,
+                a10Id: number,
+                type: type,
+                protocol: protocol,
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString()
+            },
+            success: function (data) {
+                if (!data || (Array.isArray(data) && data.length === 0)) {
+                    graphArea.innerHTML =
+                        '<div class="frs-tab-empty" style="padding:20px;">' +
+                        '<i class="fas fa-chart-line" style="font-size:24px;display:block;margin-bottom:8px;color:#cbd5e1"></i>' +
+                        'No graph data available for <b>' + escHtml(number) + '</b>.</div>';
+                    return;
+                }
+
+                renderNetworkGraph(graphArea, data, number, type, protocol);
+            },
+            error: function (xhr) {
+                graphArea.innerHTML =
+                    '<div class="frs-tab-error">' +
+                    '<i class="fas fa-exclamation-triangle" style="margin-right:6px"></i>' +
+                    'Failed to load graph data (HTTP ' + xhr.status + ').</div>';
+            }
+        });
+    }
+
+    // ── Render ECharts graph from network JSON response ────────
+    function renderNetworkGraph(container, data, number, type, protocol) {
+        // Normalize data — support array or { timestamps:[], values:[] } or { data:[] }
+        var points = [];
+        if (Array.isArray(data)) {
+            points = data;
+        } else if (data.data && Array.isArray(data.data)) {
+            points = data.data;
+        } else if (data.points && Array.isArray(data.points)) {
+            points = data.points;
+        } else {
+            points = [data]; // single object
+        }
+
+        // Extract x (time) and series
+        var keys = points.length > 0 ? Object.keys(points[0]) : [];
+        var timeKey = keys.find(function (k) {
+            var v = String(points[0][k] || '');
+            return k.toLowerCase().includes('time') || k.toLowerCase().includes('date') || v.match(/^\d{4}-/);
+        }) || keys[0];
+        var valueKeys = keys.filter(function (k) { return k !== timeKey; });
+
+        var xValues = points.map(function (p) {
+            var raw = String(p[timeKey] || '');
+            // Try to shorten timestamp for display
+            try {
+                var d = new Date(raw);
+                if (!isNaN(d.getTime())) {
+                    return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+                }
+            } catch (e) { }
+            return raw;
+        });
+
+        var colors = ['#4bacc6', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#3498db'];
+        var series = valueKeys.map(function (k, i) {
+            return {
+                name: k,
+                type: 'line',
+                smooth: false,
+                symbol: 'none',
+                connectNulls: true,
+                lineStyle: { width: 1.8 },
+                color: colors[i % colors.length],
+                data: points.map(function (p) {
+                    var v = parseFloat(p[k]);
+                    return isNaN(v) ? null : v;
+                })
+            };
+        });
+
+        // Build chart container
+        container.innerHTML =
+            // Title bar
+            '<div style="display:flex;align-items:center;justify-content:space-between;' +
+            'margin-bottom:10px;flex-wrap:wrap;gap:8px;">' +
+            '<div style="font-size:12px;font-weight:700;color:#1e293b;">' +
+            '<i class="fas fa-chart-line" style="margin-right:5px;color:#0077cc"></i>' +
+            escHtml(type) + ' — ' + escHtml(number) +
+            ' <span style="font-weight:400;color:#64748b;font-size:11px">· ' + escHtml(protocol) + '</span>' +
+            '</div>' +
+            '<span style="font-size:10px;color:#94a3b8;">' + points.length + ' data points</span>' +
+            '</div>' +
+            '<div id="netEChart" style="width:100%;height:300px;border:1px solid #e2e8f0;border-radius:8px;"></div>';
+
+        // Init ECharts
+        if (window._netChart) {
+            try { window._netChart.dispose(); } catch (e) { }
+            window._netChart = null;
+        }
+
+        function initNetChart() {
+            var dom = document.getElementById('netEChart');
+            if (!dom) return;
+
+            window._netChart = echarts.init(dom, null, { renderer: 'canvas' });
+            window._netChart.setOption({
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    confine: true,
+                    axisPointer: { type: 'cross', label: { backgroundColor: '#1e293b' } },
+                    formatter: function (params) {
+                        var html = '<div style="font-size:11px;min-width:160px;">' +
+                            '<div style="font-weight:700;color:#1e293b;margin-bottom:4px;' +
+                            'padding-bottom:4px;border-bottom:1px solid #e2e8f0">' +
+                            params[0].axisValue + '</div>';
+                        params.forEach(function (p) {
+                            if (p.value === null) return;
+                            html += '<div style="display:flex;justify-content:space-between;gap:12px;margin:2px 0">' +
+                                '<span>' + p.marker + p.seriesName + '</span>' +
+                                '<span style="font-weight:700;font-family:monospace">' + p.value + '</span></div>';
+                        });
+                        return html + '</div>';
+                    }
+                },
+                legend: {
+                    data: valueKeys,
+                    type: 'scroll',
+                    top: 0,
+                    left: 0,
+                    right: 40,
+                    textStyle: { fontSize: 10, color: '#475569' },
+                    itemWidth: 12,
+                    itemHeight: 8
+                },
+                toolbox: {
+                    right: 4,
+                    top: 0,
+                    feature: {
+                        dataZoom: { yAxisIndex: 'none', title: { zoom: 'Zoom', back: 'Undo' } },
+                        restore: { title: 'Restore' },
+                        saveAsImage: { title: 'Save PNG' }
+                    }
+                },
+                grid: { top: 40, left: 50, right: 20, bottom: 55, containLabel: false },
+                xAxis: [{
+                    type: 'category',
+                    boundaryGap: false,
+                    data: xValues,
+                    axisLine: { lineStyle: { color: '#d1dce8' } },
+                    axisLabel: {
+                        fontSize: 9,
+                        color: '#6b7280',
+                        rotate: 30,
+                        interval: Math.max(0, Math.floor(xValues.length / 10) - 1)
+                    },
+                    splitLine: { show: false }
+                }],
+                yAxis: [{
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#d1dce8' } },
+                    axisLabel: { fontSize: 9, color: '#475569' },
+                    splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+                }],
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        bottom: 4,
+                        height: 20,
+                        start: 0,
+                        end: 100,
+                        fillerColor: 'rgba(0,119,204,0.08)',
+                        borderColor: '#d1dce8',
+                        handleStyle: { color: '#0077cc' },
+                        textStyle: { color: '#6b7280', fontSize: 9 }
+                    },
+                    { type: 'inside', start: 0, end: 100 }
+                ],
+                color: colors,
+                series: series
+            });
+
+            setTimeout(function () {
+                if (window._netChart) window._netChart.resize();
+            }, 100);
+        }
+
+        if (typeof echarts !== 'undefined') {
+            initNetChart();
+        } else {
+            var s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js';
+            s.onload = function () { initNetChart(); };
+            document.head.appendChild(s);
+        }
+    }
+
+    // ── Sync horizontal scroll for Network header ─────────────
+    function syncNetworkScroll(bodyEl) {
+        var headerDiv = document.getElementById('networkHeaderScroll');
+        if (headerDiv) headerDiv.scrollLeft = bodyEl.scrollLeft;
+    }
+
+// ── Helpers ───────────────────────────────────────────────
+function tryParseJson(str) {
+  try { return JSON.parse(str); } catch(e) { return { raw: str }; }
+}
+
+function syntaxHighlightJson(json) {
+  if (!json) return '';
+  json = json.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return json.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    function(match) {
+      var cls = 'frs-json-num';
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) cls = 'frs-json-key';
+        else cls = 'frs-json-str';
+      } else if (/true|false/.test(match)) cls = 'frs-json-bool';
+      else if (/null/.test(match)) cls = 'frs-json-null';
+      return '<span class="' + cls + '">' + match + '</span>';
+    }
+  );
+}
+
+
+    function closeDebugPopup() {
+        var overlay = document.getElementById('frsDebugOverlay');
+        overlay.classList.remove('open');
+        overlay.classList.remove('fullscreen');   // ← reset fullscreen on close
+
+        // Reset fullscreen icon
+        var icon = document.getElementById('frsDbgFullscreenIcon');
+        if (icon) {
+            icon.classList.remove('fa-compress');
+            icon.classList.add('fa-expand');
+        }
+
+        // Dispose charts
+        if (_mqttChart) { try { _mqttChart.dispose(); } catch (e) { } _mqttChart = null; }
+        if (window._netChart) { try { window._netChart.dispose(); } catch (e) { } window._netChart = null; }
+    }
+
+// ════════════════════════════════════════════════════════════
+//  CLIENT-SIDE PAGINATION
+// ════════════════════════════════════════════════════════════
+var _pageSize    = window._alertPageSize || 10;
+var _currentPage = 1;
+
+function renderTable() {
+  var total  = _allRows.length;
+  var tp     = Math.ceil(total/_pageSize)||1;
+  if (_currentPage > tp) _currentPage = tp;
+  var start  = (_currentPage-1)*_pageSize;
+  var slice  = _allRows.slice(start, start+_pageSize);
+  window._alertCurrentSkip = start;
+
+  if (slice.length === 0) {
+    document.getElementById('frsAlertBody').innerHTML =
+      '<tr><td colspan="12" style="text-align:center;padding:30px;color:#6b7280">No records found.</td></tr>';
+    document.getElementById('frsPagerBar').innerHTML = '';
+    return;
+  }
+
+  document.getElementById('frsAlertBody').innerHTML = slice.map(function(r, i) {
+    var idx      = start+i+1;
+    var badgeCls = r.alertType==='Predictive' ? 'frs-badge-pred' : 'frs-badge-fail';
+    return '<tr>' +
+      '<td style="font-family:monospace;color:#6b7280">' + idx + '</td>' +
+      '<td>' + escHtml(r.zone) + '</td>' +
+      '<td>' + escHtml(r.division) + '</td>' +
+      '<td>' + escHtml(r.station) + '</td>' +
+      '<td><span class="frs-badge '+badgeCls+'">' + r.alertType + '</span></td>' +
+      '<td style="font-weight:600">' + escHtml(r.assetType) + '</td>' +
+      '<td style="font-family:monospace">' + escHtml(r.assetNo) + '</td>' +
+      '<td style="font-family:monospace;color:#475569">' + r.incDate + '</td>' +
+      '<td style="font-family:monospace;color:#6b7280">' + escHtml(r.duration) + '</td>' +
+      '<td style="font-family:monospace;color:#475569">' + escHtml(r.rectDate) + '</td>' +
+      '<td>' +
+        '<span id="spnAlertmsg'+r.id+'" style="display:none">' + escHtml(r.setMsg) + '</span>' +
+        '<span id="spnAlertDescription'+r.id+'" style="display:none">' + r.desc + '</span>' +
+        '<span id="spnResetAlertmsg'+r.id+'" style="display:none">' + r.resetMsg + '</span>' +
+        '<button class="frs-cause-btn" onclick="openCauseModal(\''+escJs(r.causeCode)+'\')">' + escHtml(r.causeCode) + '</button>' +
+        '&nbsp;<a href="javascript:void(0)" onclick="fnShowAlertMessage(\''+r.id+'\')" title="Alert Message" style="color:#6b7280;font-size:10px"><i class="fas fa-info-circle"></i></a>' +
+      '</td>' +
+      '<td class="frs-td-msg">' +
+        (r.setMsg   ? '<div class="frs-msg-line frs-msg-set">'               + sanitizeMsg(r.setMsg)  + '</div>' : '') +
+        (r.desc     ? '<div class="frs-msg-line frs-msg-desc">'              + sanitizeMsg(r.desc)    + '</div>' : '') +
+        (r.resetMsg ? '<div class="frs-msg-line frs-msg-reset"><b>Reset:</b> ' + sanitizeMsg(r.resetMsg) + '</div>' : '') +
+      '</td>' +
+    '</tr>';
+  }).join('');
+
+  renderPager(total, tp);
+}
+
+function renderPager(total, tp) {
+  var cp   = _currentPage;
+  var from = total > 0 ? (cp-1)*_pageSize+1 : 0;
+  var to   = Math.min(cp*_pageSize, total);
+  var btns = '';
+  var addBtn = function(p){ btns+='<button class="'+(p===cp?'active':'')+'" onclick="goToPage('+p+')">'+p+'</button>'; };
+  var addEll = function(){ btns+='<button class="frs-ell" disabled>\u2026</button>'; };
+  if (tp<=7) { for(var p=1;p<=tp;p++) addBtn(p); }
+  else {
+    addBtn(1); if(cp>4) addEll();
+    var s=Math.max(2,cp-2), e=Math.min(tp-1,cp+2);
+    for(var p=s;p<=e;p++) addBtn(p);
+    if(cp<tp-3) addEll(); addBtn(tp);
+  }
+  document.getElementById('frsPagerBar').innerHTML =
+    '<span class="frs-pager-info">Showing <b>'+from.toLocaleString()+'\u2013'+to.toLocaleString()+'</b> of <b>'+total.toLocaleString()+'</b></span>' +
+    '<div class="frs-pager-btns">' +
+      '<button '+(cp<=1?'disabled':'')+' onclick="goToPage(1)" title="First"><i class="fas fa-angle-double-left"></i></button>' +
+      '<button '+(cp<=1?'disabled':'')+' onclick="goToPage('+(cp-1)+')"><i class="fas fa-chevron-left"></i> Prev</button>' +
+      btns +
+      '<button '+(cp>=tp?'disabled':'')+' onclick="goToPage('+(cp+1)+')">Next <i class="fas fa-chevron-right"></i></button>' +
+      '<button '+(cp>=tp?'disabled':'')+' onclick="goToPage('+tp+')" title="Last"><i class="fas fa-angle-double-right"></i></button>' +
+    '</div>' +
+    '<div class="frs-psize">Rows:<select onchange="changePageSize(this.value)">' +
+      '<option value="10" '+(_pageSize===10?'selected':'')+'>10</option>' +
+      '<option value="25" '+(_pageSize===25?'selected':'')+'>25</option>' +
+      '<option value="50" '+(_pageSize===50?'selected':'')+'>50</option>' +
+      '<option value="100" '+(_pageSize===100?'selected':'')+'>100</option>' +
+    '</select></div>';
+}
+
+function goToPage(p) { var tp=Math.ceil(_allRows.length/_pageSize)||1; if(p<1||p>tp) return; _currentPage=p; renderTable(); }
+function changePageSize(s) { _pageSize=parseInt(s)||10; window._alertPageSize=_pageSize; _currentPage=1; renderTable(); }
+function reloadCurrentPage() { if(typeof fnGetAlertDetailReport==='function') fnGetAlertDetailReport(window._alertCurrentSkip||0); }
+function GoToPage(pageNum) { goToPage(pageNum); }
+function changeAlertPageSize(s) { changePageSize(s); }
+
+// ════════════════════════════════════════════════════════════
+//  HELPERS
+// ════════════════════════════════════════════════════════════
+function escHtml(s) { if(!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function sanitizeMsg(s) {
+  if (!s) return '';
+  return escHtml(s).replace(/&lt;b&gt;/gi,'<b>').replace(/&lt;\/b&gt;/gi,'</b>');
+}
+function escJs(s) { if(!s) return ''; return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function parseDMYDate(str) {
+  var p=str.split(' '),d=p[0].split('/'),t=(p[1]||'00:00:00').split(':');
+  return new Date(+d[2],+d[1]-1,+d[0],+t[0],+t[1],+t[2]).getTime();
+}
+function pad2(n) { return n<10?'0'+n:''+n; }
+function fnShowAlertMessage(id) {
+  var msg=$('#spnAlertmsg'+id).text().replace(/\n/g,'')+'<br>'+($('#spnAlertDescription'+id).html()||'').replace(/\n/g,'');
+  var reset=$('#spnResetAlertmsg'+id).html();
+  if(reset&&reset.trim()) msg+='<br><b>Reset Message</b><br>'+reset.replace(/\n/g,'');
+  $('#spnAlertMessage').html(msg.replace(/\n/g,'<br>')); $('#modelShowAlertMessage').modal('show');
+}
+
+// ════════════════════════════════════════════════════════════
+//  PDF DOWNLOAD — pure text (selectable / searchable)
+// ════════════════════════════════════════════════════════════
+function fnDownloadAlertPDF() {
+  var btn=document.getElementById('frsBtnPdf'), progress=document.getElementById('frsPdfProgress'), bar=document.getElementById('frsPdfProgressBar');
+  btn.disabled=true; btn.innerHTML='<i class="fas fa-circle-notch fa-spin"></i> Generating\u2026';
+  progress.style.display='block'; bar.style.width='10%';
+  function loadScript(src,cb){ if(document.querySelector('script[src="'+src+'"]')){cb();return;} var s=document.createElement('script'); s.src=src; s.onload=function(){cb();}; s.onerror=function(){cb(new Error('Failed: '+src));}; document.head.appendChild(s); }
+  loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',function(e1){
+    if(e1){resetPdfBtn(btn,progress);alert('Could not load jsPDF.');return;}
+    bar.style.width='40%'; setTimeout(function(){_buildTextPdf(btn,progress,bar);},60);
+  });
+}
+function _buildTextPdf(btn,progress,bar){
+  try{
+    var jsPDF=(window.jspdf&&window.jspdf.jsPDF)||window.jsPDF;
+    var pdf=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    var pageW=pdf.internal.pageSize.getWidth(),pageH=pdf.internal.pageSize.getHeight(),now=new Date(),margin=8;
+    bar.style.width='55%';
+    function p2(n){return n<10?'0'+n:''+n;}
+    var dateStr=p2(now.getDate())+'/'+p2(now.getMonth()+1)+'/'+now.getFullYear()+'  '+p2(now.getHours())+':'+p2(now.getMinutes());
+    function stripHtml(str){if(!str)return '';return String(str).replace(/<br\s*\/?>/gi,' | ').replace(/<b>(.*?)<\/b>/gi,'$1').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();}
+    function wrapText(str,colW,fontSize){if(!str)return[''];str=stripHtml(String(str)).replace(/\r?\n/g,' ').trim();pdf.setFontSize(fontSize);return pdf.splitTextToSize(str,colW);}
+    function parseBoldSegments(str){if(!str)return[{text:'',bold:false}];var cleaned=String(str).replace(/<br\s*\/?>/gi,' | ').replace(/<(?!\/?(b)>)[^>]+>/gi,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\s+/g,' ').trim();var segs=[],re=/<b>([\s\S]*?)<\/b>/gi,last=0,m;while((m=re.exec(cleaned))!==null){if(m.index>last)segs.push({text:cleaned.slice(last,m.index),bold:false});segs.push({text:m[1],bold:true});last=m.index+m[0].length;}if(last<cleaned.length)segs.push({text:cleaned.slice(last),bold:false});return segs.length?segs:[{text:cleaned,bold:false}];}
+    function wrapMixedLines(segments,colW,fontSize){var lines=[[]],lineW=0;segments.forEach(function(seg){if(!seg.text)return;pdf.setFont('helvetica',seg.bold?'bold':'normal');pdf.setFontSize(fontSize);var words=seg.text.split(/(\s+)/);words.forEach(function(token){if(!token)return;var tw=pdf.getTextWidth(token);if(lineW+tw>colW&&lineW>0&&token.trim()!==''){lines.push([]);lineW=0;}lines[lines.length-1].push({text:token,bold:seg.bold});lineW+=tw;if(/\n/.test(token)){lines.push([]);lineW=0;}});});return lines;}
+    function renderMixedLines(lineSegs,x,startY,maxLines,lH){var count=Math.min(lineSegs.length,maxLines);for(var li=0;li<count;li++){var cx=x,isLast=li===maxLines-1&&lineSegs.length>maxLines,segs=lineSegs[li];for(var si=0;si<segs.length;si++){var seg=segs[si];pdf.setFont('helvetica',seg.bold?'bold':'normal');var txt=seg.text;if(isLast&&si===segs.length-1)txt=txt.trimEnd()+'\u2026';pdf.text(txt,cx,startY+cellPadY+lH*(li+1)-0.5);cx+=pdf.getTextWidth(txt);}}return count;}
+    var cols=[{key:'idx',hdr:'Sr',w:7},{key:'zone',hdr:'Zone',w:12},{key:'division',hdr:'Division',w:20},{key:'station',hdr:'Station',w:20},{key:'alertType',hdr:'Type',w:16},{key:'assetType',hdr:'Asset Type',w:20},{key:'assetNo',hdr:'Asset No.',w:14},{key:'incDate',hdr:'Inc. Date',w:24},{key:'duration',hdr:'Duration',w:18},{key:'rectDate',hdr:'Rect. Date',w:24},{key:'causeCode',hdr:'Cause Code',w:24},{key:'setMsg',hdr:'Message',w:41},{key:'desc',hdr:'Description',w:41}];
+    var xPos=[],cx=margin;for(var ci=0;ci<cols.length;ci++){xPos.push(cx);cx+=cols[ci].w;}
+    var usableW=cx-margin,headerH=14,rowFontSz=6.5,hdrFontSz=6.8,lineH=3.8,cellPadY=1.5,minRowH=lineH+cellPadY*2,tblStartY=headerH+4,currentY=tblStartY,pageNum=1;
+    function drawPageHeader(){pdf.setFillColor(0,119,204);pdf.rect(0,0,pageW,headerH-1,'F');pdf.setTextColor(255,255,255);pdf.setFontSize(10);pdf.setFont('helvetica','bold');pdf.text('Alert Analysis Report',margin,9);pdf.setFontSize(7.5);pdf.setFont('helvetica','normal');pdf.text(dateStr+'   Page '+pageNum,pageW-margin,9,{align:'right'});var bY=11.5,pred=_allRows.filter(function(r){return r.alertType==='Predictive';}).length,fail=_allRows.filter(function(r){return r.alertType==='Failure';}).length,badges=[{label:'Total',val:_allRows.length,bg:[22,163,74]},{label:'Predictive',val:pred,bg:[217,119,6]},{label:'Failure',val:fail,bg:[220,38,38]}],bX=margin;badges.forEach(function(b){var txt=b.label+': '+b.val.toLocaleString();pdf.setFontSize(6.5);pdf.setFont('helvetica','bold');var tw=pdf.getTextWidth(txt)+4;pdf.setFillColor(b.bg[0],b.bg[1],b.bg[2]);pdf.roundedRect(bX,bY-2.2,tw,3.5,0.8,0.8,'F');pdf.setTextColor(255,255,255);pdf.text(txt,bX+2,bY);bX+=tw+2;});}
+    function drawColHeaders(){pdf.setFillColor(232,240,248);pdf.rect(margin,currentY,usableW,minRowH+1,'F');pdf.setDrawColor(209,220,232);pdf.rect(margin,currentY,usableW,minRowH+1,'S');pdf.setTextColor(107,114,128);pdf.setFontSize(hdrFontSz);pdf.setFont('helvetica','bold');for(var ci=0;ci<cols.length;ci++){pdf.text(cols[ci].hdr,xPos[ci]+1,currentY+cellPadY+lineH-0.5);}currentY+=minRowH+1;}
+    function addPage(){pdf.addPage();pageNum++;drawPageHeader();currentY=tblStartY;drawColHeaders();}
+    function drawRow(rowData,ri,isAlt){pdf.setFontSize(rowFontSz);pdf.setFont('helvetica','normal');var cellLines=[],mixedLines={},maxLines=1;for(var ci=0;ci<cols.length;ci++){var colKey=cols[ci].key;if(colKey==='setMsg'||colKey==='desc'){var rawVal=rowData[colKey]||'',segs=parseBoldSegments(rawVal),mlines=wrapMixedLines(segs,cols[ci].w-2,rowFontSz);if(mlines.length>4)mlines=mlines.slice(0,4);mixedLines[ci]=mlines;cellLines.push(null);if(mlines.length>maxLines)maxLines=mlines.length;}else{var val=rowData[colKey]||'',lines=wrapText(String(val),cols[ci].w-2,rowFontSz);if(lines.length>4){lines=lines.slice(0,4);lines[3]+='\u2026';}cellLines.push(lines);if(lines.length>maxLines)maxLines=lines.length;}}var rowH=maxLines*lineH+cellPadY*2;if(currentY+rowH>pageH-8){addPage();}if(isAlt){pdf.setFillColor(248,250,252);pdf.rect(margin,currentY,usableW,rowH,'F');}pdf.setDrawColor(229,237,245);pdf.line(margin,currentY+rowH,margin+usableW,currentY+rowH);pdf.setFontSize(rowFontSz);for(var ci=0;ci<cols.length;ci++){var col=cols[ci];if(col.key==='setMsg'||col.key==='desc'){pdf.setTextColor(71,85,105);renderMixedLines(mixedLines[ci],xPos[ci]+1,currentY,4,lineH);}else{var lines=cellLines[ci];if(col.key==='alertType'){var ip=rowData.alertType==='Predictive';pdf.setTextColor(ip?146:153,ip?64:27,ip?14:27);pdf.setFont('helvetica','bold');}else if(col.key==='causeCode'){pdf.setTextColor(0,119,204);pdf.setFont('helvetica','bold');}else if(col.key==='idx'){pdf.setTextColor(107,114,128);pdf.setFont('helvetica','normal');}else{pdf.setTextColor(30,41,59);pdf.setFont('helvetica','normal');}for(var li=0;li<lines.length;li++){pdf.text(lines[li],xPos[ci]+1,currentY+cellPadY+lineH*(li+1)-0.5);}}}currentY+=rowH;}
+    bar.style.width='65%'; drawPageHeader(); drawColHeaders();
+    for(var ri=0;ri<_allRows.length;ri++){var r=_allRows[ri];drawRow({idx:ri+1,zone:r.zone||'',division:r.division||'',station:r.station||'',alertType:r.alertType||'',assetType:r.assetType||'',assetNo:r.assetNo||'',incDate:r.incDate||'',duration:r.duration||'-',rectDate:r.rectDate||'-',causeCode:r.causeCode||'',setMsg:r.setMsg||'',desc:r.desc||''},ri,ri%2===1);if(ri%50===0)bar.style.width=Math.min(90,65+Math.floor((ri/_allRows.length)*25))+'%';}
+    pdf.setDrawColor(209,220,232); pdf.rect(margin,tblStartY,usableW,currentY-tblStartY,'S');
+    var totalPages=pdf.internal.getNumberOfPages();for(var pi=1;pi<=totalPages;pi++){pdf.setPage(pi);pdf.setFontSize(6.5);pdf.setTextColor(160,160,160);pdf.setFont('helvetica','normal');pdf.text('FRS Alert Analysis  \u00b7  Total Records: '+_allRows.length+'  \u00b7  Page '+pi+' of '+totalPages,pageW/2,pageH-3,{align:'center'});}
+    bar.style.width='95%';
+    var fname='AlertAnalysis_'+now.getFullYear()+p2(now.getMonth()+1)+p2(now.getDate())+'_'+p2(now.getHours())+p2(now.getMinutes())+'.pdf';
+    pdf.save(fname); bar.style.width='100%'; setTimeout(function(){resetPdfBtn(btn,progress);},500);
+  }catch(err){console.error('PDF error:',err);resetPdfBtn(btn,progress);alert('PDF generation failed: '+err.message);}
+}
+function resetPdfBtn(btn,progress){btn.disabled=false;btn.innerHTML='<i class="fas fa-file-pdf"></i> Download PDF';progress.style.display='none';document.getElementById('frsPdfProgressBar').style.width='0%';}
+
+// ════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════
+$(document).ready(function() {
+  _pageSize = window._alertPageSize || 10;
+  renderTable();
+  $('[data-toggle="popover"]').popover({ container:'body', html:true });
+  var now=new Date(), meta=document.getElementById('frsPdfMeta');
+  if(meta) meta.textContent='Report date: '+pad2(now.getDate())+'/'+pad2(now.getMonth()+1)+'/'+now.getFullYear()+'  '+pad2(now.getHours())+':'+pad2(now.getMinutes());
+});
+
+    function formatDateTimeAddForAPI(input, addMin) {
+        // Split date and time
+
+        // Parse manually (since JS doesn't reliably parse dd/MM/yyyy)
+        const [datePart, timePart] = input.split(" ");
+        const [day, month, year] = datePart.split("/").map(Number);
+        const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+        // Create Date object (month is 0-based in JS)
+        const date = new Date(year, month - 1, day, hours, minutes, seconds);
+
+        // Add 30 minutes
+        date.setMinutes(date.getMinutes() + addMin);
+
+        // Format function
+        //const pad = (n) => n.toString().padStart(2, "0");
+
+        //const formatted = `${pad(date.getDate())}${pad(date.getMonth() + 1)}${date.getFullYear()}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+
+
+        // Format into ddMMyyyy_HHmmss
+        return date;
+    }
+
+    function formatDateTimeMinusForAPI(input, addMin) {
+        // Split date and time
+
+        // Parse manually (since JS doesn't reliably parse dd/MM/yyyy)
+        const [datePart, timePart] = input.split(" ");
+        const [day, month, year] = datePart.split("/").map(Number);
+        const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+        // Create Date object (month is 0-based in JS)
+        const date = new Date(year, month - 1, day, hours, minutes, seconds);
+
+        // Add 30 minutes
+        date.setMinutes(date.getMinutes() - addMin);
+
+        // Format function
+        //const pad = (n) => n.toString().padStart(2, "0");
+
+        //const formatted = `${pad(date.getDate())}${pad(date.getMonth() + 1)}${date.getFullYear()}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+
+
+        // Format into ddMMyyyy_HHmmss
+        return date;
+    }
+
+
+    function renderHistoryTable(assetResults) {
+        thCache = parseTableData(assetResults);
+        thCurrentPage = 1;
+        thTotalPages = Math.ceil(thCache.allTimestamps.length / TH_PAGE_SIZE) || 1;
+
+        if (thCache.allTimestamps.length === 0) {
+            $('#divTelemetryHistory').html('<div class="text-center text-muted p-5">No valid timestamp data found.</div>');
+            $('#divPagination').hide();
+            return;
+        }
+
+        var h = [];
+        h.push('<div class="history-table-wrapper">');
+        h.push('<table class="history-table" id="tblHistory">');
+        h.push(buildThead(thCache));
+        h.push('<tbody id="tblHistoryBody"></tbody>');
+        h.push('</table></div>');
+
+        //$('#divTelemetryHistory').html(h.join(''));
+        //renderTablePage(1);
+    }
+
+    function parseTableData(assetResults) {
+        var allTimestampsSet = {};
+        var attributeData = {};
+        var attrDataType = {};
+        var columns = [];
+        var assetGroups = [];
+
+        assetResults.forEach(function (assetObj) {
+            var aId = assetObj.assetId;
+            var aName = assetObj.assetName;
+            var attrs = assetObj.attributes.Data || [];
+            var attrIdsForAsset = [];
+
+            attrs.forEach(function (attr) {
+
+                var attrId = attr.AttributeId;
+                var compositeKey = aId + '_' + attrId;
+                var entries = [];
+                var detectedType = '';
+                var values = attr.Values;
+                for (var key in values) {
+                    if (values.hasOwnProperty(key)) {
+                        var entry = values[key];
+                        var tsDate = new Date(entry.Timestamp.TimestampDevice);
+                        if (tsDate.getFullYear() <= 1) continue;
+                        allTimestampsSet[tsDate.getTime()] = tsDate;
+                        entries.push({ ts: tsDate, value: entry.Value });
+                        if (!detectedType && entry.DataType) detectedType = entry.DataType;
+                    }
+                }
+                entries.sort(function (a, b) { return a.ts.getTime() - b.ts.getTime(); });
+                attributeData[compositeKey] = entries;
+                attrDataType[compositeKey] = detectedType || '';
+                attrIdsForAsset.push(attrId);
+            });
+
+            attrIdsForAsset.sort(function (a, b) { return a - b; });
+            attrIdsForAsset.forEach(function (attrId) {
+                var ck = aId + '_' + attrId;
+                var isDataLogger = (attrDataType[ck] || '').toLowerCase() === 'datalogger';
+                // FIXED: Use relay name for DataLogger (same as Live page)
+                var displayName = getAttrDisplayName(attrId, isDataLogger);
+                columns.push({ assetId: aId, assetName: aName, attrId: attrId, isDataLogger: isDataLogger, displayName: displayName });
+            });
+            assetGroups.push({ assetId: aId, assetName: aName, attrCount: attrIdsForAsset.length });
+        });
+
+        //var allTimestamps = [];
+        //for (var key in allTimestampsSet) allTimestamps.push(allTimestampsSet[key]);
+        //allTimestamps.sort(function (a, b) { return b.getTime() - a.getTime(); });
+
+        //var displayGrid = new Array(allTimestamps.length);
+
+        var allTimestamps = [];
+        for (var key in allTimestampsSet) allTimestamps.push(allTimestampsSet[key]);
+        allTimestamps.sort(function (a, b) { return b.getTime() - a.getTime(); });
+
+        // ===== LAST-CHANGE ROW LOGIC =====
+        var searchStartDate = null;
+        var fromDateVal = $('#txtFromDate').val();
+        var fromTimeVal = $('#txtFromTime').val() || '00:00';
+        if (fromDateVal) {
+            var dp = fromDateVal.split('-');
+            var tp = fromTimeVal.split(':');
+            searchStartDate = new Date(parseInt(dp[0]), parseInt(dp[1]) - 1, parseInt(dp[2]),
+                parseInt(tp[0]), parseInt(tp[1]), 0, 0);
+        }
+
+        if (searchStartDate) {
+            var startMs = searchStartDate.getTime();
+            var preStartTs = [];
+            var inRangeTs = [];
+            allTimestamps.forEach(function (ts) {
+                if (ts.getTime() < startMs) preStartTs.push(ts);
+                else inRangeTs.push(ts);
+            });
+
+            if (preStartTs.length > 0) {
+                var lastPreStartTs = preStartTs[0];
+                var syntheticTs = new Date(startMs);
+                syntheticTs._originalTs = lastPreStartTs;
+                syntheticTs._isStartRow = true;
+
+                for (var ck in attributeData) {
+                    var entries = attributeData[ck];
+                    var carryVal = null;
+                    for (var ei = 0; ei < entries.length; ei++) {
+                        if (entries[ei].ts.getTime() <= lastPreStartTs.getTime()) carryVal = entries[ei].value;
+                        else break;
+                    }
+                    if (carryVal !== null) {
+                        var alreadyExists = false;
+                        for (var ei2 = 0; ei2 < entries.length; ei2++) {
+                            if (entries[ei2].ts.getTime() === startMs) { alreadyExists = true; break; }
+                        }
+                        if (!alreadyExists) {
+                            entries.push({ ts: syntheticTs, value: carryVal });
+                            entries.sort(function (a, b) { return a.ts.getTime() - b.ts.getTime(); });
+                        }
+                    }
+                }
+
+                allTimestamps = [syntheticTs].concat(inRangeTs);
+                allTimestamps.sort(function (a, b) { return b.getTime() - a.getTime(); });
+            }
+        }
+        // ===== END LAST-CHANGE ROW LOGIC =====
+
+        var displayGrid = new Array(allTimestamps.length);
+
+
+
+        var prevRowValues = {};
+        var changedCount = 0, unchangedCount = 0;
+
+        for (var r = allTimestamps.length - 1; r >= 0; r--) {
+            var rowTs = allTimestamps[r];
+            var rowCells = [];
+            for (var c = 0; c < columns.length; c++) {
+                var col = columns[c];
+                var compositeKey = col.assetId + '_' + col.attrId;
+                var rawValue = getValueForTimestamp(attributeData[compositeKey], rowTs);
+                var displayVal = '', cellClass = '', cellContent = '';
+
+                if (col.isDataLogger) {
+                    if (rawValue !== null) {
+                        var numVal = parseFloat(rawValue);
+                        if (numVal === 1) { displayVal = 'Pickup'; cellContent = '<span class="dl-pickup">Pickup</span>'; }
+                        else if (numVal === 0) { displayVal = 'Drop'; cellContent = '<span class="dl-drop">Drop</span>'; }
+                        else { displayVal = numVal.toFixed(3); cellContent = displayVal; }
+                    } else { displayVal = '-'; cellContent = '-'; }
+                } else {
+                    displayVal = (rawValue !== null ? parseFloat(rawValue).toFixed(3) : '-');
+                    cellContent = displayVal;
+                }
+
+                if (prevRowValues[compositeKey] !== undefined && displayVal !== '-') {
+                    if (displayVal !== prevRowValues[compositeKey] && prevRowValues[compositeKey] !== '-') {
+                        cellClass = 'val-changed'; changedCount++;
+                    } else if (displayVal === prevRowValues[compositeKey]) {
+                        cellClass = 'val-unchanged'; unchangedCount++;
+                    }
+                }
+                prevRowValues[compositeKey] = displayVal;
+                rowCells.push({ cls: cellClass, html: cellContent });
+            }
+            displayGrid[r] = rowCells;
+        }
+
+        return {
+            columns: columns, assetGroups: assetGroups,
+            allTimestamps: allTimestamps, attributeData: attributeData,
+            displayGrid: displayGrid,
+            changedCount: changedCount, unchangedCount: unchangedCount,
+            isTrack: isTrackAssetType()
+        };
+    }
+
+    function getAttrDisplayName(attrId, isDataLogger) {
+        if (isDataLogger) {
+            var dlName = DATALOGGER_RELAY_MAP[attrId] || DATALOGGER_RELAY_MAP[String(attrId)];
+            if (dlName) return dlName;
+            return 'DL-' + attrId;
+        }
+        var attr = assetAttributeMap[attrId] || assetAttributeMap[String(attrId)];
+        if (attr) return attr.alias || attr.title || ('Attr ' + attrId);
+        return 'Attr ' + attrId;
+    }
+
+
+    function getValueForTimestamp(entries, targetTs) {
+        if (!entries || entries.length === 0) return null;
+        var targetTime = targetTs.getTime();
+        var bestValue = null;
+        for (var i = 0; i < entries.length; i++) {
+            var entryTime = entries[i].ts.getTime();
+            if (entryTime === targetTime) return entries[i].value;
+            if (entryTime <= targetTime) bestValue = entries[i].value;
+            else break;
+        }
+        return bestValue;
+    }
+</script>

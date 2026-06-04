@@ -1,0 +1,3008 @@
+﻿@* ═══════════════════════════════════════════════════════════════════
+    _PanelTest.cshtml  —  Panel Test Partial View
+    Render via: @await Html.PartialAsync("_PanelTest")
+    Trigger via: fnOpenPanelTest() called from the Panel Test button
+    ═══════════════════════════════════════════════════════════════════ *@
+
+<style>
+    @@keyframes pt-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @@keyframes ptSlideIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    @@keyframes ptBarGrow {
+        from {
+            width: 0;
+        }
+    }
+
+    /* Overlay */
+    #ptOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(10,30,40,.60);
+        backdrop-filter: blur(3px);
+        z-index: 99980;
+    }
+
+        #ptOverlay.pt-vis {
+            display: block;
+        }
+
+    /* Main popup */
+    #ptPopup {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        background: #ffffff;
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 16px 48px rgba(14,80,104,.28),0 2px 8px rgba(0,0,0,.18);
+        z-index: 99981;
+        width: 96vw;
+        max-width: 1240px;
+        max-height: 92vh;
+        overflow: hidden;
+        flex-direction: column;
+        font-family: 'Segoe UI',Arial,sans-serif;
+    }
+
+        #ptPopup.pt-vis {
+            display: flex;
+            animation: ptSlideIn .2s ease-out;
+        }
+
+    /* Detail popup */
+    #ptDetailPopup {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        background: #ffffff;
+        border: none;
+        border-radius: 8px;
+        box-shadow: 0 16px 48px rgba(14,80,104,.28),0 2px 8px rgba(0,0,0,.18);
+        z-index: 99985;
+        width: 97vw;
+        max-width: 1340px;
+        max-height: 93vh;
+        overflow: hidden;
+        flex-direction: column;
+        font-family: 'Segoe UI',Arial,sans-serif;
+    }
+
+        #ptDetailPopup.pt-vis {
+            display: flex;
+            animation: ptSlideIn .15s ease-out;
+        }
+
+    /* ── Header ── */
+    .pt-hdr {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 20px;
+        background: #0e5068;
+        flex-shrink: 0;
+    }
+
+    .pt-hdr-title {
+        font-size: 14.5px;
+        font-weight: 700;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .pt-hdr-sub {
+        font-size: 10px;
+        color: #7ab8c8;
+        font-family: 'Consolas',monospace;
+        margin-top: 2px;
+    }
+
+    .pt-range-badge {
+        font-size: 9.5px;
+        background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.2);
+        border-radius: 3px;
+        padding: 2px 8px;
+        color: #b8dde6;
+        font-family: 'Consolas',monospace;
+        font-weight: 400;
+    }
+
+    .pt-close-btn {
+        background: transparent;
+        border: 1px solid rgba(255,255,255,.3);
+        border-radius: 4px;
+        color: #b8dde6;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 4px 12px;
+        transition: all .15s;
+    }
+
+        .pt-close-btn:hover {
+            background: rgba(255,255,255,.15);
+            color: #fff;
+            border-color: rgba(255,255,255,.6);
+        }
+
+    .pt-back-btn {
+        background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.25);
+        border-radius: 4px;
+        color: #b8dde6;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 4px 12px;
+        transition: all .15s;
+    }
+
+        .pt-back-btn:hover {
+            background: rgba(255,255,255,.22);
+            color: #fff;
+        }
+
+    /* ── Date config bar ── */
+    .pt-config-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px;
+        padding: 12px 20px;
+        background: #e6f2f5;
+        border-bottom: 2px solid #cde3ea;
+        flex-shrink: 0;
+    }
+
+    .pt-cfg-grp {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .pt-cfg-lbl {
+        font-size: 10px;
+        font-weight: 700;
+        color: #0e5068;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+    }
+
+    .pt-cfg-input {
+        padding: 6px 10px;
+        background: #fff;
+        border: 1px solid #aecfd8;
+        border-radius: 4px;
+        color: #0e2f38;
+        font-family: 'Consolas',monospace;
+        font-size: 12px;
+        min-width: 175px;
+    }
+
+        .pt-cfg-input:focus {
+            outline: none;
+            border-color: #0e5068;
+            box-shadow: 0 0 0 2px rgba(14,80,104,.15);
+        }
+
+    .pt-run-btn {
+        padding: 7px 22px;
+        background: #0e5068;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        letter-spacing: .3px;
+        transition: background .15s;
+        align-self: flex-end;
+    }
+
+        .pt-run-btn:hover {
+            background: #145f78;
+        }
+
+        .pt-run-btn:disabled {
+            background: #aecfd8;
+            cursor: not-allowed;
+        }
+
+    /* ── Stat strip ── */
+    .pt-stat-strip {
+        display: flex;
+        border-bottom: 1px solid #cde3ea;
+        background: #f4fafb;
+        flex-shrink: 0;
+    }
+
+    .pt-stat-box {
+        flex: 1;
+        text-align: center;
+        padding: 10px 4px;
+        border-right: 1px solid #cde3ea;
+    }
+
+        .pt-stat-box:last-child {
+            border-right: none;
+        }
+
+    .pt-stat-num {
+        font-size: 20px;
+        font-weight: 800;
+        font-family: 'Consolas',monospace;
+        line-height: 1;
+    }
+
+    .pt-stat-lbl {
+        font-size: 9px;
+        color: #6b8c94;
+        text-transform: uppercase;
+        letter-spacing: .7px;
+        margin-top: 3px;
+    }
+
+    /* ── Progress ── */
+    .pt-prog-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        gap: 14px;
+        flex: 1;
+        background: #fff;
+    }
+
+    .pt-spinner {
+        width: 34px;
+        height: 34px;
+        border: 3px solid #cde3ea;
+        border-top-color: #0e5068;
+        border-radius: 50%;
+        animation: pt-spin .7s linear infinite;
+    }
+
+    .pt-prog-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: #0e2f38;
+    }
+
+    .pt-prog-sub {
+        font-size: 11px;
+        color: #6b8c94;
+    }
+
+    .pt-prog-bar {
+        width: 340px;
+        height: 5px;
+        background: #e6f2f5;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .pt-prog-fill {
+        height: 100%;
+        background: linear-gradient(90deg,#0e5068,#22b8d4);
+        border-radius: 3px;
+        transition: width .3s;
+    }
+
+    /* ── Tab bar ── */
+    .pt-tabs {
+        display: flex;
+        gap: 2px;
+        padding: 8px 18px 0;
+        background: #e6f2f5;
+        border-bottom: 2px solid #cde3ea;
+        flex-shrink: 0;
+        overflow-x: auto;
+    }
+
+    .pt-tab {
+        padding: 5px 14px;
+        border-radius: 4px 4px 0 0;
+        margin-bottom: -2px;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+        color: #0e5068;
+        background: #cde3ea;
+        border: 1px solid #aecfd8;
+        border-bottom: none;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all .12s;
+    }
+
+        .pt-tab:hover {
+            background: #b0cfd8;
+            color: #0a3d4f;
+        }
+
+        .pt-tab.active {
+            background: #0e5068;
+            color: #fff;
+            border-color: #0e5068;
+        }
+
+    /* ── Asset cards grid ── */
+    .pt-cards-wrap {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px 18px;
+        background: #f4fafb;
+    }
+
+    .pt-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill,minmax(320px,1fr));
+        gap: 10px;
+    }
+
+    /* ── Single asset card ── */
+    .pt-card {
+        background: #fff;
+        border: 1px solid #cde3ea;
+        border-left: 4px solid #cde3ea;
+        border-radius: 6px;
+        padding: 0;
+        cursor: pointer;
+        transition: all .15s;
+        overflow: hidden;
+    }
+
+        .pt-card:hover {
+            border-color: #0e5068;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(14,80,104,.18);
+        }
+
+        .pt-card.pt-flag {
+            border-left-color: #c62828;
+        }
+
+        .pt-card.pt-warn {
+            border-left-color: #e65100;
+        }
+
+        .pt-card.pt-ok {
+            border-left-color: #2e7d32;
+        }
+
+    .pt-card-hdr {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 9px 12px;
+        background: #0e5068;
+    }
+
+    .pt-card.pt-flag .pt-card-hdr {
+        background: #c62828;
+    }
+
+    .pt-card.pt-warn .pt-card-hdr {
+        background: #e65100;
+    }
+
+    .pt-card.pt-ok .pt-card-hdr {
+        background: #2e7d32;
+    }
+
+    .pt-card-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+    }
+
+    .pt-card-type {
+        font-size: 9.5px;
+        color: #b8dde6;
+        margin-top: 1px;
+    }
+
+    .pt-card-body {
+        padding: 10px 12px;
+    }
+
+    .pt-card-stats {
+        display: flex;
+        gap: 7px;
+        margin-bottom: 10px;
+    }
+
+    .pt-card-stat {
+        flex: 1;
+        background: #f4fafb;
+        border: 1px solid #e6f2f5;
+        border-radius: 4px;
+        padding: 6px 8px;
+        text-align: center;
+    }
+
+    .pt-card-stat-val {
+        font-size: 14px;
+        font-weight: 800;
+        font-family: 'Consolas',monospace;
+        line-height: 1;
+    }
+
+    .pt-card-stat-lbl {
+        font-size: 8.5px;
+        color: #6b8c94;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+        margin-top: 2px;
+    }
+
+    /* Deviation bar */
+    .pt-dev-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    .pt-dev-bar-label {
+        font-size: 9px;
+        color: #6b8c94;
+        text-transform: uppercase;
+        min-width: 52px;
+    }
+
+    .pt-dev-bar-track {
+        flex: 1;
+        height: 6px;
+        background: #e6f2f5;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .pt-dev-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        animation: ptBarGrow .5s ease-out;
+    }
+
+    .pt-dev-bar-val {
+        font-family: 'Consolas',monospace;
+        font-size: 12px;
+        font-weight: 800;
+        min-width: 44px;
+        text-align: right;
+    }
+
+    /* Status chips */
+    .pt-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 700;
+        border-width: 1px;
+        border-style: solid;
+    }
+
+        .pt-chip.pt-flag {
+            background: #fff0f0;
+            color: #c62828;
+            border-color: #e57373;
+        }
+
+        .pt-chip.pt-warn {
+            background: #fff5ee;
+            color: #e65100;
+            border-color: #ffb74d;
+        }
+
+        .pt-chip.pt-ok {
+            background: #f0fff4;
+            color: #2e7d32;
+            border-color: #81c784;
+        }
+
+    /* Event tags */
+    .pt-etag {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        border-width: 1px;
+        border-style: solid;
+    }
+
+    .pt-etag-up {
+        background: #f0fff4;
+        color: #2e7d32;
+        border-color: #81c784;
+    }
+
+    .pt-etag-dn {
+        background: #fff0f0;
+        color: #c62828;
+        border-color: #e57373;
+    }
+
+    .pt-etag-up:hover {
+        background: #d8f5e0;
+    }
+
+    .pt-etag-dn:hover {
+        background: #ffe4e4;
+    }
+
+    /* Timestamps */
+    .pt-ts {
+        font-family: 'Consolas',monospace;
+        font-size: 11px;
+        color: #145f78;
+        letter-spacing: .2px;
+    }
+
+    .pt-ts-ms {
+        font-size: 9px;
+        color: #aaa;
+        margin-left: 2px;
+    }
+
+    .pt-ts-red {
+        font-family: 'Consolas',monospace;
+        font-size: 11px;
+        color: #c62828;
+        font-weight: 700;
+    }
+
+    /* ── Detail stats ── */
+    .pt-det-stats {
+        display: flex;
+        border-bottom: 1px solid #cde3ea;
+        background: #f4fafb;
+        flex-shrink: 0;
+    }
+
+    .pt-det-stat {
+        flex: 1;
+        text-align: center;
+        padding: 10px 6px;
+        border-right: 1px solid #cde3ea;
+    }
+
+        .pt-det-stat:last-child {
+            border-right: none;
+        }
+
+    .pt-det-body {
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .pt-det-pane {
+        flex: 1;
+        overflow: auto;
+    }
+
+    /* ── Deviation matrix ── */
+    .pt-matrix {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11.5px;
+    }
+
+        .pt-matrix thead th {
+            background: #0e5068;
+            color: #b8dde6;
+            padding: 6px 10px;
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: .6px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #145f78;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+            .pt-matrix thead th.pt-mc-attr {
+                position: sticky;
+                left: 0;
+                z-index: 3;
+                min-width: 155px;
+                background: #0e5068;
+                border-right: 2px solid #145f78;
+            }
+
+        .pt-matrix thead tr.pt-ts-row th {
+            background: #0a3d4f;
+            padding: 2px 5px;
+        }
+
+            .pt-matrix thead tr.pt-ts-row th.pt-mc-attr {
+                background: #0a3d4f;
+            }
+
+        .pt-matrix tbody td {
+            padding: 5px 8px;
+            border-bottom: 1px solid #e6f2f5;
+            vertical-align: middle;
+            background: #fff;
+        }
+
+            .pt-matrix tbody td.pt-mc-attr {
+                position: sticky;
+                left: 0;
+                z-index: 1;
+                background: #fff;
+                border-right: 2px solid #e6f2f5;
+                font-weight: 700;
+                color: #0e2f38;
+                white-space: nowrap;
+            }
+
+        .pt-matrix tbody tr:nth-child(even) td {
+            background: #f9fcfd;
+        }
+
+            .pt-matrix tbody tr:nth-child(even) td.pt-mc-attr {
+                background: #f9fcfd;
+            }
+
+        .pt-matrix tbody tr:hover td {
+            background: #e6f2f5 !important;
+        }
+
+            .pt-matrix tbody tr:hover td.pt-mc-attr {
+                background: #e6f2f5 !important;
+            }
+
+        .pt-matrix .pt-sec-row td {
+            background: #0e506808;
+            font-weight: 700;
+            font-size: 10px;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+        }
+
+    /* Deviation cell badges */
+    .pt-cell-ok {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-weight: 700;
+        font-family: 'Consolas',monospace;
+        font-size: 11px;
+        background: #e8f5e9;
+        color: #2e7d32;
+        border: 1px solid #a5d6a7;
+    }
+
+    .pt-cell-warn {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-weight: 700;
+        font-family: 'Consolas',monospace;
+        font-size: 11px;
+        background: #fff8e1;
+        color: #e65100;
+        border: 1px solid #ffe082;
+    }
+
+    .pt-cell-flag {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-weight: 700;
+        font-family: 'Consolas',monospace;
+        font-size: 11px;
+        background: #ffebee;
+        color: #c62828;
+        border: 1px solid #ef9a9a;
+    }
+
+    .pt-cell-nil {
+        color: #ccc;
+        font-size: 12px;
+    }
+
+    /* DL / RDPMS source tags */
+    .pt-dl-tag {
+        font-size: 8.5px;
+        font-weight: 800;
+        background: #0e5068;
+        color: #b8dde6;
+        padding: 0 5px;
+        border-radius: 2px;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+
+    .pt-rdpms-tag {
+        font-size: 8.5px;
+        font-weight: 800;
+        background: #1565c0;
+        color: #fff;
+        padding: 0 5px;
+        border-radius: 2px;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+
+    /* Legend + footer */
+    .pt-legend {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        padding: 6px 18px;
+        background: #e6f2f5;
+        border-top: 1px solid #cde3ea;
+        font-size: 10.5px;
+        color: #6b8c94;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+    }
+
+    .pt-legend-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
+
+    .pt-footer {
+        padding: 8px 18px;
+        background: #f4fafb;
+        border-top: 1px solid #cde3ea;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+        font-size: 11px;
+        color: #6b8c94;
+    }
+
+    /* Empty state */
+    .pt-empty {
+        text-align: center;
+        padding: 60px 20px;
+        color: #6b8c94;
+        background: #fff;
+    }
+
+    .pt-empty-icon {
+        font-size: 40px;
+        margin-bottom: 12px;
+        opacity: .4;
+    }
+
+    .pt-empty-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #0e2f38;
+        margin-bottom: 6px;
+    }
+
+    /* Scrollbar */
+    #ptPopup ::-webkit-scrollbar, #ptDetailPopup ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    #ptPopup ::-webkit-scrollbar-track, #ptDetailPopup ::-webkit-scrollbar-track {
+        background: #f4fafb;
+    }
+
+    #ptPopup ::-webkit-scrollbar-thumb, #ptDetailPopup ::-webkit-scrollbar-thumb {
+        background: #cde3ea;
+        border-radius: 3px;
+    }
+
+        #ptPopup ::-webkit-scrollbar-thumb:hover, #ptDetailPopup ::-webkit-scrollbar-thumb:hover {
+            background: #0e5068;
+        }
+    /* ── Asset multi-select widget ── */
+    .pt-ms-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+        background: #fff;
+        border: 1px solid #aecfd8;
+        border-radius: 4px;
+        cursor: pointer;
+        min-width: 180px;
+        max-width: 220px;
+        font-family: 'Consolas',monospace;
+        font-size: 12px;
+        color: #0e2f38;
+        user-select: none;
+        white-space: nowrap;
+        transition: border-color .15s;
+    }
+
+        .pt-ms-wrap:hover {
+            border-color: #0e5068;
+        }
+
+        .pt-ms-wrap.open {
+            border-color: #0e5068;
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+
+    .pt-ms-label {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pt-ms-arrow {
+        font-size: 9px;
+        color: #6b8c94;
+        margin-left: 6px;
+        transition: transform .15s;
+    }
+
+    .pt-ms-wrap.open .pt-ms-arrow {
+        transform: rotate(180deg);
+    }
+
+    .pt-ms-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 9999;
+        background: #fff;
+        border: 1px solid #0e5068;
+        border-top: none;
+        border-radius: 0 0 4px 4px;
+        box-shadow: 0 6px 18px rgba(14,80,104,.18);
+        min-width: 220px;
+        max-width: 320px;
+        width: max-content;
+    }
+
+    .pt-ms-search-wrap {
+        padding: 6px 8px;
+        border-bottom: 1px solid #e6f2f5;
+    }
+
+    .pt-ms-search {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 5px 8px;
+        border: 1px solid #cde3ea;
+        border-radius: 3px;
+        font-size: 12px;
+        font-family: 'Consolas',monospace;
+        color: #0e2f38;
+        outline: none;
+    }
+
+        .pt-ms-search:focus {
+            border-color: #0e5068;
+        }
+
+    .pt-ms-actions {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid #e6f2f5;
+        padding: 4px 8px;
+    }
+
+        .pt-ms-actions span {
+            font-size: 11px;
+            font-weight: 700;
+            color: #0e5068;
+            cursor: pointer;
+            padding: 1px 6px;
+            border-radius: 3px;
+        }
+
+            .pt-ms-actions span:hover {
+                background: #e6f2f5;
+            }
+
+    .pt-ms-list {
+        max-height: 220px;
+        overflow-y: auto;
+        padding: 4px 0;
+    }
+
+        .pt-ms-list::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .pt-ms-list::-webkit-scrollbar-track {
+            background: #f4fafb;
+        }
+
+        .pt-ms-list::-webkit-scrollbar-thumb {
+            background: #cde3ea;
+            border-radius: 3px;
+        }
+
+    .pt-ms-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        cursor: pointer;
+        font-size: 12px;
+        color: #0e2f38;
+        transition: background .1s;
+    }
+
+        .pt-ms-item:hover {
+            background: #e6f2f5;
+        }
+
+        .pt-ms-item input[type=checkbox] {
+            width: 13px;
+            height: 13px;
+            accent-color: #0e5068;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .pt-ms-item label {
+            cursor: pointer;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .pt-ms-item.loading {
+            color: #6b8c94;
+            font-style: italic;
+            pointer-events: none;
+        }
+
+    .pt-ms-empty {
+        padding: 12px 10px;
+        color: #6b8c94;
+        font-size: 12px;
+        text-align: center;
+        font-style: italic;
+    }
+
+    /* ══ END PANEL TEST ════════════════════════════════════════════ */
+</style>
+
+@* ── PANEL TEST: Teal/White theme popups ─────────────────── *@
+<div id="ptOverlay" onclick="ptClose()"></div>
+
+<div id="ptPopup">
+    <div class="pt-hdr">
+        <div>
+            <div class="pt-hdr-title">
+                <i class="fa fa-tasks" style="font-size:16px;opacity:.85;"></i>
+                Panel Test &mdash; Deviation Analysis
+                <span class="pt-range-badge" id="ptRangeBadge"></span>
+            </div>
+            <div class="pt-hdr-sub" id="ptHdrSub">Select a date range and click Run Analysis</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span id="ptTotals" style="font-size:11px;color:#7ab8c8;"></span>
+            <button class="pt-close-btn" onclick="ptClose()">&#10005; Close</button>
+        </div>
+    </div>
+
+    <!-- Config bar -->
+    <div class="pt-config-bar">
+        <div class="pt-cfg-grp">
+            <label class="pt-cfg-lbl">From Date &amp; Time</label>
+            <input type="datetime-local" id="ptFromDt" class="pt-cfg-input" style="min-width:185px;" oninput="$('#ptQuickRange').val('')">
+        </div>
+        <div class="pt-cfg-grp">
+            <label class="pt-cfg-lbl">To Date &amp; Time</label>
+            <input type="datetime-local" id="ptToDt" class="pt-cfg-input" style="min-width:185px;" oninput="$('#ptQuickRange').val('')">
+        </div>
+        <div class="pt-cfg-grp">
+            <label class="pt-cfg-lbl">&#9889; Warn Window (sec)</label>
+            <input type="number" id="ptWarnSec" value="10" min="1" max="300" class="pt-cfg-input" style="width:74px;" oninput="ptUpdateLegend()">
+        </div>
+        <div class="pt-cfg-grp">
+            <label class="pt-cfg-lbl">Quick Range</label>
+            <select id="ptQuickRange" class="pt-cfg-input" style="min-width:130px;" onchange="ptApplyQuickRange()">
+                <option value="">&#8212; Custom &#8212;</option>
+                <option value="1">Last 1 hour</option>
+                <option value="2">Last 2 hours</option>
+                <option value="4">Last 4 hours</option>
+                <option value="6">Last 6 hours</option>
+                <option value="12">Last 12 hours</option>
+                <option value="24">Last 24 hours</option>
+                <option value="48">Last 48 hours</option>
+            </select>
+        </div>
+
+        <!-- Asset Type dropdown — loaded from server by siteId -->
+        <div class="pt-cfg-grp">
+            <label class="pt-cfg-lbl">Asset Type</label>
+            <select id="ptAssetTypeId" class="pt-cfg-input" style="min-width:160px;" onchange="ptOnAssetTypeChange()">
+                <option value="">— loading… —</option>
+            </select>
+        </div>
+
+        <!-- Asset No multi-select — populated when asset type is chosen -->
+        <div class="pt-cfg-grp" style="position:relative;">
+            <label class="pt-cfg-lbl">
+                Asset No
+                <span id="ptAssetSelCount" style="font-weight:400;color:#6b8c94;text-transform:none;letter-spacing:0;margin-left:3px;">(all)</span>
+            </label>
+            <div id="ptAssetMsWrap" class="pt-ms-wrap" onclick="ptToggleAssetDropdown(event)">
+                <span id="ptAssetMsLabel" class="pt-ms-label">All Assets</span>
+                <span class="pt-ms-arrow">&#9660;</span>
+            </div>
+            <div id="ptAssetMsDropdown" class="pt-ms-dropdown" style="display:none;">
+                <div class="pt-ms-search-wrap">
+                    <input type="text" id="ptAssetMsSearch" class="pt-ms-search" placeholder="Search assets…" oninput="ptFilterAssetList()" onclick="event.stopPropagation()">
+                </div>
+                <div class="pt-ms-actions">
+                    <span onclick="ptSelectAllAssets(true)">All</span>
+                    <span onclick="ptSelectAllAssets(false)">None</span>
+                </div>
+                <div id="ptAssetMsList" class="pt-ms-list">
+                    <div class="pt-ms-empty">Select an Asset Type first</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:auto;display:flex;gap:8px;">
+            <button class="pt-run-btn" id="ptRunBtn" onclick="ptRunAnalysis()">
+                <i class="fa fa-play mr-1"></i> Run Analysis
+            </button>
+            <div id="ptExportBtn" style="display:none;position:relative;">
+                <!-- Split download button with dropdown -->
+                <div style="display:inline-flex;border-radius:5px;overflow:visible;box-shadow:0 2px 6px rgba(14,80,104,.25);">
+                    <button onclick="_ptExportExcel()"
+                            id="ptBtnExcel"
+                            style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+                                   background:linear-gradient(135deg,#1b7a47,#2e7d32);color:#fff;
+                                   border:none;border-right:1px solid rgba(255,255,255,.25);
+                                   border-radius:5px 0 0 5px;font-size:12px;font-weight:700;
+                                   cursor:pointer;white-space:nowrap;letter-spacing:.2px;transition:background .15s;"
+                            onmouseover="this.style.background='linear-gradient(135deg,#2e7d32,#388e3c)'"
+                            onmouseout="this.style.background='linear-gradient(135deg,#1b7a47,#2e7d32)'"
+                            title="Download Excel (.xlsx) — 4 sheets">
+                        <i class="fa fa-file-excel-o" style="font-size:13px;"></i>
+                        Excel
+                        <span style="font-size:9px;background:rgba(255,255,255,.25);padding:1px 5px;border-radius:8px;">xlsx</span>
+                    </button>
+                    <button onclick="_ptExportCSV()"
+                            id="ptBtnCSV"
+                            style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;
+                                   background:#0e5068;color:#fff;
+                                   border:none;border-radius:0 5px 5px 0;font-size:12px;font-weight:700;
+                                   cursor:pointer;white-space:nowrap;letter-spacing:.2px;transition:background .15s;"
+                            onmouseover="this.style.background='#145f78'"
+                            onmouseout="this.style.background='#0e5068'"
+                            title="Download CSV">
+                        <i class="fa fa-file-text-o" style="font-size:13px;"></i>
+                        CSV
+                    </button>
+                </div>
+                <!-- Download progress indicator -->
+                <div id="ptDownloadProgress" style="display:none;margin-left:10px;align-items:center;gap:7px;font-size:11px;color:#0e5068;font-weight:600;">
+                    <div style="width:14px;height:14px;border:2px solid #cde3ea;border-top-color:#0e5068;border-radius:50%;animation:pt-spin .7s linear infinite;"></div>
+                    <span id="ptDownloadMsg">Preparing...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="pt-stat-strip" id="ptStatStrip" style="display:none;">
+        <div class="pt-stat-box"><div class="pt-stat-num" id="ptsTotal" style="color:#0e5068;">0</div><div class="pt-stat-lbl">Assets</div></div>
+        <div class="pt-stat-box"><div class="pt-stat-num" id="ptsWarn" style="color:#e65100;">0</div><div class="pt-stat-lbl">&#9889; Warn</div></div>
+        <div class="pt-stat-box"><div class="pt-stat-num" id="ptsOk" style="color:#2e7d32;">0</div><div class="pt-stat-lbl">&#10003; OK</div></div>
+        <div class="pt-stat-box"><div class="pt-stat-num" id="ptsPick" style="color:#2e7d32;">0</div><div class="pt-stat-lbl">&#9650; Pickups</div></div>
+        <div class="pt-stat-box"><div class="pt-stat-num" id="ptsDrop" style="color:#c62828;">0</div><div class="pt-stat-lbl">&#9660; Drops</div></div>
+        <div class="pt-stat-box"><div class="pt-stat-num" id="ptsMxDev" style="color:#6b8c94;">&#8212;</div><div class="pt-stat-lbl">Max Dev.</div></div>
+    </div>
+
+    <div class="pt-tabs" id="ptTabBar" style="display:none;"></div>
+    <div id="ptPopupBody" style="flex:1;overflow:hidden;display:flex;flex-direction:column;background:#f4fafb;"></div>
+
+    <div class="pt-footer" id="ptFooterBar" style="display:none;">
+        <span id="ptFooterTxt" style="flex:1;font-size:11.5px;"></span>
+    </div>
+</div>
+
+<!-- Detail popup -->
+<div id="ptDetailPopup">
+    <div class="pt-hdr">
+        <div>
+            <div class="pt-hdr-title" id="ptDetTitle">Asset Detail</div>
+            <div class="pt-hdr-sub" id="ptDetSub"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span id="ptDetChip"></span>
+            <button class="pt-back-btn" onclick="ptCloseDetail()"><i class="fa fa-arrow-left mr-1"></i>Back</button>
+            <button class="pt-close-btn" onclick="ptClose()">&#10005; Close</button>
+        </div>
+    </div>
+    <div class="pt-det-stats" id="ptDetStats"></div>
+    <div class="pt-tabs" id="ptDetTabBar"></div>
+    <div class="pt-det-body">
+        <div id="ptDetPane0" class="pt-det-pane" style="display:none;"></div>
+        <div id="ptDetPane1" class="pt-det-pane" style="display:none;"></div>
+        <div id="ptDetPane2" class="pt-det-pane" style="display:none;"></div>
+    </div>
+    <div class="pt-legend">
+        <span style="font-weight:700;color:#0e5068;">Legend:</span>
+        <span><span class="pt-legend-dot" style="background:#e8f5e9;border:1px solid #a5d6a7;"></span>&#10003; OK (+Xs) — responded after DL event within <span id="ptLegWin">10</span>s</span>
+        <span><span class="pt-legend-dot" style="background:#e0f2fe;border:1px solid #7dd3fc;"></span>&#10003; OK (−Xs) — pre-response: changed up to <span id="ptLegPre">5</span>s before DL event</span>
+        <span><span class="pt-legend-dot" style="background:#fff8e1;border:1px solid #ffe082;"></span>&#9889; Warn — no update within <span id="ptLegWarn">10</span>s (last known value shown)</span>
+        <span style="margin-left:auto;font-size:9.5px;color:#aaa;">clock = TimestampDevice (HistoryValue API)</span>
+    </div>
+</div>
+@* ── END DL Events Quick Popup ───────────────────────────────────────── *@
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<script>
+    //  PANEL TEST — Fixed: thresholds, quick-range, matrix layout
+    // ╚═══════════════════════════════════════════════════════════╝
+
+    var PT = {
+        API: 'http://proxy.energy7.org:8083/api/HistoryValue',
+        WARN_SEC: 10,   // warn — no RDPMS value found within this window after DL event
+        PRE_WIN: 5,    // seconds BEFORE T_DL that still counts as a valid response (pre-response)
+        attrMap: {},   // attrId → display name (cached per type)
+        attrByType: {},  // typeId → { map, ready } — names cached per asset type
+        attrReady: false,
+        dlMap: {},   // role → DL relay name (cached)
+        dlReady: false,
+        data: {},   // assetId → { asset, raw, analysis, err }
+        assets: [],
+        allKnownAssets: {}, // assetId → { assetId, assetName, assetType, assetTypeId } — accumulated across all type switches
+        _typesLoaded: false,   // true once dropdown has been populated for this session
+        _typesFetched: {},      // assetTypeId → true once GetAssestBy has been called
+        _selectedAssets: {},      // assetId → true/false from the multi-select widget
+        startMs: 0,
+        endMs: 0,
+        startFmt: '',
+        endFmt: ''
+    };
+
+    // ── Accumulate assets automatically as user switches types ────
+    // A MutationObserver watches #divAssetDetails and captures every
+    // divAssetXXX that appears, regardless of the currently selected type.
+    (function () {
+        function _harvestAssets() {
+            var typeName = $.trim($('#hdAssetTypeName').val()) || 'Unknown';
+            var typeId = $.trim($('#hdnassetTypeId').val()) || '0';
+            $('[id^="divAsset"]').each(function () {
+                var rawId = this.id.replace('divAsset', '');
+                if (!rawId || isNaN(rawId)) return;
+                if (PT.allKnownAssets[rawId]) return; // already captured
+                var $e = $(this);
+                var name = $e.attr('data-asset-name') ||
+                    $e.find('[class*="assetName"],[class*="asset-name"]').first().text().trim() ||
+                    $e.find('h6,h5').first().text().trim() || ('Asset ' + rawId);
+                name = $.trim(name).replace(/\s+/g, ' ').substring(0, 80);
+                PT.allKnownAssets[rawId] = {
+                    assetId: rawId,
+                    assetName: name,
+                    assetType: typeName,
+                    assetTypeId: typeId
+                };
+            });
+        }
+
+        // Harvest immediately (for assets already in DOM at load time)
+        $(document).ready(function () {
+            setTimeout(_harvestAssets, 500);
+        });
+
+        // Watch for AJAX-loaded asset changes
+        var _ptObserver = null;
+        $(document).ready(function () {
+            var target = document.getElementById('divAssetDetails');
+            if (!target) return;
+            _ptObserver = new MutationObserver(function () {
+                // Small delay so Razor-rendered partial has fully inserted
+                setTimeout(function () {
+                    _harvestAssets();
+                    // NOTE: do NOT call _ptLoadAssetTypes() here.
+                    // The observer fires on every live data update (MQTT/WS).
+                    // Asset types are stable — loaded once in fnOpenPanelTest.
+                }, 200);
+            });
+            _ptObserver.observe(target, { childList: true, subtree: true });
+        });
+    }());
+
+    // ── Date / time helpers ───────────────────────────────────────
+    function _ptNow() { return new Date(); }
+
+    // JS Date → "YYYY-MM-DDTHH:MM"  for datetime-local input
+    function _ptLocalIso(d) {
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+            + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    // "YYYY-MM-DDTHH:MM" → "DDMMYYYY_HHmmss"  for HistoryValue API
+    function _ptToApiDate(localVal, isStart) {
+        if (!localVal) return null;
+        var d = new Date(localVal);
+        if (isNaN(d.getTime())) return null;
+        if (!isStart) d.setSeconds(59); else d.setSeconds(0);
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getDate()) + p(d.getMonth() + 1) + d.getFullYear()
+            + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    }
+
+    // "YYYY-MM-DDTHH:MM" → epoch ms
+    function _ptToMs(localVal) {
+        var d = new Date(localVal);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+
+    // "YYYY-MM-DDTHH:MM" → "DD/MM/YYYY HH:MM"
+    function _ptFmtDtLocal(localVal) {
+        var d = new Date(localVal);
+        if (isNaN(d.getTime())) return localVal;
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear()
+            + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    // ── Live legend update when threshold inputs change ────────────
+    function ptUpdateLegend() {
+        var w = parseFloat($('#ptWarnSec').val()) || 10;
+        if (w < 1) { w = 1; $('#ptWarnSec').val(1); }
+        $('#ptLegWarn').text(w);
+        $('#ptLegWin').text(w);
+        $('#ptLegPre').text(PT.PRE_WIN);
+        PT.WARN_SEC = w;
+    }
+
+    // ── Quick range preset ─────────────────────────────────────────
+    // NOTE: we do NOT reset the dropdown after applying —
+    //       the selected option stays visible so user knows what's active.
+    //       Manual date edit clears it back to "-- Custom --" via oninput.
+    function ptApplyQuickRange() {
+        var h = parseInt($('#ptQuickRange').val());
+        if (!h) return;
+        var now = _ptNow();
+        var from = new Date(now.getTime() - h * 3600 * 1000);
+        $('#ptFromDt').val(_ptLocalIso(from));
+        $('#ptToDt').val(_ptLocalIso(now));
+        // intentionally leave the dropdown showing the selected option
+    }
+
+    // ── Open panel test popup ─────────────────────────────────────
+    function fnOpenPanelTest() {
+        var now = _ptNow();
+        var from = $.trim($('#txtWatchlistFromDate').val());
+
+        // ToDate always = current datetime
+        $('#ptToDt').val(_ptLocalIso(now));
+
+        // FromDate = watchlist date (if parseable) else now − 2 h
+        var fromDt = from ? new Date(_ptLegacyDateMs(from, true)) : null;
+        if (!fromDt || isNaN(fromDt.getTime())) fromDt = new Date(now.getTime() - 2 * 3600 * 1000);
+        $('#ptFromDt').val(_ptLocalIso(fromDt));
+
+        // Restore/init threshold inputs
+        $('#ptWarnSec').val(PT.WARN_SEC);
+        $('#ptQuickRange').val('');
+        ptUpdateLegend();
+
+        // Show popup
+        $('#ptOverlay').addClass('pt-vis');
+        $('#ptPopup').addClass('pt-vis');
+        $('#ptDetailPopup').removeClass('pt-vis');
+
+        // Reset result UI
+        $('#ptStatStrip,#ptTabBar,#ptFooterBar').hide();
+        $('#ptExportBtn').hide();
+        $('#ptTotals,#ptRangeBadge').text('');
+        $('#ptHdrSub').text('Select a date range and click Run Analysis');
+
+        // Reset asset multi-select
+        ptResetAssetMultiSelect();
+
+        // Load asset types dropdown from server by siteId
+        // Reset flag so types reload if popup was closed and reopened
+        // (handles edge case where user navigated to different site in same tab)
+        var currentSiteId = $.trim($('#hdnsiteId').val());
+        if (PT._lastSiteId && PT._lastSiteId !== currentSiteId) {
+            PT._typesLoaded = false;
+            PT._typesFetched = {};
+            PT.allKnownAssets = {};
+        }
+        PT._lastSiteId = currentSiteId;
+
+        _ptLoadAssetTypes();
+        _ptShowIdle();
+    }
+
+    // ── Asset Type + Asset loading (FRS25 pattern) ────────────────
+    //
+    //  Step 1: fnOpenPanelTest calls _ptLoadAssetTypes()
+    //          POST /FRS25/Telemetry/GetAssetTypeBy  { siteId }
+    //          → populates #ptAssetTypeId dropdown
+    //
+    //  Step 2: user changes #ptAssetTypeId → ptOnAssetTypeChange()
+    //          POST /FRS25/Telemetry/GetAssestBy  { siteId, assetTypeId }
+    //          → accumulates assets into PT.allKnownAssets
+    // ────────────────────────────────────────────────────────────────
+
+    function _ptLoadAssetTypes() {
+        // Only load once per session — asset types don't change while on the page
+        if (PT._typesLoaded) return;
+
+        var siteId = $.trim($('#hdnsiteId').val());
+        var sel = $('#ptAssetTypeId');
+        if (!siteId || siteId === '' || siteId === '0') {
+            _ptLoadAssetTypesFromDOM(sel);
+            return;
+        }
+        sel.html('<option value="">— loading… —</option>').prop('disabled', true);
+
+        $.ajax({
+            url: '/Site/GetAssetTypeBySiteId',
+            type: 'POST',
+            data: JSON.stringify({ siteId: siteId }),
+            contentType: 'application/json',
+            dataType: 'json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    _ptPopulateTypeDropdown(sel, data);
+                } else {
+                    _ptLoadAssetTypesFromDOM(sel);
+                }
+            },
+            error: function () {
+                _ptLoadAssetTypesFromDOM(sel);
+            }
+        });
+    }
+
+    // Called from onchange="ptOnAssetTypeChange()" on the dropdown
+    // Called when Asset Type dropdown changes
+    function ptOnAssetTypeChange() {
+        var siteId = $.trim($('#hdnsiteId').val());
+        var assetTypeId = $.trim($('#ptAssetTypeId').val());
+
+        // Reset asset multi-select
+        ptResetAssetMultiSelect();
+
+        if (!siteId || siteId === '' || siteId === '0') return;
+
+        if (!assetTypeId || assetTypeId === '' || assetTypeId === '0') {
+            // "All types" selected — populate from all known assets
+            _ptPopulateAssetMultiSelect(Object.values(PT.allKnownAssets));
+            return;
+        }
+
+        // Check cache first
+        if (PT._typesFetched[String(assetTypeId)]) {
+            var cached = Object.values(PT.allKnownAssets).filter(function (a) {
+                return a.assetTypeId === String(assetTypeId);
+            });
+            _ptPopulateAssetMultiSelect(cached);
+            return;
+        }
+
+        // Fetch from server
+        _ptFetchAssetsByType(siteId, assetTypeId, function (assets) {
+            _ptPopulateAssetMultiSelect(assets);
+        });
+    }
+
+    // POST /FRS25/Telemetry/GetAssestBy — fetches assets for a type
+    function _ptFetchAssetsByType(siteId, assetTypeId, cb) {
+        if (!siteId || siteId === '' || siteId === '0') return;
+        if (!assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
+
+        // Show loading state
+        $('#ptAssetMsList').html('<div class="pt-ms-item loading">&#9203; Loading assets…</div>');
+        $('#ptAssetMsWrap').addClass('open');
+        $('#ptAssetMsDropdown').show();
+
+        $.ajax({
+            url: '/Site/GetAssestBy',
+            type: 'POST',
+            data: JSON.stringify({ siteId: siteId, assetTypeId: assetTypeId }),
+            contentType: 'application/json',
+            dataType: 'json',
+            success: function (d) {
+                PT._typesFetched[String(assetTypeId)] = true;
+                var typeName = $('#ptAssetTypeId option:selected').text() || 'Unknown';
+                var assets = [];
+                if (d && d.length > 0) {
+                    $.each(d, function (k, v) {
+                        var id = String(v.Id || v.id || '');
+                        var name = v.Name || v.name || ('Asset ' + id);
+                        if (!id) return;
+                        // Add to allKnownAssets cache
+                        if (!PT.allKnownAssets[id]) {
+                            PT.allKnownAssets[id] = {
+                                assetId: id, assetName: name,
+                                assetType: typeName, assetTypeId: String(assetTypeId)
+                            };
+                        }
+                        assets.push({ assetId: id, assetName: name, assetTypeId: String(assetTypeId) });
+                    });
+                }
+                if (cb) cb(assets);
+            },
+            error: function () {
+                $('#ptAssetMsList').html('<div class="pt-ms-empty">Failed to load assets</div>');
+                if (cb) cb([]);
+            }
+        });
+    }
+
+    // ── Asset multi-select widget ─────────────────────────────────
+
+    // Initialise / reset the asset list
+    function ptResetAssetMultiSelect() {
+        PT._selectedAssets = {};   // assetId → true
+        $('#ptAssetMsList').html('<div class="pt-ms-empty">Select an Asset Type first</div>');
+        $('#ptAssetMsLabel').text('All Assets');
+        $('#ptAssetSelCount').text('(all)');
+        $('#ptAssetMsSearch').val('');
+        _ptCloseAssetDropdown();
+    }
+
+    // Populate the list from an array of { assetId, assetName }
+    function _ptPopulateAssetMultiSelect(assets) {
+        var list = $('#ptAssetMsList');
+        list.empty();
+
+        if (!assets || !assets.length) {
+            list.html('<div class="pt-ms-empty">No assets found for this type</div>');
+            return;
+        }
+
+        // Sort by name
+        assets.sort(function (a, b) { return (a.assetName || '').localeCompare(b.assetName || ''); });
+
+        // Render checkboxes — all selected by default
+        assets.forEach(function (a) {
+            var id = a.assetId;
+            var name = a.assetName;
+            var isChk = PT._selectedAssets[id] !== false;   // default: selected
+            if (PT._selectedAssets[id] === undefined) PT._selectedAssets[id] = true;
+
+            var row = $('<div class="pt-ms-item" data-id="' + id + '" data-name="' + _esc(name) + '">' +
+                '<input type="checkbox" id="ptAC_' + id + '" ' + (isChk ? 'checked' : '') + '>' +
+                '<label for="ptAC_' + id + '">' + _esc(name) + '</label>' +
+                '</div>');
+
+            row.find('input').on('change', function () {
+                PT._selectedAssets[id] = this.checked;
+                ptUpdateAssetSelLabel();
+            });
+            list.append(row);
+        });
+
+        ptUpdateAssetSelLabel();
+
+        // Auto-open dropdown so user sees the populated list
+        $('#ptAssetMsWrap').addClass('open');
+        $('#ptAssetMsDropdown').show();
+    }
+
+    // Toggle dropdown open/close
+    function ptToggleAssetDropdown(e) {
+        if (e) e.stopPropagation();
+        var open = $('#ptAssetMsDropdown').is(':visible');
+        if (open) _ptCloseAssetDropdown();
+        else { $('#ptAssetMsDropdown').show(); $('#ptAssetMsWrap').addClass('open'); }
+    }
+
+    function _ptCloseAssetDropdown() {
+        $('#ptAssetMsDropdown').hide();
+        $('#ptAssetMsWrap').removeClass('open');
+    }
+
+    // Filter list by search input
+    function ptFilterAssetList() {
+        var q = $.trim($('#ptAssetMsSearch').val()).toLowerCase();
+        $('#ptAssetMsList .pt-ms-item').each(function () {
+            var name = ($(this).attr('data-name') || '').toLowerCase();
+            $(this).toggle(!q || name.indexOf(q) >= 0);
+        });
+    }
+
+    // Select all / none
+    function ptSelectAllAssets(checked) {
+        $('#ptAssetMsList .pt-ms-item input[type=checkbox]').each(function () {
+            this.checked = checked;
+            var id = $(this).closest('.pt-ms-item').attr('data-id');
+            if (id) PT._selectedAssets[id] = checked;
+        });
+        ptUpdateAssetSelLabel();
+    }
+
+    // Update label on the trigger button
+    function ptUpdateAssetSelLabel() {
+        var all = $('#ptAssetMsList .pt-ms-item').length;
+        var chk = $('#ptAssetMsList .pt-ms-item input:checked').length;
+        if (chk === 0) {
+            $('#ptAssetMsLabel').text('None selected');
+            $('#ptAssetSelCount').text('(0)');
+        } else if (chk === all) {
+            $('#ptAssetMsLabel').text('All Assets');
+            $('#ptAssetSelCount').text('(all)');
+        } else {
+            // Show first selected name + count
+            var firstName = $('#ptAssetMsList .pt-ms-item input:checked').first()
+                .closest('.pt-ms-item').attr('data-name') || '';
+            $('#ptAssetMsLabel').text(chk === 1 ? firstName : firstName + ' +' + (chk - 1) + ' more');
+            $('#ptAssetSelCount').text('(' + chk + ')');
+        }
+    }
+
+    // Close dropdown when clicking outside
+    $(document).on('click.ptAssetMs', function (e) {
+        if (!$(e.target).closest('[id^="ptAssetMs"]').length) {
+            _ptCloseAssetDropdown();
+        }
+    });
+
+    // Fallback: scrape asset type tabs already rendered in the page
+    function _ptLoadAssetTypesFromDOM(sel) {
+        var types = [], seen = {};
+        $('[onclick*="fnSearchDeviceTimeDashboard"]').each(function () {
+            var oc = $(this).attr('onclick') || '';
+            var m = oc.match(/fnSearchDeviceTimeDashboard\s*\(\s*(\d+)\s*,\s*['"]([^'"]+)['"]/);
+            if (m && !seen[m[1]]) { seen[m[1]] = true; types.push({ Id: m[1], Name: m[2] }); }
+        });
+        if (!types.length) {
+            var curId = $.trim($('#hdnassetTypeId').val());
+            var curName = $.trim($('#hdAssetTypeName').val());
+            if (curId && curName) types.push({ Id: curId, Name: curName });
+        }
+        _ptPopulateTypeDropdown(sel, types);
+    }
+
+    function _ptPopulateTypeDropdown(sel, data) {
+        PT._typesLoaded = true;   // mark as done — won't reload until page refresh
+        sel.empty().prop('disabled', false);
+        sel.append('<option value="">— All Asset Types —</option>');
+        data.sort(function (a, b) {
+            var an = (a.Name || a.name || '').toLowerCase();
+            var bn = (b.Name || b.name || '').toLowerCase();
+            if (an.indexOf('track') >= 0 && bn.indexOf('track') < 0) return -1;
+            if (bn.indexOf('track') >= 0 && an.indexOf('track') < 0) return 1;
+            return an.localeCompare(bn);
+        });
+        $.each(data, function (k, t) {
+            var id = String(t.Id || t.id || t.AssetTypeId || '');
+            var name = t.Name || t.name || t.AssetTypeName || ('Type ' + id);
+            sel.append('<option value="' + _esc(id) + '">' + _esc(name) + '</option>');
+        });
+        // Auto-select type currently visible on page
+        var curId = $.trim($('#hdnassetTypeId').val());
+        var siteId2 = $.trim($('#hdnsiteId').val());
+        if (curId) {
+            sel.val(curId);
+            // Trigger asset load for the auto-selected type
+            if (PT._typesFetched[String(curId)]) {
+                var cached2 = Object.values(PT.allKnownAssets).filter(function (a) {
+                    return a.assetTypeId === String(curId);
+                });
+                _ptPopulateAssetMultiSelect(cached2);
+            } else {
+                _ptFetchAssetsByType(siteId2, curId, function (assets) {
+                    _ptPopulateAssetMultiSelect(assets);
+                });
+            }
+        }
+    }
+
+    function ptClose() {
+        $('#ptOverlay').removeClass('pt-vis');
+        $('#ptPopup,#ptDetailPopup').removeClass('pt-vis');
+    }
+    function ptCloseDetail() {
+        $('#ptDetailPopup').removeClass('pt-vis');
+    }
+
+    // ── Run analysis ───────────────────────────────────────────────
+    function ptRunAnalysis() {
+        var fromVal = $('#ptFromDt').val();
+        var toVal = $('#ptToDt').val();
+
+        // Validate dates
+        if (!fromVal || !toVal) {
+            CommonNotification('ERROR', 'Please select both From and To date/time.', 'error');
+            return;
+        }
+        if (new Date(fromVal).getTime() >= new Date(toVal).getTime()) {
+            CommonNotification('ERROR', 'From date must be earlier than To date.', 'error');
+            return;
+        }
+
+        // Read threshold — single WARN window
+        var warnInput = parseFloat($('#ptWarnSec').val());
+        if (isNaN(warnInput) || warnInput < 1) { warnInput = 10; $('#ptWarnSec').val(10); }
+
+        PT.WARN_SEC = warnInput;
+        ptUpdateLegend();
+
+        // Convert dates to API format
+        PT.startFmt = _ptToApiDate(fromVal, true);
+        PT.endFmt = _ptToApiDate(toVal, false);
+        PT.startMs = _ptToMs(fromVal);
+        PT.endMs = _ptToMs(toVal);
+
+        if (!PT.startFmt || !PT.startMs) {
+            CommonNotification('ERROR', 'Invalid date/time values.', 'error');
+            return;
+        }
+
+        // Reset per-run data (NOT attrMap/dlMap — those are stable per asset type)
+        PT.data = {};
+        PT.assets = _ptGetAssets();
+
+        // Update header UI
+        $('#ptRangeBadge').text(_ptFmtDtLocal(fromVal) + ' → ' + _ptFmtDtLocal(toVal));
+        $('#ptHdrSub').text('Warn window: ' + PT.WARN_SEC + 's  |  Clock: TimestampDevice');
+        $('#ptStatStrip,#ptTabBar,#ptFooterBar').hide();
+        $('#ptExportBtn').hide();
+
+        _ptShowLoading('Fetching data…', 0);
+        $('#ptRunBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin mr-1"></i> Running…');
+
+        if (!PT.assets.length) {
+            _ptShowEmpty('No assets found.<br>Browse to any asset type (Track, Signal, Point Machine…) — assets are collected automatically as you switch between types. Then run again.');
+            $('#ptRunBtn').prop('disabled', false).html('<i class="fa fa-play mr-1"></i> Run Analysis');
+            return;
+        }
+
+        var atTypeId = $.trim($('#hdnassetTypeId').val());
+        var siteId = $.trim($('#hdnsiteId').val());
+
+        // Don't reset attrByType cache (names don't change)
+        // but DO reset attrReady so merged map gets rebuilt for this run's types
+        PT.attrReady = false;
+        PT.attrMap = {};
+
+        _ptLoadNames(atTypeId, function () {
+            _ptLoadDLNames(siteId, function () {
+                _ptFetch(0);
+            });
+        });
+    }
+
+    // ── UI state helpers ───────────────────────────────────────────
+    function _ptShowIdle() {
+        $('#ptPopupBody').html(
+            '<div class="pt-empty">'
+            + '<div class="pt-empty-icon">&#128300;</div>'
+            + '<div class="pt-empty-title">Panel Test</div>'
+            + '<div style="font-size:12px;color:#6b8c94;max-width:480px;margin:0 auto;line-height:1.7;">'
+            + 'Choose a date range above and click <strong style="color:#0e5068;">Run Analysis</strong>.<br>'
+            + 'For each DataLogger Pickup/Drop event (on any asset type) the tool measures how long each attribute\'s '
+            + '<code style="background:#e6f2f5;padding:1px 5px;border-radius:3px;color:#145f78;">TimestampDevice</code>'
+            + ' lags behind the DL event time.'
+            + '</div></div>');
+    }
+
+    function _ptShowLoading(msg, pct) {
+        $('#ptPopupBody').html(
+            '<div class="pt-prog-wrap">'
+            + '<div class="pt-spinner"></div>'
+            + '<div class="pt-prog-text">' + (msg || 'Loading…') + '</div>'
+            + '<div class="pt-prog-bar"><div class="pt-prog-fill" id="ptProgFill" style="width:' + pct + '%;"></div></div>'
+            + '<div class="pt-prog-sub" id="ptProgSub"></div>'
+            + '</div>');
+    }
+
+    function _ptShowEmpty(msg) {
+        $('#ptPopupBody').html(
+            '<div class="pt-empty">'
+            + '<div class="pt-empty-icon">&#128451;</div>'
+            + '<div class="pt-empty-title">No assets found</div>'
+            + '<div style="font-size:12px;color:#6b8c94;">' + msg + '</div>'
+            + '</div>');
+    }
+
+    // ── Attribute name loaders ─────────────────────────────────────
+    // Loads names for ALL unique asset type IDs in PT.assets (cached per type).
+    // This allows Panel Test to show correct names for Track, Signal, PM etc.
+    function _ptLoadNames(primaryTypeId, cb) {
+        // Collect all unique asset type IDs from the current run
+        var typeIds = {};
+        PT.assets.forEach(function (a) {
+            var tid = a.assetTypeId || primaryTypeId;
+            if (tid && tid !== '0' && tid !== '') typeIds[tid] = true;
+        });
+        if (!Object.keys(typeIds).length) {
+            if (primaryTypeId && primaryTypeId !== '0') typeIds[primaryTypeId] = true;
+        }
+
+        var pending = Object.keys(typeIds).filter(function (tid) {
+            return !PT.attrByType[tid];   // only fetch types not yet cached
+        });
+
+        if (!pending.length) {
+            // Rebuild merged attrMap from all cached types
+            _ptMergeAttrMaps(typeIds);
+            cb();
+            return;
+        }
+
+        var done = 0;
+        pending.forEach(function (tid) {
+            $.ajax({
+                url: '/Site/GetAttributesByAssestId', type: 'Post',
+                data: '{id:' + tid + '}', contentType: 'application/json',
+                success: function (d) {
+                    var map = {};
+                    if (Array.isArray(d)) {
+                        d.forEach(function (x) {
+                            var id = x.Id || x.id || x.AttributeId;
+                            var name = x.AliasName || x.aliasName || x.Title || x.title || x.Name || '';
+                            if (id !== undefined && name) {
+                                map[id] = name;
+                                map[String(id)] = name;
+                            }
+                        });
+                    }
+                    PT.attrByType[tid] = map;
+                },
+                error: function () { PT.attrByType[tid] = {}; },
+                complete: function () {
+                    done++;
+                    if (done >= pending.length) {
+                        _ptMergeAttrMaps(typeIds);
+                        cb();
+                    }
+                }
+            });
+        });
+    }
+
+    function _ptMergeAttrMaps(typeIds) {
+        PT.attrMap = {};
+        Object.keys(typeIds).forEach(function (tid) {
+            var m = PT.attrByType[tid] || {};
+            Object.keys(m).forEach(function (id) { PT.attrMap[id] = m[id]; });
+        });
+        PT.attrReady = true;
+    }
+
+    function _ptLoadDLNames(siteId, cb) {
+        if (PT.dlReady) { cb(); return; }
+        if (!siteId || siteId === '0' || siteId === '') { PT.dlReady = true; cb(); return; }
+        $.ajax({
+            url: '/Site/GetUserAssetInfoDatalogger?siteId=' + siteId,
+            type: 'GET', dataType: 'json',
+            success: function (d) {
+                PT.dlMap = {};
+                if (Array.isArray(d)) {
+                    d.forEach(function (x) {
+                        var r = x.Role;
+                        var n = x.DataloggerAttribute || x.dataloggerAttribute || x.Name || '';
+                        if (r != null && n) {
+                            PT.dlMap[r] = n;
+                            PT.dlMap[parseInt(r)] = n;
+                            PT.dlMap[String(r)] = n;
+                        }
+                    });
+                }
+                PT.dlReady = true; cb();
+            },
+            error: function () { PT.dlReady = true; cb(); }
+        });
+    }
+
+    function _ptName(id, isDL, assetTypeId) {
+        if (isDL) {
+            var d = PT.dlMap[id] || PT.dlMap[String(id)] || PT.dlMap[parseInt(id)];
+            if (d) return d;
+        }
+        // Check merged global map first, then specific type cache if typeId known
+        var n = PT.attrMap[id] || PT.attrMap[String(id)];
+        if (n) return n;
+        if (assetTypeId && PT.attrByType[assetTypeId]) {
+            n = PT.attrByType[assetTypeId][id] || PT.attrByType[assetTypeId][String(id)];
+            if (n) return n;
+        }
+        return isDL ? 'DL-' + id : 'Attr-' + id;
+    }
+
+    function _ptGetAssets() {
+        // Get the selected asset type from the dropdown
+        var selectedTypeId = $.trim($('#ptAssetTypeId').val()); // '' = All types
+
+        // Harvest assets visible in DOM right now into allKnownAssets
+        var curTypeName = $.trim($('#hdAssetTypeName').val()) || 'Unknown';
+        var curTypeId = $.trim($('#hdnassetTypeId').val()) || '0';
+        $('[id^="divAsset"]').each(function () {
+            var rawId = this.id.replace('divAsset', '');
+            if (!rawId || isNaN(rawId)) return;
+            var $e = $(this);
+            var name = $e.attr('data-asset-name') ||
+                $e.find('[class*="assetName"],[class*="asset-name"]').first().text().trim() ||
+                $e.find('h6,h5').first().text().trim() || ('Asset ' + rawId);
+            name = $.trim(name).replace(/\s+/g, ' ').substring(0, 80);
+            if (!PT.allKnownAssets[rawId]) {
+                PT.allKnownAssets[rawId] = {
+                    assetId: rawId, assetName: name,
+                    assetType: curTypeName, assetTypeId: curTypeId
+                };
+            }
+        });
+
+        // Build list filtered by type AND individual asset selection
+        var list = [];
+        var hasAssetSel = Object.keys(PT._selectedAssets).length > 0;
+
+        Object.keys(PT.allKnownAssets).forEach(function (id) {
+            var a = PT.allKnownAssets[id];
+            // Filter by type
+            if (selectedTypeId && a.assetTypeId !== selectedTypeId) return;
+            // Filter by individual asset selection (if any checkboxes have been set)
+            if (hasAssetSel && PT._selectedAssets[id] === false) return;
+            list.push({ assetId: a.assetId, assetName: a.assetName, assetType: a.assetType, assetTypeId: a.assetTypeId });
+        });
+
+        return list;
+    }
+
+    // ── Sequential HistoryValue fetch ──────────────────────────────
+    function _ptFetch(i) {
+        if (i >= PT.assets.length) {
+            $('#ptRunBtn').prop('disabled', false).html('<i class="fa fa-play mr-1"></i> Run Analysis');
+            _ptRender();
+            return;
+        }
+        var a = PT.assets[i];
+        var pct = Math.round(i / PT.assets.length * 100);
+        $('#ptProgFill').css('width', pct + '%');
+        $('#ptProgSub').html('<strong>' + (i + 1) + ' / ' + PT.assets.length + '</strong> &mdash; ' + _esc(a.assetName));
+
+        $.ajax({
+            url: PT.API + '?AssetId=' + a.assetId + '&StartDate=' + PT.startFmt + '&EndDate=' + PT.endFmt,
+            type: 'GET', dataType: 'json', timeout: 30000,
+            success: function (d) {
+                PT.data[a.assetId] = { asset: a, raw: d, analysis: null, err: null };
+                _ptFetch(i + 1);
+            },
+            error: function (x, s, e) {
+                PT.data[a.assetId] = { asset: a, raw: null, analysis: null, err: s + ':' + e };
+                _ptFetch(i + 1);
+            }
+        });
+    }
+
+    // ── Core analysis (TimestampDevice = master clock) ─────────────
+    function _ptAnalyse(raw, assetTypeId) {
+        var r = {
+            totalEvents: 0, pickups: 0, drops: 0, hasEvent: false,
+            lastTsDev: null, maxDevSec: null, hasWarn: false,
+            dlEvents: [], attributes: [], attrDevs: []
+        };
+        if (!raw || !Array.isArray(raw.Data)) return r;
+
+        // Pass 1 — parse all attribute blocks
+        raw.Data.forEach(function (block) {
+            var atId = block.AttributeId, isDL = false;
+            var info = { attrId: atId, isDL: false, name: '', lastValue: null, lastTsDev: null, events: [], vals: [] };
+            if (!block.Values) { r.attributes.push(info); return; }
+
+            Object.keys(block.Values).sort(function (a, b) { return +a - +b; }).forEach(function (k) {
+                var v = block.Values[k]; if (!v) return;
+                var ts = v.Timestamp || {};
+
+                // *** TimestampDevice is the authoritative clock ***
+                var tsDevRaw = ts.TimestampDevice;
+                if (!tsDevRaw) return;
+                var tsDev = new Date(tsDevRaw);
+                if (isNaN(tsDev.getTime())) return;
+
+                // Use TimestampLocal for range-filter (handles timezone carry-over)
+                var tsLocRaw = ts.TimestampLocal;
+                var tsLoc = (tsLocRaw && new Date(tsLocRaw).getTime() > 0) ? new Date(tsLocRaw) : tsDev;
+                if (isNaN(tsLoc.getTime()) || tsLoc.getTime() < PT.startMs) return;
+
+                var src = ts.DataSource || '';
+                var tsEv = ts.TimestampEvent ? new Date(ts.TimestampEvent) : null;
+                var isEv = (v.DataType === 'DataLogger') || (src === 'Event');
+                if (isEv) isDL = true;
+
+                info.vals.push({ val: v.Value, tsDev: tsDev, src: src, dt: v.DataType, tsEv: tsEv });
+
+                if (isEv) {
+                    var et = (v.Value === 1 || v.Value === 1.0) ? 'Pickup'
+                        : (v.Value === 0 || v.Value === 0.0) ? 'Drop' : null;
+                    if (et) {
+                        info.events.push({ type: et, value: v.Value, tsDev: tsDev, tsEv: tsEv });
+                        r.totalEvents++;
+                        if (et === 'Pickup') r.pickups++; else r.drops++;
+                        r.hasEvent = true;
+                    }
+                }
+            });
+
+            info.isDL = isDL;
+            info.name = _ptName(atId, isDL, assetTypeId);
+            if (info.vals.length) {
+                var lv = info.vals[info.vals.length - 1];
+                info.lastValue = lv.val; info.lastTsDev = lv.tsDev;
+                if (!r.lastTsDev || lv.tsDev > r.lastTsDev) r.lastTsDev = lv.tsDev;
+            }
+            r.attributes.push(info);
+        });
+
+        // Collect DL events — deduplicate by (type + TimestampDevice ms).
+        // Multiple DL attributes can fire at the exact same instant; merge them into
+        // one column so the matrix doesn't show duplicate timestamps as E1/E2.
+        var _dlMap = {};   // key: "type_ms" → event object
+        r.attributes.forEach(function (at) {
+            if (!at.isDL) return;
+            at.events.forEach(function (ev) {
+                var key = ev.type + '_' + ev.tsDev.getTime();
+                if (_dlMap[key]) {
+                    // Same instant — append DL attr name for display
+                    if (_dlMap[key].attrNames.indexOf(at.name) < 0)
+                        _dlMap[key].attrNames.push(at.name);
+                } else {
+                    _dlMap[key] = {
+                        attrName: at.name,
+                        attrNames: [at.name],
+                        type: ev.type,
+                        value: ev.value,
+                        tsDev: ev.tsDev,
+                        tsEv: ev.tsEv
+                    };
+                }
+            });
+        });
+        r.dlEvents = Object.keys(_dlMap).map(function (k) { return _dlMap[k]; });
+        r.dlEvents.sort(function (a, b) { return a.tsDev.getTime() - b.tsDev.getTime(); });
+
+        // Recount totals based on deduplicated events (avoid double-counting merged attrs)
+        r.totalEvents = r.dlEvents.length;
+        r.pickups = r.dlEvents.filter(function (e) { return e.type === 'Pickup'; }).length;
+        r.drops = r.dlEvents.filter(function (e) { return e.type === 'Drop'; }).length;
+        r.hasEvent = r.totalEvents > 0;
+
+        // Pass 2 — for each DL event at T_DL, check if each RDPMS attribute
+        // has ANY value with TimestampDevice in [T_DL - PRE_WIN, T_DL + WARN_SEC].
+        //
+        //   devSec < 0  → Pre-response (attribute changed BEFORE DL, e.g. -1s, -2s) → ✅ OK
+        //   devSec = 0  → Responded exactly at same time                             → ✅ OK
+        //   devSec > 0  → Post-response within window                                → ✅ OK
+        //   not found   → WARN → show last known value (no update around DL event)
+        var WIN = PT.WARN_SEC * 1000;
+        var PRE_WIN = PT.PRE_WIN * 1000;   // look-back before T_DL
+        var nonDL = r.attributes.filter(function (at) { return !at.isDL && at.vals.length; });
+
+        r.dlEvents.forEach(function (dlEv) {
+            var T = dlEv.tsDev.getTime();
+            var Tmin = T - PRE_WIN;   // window start: T_DL - 5s
+            var Tmax = T + WIN;       // window end:   T_DL + WARN_SEC
+
+            nonDL.forEach(function (at) {
+                // Find the value closest to T_DL within the full window [Tmin, Tmax]
+                // Prefer the one with smallest absolute deviation from T_DL
+                var found = null;
+                var foundDev = Infinity;
+
+                for (var i = 0; i < at.vals.length; i++) {
+                    var ms = at.vals[i].tsDev.getTime();
+                    if (ms >= Tmin && ms <= Tmax) {
+                        var absDev = Math.abs(ms - T);
+                        if (absDev < foundDev) {
+                            found = at.vals[i];
+                            foundDev = absDev;
+                        }
+                    }
+                }
+
+                // devSec: negative = pre-response, positive = post-response
+                var devSec = found ? (found.tsDev.getTime() - T) / 1000 : null;
+                var warn = !found;
+
+                // For WARN: find last known value before window start
+                var lastKnown = null;
+                if (warn) {
+                    for (var j = at.vals.length - 1; j >= 0; j--) {
+                        if (at.vals[j].tsDev.getTime() < Tmin) {
+                            lastKnown = at.vals[j];
+                            break;
+                        }
+                    }
+                    // fallback: any last value
+                    if (!lastKnown && at.vals.length) {
+                        lastKnown = at.vals[at.vals.length - 1];
+                    }
+                }
+
+                r.attrDevs.push({
+                    attrName: at.name,
+                    attrId: at.attrId,
+                    dlAttr: dlEv.attrName,
+                    dlType: dlEv.type,
+                    dlTsDev: dlEv.tsDev,
+                    windowStart: new Date(Tmin),
+                    windowEnd: new Date(Tmax),
+                    firstTs: found ? found.tsDev : null,
+                    firstVal: found ? found.val : null,
+                    lastKnownTs: warn && lastKnown ? lastKnown.tsDev : null,
+                    lastKnownVal: warn && lastKnown ? lastKnown.val : null,
+                    devSec: devSec,   // negative = pre-response
+                    warn: warn,
+                    flag: false
+                });
+
+                if (warn) r.hasWarn = true;
+                if (found && devSec !== null) {
+                    // track max abs deviation for summary card
+                    var absDev = Math.abs(devSec);
+                    if (r.maxDevSec === null || absDev > r.maxDevSec) r.maxDevSec = absDev;
+                }
+            });
+        });
+
+        return r;
+    }
+
+    // ── Summary: asset cards ───────────────────────────────────────
+    function _ptRender() {
+        // Type-filter tabs
+        var tc = {};
+        PT.assets.forEach(function (a) { tc[a.assetType] = (tc[a.assetType] || 0) + 1; });
+        var tabs = '<button class="pt-tab active" data-t="All" onclick="_ptTab(this,\'All\')">ALL (' + PT.assets.length + ')</button>';
+        Object.keys(tc).forEach(function (t) {
+            tabs += '<button class="pt-tab" data-t="' + _esc(t) + '" onclick="_ptTab(this,\'' + _escJs(t) + '\')">' + _esc(t.toUpperCase()) + ' (' + tc[t] + ')</button>';
+        });
+        $('#ptTabBar').html(tabs).show();
+
+        var n = 0, crit = 0, warn = 0, ok = 0, totalPick = 0, totalDrop = 0, globalMax = null;
+        var cards = '';
+
+        PT.assets.forEach(function (a) {
+            var r = PT.data[a.assetId]; if (!r) return;
+            var an = _ptAnalyse(r.raw, a.assetTypeId); r.analysis = an;
+            n++;
+            totalPick += an.pickups;
+            totalDrop += an.drops;
+            if (an.maxDevSec !== null && (globalMax === null || an.maxDevSec > globalMax)) globalMax = an.maxDevSec;
+
+            var isWarn = an.hasWarn;
+            var cls = isWarn ? 'pt-warn' : 'pt-ok';
+            var chip = isWarn ? '<span class="pt-chip pt-warn">&#9889; Warn</span>'
+                : '<span class="pt-chip pt-ok">&#10003; OK</span>';
+            if (isWarn) warn++; else ok++;
+
+            var devNum = an.maxDevSec || 0;
+            var barPct = Math.min(100, devNum / (PT.WARN_SEC * 2) * 100);
+            var barClr = isWarn ? '#e65100' : '#2e7d32';
+            var devStr = an.maxDevSec !== null ? an.maxDevSec.toFixed(1) + 's' : '&#8212;';
+            var errIco = r.err ? '<i class="fa fa-exclamation-circle" style="color:#fb8c00;margin-left:4px;" title="' + _esc(r.err) + '"></i>' : '';
+
+            var pickBadge = an.pickups > 0
+                ? '<span class="pt-etag pt-etag-up" onclick="event.stopPropagation();_ptShowDLEvents(\'' + a.assetId + '\',\'Pickup\',event)">&#9650;&nbsp;' + an.pickups + '</span>'
+                : '<span style="color:#ccc;">&#8212;</span>';
+            var dropBadge = an.drops > 0
+                ? '<span class="pt-etag pt-etag-dn" style="margin-left:4px;" onclick="event.stopPropagation();_ptShowDLEvents(\'' + a.assetId + '\',\'Drop\',event)">&#9660;&nbsp;' + an.drops + '</span>'
+                : '<span style="color:#ccc;margin-left:4px;">&#8212;</span>';
+
+            cards += '<div class="pt-card ' + cls + '" data-t="' + _esc(a.assetType) + '" onclick="_ptDetail(\'' + a.assetId + '\')">' +
+                '<div class="pt-card-hdr">' +
+                '<div><div class="pt-card-name">' + _esc(a.assetName) + errIco + '</div>' +
+                '<div class="pt-card-type">' + _esc(a.assetType) + '</div></div>' + chip +
+                '</div>' +
+                '<div class="pt-card-body">' +
+                '<div class="pt-card-stats">' +
+                '<div class="pt-card-stat"><div class="pt-card-stat-val" style="color:#0e5068;">' + an.totalEvents + '</div><div class="pt-card-stat-lbl">DL Events</div></div>' +
+                '<div class="pt-card-stat">' +
+                '<div style="display:flex;gap:3px;justify-content:center;align-items:center;padding-top:2px;">' + pickBadge + dropBadge + '</div>' +
+                '<div class="pt-card-stat-lbl">Pickup / Drop</div>' +
+                '</div>' +
+                '<div class="pt-card-stat"><div class="pt-card-stat-val" style="color:#6b8c94;font-size:12px;">' + (an.lastTsDev ? _ptFmtTime(an.lastTsDev) : '&#8212;') + '</div><div class="pt-card-stat-lbl">Latest DevTime</div></div>' +
+                '</div>' +
+                '<div class="pt-dev-bar">' +
+                '<span class="pt-dev-bar-label">Max Dev.</span>' +
+                '<div class="pt-dev-bar-track"><div class="pt-dev-bar-fill" style="width:' + barPct + '%;background:' + barClr + ';"></div></div>' +
+                '<span class="pt-dev-bar-val" style="color:' + barClr + ';">' + devStr + '</span>' +
+                '</div>' +
+                '</div></div>';
+        });
+
+        if (!cards) cards = '<div class="pt-empty"><div class="pt-empty-icon">&#128451;</div><div class="pt-empty-title">No data returned</div><div style="font-size:12px;color:#6b8c94;">No assets returned data for this period. Try a wider date range.</div></div>';
+
+        $('#ptPopupBody').html('<div class="pt-cards-wrap"><div class="pt-cards-grid" id="ptCardsGrid">' + cards + '</div></div>');
+
+        // Stats strip
+        $('#ptsTotal').text(n);
+        $('#ptsWarn').text(warn);
+        $('#ptsOk').text(ok);
+        $('#ptsPick').text(totalPick);
+        $('#ptsDrop').text(totalDrop);
+        var mxStr = globalMax !== null ? globalMax.toFixed(1) + 's' : '&#8212;';
+        $('#ptsMxDev').html(mxStr).css('color', globalMax > PT.WARN_SEC ? '#e65100' : '#6b8c94');
+        $('#ptStatStrip').show();
+
+        $('#ptTotals').html(
+            '<span style="color:#ffb74d;font-weight:700;margin-right:5px;">&#9832; ' + warn + ' Warn</span>' +
+            '<span style="color:#81c784;font-weight:700;">&#10003; ' + ok + ' OK</span>');
+
+        $('#ptFooterTxt').html(
+            'Warn <strong style="color:#e65100;">' + warn + '</strong> &ensp;' +
+            'OK <strong style="color:#2e7d32;">' + ok + '</strong> &ensp;|&ensp;' +
+            '&#9650; <strong>' + totalPick + '</strong> Pickups &ensp;' +
+            '&#9660; <strong>' + totalDrop + '</strong> Drops &ensp;|&ensp;' +
+            'Total <strong>' + n + '</strong> &ensp;|&ensp;' +
+            'Warn window: <strong>' + PT.WARN_SEC + 's</strong>');
+
+        $('#ptFooterBar').show();
+        $('#ptExportBtn').show();
+    }
+
+    function _ptTab(el, t) {
+        $('.pt-tab').removeClass('active');
+        $(el).addClass('active');
+        $('#ptCardsGrid .pt-card').each(function () {
+            $(this).toggle(t === 'All' || $(this).attr('data-t') === t);
+        });
+    }
+
+    // ── Detail popup per asset ─────────────────────────────────────
+    function _ptDetail(assetId) {
+        var r = PT.data[String(assetId)]; if (!r) return;
+        var an = r.analysis || _ptAnalyse(r.raw, r.asset ? r.asset.assetTypeId : null);
+        var a = r.asset;
+
+        var isWarn = an.hasWarn;
+        var cls = isWarn ? 'pt-warn' : 'pt-ok';
+        var devStr = an.maxDevSec !== null ? an.maxDevSec.toFixed(1) + 's' : '&#8212;';
+        var devClr = isWarn ? '#e65100' : '#2e7d32';
+
+        $('#ptDetTitle').text(a.assetName + ' \u00b7 ' + a.assetType);
+        $('#ptDetSub').text(
+            'TimestampDevice range: ' + _ptFmtDtLocal($('#ptFromDt').val()) +
+            ' \u2192 ' + _ptFmtDtLocal($('#ptToDt').val()) +
+            '  \u2502  Warn window: ' + PT.WARN_SEC + 's');
+        $('#ptDetChip').html(
+            isWarn ? '<span class="pt-chip pt-warn">&#9889; WARN</span>' :
+                '<span class="pt-chip pt-ok">&#10003; OK</span>');
+
+        // Stat strip
+        $('#ptDetStats').html(
+            _ptDS(an.totalEvents, 'DL Events', '#0e5068') +
+            _ptDS(an.pickups, '&#9650; Pickups', '#2e7d32') +
+            _ptDS(an.drops, '&#9660; Drops', '#c62828') +
+            _ptDS(an.attrDevs.length, 'Deviations', '#6b8c94') +
+            _ptDS('<span style="color:' + devClr + '">' + devStr + '</span>', 'Max Dev.', devClr) +
+            _ptDS(
+                isWarn ? '<span style="color:#e65100;">WARN</span>' :
+                    '<span style="color:#2e7d32;">OK</span>',
+                'Status', '#0e2f38'));
+
+        // Build pane content
+        $('#ptDetPane0').html(_ptMatrix(an));
+        $('#ptDetPane1').html(_ptDLList(an));
+        $('#ptDetPane2').html(_ptAttrList(an));
+
+        // Tabs
+        $('#ptDetTabBar').html(
+            '<button class="pt-tab active" onclick="_ptDTab(this,0)">' +
+            '<i class="fa fa-th mr-1"></i>Deviation Matrix ' +
+            '<span style="background:#0e5068;color:#fff;border-radius:8px;padding:0 6px;font-size:9px;margin-left:3px;">' + an.attrDevs.length + '</span>' +
+            '</button>' +
+            '<button class="pt-tab" onclick="_ptDTab(this,1)">' +
+            '<i class="fa fa-bolt mr-1"></i>DL Events ' +
+            '<span style="background:#0e5068;color:#fff;border-radius:8px;padding:0 6px;font-size:9px;margin-left:3px;">' + an.dlEvents.length + '</span>' +
+            '</button>' +
+            '<button class="pt-tab" onclick="_ptDTab(this,2)">' +
+            '<i class="fa fa-list mr-1"></i>All Attributes ' +
+            '<span style="background:#0e5068;color:#fff;border-radius:8px;padding:0 6px;font-size:9px;margin-left:3px;">' + an.attributes.length + '</span>' +
+            '</button>');
+
+        _ptDTab($('#ptDetTabBar .pt-tab')[0], 0);
+        $('#ptDetailPopup').addClass('pt-vis');
+    }
+
+    function _ptDS(v, l, c) {
+        return '<div class="pt-det-stat"><div class="pt-stat-num" style="font-size:18px;color:' + c + ';">' + v + '</div><div class="pt-stat-lbl">' + l + '</div></div>';
+    }
+    function _ptDTab(el, idx) {
+        $('#ptDetTabBar .pt-tab').removeClass('active');
+        $(el).addClass('active');
+        $('#ptDetPane0,#ptDetPane1,#ptDetPane2').hide();
+        $('#ptDetPane' + idx).show();
+    }
+
+    // ── PANE 0: Deviation Matrix ───────────────────────────────────
+    // thead = col headers + timestamp row (sticky)
+    // tbody = section title rows + attribute data rows
+    function _ptMatrix(an) {
+        if (!an.dlEvents.length)
+            return '<div class="pt-empty"><div class="pt-empty-icon">&#128451;</div>' +
+                '<div class="pt-empty-title">No DL events in this period</div>' +
+                '<div style="font-size:12px;color:#6b8c94;">No DataLogger Pickup or Drop events found. Try a wider date range.</div></div>';
+
+        var pickEvs = an.dlEvents.filter(function (e) { return e.type === 'Pickup'; });
+        var dropEvs = an.dlEvents.filter(function (e) { return e.type === 'Drop'; });
+
+        // Collect unique attribute row order from attrDevs
+        var attrOrder = [], attrSeen = {};
+        an.attrDevs.forEach(function (d) {
+            if (!attrSeen[d.attrName]) { attrSeen[d.attrName] = true; attrOrder.push(d.attrName); }
+        });
+
+        // Cell lookup: "attrName_dlTsMs" → { devSec, warn, val, ts, lastKnownVal, lastKnownTs }
+        var cm = {};
+        an.attrDevs.forEach(function (d) {
+            cm[d.attrName + '_' + d.dlTsDev.getTime()] = {
+                devSec: d.devSec,
+                warn: d.warn,
+                val: d.firstVal,
+                ts: d.firstTs,
+                lastKnownVal: d.lastKnownVal,
+                lastKnownTs: d.lastKnownTs
+            };
+        });
+
+        // Deviation cell HTML
+        function cellHtml(c) {
+            if (!c) return '<span class="pt-cell-nil">&#8212;</span>';
+            if (c.warn) {
+                // No update anywhere near window — show last known value
+                var valHtml = (c.lastKnownVal !== null && c.lastKnownVal !== undefined)
+                    ? '<div style="font-size:10.5px;font-weight:700;color:#92400e;margin-top:3px;font-family:Consolas,monospace;">' + c.lastKnownVal + '</div>' +
+                    '<div style="font-size:9px;color:#b45309;font-family:Consolas,monospace;">' + _ptFmtMs(c.lastKnownTs) + '</div>'
+                    : '<div style="font-size:9px;color:#e65100;font-family:Consolas,monospace;margin-top:2px;">no prior value</div>';
+                return '<div style="text-align:center;padding:2px 0;">' +
+                    '<span class="pt-cell-warn" title="No update within window of DL event">&#9889; +' + PT.WARN_SEC + 's</span>' +
+                    valHtml +
+                    '</div>';
+            }
+            // OK — responded (pre-response: negative devSec, post-response: positive devSec)
+            var isPre = c.devSec < 0;
+            var devLabel = isPre
+                ? c.devSec.toFixed(1) + 's'        // e.g. "-1.5s"
+                : '+' + c.devSec.toFixed(1) + 's';   // e.g. "+2.0s"
+            var devColor = isPre ? '#0369a1' : '#2e7d32';  // blue for pre, green for post
+            var devTitle = isPre ? 'Pre-response: attribute changed before DL event' : 'Post-response: attribute changed after DL event';
+            return '<div style="text-align:center;padding:2px 0;">' +
+                '<span class="pt-cell-ok" style="color:' + devColor + ';border-color:' + devColor + ';" title="' + devTitle + '">' + devLabel + ' &#10003;</span>' +
+                '<div style="font-size:10.5px;font-weight:700;color:#0e2f38;margin-top:2px;font-family:Consolas,monospace;">' + c.val + '</div>' +
+                '<div style="font-size:9px;color:#6b8c94;font-family:Consolas,monospace;">' + _ptFmtMs(c.ts) + '</div>' +
+                '</div>';
+        }
+
+        // Per-attribute stats across a set of events (only OK/non-warn cells)
+        // devSec can be negative (pre-response) — avg/min/max are signed
+        function attrStats(atName, evList) {
+            var devs = [];
+            evList.forEach(function (ev) {
+                var c = cm[atName + '_' + ev.tsDev.getTime()];
+                if (c && !c.warn && c.devSec !== null) devs.push(c.devSec);
+            });
+            if (!devs.length) return null;
+            var sum = devs.reduce(function (s, v) { return s + v; }, 0);
+            return {
+                avg: sum / devs.length,
+                min: Math.min.apply(null, devs),  // most negative = earliest pre-response
+                max: Math.max.apply(null, devs),  // most positive = latest post-response
+                n: devs.length
+            };
+        }
+
+        // Format signed deviation label: "-1.5s" or "+2.0s"
+        function fmtDev(v) {
+            return (v < 0 ? '' : '+') + v.toFixed(1) + 's';
+        }
+
+        // Build one section (PICKUP or DROP)
+        // Returns: { thead: string, tbody: string }
+        function buildSection(evList, isPick) {
+            if (!evList.length) return { thead: '', tbody: '' };
+            var secBgH = isPick ? '#2e7d32' : '#c62828';
+            var secBgL = isPick ? '#f1faf3' : '#fff5f5';
+            var secClr = isPick ? '#2e7d32' : '#c62828';
+            var badgeBg = isPick ? '#e8f5e9' : '#ffebee';
+            var badgeClr = isPick ? '#2e7d32' : '#c62828';
+            var badgeBrd = isPick ? '#a5d6a7' : '#ef9a9a';
+            var totalCols = evList.length + 4; // attr + events + avg/min/max
+
+            var thead = '';
+            // Col-header row
+            thead += '<tr>';
+            thead += '<th class="pt-mc-attr" style="text-align:left;background:' + secBgH + ';min-width:155px;">' +
+                (isPick ? '&#9650;' : '&#9660;') + ' ATTRIBUTE</th>';
+            evList.forEach(function (ev, ci) {
+                var tooltip = ev.attrNames ? ev.attrNames.join(', ') : ev.attrName;
+                var multiTag = ev.attrNames && ev.attrNames.length > 1
+                    ? '<div style="font-size:8px;color:' + badgeClr + ';opacity:.8;margin-top:2px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + tooltip + '">' +
+                    ev.attrNames.join(' + ') + '</div>'
+                    : '';
+                thead += '<th style="padding:5px 6px;text-align:center;min-width:108px;border-left:1px solid #145f78;background:' + secBgH + ';" title="' + tooltip + '">' +
+                    '<span style="display:inline-block;padding:1px 9px;border-radius:3px;font-size:9.5px;font-weight:700;background:' + badgeBg + ';color:' + badgeClr + ';border:1px solid ' + badgeBrd + ';">' +
+                    (isPick ? '&#9650;' : '&#9660;') + ' E' + (ci + 1) + '</span>' + multiTag + '</th>';
+            });
+            thead += '<th style="text-align:center;border-left:2px solid #145f78;color:#b8dde6;font-size:9px;font-weight:700;min-width:64px;background:' + secBgH + ';">AVG</th>';
+            thead += '<th style="text-align:center;color:#b8dde6;font-size:9px;font-weight:700;min-width:58px;background:' + secBgH + ';">MIN</th>';
+            thead += '<th style="text-align:center;color:#b8dde6;font-size:9px;font-weight:700;min-width:58px;background:' + secBgH + ';">MAX</th>';
+            thead += '</tr>';
+            // Timestamp sub-header row
+            thead += '<tr style="background:#0a3d4f;">';
+            thead += '<th class="pt-mc-attr" style="background:#0a3d4f;padding:2px 12px;font-size:9px;color:#6b8c94;">TimestampDevice (T)</th>';
+            evList.forEach(function (ev) {
+                thead += '<th style="padding:2px 5px;text-align:center;border-left:1px solid #0e5068;">' +
+                    '<span class="pt-ts" style="font-size:9.5px;color:#7ab8c8;">' + _ptFmtShort(ev.tsDev) + '</span></th>';
+            });
+            thead += '<th colspan="3" style="text-align:center;font-size:8.5px;color:#6b8c94;">across ' + evList.length + ' event' + (evList.length > 1 ? 's' : '') + '</th></tr>';
+
+            // Section label as first tbody row
+            var tbody = '';
+            tbody += '<tr><td colspan="' + totalCols + '" style="padding:5px 12px;background:' + secBgL + ';color:' + secClr + ';font-weight:700;font-size:10px;letter-spacing:.4px;text-transform:uppercase;border-top:2px solid ' + secClr + ';border-bottom:1px solid ' + badgeBrd + ';">' +
+                (isPick ? '&#9650;' : '&#9660;') + (isPick ? ' PICKUP' : ' DROP') + ' &mdash; ' + evList.length + ' event' + (evList.length > 1 ? 's' : '') +
+                '<span style="font-size:9px;font-weight:400;color:#888;margin-left:12px;">Deviation = Attr.TimestampDevice &minus; DL.TimestampDevice</span>' +
+                '</td></tr>';
+
+            if (!attrOrder.length) {
+                tbody += '<tr><td colspan="' + totalCols + '" style="text-align:center;padding:16px;color:#6b8c94;font-size:12px;">No attribute responses within ' + PT.WARN_SEC + 's of these events.</td></tr>';
+            } else {
+                attrOrder.forEach(function (atName, ri) {
+                    var rowHasWarn = evList.some(function (ev) { var c = cm[atName + '_' + ev.tsDev.getTime()]; return c && c.warn; });
+                    var rowBg = rowHasWarn ? '#fffdf4' : ri % 2 === 0 ? '#fff' : '#f9fcfd';
+
+                    tbody += '<tr>';
+                    tbody += '<td class="pt-mc-attr" style="background:' + rowBg + ';">' + _esc(atName) + '</td>';
+                    evList.forEach(function (ev) {
+                        tbody += '<td style="padding:3px 4px;border-left:1px solid #e6f2f5;background:' + rowBg + ';vertical-align:middle;">' +
+                            cellHtml(cm[atName + '_' + ev.tsDev.getTime()]) + '</td>';
+                    });
+                    var st = attrStats(atName, evList);
+                    if (st) {
+                        var avgClr = Math.abs(st.avg) > PT.WARN_SEC ? '#e65100' : (st.avg < 0 ? '#0369a1' : '#2e7d32');
+                        var maxClr = st.max > PT.WARN_SEC ? '#e65100' : (st.max < 0 ? '#0369a1' : '#2e7d32');
+                        var minClr = st.min < 0 ? '#0369a1' : '#2e7d32';
+                        tbody += '<td style="text-align:center;border-left:2px solid #e0ecf0;padding:5px;background:' + rowBg + ';">' +
+                            '<span style="font-family:Consolas,monospace;font-size:12px;font-weight:800;color:' + avgClr + ';">' + fmtDev(st.avg) + '</span>' +
+                            '<div style="font-size:8.5px;color:#6b8c94;">n=' + st.n + '</div></td>';
+                        tbody += '<td style="text-align:center;padding:5px;background:' + rowBg + ';">' +
+                            '<span style="font-family:Consolas,monospace;font-size:11px;color:' + minClr + ';">' + fmtDev(st.min) + '</span></td>';
+                        tbody += '<td style="text-align:center;padding:5px;background:' + rowBg + ';">' +
+                            '<span style="font-family:Consolas,monospace;font-size:11px;font-weight:700;color:' + maxClr + ';">' + fmtDev(st.max) + '</span></td>';
+                    } else {
+                        tbody += '<td colspan="3" style="text-align:center;color:#ccc;background:' + rowBg + ';">&#8212;</td>';
+                    }
+                    tbody += '</tr>';
+                });
+            }
+            return { thead: thead, tbody: tbody };
+        }
+
+        var pick = buildSection(pickEvs, true);
+        var drop = buildSection(dropEvs, false);
+
+        // Each section gets its own table (clean thead/tbody per section)
+        var html = '<div style="overflow:auto;max-height:100%;padding:0;">';
+
+        if (pickEvs.length) {
+            html += '<table class="pt-matrix" style="margin-bottom:0;">' +
+                '<thead>' + pick.thead + '</thead>' +
+                '<tbody>' + pick.tbody + '</tbody>' +
+                '</table>';
+        }
+        if (pickEvs.length && dropEvs.length) {
+            html += '<div style="height:8px;background:#e6f2f5;border-top:1px solid #cde3ea;border-bottom:1px solid #cde3ea;"></div>';
+        }
+        if (dropEvs.length) {
+            html += '<table class="pt-matrix" style="margin-bottom:0;">' +
+                '<thead>' + drop.thead + '</thead>' +
+                '<tbody>' + drop.tbody + '</tbody>' +
+                '</table>';
+        }
+        if (!pickEvs.length && !dropEvs.length) {
+            html += '<div class="pt-empty"><div class="pt-empty-icon">&#128451;</div><div class="pt-empty-title">No DL events</div></div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // ── PANE 1: DL Events list ─────────────────────────────────────
+    function _ptDLList(an) {
+        if (!an.dlEvents.length)
+            return '<div class="pt-empty"><div class="pt-empty-icon">&#9889;</div><div class="pt-empty-title">No DL events</div></div>';
+
+        var html = '<div style="padding:8px 16px;background:#fff8e1;border-bottom:1px solid #ffe082;font-size:11.5px;color:#6d4c00;">' +
+            '<i class="fa fa-info-circle mr-1" style="color:#f59e0b;"></i>' +
+            '<strong>TimestampDevice</strong> (HistoryValue API) is the master reference clock T. ' +
+            'Deviation = Attr.TimestampDevice &minus; T.</div>';
+
+        html += '<table class="pt-matrix"><thead><tr>' +
+            '<th style="width:28px;text-align:center;">#</th>' +
+            '<th>DataLogger Attribute</th>' +
+            '<th style="text-align:center;">Event Type</th>' +
+            '<th style="text-align:right;">Value</th>' +
+            '<th>TimestampDevice (T)</th>' +
+            '<th>TimestampEvent</th>' +
+            '<th style="text-align:center;">Attrs responded</th>' +
+            '</tr></thead><tbody>';
+
+        an.dlEvents.forEach(function (ev, i) {
+            var isPick = ev.type === 'Pickup', T = ev.tsDev.getTime();
+            var res = an.attrDevs.filter(function (d) { return d.dlTsDev.getTime() === T; });
+            var fl = res.filter(function (d) { return d.flag; }).length;
+            var wn = res.filter(function (d) { return d.warn; }).length;
+            var rb = res.length
+                ? '<span style="background:' + (fl ? '#fee2e2' : wn ? '#fff3e0' : '#d1fae5') + ';color:' + (fl ? '#c62828' : wn ? '#e65100' : '#2e7d32') + ';padding:1px 8px;border-radius:3px;font-size:10.5px;font-weight:700;">' +
+                res.length + ' attr' + (res.length > 1 ? 's' : '') + (fl ? ' &#9888;' + fl : wn ? ' ~' + wn : '') + '</span>'
+                : '<span style="color:#ccc;">0</span>';
+
+            html += '<tr style="background:' + (isPick ? '#f9fff9' : i % 2 === 0 ? '#fff' : '#f9fcfd') + ';">' +
+                '<td style="text-align:center;color:#6b8c94;padding:7px 8px;">' + (i + 1) + '</td>' +
+                '<td style="padding:7px 12px;font-weight:700;color:#0e2f38;">' +
+                (ev.attrNames && ev.attrNames.length > 1
+                    ? _esc(ev.attrNames[0]) + '<span style="font-size:9px;color:#6b8c94;display:block;margin-top:1px;font-weight:400;">+ ' + _esc(ev.attrNames.slice(1).join(', ')) + '</span>'
+                    : _esc(ev.attrName)) +
+                '</td>' +
+                '<td style="padding:7px 8px;text-align:center;"><span class="pt-etag ' + (isPick ? 'pt-etag-up' : 'pt-etag-dn') + '">' + (isPick ? '&#9650; Pickup' : '&#9660; Drop') + '</span></td>' +
+                '<td style="padding:7px 8px;text-align:right;font-family:Consolas,monospace;font-weight:700;color:#0e2f38;">' + ev.value + '</td>' +
+                '<td style="padding:7px 12px;"><span class="pt-ts">' + _ptFmt(ev.tsDev) + '</span><span class="pt-ts-ms">.' + _ptMs(ev.tsDev) + '</span></td>' +
+                '<td style="padding:7px 12px;">' + (ev.tsEv ? '<span class="pt-ts">' + _ptFmt(ev.tsEv) + '</span>' : '<span style="color:#ccc;">&#8212;</span>') + '</td>' +
+                '<td style="padding:7px 8px;text-align:center;">' + rb + '</td>' +
+                '</tr>';
+        });
+        return html + '</tbody></table>';
+    }
+
+    // ── PANE 2: All Attributes ─────────────────────────────────────
+    function _ptAttrList(an) {
+        if (!an.attributes.length)
+            return '<div class="pt-empty"><div class="pt-empty-icon">&#128203;</div><div class="pt-empty-title">No attributes</div></div>';
+
+        var html = '<table class="pt-matrix"><thead><tr>' +
+            '<th style="width:28px;text-align:center;">#</th>' +
+            '<th>Attribute</th>' +
+            '<th style="text-align:center;">Source</th>' +
+            '<th style="text-align:right;">Last Value</th>' +
+            '<th>Last TimestampDevice</th>' +
+            '<th style="text-align:center;">Values in period</th>' +
+            '<th style="text-align:center;">Max Deviation</th>' +
+            '</tr></thead><tbody>';
+
+        an.attributes.forEach(function (attr, i) {
+            var myD = an.attrDevs.filter(function (d) { return d.attrId === attr.attrId && !d.warn; });
+            var mxD = myD.length ? Math.max.apply(null, myD.map(function (d) { return d.devSec; })) : null;
+            var warnEntries = an.attrDevs.filter(function (d) { return d.attrId === attr.attrId && d.warn; });
+            var hasWarnRow = warnEntries.length > 0;
+
+            // For WARN: show last known value + timestamp (not "No Response")
+            var dCell;
+            if (hasWarnRow) {
+                // pick the most recent lastKnownTs across all warn entries for this attr
+                var lk = null;
+                warnEntries.forEach(function (w) {
+                    if (w.lastKnownTs && (!lk || w.lastKnownTs > lk.ts)) {
+                        lk = { val: w.lastKnownVal, ts: w.lastKnownTs };
+                    }
+                });
+                dCell = '<div style="text-align:center;">' +
+                    '<span style="font-family:Consolas,monospace;font-size:11px;font-weight:800;color:#e65100;">&#9889; +' + PT.WARN_SEC + 's</span>';
+                if (lk) {
+                    dCell += '<div style="font-family:Consolas,monospace;font-size:11px;font-weight:700;color:#92400e;margin-top:1px;">' + lk.val + '</div>' +
+                        '<div style="font-size:9px;color:#b45309;font-family:Consolas,monospace;">' + _ptFmt(lk.ts) + '</div>';
+                }
+                dCell += '</div>';
+            } else if (mxD !== null) {
+                dCell = '<span style="font-family:Consolas,monospace;font-size:12px;font-weight:800;color:#2e7d32;">' + mxD.toFixed(1) + 's &#10003;</span>';
+            } else {
+                dCell = '<span style="color:#ccc;">&#8212;</span>';
+            }
+
+            var vH = '<span style="color:#ccc;">&#8212;</span>';
+            if (attr.lastValue !== null && attr.lastValue !== undefined) {
+                if (attr.isDL) {
+                    vH = (attr.lastValue === 1 || attr.lastValue === 1.0) ? '<span class="pt-etag pt-etag-up">&#9650; Pickup</span>' :
+                        (attr.lastValue === 0 || attr.lastValue === 0.0) ? '<span class="pt-etag pt-etag-dn">&#9660; Drop</span>' :
+                            '<strong style="font-family:Consolas,monospace;color:#145f78;">' + attr.lastValue + '</strong>';
+                } else {
+                    vH = '<strong style="font-family:Consolas,monospace;color:#0e2f38;">' + attr.lastValue + '</strong>';
+                }
+            }
+
+            html += '<tr style="background:' + (i % 2 === 0 ? '#fff' : '#f9fcfd') + ';">' +
+                '<td style="text-align:center;color:#6b8c94;padding:7px 8px;">' + (i + 1) + '</td>' +
+                '<td style="padding:7px 12px;font-weight:700;color:#0e2f38;">' + _esc(attr.name) + (attr.isDL ? '<span class="pt-dl-tag">DL</span>' : '') + '</td>' +
+                '<td style="padding:7px 8px;text-align:center;">' + (attr.isDL ? '<span class="pt-dl-tag">DataLogger</span>' : '<span class="pt-rdpms-tag">RDPMS</span>') + '</td>' +
+                '<td style="padding:7px 12px;text-align:right;">' + vH + '</td>' +
+                '<td style="padding:7px 12px;">' + (attr.lastTsDev ? '<span class="pt-ts">' + _ptFmt(attr.lastTsDev) + '</span><span class="pt-ts-ms">.' + _ptMs(attr.lastTsDev) + '</span>' : '<span style="color:#ccc;">&#8212;</span>') + '</td>' +
+                '<td style="padding:7px 8px;text-align:center;font-family:Consolas,monospace;font-weight:700;color:#0e5068;">' + attr.vals.length + '</td>' +
+                '<td style="padding:7px 8px;text-align:center;">' + dCell + '</td>' +
+                '</tr>';
+        });
+        return html + '</tbody></table>';
+    }
+
+    // ── DL events quick-popup (badge click in summary) ─────────────
+    function _ptShowDLEvents(assetId, filterType, evt) {
+        if (evt) evt.stopPropagation();
+        var r = PT.data[String(assetId)]; if (!r) return;
+        var an = r.analysis || _ptAnalyse(r.raw), a = r.asset;
+        var filtered = an.dlEvents.filter(function (ev) { return filterType === 'All' || ev.type === filterType; });
+
+        var html = '<div id="ptQuickPop" style="position:fixed;z-index:99990;background:#fff;border:1px solid #cde3ea;border-radius:6px;' +
+            'box-shadow:0 8px 28px rgba(14,80,104,.25);min-width:500px;max-width:660px;font-family:Segoe UI,Arial,sans-serif;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#0e5068;border-radius:6px 6px 0 0;">' +
+            '<span style="font-weight:700;font-size:13px;color:#fff;">' + _esc(a.assetName) + ' &mdash; ' + filterType + ' (' + filtered.length + ')</span>' +
+            '<button onclick="$(\'#ptQuickPop\').remove()" style="background:none;border:none;color:#b8dde6;cursor:pointer;font-size:16px;">&#10005;</button>' +
+            '</div><div style="overflow:auto;max-height:340px;">' +
+            '<table class="pt-matrix"><thead><tr>' +
+            '<th style="width:28px;text-align:center;">#</th>' +
+            '<th>DL Attribute</th><th style="text-align:center;">Event</th>' +
+            '<th style="text-align:right;">Value</th><th>TimestampDevice (T)</th>' +
+            '</tr></thead><tbody>';
+
+        if (!filtered.length) {
+            html += '<tr><td colspan="5" style="text-align:center;padding:24px;color:#6b8c94;">No events found.</td></tr>';
+        } else {
+            filtered.forEach(function (ev, i) {
+                var isPick = ev.type === 'Pickup';
+                html += '<tr style="background:' + (i % 2 === 0 ? '#fff' : '#f9fcfd') + ';">' +
+                    '<td style="padding:6px 8px;text-align:center;color:#6b8c94;">' + (i + 1) + '</td>' +
+                    '<td style="padding:6px 12px;font-weight:700;color:#0e2f38;">' + _esc(ev.attrName) + '</td>' +
+                    '<td style="padding:6px 8px;text-align:center;"><span class="pt-etag ' + (isPick ? 'pt-etag-up' : 'pt-etag-dn') + '">' + (isPick ? '&#9650; Pickup' : '&#9660; Drop') + '</span></td>' +
+                    '<td style="padding:6px 8px;text-align:right;font-family:Consolas,monospace;font-weight:700;color:#0e2f38;">' + ev.value + '</td>' +
+                    '<td style="padding:6px 12px;"><span class="pt-ts">' + _ptFmt(ev.tsDev) + '</span><span class="pt-ts-ms">.' + _ptMs(ev.tsDev) + '</span></td>' +
+                    '</tr>';
+            });
+        }
+        html += '</tbody></table></div></div>';
+
+        $('#ptQuickPop').remove();
+        $('body').append(html);
+        if (evt) {
+            var ex = evt.pageX || evt.clientX, ey = evt.pageY || evt.clientY;
+            $('#ptQuickPop').css({ top: ey + 10, left: Math.min(ex, window.innerWidth - 670) });
+        }
+        $(document).one('click.ptquick', function () { $('#ptQuickPop').remove(); });
+    }
+
+    // ── Export CSV ─────────────────────────────────────────────────
+    // ╔═══════════════════════════════════════════════════════════╗
+    //  DOWNLOAD HELPERS — ExcelJS (.xlsx) + CSV
+    // ╚═══════════════════════════════════════════════════════════╝
+
+    // Progress UI helpers
+    function _ptDlStart(msg) {
+        $('#ptDownloadProgress').css('display', 'inline-flex');
+        $('#ptDownloadMsg').text(msg || 'Preparing…');
+        $('#ptBtnExcel,#ptBtnCSV').prop('disabled', true).css('opacity', '.6');
+    }
+    function _ptDlMsg(msg) { $('#ptDownloadMsg').text(msg); }
+    function _ptDlDone() {
+        $('#ptDownloadProgress').hide();
+        $('#ptBtnExcel,#ptBtnCSV').prop('disabled', false).css('opacity', '1');
+    }
+
+    // Shared date formatter (plain text, no HTML)
+    function _ptXFmt(d) {
+        if (!d || isNaN(d.getTime())) return '';
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear()
+            + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+
+    // Signed deviation formatter: "-1.5" or "+2.0"
+    function _ptDevStr(devSec) {
+        if (devSec === null || devSec === undefined) return '';
+        return (devSec < 0 ? '' : '+') + devSec.toFixed(2);
+    }
+
+    // ── CSV Export ────────────────────────────────────────────────
+    function _ptExportCSV() {
+        if (!PT.assets || !PT.assets.length) {
+            CommonNotification('ERROR', 'Run analysis first.', 'error'); return;
+        }
+        _ptDlStart('Building CSV…');
+        try {
+            var rows = [];
+            // Header
+            rows.push([
+                'Asset', 'AssetType',
+                'DL Attribute', 'DL Event', 'DL TimestampDevice (T_DL)',
+                'Window Start (T_DL−' + PT.PRE_WIN + 's)', 'Window End (T_DL+' + PT.WARN_SEC + 's)',
+                'Attribute', 'Status',
+                'Attr TimestampDevice', 'Value', 'Deviation (s)',
+                'Last Known Value', 'Last Known TimestampDevice'
+            ].map(function (h) { return '"' + h + '"'; }).join(','));
+
+            PT.assets.forEach(function (a) {
+                var r = PT.data[a.assetId]; if (!r || !r.analysis) return;
+                var an = r.analysis;
+                if (!an.attrDevs.length) {
+                    rows.push(['"' + a.assetName + '"', '"' + a.assetType + '"', '', '', '', '', '', '', 'NO DATA', '', '', '', '', ''].join(','));
+                    return;
+                }
+                an.attrDevs.forEach(function (d) {
+                    var st = d.warn ? 'WARN' : (d.devSec < 0 ? 'OK (Pre)' : 'OK');
+                    rows.push([
+                        '"' + a.assetName + '"', '"' + a.assetType + '"',
+                        '"' + (d.dlAttr || '') + '"', '"' + (d.dlType || '') + '"', '"' + _ptXFmt(d.dlTsDev) + '"',
+                        '"' + _ptXFmt(d.windowStart) + '"', '"' + _ptXFmt(d.windowEnd) + '"',
+                        '"' + (d.attrName || '') + '"', '"' + st + '"',
+                        '"' + _ptXFmt(d.firstTs) + '"',
+                        d.firstVal !== null && d.firstVal !== undefined ? d.firstVal : '',
+                        _ptDevStr(d.devSec),
+                        d.lastKnownVal !== null && d.lastKnownVal !== undefined ? d.lastKnownVal : '',
+                        '"' + _ptXFmt(d.lastKnownTs) + '"'
+                    ].join(','));
+                });
+            });
+
+            _ptDlMsg('Saving…');
+            var blob = new Blob(['\uFEFF' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+            saveAs(blob, 'PanelTest_' + (PT.startFmt || 'export') + '.csv');
+            _ptDlDone();
+            CommonNotification('SUCCESS', 'CSV downloaded successfully.', 'success');
+        } catch (err) {
+            _ptDlDone();
+            CommonNotification('ERROR', 'CSV export failed: ' + err.message, 'error');
+        }
+    }
+
+    // ── Excel Export (.xlsx via ExcelJS) ─────────────────────────
+    function _ptExportExcel() {
+        if (!PT.assets || !PT.assets.length) {
+            CommonNotification('ERROR', 'Run analysis first.', 'error'); return;
+        }
+        if (typeof ExcelJS === 'undefined') {
+            CommonNotification('ERROR', 'ExcelJS not loaded. Check your internet connection.', 'error'); return;
+        }
+
+        _ptDlStart('Initialising workbook…');
+
+        // Run async in a timeout so the UI updates first
+        setTimeout(function () {
+            try {
+                var wb = new ExcelJS.Workbook();
+                wb.creator = 'RDPMS Panel Test';
+                wb.created = new Date();
+
+                // ── Shared style helpers ──────────────────────────
+                var HDR_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E5068' } };
+                var HDR_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+                var HDR_ALIGN = { vertical: 'middle', horizontal: 'center' };
+
+                var TITLE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0A3D4F' } };
+                var TITLE_FONT = { bold: true, color: { argb: 'FFFFFFFF' }, size: 13 };
+
+                var OK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+                var OK_FONT = { color: { argb: 'FF1B5E20' }, size: 10 };
+                var PRE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2FE' } };
+                var PRE_FONT = { color: { argb: 'FF0369A1' }, size: 10 };
+                var WARN_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E1' } };
+                var WARN_FONT = { color: { argb: 'FFBF360C' }, size: 10 };
+                var PK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1FAF3' } };
+                var DR_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF5F5' } };
+
+                function applyHdr(row) {
+                    row.eachCell(function (cell) {
+                        cell.fill = HDR_FILL; cell.font = HDR_FONT;
+                        cell.alignment = HDR_ALIGN;
+                        cell.border = { bottom: { style: 'thin', color: { argb: 'FF145F78' } } };
+                    });
+                    row.height = 22;
+                }
+
+                function addTitle(ws, text, colCount) {
+                    var titleRow = ws.addRow([text]);
+                    ws.mergeCells(1, 1, 1, colCount);
+                    titleRow.height = 28;
+                    titleRow.getCell(1).fill = TITLE_FILL;
+                    titleRow.getCell(1).font = TITLE_FONT;
+                    titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+                    var period = 'Period: ' + _ptXFmt(new Date(PT.startMs)) + '  →  ' + _ptXFmt(new Date(PT.endMs));
+                    period += '   |   Warn window: ' + PT.WARN_SEC + 's   |   Pre-response: ±' + PT.PRE_WIN + 's';
+                    period += '   |   Generated: ' + _ptXFmt(new Date());
+                    var subRow = ws.addRow([period]);
+                    ws.mergeCells(2, 1, 2, colCount);
+                    subRow.height = 16;
+                    subRow.getCell(1).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+                    subRow.getCell(1).alignment = { horizontal: 'center' };
+                    ws.addRow([]); // blank spacer
+                }
+
+                // ══════════════════════════════════════════════════
+                // SHEET 1 — SUMMARY
+                // ══════════════════════════════════════════════════
+                _ptDlMsg('Building Summary…');
+                var ws1 = wb.addWorksheet('Summary');
+                ws1.columns = [
+                    { key: 'asset', width: 22 }, { key: 'type', width: 12 },
+                    { key: 'status', width: 10 }, { key: 'dlev', width: 10 },
+                    { key: 'pick', width: 10 }, { key: 'drop', width: 10 },
+                    { key: 'maxDev', width: 14 }, { key: 'warned', width: 10 },
+                    { key: 'preResp', width: 12 }, { key: 'postResp', width: 12 },
+                    { key: 'lastTs', width: 22 }, { key: 'err', width: 30 }
+                ];
+                addTitle(ws1, 'Panel Test — Summary', 12);
+                var hdr1 = ws1.addRow([
+                    'Asset', 'Asset Type', 'Status',
+                    'DL Events', 'Pickups', 'Drops',
+                    'Max Dev (s)', 'WARN Count', 'Pre-Resp (−s)', 'Post-Resp (+s)',
+                    'Latest DeviceTime', 'Error'
+                ]);
+                applyHdr(hdr1);
+                ws1.views = [{ state: 'frozen', ySplit: 4 }];
+
+                PT.assets.forEach(function (a) {
+                    var r = PT.data[a.assetId]; if (!r || !r.analysis) return;
+                    var an = r.analysis;
+                    var warnCnt = an.attrDevs.filter(function (d) { return d.warn; }).length;
+                    var preCnt = an.attrDevs.filter(function (d) { return !d.warn && d.devSec < 0; }).length;
+                    var postCnt = an.attrDevs.filter(function (d) { return !d.warn && d.devSec >= 0; }).length;
+                    var status = an.hasWarn ? 'WARN' : (an.totalEvents > 0 ? 'OK' : '—');
+                    var row = ws1.addRow([
+                        a.assetName, a.assetType, status,
+                        an.totalEvents, an.pickups, an.drops,
+                        an.maxDevSec !== null ? +an.maxDevSec.toFixed(2) : '',
+                        warnCnt, preCnt, postCnt,
+                        _ptXFmt(an.lastTsDev), r.err || ''
+                    ]);
+                    if (status === 'WARN') {
+                        row.getCell(3).fill = WARN_FILL; row.getCell(3).font = WARN_FONT;
+                    } else if (status === 'OK') {
+                        row.getCell(3).fill = OK_FILL; row.getCell(3).font = OK_FONT;
+                    }
+                    row.eachCell(function (c) { c.alignment = { vertical: 'middle', horizontal: 'center' }; });
+                    row.getCell(1).alignment = { horizontal: 'left' };
+                });
+
+                // ══════════════════════════════════════════════════
+                // SHEET 2 — DEVIATIONS
+                // ══════════════════════════════════════════════════
+                _ptDlMsg('Building Deviations…');
+                var ws2 = wb.addWorksheet('Deviations');
+                ws2.columns = [
+                    { width: 22 }, { width: 12 }, { width: 20 }, { width: 10 }, { width: 22 },
+                    { width: 22 }, { width: 22 }, { width: 20 }, { width: 8 }, { width: 22 },
+                    { width: 12 }, { width: 12 }, { width: 22 }, { width: 12 }
+                ];
+                addTitle(ws2, 'Panel Test — Deviation Detail', 14);
+                var hdr2 = ws2.addRow([
+                    'Asset', 'Asset Type',
+                    'DL Attribute', 'DL Event', 'DL TimestampDevice (T_DL)',
+                    'Window Start', 'Window End',
+                    'Attribute', 'Status',
+                    'Attr TimestampDevice', 'Value', 'Deviation (s)',
+                    'Last Known TimestampDevice', 'Last Known Value'
+                ]);
+                applyHdr(hdr2);
+                ws2.views = [{ state: 'frozen', ySplit: 4 }];
+
+                PT.assets.forEach(function (a) {
+                    var r = PT.data[a.assetId]; if (!r || !r.analysis) return;
+                    var an = r.analysis;
+                    if (!an.attrDevs.length) {
+                        var noRow = ws2.addRow([a.assetName, a.assetType, '', '', '', '', '', '', 'NO DATA', '', '', '', '', '']);
+                        noRow.getCell(9).font = { italic: true, color: { argb: 'FF94A3B8' } };
+                        return;
+                    }
+                    an.attrDevs.forEach(function (d) {
+                        var isPre = !d.warn && d.devSec < 0;
+                        var st = d.warn ? 'WARN' : (isPre ? 'OK (Pre)' : 'OK');
+                        var row = ws2.addRow([
+                            a.assetName, a.assetType,
+                            d.dlAttr, d.dlType, _ptXFmt(d.dlTsDev),
+                            _ptXFmt(d.windowStart), _ptXFmt(d.windowEnd),
+                            d.attrName, st,
+                            _ptXFmt(d.firstTs),
+                            d.firstVal !== null && d.firstVal !== undefined ? d.firstVal : '',
+                            d.devSec !== null ? +_ptDevStr(d.devSec) : '',
+                            _ptXFmt(d.lastKnownTs),
+                            d.lastKnownVal !== null && d.lastKnownVal !== undefined ? d.lastKnownVal : ''
+                        ]);
+                        var stCell = row.getCell(9);
+                        if (d.warn) { stCell.fill = WARN_FILL; stCell.font = Object.assign({ bold: true }, WARN_FONT); }
+                        else if (isPre) { stCell.fill = PRE_FILL; stCell.font = PRE_FONT; }
+                        else { stCell.fill = OK_FILL; stCell.font = OK_FONT; }
+                        row.eachCell(function (c) { c.alignment = { vertical: 'middle', horizontal: 'center' }; });
+                        row.getCell(1).alignment = { horizontal: 'left' };
+                        row.getCell(8).alignment = { horizontal: 'left' };
+                    });
+                });
+
+                // ══════════════════════════════════════════════════
+                // SHEET 3 — DL EVENTS
+                // ══════════════════════════════════════════════════
+                _ptDlMsg('Building DL Events…');
+                var ws3 = wb.addWorksheet('DL Events');
+                ws3.columns = [
+                    { width: 22 }, { width: 12 }, { width: 22 }, { width: 10 },
+                    { width: 8 }, { width: 22 }, { width: 22 },
+                    { width: 14 }, { width: 10 }
+                ];
+                addTitle(ws3, 'Panel Test — DataLogger Events', 9);
+                var hdr3 = ws3.addRow([
+                    'Asset', 'Asset Type',
+                    'DL Attribute(s)', 'Event Type', 'Value',
+                    'TimestampDevice (T_DL)', 'TimestampEvent',
+                    'Attrs Responded', 'Warned'
+                ]);
+                applyHdr(hdr3);
+                ws3.views = [{ state: 'frozen', ySplit: 4 }];
+
+                PT.assets.forEach(function (a) {
+                    var r = PT.data[a.assetId]; if (!r || !r.analysis) return;
+                    var an = r.analysis;
+                    an.dlEvents.forEach(function (ev) {
+                        var T = ev.tsDev.getTime();
+                        var res = an.attrDevs.filter(function (d) { return d.dlTsDev.getTime() === T; });
+                        var row = ws3.addRow([
+                            a.assetName, a.assetType,
+                            (ev.attrNames || [ev.attrName]).join(', '),
+                            ev.type,
+                            ev.value !== undefined ? ev.value : '',
+                            _ptXFmt(ev.tsDev), _ptXFmt(ev.tsEv),
+                            res.filter(function (d) { return !d.warn; }).length,
+                            res.filter(function (d) { return d.warn; }).length
+                        ]);
+                        var fill = ev.type === 'Pickup' ? PK_FILL : DR_FILL;
+                        row.eachCell(function (c) { c.fill = fill; c.alignment = { vertical: 'middle', horizontal: 'center' }; });
+                        row.getCell(1).alignment = { horizontal: 'left' };
+                        // Colour event type cell
+                        row.getCell(4).font = { bold: true, color: { argb: ev.type === 'Pickup' ? 'FF2E7D32' : 'FFC62828' } };
+                    });
+                });
+
+                // ══════════════════════════════════════════════════
+                // SHEET 4 — ATTRIBUTE VALUES
+                // ══════════════════════════════════════════════════
+                _ptDlMsg('Building Attribute Values…');
+                var ws4 = wb.addWorksheet('Attribute Values');
+                ws4.columns = [
+                    { width: 22 }, { width: 12 }, { width: 22 }, { width: 12 },
+                    { width: 14 }, { width: 22 }, { width: 14 }, { width: 14 }, { width: 10 }
+                ];
+                addTitle(ws4, 'Panel Test — Attribute Values Snapshot', 9);
+                var hdr4 = ws4.addRow([
+                    'Asset', 'Asset Type', 'Attribute', 'Source',
+                    'Last Value', 'Last TimestampDevice',
+                    'Values in Period', 'Max Deviation (s)', 'Status'
+                ]);
+                applyHdr(hdr4);
+                ws4.views = [{ state: 'frozen', ySplit: 4 }];
+
+                PT.assets.forEach(function (a) {
+                    var r = PT.data[a.assetId]; if (!r || !r.analysis) return;
+                    var an = r.analysis;
+                    an.attributes.forEach(function (attr) {
+                        var myD = an.attrDevs.filter(function (d) { return d.attrId === attr.attrId; });
+                        var hasWarn = myD.some(function (d) { return d.warn; });
+                        var okDevs = myD.filter(function (d) { return !d.warn && d.devSec !== null; });
+                        var mxD = okDevs.length ? Math.max.apply(null, okDevs.map(function (d) { return Math.abs(d.devSec); })) : null;
+                        var mxSt = myD.length === 0 ? '—' : hasWarn ? 'WARN' : 'OK';
+                        var row = ws4.addRow([
+                            a.assetName, a.assetType,
+                            attr.name, attr.isDL ? 'DataLogger' : 'RDPMS',
+                            (attr.lastValue !== null && attr.lastValue !== undefined) ? attr.lastValue : '',
+                            _ptXFmt(attr.lastTsDev),
+                            attr.vals.length,
+                            mxD !== null ? +mxD.toFixed(2) : '',
+                            mxSt
+                        ]);
+                        if (hasWarn) {
+                            row.getCell(9).fill = WARN_FILL; row.getCell(9).font = WARN_FONT;
+                        } else if (mxSt === 'OK') {
+                            row.getCell(9).fill = OK_FILL; row.getCell(9).font = OK_FONT;
+                        }
+                        row.eachCell(function (c) { c.alignment = { vertical: 'middle', horizontal: 'center' }; });
+                        row.getCell(1).alignment = { horizontal: 'left' };
+                        row.getCell(3).alignment = { horizontal: 'left' };
+                    });
+                });
+
+                // ── Write and save ────────────────────────────────
+                _ptDlMsg('Saving .xlsx…');
+                var fname = 'PanelTest_' + (PT.startFmt || 'export') + '.xlsx';
+                wb.xlsx.writeBuffer().then(function (buffer) {
+                    saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fname);
+                    _ptDlDone();
+                    CommonNotification('SUCCESS', 'Excel downloaded — 4 sheets.', 'success');
+                }).catch(function (err) {
+                    _ptDlDone();
+                    CommonNotification('ERROR', 'Excel write failed: ' + err.message, 'error');
+                });
+
+            } catch (err) {
+                _ptDlDone();
+                CommonNotification('ERROR', 'Excel export failed: ' + err.message, 'error');
+            }
+        }, 60); // small delay so _ptDlStart renders
+    }
+
+    // ── Legacy date parser (for Watchlist date string → ms) ────────
+    function _ptLegacyDateMs(raw, isStart) {
+        raw = $.trim(raw || ''); if (!raw) return 0;
+        var m, dy, mo, yr, hh = '00', mi = '00', ss = '00';
+        m = raw.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+        if (m) { dy = m[3]; mo = m[2]; yr = m[1]; hh = m[4]; mi = m[5]; ss = m[6]; }
+        else {
+            m = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+            if (m) { if (+m[1] > 12) { dy = m[1]; mo = m[2]; } else { dy = m[2]; mo = m[1]; } yr = m[3]; hh = m[4]; mi = m[5]; ss = m[6]; }
+        }
+        if (!dy || !mo || !yr) return 0;
+        var p = function (n, d) { return parseInt(n || d || 0, 10); };
+        var date = new Date(p(yr), p(mo) - 1, p(dy), p(hh, isStart ? 0 : 23), p(mi, isStart ? 0 : 59), p(ss, isStart ? 0 : 59));
+        return isNaN(date.getTime()) ? 0 : date.getTime();
+    }
+
+    // ── Format helpers ─────────────────────────────────────────────
+    function _ptMs(d) { return String(d.getMilliseconds()).padStart(3, '0'); }
+    function _ptFmt(d) {
+        if (!d || isNaN(d.getTime())) return '&#8212;';
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    function _ptFmtShort(d) {
+        if (!d || isNaN(d.getTime())) return '&#8212;';
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    function _ptFmtTime(d) {
+        if (!d || isNaN(d.getTime())) return '&#8212;';
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+    function _ptFmtMs(d) {
+        if (!d || isNaN(d.getTime())) return '&#8212;';
+        var p = function (n) { return String(n).padStart(2, '0'); };
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + '.' + _ptMs(d);
+    }
+    function _esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+    function _escJs(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
+    // ╚═══════════════════════════════════════════════════════════╝
+    //  END PANEL TEST
+
+
+
+
+
+</script>

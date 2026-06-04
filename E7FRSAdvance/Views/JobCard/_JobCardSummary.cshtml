@@ -1,0 +1,346 @@
+﻿@model Domain.JobCard
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal fade" id="modal-jobcard-summary" role="dialog" aria-labelledby="modal-jobcard-summary" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Jobcard Summary</span></h4>
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close" data-bs-original-title="" title=""></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                @{
+                    List<DateTime> mindates = new List<DateTime>();
+
+                    var mDescriptions = Model.mJobCardDescriptions.GroupBy(x => x.CreatedDate).ToList();
+                    if (mDescriptions != null && mDescriptions.Count > 0)
+                    {
+                        mindates.AddRange(mDescriptions.Select(x => x.Key));
+                    }
+
+                    var mJobCardStatuses = Model.mJobCardStatuses.GroupBy(x => x.CreatedDate).ToList();
+                    if (mJobCardStatuses != null && mJobCardStatuses.Count > 0)
+                    {
+                        mindates.AddRange(mJobCardStatuses.Select(x => x.Key));
+                    }
+                    int counter = 1;
+                }
+
+                @if (mindates != null && mindates.Count > 0)
+                {
+                    var createdDates = mindates.GroupBy(x => x.Date).Select(x => x.Key).OrderBy(x => x).ToList();
+                    if (createdDates != null && createdDates.Count > 0)
+                    {
+                        foreach (var createdDate in createdDates)
+                        {
+                            <table class='table' width='100%' style='margin-bottom:10px;'>
+                                <tr>
+                                    <td><b>Date</b> :<u><b>@createdDate.ToShortDateString()</b></u></td>
+                                </tr>
+                            </table>
+
+                            var mJobCardDescriptions = Model.mJobCardDescriptions.Where(x => x.CreatedDate.Date == createdDate.Date).ToList();
+                            if (mJobCardDescriptions != null && mJobCardDescriptions.Count() > 0)
+                            {
+                                foreach (var item in mJobCardDescriptions)
+                                {
+                                    <table class="table" width='100%' style='margin-bottom:10px;'>
+                                        <tr>
+                                            <td class='table-border' width='50%'><b>Daily Work</b> : @item.DailyWork</td>
+                                            <td class='table-border' width='50%'><b>Remark</b> : @item.Remark</td>
+                                        </tr>
+                                    </table>
+                                }
+
+                            }
+
+                            if (Model.mJobCardStatuses.Where(x => x.CreatedDate.Date == createdDate.Date).Count() > 0)
+                            {
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5>Status</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <table class="table">
+                                            @*<tr>
+                <td class='table-border' style='text-align:center; font-size:20px;' colspan='3'><b>Summary</b></td>
+            </tr>*@
+                                            <thead class="bg-primary">
+                                                <tr>
+                                                    <th style='text-align:center'>Timestamp</th>
+                                                    <th style='text-align:center'>Status</th>
+                                                    <th style='text-align:center'>Remark</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var item in Model.mJobCardStatuses.Where(x => x.CreatedDate.Date == createdDate.Date).ToList())
+                                                {
+                                                    <tr>
+                                                        <td style='text-align:center'>@item.CreatedDate.ToString()</td>
+                                                        @if (item.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Start)
+                                                        {
+
+                                                            <td style='text-align:center'>Start</td>
+                                                        }
+                                                        else if (item.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Pause)
+                                                        {
+
+                                                            <td style='text-align:center'>Pause</td>
+                                                        }
+                                                        else if (item.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.PauseStart)
+                                                        {
+
+                                                            <td style='text-align:center'>Resume</td>
+                                                        }
+                                                        else if (item.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardStatusType.Stop)
+                                                        {
+
+                                                            <td style='text-align:center'>Stop</td>
+                                                        }
+
+                                                        <td style='text-align:center'>@item.Description</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+
+                                        </table>
+                                    </div>
+                                </div>
+
+                            }
+
+                        }
+                    }
+                }
+
+                @if (Model.mJobCardOverallTargets != null && Model.mJobCardOverallTargets.Count() > 0)
+                {
+                    <table class='table-border mt-5' width='100%'>
+                        <tr>
+                            <td class='table-border' style='text-align:center; margin-bottom:15px; font-size:20px;' colspan='8'><b>Overall Target</b></td>
+                        </tr>
+
+                    </table>
+                    if (Model != null && Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.LinkIssue).Count() > 0)
+                    {
+                        <div class="col-sm-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5>Link Issue</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <thead class="bg-primary">
+                                            <tr>
+                                                <th>Sr no.</th>
+                                                <th>DeviceName</th>
+                                                <th>A10Id</th>
+                                                <th>LastAccesstime</th>
+                                                <th>TimeStamp</th>
+                                                <th>Is Resolved</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var item in Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.LinkIssue).ToList())
+                                            {
+                                                <tr class="table-light">
+                                                    <td>@counter</td>
+                                                    <td>@item.Cluster</td>
+                                                    <td>@item.ADCId</td>
+                                                    <td>@*@item.LastAccesstime*@</td>
+                                                    <td>
+                                                        @*@item.TimeStamp.ToString()*@
+                                                    </td>
+                                                    <td>
+                                                        @if (item.IsResolved)
+                                                        {
+                                                            @*<input type="checkbox" class="clsoveralltargetsUpdateStatus" data-id="@item.Id" checked disabled />*@
+                                                            <i class="fa fa-check text-success f-24" aria-hidden="true"></i>
+                                                        }
+
+                                                    </td>
+                                                </tr>
+                                                counter++;
+                                            }
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+
+                    if (Model != null && Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.WatchLists).Count() > 0)
+                    {
+                        <div class="col-sm-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5>Watchlist</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <thead class="bg-primary">
+                                            <tr>
+                                                <th>Sr no.</th>
+                                                <th>AssetType</th>
+                                                <th>Asset</th>
+                                                <th>Attribute</th>
+                                                <th>Cluster</th>
+                                                <th>Card</th>
+                                                <th>ADC</th>
+                                                <th>Pin</th>
+                                                <th>Value</th>
+                                                <th>Date</th>
+                                                <th>Is Resolved</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="tbodyOverallSitekippingWatchLists@(ViewBag.JobCardId)">
+                                            @foreach (var item in Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.WatchLists).ToList())
+                                            {
+                                                <tr class="table-light" data-id="@item.Id">
+                                                    <td>@counter</td>
+                                                    <td>@item.AssetTypeName</td>
+                                                    <td>@item.AssetName</td>
+                                                    <td>@item.AttributeName</td>
+                                                    <td>@item.Cluster</td>
+                                                    <td>@item.Card</td>
+                                                    <td>@item.ADCId</td>
+                                                    <td>@item.Pin</td>
+                                                    <td>@item.Value</td>
+                                                    <td>@item.TimeStamp</td>
+                                                    <td>
+                                                        @if (item.IsResolved)
+                                                        {
+                                                            @*<input type="checkbox" class="clsoveralltargetsUpdateStatus" data-id="@item.Id" checked disabled />*@
+                                                            <i class="fa fa-check text-success f-24" aria-hidden="true"></i>
+                                                        }
+
+                                                    </td>
+                                                </tr>
+                                                counter++;
+                                            }
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+
+                    if (Model != null && Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.FRSWatchList).Count() > 0)
+                    {
+                        <div class="col-sm-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5>FRS Watch List</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <thead class="bg-primary">
+                                            <tr>
+                                                <th>Sr no.</th>
+                                                <th>Asset Type</th>
+                                                <th>Asset</th>
+                                                <th>CauseCode</th>
+                                                <th>Date</th>
+                                                <th>Is Resolved</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="tbodyLast30SitekippingAlert@(ViewBag.JobCardId)">
+                                            @foreach (var item in Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.FRSWatchList).ToList())
+                                            {
+                                                <tr class="table-light" data-id="@item.Id">
+                                                    <td>@counter</td>
+                                                    <td>@item.AssetTypeName</td>
+                                                    <td>@item.AssetName</td>
+                                                    <td>@item.CauseCode</td>
+                                                    <td>@item.TimeStamp</td>
+                                                    <td>
+                                                        @if (item.IsResolved)
+                                                        {
+                                                            @*<input type="checkbox" class="clsoveralltargetsUpdateStatus" data-id="@item.Id" checked disabled />*@
+                                                            <i class="fa fa-check text-success f-24" aria-hidden="true"></i>
+                                                        }
+
+                                                    </td>
+                                                </tr>
+                                                counter++;
+                                            }
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+                    if (Model != null && Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.Manually).Count() > 0)
+                    {
+                        <div class="col-sm-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5>Manually</h5>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <thead class="bg-primary">
+                                            <tr>
+                                                <th>Sr no.</th>
+                                                <th>Issue Type</th>
+                                                <th>Asset Type</th>
+                                                <th>Asset</th>
+                                                <th>Attribute</th>
+                                                <th>Message</th>
+                                                <th>TimeStamp</th>
+                                                <th>Is Resolved</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="tbodyManuallySitekipping@(ViewBag.JobCardId)">
+                                            @foreach (var item in Model.mJobCardOverallTargets.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.JobCardOverallTargetType.Manually).ToList())
+                                            {
+                                                <tr class="table-light" data-id="@item.Id">
+                                                    <td>@counter</td>
+                                                    <td>@item.IssueType</td>
+                                                    <td>@item.AssetTypeName</td>
+                                                    <td>@item.AssetName</td>
+                                                    <td>@item.AttributeName</td>
+                                                    <td>@item.Message</td>
+                                                    <td>@item.TimeStamp.ToString()</td>
+                                                    <td>
+                                                        @if (item.IsResolved)
+                                                        {
+                                                            @*<input type="checkbox" class="clsoveralltargetsUpdateStatus" data-id="@item.Id" checked disabled />*@
+                                                            <i class="fa fa-check text-success f-24" aria-hidden="true"></i>
+                                                        }
+
+                                                    </td>
+                                                </tr>
+                                                counter++;
+                                            }
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+
+
+                }
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" aria-label="Close">Close</a>
+            </div>
+        </div>
+    </div>
+
+</div>

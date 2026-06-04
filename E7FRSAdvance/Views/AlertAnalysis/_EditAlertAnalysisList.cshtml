@@ -1,0 +1,219 @@
+﻿@model Domain.SMSLogLister
+<!--Site view-->
+<style>
+    .collapsed .icon-class:before {
+        content: '>';
+    }
+
+    .icon-class:before {
+        content: 'v';
+    }
+
+    .table > :not(:last-child) > :last-child > * {
+        border-bottom-color: #87c7d9 !important;
+    }
+
+    .MainTh {
+        background-color: #7fcde22e !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .SubTh {
+        background-color: #f4f6fc !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+</style>
+
+<div class="modal bounceIn animated" id="modalProbabilityAlert" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                @if (Model != null && Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span>Alert Log - @Model.mSMSLogs.Select(x => x.SiteName).FirstOrDefault()</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title" id="myModalLabel">Alert Log</h4>
+                }
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+
+                    <div class="col-sm-12" id="model-div">
+                        <div class="row">
+                            <div class="col-sm-12">
+                                @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                {
+                                    <div class="mail-body-wrapper">
+                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" class="modal-fixed-height">
+                                            @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                            {
+                                                foreach (var asset in Model.mSMSLogs.GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                {
+                                                    var smsAssetCount = Model.mSMSLogs.Where(x => x.AssetId == asset.AssetId).Count();
+                                                    <li class="inbox-data" style="background-color: white !important;">
+                                                        <div class="mail-body-wrapper" style="width:100%">
+                                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                <li class="inbox-data" style="background-color:#4bacc6">
+                                                                    <div class="inbox-message">
+                                                                        <div class="email-data">
+                                                                            <span style="float: left; color: white;">@asset.AssetName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                        </div>
+                                                                        <div class="row pull-right">
+                                                                            <div class="col-lg-2">
+                                                                                <select class="form-control clsDrpAlertType" data-siteid="@Model.SearchCriteria.SiteId" data-alerttypeid="@Model.SearchCriteria.AlertTypeId" data-assetid="@asset.AssetId" title="Alert is valid or not" id="drpAlertType@(asset.AssetId)@(Model.SearchCriteria.AlertTypeId)" onchange="fnChangeAlertType(this, '@asset.AssetId', '@Model.SearchCriteria.AlertTypeId'); return false;">
+                                                                                    <option value="True">True Alert</option>
+                                                                                    <option value="False" selected>False Alert</option>
+                                                                                </select>
+                                                                            </div>
+                                                                            <div class="col-lg-5">
+                                                                                <textarea placeholder="Remark" rows="1" class="form-control" id="txtAlertRemark@(asset.AssetId)@(Model.SearchCriteria.AlertTypeId)"></textarea>
+                                                                            </div>
+                                                                            <div class="col-lg-4">
+                                                                                <button type="button" class="btn btn-warning" onclick="fnUpdateTabulationRemark('@Model.SearchCriteria.SiteId','@asset.AssetId','@Model.SearchCriteria.AlertTypeId')">Update Remark</button>
+                                                                            </div>
+                                                                            <div class="col-lg-1">
+                                                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceAlertLogAsset('@asset.AssetId', this); return false;"></i></a>
+
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </li>
+
+                                                                @foreach (var smsLog in Model.mSMSLogs.Where(x => x.AssetId == asset.AssetId).ToList())
+                                                                {
+
+                                                                    <li class="inbox-data maintenaceALertLogByAsset_@(asset.AssetId)" style="display:none">
+                                                                        <div class="inbox-message">
+                                                                            <div class="email-data">
+                                                                                <span onclick="fnGetAssetAttribute('@smsLog.SiteName','@smsLog.AssetId','@smsLog.AssetTypeId')">@smsLog.Message</span>
+                                                                                @if (smsLog.IsSmsLogActive == true)
+                                                                                {
+                                                                                    <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                                }
+                                                                                <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                                @if (smsLog.AssetTypeName == "TRACK" && smsLog.Message.Contains("trk " + smsLog.AssetName + " Failed"))
+                                                                                {
+                                                                                    <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+                                                                                }
+
+
+                                                                            </div>
+                                                                            <div class="email-timing"><span>@smsLog.TimeStamp.ToString()</span></div>
+
+                                                                        </div>
+                                                                    </li>
+                                                                }
+                                                            </ul>
+                                                        </div>
+                                                    </li>
+                                                }
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @*<button type="button" class="btn btn-warning" onclick="fnUpdateAllTabulationRemark()">Update All Remarks</button>*@
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function fnChangeAlertType($this, assetId, alertTypeId) {
+        if ($($this).val() == 'True') {
+            $('#txtAlertRemark' + assetId + alertTypeId).attr("disabled", "disabled");
+            $('#txtAlertRemark' + assetId + alertTypeId).val('')
+        } else {
+            $('#txtAlertRemark' + assetId + alertTypeId).removeAttr("disabled");
+        }
+    }
+
+    function fnShowMaintenaceAlertLogAsset(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAsset_' + assetId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAsset_' + assetId).hide();
+            }
+        }
+    }
+
+    function fnUpdateTabulationRemark(siteId, assetId, alertId) {
+        var AlertAudit = {};
+        var isValid = true;
+        AlertAudit.SiteId = siteId
+        AlertAudit.AssetId = assetId
+        AlertAudit.AlertId = alertId;
+        AlertAudit.Remark = $('#txtAlertRemark' + assetId + alertId).val();
+
+        if ($("#drpAlertType" + assetId + alertId).val() == 'True') {
+            AlertAudit.IsAlert = true;
+            AlertAudit.Remark = '';
+        } else {
+            AlertAudit.IsAlert = false;
+        }
+        AlertAudit.IsOpenClose = true;
+
+
+        if (!AlertAudit.IsAlert && (AlertAudit.Remark == null || AlertAudit.Remark == undefined || AlertAudit.Remark == '')) {
+            isValid = false;
+            alert('Remark is required!')
+        }
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/UpdateTabulationAlertRemark',
+                type: 'Post',
+                data: '{mAlertAudit:' + JSON.stringify(AlertAudit) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        debugger
+                        //$('#modalProbabilityAlert').modal('hide');
+                        $("#drpAlertType" + assetId + alertId).val('False');
+                        $('#txtAlertRemark' + assetId + alertId).removeAttr("disabled");
+                        $('#txtAlertRemark' + assetId + alertId).val('')
+
+                        if (data.type == "success") {
+                            alert("Alert remark has been Update")
+                            //CommonNotification("SUCCESS", data.result, "success");
+                        } else {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+</script>

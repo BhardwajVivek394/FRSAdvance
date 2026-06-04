@@ -1,0 +1,234 @@
+﻿@model Domain.MomentLister
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+@Html.HiddenFor(x => x.SearchCriteria.StartDate)
+@Html.HiddenFor(x => x.SearchCriteria.EndDate)
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row mt-3">
+                        <div class="col-sm-2 mb15">
+                            <label>Site</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", id = "smSiteId", tabindex = 1 })
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            <label>Asset</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.AssetId, new SelectList(Model.Assets, "Id", "Name"), "Select", new { @class = "form-control", id = "smAssetId", tabindex = 1 })
+
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            <label>Search Date</label>
+                            <input type="text" class="form-control" id="txtSearchTimeStampSM" name="SearchCriteria.TimeStamp" value="@Model.SearchCriteria.TimeStamp.ToShortDateString()" />
+
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="chart" style="width:100%">
+                    </div>
+                    <div class="apache-cotainer" id="area-SignalMoment-echart">
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var json = "";
+    var timeStampJson = "";
+    var chart;
+    $(document).ready(function () {
+        $('#smSiteId').change(function () {
+            $("#frmSignalMoment").submit();
+        });
+
+        $('#smAssetId').change(function () {
+            $("#frmSignalMoment").submit();
+        });
+
+        $('#txtSearchTimeStampSM').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtSearchTimeStampSM').val() == "@DateTime.MinValue") {
+            $('#txtSearchTimeStampSM').val('');
+        }
+
+        $('#txtSearchTimeStampSM').change(function () {
+            $("#frmSignalMoment").submit();
+        });
+
+        json = @Html.Raw(Json.Encode(Model));
+        timeStampJson = @Html.Raw(Json.Encode(Model.mMoments.GroupBy(x => x.TimeStamp).Select(x => x.Key).ToList()));
+        SignalMomentDemoChart();
+    });
+
+    function SignalMomentDemoChart() {
+        if ($('#smAssetId').val() != null && $('#smAssetId').val() != undefined && $('#smAssetId').val() != '') {
+
+            if (chart != null && chart != "" && chart != undefined) {
+                chart.dispose();
+            }
+            var DataSeriaes = [];
+            var maxV = 0;
+            var legd = [];
+            var macLeft = 0;
+            var lary = [];
+            var rary = [];
+            var xValue = [];
+            var checkValue = [];
+
+            if (json.mMoments != null && json.mMoments.length > 0) {
+                $.each(json.mMoments, function (data, val) {
+                    if ($.inArray(val.Aspect, checkValue) == -1) {
+                        legd.push(val.Aspect + " V");
+                        legd.push(val.Aspect + " mA");
+                        checkValue.push(val.Aspect);
+                    }
+                });
+                $.each(legd, function (data, val) {
+
+                    var attr = {};
+                    attr.name = val;
+                    attr.type = 'line';
+                    attr.notShowSymbol = true;
+                    attr.sampling = sampling;
+                    attr.hoverAnimation = false;
+                    attr.clip = true;
+
+                    var yaxis = {
+                        value: val,
+                    };
+                    lary.push(yaxis)
+                    attr.yAxisIndex = 0;
+
+                    attr.data = [];
+                    var values = [];
+
+
+                    $.each(json.mMoments, function (ids, valSM) {
+
+                        var dSM = parseDate(valSM.TimeStamp);
+                        var strSMDate = dSM.getHours() + ":" + dSM.getMinutes() + ":" + dSM.getSeconds();
+                        if (xValue.indexOf(strSMDate) == -1) {
+                            xValue.push(strSMDate);
+                        }
+
+                        if (val == valSM.Aspect + " V") {
+                            values.push(valSM.Voltage.toString());
+                        }
+                        else if (val == valSM.Aspect + " mA") {
+                            values.push(valSM.Current.toString());
+                        } else {
+                            values.push('0');
+                        }
+                    });
+
+
+                    if (val != "TPR V" || val != "DG V" || val != "RG V" || val != "HG V" || val != "HHG V" || val != "Tx1 V" || val != "Tx2 V" || val != "Choke V" || val != "Vr" || val != "Voltage") {
+
+                        var yLeft = Math.max.apply(Math, values); // 3
+                        if (yLeft >= macLeft) {
+                            macLeft = yLeft;
+                        }
+                    }
+
+                    attr.connectNulls = true;
+                    attr.data = values;
+                    attr.datasetIndex = legd.indexOf(val);
+                    DataSeriaes.push(attr);
+                });
+
+                //$.each(data.DateList, function (ids, val) {
+                //    xValue.push(val);
+                //});
+                chart = echarts.init(document.getElementById('area-SignalMoment-echart'));
+
+                var sampling = 'none';
+
+                chart.setOption({
+                    tooltip: {
+                        trigger: 'axis',
+                        axisPointer: {
+                            type: 'cross',
+                            label: {
+                                backgroundColor: '#6a7985'
+                            }
+                        }
+                    },
+                    legend: {
+                        data: legd,
+                        x: 'left'
+
+                    },
+                    toolbox: {
+                        show: true,
+                        feature: {
+                            mark: { show: true },
+                            dataView: { show: true, readOnly: false },
+                            magicType: { show: true, type: ['line', 'bar'] },
+                            restore: { show: true },
+                            saveAsImage: { show: true }
+                        }
+                    },
+                    grid: {
+                        left: '3%',
+                        right: '4%',
+                        bottom: '3%',
+                        containLabel: true
+                    },
+                    xAxis: [
+                        {
+                            type: 'category',
+                            boundaryGap: false,
+                            axisLine: { onZero: false },
+                            interval: 50,
+                            data: xValue,
+                        }
+                    ],
+                    yAxis: [
+                        {
+                            type: 'value',
+                            min: 0,
+                            max: macLeft,
+                            data: lary
+                        }
+                        ,
+                        {
+                            type: 'value',
+                            inverse: false,
+                            min: -1,
+                            max: maxV + 1,
+                            data: rary
+                        }
+                    ],
+                    color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"],
+
+                    series: DataSeriaes
+                });
+
+                window.onresize = chart.resize;
+                //chart.on('legendselectchanged', function (params) {
+                //    legendSelection(chart, params);
+                //});
+            }
+        }
+
+
+
+
+       // window.onresize = chart.resize;
+    }
+
+    function parseDate(date) {
+        return new Date(parseInt(/-?\d+/.exec(date)[0]))
+    }
+
+
+</script>

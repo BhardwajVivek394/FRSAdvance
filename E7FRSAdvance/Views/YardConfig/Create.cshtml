@@ -1,0 +1,247 @@
+﻿
+@{
+    ViewBag.Title = "Create";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<style>
+    .select2-container--default .select2-selection--multiple .select2-selection__choice {
+        padding: 4px 4px !important;
+        margin-top: 5px !important;
+        background-color: #4bacc6 !important;
+        border-color: #4bacc6 !important;
+        color: #fff;
+        margin-right: 6px !important;
+    }
+
+    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+        color: white;
+        cursor: pointer;
+        display: inline-block;
+        font-weight: bold;
+        margin-right: 2px;
+    }
+</style>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Create Yard Config</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="col-sm-12">
+                        <div class="pull-left">
+                            <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                        </div>
+                        <div class="pull-left">
+                            @Html.DropDownList("drpSiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                        </div>
+                        <div class="pull-left m-l-10">
+                            <button class="btn btn-success btn-add-cluster" type="button">Add</button>
+                        </div>
+               
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="divClusterList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="divCluster"></div>
+<div id="divSelectCard"></div>
+<div id="divSelectCardLine"></div>
+<script>
+    $(document).ready(function () {
+        $("#drpSiteId").change(function () {
+            fnGetClusterList($(this).val());
+        });
+
+        $(".btn-add-cluster").click(function () {
+            fnCreateCluster($("#drpSiteId").val())
+        });
+    });
+
+    function fnCreateCluster(siteId) {
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != "0") {
+            $("#loader").show();
+            $.ajax({
+                url: '/YardConfig/_CreateCluster',
+                data: '{siteId:' + siteId + '}',
+                type: 'Post',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divCluster").empty().append(data);
+                    $("#modal-add-cluster").modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+      
+    }
+
+    function fnGetClusterList(siteId) {
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != "0") {
+            $("#loader").show();
+            $.ajax({
+                url: '/YardConfig/_ClusterList',
+                data: '{siteId:' + siteId + '}',
+                type: 'Post',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divClusterList").empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+
+
+    }
+
+    function fnEditCluster(clusterId) {      
+        $("#loader").show();
+        $.ajax({
+            url: '/YardConfig/_EditCluster',
+            data: '{clusterId:' + clusterId + '}',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divCluster").empty().append(data);
+                $("#modal-add-cluster").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });        
+    }
+
+    function fnEditCard(clusterId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/YardConfig/_EditCard',
+            data: '{clusterId:' + clusterId + '}',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSelectCard").empty().append(data);
+                $("#modal-add-card").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function fnEditCardLine(clusterId, cardId, cardName) {
+        $("#loader").show();
+        $.ajax({
+            url: '/YardConfig/_EditCardLine',
+            data: '{clusterId:' + clusterId + ',cardId:' + cardId + ',siteId:' + $("#drpSiteId").val() + ',cardName:"' + cardName +'"}',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSelectCardLine").empty().append(data);
+                $("#modal-add-cardline").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    function fnDeleteCluster(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/YardConfig/Delete',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                            fnGetClusterList($("#drpSiteId").val());
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+
+    function GetAllAssetType() {
+        //$(".drpAssetType").empty();
+        //$.ajax({
+        //    url: '/YardConfig/GetAllAssetType',
+        //    type: 'Post',
+        //    contentType: 'application/json',
+        //    success: function (data) {
+        //        if (data != null && data.length > 0) {
+        //            var html = "";
+        //            html += "<option value='0'>Select Asset Type</option>";
+        //            $.each(data, function (id, val) {
+        //                //if (hdnSiteId == val.Id) {
+        //                //    html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+        //                //}
+        //                //else {
+
+        //                //}
+        //                html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+        //            });
+        //            $(".drpAssetType").append(html);
+        //        }
+        //    },
+        //    error: function (response) {
+        //        $("#loader").hide();
+        //        CommonNotification("ERROR", "Something went wrong!", "Error");
+        //    }
+        //});
+    }
+</script>

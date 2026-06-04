@@ -1,0 +1,218 @@
+﻿
+@model Domain.ConsolidatedLister
+
+<style>
+    .consolidate th, .consolidate td {
+        padding: 1.75rem;
+    }
+</style>
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+
+<div class="container-fluid">
+    <div class="email-wrap email-main-wrapper">
+        <table class="table consolidate" id="tblConsolidated">
+            <thead class="bg-primary">
+                <tr>
+                    <th data-sortcolumn="AssetType" class="sorting">Asset Type</th>
+                    <th data-sortcolumn="AssetCount" class="sorting text-center">Asset Count</th>
+                    <th data-sortcolumn="MaintenanceAlert" class="sorting text-center">Maintenance alert</th>
+                    <th data-sortcolumn="MaintenanceAlert" class="sorting text-center">Predictive Alert</th>
+                    <th data-sortcolumn="MaintenanceAlert" class="sorting">SFR(Signal Failer Register)</th>
+                    <th data-sortcolumn="Acknowledgestatus" class="sorting">Acknowledge status</th>
+                    <th data-sortcolumn="ValidCount" class="sorting">Valid Count</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                @foreach (var item in Model.Consolidated)
+                {
+                    if (item.AssetCount > 0 && item.AssetType != "Device Time")
+                    {
+                        <tr class="table-light">
+                            <td>@item.AssetType</td>
+                            <td class="text-center">@item.AssetCount</td>
+                            <td class="text-center"><a href="javascript:void(0)" onclick="fnLoadAlert('@item.AssetTypeId')">@item.AlertCount</a></td>
+                            <td class="text-center"><a href="javascript:void(0)" onclick="fnLoadProbability('@item.AssetTypeId')">@item.ProbabilityCount</a></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+
+                        </tr>
+                    }
+
+
+                }
+
+
+            </tbody>
+
+        </table>
+    </div>
+</div>
+
+<script>
+    function fnLoadAlert(asssetTypeId) {
+        var mConsolidatedLister = {};
+        var searchCriteria = {};
+        searchCriteria.AssetTypeId = asssetTypeId;
+        searchCriteria.Month = $('#SearchCriteria_Month').val();
+        searchCriteria.Year = $('#SearchCriteria_Year').val();
+        if ($('.drpSearchCriteria').val() == "Zone") {
+            searchCriteria.ZoneId = $('#SearchCriteria_ZoneId').val();
+        }
+        else if ($('.drpSearchCriteria').val() == "Division") {
+            searchCriteria.DivisionId = $('#SearchCriteria_DivisionId').val();
+        }
+        else if ($('.drpSearchCriteria').val() == "Site") {
+            searchCriteria.SiteId = $('#SearchCriteria_SiteId').val();
+        } else {
+            searchCriteria.SiteId = $('#SearchCriteria_SiteId').val();
+        }
+        mConsolidatedLister.SearchCriteria = searchCriteria;
+        if (searchCriteria.Month != null && searchCriteria.Month != undefined && searchCriteria.Month.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: "/ConsolidatedReport/_AlertList",
+                type: "POST",
+                data: '{mConsolidatedLister:' + JSON.stringify(mConsolidatedLister) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divConsolidatedSMSLog").empty().append(data);
+                    $("#modalSmslogs").modal("show");
+
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Please select month.", "Error");
+        }
+
+    }
+
+    function fnLoadProbability(asssetTypeId) {
+        var mConsolidatedLister = {};
+        var searchCriteria = {};
+        searchCriteria.AssetTypeId = asssetTypeId;
+        searchCriteria.Year = $('#SearchCriteria_Year').val();
+        searchCriteria.Month = $('#SearchCriteria_Month').val();
+        if ($('.drpSearchCriteria').val() == "Zone") {
+            searchCriteria.ZoneId = $('#SearchCriteria_ZoneId').val();
+        }
+        else if ($('.drpSearchCriteria').val() == "Division") {
+            searchCriteria.DivisionId = $('#SearchCriteria_DivisionId').val();
+        }
+        else if ($('.drpSearchCriteria').val() == "Site") {
+            searchCriteria.SiteId = $('#SearchCriteria_SiteId').val();
+        }
+        else {
+            searchCriteria.SiteId = $('#SearchCriteria_SiteId').val();
+        }
+        mConsolidatedLister.SearchCriteria = searchCriteria;
+        if (searchCriteria.Month != null && searchCriteria.Month != undefined && searchCriteria.Month.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: "/ConsolidatedReport/_ProbabilityList",
+                type: "POST",
+                data: '{mConsolidatedLister:' + JSON.stringify(mConsolidatedLister) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divConsolidatedProbability").empty().append(data);
+                    $("#modalProbability").modal("show");
+
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Please select month.", "Error");
+        }
+
+    }
+
+    function fnDownloadFile() {
+        var titles = [];
+        var data = [];
+
+        $('#tblConsolidated > thead > tr > th').each(function () {
+            titles.push($.trim($(this).text()));
+        });
+
+        $('#tblConsolidated > tbody > tr').each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+                //if (id == 14 && $.trim($(ele).text()) != '') {
+                //    var item = "'" + $.trim($(ele).text())
+                //    data.push(item);
+                //}
+                //else if (id == 15 && $.trim($(ele).text()) != '') {
+                //    var item = "'" + $.trim($(ele).text())
+                //    data.push(item);
+                //}
+                //else {
+                //    data.push($.trim($(ele).text()));
+                //}
+
+                data.push($.trim($(ele).text()));
+
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "Consolidated_" + GenerateUniqueCode() + ".csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+</script>

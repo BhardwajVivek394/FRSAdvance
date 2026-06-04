@@ -1,0 +1,158 @@
+﻿@model Domain.SiteTemperature
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="row">
+            <div class="col-lg-6">
+                <label class="form-label">Latitude <span class="text-danger">*</span></label>
+                <div class="">
+                    @Html.TextBoxFor(m => m.Latitude, new { @class = "form-control",@id= "txtTemperatureLatitude", @type = "number", tabindex = 1 })
+                    <span class="text-danger"></span>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <label class="form-label">Longitude <span class="text-danger">*</span></label>
+                <div class="">
+                    @Html.TextBoxFor(m => m.Longitude, new { @class = "form-control", @id = "txtTemperatureLongitude", @type = "number", tabindex = 2 })
+                    <span class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-12">
+        <div class="row">
+            <div class="col-lg-6">
+                <label class="form-label">Start Time <span class="text-danger">*</span></label>
+                <div class="">
+                    @Html.TextBoxFor(m => m.StartTime, new { @class = "form-control", @id = "txtTemperatureStartTime", tabindex = 3 })
+                    <span class="text-danger"></span>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <label class="form-label">End Time <span class="text-danger">*</span></label>
+                <div class="">
+                    @Html.TextBoxFor(m => m.EndTime, new { @class = "form-control", @id = "txtTemperatureEndTime", tabindex = 4 })
+                    <span class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <div class="col-lg-12">
+        <div class="row">
+            <div class="col-lg-6">
+
+                <label class="form-label">Pick Time <span class="text-danger">*</span></label>
+                <div class="">
+                    @Html.TextBoxFor(m => m.PickTime, new { @class = "form-control", @id = "txtTemperaturePickTime", tabindex = 5 })
+                    <span class="text-danger"></span>
+                </div>
+            </div>
+            <div class="col-lg-6">
+
+                <label class="form-label">Fetch Temperature (Min)<span class="text-danger">*</span></label>
+                <div class="">
+                    @Html.TextBoxFor(m => m.FetchTemperature, new { @class = "form-control", @id = "txtTemperatureFetchTemperature", @type = "number", tabindex = 6 })
+                    <span class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-11"></div>
+    <div class="col-lg-1">
+        <div class="row">
+            <button type="button" class="btn btn-success" onclick="fnSaveSiteTemperature()">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    $(document).ready(function () {
+
+        $('#txtTemperatureStartTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#txtTemperatureEndTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#txtTemperaturePickTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+    });
+
+    function fnSaveSiteTemperature() {
+        var mSiteTemperature = {};
+        mSiteTemperature.SiteId = $.trim($("#hdnSiteTemperature").val());
+        mSiteTemperature.Latitude = $.trim($("#txtTemperatureLatitude").val());
+        mSiteTemperature.Longitude = $.trim($("#txtTemperatureLongitude").val());
+        mSiteTemperature.StartTime = $.trim($("#txtTemperatureStartTime").val());
+        mSiteTemperature.EndTime = $.trim($("#txtTemperatureEndTime").val());
+        mSiteTemperature.PickTime = $.trim($("#txtTemperaturePickTime").val());
+        mSiteTemperature.FetchTemperature = $.trim($("#txtTemperatureFetchTemperature").val());
+        if (mSiteTemperature.Latitude == null || mSiteTemperature.Latitude == undefined || mSiteTemperature.Latitude == "") {
+            CommonNotification("danger", "Latitude is required", "danger");
+        }
+        else if (!isValidLatitude(parseFloat(mSiteTemperature.Latitude))) {
+            CommonNotification("danger", "Invalid Latitude", "danger");
+        }
+        else if (mSiteTemperature.Longitude == null || mSiteTemperature.Longitude == undefined || mSiteTemperature.Longitude == "") {
+            CommonNotification("danger", "Longitude is required", "danger");
+        }
+        else if (!isValidLongitude(parseFloat(mSiteTemperature.Longitude))) {
+            CommonNotification("danger", "Invalid Longitude", "danger");
+        }
+        else if (mSiteTemperature.StartTime == null || mSiteTemperature.StartTime == undefined || mSiteTemperature.StartTime == "") {
+            CommonNotification("danger", "Start Time is required", "danger");
+        }
+        else if (mSiteTemperature.EndTime == null || mSiteTemperature.EndTime == undefined || mSiteTemperature.EndTime == "") {
+            CommonNotification("danger", "End Time is required", "danger");
+        }
+        else if (mSiteTemperature.PickTime == null || mSiteTemperature.PickTime == undefined || mSiteTemperature.PickTime == "") {
+            CommonNotification("danger", "Pick Time is required", "danger");
+        }
+        else if (mSiteTemperature.FetchTemperature == null || mSiteTemperature.FetchTemperature == undefined || mSiteTemperature.FetchTemperature == "") {
+            CommonNotification("danger", "Fetch Temperature is required", "danger");
+        }
+        else {
+            $.ajax({
+                url: '/Site/SaveSiteTemperature',
+                type: 'Post',
+                data: '{mSiteTemperature:' + JSON.stringify(mSiteTemperature) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data == true) {
+                        CommonNotification("SUCCESS", "Temperature has been saved.", "success");
+                    } else {
+                        CommonNotification("danger", "Internal server error.", "danger");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("danger", "Internal server error.", "danger");
+                }
+            });
+        }
+    }
+
+
+    function isValidLatitude(lat) {
+        return !isNaN(lat) && lat >= -90 && lat <= 90;
+    }
+
+    function isValidLongitude(lon) {
+        return !isNaN(lon) && lon >= -180 && lon <= 180;
+    }
+</script>

@@ -1,0 +1,258 @@
+﻿@model Domain.SearchCriteria
+<div class="container-fluid">
+    <div class="card">
+        <div class="card-header">
+            <div class="row">
+                <div class="col-xl-1 col-lg-6">
+                    <strong>Zone</strong>
+                    @Html.DropDownList("drpAlertAnalysisZone", (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>Division</strong>
+                    @Html.DropDownList("drpAlertAnalysisDivision", (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", tabindex = 2 })
+                </div>
+                <div class="col-xl-2 col-lg-6">
+                    <strong>Site</strong>
+                    @Html.DropDownList("drpAlertAnalysisSite", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 3 })
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>From Date</strong>
+                    <input class="form-control col-lg-9" id="searchAlertAnalysisFromDate" placeholder="From Date" type="text" value="@Model.StartDate.ToShortDateString()">
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>To Date</strong>
+                    <input class="form-control col-lg-9" id="searchAlertAnalysisToDate" placeholder="To Date" type="text" value="@Model.EndDate.ToShortDateString()">
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>Type</strong>
+                    @Html.DropDownList("drpAlertAnalysisType", new List<SelectListItem>
+                    {
+                    new SelectListItem { Text = "FRS", Value = "2"},
+                    new SelectListItem { Text = "Basic", Value = "1"}
+                    }, new { @class = "form-control" })
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>View</strong>
+                    @Html.DropDownList("drpAlertAnalysisView", new List<SelectListItem>
+                    {
+                    new SelectListItem { Text = "Site View", Value = "1"},
+                    new SelectListItem { Text = "Alert View", Value = "2"},
+                    new SelectListItem { Text = "SR no. View", Value = "3"}
+                    }, new { @class = "form-control" })
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>Type</strong>
+                    @Html.DropDownList("drpAlertAnalysisType", new List<SelectListItem>
+                    {
+                    new SelectListItem { Text = "FRS", Value = "2"},
+                    new SelectListItem { Text = "Basic", Value = "1"}
+                    }, new { @class = "form-control" })
+                </div>
+                <div class="col-xl-1 col-lg-6">
+                    <strong>User</strong>
+                    @Html.DropDownList("drpAlertAnalysisUser", (IEnumerable<SelectListItem>)ViewBag.Users, "Select", new { @class = "form-control", tabindex = 5 })
+
+                </div>
+                <div class="col-xl-3 col-lg-6 mt-3">
+                    <a class="btn btn-success btn-quirk" onclick="fnSearch()">Search</a>
+                    <a class="btn btn-info btn-quirk" href="@Url.Action("TestWatchList","AlertAnalysis")" target="_blank">Test Alert Audit</a>
+                    <a class="btn btn-info btn-quirk" href="@Url.Action("AlertSummary","AlertAnalysis")" target="_blank">Summary</a>
+                    <a class="btn btn-primary btn-quirk" href="@Url.Action("FRSAuditWatchlist","AlertAnalysis")" target="_blank">Resolved</a>
+                </div>
+
+            </div>
+
+        </div>
+        <div class="card-body">
+            <div id="AlertAnalysisList">
+
+            </div>
+        </div>
+    </div>
+</div>
+<div id="divProbabilityAlert"></div>
+<script>
+
+    $(document).ready(function () {
+        $('#searchAlertAnalysisFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#searchAlertAnalysisToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $("#drpAlertAnalysisView").change(function () {
+            fnAlertAnalysisView($(this).val());
+        });
+
+        //$("#drpAlertAnalysisView").change(function () {
+        //    fnShowGraphView($(this).val());
+        //})
+
+        fnSearch();
+
+        $("#drpAlertAnalysisZone").change(function () {
+            GetDivisionByZone($(this).val());
+
+        });
+
+        $("#drpAlertAnalysisDivision").change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+    });
+
+    function fnAlertAnalysisView(selectedView) {
+        if (selectedView == 1) {
+            $("#SiteView").show();
+            $("#SRNumberView").hide();
+            $("#AlertView").hide();
+        }
+        else if (selectedView == 2) {
+            $("#SiteView").hide();
+            $("#SRNumberView").hide();
+            $("#AlertView").show();
+        }
+        else if (selectedView == 3) {
+            $("#SiteView").hide();
+            $("#AlertView").hide();
+            $("#SRNumberView").show();
+        }
+    }
+
+    function fnSearch() {
+
+        if ($('#drpAlertAnalysisType').val() == '1') {
+            $("#loader").show();
+            var mSearchCriteria = {};
+            var mSMSLogLister = {};
+            mSearchCriteria.DivisionId = $('#drpAlertAnalysisDivision').val();
+            mSearchCriteria.FromDate = $("#searchAlertAnalysisFromDate").val()
+            mSearchCriteria.ToDate = $("#searchAlertAnalysisToDate").val()
+            mSMSLogLister.SearchCriteria = mSearchCriteria
+            $.ajax({
+                url: '/AlertAnalysis/_AlertAnalysisList',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mSMSLogLister),
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#AlertAnalysisList").empty();
+                    $("#drpAlertAnalysisView").val($("#drpAlertAnalysisView option:first").val());
+                    $("#drpAlertAnalysisView option[value=1]").attr('selected', true);
+                    $("#AlertAnalysisList").append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else if ($('#drpAlertAnalysisType').val() == '2') {
+            $("#loader").show();
+            var mAssetLister = {};
+            var mSearchCriteria = {};
+            mSearchCriteria.ZoneId = $('#drpAlertAnalysisZone').val();
+            mSearchCriteria.DivisionId = $('#drpAlertAnalysisDivision').val();
+            mSearchCriteria.SiteId = $('#drpAlertAnalysisSite').val();
+            mSearchCriteria.FromDate = $('#searchAlertAnalysisFromDate').val();
+            mSearchCriteria.ToDate = $('#searchAlertAnalysisToDate').val();
+            mSearchCriteria.DistributeUserId = $('#drpAlertAnalysisUser').val();
+            mAssetLister.SearchCriteria = mSearchCriteria;
+
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/_FRSAlertList',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mAssetLister),
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpAlertAnalysisView").val($("#drpAlertAnalysisView option:first").val());
+                    $("#drpAlertAnalysisView option[value=3]").attr('selected', true);
+                    $("#AlertAnalysisList").empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+
+    }
+
+
+
+    function fnAlertAnalysisAudit(){
+        window.open(
+            "@Url.Action("AlertAnalysisAudit")?searchDate=" + $('#searchAlertAnalysisFromDate').val(),
+            "_blank" // <- This is what makes it open in a new window.
+        );
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpAlertAnalysisDivision").empty();
+                    $("#drpAlertAnalysisDivision").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#drpAlertAnalysisDivision").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#drpAlertAnalysisDivision").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/AlertAnalysis/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpAlertAnalysisSite").empty();
+                    $("#drpAlertAnalysisSite").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchSiteId').val() != '0' && $('#hdnSearchSiteId').val() == value.Id) {
+                            $("#drpAlertAnalysisSite").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#drpAlertAnalysisSite").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+</script>

@@ -1,0 +1,104 @@
+﻿@model Domain.DataloggerAssetLister
+
+@if (Model != null && Model.DataloggerAssets != null && Model.DataloggerAssets.Count > 0)
+{
+    <div class="row">
+        <div class="col-md-10">
+
+        </div>
+        <div class="col-md-2">
+            <input type="text" class="form-control" id="txtDatalogger" placeholder="Search text" />
+        </div>
+        <div class="col-md-12 mt-5">
+            <div class="row">
+                @foreach (var item in Model.DataloggerAssets)
+                {
+                    <div class='col-lg-3' id='@item.Id'>
+                        <div class='card shadow-lg'>
+                            <div class='card-header bg-primary'>
+                                <h6 class='pull-left'>
+                                    @item.AssetTypeName
+                                </h6>
+
+                                <div class='delete tooltips pull-right' data-placement='top' data-toggle='tooltip' data-original-title='Delete' data-assetname="@item.Name" data-Id="@item.SiteId" onclick='DeleteAssetById("@item.Id",this)'>
+                                    <span class='fa fa-times'></span>
+                                </div>
+                                <div class='edit tooltips pull-right m-r-10' data-placement='top' data-toggle='tooltip' data-original-title='Edit' data-Id="@item.SiteId" onclick="GetAssetById('@item.Id')">
+                                    <span class='fa fa-pencil'></span>
+                                </div>
+                            </div>
+
+                            <div class='card-body' style='padding:15px;'>
+                                @if (item.Name.Length > 15)
+                                {
+                                    <label class='tooltips' style='font-size:15px;padding:2px' data-placement='top' data-toggle='tooltip' data-original-title='@item.Name'> @item.Name.Substring(0, 15)...</label>
+                                }
+                                else
+                                {
+                                    <label style='font-size:15px;padding:2px'>@item.Name</label>
+                                }
+                            </div>
+
+                        </div>
+                    </div>
+
+
+                }
+            </div>
+
+
+        </div>
+    </div>
+
+
+
+}
+
+<script>
+    $(document).ready(function () {
+        $("#txtDatalogger").on("keyup", function () {
+            var value = $(this).val().toLowerCase();
+            $("#tblDatalogger tr").filter(function () {
+                $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
+            });
+        });
+    });
+
+    function DeleteAssetById(id, $this) {
+        var assetName = $($this).attr("data-assetname");
+        $.confirm({
+            title: 'Confirm!',
+            content: 'Are you sure to delete "' + assetName + '" asset?<p style="color:red;margin-top:20px">Note: If you delete "' + assetName + '" the related site attributes data deleted itself.</p>',
+            buttons: {
+                confirm: {
+                    btnClass: 'btn-blue',
+                    action: function () {
+
+                        $("#loader").show();
+                        $.ajax({
+                            url: '/Datalogger/DeleteAssetById',
+                            type: 'Post',
+                            data: '{id:' + id + '}',
+                            contentType: 'application/json',
+                            success: function (data) {
+                                $("#loader").hide();
+                                if (data.type == 'success') {
+                                    CommonNotification("SUCCESS", "Asset has been deleted.", "success");
+                                } else if (data.type == 'error') {
+                                    CommonNotification("ERROR", "Internal server error.", "error");
+                                }
+                            },
+                            error: function (response) {
+                                $("#loader").hide();
+                                CommonNotification("ERROR", "Internal server error.", "error");
+                            }
+                        });
+                    }
+                },
+                cancel: function () {
+
+                }
+            }
+        });
+    }
+</script>

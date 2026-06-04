@@ -1,0 +1,216 @@
+﻿
+@{
+    ViewBag.Title = "ImportDataLog";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Import Data Log</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="row" style="margin-bottom:10px;margin-top:10px">
+                    <div class="col-sm-12">
+                        <div class="people-options clearfix" style="padding:4px">
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Please select file:</strong>
+                            </div>
+                            <div class="pull-left">
+                                <input type="file" id="importFile" onchange="ImportFile()" accept=".csv" class="form-control">
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <button type="button" id="btnImportFile" class="btn btn-success btn-quirk" onclick="Import()" data-bs-original-title="" title="" disabled>Import</button>
+                            </div>
+                            <div class="pull-right">
+                                <a href="/Upload/Import/dataLog.csv" id="aLinkDownloadTemplate"><i class="fa fa-download"></i> Download Template Sheet</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        <table class="table">
+                            <thead class="bg-primary">
+                                <tr>    
+                                    <th></th>
+                                    <th class="text-center">Value</th>
+                                    <th class="text-center">Http Post Name</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbodyDataLog">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+<script>
+    function ImportFile() {
+        var fileUpload = $("#importFile").get(0);
+        var files = fileUpload.files;
+        var fileData = new FormData();
+        fileData.append(files[0].name, files[0]);
+        if (IsValidExt(fileUpload)) {
+            $('#divWait').show();
+            $.ajax({
+                url: "/Maintenace/UploadDataLog",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                success: function (data) {
+                    $("#tbodyDataLog").empty();
+                    if (data.type == 'success') {
+                        var isSuccess = true;
+                        if (data != null && data.result != null && data.result.length > 0) {
+                            var htmlString = '';
+                            var rowCount = $('#tbodyDataLog >tbody >tr').length;
+                            $.each(data.result, function (index, item) {
+                                htmlString += "<tr>";
+                                htmlString += "<td width='50' class='text-center'></td>";
+                                if ($.trim(item.Value) != null && $.trim(item.Value) != '' && $.trim(item.Value) != undefined) {
+                                    htmlString += "<td class='text-center' id='" + $.trim(item.Value) + "'>" + $.trim(item.Value) + "</td>";
+                                }
+                                else {
+                                    isSuccess = false;
+                                    htmlString += "<td class='text-center' id='" + $.trim(item.Value) + "'><i class='fa fa-exclamation-circle' aria-hidden='true' data-bs-trigger='hover' data-container='body' data-bs-toggle='popover' data-bs-html='true' data-bs-placement='top' data-bs-original-title='Required' data-bs-content='Value is required.'></i></td>";
+                                }
+                                htmlString += "<td class='text-center' id='" + $.trim(item.HttpPostName) + "'>" + $.trim(item.HttpPostName) + "</td>";
+                                htmlString += "</tr>";
+                            });
+
+                            $("#tbodyDataLog").append(htmlString);
+                            $('[data-bs-toggle="popover"]').popover();
+                            if (isSuccess) {
+                                $('#btnImportFile').prop('disabled', false);
+                            }
+                        }
+                    }
+                    else if (data.type == 'error') {
+                        CommonNotification("ERROR", data.result, "Error");
+                    } else {
+                        CommonNotification("ERROR", "Internal server error", "Error");
+                    }
+                   
+
+                },
+                error: function (err) {
+                    $('#divWait').hide();
+                    CommonNotification("ERROR", err.statusText, "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Invalid file type. Please upload only .csv type file", "Error");
+            $('#divWait').hide();
+        }
+    }
+
+    function Import() {
+        if (ValidImport()) {
+            var totalRecord = $('#tbodyDataLog >tr').length;
+            var cnt = 0;
+            var processCount = 0;
+            $("#tbodyDataLog >tr").each(function (index, ele) {
+                var mDataLog = {};
+                var statusId = $('td:eq(0)', this);
+                $(statusId).html("<img src='/Content/images/load.gif' style='max-width:50px;height:40px;'>");
+                mDataLog.SiteId = $('#SiteId').val();
+                mDataLog.Value = $('td:eq(1)', this).html();
+                mDataLog.HttpPostName = $('td:eq(2)', this).html();
+
+                $.ajax({
+                    url: "/Maintenace/SaveDataLog",
+                    type: "POST",
+                    contentType: "application/json; charset=utf-8",
+                    datatype: "json",
+                    async: true,
+                    data: '{mDataLog:' + JSON.stringify(mDataLog) + '}',
+                    success: function (data) {
+                        cnt = cnt + 1;
+                        if (data != null) {
+                            if (data.type == "success") {
+                                $(statusId).addClass('bg-success text-white');
+                                $(statusId).html($.trim(data.result));
+                            }
+                            else {
+                                $(statusId).removeClass('bg-success text-white').addClass('bg-danger text-white');
+                                if (data.result != null && data.result != "" && data.result != undefined) {
+                                    $(statusId).html($.trim(data.result));                                    
+                                } else {
+                                    $(statusId).html($.trim("Bad request"));
+                                }
+                            }
+                        }
+
+                        if (cnt == totalRecord) {
+                            $('#divWait').hide();
+                        }
+                    },
+                    error: function (err) {
+                        cnt = cnt + 1;
+                        CommonNotification("ERROR", err.statusText, "Error");
+                        $('#divWait').hide();
+                    }
+                });
+            });
+        }
+       
+    }
+
+    function ValidImport() {
+        var result = true;
+        var totalRecord = $('#tbodyDataLog >tr').length;
+        if (totalRecord <= 0) {
+            CommonNotification("ERROR", "Please select import file", "Error");
+            result = false;
+        }
+        else if ($('#SiteId').val() == 0 || $('#SiteId').val() == null || $('#SiteId').val() == '' || $('#SiteId').val() == undefined) {
+            CommonNotification("ERROR", "Please select site", "Error");
+            result = false;
+        }
+
+        return result;
+    }
+
+    function IsValidExt(sender) {
+        var validExts = new Array(".csv");
+        var fileExt = sender.value;
+        fileExt = fileExt.substring(fileExt.lastIndexOf('.'));
+        if (validExts.indexOf(fileExt) < 0) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+</script>

@@ -1,0 +1,958 @@
+﻿@model List<Domain.SiteTrainMoment>
+@{
+    ViewBag.Title = "Train Moment Details";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/paho-mqtt.js"></script>
+<style>
+    .card-border {
+        border: 1px solid #E6E9ED;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Train Movement Details</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-2">
+
+        </div>
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-lg-2">
+                            <label>From Date</label>
+                            <input type="text" class="form-control" id="txtStartDate"/>
+                        </div>
+                        <div class="col-lg-2">
+                            <label>To Date</label>
+                            <input type="text" class="form-control" id="txtEndDate"/>
+                        </div>
+                        <div class="col-lg-2">
+                            <a href="javascript:void(0)" onclick="fnDownloadTrainMomentAllSite()" class="btn btn-success mt-2">
+                                <i class="f-18 fa fa-download"></i> Download
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        @if (Model != null && Model.Count > 0)
+                        {
+                            foreach (var item in Model)
+                            {
+                                <input type="hidden" class="spnTrainMomentMqtt" value="@item.MQTTBasePath" />
+                                <div class="col-xl-3 box-col-6">
+                                    <div class="card card-border">
+                                        <div class="bg-secondary main-header" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                            <div style="width:100%;float:left;padding:10px;border-top-left-radius:15px;">
+                                                <div class="row">
+                                                    <div class="col-9">
+                                                        <h6 style="margin-left:12px;">
+                                                            @item.StationCode
+                                                        </h6>
+                                                    </div>
+                                                    <div class="col-1">
+                                                        <a href="@Url.Action("DownloadTrainMomentView", new {siteId = item.Id})">
+                                                            <i class="f-18 fa fa-download"></i>
+                                                        </a>
+                                                    </div>
+                                                    <div class="col-1">
+                                                        <a onclick="GetTrainMomentView('@item.Id')">
+                                                            <i class="f-18 fa fa-history"></i>
+                                                        </a>
+                                                    </div>
+                                                    <div class="col-1">
+
+                                                    </div>
+                                                </div>
+
+
+                                            </div>
+                                        </div>
+                                        <div class="card-body gridBody" style="padding:5px;">
+                                            <div class="table-responsive">
+                                                <table class="table">
+                                                    <tbody class="tbodyUpLine@(item.Id)">
+                                                        <tr>
+                                                            <td colspan="2" class="text-center"><h5>Up Line</h5></td>
+                                                        </tr>
+
+                                                        @if (item.Id == 78)
+                                                        {
+                                                            <tr>
+                                                                <td>Track list <i class="fa fa-eye text-vision" onclick="GetDownLineTrack('@item.Id','@item.UpAsset')"></i></td>
+                                                                <td></td>
+                                                            </tr>
+                                                        }
+                                                        else
+                                                        {
+                                                            <tr>
+                                                                <td>Track list <i class="fa fa-eye text-vision" onclick="GetUpLineTrack('@item.Id','@item.UpAsset')"></i></td>
+                                                                <td></td>
+                                                            </tr>
+                                                        }
+
+                                                        <tr class="trUpLineTrain@(item.Id)" style="display:none">
+                                                            <td colspan="2" class="tdUpLineTrain@(item.Id)">
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan="2">
+                                                                <div class="card divUpLineEntry1@(item.Id)" style="display:none">
+                                                                    <div class="card-header">
+                                                                        <h5>Entry 1</h5>
+                                                                    </div>
+                                                                    <div class="card-body">
+                                                                        <table class="table">
+                                                                            <tr>
+                                                                                <th>Entry Time</th>
+                                                                                <th>Exit Time</th>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td>
+                                                                                    <span id="spnUpEntry1@(item.Id)"></span>
+                                                                                </td>
+                                                                                <td>
+                                                                                    <span id="spnUpExit1@(item.Id)"></span>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td>Train Number</td>
+                                                                                <td><input type="text" class="form-control" id="txtTrainNumberUpEntry1@(item.Id)" /></td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td>Train Name Verify</td>
+                                                                                <td>
+                                                                                    <select class="form-control" id="drpVerifyUpEntry1@(item.Id)">
+                                                                                        <option value="1">True</option>
+                                                                                        <option value="2">False</option>
+                                                                                    </select>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td></td>
+                                                                                <td>
+                                                                                    <input type="button" id="btnUpEntry1@(item.Id)" class="btn btn-success" onclick="fnSaveTrainMomentDetail('@item.Id','Up','1')" value="Save" disabled />
+                                                                                </td>
+                                                                            </tr>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                    <tbody class="tbodyDownLine@(item.Id)">
+                                                        <tr>
+                                                            <td colspan="2" class="text-center">
+                                                                <h5>Down Line</h5>
+                                                            </td>
+                                                        </tr>
+                                                        @if (item.Id == 78)
+                                                        {
+                                                            <tr>
+                                                                <td>Track list <i class="fa fa-eye text-vision" onclick="GetUpLineTrack('@item.Id','@item.DownAsset')"></i></td>
+                                                                <td></td>
+                                                            </tr>
+                                                        }
+                                                        else
+                                                        {
+                                                            <tr>
+                                                                <td>Track list <i class="fa fa-eye text-vision" onclick="GetDownLineTrack('@item.Id','@item.DownAsset')"></i></td>
+                                                                <td></td>
+                                                            </tr>
+                                                        }
+
+                                                        <tr class="trDownLineTrain@(item.Id)" style="display:none">
+                                                            <td colspan="2" class="tdDownLineTrain@(item.Id)">
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td colspan="2">
+                                                                <div class="card divDownLineEntry1@(item.Id)" style="display:none">
+                                                                    <div class="card-header">
+                                                                        <h5>Entry 1</h5>
+                                                                    </div>
+                                                                    <div class="card-body">
+                                                                        <table class="table">
+                                                                            <tr>
+                                                                                <th>Entry Time</th>
+                                                                                <th>Exit Time</th>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td>
+                                                                                    <span id="spnDownEntry1@(item.Id)"></span>
+                                                                                </td>
+                                                                                <td>
+                                                                                    <span id="spnDownExit1@(item.Id)"></span>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td>Train Number</td>
+                                                                                <td><input type="text" class="form-control" id="txtTrainNumberDownEntry1@(item.Id)" /></td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td>Train Name Verify</td>
+                                                                                <td>
+                                                                                    <select class="form-control" id="drpVerifyDownEntry1@(item.Id)">
+                                                                                        <option value="1">True</option>
+                                                                                        <option value="2">False</option>
+                                                                                    </select>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr>
+                                                                                <td></td>
+                                                                                <td>
+                                                                                    <input type="button" id="btnDownEntry1@(item.Id)" class="btn btn-success" value="Save" onclick="fnSaveTrainMomentDetail('@item.Id','Down','1')" disabled />
+                                                                                </td>
+                                                                            </tr>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="divLineTrack"></div>
+<div id="divLineTrainMomment"></div>
+
+<script>
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var mQTT = null;
+
+    $(document).ready(function () {
+
+        json = @Html.Raw(Json.Encode(Model));
+
+        mQTT = @Html.Raw(Json.Encode(ViewBag.MQTTDetail));
+
+
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+        setInterval(function () {
+            //if ($("#chkIsCheckManually").prop('checked') == true) {
+            //    //do something
+            //    GetTrainMomentLatestDataManually();
+            //} else {
+            //    GetTrainMomentLatestDataAutomatic();
+            //}
+            GetTrainMomentLatestDataAutomatic();
+
+        }, 30000);
+
+        $('#txtStartDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtEndDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+    });
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        $('.spnTrainMomentMqtt').each(function () {
+            var value = $(this).val();
+            if (value != null && value != undefined && value != '') {
+
+                client.subscribe(value +'channel1');
+
+            }
+
+        });
+
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+        client.connect({
+            onSuccess: onConnect,
+            userName: "wattmon",
+            password: "wattmon_2018",
+            cleanSession: true
+        });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['roles'];
+                var tsarray = parseJson['ts'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindData(message.destinationName, array, tsarray);
+                }
+            }
+        }
+        else {
+            //var channeldata = message.payloadString.split(',');
+            //BindData(message.destinationName, channeldata);
+        }
+
+
+        var d = new Date();
+        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        $("#c0").html(time);
+
+    }
+
+    function BindData(basePath, data, tsarray) {
+        let result = basePath.replaceAll("channel1", "");
+
+        //Down Line
+        if (json != null && json.length > 0) {
+
+            $(json).each(function (d, val) {
+                if (val.MQTTBasePath == result) {
+                    var firstRecord = val.DownLineAssets[0];
+                    var lastRecord = val.DownLineAssets[val.DownLineAssets.length - 1];
+
+                    //var firstThree = json.DownLineAssets.slice(0, 3);
+                    //var lastThree = val.DownLineAssets.slice(Math.max(val.DownLineAssets.length - 3, 0))
+
+                    if (firstRecord != null && firstRecord.assetAttributes != null && firstRecord.assetAttributes.length > 0) {
+                        var tprv = 0;
+                        $.each(firstRecord.assetAttributes, function (idx, inItem) {
+                            var str1 = basePath.toLowerCase();
+                            if (inItem.AssetInfoChannel != null) {
+                                var str2 = inItem.AssetInfoChannel.toLowerCase();
+                                if (str1.indexOf(str2) != -1) {
+                                    var infoValue = inItem.AssetInfoValue;
+                                    var infoMultiplication = inItem.Multiplication;
+                                    if (infoValue != null && inItem.Title == 'TPR V') {
+                                        var dataValue = data[infoValue];
+                                        var id = ".hdnAttributeData" + inItem.Id + firstRecord.Id;
+                                        if (infoMultiplication != null) {
+                                            var mainData = parseFloat(dataValue);
+                                            var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                            if (v <= 1) {
+                                                var currentDate = new Date();
+                                                var time = currentDate.getHours() + ":" + currentDate.getMinutes();
+                                                $('.divDownLineEntry1' + val.Id).show();
+                                                if ($('#spnDownEntry1' + val.Id).text() != null && $('#spnDownEntry1' + val.Id).text() != undefined && $('#spnDownEntry1' + val.Id).text() != '') {
+
+                                                    if ($('#spnDownExit1' + val.Id).text() == null || $('#spnDownExit1' + val.Id).text() == undefined || $('#spnDownExit1' + val.Id).text() == '') {
+
+                                                    }
+
+                                                } else {
+                                                    $('#spnDownEntry1' + val.Id).text(time);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    if (lastRecord != null && lastRecord.assetAttributes != null && lastRecord.assetAttributes.length > 0) {
+                        var tprv = 0;
+                        $.each(lastRecord.assetAttributes, function (idx, inItem) {
+                            var str1 = basePath.toLowerCase();
+                            if (inItem.AssetInfoChannel != null) {
+                                var str2 = inItem.AssetInfoChannel.toLowerCase();
+                                if (str1.indexOf(str2) != -1) {
+                                    var infoValue = inItem.AssetInfoValue;
+                                    var infoMultiplication = inItem.Multiplication;
+                                    if (infoValue != null && inItem.Title == 'TPR V') {
+                                        var dataValue = data[infoValue];
+                                        var id = ".hdnAttributeData" + inItem.Id + lastRecord.Id;
+                                        if (infoMultiplication != null) {
+                                            var mainData = parseFloat(dataValue);
+                                            var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                            if (v <= 1) {
+                                                var currentDate = new Date();
+                                                var time = currentDate.getHours() + ":" + currentDate.getMinutes();
+                                                if ($('#spnDownExit1' + val.Id).text() != null && $('#spnDownExit1' + val.Id).text() != undefined && $('#spnDownExit1' + val.Id).text() != '') {
+
+                                                } else {
+                                                    $('#spnDownExit1' + val.Id).text(time);
+                                                }
+
+                                                if ($('#spnDownEntry1' + val.Id).text() != null && $('#spnDownEntry1' + val.Id).text() != undefined && $('#spnDownEntry1' + val.Id).text() != '') {
+                                                    $('#btnDownEntry1' + val.Id).prop('disabled', false);
+                                                }
+                                            } else {
+
+                                                if ($('#spnDownEntry1' + val.Id).text() != null && $('#spnDownEntry1' + val.Id).text() != undefined && $('#spnDownEntry1' + val.Id).text() != '' && $('#spnDownExit1' + val.Id).text() != null && $('#spnDownExit1' + val.Id).text() != undefined && $('#spnDownExit1' + val.Id).text() != '') {
+
+                                                    $('.divDownLineEntry1' + val.Id).hide();
+                                                    $('#spnDownEntry1' + val.Id).text('');
+                                                    $('#spnDownExit1' + val.Id).text('');
+                                                    $('#btnDownEntry1' + val.Id).prop('disabled', true);
+
+                                                    $('#drpVerifyDownEntry1' + val.Id).val('1');
+                                                    $('#txtTrainNumberDownEntry1' + val.Id).val('');
+                                                }
+                                            }
+                                        }
+
+                                    }
+
+                                }
+                            }
+                        });
+                    }
+                }
+
+
+            });
+        }
+
+
+        //Up Line
+        if (json != null && json != null && json.length > 0) {
+
+            $(json).each(function (d, val) {
+                if (val.MQTTBasePath == result) {
+                    var firstRecord = val.UpLineAssets[0];
+                    var lastRecord = val.UpLineAssets[val.UpLineAssets.length - 1];
+                    //var lastThree = val.UpLineAssets.slice(Math.max(val.UpLineAssets.length - 3, 0))
+
+                    if (firstRecord != null && firstRecord.assetAttributes != null && firstRecord.assetAttributes.length > 0) {
+                        var tprv = 0;
+                        $.each(firstRecord.assetAttributes, function (idx, inItem) {
+                            var str1 = basePath.toLowerCase();
+                            if (inItem.AssetInfoChannel != null) {
+                                var str2 = inItem.AssetInfoChannel.toLowerCase();
+                                if (str1.indexOf(str2) != -1) {
+                                    var infoValue = inItem.AssetInfoValue;
+                                    var infoMultiplication = inItem.Multiplication;
+                                    if (infoValue != null && inItem.Title == 'TPR V') {
+                                        var dataValue = data[infoValue];
+                                        var id = ".hdnAttributeData" + inItem.Id + firstRecord.Id;
+
+
+                                        var currentDate = new Date();
+                                        var time = currentDate.getHours() + ":" + currentDate.getMinutes();
+
+                                        if (infoMultiplication != null) {
+                                            var mainData = parseFloat(dataValue);
+                                            var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                            if (v <= 1) {
+                                                $('.divUpLineEntry1' + val.Id).show();
+                                                if ($('#spnUpEntry1' + val.Id).text() != null && $('#spnUpEntry1' + val.Id).text() != undefined && $('#spnUpEntry1' + val.Id).text() != '') {
+
+                                                } else {
+                                                    $('#spnUpEntry1' + val.Id).text(time);
+                                                }
+
+                                            }
+
+
+                                        }
+
+                                    }
+
+                                }
+                            }
+                        });
+                    }
+
+                    if (lastRecord != null && lastRecord.assetAttributes != null && lastRecord.assetAttributes.length > 0) {
+                        var tprv = 0;
+                        $.each(lastRecord.assetAttributes, function (idx, inItem) {
+                            var str1 = basePath.toLowerCase();
+                            if (inItem.AssetInfoChannel != null) {
+                                var str2 = inItem.AssetInfoChannel.toLowerCase();
+                                if (str1.indexOf(str2) != -1) {
+                                    var infoValue = inItem.AssetInfoValue;
+                                    var infoMultiplication = inItem.Multiplication;
+                                    if (infoValue != null && inItem.Title == 'TPR V') {
+                                        var dataValue = data[infoValue];
+                                        var id = ".hdnAttributeData" + inItem.Id + lastRecord.Id;
+
+
+                                        if (infoMultiplication != null) {
+                                            var mainData = parseFloat(dataValue);
+                                            var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                            if (v <= 1) {
+                                                var currentDate = new Date();
+                                                var time = currentDate.getHours() + ":" + currentDate.getMinutes();
+                                                if ($('#spnUpExit1' + val.Id).text() != null && $('#spnUpExit1' + val.Id).text() != undefined && $('#spnUpExit1' + val.Id).text() != '') {
+
+                                                } else {
+                                                    $('#spnUpExit1' + val.Id).text(time);
+                                                }
+
+                                                if ($('#spnUpEntry1' + val.Id).text() != null && $('#spnUpEntry1' + val.Id).text() != undefined && $('#spnUpEntry1' + val.Id).text() != '') {
+                                                    $('#btnUpEntry1' + val.Id).prop('disabled', false);
+
+                                                }
+                                            } else {
+
+                                                if ($('#spnUpEntry1' + val.Id).text() != null && $('#spnUpEntry1' + val.Id).text() != undefined && $('#spnUpEntry1' + val.Id).text() != '' && $('#spnUpExit1' + val.Id).text() != null && $('#spnUpExit1' + val.Id).text() != undefined && $('#spnUpExit1' + val.Id).text() != '') {
+
+                                                    $('.divUpLineEntry1' + val.Id).hide();
+                                                    $('#spnUpEntry1' + val.Id).text('');
+                                                    $('#spnUpExit1' + val.Id).text('');
+                                                    $('#btnUpEntry1' + val.Id).prop('disabled', true);
+
+                                                    $('#drpVerifyUpEntry1' + val.Id).val('1');
+                                                    $('#txtTrainNumberUpEntry1' + val.Id).val('');
+                                                }
+                                            }
+
+                                        }
+
+                                    }
+
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+
+        }
+
+
+    }
+
+    function GetDownLineTrack(siteId, name) {
+        $("#loader").show();
+        $.ajax({
+            url: '/TrainMomentDetail/GetDownLineTrack',
+            type: 'Post',
+            data: '{siteId:' + siteId + ',trackName:"' + name + '"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divLineTrack').empty().append(data);
+                $('#modal-line-track-asset').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function GetUpLineTrack(siteId, name) {
+        $("#loader").show();
+        $.ajax({
+            url: '/TrainMomentDetail/GetUpLineTrack',
+            type: 'Post',
+            data: '{siteId:' + siteId + ',trackName:"' + name + '"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divLineTrack').empty().append(data);
+                $('#modal-line-track-asset').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnSaveTrainMomentDetail(siteId, type, entry) {
+        var entrytime = $('#spn' + type + 'Entry' + entry + siteId).text();
+        var exittime = $('#spn' + type + 'Exit' + entry + siteId).text();
+        var sele = $('#drpVerify' + type + 'Entry' + entry + siteId).val();
+        var trainNumber = $('#txtTrainNumber' + type + 'Entry' + entry + siteId).val();
+        var mTrainMoment = {};
+        mTrainMoment.SiteId = siteId;
+        if (type == 'Up') {
+            mTrainMoment.LineTypeId = 1;
+        } else {
+            mTrainMoment.LineTypeId = 2;
+        }
+        if (sele == '1') {
+            mTrainMoment.IsVerify = true;
+        }
+        else if (sele == '2') {
+            mTrainMoment.IsVerify = false;
+        }
+        mTrainMoment.EntryTime = entrytime;
+        mTrainMoment.ExitTime = exittime;
+        mTrainMoment.TrainNumber = trainNumber;
+
+        if (Valid(mTrainMoment)) {
+            $("#loader").show();
+            $.ajax({
+                url: '/TrainMomentDetail/SaveTrainMomentDetail',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mTrainMoment),
+                success: function (data) {
+                    $("#loader").hide();
+
+                    // $('.divUpLineEntry1' + val.Id).hide();
+                    $('.div' + type + 'LineEntry' + entry + siteId).hide();
+                    $('#spn' + type + 'Entry' + entry + siteId).text('');
+                    $('#spn' + type + 'Exit' + entry + siteId).text('');
+                    $('#btn' + type + 'Entry' + entry + siteId).prop('disabled', true);
+
+                    $('#drpVerify' + type + 'Entry' + entry + siteId).val('1');
+                    $('#txtTrainNumber' + type + 'Entry' + entry + siteId).val('');
+                    //$('.divUpLineEntry1' + val.Id).hide();
+                    //$('#spnUpEntry1' + val.Id).text('');
+                    //$('#spnUpExit1' + val.Id).text('');
+                    //$('#btnUpEntry1' + val.Id).prop('disabled', true);
+
+                    //$('#drpVerifyUpEntry1' + val.Id).val('1');
+                    //$('#txtTrainNumberUpEntry1' + val.Id).val('');
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            })
+        }
+
+    }
+
+    function GetTrainMomentView(siteId) {
+        debugger;
+        var searchCriteria = {};
+        searchCriteria.SiteId = siteId;
+        searchCriteria.StartDate = $('#txtStartDate').val();
+        searchCriteria.EndDate = $('#txtEndDate').val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/TrainMomentDetail/GetTrainMomentView',
+            type: 'Post',
+            data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divLineTrainMomment').empty().append(data);
+                $('#modal-line-Train-Moment').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    //function GetTrainMomentLatestDataManually() {
+    //    $.ajax({
+    //        url: '/TrainMomentDetail/GetTrainMomentLatestData',
+    //        type: 'Post',
+    //        contentType: 'application/json',
+    //        success: function (data) {
+    //            if (data != null && data != undefined) {
+
+    //                var stlr = 75;
+    //                var dga = 78;
+    //                var bagl = 79;
+    //                var gjh = 80;
+    //                $('.tdUpLineTrain' + dga).empty();
+    //                $('.tdUpLineTrain' + bagl).empty();
+    //                $('.tdUpLineTrain' + gjh).empty();
+
+
+    //                $('.tdDownLineTrain' + dga).empty();
+    //                $('.tdDownLineTrain' + bagl).empty();
+    //                $('.tdDownLineTrain' + gjh).empty();
+    //                $(data).each(function (d, val) {
+    //                    //UP
+    //                    if (val.LineTypeId == 1) {
+
+    //                        if (val.SiteId == stlr) {
+    //                            //STLR
+    //                            $('.trUpLineTrain' + dga).show();
+    //                            var message = '<span>' + val.TrainNumber + ' train is coming shortly, Departure on ' + val.ExitTime + ' from Sitalpur (STLR) station.</span><hr />';
+    //                            $('.tdUpLineTrain' + dga).append(message);
+
+    //                        } else if (val.SiteId == dga) {
+    //                            //DGA
+    //                            $('.trUpLineTrain' + bagl).show();
+    //                            var message = '<span>' + val.TrainNumber + ' train is coming shortly, Departure on ' + val.ExitTime + ' from DIGHWARA (DGA) station.</span><hr />';
+    //                            $('.tdUpLineTrain' + bagl).append(message);
+
+    //                        }
+    //                        else if (val.SiteId == bagl) {
+    //                            //BAGL
+    //                            $('.trUpLineTrain' + gjh).show();
+    //                            var message = '<span>' + val.TrainNumber + ' train is coming shortly, Departure on ' + val.ExitTime + ' from BARAGOPAL (BAGL) station.</span><hr />';
+    //                            $('.tdUpLineTrain' + gjh).append(message);
+    //                        }
+
+    //                    } else if (val.LineTypeId == 2) {
+    //                        if (val.SiteId == stlr) {
+    //                            //STLR
+    //                            $('.trDownLineTrain' + dga).show();
+    //                            var message = '<span>' + val.TrainNumber + ' train is coming shortly, Departure on ' + val.ExitTime + ' from Sitalpur (STLR) station.</span><hr />';
+    //                            $('.tdDownLineTrain' + dga).append(message);
+
+    //                        } else if (val.SiteId == dga) {
+    //                            //DGA
+    //                            $('.trDownLineTrain' + bagl).show();
+    //                            var message = '<span>' + val.TrainNumber + ' train is coming shortly, Departure on ' + val.ExitTime + ' from DIGHWARA (DGA) station.</span><hr />';
+    //                            $('.tdDownLineTrain' + bagl).append(message);
+
+    //                        }
+    //                        else if (val.SiteId == bagl) {
+    //                            //BAGL
+    //                            $('.trDownLineTrain' + gjh).show();
+    //                            var message = '<span>' + val.TrainNumber + ' train is coming shortly, Departure on ' + val.ExitTime + ' from BARAGOPAL (BAGL) station.</span><hr />';
+    //                            $('.tdDownLineTrain' + gjh).append(message);
+    //                        }
+    //                    }
+
+    //                });
+    //            }
+
+    //        },
+    //        error: function (response) {
+    //            $("#loader").hide();
+    //            CommonNotification("ERROR", "Something went wrong!", "Error");
+    //        }
+    //    });
+    //}
+
+    function GetTrainMomentLatestDataAutomatic() {
+
+        $.ajax({
+            url: '/TrainMomentDetail/GetTrainMomentLatestData',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data != undefined) {
+
+                    var stlr = 75;
+                    var dga = 78;
+                    var bagl = 79;
+                    var gjh = 80;
+                    $('.tdUpLineTrain' + dga).empty();
+                    $('.tdUpLineTrain' + bagl).empty();
+                    $('.tdUpLineTrain' + gjh).empty();
+
+
+                    $('.tdDownLineTrain' + bagl).empty();
+                    $('.tdDownLineTrain' + dga).empty();
+                    $('.tdDownLineTrain' + stlr).empty();
+                    $(data).each(function (d, val) {
+                        //UP
+                        if (val.LineTypeId == 1) {
+
+                            if (val.SiteId == stlr) {
+                                //STLR
+                                $('.trUpLineTrain' + dga).show();
+                                var trainName = '';
+                                if (val.TrainNumber != null && val.TrainNumber != undefined && val.TrainNumber != '') {
+                                    trainName = val.TrainNumber;
+                                }
+                                else if (val.UniqueId != null && val.UniqueId != undefined && val.UniqueId != '') {
+                                    trainName = val.UniqueId;
+                                }
+                                var message = '<span>' + trainName + ' train is coming shortly, Departure on ' + val.ExitTime + ' from Sitalpur (STLR) station.</span><hr />';
+                                $('.tdUpLineTrain' + dga).append(message);
+
+                            } else if (val.SiteId == dga) {
+                                //DGA
+                                var trainName = '';
+                                if (val.TrainNumber != null && val.TrainNumber != undefined && val.TrainNumber != '') {
+                                    trainName = val.TrainNumber;
+                                }
+                                else if (val.UniqueId != null && val.UniqueId != undefined && val.UniqueId != '') {
+                                    trainName = val.UniqueId;
+                                }
+                                $('.trUpLineTrain' + bagl).show();
+                                var message = '<span>' + trainName + ' train is coming shortly, Departure on ' + val.ExitTime + ' from DIGHWARA (DGA) station.</span><hr />';
+                                $('.tdUpLineTrain' + bagl).append(message);
+
+                            }
+                            else if (val.SiteId == bagl) {
+                                //BAGL
+                                var trainName = '';
+                                if (val.TrainNumber != null && val.TrainNumber != undefined && val.TrainNumber != '') {
+                                    trainName = val.TrainNumber;
+                                }
+                                else if (val.UniqueId != null && val.UniqueId != undefined && val.UniqueId != '') {
+                                    trainName = val.UniqueId;
+                                }
+                                $('.trUpLineTrain' + gjh).show();
+                                var message = '<span>' + trainName + ' train is coming shortly, Departure on ' + val.ExitTime + ' from BARAGOPAL (BAGL) station.</span><hr />';
+                                $('.tdUpLineTrain' + gjh).append(message);
+                            }
+
+                        } else if (val.LineTypeId == 2) {
+                            if (val.SiteId == gjh) {
+                                //STLR
+                                if (val.TrainNumber != null && val.TrainNumber != undefined && val.TrainNumber != '') {
+                                    trainName = val.TrainNumber;
+                                }
+                                else if (val.UniqueId != null && val.UniqueId != undefined && val.UniqueId != '') {
+                                    trainName = val.UniqueId;
+                                }
+                                $('.trDownLineTrain' + bagl).show();
+                                var message = '<span>' + trainName + ' train is coming shortly, Departure on ' + val.ExitTime + ' from GOLDINGANJ (GJH) station.</span><hr />';
+                                $('.tdDownLineTrain' + bagl).append(message);
+
+                            } else if (val.SiteId == bagl) {
+                                //bagl
+                                if (val.TrainNumber != null && val.TrainNumber != undefined && val.TrainNumber != '') {
+                                    trainName = val.TrainNumber;
+                                }
+                                else if (val.UniqueId != null && val.UniqueId != undefined && val.UniqueId != '') {
+                                    trainName = val.UniqueId;
+                                }
+                                $('.trDownLineTrain' + dga).show();
+                                var message = '<span>' + trainName + ' train is coming shortly, Departure on ' + val.ExitTime + ' from BARAGOPAL (BAGL) station.</span><hr />';
+                                $('.tdDownLineTrain' + dga).append(message);
+
+                            }
+                            else if (val.SiteId == dga) {
+                                //BAGL
+                                if (val.TrainNumber != null && val.TrainNumber != undefined && val.TrainNumber != '') {
+                                    trainName = val.TrainNumber;
+                                }
+                                else if (val.UniqueId != null && val.UniqueId != undefined && val.UniqueId != '') {
+                                    trainName = val.UniqueId;
+                                }
+                                $('.trDownLineTrain' + stlr).show();
+                                var message = '<span>' + trainName + ' train is coming shortly, Departure on ' + val.ExitTime + ' from DIGHWARA (DGA) station.</span><hr />';
+                                $('.tdDownLineTrain' + stlr).append(message);
+                            }
+                        }
+
+                    });
+                }
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function Valid(mTrainMoment) {
+        var isValid = true;
+
+        if (mTrainMoment.EntryTime == null || mTrainMoment.EntryTime == undefined || mTrainMoment.EntryTime == '') {
+            alert('Entry Time not set');
+            isValid = false;
+        }
+        else if (mTrainMoment.ExitTime == null || mTrainMoment.ExitTime == undefined || mTrainMoment.ExitTime == '') {
+            alert('Exit Time not set');
+            isValid = false;
+        }
+        else if (mTrainMoment.TrainNumber == null || mTrainMoment.TrainNumber == undefined || mTrainMoment.TrainNumber == '') {
+            alert('Train Number is required.');
+            isValid = false;
+        }
+
+
+        return isValid;
+    }
+
+    function fnDownloadTrainMomentAllSite() {
+        debugger;
+        //var val = $('#hdnAssetTypeId').val();
+
+        //searchCriteria.StartDate = $('#txtStartDate').val();
+        //searchCriteria.EndDate = $('#txtEndDate').val();
+
+        window.location.href = '/TrainMomentDetail/DownloadTrainMomentAllSite?StartDate=' + $('#txtStartDate').val() + "&EndDate=" + $('#txtEndDate').val();
+    }
+
+    function fnUpdateTrainNumber(id, siteId) {
+        debugger;
+
+        var mTrainMoment = {};
+        mTrainMoment.Id = id;
+        mTrainMoment.TrainNumber = $('#txtTrainNumberDetail' + id).val();
+        mTrainMoment.UniqueId = $('#spnUniqueIdDetail' + id).text();
+
+        if (ValidTrainNumber(mTrainMoment)) {
+            $("#loader").show();
+            $.ajax({
+                url: '/TrainMomentDetail/UpdateTrainMomentDetail',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mTrainMoment),
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        alert(data.result);
+                        $('#modal-line-Train-Moment').modal('hide');
+                        GetTrainMomentView(siteId);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    alert("Something went wrong!");
+                }
+            })
+        }
+
+
+    }
+
+    function ValidTrainNumber(mTrainMoment) {
+        var isValid = true;
+
+        if (mTrainMoment.TrainNumber == null || mTrainMoment.TrainNumber == undefined || mTrainMoment.TrainNumber == '') {
+            alert('Train Number is required.');
+            isValid = false;
+        }
+
+
+        return isValid;
+    }
+</script>
+
+

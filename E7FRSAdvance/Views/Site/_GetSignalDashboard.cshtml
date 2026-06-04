@@ -1,0 +1,1272 @@
+﻿@model Domain.AssetLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    .linkImg span {
+        text-align: center;
+        display: block;
+    }
+
+    .linkImg {
+        display: inline-block;
+        margin-left: 5px;
+    }
+</style>
+<div class="people-options clearfix">
+    <div class="pull-left" style="display:inline-flex">
+
+        <div class="input-group" style="margin-left:20px;">
+            @Html.TextBoxFor(x => x.SearchCriteria.AssetName, new { @class = "form-control btn-pill asset-search", @placeholder = "Search signal" })
+        </div>
+    </div>
+    <div class="pull-left" style="display:inline-flex">
+        <div class="form-check form-switch" style="margin-left:30px;">
+            <input type="checkbox" title="Display Mode On/Off" class="form-check-input f-24" onchange="fnChangeDisplayMode(this)" />
+        </div>
+    </div>
+    @*<div class="btn-group pull-right people-pager">
+            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+        </div>
+        <div class="btn-group pull-right people-pager">
+            <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+            <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+        </div>*@
+    @{
+        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+        if (Model.mAssets.Count == 0)
+        {
+            start = 0;
+        }
+        decimal end = Math.Floor(Model.Pager.TotalRecord);
+        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+        {
+            if (Model.Pager.PageSize == -1)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+            else
+            {
+                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                if (end > Model.Pager.TotalRecord)
+                {
+                    end = Model.Pager.TotalRecord;
+                }
+            }
+        }
+    }
+    <span class="people-count pull-right">Showing <strong>@Model.mAssets.Count</strong> Assets</span>
+    @if (Model.SearchCriteria.IsListView == true)
+    {
+
+        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-info" onclick="fnListView()" title="List View"><i class="fa fa-list"></i></a></span>
+        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-primary" onclick="fnGridView()" title="Grid View"><i class="fa fa-th-large"></i></a></span>
+    }
+</div>
+
+<div class="card " id="gridView">
+    <div class="card-body" style="padding:15px;">
+        <div class="row">
+            @if (Model.mAssets != null && Model.mAssets.Count > 0)
+            {
+                foreach (var item in Model.mAssets.Where(x => !x.Name.ToLower().Contains("sh")).ToList())
+                {
+                    int cnt = item.AssetTypeName.Length + item.Name.Length;
+                    <div class="col-xl-3 xl-50 news box-col-6" id="divSignal@(item.Id)" style="display:none;">
+                        <div class="card card-border">
+                            <div class="bg-secondary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                <div class="" style="width:80%;float:left;padding:10px;border-top-left-radius:15px;">
+                                    <h6 style="margin-left:12px;">
+                                        <a target="_blank" class="text-white" href="@item.HttpMisLink" onclick="fnShowPointCircuitDiagram('@item.AssetTypeId','@item.Id')"> @item.AssetTypeName : @item.Name</a>
+                                        <br />
+                                        <span>Index Score: @item.IndexScore</span>
+                                        <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowAspectData(@item.Id)">Aspects</a>
+                                        @if (item.assetAttributes.Where(x => x.Title.EndsWith(")")).Count() > 0)
+                                        {
+                                            <br />
+                                            <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowLuxSignal(@item.Id)">LUX</a>
+                                        }
+                                        @if (item.assetAttributes.Where(x => x.IsDigital != null && x.IsDigital.Value).Count() > 0)
+                                        {
+                                            <br />
+                                            <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowDigitalSignal(@item.Id)">Cutting Relay</a>
+                                        }
+
+                                    </h6>
+                                </div>
+                                <div class="text-center bg-dark" style="width:20%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:66px">
+                                    @if (item.UnderMaintence == true)
+                                    {
+                                        <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center">
+                                            <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                        </div>
+                                    }
+                                    <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>
+                                    <a onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                                </div>
+
+                            </div>
+                            <div class="card-body" style="padding:5px;">
+                                <div class="table-responsive width100p tblAssetData">
+                                    <table class="table table-bordered table-striped">
+                                        <tbody id="tblAttributeData@(item.Id)" class="tblAttributes">
+                                            <tr id="theadLuxSignal@(item.Id)" style="display:none">
+                                                <th class="text-center">Relay Room</th>
+                                                <th>Field</th>
+                                            </tr>
+                                            <tr>
+                                                <td id="signal@(item.Id)" class='text-center'>
+                                                </td>
+                                                <td>
+                                                    <div id="divsignalUG@(item.Id)">
+                                                        <div>
+                                                            <span class="spnsignalUGC@(item.Id)"></span>
+                                                            <span class="spnsignalUGV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGAC@(item.Id)"></span>
+                                                            <span class="spnsignalUGAV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGBC@(item.Id)"></span>
+                                                            <span class="spnsignalUGBV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGCC@(item.Id)"></span>
+                                                            <span class="spnsignalUGCV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGDC@(item.Id)"></span>
+                                                            <span class="spnsignalUGDV@(item.Id)"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div id="signalField@(item.Id)" style="display:none"></div>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="signalC@(item.Id)"> </td>
+                                                <td class="signalV@(item.Id)"> </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="signalHHGC@(item.Id)"> </td>
+                                                <td class="signalHHGV@(item.Id)"> </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+
+                            </div>
+                        </div>
+                    </div>
+                }
+                foreach (var item in Model.mAssets.Where(x => x.Name.ToLower().Contains("sh")).ToList())
+                {
+                    int cnt = item.AssetTypeName.Length + item.Name.Length;
+                    <div class="col-xl-3 xl-50 news box-col-6" id="divSignal@(item.Id)" style="display:none">
+                        <div class="card card-border">
+                            @*<div class="card-header bg-secondary">
+                                    <h6 class="panel-title">
+                                        @item.AssetTypeName : @item.Name
+                                    </h6>
+                                </div>*@
+                            <div class="bg-secondary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                <div class="" style="width:80%;float:left;padding:1px;border-top-left-radius:15px;">
+                                    <h6 style="margin-left:12px;">
+                                        <a target="_blank" class="text-white" href="@item.HttpMisLink" onclick="fnShowPointCircuitDiagram('@item.AssetTypeId','@item.Id')"> @item.AssetTypeName : @item.Name</a>
+                                        <br />
+                                        <span>Index Score: @item.IndexScore</span>
+                                        <a style="float: right; cursor: pointer; margin-top: -14px" onclick="fnShowAspectData(@item.Id)">Aspects</a>
+                                        @if (item.assetAttributes.Where(x => x.Title.EndsWith(")")).Count() > 0)
+                                        {
+                                            <br />
+                                            <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowLuxSignal(@item.Id)">LUX</a>
+                                        }
+                                        @if (item.assetAttributes.Where(x => x.IsDigital != null && x.IsDigital.Value).Count() > 0)
+                                        {
+                                            <br />
+                                            <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowDigitalSignal(@item.Id)">Cutting Relay</a>
+                                        }
+                                    </h6>
+                                </div>
+                                <div class="text-center bg-dark" style="width:20%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:50px">
+                                    @if (item.UnderMaintence == true)
+                                    {
+                                        <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center">
+                                            <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                        </div>
+                                    }
+                                    <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>
+                                    <a onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                                </div>
+
+                            </div>
+                            <div class="card-body" style="padding:5px;">
+                                <div class="row col-sm-12">
+                                    <div class="table-responsive width100p tblAssetData">
+                                        <table class="table table-bordered table-striped">
+                                            <tbody id="tblAttributeData@(item.Id)" class="tblAttributes">
+                                                <tr>
+                                                    <td id="signal@(item.Id)" class='text-center'>
+                                                    </td>
+                                                    <td id="signalSecond@(item.Id)">
+                                                        <div>
+                                                            <span class="spnsignalUGAC@(item.Id)"></span>
+                                                            <span class="spnsignalUGAV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGBC@(item.Id)"></span>
+                                                            <span class="spnsignalUGBV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGCC@(item.Id)"></span>
+                                                            <span class="spnsignalUGCV@(item.Id)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="spnsignalUGDC@(item.Id)"></span>
+                                                            <span class="spnsignalUGDV@(item.Id)"></span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="signalC@(item.Id)"> </td>
+                                                    <td class="signalV@(item.Id)"> </td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="signalHHGC@(item.Id)"> </td>
+                                                    <td class="signalHHGV@(item.Id)"> </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+
+
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <p style="font-size:15px">No record found!</p>
+            }
+        </div>
+
+    </div>
+</div>
+
+@{
+    var bgColor = new string[] { "#215968", "#404040", "#4bacc6" };
+}
+@if (Model.SearchCriteria.IsListView == true)
+{
+    <div class="card" id="listView" style="display:none;">
+        <div class="card-header">
+            Signal
+        </div>
+        <div class="card-body" style="padding:15px;">
+            <div class="row">
+
+                <div class="tableFixHead">
+                    <table class="table">
+                        <thead class="">
+                            <tr>
+                                <th style="background-color:@bgColor[0];color:white;">SIGNAL</th>
+                                <th style="background-color:@bgColor[1];color:white;">SIGNAL ASPECT</th>
+                                <th style="background-color:@bgColor[2];color:white;">ASPECT CURRENT</th>
+                                <th style="background-color:@bgColor[0];color:white;">ASPECT VOLTAGE</th>
+                                <th style="background-color:@bgColor[1];color:white;width:80px;">INDEX SCORE</th>
+                                <th style="background-color:@bgColor[2];color:white;width:150px;" colspan="3"></th>
+                            </tr>
+
+                        </thead>
+                        <tbody>
+                            @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                            {
+                                foreach (var item in Model.mAssets.Where(x => !x.Name.ToLower().Contains("sh")).ToList())
+                                {
+
+                                    <tr id="trSignal@(item.Id)" style="display:none;">
+                                        <td class="hdnAssetNameTD@(item.Id)">
+                                            <a target="_blank" href="@item.HttpMisLink">
+                                                @item.Name
+                                                <br />
+                                                <a style="cursor:pointer;" onclick="fnShowAspectData(@item.Id)">Aspects</a>
+
+                                                @if (item.assetAttributes.Where(x => x.Title.EndsWith(")")).Count() > 0)
+                                                {
+                                                    <br />
+                                                    <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowLuxSignal(@item.Id)">LUX</a>
+                                                }
+                                                @if (item.assetAttributes.Where(x => x.IsDigital != null && x.IsDigital.Value).Count() > 0)
+                                                {
+                                                    <br />
+                                                    <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowDigitalSignal(@item.Id)">Cutting Relay</a>
+                                                }
+                                            </a>
+                                        </td>
+                                        <td class="hdnAttributeData@(item.Id)">
+                                        </td>
+                                        <td class="signalC1@(item.Id)"> </td>
+                                        <td class="signalV1@(item.Id)"> </td>
+                                        <td class="@(item.IndexScore<7?"text-danger":"")">@item.IndexScore</td>
+                                        <td style="width:30px;">
+                                            @if (item.UnderMaintence == true)
+                                            {
+                                                <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                            }
+                                            else
+                                            {
+                                                <div class="text-center">
+                                                    <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                                </div>
+                                            }
+                                        </td>
+                                        <td style="width:50px;">
+                                            <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="text-transform:capitalize;cursor:pointer"> Graph </a>
+                                        </td>
+                                        <td style="width:110px;">
+                                            <a onclick="fnGetSmsLog('@item.Id')" style="text-transform:capitalize;">Event log</a>
+                                        </td>
+                                    </tr>
+
+                                }
+                                foreach (var item in Model.mAssets.Where(x => x.Name.ToLower().Contains("sh")).ToList())
+                                {
+
+                                    <tr id="trSignal@(item.Id)" style="display:none;">
+                                        <td class="hdnAssetNameTD@(item.Id)">
+                                            <a target="_blank" href="@item.HttpMisLink">
+                                                @item.Name
+                                                <br />
+                                                <a style="cursor:pointer;" onclick="fnShowAspectData(@item.Id)">Aspects</a>
+                                                @if (item.assetAttributes.Where(x => x.Title.Contains("LUX_DI")).Count() > 0)
+                                                {
+                                                    <br />
+                                                    <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowLuxSignal(@item.Id)">LUX</a>
+                                                }
+                                                @if (item.assetAttributes.Where(x => x.IsDigital != null && x.IsDigital.Value).Count() > 0)
+                                                {
+                                                    <br />
+                                                    <a style="float: right; cursor: pointer; margin-top:-14px" onclick="fnShowDigitalSignal(@item.Id)">Cutting Relay</a>
+                                                }
+                                            </a>
+                                        </td>
+                                        <td class="hdnAttributeData@(item.Id)">
+                                        </td>
+                                        <td class="signalC@(item.Id)"> </td>
+                                        <td class="signalV@(item.Id)"> </td>
+                                        <td class="@(item.IndexScore<7?"text-danger":"")">@item.IndexScore</td>
+                                        <td style="width:30px;">
+                                            @if (item.UnderMaintence == true)
+                                            {
+                                                <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                            }
+                                            else
+                                            {
+                                                <div class="text-center">
+                                                    <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                                </div>
+                                            }
+                                        </td>
+                                        <td style="width:50px;">
+                                            <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="text-transform:capitalize;cursor:pointer"> Graph </a>
+                                        </td>
+                                        <td style="width:110px;">
+                                            <a onclick="fnGetSmsLog('@item.Id')" style="text-transform:capitalize;">Event log</a>
+                                        </td>
+                                    </tr>
+
+                                }
+
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
+
+
+<script>
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var rgC = 0;
+    var rgv = 0;
+    var dgC = 0;
+    var dgv = 0;
+    var hgC = 0;
+    var hgv = 0;
+    var hhgC = 0;
+    var hhgv = 0;
+
+    var onAC = 0;
+    var offAC = 0;
+    var onAV = 0;
+    var offAV = 0;
+
+    var ugAC = 0;
+    var ugAv = 0;
+    var ugBC = 0;
+    var ugBv = 0;
+    var ugCC = 0;
+    var ugCv = 0;
+    var ugDC = 0;
+    var ugDv = 0;
+
+    var isCalibration = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsCalibration');
+    var isSiteKeeping = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping');
+    var isDatalogger = '@Model.Site.IsDatalogger';
+    var isDataLoggerJsonReverse = '@Model.Site.IsDataLoggerJsonReverse';
+    (function ($) {
+        $.fn.focusTextToEnd = function () {
+            this.focus();
+            var $thisVal = this.val();
+            this.val('').val($thisVal);
+            return this;
+        }
+    }(jQuery));
+    $(document).ready(function () {
+        $(".asset-search").keyup(function (e) {
+            $("#frmAssetDetails").submit();
+        });
+        $('[data-toggle="popover"]').popover();
+
+        $("#lblAssetType").html($("#AssetName" + $("#hdnassetTypeId").val()).val());
+        $(".asset-search").focusTextToEnd();
+       // $('#Pager').select2({ minimumResultsForSearch: Infinity });
+
+       // $('#drpPageSize').select2({ minimumResultsForSearch: Infinity });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            //$("#hdndateValue").val();
+            //$("#hdnassetTypeId").val();
+            $("#frmAssetDetails").submit();
+        });
+
+       // $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        json = @Html.Raw(Json.Encode(Model));
+
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        for (var i = 0; i < channels.length; i++) {
+                    $("#c" + i).html('');
+        }
+        $('#spnDLLastUpdate').text('');
+          mQTT=@Html.Raw(Json.Encode(Model.MQTTDetail));
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+        if (isSiteKeeping || admin == '@E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode()') {
+            fnGetWatchList();
+        }
+    });
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i]);
+
+                client.subscribe(mQQTPath + 'dl/#');
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            //location.reload();
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+
+        if (message.destinationName.includes("/dl/")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var jsonData = parseJson['bits'];
+                if (jsonData != null && jsonData != undefined && jsonData.length > 0) {
+                    var jsonArrayString = '';
+                    for (var i = 0; i < jsonData.length; i++) {
+                        var decimalNumber = decimalToBinary(jsonData[i]);
+                        if (decimalNumber != null) {
+                            if (decimalNumber.length != 8) {
+                                decimalNumber = ("00000000" + decimalNumber.toString(2)).substr(-8);
+                            }
+                            const reversedString = decimalNumber.split("").reduce((acc, char) => char + acc, "");
+
+                            jsonArrayString += reversedString;
+                        }
+                    }
+                    var jsonArray = jsonArrayString.split('');
+                    if (jsonArray != null && jsonArray != undefined && jsonArray.length > 0) {
+                        try {
+                            if (isDatalogger == "True") {
+                                try {
+                                    BindCircuitDataLoggerSimulation(message.destinationName, jsonArray);
+
+                                }
+                                catch (err) {
+
+                                }
+                            }
+                        }
+                        catch (err) {
+
+                        }
+                    }
+                }
+            }
+        }
+        else if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['roles'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindSignalData(message.destinationName, array);
+
+                    try {
+                        BindCircuitSignalSimulation(message.destinationName, array);
+
+                    }
+                    catch (err) {
+
+                    }
+                }
+            }
+        }
+        else {
+            var channeldata = message.payloadString.split(',');
+            BindSignalData(message.destinationName, channeldata);
+        }
+
+
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+
+                var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+                if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+                    var d = new Date();
+                    var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                    $("#c" + i).html(time);
+
+                    $("#spSignalHeaderTime").html(time);
+                }
+            }
+        }
+    }
+
+
+    function BindSignalData(basePath, data) {
+        $.each(json.mAssets, function (id, item) {
+            rgC = 0;
+            rgv = 0;
+            dgC = 0;
+            dgv = 0;
+            hgC = 0;
+            hgv = 0;
+            hhgC = 0;
+            hhgv = 0;
+
+            onAC = 0;
+            offAC = 0;
+            onAV = 0;
+            offAV = 0;
+            //ugAC = 0;
+            //ugAv = 0;
+            //ugBC = 0;
+            //ugBv = 0;
+            //ugCC = 0;
+            //ugCv = 0;
+            //ugDC = 0;
+            //ugDv = 0;
+
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+                    var str1 = basePath.toLowerCase();
+                    var str2 = "";
+                    if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                        str2 = inItem.AssetInfoChannel;
+                    }
+                    if (str1.indexOf(str2) != -1) {
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+
+                            var dataValue = data[infoValue];
+
+                            var id = ".hdnAttributeData" + item.Id;
+                            if (infoMultiplication != null) {
+                                var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                var v = ((mainData * 100) / 100).toFixed(1);
+
+                                if (parseFloat(v) <= 0) {
+                                    v = '0.0';
+                                }
+
+                                if (inItem.Title == "RG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    rgC = v;
+                                    $("#signal" + item.Id + "").html("<a class='linkImg'><img style='height:150px;' src='/Content/images/SR-1.jpg' /></a>");
+                                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                        $(".signalC" + item.Id + "").html('C :' + v + ' ma <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                    } else {
+                                        $(".signalC" + item.Id + "").html("C :" + v + " ma");
+                                    }
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+
+                                }
+                                else if (inItem.Title == "DG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    dgC = v;
+                                    $("#signal" + item.Id + "").html("<a class='linkImg'><img style='height:150px;' src='/Content/images/SG-1.jpg' /></a>");
+
+                                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                        $(".signalC" + item.Id + "").html('C :' + v + ' ma <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                    } else {
+                                        $(".signalC" + item.Id + "").html("C :" + v + " ma");
+                                    }
+
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+
+                                }
+                                else if (inItem.Title == "UG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    dgC = v;
+                                    $(".spnsignalUGC" + item.Id + "").html("UG C/V:" + v + " ma");
+
+                                }
+                                else if (inItem.Title == "UGA mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    ugAC = v;
+                                    $(".spnsignalUGAC" + item.Id + "").html("UGA C/V:" + v + " ma");
+                                }
+                                else if (inItem.Title == "UGB mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    ugBC = v;
+                                    $(".spnsignalUGBC" + item.Id + "").html("UGB C/V:" + v + " ma");
+
+                                }
+                                else if (inItem.Title == "UGC mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    ugCC = v;
+                                    $(".spnsignalUGCC" + item.Id + "").html("UGC C/V:" + v + " ma");
+
+                                }
+                                else if (inItem.Title == "UGD mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    ugDC = v;
+                                    $(".spnsignalUGDC" + item.Id + "").html("UGD C/V:" + v + " ma");
+                                }
+                                else if (inItem.Title == "HG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    hgC = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).indexOf("SYY-1.jpg") == -1) {
+                                        $("#signal" + item.Id + "").html("<a class='linkImg'><img style='height:150px;' src='/Content/images/SY-1.jpg' /></a>");
+                                    }
+                                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                        $(".signalC" + item.Id + "").html('HG C :' + v + ' ma <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                    } else {
+                                        $(".signalC" + item.Id + "").html("HG C :" + v + " ma");
+                                    }
+
+                                    $(".signalC1" + item.Id + "").html(v + " " + "<span id='spnhhgC" + item.Id + "' style='font-weight:unset'></span>");
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+
+                                }
+                                else if (inItem.Title == "HHG mA") {
+                                    if (parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                        hhgC = v;
+                                        $("#signal" + item.Id + "").html("<a class='linkImg'><img style='height:150px;' title='SY-1.jpg' src='/Content/images/SYY-1.jpg' /></a>");
+
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalHHGC" + item.Id + "").html('HHG C :' + hhgC + ' ma <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + hhgC + '\');"></i></a>');
+                                        } else {
+                                            $(".signalHHGC" + item.Id + "").html("HHG C : " + hhgC + " ma");
+                                        }
+                                        $("#spnhhgC" + item.Id + "").html("HHG mA: " + v);
+
+                                        $(id).html(inItem.Title);
+                                        $("#divSignal" + item.Id).show();
+                                        $("#trSignal" + item.Id).show();
+                                    } else {
+                                        $(".signalHHGC" + item.Id + "").html('');
+                                    }
+
+                                }
+                                else if (inItem.Title == "On Aspect mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue) && item.Name.toLowerCase().includes('sh')) {
+                                    onAC = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).indexOf("SYY-1.jpg") == -1) {
+                                        $("#signal" + item.Id + "").html("<a class='linkImg'><img style='height:150px;' src='/Content/images/SY-1.jpg' /></a>");
+                                    }
+                                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                        $(".signalC" + item.Id + "").html('On Aspect C :' + v + ' ma <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                    } else {
+                                        $(".signalC" + item.Id + "").html("On Aspect C :" + v + " ma");
+                                    }
+
+                                    $(".signalC1" + item.Id + "").html(v + " " + "<span id='spnhhgC" + item.Id + "' style='font-weight:unset'></span>");
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+                                }
+                                else if (inItem.Title == "Off Aspect mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue) && item.Name.toLowerCase().includes('sh')) {
+
+                                    offAC = v;
+                                    $("#signal" + item.Id + "").html("<a class='linkImg'><img style='height:150px;' src='/Content/images/SR-1.jpg' /></a>");
+                                    if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                        $(".signalC" + item.Id + "").html('Off Aspect C :' + v + ' ma <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                    } else {
+                                        $(".signalC" + item.Id + "").html("Off Aspect C :" + v + " ma");
+                                    }
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+                                }
+
+
+                                if (inItem.Title == "RG V") {
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SR-1.jpg") != -1) {
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalV" + item.Id + "").html('V :' + v + ' v <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                        } else {
+                                            $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                        }
+
+
+                                        $(".signalV1" + item.Id + "").html(v);
+                                    }
+                                }
+                                else if (inItem.Title == "DG V") {
+                                    dgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SG-1.jpg") != -1) {
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalV" + item.Id + "").html('V :' + v + ' v <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                        } else {
+                                            $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                        }
+                                        $(".signalV1" + item.Id + "").html(v);
+                                    }
+
+                                }
+                                else if (inItem.Title == "HG V") {
+                                    hgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SY-1.jpg") != -1) {
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalV" + item.Id + "").html('HG V :' + v + ' v <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                        } else {
+                                            $(".signalV" + item.Id + "").html("HG V :" + v + " v");
+                                        }
+                                        $(".signalV1" + item.Id + "").html(v + " " + "<span id='spnhhgV" + item.Id + "' style='font-weight:unset'></span>");
+                                    }
+
+                                }
+                                else if (inItem.Title == "HHG V") {
+                                    hhgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SYY-1.jpg") != -1) {
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalHHGV" + item.Id + "").html('HHG V :' + v + ' v <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                        } else {
+                                            $(".signalHHGV" + item.Id + "").html("HHG V :" + v + " v");
+                                        }
+                                        $("#spnhhgV" + item.Id + "").html("HHG V: " + v);
+                                    } else {
+                                        $(".signalHHGV" + item.Id + "").html("");
+                                    }
+
+                                }
+                                else if (inItem.Title == "On Aspect V") {
+                                    onAV = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SY-1.jpg") != -1) {
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalV" + item.Id + "").html('On Aspect V :' + v + ' v <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                        } else {
+                                            $(".signalV" + item.Id + "").html("On Aspect V :" + v + " v");
+                                        }
+                                        $(".signalV1" + item.Id + "").html(v + " " + "<span id='spnhhgV" + item.Id + "' style='font-weight:unset'></span>");
+                                    }
+                                }
+                                else if (inItem.Title == "Off Aspect V") {
+                                    offAV = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SR-1.jpg") != -1) {
+                                        if (isCalibration != null && isCalibration != undefined && isCalibration) {
+                                            $(".signalV" + item.Id + "").html('Off Aspect V :' + v + ' v <a href="javascript:void(0)"><i class="fa fa-pencil" onclick="fnAddCalibration(\'' + item.Id + '\',\'' + inItem.Id + '\',\'' + inItem.Multiplication + '\',\'' + item.Name + '\',\'' + inItem.Title + '\',\'' + v + '\');"></i></a>');
+                                        } else {
+                                            $(".signalV" + item.Id + "").html("Off Aspect V :" + v + " v");
+                                        }
+                                        $(".signalV1" + item.Id + "").html(v + " " + "<span id='spnhhgV" + item.Id + "' style='font-weight:unset'></span>");
+                                    }
+                                }
+                                else if (inItem.Title == "UG V") {
+                                    ugAv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0) {
+                                        $(".spnsignalUGV" + item.Id + "").html("/" + v + " v");
+                                    }
+                                }
+                                else if (inItem.Title == "UGA V") {
+                                    ugAv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0) {
+                                        if ($(".spnsignalUGAC" + item.Id + "").html() != null && $(".spnsignalUGAC" + item.Id + "").html() != undefined && $(".spnsignalUGAC" + item.Id + "").html() != '') {
+                                            $(".spnsignalUGAV" + item.Id + "").html("/" + v + " v");
+                                        }
+                                    }
+                                }
+                                else if (inItem.Title == "UGB V") {
+                                    ugBv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0) {
+                                        if ($(".spnsignalUGBC" + item.Id + "").html() != null && $(".spnsignalUGBC" + item.Id + "").html() != undefined && $(".spnsignalUGBC" + item.Id + "").html() != '') {
+                                            $(".spnsignalUGBV" + item.Id + "").html("/" + v + " v");
+                                        }
+
+                                    }
+                                }
+                                else if (inItem.Title == "UGC V") {
+                                    ugCv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0) {
+                                        if ($(".spnsignalUGCC" + item.Id + "").html() != null && $(".spnsignalUGCC" + item.Id + "").html() != undefined && $(".spnsignalUGCC" + item.Id + "").html() != '') {
+                                            $(".spnsignalUGCV" + item.Id + "").html("/" + v + " v");
+                                        }
+                                    }
+                                }
+                                else if (inItem.Title == "UGD V") {
+                                    ugDv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0) {
+                                        if ($(".spnsignalUGDC" + item.Id + "").html() != null && $(".spnsignalUGDC" + item.Id + "").html() != undefined && $(".spnsignalUGDC" + item.Id + "").html() != '') {
+                                            $(".spnsignalUGDV" + item.Id + "").html("/" + v + " v");
+                                        }
+                                    }
+                                }
+
+
+                                //Set Cutting Relay
+                                let isCuttingRelayVoltage = $("#chkIsCuttingRelayVoltage").is(":checked") ? true : false;
+                                var gateContectTypeClassName = '.hdndigital' + item.Id + '-' + inItem.Id;
+                                if (inItem.GateContectTypeId != null && inItem.GateContectTypeId != undefined && inItem.GateContectTypeId == 1) {
+                                    if (isCuttingRelayVoltage) {
+                                        $(gateContectTypeClassName).html("<span>" + v + "</span>");
+                                    } else {
+
+                                        if (v > 4.5) {
+                                            $(gateContectTypeClassName).html("<span class='badge badge-success'>Pickup</span>");
+                                        }
+                                        if (v < 4.5) {
+                                            $(gateContectTypeClassName).html("<span class='badge badge-warning'>DROP</span>");
+                                        }
+                                    }
+
+                                } else if (inItem.GateContectTypeId != null && inItem.GateContectTypeId != undefined && inItem.GateContectTypeId == 2) {
+                                    if (isCuttingRelayVoltage) {
+                                        $(gateContectTypeClassName).html("<span>" + v + "</span>");
+                                    } else {
+
+                                        if (v > 4.5) {
+                                            $(gateContectTypeClassName).html("<span class='badge badge-warning'>DROP</span>");
+                                        }
+                                        if (v < 4.5) {
+                                            $(gateContectTypeClassName).html("<span class='badge badge-success'>Pickup</span>");
+                                        }
+                                    }
+
+                                }
+
+                                //Set Lux Signal
+                                if (inItem.Title.includes("_DI")) {
+                                    $("#divsignalUG" + item.Id + "").hide();
+                                    $("#signalField" + item.Id + "").show();
+                                    $("#theadLuxSignal" + item.Id + "").show();
+
+                                    if (inItem.Title.includes("RG_LUX") && parseFloat(v) == parseFloat(200)) {
+                                        var signalId = $("#lfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#lfImage_" + item.Id + "").attr('src', '/Content/images/SR-1.jpg');
+                                        } else {
+
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='lfImage_" + item.Id + "' title='L_F' src='/Content/images/SR-1.jpg' /><span>LUX</span></a>");
+                                        }
+                                    }
+                                    else if (inItem.Title.includes("DG_LUX") && parseFloat(v) == parseFloat(200)) {
+                                        var signalId = $("#lfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#lfImage_" + item.Id + "").attr('src', '/Content/images/SG-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='lfImage_" + item.Id + "' title='L_F' src='/Content/images/SG-1.jpg' /><span>LUX</span></a>");
+                                        }
+                                    }
+                                    else if (inItem.Title.includes("HHG_LUX") && parseFloat(v) == parseFloat(200)) {
+                                        var signalId = $("#lfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#lfImage_" + item.Id + "").attr('src', '/Content/images/SYY-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='lfImage_" + item.Id + "' title='L_F' src='/Content/images/SYY-1.jpg' /><span>LUX</span></a>");
+                                        }
+                                    }
+                                    else if (inItem.Title.includes("HG_LUX") && parseFloat(v) == parseFloat(200)) {
+                                        var signalId = $("#lfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#lfImage_" + item.Id + "").attr('src', '/Content/images/SY-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='lfImage_" + item.Id + "' title='L_F' src='/Content/images/SY-1.jpg' /><span>LUX</span></a>");
+                                        }
+                                    }
+
+                                    if (inItem.Title.includes("RG_CT") && parseFloat(v) == parseFloat(200)) {
+
+                                        var signalId = $("#cfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#cfImage_" + item.Id + "").attr('src', '/Content/images/SR-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='cfImage_" + item.Id + "' title='C_F' src='/Content/images/SR-1.jpg' /><span>Current</span></a>");
+                                        }
+                                    }
+                                    else if (inItem.Title.includes("DG_CT") && parseFloat(v) == parseFloat(200)) {
+
+                                        var signalId = $("#cfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#cfImage_" + item.Id + "").attr('src', '/Content/images/SG-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='cfImage_" + item.Id + "' title='C_F' src='/Content/images/SG-1.jpg' /><span>Current</span></a>");
+                                        }
+                                    }
+                                    else if (inItem.Title.includes("HHG_CT") && parseFloat(v) == parseFloat(200)) {
+
+                                        var signalId = $("#cfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#cfImage_" + item.Id + "").attr('src', '/Content/images/SYY-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='cfImage_" + item.Id + "' title='C_F' src='/Content/images/SYY-1.jpg' /><span>Current</span></a>");
+                                        }
+                                    }
+                                    else if (inItem.Title.includes("HG_CT") && parseFloat(v) == parseFloat(200)) {
+
+                                        var signalId = $("#cfImage_" + item.Id + "").length;
+                                        if (signalId > 0) {
+                                            $("#cfImage_" + item.Id + "").attr('src', '/Content/images/SY-1.jpg');
+                                        } else {
+                                            $("#signalField" + item.Id + "").append("<a class='linkImg'><img style='height:150px;' id='cfImage_" + item.Id + "' title='C_F' src='/Content/images/SY-1.jpg' /><span>Current</span></a>");
+                                        }
+                                    }
+
+                                    var luxSignalClassName = '.hdnLux' + item.Id + '-' + inItem.Id;
+                                    $(luxSignalClassName).html("<span>" + v + "</span>");
+                                }
+                                else {
+                                    $("#divsignalUG" + item.Id + "").show();
+                                    $("#signalField" + item.Id + "").hide();
+                                    $("#theadLuxSignal" + item.Id + "").hide();
+                                }
+                            }
+                            else {
+                                var v = (Math.round(dataValue * 100) / 100).toFixed(1);
+                                // $(id).html(v);
+                                // $("#divSignal" + item.Id).hide();
+                                if (parseFloat(v) <= 0) {
+                                    v = '0.0';
+                                }
+
+                                if (inItem.Title == "RG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    rgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SR-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+                                }
+                                if (inItem.Title == "RG V") {
+
+                                   rgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SR-1.jpg")!=-1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                        $(".signalV1" + item.Id + "").html(v);
+                                    }
+                                }
+
+                                if (inItem.Title == "DG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    dgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SG-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+                                }
+                                if (inItem.Title == "DG V") {
+
+                                    dgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SG-1.jpg")!=-1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                        $(".signalV1" + item.Id + "").html(v);
+                                    }
+                                }
+
+                                if (inItem.Title == "HG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    hgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SY-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+                                }
+
+                                if (inItem.Title == "HG V") {
+                                    hgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SY-1.jpg")!=-1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                        $(".signalV1" + item.Id + "").html(v);
+                                    }
+                                }
+
+                                if (inItem.Title == "HHG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                    hgC = v;
+                                    $("#signal" + item.Id + "").html("<img style='height:150px;' src='/Content/images/SYY-1.jpg' />");
+                                    $(".signalC" + item.Id + "").html("C :" + v + " ma");
+                                    $(".signalC1" + item.Id + "").html(v);
+                                    $(id).html(inItem.Title);
+                                    $("#divSignal" + item.Id).show();
+                                    $("#trSignal" + item.Id).show();
+                                }
+                                if (inItem.Title == "HHG V") {
+                                    hgv = v;
+                                    if ($.trim($("#signal" + item.Id + "").html()).length > 0 && $.trim($("#signal" + item.Id + "").html()).indexOf("SYY-1.jpg") != -1) {
+                                        $(".signalV" + item.Id + "").html("V :" + v + " v");
+                                        $(".signalV1" + item.Id + "").html(v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+
+    function GetSingleValue(assetAttributes, basePath, data, title) {
+        var mainDataValue = 0;
+        if (assetAttributes != null && assetAttributes.length > 0) {
+            $.each(assetAttributes, function (idx, inItem) {
+
+                var str1 = basePath.toLowerCase();
+                var str2 = "";
+                if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                    str2 = inItem.AssetInfoChannel;
+                }
+
+                if (str1.indexOf(str2) != -1) {
+                    var infoValue = inItem.AssetInfoValue;
+                    if (infoValue != null) {
+                        var dataValue = data[infoValue];
+                        if (inItem.Title.includes(title)) {
+                            mainDataValue = parseFloat(dataValue);
+                        }
+
+                    }
+                }
+
+
+            });
+        }
+
+        return mainDataValue;
+    }
+
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+    }
+
+    function fnGridView() {
+        $("#listView").hide();
+        $("#gridView").show();
+    }
+
+    function fnListView() {
+        $("#listView").show();
+        $("#gridView").hide();
+    }
+
+    function fnSearch() {
+        $("#frmAssetDetails").submit();
+    }
+
+    function fnShowAspectData(assetId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetSignalAspectData',
+            type: 'Post',
+            data: '{assetId:' + assetId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#model-div-alert").empty().append(data);
+                $("#modalalertlogs").modal('show');
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowDigitalSignal(assetId) {
+        var assetTypeId = '@E7FRSAdvance.Utility.Utility.AssetType.SIGNAL.GetHashCode()';
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetDigitalSignalAttribute',
+            type: 'Post',
+            data: '{assetTypeId:' + assetTypeId + ',assetId:' + assetId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $('#modelDigitalSignal').find('.modal-body').empty();
+                var value = '<table class="table table-bordered table-striped">';
+                if (data != null && data != undefined && data.length > 0) {
+                    $(data).each(function (val, attribute) {
+                        var gateContectTypeClassName = 'hdndigital' + assetId + '-' + attribute.Id;
+                        value += '<tr>';
+                        value += '<td style="width:50%">' + attribute.Title +'</td>';
+                        value += '<td class="' + gateContectTypeClassName + '" style="width:50%"></td>';
+                        value += '</tr>';
+                    });
+                }
+                value += '<table>';
+
+                $('#modelDigitalSignal').find('.modal-body').append(value);
+                $("#modelDigitalSignal").modal('show');
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    function fnChangeDisplayMode($this) {
+
+        if ($($this).prop('checked') == true) {
+            if (json.mAssets != null && json.mAssets != undefined) {
+                $.each(json.mAssets, function (id, item) {
+                    $("#divSignal" + item.Id).show();
+                });
+            }
+        }
+        else {
+            if (json.mAssets != null && json.mAssets != undefined) {
+                $.each(json.mAssets, function (id, item) {
+                    $("#divSignal" + item.Id).hide();
+                });
+            }
+        }
+
+
+    }
+
+    function fnShowLuxSignal(assetId) {
+        var assetTypeId = '@E7FRSAdvance.Utility.Utility.AssetType.SIGNAL.GetHashCode()';
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetLuxSignalAttribute',
+            type: 'Post',
+            data: '{assetTypeId:' + assetTypeId + ',assetId:' + assetId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $('#modelLuxSignal').find('.modal-body').empty();
+                var value = '<table class="table table-bordered table-striped">';
+                if (data != null && data != undefined && data.length > 0) {
+                    $(data).each(function (val, attribute) {
+                        var gateContectTypeClassName = 'hdnLux' + assetId + '-' + attribute.Id;
+                        value += '<tr>';
+                        value += '<td style="width:50%">' + attribute.Title + '</td>';
+                        value += '<td class="' + gateContectTypeClassName + '" style="width:50%"></td>';
+                        value += '</tr>';
+                    });
+                }
+                value += '<table>';
+
+                $('#modelLuxSignal').find('.modal-body').append(value);
+                $("#modelLuxSignal").modal('show');
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>

@@ -1,0 +1,437 @@
+﻿@model Domain.FRSAlertLister
+
+@Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+<input type="hidden" id="hdnTotalCount" value="@Model.Pager.TotalRecord" />
+<input type="hidden" id="hdnTotalPage" value="@Model.Pager.TotalPage" />
+<input type="hidden" id="hdnCurrentPage" value="@Model.Pager.CurrentPage" />
+<input type="hidden" id="hdnPageSize" value="@Model.Pager.PageSize" />
+
+@functions { string ToTitleCase(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+        var info = System.Globalization.CultureInfo.CurrentCulture.TextInfo;
+        return info.ToTitleCase(input.ToLower());
+    }
+
+    string FormatDateTime(DateTime? dt)
+    {
+        if (dt == null || dt.Value == DateTime.MinValue) return "-";
+        return dt.Value.ToString("dd/MM/yyyy") + "\n" + dt.Value.ToString("HH:mm:ss");
+    }
+
+    string FormatDateTimeNonNull(DateTime dt)
+    {
+        if (dt == DateTime.MinValue) return "-";
+        return dt.ToString("dd/MM/yyyy") + "\n" + dt.ToString("HH:mm:ss");
+    }
+
+}
+
+<style>
+    #tblAlertDetail {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        color: #333;
+    }
+
+        #tblAlertDetail thead tr {
+            background-color: #f2f2f2;
+        }
+
+        #tblAlertDetail thead th {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-weight: 600;
+            font-size: 12px;
+            color: #333;
+            white-space: normal;
+            line-height: 1.4;
+            border-bottom: 2px solid #d0d0d0;
+        }
+
+        #tblAlertDetail tbody tr {
+            background-color: #fff;
+            border-bottom: 1px solid #ececec;
+        }
+
+            #tblAlertDetail tbody tr:hover {
+                background-color: #f9f9f9;
+            }
+
+        #tblAlertDetail tbody td {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 12px;
+            white-space: pre-line;
+            line-height: 1.5;
+        }
+
+            #tblAlertDetail tbody td.td-left {
+                text-align: left;
+            }
+
+    .badge-clear {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 500;
+        border: 1.5px solid #28a745;
+        color: #28a745;
+        background-color: #fff;
+    }
+
+    .badge-pending {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 500;
+        border: 1.5px solid #dc3545;
+        color: #dc3545;
+        background-color: #fff;
+    }
+</style>
+
+<!-- ===== TOOLBAR ROW ===== -->
+<div class="my-4 px-lg-4 px-2 w-100">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-10">
+
+        <!-- LEFT: Rows selector + total count -->
+        <div class="d-flex align-items-center gap-10">
+            <label style="font-size:13px;color:#555;margin:0;font-weight:500;">Rows:</label>
+            <select id="ddlPageSize" class="form-control form-control-sm"
+                    style="width:70px;height:34px;font-size:13px;"
+                    onchange="onPageSizeChange()">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+            <span id="spnTotalCount" style="font-size:13px;color:#555;font-weight:500;margin-left:4px;"></span>
+        </div>
+
+        <!-- RIGHT: Date-time bar + Download button side by side -->
+        <div class="d-flex align-items-center gap-10">
+
+            <!-- ===== DATE-TIME DISPLAY BAR ===== -->
+            <div style="
+                display:flex;
+                align-items:center;
+                background:#f0f4ff;
+                border:1.5px solid #c7d8f8;
+                border-radius:10px;
+                padding:0 14px;
+                height:40px;
+                position:relative;
+                box-shadow:0 2px 8px rgba(59,130,246,0.08);
+                white-space:nowrap;
+            ">
+                <!-- Left accent stripe -->
+                <div style="
+                    position:absolute;left:0;top:0;bottom:0;
+                    width:4px;
+                    background:linear-gradient(180deg,#3b82f6,#6366f1);
+                    border-radius:10px 0 0 10px;
+                "></div>
+
+                <!-- FROM label -->
+                <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;padding-left:6px;margin-right:8px;">From</span>
+
+                <!-- From Date pill -->
+                <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                        <rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" />
+                        <path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" />
+                        <path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                    <span id="dispFromDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:72px;">—</span>
+                </div>
+
+                <!-- From Time pill -->
+                <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;margin-left:6px;">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" />
+                        <path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                    <span id="dispFromTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:36px;">—</span>
+                </div>
+
+                <!-- Arrow -->
+                <div style="margin:0 10px;display:flex;align-items:center;">
+                    <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+                        <path d="M1 7h16M11 1l6 6-6 6" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                </div>
+
+                <!-- TO label -->
+                <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;margin-right:8px;">To</span>
+
+                <!-- To Date pill -->
+                <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                        <rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" />
+                        <path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" />
+                        <path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                    <span id="dispToDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:72px;">—</span>
+                </div>
+
+                <!-- To Time pill -->
+                <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;margin-left:6px;">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" />
+                        <path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" />
+                    </svg>
+                    <span id="dispToTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:36px;">—</span>
+                </div>
+            </div>
+            <!-- ===== END DATE-TIME DISPLAY BAR ===== -->
+            <!-- Download button -->
+            <div class="dropdown">
+                <button class="btn btn-inactive" id="btn2" data-toggle="dropdown"
+                        aria-haspopup="true" aria-expanded="false" title="Download" style="width:40px">
+                    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                         stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                        <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
+                    </svg>
+                </button>
+                <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btn2">
+                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()">
+                        <i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()">
+                        <i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV
+                    </a>
+                </div>
+            </div>
+
+        </div>
+        <!-- END RIGHT -->
+
+    </div>
+</div>
+<!-- ===== END TOOLBAR ROW ===== -->
+
+<div class="col">
+    <div id="listView">
+        <div class="table-responsive">
+            <table id="tblAlertDetail">
+                <thead>
+                    <tr>
+                        <th style="min-width: 45px; border: 1px solid #dee2e6;">Sr.No</th>
+                        <th style="min-width:50px; border: 1px solid #dee2e6;">Zone</th>
+                        <th style="min-width:80px; border: 1px solid #dee2e6;">Division</th>
+                        <th style="min-width:90px; border: 1px solid #dee2e6;">Station</th>
+                        <th style="min-width:100px; border: 1px solid #dee2e6;">Asset Type</th>
+                        <th style="min-width:70px; border: 1px solid #dee2e6;">Asset<br />Number</th>
+                        <th style="min-width:70px; border: 1px solid #dee2e6;">Alert Type</th>
+                        <th style="min-width:65px; border: 1px solid #dee2e6;">Alert<br />Status</th>
+                        <th style="min-width:181px; border: 1px solid #dee2e6;">Type Cause of Asset Failure</th>
+                        <th style="min-width:120px; border: 1px solid #dee2e6;">Alert Feedback<br />(T/PT/M/F)</th>
+                        <th style="min-width:100px; border: 1px solid #dee2e6;">Incidence<br />Date &amp; Time</th>
+                        <th style="min-width:110px; border: 1px solid #dee2e6;">Rectification<br />Date &amp; Time</th>
+                        <th style="min-width:85px; border: 1px solid #dee2e6;">Incidence<br />Duration(h:m)</th>
+                        <th style="min-width:120px; border: 1px solid #dee2e6;">Alert Feedback<br />Date &amp; Time</th>
+                        <th style="min-width:130px; border: 1px solid #dee2e6;">Maintainer Name</th>
+                        <th style="min-width:100px; border: 1px solid #dee2e6;">Maintainer<br />Designation</th>
+                        <th style="min-width:110px; border: 1px solid #dee2e6;">Maintainer<br />Mobile Number</th>
+                        <th style="min-width:130px; border: 1px solid #dee2e6;">Maintainer Remarks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                    {
+                        int counter = Model.Pager.Skip + 1;
+                        foreach (var item in Model.mFRSAlerts)
+                        {
+                            <tr>
+                                <td>@counter</td>
+                                <td>@item.ZoneName</td>
+                                <td>@ToTitleCase(item.DivisionName)</td>
+                                <td>@ToTitleCase(item.SiteName)</td>
+                                <td>@ToTitleCase(item.AssetType)</td>
+                                <td>@item.AssetName</td>
+                                <td>
+                                    @if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AlertType.Failure.ToString()</span>
+                                    }
+                                    else if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AlertType.Predictive.ToString()</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (item.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given)
+                                    {
+                                        <span class="badge badge-pill pill-red">Pending</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-pill pill-green">Cleared</span>
+                                    }
+                                </td>
+                                <td>@item.CauseCode</td>
+                                <td>
+                                    @if (item.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given.ToString().Replace("_", " ")</span>
+                                    }
+                                    else if (item.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.ToString()</span>
+                                    }
+                                    else if (item.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.ToString()</span>
+                                    }
+                                    else if (item.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.ToString()</span>
+                                    }
+                                    else if (item.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.ToString()</span>
+                                    }
+                                </td>
+                                <td>@FormatDateTimeNonNull(item.SetTimeStamp)</td>
+                                <td>@FormatDateTime(item.ResetTimeStamp)</td>
+                                <td>
+                                    @if (item.ResetTimeStamp != null && item.ResetTimeStamp.Value != DateTime.MinValue)
+                                    {
+                                        TimeSpan span = item.ResetTimeStamp.Value.Subtract(item.SetTimeStamp);
+                                        <span>@((int)span.TotalHours):@span.Minutes.ToString("D2")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>@FormatDateTime(item.AcknowledgemenTimeStamp)</td>
+                                <td>
+                                    @if (item.AcknowledgemenStatusId != (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given && item.AcknowledgemenTimeStamp != null && item.AcknowledgemenTimeStamp != DateTime.MinValue)
+                                    {
+                                        @ToTitleCase(item.MaintainerName)
+                                    }
+                                </td>
+                                <td>
+                                    @if (item.AcknowledgemenStatusId != (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given && item.AcknowledgemenTimeStamp != null && item.AcknowledgemenTimeStamp != DateTime.MinValue)
+                                    {
+                                        @item.MaintainerDesignation
+                                    }
+                                </td>
+                                <td>
+                                    @if (item.AcknowledgemenStatusId != (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given && item.AcknowledgemenTimeStamp != null && item.AcknowledgemenTimeStamp != DateTime.MinValue)
+                                    {
+                                        @item.MaintainerMobileNumber
+                                    }
+                                </td>
+                                <td class="td-left">
+                                    @if (item.AcknowledgemenStatusId != (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given)
+                                    {
+                                        @item.Remark
+                                    }
+                                </td>
+                            </tr>
+                            counter++;
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="18" class="text-center py-4" style="color:#999;">No records found</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        @{
+            int totalPageInt = 0;
+            int.TryParse(Model.Pager.TotalPage, out totalPageInt);
+            int currentPageInt = (int)Model.Pager.CurrentPage;
+            int totalRecordInt = (int)Model.Pager.TotalRecord;
+            int pageSizeInt = Model.Pager.PageSize;
+            int skipInt = Model.Pager.Skip;
+            int startRecord = totalRecordInt > 0 ? skipInt + 1 : 0;
+            int endRecord = (int)Math.Min(skipInt + pageSizeInt, totalRecordInt);
+        }
+
+        @if (totalPageInt > 0)
+        {
+            <nav class="px-md-4 px-2">
+                <div class="d-flex justify-content-between align-items-center mt-3 mb-2 flex-wrap gap-10">
+                    <div style="font-size:13px;color:#666;">
+                        Showing <b>@startRecord</b> to <b>@endRecord</b> of <b>@totalRecordInt</b> records
+                    </div>
+                    <ul class="pagination pagination-sm mb-0" id="pager">
+                        <li class="page-item @(currentPageInt <= 1 ? "disabled" : "")">
+                            <a class="page-link" href="javascript:void(0);"
+                               onclick="@(currentPageInt > 1 ? "goToPage(" + (currentPageInt - 1) + ")" : "")">
+                                &laquo; Prev
+                            </a>
+                        </li>
+
+                        @if (currentPageInt > 3)
+                        {
+                            <li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="goToPage(1)">1</a></li>
+                            if (currentPageInt > 4)
+                            {
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            }
+                        }
+
+                        @for (int i = Math.Max(1, currentPageInt - 2); i <= Math.Min(totalPageInt, currentPageInt + 2); i++)
+                        {
+                            <li class="page-item @(i == currentPageInt ? "active" : "")">
+                                <a class="page-link" href="javascript:void(0);" onclick="goToPage(@i)">@i</a>
+                            </li>
+                        }
+
+                        @if (currentPageInt < totalPageInt - 2)
+                        {
+                            if (currentPageInt < totalPageInt - 3)
+                            {
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            }
+                            <li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="goToPage(@totalPageInt)">@totalPageInt</a></li>
+                        }
+
+                        <li class="page-item @(currentPageInt >= totalPageInt ? "disabled" : "")">
+                            <a class="page-link" href="javascript:void(0);"
+                               onclick="@(currentPageInt < totalPageInt ? "goToPage(" + (currentPageInt + 1) + ")" : "")">
+                                Next &raquo;
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+        }
+    </div>
+</div>
+
+<script>
+    // ===== BIND DATE-TIME VALUES FROM PARENT PAGE INPUTS =====
+    (function () {
+        function fmt(val) { return val && val.trim() ? val.trim() : '—'; }
+        var ft = $('#txtFromTime').val();
+        var tt = $('#txtToTime').val();
+        $('#dispFromDate').text(fmt($('#txtFromDate').val()));
+        $('#dispFromTime').text(ft && ft.trim() ? ft.trim() : '00:00');
+        $('#dispToDate').text(fmt($('#txtToDate').val()));
+        $('#dispToTime').text(tt && tt.trim() ? tt.trim() : '00:00');
+    })();
+
+    // ===== PAGINATION =====
+    function goToPage(page) {
+        var pageSize = parseInt($('#hdnPageSize').val()) || (window._alertPageSize || 10);
+        var skip = (page - 1) * pageSize;
+        fnGetAlertDetailReport(skip);
+    }
+</script>

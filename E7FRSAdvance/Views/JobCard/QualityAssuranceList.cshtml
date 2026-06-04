@@ -1,0 +1,258 @@
+﻿@model Domain.JobCardLister
+@using System.Linq;
+
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-xl-2 col-lg-4 col-md-4 col-sm-4">
+                                <strong style="margin-top:10px;">Division</strong>
+                                @Html.DropDownListFor(x => x.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", tabindex = 1, @id = "drpDivision" })
+                            </div>
+                            <div class="col-xl-2 col-lg-4 col-md-4 col-sm-4">
+                                <strong style="margin-top:10px;">Site</strong>
+                                @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 2 })
+                            </div>
+                            <div class="col-xl-2 col-lg-3 col-md-3 col-sm-4 mt-4">
+                                <input type="button" class="btn btn-success m-l-10" value="Search" onclick="fnSearch()" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="card-body " style="padding:15px;">
+                <div class="row">
+                    @if (Model != null && Model.mJobCards != null && Model.mJobCards.Count > 0)
+                    {
+
+                        var dateGrouped = Model.mJobCards.Where(x => x.mJobCardOverallTargets != null).SelectMany(x => x.mJobCardOverallTargets).Where(x => x.ResolvedDate != null)
+                                   .GroupBy(p => p.ResolvedDate.Value.Date
+                                   ).Select(d => d.Key).OrderByDescending(x => x.Date).ToList();
+
+                        <div class="row">
+
+                            @foreach (var date in dateGrouped)
+                            {
+                                var jobcardIds = Model.mJobCards.Where(x => x.mJobCardOverallTargets != null).SelectMany(x => x.mJobCardOverallTargets).Where(x => x.ResolvedDate != null && x.ResolvedDate.Value.Date == date.Date).Select(x => x.JobCardId).Distinct().ToList();
+
+                                <div class="col-12" id="">
+                                    <div class="card mb-2">
+                                        <div class="card-body text-white" style="padding: 15px; font-size: 18px; background-color: #21596880; border-radius: 12px; " id="divDateGroup">
+                                            @date.Date.ToShortDateString()
+
+
+                                            @if (jobcardIds != null && jobcardIds.Count > 0)
+                                            {
+                                                var jobCardSites = Model.mJobCards.Where(x => jobcardIds.Contains(x.Id)).GroupBy(x => x.SiteName).Select(x => x.Key).ToList();
+
+                                                <span>(@(string.Join(", ", jobCardSites)))</span>
+
+                                            }
+                                            <div class="pull-right">
+                                                <a href="javascript:void(0)"><i class="fa fa-angle-up f-48" style="color:#fff;" onclick="fnShowJobCardDiv('@date.Date.Ticks',this)"></i></a>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    @if (jobcardIds != null && jobcardIds.Count > 0)
+                                    {
+                                        foreach (var item in Model.mJobCards.Where(x => jobcardIds.Contains(x.Id)).ToList())
+                                        {
+                                            <div class="col-lg-12 jobCardDiv_@date.Ticks" style="display: none; padding: 20px;">
+
+                                                <div class="card">
+                                                    <div class="card-header bg-secondary collapseView_@item.Id" onclick="fnShowCollapseView('@item.Id','@date.Date.Ticks','@date.Date.ToString("d-M-yyyy")')" style="border-radius:15px;">
+
+                                                        <div class="row">
+                                                            <div class="col-md-6"> <h4>Job Card</h4></div>
+                                                            <div class="col-md-6">
+                                                                <h6 class="pull-right">Site Name - @item.SiteName</h6>
+                                                            </div>
+                                                        </div>
+                                                        <div class="row">
+                                                            <div class="col-md-6"><h4>@(item.StationCode)@(item.CreatedDate.ToString("ddMMyy"))</h4></div>
+                                                            <div class="col-md-6">
+                                                                <h6 class="pull-right">Created on - @(item.CreatedDate.ToString("dd/MM/yy"))</h6>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="collapse cardView_@(item.Id)_@(date.Date.Ticks)">
+
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+
+                        </div>
+
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        $('#drpDivision').change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+
+    });
+
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/JobCard/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_SiteId").empty();
+                    $("#SearchCriteria_SiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#SearchCriteria_SiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnShowCollapseView(jobCardId, date, searchdate) {
+        //if ($this.target.tagName === 'A') return;
+        //if ($this.target.tagName === 'IMG') return;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/JobCard/_QualityAssuranceJobCard',
+            type: 'Post',
+            data: '{jobCardId:' + jobCardId + ',date:"' + searchdate + '"}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $(".cardView_" + jobCardId + '_' + date).empty().append(data);
+
+                $(".cardView_" + jobCardId + '_' + date).collapse('toggle');
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                $(".cardView_" + jobCardId + '_' + date).collapse('toggle');
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+
+    }
+
+    function fnSearch() {
+        $("#hdnSkip").val('0');
+        if ($('#drpSearchIsLock').val() == "Lock") {
+            $('#SearchCriteria_IsLock').val(true);
+        }
+        else if ($('#drpSearchIsLock').val() == "UnLock") {
+            $('#SearchCriteria_IsLock').val(false);
+        }
+        $('#frmQualityAssuranceList').submit();
+    }
+
+    function fnOpenOverallTarget(jobCardId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/JobCard/_QualityAssuranceJobCard',
+            type: 'Post',
+            data: '{jobCardId:' + jobCardId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divQualityAssuranceJobCard").empty().append(data);
+                $("#modal-siteKeeping-overall-targets").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnQualityAssuranceUpdate(dataId, jobCardId, date) {
+        var mJobCardOverallTarget = {};
+        mJobCardOverallTarget.Id = dataId;
+        var isValid = true;
+        if ($('#chkResolved_' + dataId).prop('checked') == true) {
+            //do something
+            mJobCardOverallTarget.IsResolved = true;
+            mJobCardOverallTarget.IsAdminResolved = true;
+            mJobCardOverallTarget.Remark = $('#txtResolved_' + dataId).val();
+        } else {
+            mJobCardOverallTarget.IsResolved = false;
+            mJobCardOverallTarget.IsAdminResolved = false;
+            mJobCardOverallTarget.Remark = $('#txtResolved_' + dataId).val();
+            if (mJobCardOverallTarget.Remark == null || mJobCardOverallTarget.Remark == undefined || mJobCardOverallTarget.Remark == '') {
+                alert('Remark is required');
+                isValid = false;
+            }
+        }
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/JobCard/QualityAssuranceUpdate',
+                type: 'Post',
+                data: '{mJobCardOverallTarget:' + JSON.stringify(mJobCardOverallTarget) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                            //$(".cardView_" + jobCardId + '_' + date).collapse('toggle');
+                            //fnShowCollapseView(jobCardId, date,);
+                            //$('#frmQualityAssuranceList').submit();
+                        } else {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+
+    }
+
+    function fnShowJobCardDiv(datetick, $this) {
+        if ($($this).hasClass("fa-angle-up")) {
+            $($this).removeClass("fa-angle-up").addClass("fa-angle-down");
+
+            $('.jobCardDiv_' + datetick).show();
+
+        } else {
+            $($this).removeClass("fa-angle-down").addClass("fa-angle-up");
+            $('.jobCardDiv_' + datetick).hide();
+
+        }
+
+    }
+</script>

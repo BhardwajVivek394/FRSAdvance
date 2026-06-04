@@ -1,0 +1,125 @@
+﻿@model Domain.AssetLister
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Actual Time Monitor</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row" style="margin-bottom:10px">
+    <div class="card">
+        <div class="card-header">
+            <div class="row">
+                <div class="col-sm-2">
+                    @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                </div>
+                <div class="col-sm-1">
+                    <h6>Last Update:</h6>
+
+                </div>
+                <div class="col-sm-1">
+                    <h6 id="spnLiveTime"></h6>
+                </div>
+            </div>
+           
+        </div>
+        <div class="card-body">
+            @if (Model != null && Model.Site != null && Model.Site.Id > 0)
+            {
+                <div class="row" style="margin-bottom:10px">
+                    <div class="col-sm-12">
+                        <div class="col-sm-4">
+                            @if (Model.Site.IsHttpPost != null && Model.Site.IsHttpPost == true)
+                            {
+                                <input type="hidden" id="hdnIsHttPost" value="true" />
+                            }
+                            else
+                            {
+                                <input type="hidden" id="hdnIsHttPost" value="false" />
+                            }
+                            <input type="hidden" id="hdnNoOfChannel" value="@Model.Site.MQTTNoOfChannels" />
+                        </div>
+                        <div class="col-sm-8">
+
+                            @using (Ajax.BeginForm("_GetAssetType", "Site", new AjaxOptions() { UpdateTargetId = "divAssetType", InsertionMode = InsertionMode.Replace, LoadingElementId = "loader" }, new { @id = "frmAssetType", enctype = "multipart/form-data" }))
+                            {
+                                <div id="divLeftInfo">
+                                    @Html.Action("_GetAssetType", new { siteId = Model.Site.Id })
+                                </div>
+                            }
+
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+
+                        @using (Ajax.BeginForm("_GetAssetDetails", "ActualTimeMonitor", new AjaxOptions()
+                        {
+                            HttpMethod = "POST",
+                            UpdateTargetId = "divAssetDetailsList",
+                            InsertionMode = InsertionMode.Replace,
+                            LoadingElementId = "loader",
+                        }, new { id = "frmAssetDetails" }))
+                        {
+                            <input type="hidden" name="SearchCriteria.SiteId" id="hdnsiteId" value="@Model.Site.Id" />
+
+                            <input type="hidden" name="SearchCriteria.AssetTypeId" id="hdnassetTypeId" />
+                            <input type="hidden" name="SearchCriteria.AssetTypeName" id="hdAssetTypeName" />
+                            <div id="divAssetDetailsList">
+
+                                @*@Html.Action("_GetAssetDetails", Model)*@
+                            </div>
+                        }
+                    </div>
+                </div>
+
+
+
+            }
+        </div>
+    </div>
+
+   
+</div>
+
+
+
+
+
+<script>
+
+    $(document).ready(function () {
+        $('#SearchCriteria_SiteId').change(function () {
+            if ($(this).val() != null && $(this).val() != undefined && $(this).val() != '' && $(this).val() != "0") {
+                window.location.href = "Index?siteId=" + $(this).val();
+            }
+            //$('#frmGetAssetDetails').submit();
+        });
+    });
+
+    function SearchAsset(id, name) {
+        debugger;
+        if (this.client != null && this.client != undefined) {
+            this.client.disconnect();
+        }
+        $("#hdnassetTypeId").val(id);
+        $("#hdAssetTypeName").val(name);
+        //$("#lblAssetType").text($("#AssetName" + id).val());
+        $("#hdnSkip").val('0');
+        $(".asset-search").val("");
+        $("#frmAssetDetails").submit();
+    }
+</script>
+

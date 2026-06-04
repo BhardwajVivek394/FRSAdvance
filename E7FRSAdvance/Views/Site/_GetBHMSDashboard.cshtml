@@ -1,0 +1,715 @@
+﻿@model Domain.AssetLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    .progress {
+        height: 30px;
+        font-size: 18px;
+    }
+
+    .progress-bar-animated {
+        color: black !important;
+    }
+</style>
+@{
+    var bgColor = new string[] { "#215968", "#404040", "#4bacc6" };
+}
+<div class="people-options clearfix" style="padding:4px">
+    <div class="pull-left " style="display:inline-flex">
+        <div class="input-group " style="margin-left:20px;">
+            @Html.TextBoxFor(x => x.SearchCriteria.AssetName, new { @class = "form-control btn-pill asset-search", @placeholder = "Search " })
+        </div>
+    </div>
+    <div class="btn-group pull-right people-pager">
+
+
+        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+        @*@Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })*@
+    </div>
+
+    @if (Model.SearchCriteria.IsListView == true)
+    {
+        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-info" onclick="fnListView()" title="List View"><i class="fa fa-list"></i></a></span>
+        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-primary" onclick="fnGridView()" title="Grid View"><i class="fa fa-th-large"></i></a></span>
+    }
+
+
+
+</div>
+
+<div class="card " id="gridView">
+    <div class="card-body" style="padding:15px;">
+        <div class="row" id="divAsset">
+            @if (Model.mAssets != null && Model.mAssets.Count > 0)
+            {
+
+                foreach (var asset in Model.mAssets)
+                {
+                    int skip = 0;
+                    int loopCounter = 0;
+                    <div class="col-12 xl-50 news box-col-12 text-center">
+                        <div class="card mb-2">
+                            <div class="card-header bg-primary text-white">
+                                @if (asset.assetAttributes != null && asset.assetAttributes.Count > 0)
+                                {
+                                    var assetAttribute = asset.assetAttributes.Where(x => x.Title == "VTotal").FirstOrDefault();
+                                    if (assetAttribute != null && assetAttribute.Id > 0)
+                                    {
+                                        <h5>
+                                            V Total : <span id="spnVTotal" class="hdnAttributeData@(assetAttribute.Id)@(asset.Id)"></span>
+                                        </h5>
+                                        if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsCalibration)
+                                        {
+                                            <a class="text-white"><i class="fa fa-pencil" onclick="fnAddCalibration('@asset.Id','@assetAttribute.Id','@assetAttribute.Multiplication','@asset.Name','@assetAttribute.Title',$('#spnVTotal').text())"></i></a>
+                                        }
+                                    }
+
+                                }
+
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    @{
+                                        if (asset.assetAttributes != null && asset.assetAttributes.Count > 0)
+                                        {
+                                            loopCounter = asset.assetAttributes.Count / 11;
+                                        }
+                                    }
+
+                                    @for (int i = 0; i < loopCounter; i++)
+                                    {
+                                        <div class="col-xl-2 xl-50 news box-col-6">
+                                            <div class="card card-border">
+                                                <div class="bg-secondary main-header" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                                    <div class="" style="width:80%;float:left;padding:10px;border-top-left-radius:15px;">
+                                                        <h6 style="margin-left:12px;">
+                                                            <a target="_blank" class="text-white" href="@asset.HttpMisLink"> @asset.AssetTypeName : @asset.Name</a>
+
+                                                        </h6>
+                                                    </div>
+                                                    <div class="text-center bg-dark" style="width:20%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:50px;">
+
+                                                        @if (asset.UnderMaintence == true)
+                                                        {
+                                                            <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@asset.Id', this)" data-id="@asset.Id"></i></div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="text-center">
+                                                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@asset.Id', this)" data-id="@asset.Id"></i>
+                                                            </div>
+                                                        }
+                                                        <a onclick="fnGetAssetGraph('@asset.SiteId', '@asset.Id', '@Json.Encode(asset.mFamilyTracks)')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>
+                                                        <a onclick="fnGetSmsLog('@asset.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                                                    </div>
+
+                                                </div>
+                                                <div class="card-body gridBody" style="padding:5px;">
+                                                    <div class="table-responsive width100p tblAssetData">
+
+                                                        <table class="table table-striped">
+                                                            <tbody id="tblAttributeData@(asset.Id)" class="tblAttributes tblAttributeData@(asset.Id)" data-id="@asset.Id">
+                                                                @if (asset.assetAttributes != null && asset.assetAttributes.Count > 0)
+                                                                {
+                                                                    foreach (var assetAttribute in asset.assetAttributes.Skip(skip).Take(11))
+                                                                    {
+                                                                        skip++;
+                                                                        <tr>
+                                                                            <td style="width:50%">
+                                                                                @assetAttribute.Title
+                                                                            </td>
+                                                                            <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(asset.Id)">
+                                                                                @assetAttribute.AttributeData
+                                                                            </td>
+                                                                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsCalibration)
+                                                                            {
+                                                                                <td style="width:50%">
+                                                                                    <a class=""><i class="fa fa-pencil" onclick="fnAddCalibration('@asset.Id','@assetAttribute.Id','@assetAttribute.Multiplication','@asset.Name','@assetAttribute.Title')"></i></a>
+                                                                                </td>
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <td></td>
+                                                                            }
+                                                                        </tr>
+                                                                    }
+
+
+                                                                }
+                                                                else
+                                                                {
+                                                                    <tr>
+                                                                        <td class="text-center" colspan="3">No attributes found!</td>
+                                                                    </tr>
+                                                                }
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                             
+
+                            </div>
+                        </div>
+                    </div>
+                }
+
+            }
+            else
+            {
+                <p style="font-size:15px">No record found!</p>
+            }
+        </div>
+    </div>
+</div>
+
+@*@if (Model.SearchCriteria.IsListView == true)
+    {
+        <div class="card" id="listView" style="display:none;">
+            <div class="card-header">
+                @Model.SearchCriteria.AssetTypeName
+            </div>
+            <div class="card-body listBody" style="padding:15px;">
+                <div class="">
+                    <div class="">
+                        <div class="tableFixHead">
+                            <table class="table">
+                                <thead class="bg-secondary">
+
+                                    @{
+                                        List<Domain.AssetAttribute> mAssetAttribute = new List<Domain.AssetAttribute>();
+                                        foreach (var item in Model.mAssets)
+                                        {
+                                            foreach (var assetAttribute in item.assetAttributes)
+                                            {
+                                                if (mAssetAttribute.Where(x => x.Title == assetAttribute.Title).Count() == 0)
+                                                {
+                                                    mAssetAttribute.Add(assetAttribute);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                                    {
+                                        int i = 0;
+                                        int j = 0;
+                                        foreach (var item in Model.mAssets)
+                                        {
+                                            if (item.assetAttributes != null && item.assetAttributes.Count > 0 && i == 0)
+                                            {
+                                                i++;
+                                                <tr>
+                                                    <th style="background-color:#4bacc6;color:white;">
+                                                        @item.AssetTypeName
+                                                    </th>
+                                                    @foreach (var assetAttribute in mAssetAttribute)
+                                                    {
+                                                        if (assetAttribute.Title.Contains("Last Update"))
+                                                        {
+                                                            <th style="background-color:@bgColor[j];color:white;width:120px;">
+
+                                                                @assetAttribute.Title
+                                                            </th>
+                                                        }
+                                                        else
+                                                        {
+                                                            string bgcolor = bgColor[j];
+                                                            if (assetAttribute.Title.Contains("+ve"))
+                                                            {
+                                                                bgcolor = "darkorange";
+                                                            }
+                                                            if (assetAttribute.Title.Contains("-ve"))
+                                                            {
+                                                                bgcolor = "Black";
+                                                            }
+                                                            <th style="background-color:@bgcolor;color:white;">
+                                                                @if (assetAttribute.Title.Contains("+ve"))
+                                                                {
+                                                                    <span style="color:white;font-weight:900">  @assetAttribute.Title</span>
+                                                                }
+                                                                else if (assetAttribute.Title.Contains("-ve"))
+                                                                {
+                                                                    <span style="color:white;font-weight:900">  @assetAttribute.Title</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    @assetAttribute.Title
+                                                                }
+
+                                                            </th>
+                                                        }
+                                                        if (j == 2)
+                                                        { j = 0; }
+                                                        else
+                                                        { j++; }
+                                                    }
+
+
+                                                    <th style="background-color:#404040;color:white;width:150px;" colspan="3"></th>
+                                                </tr>
+                                            }
+
+                                        }
+
+                                    }
+
+                                </thead>
+                                <tbody style="max-height: 620px;overflow-y:auto;" id="tbodyAssetList">
+                                    @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                                    {
+
+                                        foreach (var item in Model.mAssets)
+                                        {
+                                            if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                                            {
+                                                <tr data-id="@item.Id">
+                                                    <td class="hdnAssetNameTD@(item.Id)">
+                                                        <a href="@item.HttpMisLink" target="_blank"> @item.Name</a>
+                                                    </td>
+                                                    @foreach (var attribute in mAssetAttribute)
+                                                    {
+                                                        var attItem = item.assetAttributes.Where(x => x.Title == attribute.Title).FirstOrDefault();
+
+                                                        if (attItem != null)
+                                                        {
+                                                            <td class="hdnAttributeData@(attItem.Id)@(item.Id)">
+                                                                @attItem.AttributeData
+                                                            </td>
+                                                        }
+                                                        else
+                                                        {
+                                                            <td class="hdnAttributeData@(attribute.Id)@(item.Id)">
+                                                                N/A
+                                                            </td>
+                                                        }
+
+
+                                                        //foreach (var assetAttribute in item.assetAttributes)
+                                                        //{
+
+                                                        //}
+                                                    }
+
+
+                                                    <td>
+                                                        <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id','@Json.Encode(item.mFamilyTracks)')" style="text-transform:capitalize;cursor:pointer;"> Graph </a>
+                                                    </td>
+                                                    <td>
+                                                        <a onclick="fnGetSmsLog('@item.Id')" style="text-transform:capitalize;cursor:pointer">Event log</a>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    }*@
+
+@{
+    string type = string.Empty;
+    if (Model != null && Model.mAssets.Count > 0)
+    {
+        type = Model.mAssets[0].AssetTypeName;
+    }
+}
+
+<input type="hidden" id="asset_hidden_field" />
+<script>
+    (function ($) {
+        $.fn.focusTextToEnd = function () {
+            this.focus();
+            var $thisVal = this.val();
+            this.val('').val($thisVal);
+            return this;
+        }
+    }(jQuery));
+    var isMultipleAssets = true;
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var mQTT = null;
+    var admin = '@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId';
+    var isSiteKeeping = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping');
+    var values = '@type';
+    var bhmsDirect = '@E7FRSAdvance.Utility.Utility.BHMSType.Direct.GetHashCode()';
+    $(document).ready(function () {
+        $(".main-header").each(function () {
+
+            $(this).find("div:eq(1)").css("height", $(this).height()).css("display", "grid")
+            //console.log($(this).height())
+
+        });
+        $('.asset-search').focusTextToEnd();
+        $(".asset-search").keyup(function (e) {
+            setTimeout(function () {
+                $("#frmAssetDetails").submit();
+            },3000)
+
+        });
+        $('[data-toggle="popover"]').popover();
+
+        $("#lblAssetType").html($("#AssetName" + $("#hdnassetTypeId").val()).val());
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            //$("#hdndateValue").val();
+            //$("#hdnassetTypeId").val();
+            $("#frmAssetDetails").submit();
+        });
+
+     //   $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        json = @Html.Raw(Json.Encode(Model));
+
+        $('#asset_hidden_field').val(JSON.stringify(json));
+
+        mQTT =@Html.Raw(Json.Encode(Model.MQTTDetail));
+
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        for (var i = 0; i < channels.length; i++) {
+            $("#c" + i).html('');
+        }
+        $('#spnDLLastUpdate').text('');
+
+        if ($("#hdnIsHttPost").val() == "true") {
+            fnGetHttpPostData();
+            setInterval(function () {
+                fnGetHttpPostData();
+            },30000)
+        } else {
+            let isSecure = window.location.protocol === "https:";
+            client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+            // set callback handlers
+
+            client.onConnectionLost = onConnectionLost;
+            client.onMessageArrived = onMessageArrived;
+
+            // connect the client
+            client.connect({
+                onSuccess: onConnect,
+                useSSL: isSecure,
+                userName: mQTT.MQTTUsername,
+                password: mQTT.MQTTPassword,
+                cleanSession: true
+            });
+
+        }
+
+        //setInterval(function () {
+        //    $(".tdHealth").each(function () {
+        //        GetAlarmStatus($(this).attr("data-Id"));
+        //    })
+        //}, 60000)
+        if (isSiteKeeping || admin == '@E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode()') {
+            fnGetWatchList();
+        }
+    });
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i].toLowerCase());
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+
+        if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['roles'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindBHMSData(message.destinationName, array);
+                }
+            }
+        } else {
+            var channeldata = message.payloadString.split(',');
+            BindBHMSData(message.destinationName, channeldata);
+        }
+
+
+
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+                var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+                if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+                    var d = new Date();
+                    var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                    $("#c" + i).html(time);
+                }
+            }
+        }
+    }
+
+    function BindBHMSData(basePath, data) {
+        $.each(json.mAssets, function (id, item) {
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+                  
+                    var str1 = basePath.toLowerCase();
+                    if (inItem.AssetInfoChannel != null) {
+                        var str2 = inItem.AssetInfoChannel.toLowerCase();
+                        if (str1.indexOf(str2) != -1) {
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+
+                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
+
+                                if (infoMultiplication != null) {
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = (Math.round(mainData * 100) / 100).toFixed(3);
+                                    if (parseFloat(v) <= 0) {
+                                        v = '0.0';
+                                    }
+                                    if (item.BHMSTypeId != null && item.BHMSTypeId != undefined && item.BHMSTypeId != '' && parseInt(item.BHMSTypeId) == parseInt(bhmsDirect) && inItem.Title != "V55") {
+
+                                        var nextAttr = item.assetAttributes[idx + 1];
+                                        if (nextAttr != null && nextAttr != undefined) {
+                                            var nextDataValue = data[parseInt(nextAttr.AssetInfoValue)];
+                                            var nextmainData = parseFloat(nextAttr.Multiplication) * parseFloat(nextDataValue);
+                                            v = (Math.round((parseFloat(v) - (nextmainData)) * 100) / 100).toFixed(3);
+                                        }
+                                        if (inItem.Title == "VTotal") {
+                                            v = GetV1Value(item, data);
+                                        }
+
+                                    }
+                                    $(id).html(v);
+                                }
+
+                            }
+                            else {
+                                var v = (Math.round(dataValue * 100) / 100).toFixed(3);
+                                if (parseFloat(v) <= 0) {
+                                    v = '0.0';
+                                }
+                                $(id).html(v);
+                            }
+                            //if (inItem.Title == "VTotal") {
+                            //    $('#spnVTotal').html(v);
+                            //}
+                        }
+                    }
+                });
+            }
+
+        });
+    }
+
+    function GetV1Value(item, data) {
+        var v1value = '';
+        if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+            $.each(item.assetAttributes, function (idx, inItem) {
+
+
+                if (inItem.Title == "V1") {
+
+                    if (inItem.AssetInfoChannel != null) {
+                        var str2 = inItem.AssetInfoChannel.toLowerCase();
+                      
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+                            var dataValue = data[infoValue];
+
+                            var id = ".hdnAttributeData" + inItem.Id + item.Id;
+
+                            if (infoMultiplication != null) {
+                                var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                v1value = (Math.round(mainData * 100) / 100).toFixed(3);
+                            }
+                        }
+                    }
+                }
+
+               
+            });
+        }
+
+        return v1value;
+    }
+
+   
+
+    function GetMQTTData(basePath, channel) {
+
+        if (assetTypeId > 0 && siteId > 0) {
+            $.ajax({
+                url: '/Site/GetMQTTData',
+                type: 'Post',
+                data: '{basePath:"' + basePath + '",channel:"' + channel.toLowerCase() + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data!=""&&data != null && data.length > 0) {
+
+                    }
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+    }
+    function fnGridView() {
+        $("#listView").hide();
+        $("#gridView").show();
+    }
+    function fnListView() {
+        $("#listView").show();
+        $("#gridView").hide();
+    }
+    function fnSearch() {
+        $("#frmAssetDetails").submit();
+    }
+
+    function GetAlarmStatus(assetId) {
+
+        if (assetId) {
+            $.ajax({
+                url: '/Site/GetAlarmStatus',
+                type: 'Post',
+                data: '{assetId:' + assetId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data == true) {
+                        $(".checkHealth" + assetId).html("<span style='cursor:pointer' onclick='GetLogByAssetId(" + assetId + ")' class='text-danger'>Alarm</span>");
+                    }
+                    else {
+                        $(".checkHealth" + assetId).html("<span class='text-success'>Ok</span>");
+                    }
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+    function GetLogByAssetId(assetId) {
+
+        if (assetId) {
+            $.ajax({
+                url: '/Site/GetLogByAssetId',
+                type: 'Post',
+                data: '{assetId:' + assetId + '}',
+                contentType: 'application/json',
+                dataType:'html',
+                success: function (data) {
+                    $("#model-div").empty().append(data);
+                    $("#modalSmslogs").modal('show');
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnGetHttpPostData() {
+        var asset = {};
+        asset.SiteId = $("#hdnsiteId").val();
+        asset.AssetTypeId = $("#hdnassetTypeId").val();
+        $.ajax({
+            url: '/Site/GetHttpPostData',
+            type: 'Post',
+            data: '{mAsset:' + JSON.stringify(asset) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+
+                $.each(data, function (id, item) {
+
+                    $.each(item.assetAttributes, function (idx, inItem) {
+                        var id = ".hdnAttributeData" + inItem.Id + item.Id;
+                        $(id).html(parseFloat( inItem.AssetInfoValue).toFixed(2));
+                        if (idx == 0) {
+                            $("#divchannel").empty().append(" Last Update: <span>" + item.StartTime + "</span>")
+                        }
+                    });
+                });
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+</script>

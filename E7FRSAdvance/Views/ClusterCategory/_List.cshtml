@@ -1,0 +1,234 @@
+﻿@model Domain.ClusterCategoryLister
+
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 people-list">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="pull-left">
+                        <a id="btnAddClusterCategory" class="btn btn-primary btn-quirk" onclick="GetById(0)">Add Cluster Category</a>
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                        @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                    @{
+                        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                        if (Model.mClusterCategories.Count == 0)
+                        {
+                            start = 0;
+                        }
+                        decimal end = Math.Floor(Model.Pager.TotalRecord);
+                        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                        {
+                            if (Model.Pager.PageSize == -1)
+                            {
+                                end = Model.Pager.TotalRecord;
+                            }
+                            else
+                            {
+                                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                if (end > Model.Pager.TotalRecord)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                            }
+                        }
+                    }
+                    <span class="people-count pull-right">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> ClusterCategory</span>
+                </div>
+            </div>
+
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th style="width:70px;" colspan="2" class="text-center">Action</th>
+                                <th>Name</th>
+                                <th>Remark</th>
+                                <th>Clasification Type</th>
+                                <th>Cluster Status</th>
+                                <th>Asset Type</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="width:70px;" colspan="2" class="text-center"></td>
+                                <td>
+                                    @Html.TextBoxFor(x => x.SearchCriteria.Name, new { @class = "form-control txtSearchName" })
+                                </td>
+                                <td>
+                                    @Html.TextBoxFor(x => x.SearchCriteria.Remark, new { @class = "form-control txtSearchName" })
+                                </td>
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                            @if (Model.mClusterCategories != null && Model.mClusterCategories.Count > 0)
+                            {
+                                foreach (var item in Model.mClusterCategories)
+                                {
+                                    <tr class="table-light">
+                                        <td class="text-center" style="width:50px;">
+                                            <a title="Edit">
+                                                <i class="text-vision fa fa-edit" onclick="GetById('@item.Id')"></i>
+                                            </a>
+                                        </td>
+                                        <td class="text-center" style="width:50px;">
+                                            <a title="Delete">
+                                                <i class="text-danger fa fa-trash" onclick="Delete('@item.Id')"></i>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            <a onclick="ShowImage('@item.Id')">@item.Name</a>
+                                        </td>
+                                        <td>@item.Remark</td>
+                                        <td>
+                                            @Enum.GetName(typeof(E7FRSAdvance.Utility.Utility.ClasificationTypes), item.ClasificationTypeId)
+                                        </td>
+                                        <td>
+                                            @Enum.GetName(typeof(E7FRSAdvance.Utility.Utility.ClusterStatus), item.StatusId)
+                                        </td>
+                                        <td>@item.AssetType</td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="9" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        $(".txtSearchName").keyup(function (e) {
+            e.preventDefault();
+            if (e.keyCode === 13) {
+                $("#hdnSkip").val('0');
+                $("#frmClusterCategoryList").submit();
+            }
+        });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmClusterCategoryList").submit();
+        });
+
+    });
+
+    function Delete(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/ClusterCategory/Delete',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data.type == "success") {
+                        CommonNotification("success", "Cluster Category has been deleted.");
+                        $("#frmClusterCategoryList").submit();
+                    } else if (data.type == "error") {
+                        CommonNotification("ERROR", "Error occured while deleting cluster category!");
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.");
+                }
+            });
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmClusterCategoryList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmClusterCategoryList").submit();
+            }
+        }
+    }
+
+    function GetById(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/ClusterCategory/GetById',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSaveClusterCategory").empty().append(data);
+                $("#modal-add-ClusterCategory").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function ShowImage(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/ClusterCategory/Get',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                debugger;
+                if (data != null && data.ImageBase64 != null && data.ImageBase64 != undefined && data.ImageBase64 != '') {
+                    document.getElementById('btn').onclick = function () {
+                        var val = document.getElementById('imagename').value,
+                            src = data.ImageBase64,
+                            img = document.createElement('img');
+
+                        img.src = src;
+                        document.body.appendChild(img);
+                    }
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+        
+    }
+</script>
+

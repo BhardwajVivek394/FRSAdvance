@@ -1,0 +1,180 @@
+﻿@model Domain.FRSAlertLister
+<!--Site view-->
+<style>
+    .collapsed .icon-class:before {
+        content: '>';
+    }
+
+    .icon-class:before {
+        content: 'v';
+    }
+
+    .table > :not(:last-child) > :last-child > * {
+        border-bottom-color: #87c7d9 !important;
+    }
+
+    .MainTh {
+        background-color: #7fcde22e !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .SubTh {
+        background-color: #f4f6fc !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+</style>
+
+<div class="modal bounceIn animated" id="modalProbabilityAlert" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                @if (Model != null && Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span>Alert Log - @Model.mFRSAlerts.Select(x => x.SiteName).FirstOrDefault()</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title" id="myModalLabel">Alert Log</h4>
+                }
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+
+                    <div class="col-sm-12" id="model-div">
+                        <div class="row">
+                            <div class="col-sm-12">
+                                @if (Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                                {
+                                    <div class="mail-body-wrapper">
+                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" class="modal-fixed-height">
+                                            @if (Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+                                            {
+                                                foreach (var asset in Model.mFRSAlerts.GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                {
+                                                    var smsAssetCount = Model.mFRSAlerts.Where(x => x.AssetId == asset.AssetId).Count();
+                                                    <li class="inbox-data" style="background-color: white !important;">
+                                                        <div class="mail-body-wrapper" style="width:100%">
+                                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                <li class="inbox-data" style="background-color:#4bacc6">
+                                                                    <div class="inbox-message">
+                                                                        <div class="email-data">
+                                                                            <span style="float: left; color: white;">@asset.AssetName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                        </div>
+                                                                        <div class="row pull-right">
+                                                                            <div class="col-lg-2">
+                                                                                <select class="form-control clsDrpAlertType" data-siteid="@Model.SearchCriteria.SiteId" data-alertinfoid="@Model.SearchCriteria.AlertInfoId" data-assetid="@asset.AssetId" title="Alert is valid or not" id="drpAlertType@(asset.AssetId)@(Model.SearchCriteria.AlertInfoId)" onchange="fnChangeAlertType(this, '@asset.AssetId', '@Model.SearchCriteria.AlertInfoId'); return false;">
+                                                                                    <option value="True">True Alert</option>
+                                                                                    <option value="False" selected>False Alert</option>
+                                                                                </select>
+                                                                            </div>
+                                                                            <div class="col-lg-5">
+                                                                                <textarea placeholder="Remark" rows="1" class="form-control" id="txtAlertRemark@(asset.AssetId)@(Model.SearchCriteria.AlertInfoId)"></textarea>
+                                                                            </div>
+                                                                            <div class="col-lg-4">
+                                                                                <button type="button" class="btn btn-warning" onclick="fnUpdateFRSTabulationRemark('@Model.SearchCriteria.SiteId','@asset.AssetId','@Model.SearchCriteria.AlertInfoId')">Update Remark</button>
+                                                                            </div>
+                                                                            <div class="col-lg-1">
+                                                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceAlertLogAsset('@asset.AssetId', this); return false;"></i></a>
+
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </li>
+
+                                                                @foreach (var frsAlert in Model.mFRSAlerts.Where(x => x.AssetId == asset.AssetId).ToList())
+                                                                {
+
+                                                                    <li class="inbox-data maintenaceALertLogByAsset_@(asset.AssetId)" style="display:none">
+                                                                        <div class="inbox-message">
+                                                                            <div class="email-data">
+                                                                                <span onclick="fnGetAssetAttribute('@frsAlert.SiteName','@frsAlert.AssetId','@frsAlert.AssetTypeId')">
+                                                                                    <span>
+                                                                                        @frsAlert.SetAlertMessage
+                                                                                    </span>
+                                                                                    <span>
+                                                                                        @Html.Raw(frsAlert.Description)
+                                                                                    </span>
+
+                                                                                    @if (!string.IsNullOrEmpty(frsAlert.ResetAlertMessage))
+                                                                                    {
+                                                                                        <br />
+                                                                                        <b>
+                                                                                            <u>
+                                                                                                Reset Message
+                                                                                            </u>
+                                                                                        </b>
+                                                                                        <span>
+                                                                                            @Html.Raw(frsAlert.ResetAlertMessage)
+                                                                                        </span>
+                                                                                    }
+
+                                                                                </span>
+                                                                                @if (frsAlert.IsActive == true)
+                                                                                {
+                                                                                    <div class="span badge rounded-pill pill-badge-danger">Active</div>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    <div class="span badge rounded-pill pill-badge-success">InActive</div>
+                                                                                }
+                                                                                <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= frsAlert.SiteId,assetId = frsAlert.AssetId, timeStamp = frsAlert.SetTimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                            </div>
+                                                                            <div class="email-timing"><span>@frsAlert.SetTimeStamp.ToString()</span></div>
+
+                                                                        </div>
+                                                                    </li>
+                                                                }
+                                                            </ul>
+                                                        </div>
+                                                    </li>
+                                                }
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @*<button type="button" class="btn btn-warning" onclick="fnUpdateAllTabulationRemark()">Update All Remarks</button>*@
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function fnChangeAlertType($this, assetId, alertTypeId) {
+        if ($($this).val() == 'True') {
+            $('#txtAlertRemark' + assetId + alertTypeId).attr("disabled", "disabled");
+            $('#txtAlertRemark' + assetId + alertTypeId).val('')
+        } else {
+            $('#txtAlertRemark' + assetId + alertTypeId).removeAttr("disabled");
+        }
+    }
+
+    function fnShowMaintenaceAlertLogAsset(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAsset_' + assetId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAsset_' + assetId).hide();
+            }
+        }
+    }
+
+
+</script>

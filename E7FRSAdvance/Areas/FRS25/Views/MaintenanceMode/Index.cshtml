@@ -1,0 +1,1361 @@
+﻿@{ ViewBag.Title = "Maintenance Mode";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+
+<style>
+    /* ===== SEARCH SECTION ===== */
+    .search-section {
+        padding: 20px 0px;
+        position: relative;
+        z-index: 100;
+    }
+
+    .search-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    /* ===== FILTER ROW ===== */
+    .filter-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 100;
+    }
+
+    /* ===== FILTER ITEM ===== */
+    .filter-item {
+        flex-shrink: 0;
+        position: relative;
+        z-index: 100;
+    }
+
+        .filter-item label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+    /* ===== SELECT BUTTON ===== */
+    .select-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #333;
+        cursor: pointer;
+        min-width: 155px;
+        height: 40px;
+    }
+
+        .select-btn:hover {
+            border-color: #999;
+        }
+
+        .select-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .select-btn .text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .select-btn i {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+    /* ===== DROPDOWN - FIXED POSITION ===== */
+    .filter-dropdown {
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        min-width: 260px;
+        max-width: 320px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+    /* Search Box in Dropdown */
+    .dropdown-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .dropdown-search input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+            .dropdown-search input:focus {
+                border-color: #3b82f6;
+            }
+
+            .dropdown-search input::placeholder {
+                color: #aaa;
+            }
+
+    /* Select All Header */
+    .dropdown-header {
+        padding: 10px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .dropdown-header input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .dropdown-header label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            margin: 0;
+        }
+
+    /* Options List */
+    .dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .filter-dropdown .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .filter-dropdown .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .filter-dropdown .dropdown-item:hover {
+            background: #f5f7fa;
+        }
+
+        .filter-dropdown .dropdown-item.checked {
+            background: #e8f2ff;
+        }
+
+        .filter-dropdown .dropdown-item.hidden {
+            display: none;
+        }
+
+        .filter-dropdown .dropdown-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+            flex-shrink: 0;
+        }
+
+        .filter-dropdown .dropdown-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .filter-dropdown .dropdown-item.checked span {
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+
+        .filter-dropdown .dropdown-item span mark {
+            background: #fef08a;
+            color: #333;
+            padding: 0;
+            border-radius: 2px;
+        }
+
+    .dropdown-empty {
+        padding: 25px;
+        text-align: center;
+        color: #888;
+        font-size: 14px;
+    }
+
+    .dropdown-no-results {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+        font-size: 13px;
+        display: none;
+    }
+
+        .dropdown-no-results.show {
+            display: block;
+        }
+
+    /* ===== INPUT FIELDS ===== */
+    .filter-input {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        height: 40px;
+        width: 110px;
+        outline: none;
+    }
+
+        .filter-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+    /* ===== BUTTONS ===== */
+    .btn-activate {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+        .btn-activate:hover {
+            background: #3c3ebf;
+            color: #fff;
+        }
+
+        .btn-activate i {
+            font-size: 14px;
+        }
+
+    .btn-search {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+        .btn-search:hover {
+            background: #3c3ebf;
+            color: #fff;
+        }
+
+        .btn-search i {
+            font-size: 14px;
+        }
+
+    /* ===== BACKDROP ===== */
+    .dropdown-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9998;
+        display: none;
+    }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
+    /* ===== TABLE SECTION ===== */
+    .table-border {
+        position: relative;
+        z-index: 1;
+    }
+
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    table {
+        border-style: none;
+    }
+
+    td {
+        padding: 10px;
+    }
+
+    .causeCode {
+        white-space: nowrap;
+    }
+
+    .dropdown-menu.dropdown-menu-right .dropdown-item {
+        padding: 10px 15px;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        background: transparent;
+    }
+
+        .dropdown-menu.dropdown-menu-right .dropdown-item:hover {
+            background: #f1f5f9;
+        }
+
+    #btnDownload + .dropdown-menu {
+        min-width: 130px;
+        padding: 8px 0;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+        border: 1px solid #e2e8f0;
+    }
+
+    /* ===== AUTO REFRESH INDICATOR ===== */
+    .refresh-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #888;
+        margin-top: 8px;
+    }
+
+        .refresh-indicator .refresh-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-dot 1.5s infinite;
+        }
+
+        .refresh-indicator a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+            .refresh-indicator a:hover {
+                text-decoration: underline;
+            }
+
+    @@keyframes pulse-dot {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        50% {
+            opacity: 0.4;
+            transform: scale(0.8);
+        }
+    }
+</style>
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="row">
+                    <div class="col-12 col-sm-5">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item">Alert</li>
+                                <li class="breadcrumb-item active" aria-current="page"><a href="#">Maintenance Mode</a></li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                        <h2 class="page-name">Maintenance Mode</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="search-section">
+                    <div class="search-title">Search</div>
+
+                    <div class="dropdown-backdrop" id="backdrop"></div>
+
+                    <div class="filter-row">
+                        <div class="filter-item">
+                            <label>Zone</label>
+                            <div class="select-btn" id="btnZone" data-target="ddZone">
+                                <span class="text" id="txtZone">All</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+
+                        <div class="filter-item">
+                            <label>Division</label>
+                            <div class="select-btn" id="btnDivision" data-target="ddDivision">
+                                <span class="text" id="txtDivision">All</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+
+                        <div class="filter-item">
+                            <label>Station</label>
+                            <div class="select-btn" id="btnSite" data-target="ddSite">
+                                <span class="text" id="txtSite">All</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+
+                        <div class="filter-item">
+                            <label>Asset Type</label>
+                            <div class="select-btn" id="btnAssetType" data-target="ddAssetType">
+                                <span class="text" id="txtAssetType">All</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+
+                        <div class="filter-item">
+                            <label>Asset Number</label>
+                            <div class="select-btn" id="btnAssetNumber" data-target="ddAssetNumber">
+                                <span class="text" id="txtAssetNumber">All</span>
+                                <i class="fas fa-chevron-down"></i>
+                            </div>
+                        </div>
+
+                        <div class="filter-item">
+                            <label>From Date</label>
+                            <input type="text" class="filter-input" id="txtFromDate" placeholder="DD/MM/YYYY">
+                        </div>
+
+                        <div class="filter-item">
+                            <label>From Time</label>
+                            <input type="text" class="filter-input" id="txtFromTime" placeholder="00:00">
+                        </div>
+
+                        <div class="filter-item">
+                            <label>To Date</label>
+                            <input type="text" class="filter-input" id="txtToDate" placeholder="DD/MM/YYYY">
+                        </div>
+
+                        <div class="filter-item">
+                            <label>To Time</label>
+                            <input type="text" class="filter-input" id="txtToTime" placeholder="00:00">
+                        </div>
+
+                        <div class="filter-item">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn-activate" onclick="fnUpdateMaintenanceActiveMode()">
+                                <i class="fa-solid fa-power-off"></i> Activate
+                            </button>
+                        </div>
+
+                        <div class="filter-item">
+                            <label>&nbsp;</label>
+                            <button type="button" class="btn-search" onclick="fnSearch()">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- AUTO REFRESH INDICATOR -->
+                    <div class="refresh-indicator" id="refreshIndicator">
+                        <span class="refresh-dot"></span>
+                        <span>Auto-refresh in <b id="countdownSecs">60</b>s</span>
+                        <a href="javascript:void(0)" onclick="fnManualRefresh()">↻ Refresh Now</a>
+                    </div>
+                </div>
+
+                <!-- DROPDOWNS -->
+                <div class="filter-dropdown" id="ddZone">
+                    <div class="dropdown-search">
+                        <input type="text" placeholder="Search zone..." onkeyup="filterDropdown('zone', this.value)">
+                    </div>
+                    <div class="dropdown-header">
+                        <input type="checkbox" id="chkAllZone">
+                        <label for="chkAllZone">Select All</label>
+                    </div>
+                    <div class="dropdown-list" id="listZone">
+                        @if (ViewBag.Zones != null)
+                        {
+                            foreach (var zone in (IEnumerable<SelectListItem>)ViewBag.Zones)
+                            {
+                                <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
+                                    <input type="checkbox" class="cb-zone" value="@zone.Value">
+                                    <span>@zone.Text</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="dropdown-no-results">No results found</div>
+                </div>
+
+                <div class="filter-dropdown" id="ddDivision">
+                    <div class="dropdown-search">
+                        <input type="text" placeholder="Search division..." onkeyup="filterDropdown('division', this.value)">
+                    </div>
+                    <div class="dropdown-header">
+                        <input type="checkbox" id="chkAllDivision">
+                        <label for="chkAllDivision">Select All</label>
+                    </div>
+                    <div class="dropdown-list" id="listDivision">
+                        @if (ViewBag.Divisions != null)
+                        {
+                            foreach (var division in (IEnumerable<SelectListItem>)ViewBag.Divisions)
+                            {
+                                <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
+                                    <input type="checkbox" class="cb-division" value="@division.Value">
+                                    <span>@division.Text</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="dropdown-no-results">No results found</div>
+                </div>
+
+                <div class="filter-dropdown" id="ddSite">
+                    <div class="dropdown-search">
+                        <input type="text" placeholder="Search station..." onkeyup="filterDropdown('site', this.value)">
+                    </div>
+                    <div class="dropdown-header">
+                        <input type="checkbox" id="chkAllSite">
+                        <label for="chkAllSite">Select All</label>
+                    </div>
+                    <div class="dropdown-list" id="listSite">
+                        @if (ViewBag.Sites != null)
+                        {
+                            foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                            {
+                                <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                                    <input type="checkbox" class="cb-site" value="@site.Value">
+                                    <span>@site.Text</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="dropdown-no-results">No results found</div>
+                </div>
+
+                <div class="filter-dropdown" id="ddAssetType">
+                    <div class="dropdown-search">
+                        <input type="text" placeholder="Search asset type..." onkeyup="filterDropdown('assetType', this.value)">
+                    </div>
+                    <div class="dropdown-header">
+                        <input type="checkbox" id="chkAllAssetType">
+                        <label for="chkAllAssetType">Select All</label>
+                    </div>
+                    <div class="dropdown-list" id="listAssetType">
+                        @if (ViewBag.AssetTypes != null)
+                        {
+                            foreach (var assettype in (IEnumerable<SelectListItem>)ViewBag.AssetTypes)
+                            {
+                                <div class="dropdown-item" data-value="@assettype.Value" data-text="@assettype.Text">
+                                    <input type="checkbox" class="cb-assetType" value="@assettype.Value">
+                                    <span>@assettype.Text</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="dropdown-no-results">No results found</div>
+                </div>
+
+                <div class="filter-dropdown" id="ddAssetNumber">
+                    <div class="dropdown-search">
+                        <input type="text" placeholder="Search asset number..." onkeyup="filterDropdown('assetNumber', this.value)">
+                    </div>
+                    <div class="dropdown-header">
+                        <input type="checkbox" id="chkAllAssetNumber">
+                        <label for="chkAllAssetNumber">Select All</label>
+                    </div>
+                    <div class="dropdown-list" id="listAssetNumber">
+                        <div class="dropdown-empty">Select Station & Asset Type</div>
+                    </div>
+                    <div class="dropdown-no-results">No results found</div>
+                </div>
+
+                <div class="table-border">
+                    <div id="divMaintenanceModeList">
+                        @Html.Action("_List")
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var openDropdown = null;
+    var debounceTimer = null;
+    var DATE_FORMAT = 'mm/dd/yyyy';
+
+    // ===== AUTO REFRESH GLOBALS =====
+    var _autoRefreshInterval = null;
+    var _countdownTicker = null;
+    var _autoRefreshSeconds = 60;
+    var _isDropdownOpen = false;
+
+    $(document).ready(function () {
+        setDefaultDates();
+
+        $('#txtFromDate').datepicker({
+            dateFormat: DATE_FORMAT,
+            changeMonth: true,
+            changeYear: true,
+            onSelect: function (dateText) { $(this).val(dateText); }
+        });
+
+        $('#txtToDate').datepicker({
+            dateFormat: DATE_FORMAT,
+            changeMonth: true,
+            changeYear: true,
+            onSelect: function (dateText) { $(this).val(dateText); }
+        });
+
+        $('#txtFromTime').clockpicker({
+            placement: 'bottom', align: 'right', autoclose: true, 'default': '00:00'
+        });
+
+        $('#txtToTime').clockpicker({
+            placement: 'bottom', align: 'right', autoclose: true, 'default': '23:59'
+        });
+
+        $('.select-btn').on('click', function (e) {
+            e.stopPropagation();
+            var target = $(this).data('target');
+            toggleDD(target, this);
+        });
+
+        $('#backdrop').on('click', function () {
+            closeDD();
+            // Resume auto-refresh when backdrop (dropdown) is closed
+            startAutoRefresh();
+            _isDropdownOpen = false;
+        });
+
+      
+        // Item click handlers - specific to filter dropdowns only
+        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAssetType .dropdown-item, #ddAssetNumber .dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+
+            console.log('Item clicked - checkbox found:', $cb.length > 0);
+            console.log('Item clicked - checkbox class:', $cb.attr('class'));
+            console.log('Item clicked - checkbox value:', $cb.val());
+            console.log('Item clicked - was checked:', $cb.prop('checked'));
+
+            // If user clicked directly on the checkbox, browser already toggled it — don't reverse it
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $(this).toggleClass('checked', $cb.prop('checked'));
+
+            console.log('Item clicked - now checked:', $cb.prop('checked'));
+
+            var cbClass = $cb.attr('class') || '';
+            var type = cbClass.replace('cb-', '');
+
+            console.log('Item clicked - type:', type);
+
+            updateSelectAllState(type);
+            updateText(type);
+            onFilterChange(type);
+        });
+
+        $(document).on('click', '.dropdown-header', function (e) {
+            e.stopPropagation();
+            var $chk = $(this).find('input[type="checkbox"]');
+            // If user clicked the checkbox or label (label triggers native toggle), browser already toggled — don't reverse it
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                var id = $chk.attr('id') || '';
+                var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+                selectAll(type, $chk.prop('checked'));
+                return;
+            }
+            // Clicked on the row background — toggle manually
+            var newState = !$chk.prop('checked');
+            $chk.prop('checked', newState);
+            var id = $chk.attr('id') || '';
+            var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+            selectAll(type, newState);
+        });
+
+        $(document).on('click', '.dropdown-search', function (e) {
+            e.stopPropagation();
+        });
+
+        // Pause refresh when any confirm/alert dialog might be open (on action buttons)
+        $(document).on('show.bs.modal', function () {
+            stopAutoRefresh();
+        });
+        $(document).on('hidden.bs.modal', function () {
+            if (!_isDropdownOpen) startAutoRefresh();
+        });
+
+        // ===== START AUTO REFRESH ON PAGE LOAD =====
+        startAutoRefresh();
+    });
+
+    // ===== AUTO REFRESH FUNCTIONS =====
+    function startAutoRefresh() {
+        stopAutoRefresh();
+
+        var _countdownVal = _autoRefreshSeconds;
+        $('#countdownSecs').text(_countdownVal);
+
+        // Countdown ticker (every second)
+        _countdownTicker = setInterval(function () {
+            _countdownVal--;
+            if (_countdownVal <= 0) _countdownVal = _autoRefreshSeconds;
+            $('#countdownSecs').text(_countdownVal);
+        }, 1000);
+
+        // Main refresh interval
+        _autoRefreshInterval = setInterval(function () {
+            // Store current page before refresh
+            var currentPage = window._maintenanceCurrentPage || 1;
+            fnSearchSilent(currentPage);
+        }, _autoRefreshSeconds * 1000);
+    }
+
+    function stopAutoRefresh() {
+        if (_autoRefreshInterval) {
+            clearInterval(_autoRefreshInterval);
+            _autoRefreshInterval = null;
+        }
+        if (_countdownTicker) {
+            clearInterval(_countdownTicker);
+            _countdownTicker = null;
+        }
+    }
+
+    function fnManualRefresh() {
+        var currentPage = window._maintenanceCurrentPage || 1;
+        fnSearchSilent(currentPage);
+        startAutoRefresh(); // Reset countdown
+    }
+
+    // ===== SILENT SEARCH (used by auto-refresh, preserves current page) =====
+    function fnSearchSilent(restorePage) {
+        var mFRSAlertLister = { SearchCriteria: {} };
+
+        mFRSAlertLister.SearchCriteria.ZoneIds = getValues('zone');
+        mFRSAlertLister.SearchCriteria.DivisionIds = getValues('division');
+        mFRSAlertLister.SearchCriteria.SiteIds = getValues('site');
+        mFRSAlertLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mFRSAlertLister.SearchCriteria.AssetIds = getValues('assetNumber');
+        mFRSAlertLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mFRSAlertLister.SearchCriteria.FromTime = $('#txtFromTime').val();
+        mFRSAlertLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mFRSAlertLister.SearchCriteria.ToTime = $('#txtToTime').val();
+
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/_List',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mFRSAlertLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#divMaintenanceModeList").empty().html(data);
+                // Restore page position after DOM is updated
+                if (restorePage && restorePage > 1) {
+                    setTimeout(function () {
+                        if (typeof goToPage === 'function') {
+                            goToPage(restorePage);
+                        }
+                    }, 50);
+                }
+            },
+            error: function () {
+                // Silently fail on auto-refresh errors (don't show popup)
+            }
+        });
+    }
+
+    // ===== SET DEFAULT DATES =====
+    function setDefaultDates() {
+        var today = new Date();
+        var nextWeek = new Date();
+        var currentTime = String(today.getHours()).padStart(2, '0') + ':' + String(today.getMinutes()).padStart(2, '0');
+
+        nextWeek.setDate(today.getDate() + 7);
+        $('#txtFromDate').val(formatDate(today));
+        $('#txtToDate').val(formatDate(nextWeek));
+
+        $('#txtFromTime').val(currentTime);
+        $('#txtToTime').val('23:59');
+    }
+
+    function formatDate(date) {
+        var day = String(date.getDate()).padStart(2, '0');
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var year = date.getFullYear();
+        return month + '/' + day + '/' + year;
+    }
+
+    // ===== MAIN SEARCH FUNCTION (resets to page 1) =====
+    function fnSearch() {
+        var mFRSAlertLister = { SearchCriteria: {} };
+
+        mFRSAlertLister.SearchCriteria.ZoneIds = getValues('zone');
+        mFRSAlertLister.SearchCriteria.DivisionIds = getValues('division');
+        mFRSAlertLister.SearchCriteria.SiteIds = getValues('site');
+        mFRSAlertLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mFRSAlertLister.SearchCriteria.AssetIds = getValues('assetNumber');
+        mFRSAlertLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mFRSAlertLister.SearchCriteria.FromTime = $('#txtFromTime').val();
+        mFRSAlertLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mFRSAlertLister.SearchCriteria.ToTime = $('#txtToTime').val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/_List',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mFRSAlertLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divMaintenanceModeList").empty().html(data);
+                // Reset to page 1 on manual search
+                window._maintenanceCurrentPage = 1;
+                // Reset auto-refresh countdown after manual search
+                startAutoRefresh();
+            },
+            error: function (xhr, status, error) {
+                $("#loader").hide();
+                showError('Something went wrong!', 'Error');
+            }
+        });
+    }
+
+    // ===== DROPDOWN SEARCH FILTER =====
+    function filterDropdown(type, searchText) {
+        var $dropdown = $('#dd' + capitalize(type));
+        var $items = $dropdown.find('.dropdown-item');
+        var $noResults = $dropdown.find('.dropdown-no-results');
+        var search = searchText.toLowerCase().trim();
+        var visibleCount = 0;
+
+        $items.each(function () {
+            var $item = $(this);
+            var text = ($item.data('text') || $item.find('span').text()).toLowerCase();
+
+            if (search === '' || text.indexOf(search) > -1) {
+                $item.removeClass('hidden');
+                visibleCount++;
+                if (search !== '') {
+                    var originalText = $item.data('text') || $item.find('span').text();
+                    var regex = new RegExp('(' + escapeRegex(searchText) + ')', 'gi');
+                    $item.find('span').html(originalText.replace(regex, '<mark>$1</mark>'));
+                } else {
+                    var origText = $item.data('text');
+                    if (origText) $item.find('span').text(origText);
+                }
+            } else {
+                $item.addClass('hidden');
+            }
+        });
+
+        $noResults.toggleClass('show', visibleCount === 0 && search !== '');
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function toggleDD(id, btn) {
+        if (openDropdown === id) {
+            closeDD();
+            startAutoRefresh();
+            _isDropdownOpen = false;
+            return;
+        }
+        closeDD();
+
+        stopAutoRefresh();
+        _isDropdownOpen = true;
+
+        var $dd = $('#' + id);
+
+        // Move to body to escape all parent stacking contexts
+        $('body').append($dd);
+
+        var rect = btn.getBoundingClientRect();
+
+        // Temporarily show invisible to measure real height
+        $dd.css({
+            position: 'absolute',
+            visibility: 'hidden',
+            display: 'block',
+            top: '-9999px',
+            left: '-9999px'
+        });
+
+        var ddHeight = $dd.outerHeight();
+        var ddWidth = $dd.outerWidth();
+
+        var top = rect.bottom + 4;
+        var left = rect.left;
+
+        // Flip upward if overflows bottom of screen
+        if (top + ddHeight > window.innerHeight) {
+            top = rect.top - ddHeight - 4;
+        }
+
+        // Shift left if overflows right of screen
+        if (left + ddWidth > window.innerWidth) {
+            left = window.innerWidth - ddWidth - 8;
+        }
+
+        // Now position correctly and show
+        $dd.css({
+            visibility: '',
+            display: '',
+            top: top + 'px',
+            left: left + 'px'
+        });
+
+        $dd.addClass('open');
+        $(btn).addClass('active');
+        $('#backdrop').addClass('show');
+        openDropdown = id;
+
+        setTimeout(function () {
+            var $searchInput = $dd.find('.dropdown-search input');
+            if ($searchInput.length) $searchInput.focus();
+        }, 100);
+    }
+
+    function closeDD() {
+        if (openDropdown) {
+            var $dd = $('#' + openDropdown);
+            $dd.find('.dropdown-search input').val('');
+            $dd.find('.dropdown-item').removeClass('hidden');
+            $dd.find('.dropdown-no-results').removeClass('show');
+            $dd.find('.dropdown-item').each(function () {
+                var origText = $(this).data('text');
+                if (origText) $(this).find('span').text(origText);
+            });
+            $dd.removeClass('open');
+            $('.select-btn').removeClass('active');
+            $('#backdrop').removeClass('show');
+            openDropdown = null;
+        }
+    }
+
+    function selectAll(type, checked) {
+        $('.cb-' + type).each(function () {
+            var $item = $(this).closest('.dropdown-item');
+            if (!$item.hasClass('hidden')) {
+                $(this).prop('checked', checked);
+                $item.toggleClass('checked', checked);
+            }
+        });
+        updateText(type);
+        onFilterChange(type);
+    }
+
+    function updateSelectAllState(type) {
+        var $visible = $('#list' + capitalize(type) + ' .dropdown-item:not(.hidden)');
+        var total = $visible.length;
+        var checked = $visible.find('.cb-' + type + ':checked').length;
+        $('#chkAll' + capitalize(type)).prop('checked', total > 0 && total === checked);
+    }
+
+    function updateText(type) {
+        var $checked = $('.cb-' + type + ':checked');
+        var count = $checked.length;
+        var text = 'All';
+        if (count === 1) {
+            text = $checked.first().closest('.dropdown-item').data('text') ||
+                $checked.first().closest('.dropdown-item').find('span').text();
+        } else if (count > 1) {
+            text = count + ' selected';
+        }
+        $('#txt' + capitalize(type)).text(text);
+    }
+
+    function getValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () {
+            var val = $(this).val();
+            if (val) vals.push(val);
+        });
+        return vals;
+    }
+
+    function getFirstValue(type) {
+        var vals = getValues(type);
+        return vals.length > 0 ? vals[0] : '';
+    }
+
+    function getValuesAsInt(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () {
+            var intVal = parseInt($(this).val());
+            if (!isNaN(intVal)) vals.push(intVal);
+        });
+        return vals;
+    }
+
+    function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function onFilterChange(type) {
+        if (type === 'zone') {
+            loadDivisions();
+        } else if (type === 'division') {
+            loadSites();
+        } else if (type === 'site' || type === 'assetType') {
+            debounceAssetNumbers();
+        }
+    }
+
+    // ===== LOAD ASSET NUMBERS =====
+    function debounceAssetNumbers() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(loadAssetNumbers, 300);
+    }
+
+    function loadAssetNumbers() {
+        var siteIds = getValues('site');
+        var assetTypeIds = getValues('assetType');
+
+        $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type</div>');
+        $('#chkAllAssetNumber').prop('checked', false);
+        $('#txtAssetNumber').text('All');
+
+        var validSiteIds = siteIds.filter(function (id) { return id && id !== '0'; });
+        var validTypeIds = assetTypeIds.filter(function (id) { return id && id !== '0'; });
+
+        if (validSiteIds.length === 0 || validTypeIds.length === 0) return;
+
+        $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>');
+        $("#loader").show();
+
+        var allAssets = [], seenIds = {}, completed = 0;
+        var total = validSiteIds.length * validTypeIds.length;
+
+        for (var s = 0; s < validSiteIds.length; s++) {
+            for (var t = 0; t < validTypeIds.length; t++) {
+                (function (siteId, typeId) {
+                    $.ajax({
+                        url: '/FRS25/AlertLive/GetAssestBy',
+                        type: 'POST',
+                        data: '{siteId:' + siteId + ',assetTypeId:' + typeId + '}',
+                        contentType: 'application/json',
+                        dataType: 'json',
+                        success: function (data) {
+                            if (data && data.length > 0) {
+                                for (var k = 0; k < data.length; k++) {
+                                    var item = data[k];
+                                    if (item && item.Id && !seenIds[item.Id]) {
+                                        seenIds[item.Id] = true;
+                                        allAssets.push({ Id: item.Id, Name: item.Name || item.AssetName || '' });
+                                    }
+                                }
+                            }
+                            completed++;
+                            if (completed >= total) renderAssetNumbers(allAssets);
+                        },
+                        error: function () {
+                            completed++;
+                            if (completed >= total) renderAssetNumbers(allAssets);
+                        }
+                    });
+                })(validSiteIds[s], validTypeIds[t]);
+            }
+        }
+    }
+
+    function renderAssetNumbers(allAssets) {
+        $("#loader").hide();
+        allAssets.sort(function (a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
+        if (allAssets.length > 0) {
+            var html = '';
+            for (var i = 0; i < allAssets.length; i++) {
+                var a = allAssets[i];
+                html += '<div class="dropdown-item" data-value="' + a.Id + '" data-text="' + a.Name + '">';
+                html += '<input type="checkbox" class="cb-assetNumber" value="' + a.Id + '">';
+                html += '<span>' + a.Name + '</span></div>';
+            }
+            $('#listAssetNumber').html(html);
+        } else {
+            $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>');
+        }
+    }
+
+    // ===== ACTIVATE MAINTENANCE MODE =====
+    function fnUpdateMaintenanceActiveMode() {
+        var assetIds = getValues('assetNumber');
+        if (assetIds.length === 0) { alert('Please select at least one asset.'); return; }
+
+
+        debugger;
+        debugger;
+        var rectificationFromDate = $('#txtFromDate').val();
+        var rectificationFromTime = $('#txtFromTime').val() || '00:00';
+        var rectificationToDate = $('#txtToDate').val();
+        var rectificationToTime = $('#txtToTime').val() || '23:59';
+
+        // 1. Validate From Date is not in the past
+        if (rectificationFromDate != null && rectificationFromDate != '') {
+            var fromParts = rectificationFromDate.split('/');
+            var fromTimeParts = rectificationFromTime.split(':');
+            var rectificationFromDateTime = new Date(
+                parseInt(fromParts[2]),
+                parseInt(fromParts[0]) - 1,
+                parseInt(fromParts[1]),
+                parseInt(fromTimeParts[0]),
+                parseInt(fromTimeParts[1]),
+                0
+            );
+            var now = new Date();
+            if (rectificationFromDateTime < now) {
+                alert("Past date and time is not allowed for From Date.");
+                return false;
+            }
+        }
+
+        // 2. Validate To Date is not in the past
+        if (rectificationToDate != null && rectificationToDate != '') {
+            var toParts = rectificationToDate.split('/');
+            var toTimeParts = rectificationToTime.split(':');
+            var rectificationToDateTime = new Date(
+                parseInt(toParts[2]),
+                parseInt(toParts[0]) - 1,
+                parseInt(toParts[1]),
+                parseInt(toTimeParts[0]),
+                parseInt(toTimeParts[1]),
+                0
+            );
+            var now = new Date();
+            if (rectificationToDateTime < now) {
+                alert("Past date and time is not allowed for To Date.");
+                return false;
+            }
+        }
+
+        // 3. ✅ Validate From is not greater than or equal to To
+        if (rectificationFromDate != null && rectificationFromDate != '' &&
+            rectificationToDate != null && rectificationToDate != '') {
+
+            if (rectificationFromDateTime > rectificationToDateTime) {
+                alert("From Date & Time cannot be greater than To Date & Time.");
+                return false;
+            }
+
+            if (rectificationFromDateTime.getTime() === rectificationToDateTime.getTime()) {
+                alert("From Date & Time and To Date & Time cannot be the same.");
+                return false;
+            }
+        }
+
+
+        var confirmMsg = assetIds.length === 1
+            ? 'Are you sure you want to activate maintenance mode for this asset?'
+            : 'Are you sure you want to activate maintenance mode for ' + assetIds.length + ' assets?';
+
+        if (!confirm(confirmMsg)) return;
+
+        var mMaintenanceMode = {
+            AssetIds: assetIds.map(function (id) { return parseInt(id); }),
+            AssetId: parseInt(assetIds[0]),
+            FromDate: $('#txtFromDate').val(),
+            FromTime: $('#txtFromTime').val(),
+            ToDate: $('#txtToDate').val(),
+            ToTime: $('#txtToTime').val()
+        };
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/UpdateMaintenanceActiveMode',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mMaintenanceMode),
+            dataType: 'json',
+            success: function (data) {
+                $("#loader").hide();
+                fnSearch();
+                if (data != null) {
+                    if (data.type == "success") {
+                        showSuccess(data.result, 'Success');
+                    }
+                    else if (data.type == "error") {
+                        showError(data.result, 'Error');
+                    }
+                }
+            },
+            error: function () {
+                $("#loader").hide();
+                showError('Something went wrong!', 'Error');
+            }
+        });
+    }
+
+    // ===== DEACTIVATE MAINTENANCE MODE =====
+    function fnUpdateMaintenanceInActiveMode(id) {
+        if (!id) { alert('Asset is required.'); return; }
+        if (!confirm('Are you sure you want to clear maintenance mode for this asset?')) return;
+
+        var mMaintenanceMode = { AssetId: id };
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/UpdateMaintenanceInActiveMode',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mMaintenanceMode),
+            dataType: 'json',
+            success: function (data) {
+                $("#loader").hide();
+                fnSearch();
+                debugger;
+                if (data != null) {
+                    if (data.type == "success") {
+                        showSuccess(data.result, 'Success');
+                    }
+                    else if (data.type == "error") {
+                        showError(data.result, 'Error');
+                    }
+                }
+            },
+            error: function () {
+                $("#loader").hide();
+                showError('Something went wrong!', 'Error');
+            }
+        });
+    }
+
+    // ===== LOAD DIVISIONS =====
+    function loadDivisions() {
+        var zoneIds = getValues('zone');
+        $('#listDivision').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllDivision').prop('checked', false);
+        $('#txtDivision').text('All');
+        $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+        $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type</div>');
+        $('#chkAllAssetNumber').prop('checked', false);
+        $('#txtAssetNumber').text('All');
+
+        if (zoneIds.length === 0) {
+            $('#listDivision').html('<div class="dropdown-empty">Select Zone first</div>');
+            return;
+        }
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetDivisionByZoneId',
+            type: 'POST',
+            data: JSON.stringify({ SearchCriteria: { ZoneIds: zoneIds } }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-division" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span></div>';
+                    });
+                    $('#listDivision').html(html);
+                } else {
+                    $('#listDivision').html('<div class="dropdown-empty">No divisions found</div>');
+                }
+            },
+            error: function () {
+                $('#listDivision').html('<div class="dropdown-empty">Error loading divisions</div>');
+            }
+        });
+    }
+
+    // ===== LOAD SITES =====
+    function loadSites() {
+        var divisionIds = getValues('division');
+        $('#listSite').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+        $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type</div>');
+        $('#chkAllAssetNumber').prop('checked', false);
+        $('#txtAssetNumber').text('All');
+
+        if (divisionIds.length === 0) {
+            $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+            return;
+        }
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetSiteByDivisionId',
+            type: 'POST',
+            data: JSON.stringify({ SearchCriteria: { DivisionIds: divisionIds } }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-site" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span></div>';
+                    });
+                    $('#listSite').html(html);
+                } else {
+                    $('#listSite').html('<div class="dropdown-empty">No sites found</div>');
+                }
+            },
+            error: function () {
+                $('#listSite').html('<div class="dropdown-empty">Error loading sites</div>');
+            }
+        });
+    }
+
+</script>

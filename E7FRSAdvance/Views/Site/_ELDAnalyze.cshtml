@@ -1,0 +1,206 @@
+﻿@model Domain.ELDEventlogLister
+<style>
+    .bg-primary {
+        background-color: #0e5068 !important;
+    }
+</style>
+
+<div class="modal bounceIn animated" id="modalELDAnalyze" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-lg">
+        <div class="modal-content bradius4">
+            <div class="modal-header" style="background-color: #0e5068">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader" class="text-white">ELD Analyze (@Model.SearchCriteria.AssetName)</span></h4>
+                @*<button type="button" class="btn-close text-white" data-bs-dismiss="modal" aria-hidden="true"></button>*@
+                <button type="button" class="btn text-white" style="font-size:x-large" onclick="fnELDAnalyzeClose()">X</button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+
+                    <div class="col-sm-12" id="model-div">
+                        <div class="row">
+                            @{
+                                var alermToHealthyMainCount = Model.ELDEventlogs.Where(x => x.Message == "Alerm To Healthy").Count();
+                                var healthyToAlermMainCount = Model.ELDEventlogs.Where(x => x.Message == "Healthy To Alerm").Count();
+                            }
+
+                            <div class="col-sm-12">
+                                <div class="table-responsive" style="max-height: 620px;">
+                                    <table class="table" id="tblELDAnalyze">
+
+                                        <tbody>
+                                            @{
+                                                var groupELDAnalyze = Model.ELDEventlogs.SelectMany(d => d.mDeadbands).GroupBy(x => new { x.AssetName, x.AttributeName, x.AssetTypeName }).Select(x =>
+new
+{
+AssetName = x.Key.AssetName,
+AttributeName = x.Key.AttributeName,
+AssetTypeName = x.Key.AssetTypeName
+}).ToList();
+
+
+                                            }
+
+                                            @if (groupELDAnalyze != null && groupELDAnalyze.Count > 0)
+                                            {
+                                                foreach (var assetTypeName in groupELDAnalyze.GroupBy(x => x.AssetTypeName))
+                                                {
+                                                    <tr>
+                                                        <td colspan="2">
+                                                            <table class="table">
+                                                                <thead>
+                                                                    <tr @*class="SubTh"*@ style="background-color:#7fcde22e; color: white;">
+                                                                        <th width="10">
+                                                                            <a><i class="fa fa-plus" onclick="fnShowELDAnalyzeAssetTypeName('@(assetTypeName.Key.Trim().Replace(" ",""))',this)"></i></a>
+                                                                        </th>
+                                                                        <th>@assetTypeName.Key </th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody style="display:none" class="tbodyELDAnalyzeAssetTypeName_@(assetTypeName.Key.Trim().Replace(" ",""))">
+                                                                    <tr>
+                                                                        <td colspan="2">
+                                                                            <table class="table">
+                                                                                <thead class="bg-primary">
+                                                                                    <tr>
+                                                                                        <th>Gear Name</th>
+                                                                                        <th>Asset Type</th>
+                                                                                        <th class="text-center">Healthy To Alerm (@healthyToAlermMainCount)</th>
+                                                                                        <th class="text-center">Alerm To Healthy (@alermToHealthyMainCount)</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    @foreach (var eldAnalyze in groupELDAnalyze.Where(x => x.AssetTypeName == assetTypeName.Key))
+                                                                                    {
+                                                                                        var alermToHealthyCount = Model.ELDEventlogs.Where(x => x.Message == "Alerm To Healthy").SelectMany(d => d.mDeadbands).Where(x => x.AssetName == eldAnalyze.AssetName && x.AttributeName == eldAnalyze.AttributeName).Count();
+
+                                                                                        var healthyToAlermCount = Model.ELDEventlogs.Where(x => x.Message == "Healthy To Alerm").SelectMany(d => d.mDeadbands).Where(x => x.AssetName == eldAnalyze.AssetName && x.AttributeName == eldAnalyze.AttributeName).Count();
+                                                                                        <tr>
+                                                                                            <td>@eldAnalyze.AssetName - @eldAnalyze.AttributeName</td>
+                                                                                            <td>
+                                                                                                @eldAnalyze.AssetTypeName
+                                                                                            </td>
+                                                                                            <td class="text-center">
+                                                                                                @healthyToAlermCount
+                                                                                            </td>
+                                                                                            <td class="text-center">
+                                                                                                @alermToHealthyCount
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    }
+                                                                                </tbody>
+
+                                                                            </table>
+
+                                                                        </td>
+                                                                    </tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </td>
+                                                    </tr>
+
+
+                                                }
+
+
+                                            }
+
+
+                                        </tbody>
+                                    </table>
+
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                @*<button class="btn btn-success" type="button" onclick="fnDownloadELDAnalyze()">Download</button>*@
+
+                <a class="btn btn-success" href="@Url.Action("DownloadELDAnalyze", new {SiteId=Model.SearchCriteria.SiteId,AssetId=Model.SearchCriteria.AssetId,AssetName = Model.SearchCriteria.AssetName,StartDate=Model.SearchCriteria.StartDate,EndDate=Model.SearchCriteria.EndDate})">Download Analyze</a>
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function fnDownloadELDAnalyze() {
+        var titles = [];
+        var data = [];
+
+        $('#tblELDAnalyze > thead > tr > th').each(function () {
+            titles.push($.trim($(this).text()));
+        });
+
+        $('#tblELDAnalyze > tbody > tr').each(function (id, ele) {
+            $(this).find('td').each(function (id, ele) {
+                data.push($.trim($(ele).text()));
+            });
+        });
+
+        var csvString = prepCSVRow(titles, titles.length, '');
+        csvString = prepCSVRow(data, titles.length, csvString);
+
+        var downloadLink = document.createElement("a");
+        var blob = new Blob(["\ufeff", csvString]);
+        var url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        downloadLink.download = "ELDAnalyze" + GenerateUniqueCode() + ".csv";
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function prepCSVRow(arr, columnCount, initial) {
+        var row = '';
+        var delimeter = ',';
+        var newLine = '\r\n';
+
+        function splitArray(_arr, _count) {
+            var splitted = [];
+            var result = [];
+            _arr.forEach(function (item, idx) {
+                if ((idx + 1) % _count === 0) {
+                    splitted.push(item);
+                    result.push(splitted);
+                    splitted = [];
+                } else {
+                    splitted.push(item);
+                }
+            });
+            return result;
+        }
+        var plainArr = splitArray(arr, columnCount);
+        plainArr.forEach(function (arrItem) {
+            arrItem.forEach(function (item, idx) {
+                row += item + ((idx + 1) === arrItem.length ? '' : delimeter);
+            });
+            row += newLine;
+        });
+        return initial + row;
+    }
+
+    function GenerateUniqueCode() {
+        var currentdate = new Date();
+        return ((currentdate.getTime() * 10000) + 621355968000000000);
+    }
+
+    function fnELDAnalyzeClose() {
+        $("#modalELDAnalyze").modal('hide');
+    }
+
+    function fnShowELDAnalyzeAssetTypeName(assetTypeName, $this) {
+        if (assetTypeName != null && assetTypeName != undefined && assetTypeName != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.tbodyELDAnalyzeAssetTypeName_' + assetTypeName).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.tbodyELDAnalyzeAssetTypeName_' + assetTypeName).hide();
+            }
+        }
+    }
+</script>

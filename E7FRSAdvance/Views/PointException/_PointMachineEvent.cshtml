@@ -1,0 +1,275 @@
+﻿
+@model Domain.AssetLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+</style>
+<div class="row">
+    <div class="col-sm-2 mb-1">
+        <label>From Date</label>
+        <input type="text" name="SearchCriteria.StartDate" class="datepicker-here form-control digits from-date" id="txtpmExc_FromDate" value="@Model.SearchCriteria.StartDate" data-language="en" data-bs-original-title="" title="" />
+    </div>
+    <div class="col-sm-2 mb-1">
+        <label>To Date</label>
+        <input type="text" name="SearchCriteria.EndDate" class="datepicker-here form-control digits to-date" id="txtpmExc_ToDate" value="@Model.SearchCriteria.EndDate" data-language="en" data-bs-original-title="" title="" />
+    </div>
+    <div class="col-sm-2 mb-1 mt-4">
+        <a class="btn btn-success" onclick="GetPointMachineEventPointExc()"><i class="fa fa-search"></i></a>
+        <a class="btn btn-info" onclick="SavePointMachineEventData()" title="Save Exception"><i class="fa fa-save"></i></a>
+    </div>
+</div>
+
+@if (Model.mAssets != null && Model.mAssets.Count > 0)
+{
+    foreach (var item in Model.mAssets)
+    {
+        int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+        var vibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration")).ToList();
+        bool isVibration = false;
+        if (vibration != null && vibration.Count > 0)
+        {
+            isVibration = true;
+        }
+        string aEnd = string.Empty;
+        string bEnd = string.Empty;
+        string aVibration = string.Empty;
+        string bVibration = string.Empty;
+        if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+        {
+            var mAEnd = item.assetAttributes.Where(x => x.Title == "A End - NWKR" || x.Title == "A End - RWKR").ToList();
+            if (mAEnd != null && mAEnd.Count > 0)
+            {
+                aEnd = Newtonsoft.Json.JsonConvert.SerializeObject(mAEnd);
+            }
+            var mBEnd = item.assetAttributes.Where(x => x.Title == "B End - NWKR" || x.Title == "B End - RWKR").ToList();
+            if (mBEnd != null && mBEnd.Count > 0)
+            {
+                bEnd = Newtonsoft.Json.JsonConvert.SerializeObject(mBEnd);
+            }
+            var mAVibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration A")).ToList();
+            if (mAVibration != null && mAVibration.Count > 0)
+            {
+                aVibration = Newtonsoft.Json.JsonConvert.SerializeObject(mAVibration);
+            }
+            var mBVibration = item.assetAttributes.Where(x => x.Title.Contains("Vibration B")).ToList();
+            if (mBVibration != null && mBVibration.Count > 0)
+            {
+                bVibration = Newtonsoft.Json.JsonConvert.SerializeObject(mBVibration);
+            }
+        }
+
+        <div class="col-sm-12 col-md-12 col-lg-12">
+            <div class="card">
+                <div class="col-xl-12 news box-col-12">
+                    <div class="card card-border">
+                        <div class="bg-secondary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                            <div class="" style="width:95%;float:left;padding:5px;border-top-left-radius:15px;">
+                                <h6 style="margin-left:10px">
+                                    <a target="_blank" class="text-white" href="@item.HttpMisLink"> @item.AssetTypeName : @item.Name</a>
+                                </h6>
+                                <span style="margin-left:11px;">Index Score: @item.IndexScore</span>
+                            </div>
+                            <div class="text-center bg-dark" style="width:5%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1.3;height:58px">
+
+                                @if (item.UnderMaintence == true)
+                                {
+                                    <div class="text-center"> <i class="fa fa-bell-slash fa fa-das" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                }
+                                else
+                                {
+                                    <div class="text-center">
+                                        <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                    </div>
+                                }
+                                @*<a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>*@
+                                <a onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                            </div>
+
+                        </div>
+                        <div class="card-body" style="padding:10px;margin-bottom:-15px">
+                            <div class="table-responsive width100p tblAssetData">
+                                <table class="table table-bordered table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>@item.Name</th>
+                                            @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                            {
+                                                if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                                {
+                                                    <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId', '@item.Id', '@aEnd'); return false;"> Direction:@item.AliasDirectionA</a></th>
+                                                }
+                                                else
+                                                {
+                                                    <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@aEnd'); return false;">Direction:A</a></th>
+                                                }
+                                                if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                                {
+                                                    <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@bEnd'); return false;"> Direction:@item.AliasDirectionB</a></th>
+                                                }
+                                                else
+                                                {
+                                                    <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@bEnd'); return false;"> Direction:B</a></th>
+                                                }
+                                                if (isVibration)
+                                                {
+                                                    <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@aVibration'); return false;"> VibrationA(x/y/z)</a></th>
+                                                    <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@bVibration'); return false;"> VibrationB(x/y/z)</a></th>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <th><a href="javascript:;" onclick="fnShowPointMachineGraph('@item.SiteId','@item.Id','@aEnd'); return false;">Direction</a></th>
+                                                <th></th>
+                                                if (isVibration)
+                                                {
+                                                    <th></th>
+                                                    <th></th>
+                                                }
+                                            }
+
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tblAttributeData@(item.Id)" class="tblAttributes">
+                                        <tr>
+                                            <td>
+                                            </td>
+                                            <td id="diectionA@(item.Id)">
+                                            </td>
+                                            <td id="diectionB@(item.Id)">
+                                            </td>
+                                            @if (isVibration)
+                                            {
+                                                var VibA = vibration.Where(x => x.Title.ToLower().Contains("Vibration A".ToLower())).ToList();
+                                                var VibB = vibration.Where(x => x.Title.ToLower().Contains("Vibration B".ToLower())).ToList();
+                                                int a = 1;
+                                                int b = 1;
+                                                <td id="vibrationA@(item.Id)">
+
+                                                    @foreach (var assetAttribute in VibA)
+                                                    {
+                                                        if (VibA.Count == a)
+                                                        {
+                                                            <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                            </span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                            </span><span> | </span>
+                                                        }
+                                                        a++;
+                                                    }
+
+                                                </td>
+                                                <td id="vibrationB@(item.Id)">
+                                                    @foreach (var assetAttribute in VibB)
+                                                    {
+                                                        if (VibB.Count == b)
+                                                        {
+                                                            <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                            </span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span id="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                            </span><span> | </span>
+                                                        }
+                                                        b++;
+                                                    }
+                                                </td>
+                                            }
+
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="table-responsive width100p tblAssetData m-b-20" style="overflow:auto;max-height:420px;">
+
+                                <table class="table table-bordered table-striped" id="tblPoint@(item.Id)">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Name</th>
+                                            <th>Direction</th>
+                                            @if (item.IsSeriesOpration != null && item.IsSeriesOpration.Value)
+                                            {
+
+                                                <th>Combine <br /> <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'CC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','CC');return false;">R</a></th>
+                                            }
+
+                                            @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                            {
+
+                                                <th>A Current(Max/Avg) <br /><a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'AC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','AC');return false;">R</a></th>
+                                                <th>A Voltage <br /><a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Normal','AV');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','AV');return false;">R</a></th>
+                                                <th>A Time (ms)</th>
+                                                <th class="text-center">
+                                                    Select
+                                                </th>
+                                            }
+                                            else
+                                            {
+                                                <th>Current(Max/Avg) <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id', 'Normal', 'AC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','AC');return false;">R</a></th>
+                                                <th>Voltage</th>
+                                                <th>Time (ms)</th>
+                                                <th class="text-center">
+                                                    Select
+                                                </th>
+                                            }
+
+
+                                            @if (item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value))
+                                            {
+                                                <th>B Current(Max/Avg) <br /><a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Normal','BC');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','BC');return false;">R</a></th>
+                                                <th>B Voltage <br /><a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Normal','BV');return false;">N</a> | <a href="javascript:;" onclick="fnShowMultipleGraph('@item.Id','Reverse','BV');return false;">R</a></th>
+                                                <th>B Time (ms)</th>
+                                                <th class="text-center">
+                                                    Select
+                                                </th>
+                                            }
+
+                                        </tr>
+                                    </thead>
+                                    <tbody class="fbody@(item.Id)">
+                                        @Html.Partial("_PointMachineDatePartial", item)
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <p style="font-size:15px">No record found!</p>
+}
+
+<script>
+
+    $(document).ready(function () {
+        $('#txtpmExc_FromDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        $('#txtpmExc_ToDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+    });
+  
+</script>

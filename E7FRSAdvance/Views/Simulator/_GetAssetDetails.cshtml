@@ -1,0 +1,830 @@
+﻿@model Domain.AssetLister
+@{
+
+    var mDefaultValues = new List<Domain.DefaultValue>();
+    if (ViewBag.DefaultValues != null)
+    {
+        mDefaultValues = ViewBag.DefaultValues as List<Domain.DefaultValue>;
+    }
+}
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    .progress {
+        height: 30px;
+        font-size: 18px;
+    }
+
+    .progress-bar-animated {
+        color: black !important;
+    }
+</style>
+@{
+    var bgColor = new string[] { "#215968", "#404040", "#4bacc6" };
+
+}
+<div class="people-options clearfix" style="padding:4px">
+    <div class="pull-left " style="display:inline-flex">
+        <div class="input-group " style="margin-left:20px;">
+            @Html.TextBoxFor(x => x.SearchCriteria.AssetName, new { @class = "form-control btn-pill asset-search", @placeholder = "Search " })
+        </div>
+    </div>
+    @*<div class="btn-group pull-right people-pager">
+
+
+            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+        </div>
+        <div class="btn-group pull-right people-pager">
+            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+        </div>*@
+    @{
+        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+        if (Model.mAssets.Count == 0)
+        {
+            start = 0;
+        }
+        decimal end = Math.Floor(Model.Pager.TotalRecord);
+        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+        {
+            if (Model.Pager.PageSize == -1)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+            else
+            {
+                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                if (end > Model.Pager.TotalRecord)
+                {
+                    end = Model.Pager.TotalRecord;
+                }
+            }
+        }
+    }
+    <span class="people-count pull-right">Showing <strong>@Model.mAssets.Count</strong> Assets</span>
+
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="row">
+            <div class="col-lg-2">
+                <label>Upload Point Event File</label>
+            </div>
+            <div class="col-lg-3">
+                <input type="file" class="form-control" id="fileUploadPointEvent" accept=".txt" />
+            </div>
+            <div class="col-lg-2">
+                <button type="button" class="btn btn-info" onclick="fnPointEventFile()">Upload</button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body" style="padding:15px;">
+        <div class="row" id="divAsset">
+            @if (Model.mAssets != null && Model.mAssets.Count > 0)
+            {
+                foreach (var item in Model.mAssets)
+                {
+                    if (item.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.TRACK)
+                    {
+                        item.assetAttributes = item.assetAttributes.OrderBy(x => x.Sequence).ToList();
+                    }
+
+                    int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+
+                    <div class="col-xl-3 xl-50 news box-col-6" id="divAsset@(item.Id)">
+                        <div class="card card-border">
+                            <div class="bg-secondary main-header" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                <div class="" style="width:80%;float:left;padding:10px;border-top-left-radius:15px;">
+                                    <h6 style="margin-left:12px;">
+                                        <a target="_blank" class="text-white" href="@item.HttpMisLink"> @item.AssetTypeName : @item.Name</a>
+
+                                    </h6>
+                                </div>
+                            </div>
+                            <div class="card-body gridBody" style="padding:5px;">
+                                <div class="table-responsive width100p tblAssetData">
+
+                                    <table class="table table-striped">
+                                        <tbody id="tblAttributeData@(item.Id)" class="tblAttributes tblAttributeData@(item.Id)" data-id="@item.Id">
+                                            @if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                                            {
+                                                foreach (var assetAttribute in item.assetAttributes.Where(x => x.AssetInfoValue != null && x.AssetInfoValue != string.Empty))
+                                                {
+                                                    string value = string.Empty;
+                                                    if (assetAttribute.Title == "If mA")
+                                                    {
+                                                        value = "269.4";
+                                                    }
+                                                    else if (assetAttribute.Title == "Choke V")
+                                                    {
+                                                        value = "0.9";
+                                                    }
+                                                    else if (assetAttribute.Title == "Charger mA")
+                                                    {
+                                                        value = "962.4";
+                                                    }
+                                                    else if (assetAttribute.Title == "Ir mA")
+                                                    {
+                                                        value = "235.3";
+                                                    }
+                                                    else if (assetAttribute.Title == "Vr")
+                                                    {
+                                                        value = "2.6";
+                                                    }
+                                                    else if (assetAttribute.Title == "TPR V")
+                                                    {
+                                                        value = "26.7";
+                                                    }
+                                                    else if (assetAttribute.Title.Contains("Charger O/P"))
+                                                    {
+                                                        value = "4.6";
+                                                    }
+                                                    else if (assetAttribute.Title == "Vf")
+                                                    {
+                                                        value = "3.4";
+                                                    }
+                                                    else if (assetAttribute.Title == "Charger V")
+                                                    {
+                                                        value = "116.1";
+                                                    }
+                                                    else if (assetAttribute.Title == "Last Update Feed End(sec ago)")
+                                                    {
+                                                        value = "7.1";
+                                                    }
+                                                    else if (assetAttribute.Title == "TPR V (Loc)")
+                                                    {
+                                                        value = "29.0";
+                                                    }
+                                                    else if (assetAttribute.Title == "Last Update Relay End(sec ago)")
+                                                    {
+                                                        value = "7.1";
+                                                    }
+                                                    else if (assetAttribute.Title == "TR V (Relay)")
+                                                    {
+                                                        value = "2.65";
+                                                    }
+                                                    else if (assetAttribute.Title == "Charger OP V")
+                                                    {
+                                                        value = "4.5";
+                                                    }
+                                                    else
+                                                    {
+                                                        value = "0.0";
+                                                    }
+
+                                                    <tr class="gridassetAttribute_@assetAttribute.Title.Replace(" ","")">
+                                                        <td style="width:50%">
+                                                            @if (!string.IsNullOrEmpty(assetAttribute.AliasName))
+                                                            {
+                                                                <span> @assetAttribute.AliasName</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span> @assetAttribute.Title</span>
+                                                            }
+                                                        </td>
+                                                        <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                            @*@assetAttribute.AttributeData*@
+                                                            @{
+                                                                var mDefaultValue = mDefaultValues.Where(x => x.AssetId == item.Id && x.AttributeId == assetAttribute.Id).FirstOrDefault();
+
+                                                            }
+
+                                                            @if (mDefaultValue != null && mDefaultValue.Id > 0)
+                                                            {
+                                                                <span>@mDefaultValue.Value</span>
+                                                            }
+                                                            <input type="number" class="form-control txtUploadAttributeData" id="txtUploadAttributeData@(assetAttribute.Id)@(item.Id)" data-value="@assetAttribute.AssetInfoValue" value="@value" data-assetid="@item.Id" data-attributeid="@assetAttribute.Id" />
+                                                        </td>
+
+
+                                                    </tr>
+                                                }
+
+                                                <tr>
+                                                    <td colspan="2" class="text-center"><h5 class="text-underline">Data Logger</h5></td>
+                                                </tr>
+                                                if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.Count > 0)
+                                                {
+                                                    foreach (var assetInfo in item.mAssetInfoDataloggers)
+                                                    {
+                                                        <tr>
+                                                            <td style="width:50%">
+                                                                @assetInfo.DataloggerAttribute
+                                                            </td>
+                                                            <td style="width:50%" class="DLAttribute@(item.Id)@(assetInfo.DataloggerAttributeId)">
+                                                                <input type="number" class="form-control txtDataloggerUploadAttributeData" id="txtDataloggerUploadAttributeData@(assetInfo.DataloggerAttributeId)@(item.Id)" data-value="@assetInfo.Value" data-dataloggerattributeid="@assetInfo.DataloggerAttributeId" data-assetid="@item.Id" />
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr>
+                                                    <td class="text-center" colspan="2">No attributes found!</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <p style="font-size:15px">No record found!</p>
+            }
+        </div>
+    </div>
+</div>
+
+@{
+    string type = string.Empty;
+    if (Model != null && Model.mAssets.Count > 0)
+    {
+        type = Model.mAssets[0].AssetTypeName;
+    }
+}
+
+<input type="hidden" id="asset_hidden_field" />
+<script>
+
+    (function ($) {
+        $.fn.focusTextToEnd = function () {
+            this.focus();
+            var $thisVal = this.val();
+            this.val('').val($thisVal);
+            return this;
+        }
+    }(jQuery));
+    var dlJsonStrings = [];
+    var isMultipleAssets = true;
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var mQTT = null;
+    var admin = '@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId';
+    var isSiteKeeping = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping');
+    var isDatalogger = '@Model.Site.IsDatalogger';
+    var isDataLoggerJsonReverse = '@Model.Site.IsDataLoggerJsonReverse';
+    var values = '@type';
+    $(document).ready(function () {
+        $(".main-header").each(function () {
+
+            $(this).find("div:eq(1)").css("height", $(this).height()).css("display", "grid")
+            //console.log($(this).height())
+
+        });
+        $('.asset-search').focusTextToEnd();
+        $(".asset-search").keyup(function (e) {
+            $("#frmAssetDetails").submit();
+
+        });
+        $('[data-toggle="popover"]').popover();
+
+        $("#lblAssetType").html($("#AssetName" + $("#hdnassetTypeId").val()).val());
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            //$("#hdndateValue").val();
+            //$("#hdnassetTypeId").val();
+            $("#frmAssetDetails").submit();
+        });
+
+     //   $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        json = @Html.Raw(Json.Encode(Model));
+
+        $('#asset_hidden_field').val(JSON.stringify(json));
+
+        mQTT =@Html.Raw(Json.Encode(Model.MQTTDetail));
+
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        for (var i = 0; i < channels.length; i++) {
+            $("#c" + i).html('');
+        }
+
+    });
+
+    function fnPublishMessage() {
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        //client.send("mytopic", "myvalue", 1, true);
+
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    }
+
+
+    function ClearText() {
+        $(".txtUploadAttributeData").each(function () {
+            $(this).val('');
+        });
+    }
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        var counter = 1;
+        var rdpmschannel = mQQTPath + "channel1";
+        var dlchannel = mQQTPath + "dl/" + "channel1";
+       // client.subscribe(mQQTPath);
+        setInterval(function () {
+            var realtimeValues = [];
+            var tsData = [];
+            let values = [];
+            $('.txtUploadAttributeData').each(function () {
+                var value = $(this).data('value');
+                if (value != null && value != undefined && value != '') {
+                    values.push(parseInt(value));
+                }
+            });
+
+            for (var i = 0; i <= values.length; i++) {
+                //var val = values[i];
+                var newtxtstr = '0.0';
+                $('.txtUploadAttributeData').each(function () {
+                    var newvalue = $(this).data('value');
+                    var txtvalue = $(this).val();
+
+                    if (newvalue != null && newvalue != undefined && newvalue != '' && newvalue == i && txtvalue != null && txtvalue != undefined && txtvalue != '') {
+                        newtxtstr = txtvalue;
+                        return false;
+                    }
+
+                });
+
+                var d = new Date();
+
+                tsData.push(parseInt(d.getTime()));
+                realtimeValues.push(newtxtstr);
+            }
+           // var strRealtimeValues = realtimeValues.join(",")
+            var jsonstr = {};
+            jsonstr.ts = tsData;
+            jsonstr.roles = realtimeValues;
+
+
+            var jsonstringify = JSON.stringify(jsonstr);
+
+            client.publish(rdpmschannel, jsonstringify, 1, true);
+
+            //var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+            //$("#c" + i).html(time);
+        }, 5000)
+
+
+        // Published Datalogger
+        setInterval(function () {
+            var realtimeValues = [];
+            let values = [];
+            $('.txtDataloggerUploadAttributeData').each(function () {
+                var value = $(this).data('value');
+                if (value != null && value != undefined && value != '') {
+                    values.push(parseInt(value));
+                }
+            });
+            debugger;
+            for (var i = 0; i <= values.length; i++) {
+                //var val = values[i];
+                var newtxtstr = '0';
+                $('.txtDataloggerUploadAttributeData').each(function () {
+                    var newvalue = $(this).data('value');
+                    var txtvalue = $(this).val();
+                    if (newvalue != null && newvalue != undefined && newvalue != '') {
+                        newvalue = parseInt(newvalue) - 1;
+                    }
+
+                    if (newvalue != null && newvalue != undefined && newvalue != '' && newvalue == i && txtvalue != null && txtvalue != undefined && txtvalue != '') {
+                        newtxtstr = txtvalue;
+                        return false;
+                    }
+                });
+
+                //if (isDataLoggerJsonReverse == "True") {
+                //    if (parseInt(newtxtstr) == 0)
+                //        newtxtstr = 1;
+                //    else if (parseInt(newtxtstr) == 1)
+                //        newtxtstr = 0;
+                //}
+
+                realtimeValues.push(newtxtstr);
+            }
+
+            debugger;
+
+            //  var strRealtimeValues = realtimeValues.join(",")
+            var chunkSize = 8;
+            let binaryvalues = [];
+            for (let i = 0; i < realtimeValues.length; i += chunkSize) {
+                const chunk = realtimeValues.slice(i, i + chunkSize);
+                let text = chunk.join("");
+                if (text.length != 8) {
+
+                    for (var decl = 0; decl <= 9 - text.length; decl++) {
+                        text += "0";
+                    }
+
+                }
+                var convertBinaryValue = BinaryToDecimal(text);
+                binaryvalues.push(convertBinaryValue);
+
+                // do whatever
+            }
+            var d = new Date();
+            var jsonstr = {};
+            jsonstr.ts = d;
+            jsonstr.bits = binaryvalues;
+
+            var jsonstringify = JSON.stringify(jsonstr);
+            var dlJsonString = {}
+            dlJsonString.LastModifiedDate = d;
+            dlJsonString.JsonString = JSON.stringify(binaryvalues);
+            dlJsonStrings.push(dlJsonString);
+            client.publish(dlchannel, jsonstringify, 1, true);
+
+            if (counter == 10) {
+                counter = 1;
+                fnUploadDataLoggerEventFile();
+            }
+            counter++;
+        }, 5000)
+
+
+        //for (var i = 0; i < channels.length; i++) {
+        //    if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+        //        client.subscribe(mQQTPath + channels[i].toLowerCase());
+
+        //        client.subscribe(mQQTPath + 'dl/#');
+        //    }
+        //}
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+
+
+    }
+
+    function parseJSON(data) {
+        return window.JSON && window.JSON.parse ? window.JSON.parse(data) : (new Function("return " + data))();
+    }
+
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmAssetDetails").submit();
+            }
+        }
+    }
+    function fnGridView() {
+        $("#listView").hide();
+        $("#gridView").show();
+    }
+    function fnListView() {
+        $("#listView").show();
+        $("#gridView").hide();
+    }
+    function fnSearch() {
+        $("#frmAssetDetails").submit();
+    }
+
+    function GetLogByAssetId(assetId) {
+
+        if (assetId) {
+            $.ajax({
+                url: '/Site/GetLogByAssetId',
+                type: 'Post',
+                data: '{assetId:' + assetId + '}',
+                contentType: 'application/json',
+                dataType:'html',
+                success: function (data) {
+                    $("#model-div").empty().append(data);
+                    $("#modalSmslogs").modal('show');
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+
+    function stringToBool(val) {
+        return (val + '').toLowerCase() === 'true';
+    }
+
+    function decimalToBinary(num) {
+        let binary = "";
+        while (num > 0) {
+            let digit = num % 2;
+            binary = "" + digit + binary;
+            num = parseInt(num / 2);
+        }
+        return binary.padStart(8, '0');
+    }
+
+    function BinaryToDecimal(num) {
+        return num.split('').reverse().reduce(function (x, y, i) {
+            return (y === '1') ? x + Math.pow(2, i) : x;
+        }, 0);
+    }
+
+    function fnConvertUTCDate(currentdate) {
+
+        return "" + (currentdate.getUTCMonth() + 1) + "/"
+            + currentdate.getUTCDate() + "/"
+            + currentdate.getUTCFullYear() + " "
+            + currentdate.getUTCHours() + ":"
+            + currentdate.getUTCMinutes() + ":"
+            + currentdate.getUTCSeconds();
+    }
+
+    function fnPointEventFile() {
+        $("#loader").show();
+        var fileUpload = $('#fileUploadPointEvent').get(0);
+        var files = fileUpload.files;
+        if (files != null && files != undefined && files.length > 0) {
+            var fileData = new FormData();
+            fileData.append("siteId", $('#hdnsiteId').val());
+            fileData.append(files[0].name, files[0]);
+
+            $.ajax({
+                url: "/Simulator/UploadPointEventFile",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                success: function (data) {
+                    $("#loader").hide();
+
+                    if (data != null && data != undefined && data.type == 'success') {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    }
+                    else {
+                        CommonNotification("ERROR", data.result, "Error");
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select file", "Error");
+        }
+    }
+
+    function fnUploadDataLoggerEventFile() {
+        var mUploadFile = {};
+        mUploadFile.SiteId = $('#hdnsiteId').val();
+        mUploadFile.mDataloggerFileFormats = dlJsonStrings;
+        $.ajax({
+            url: '/Simulator/UploadDataLoggerEventFile',
+            type: 'Post',
+            data: '{mUploadFile:' + JSON.stringify(mUploadFile) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                if (data != null && data != undefined && data.type == 'success') {
+                    CommonNotification("SUCCESS", data.result, "success");
+                }
+                else {
+                    CommonNotification("ERROR", data.result, "Error");
+                }
+            },
+            error: function (xhr, error, status) {
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function fnShowPointFunction() {
+        $("#loader").show();
+        $.ajax({
+            url: '/Simulator/_PointFunction',
+            type: 'Post',
+            data: '{siteId:' + $('#hdnsiteId').val() + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divPointFunction').empty().append(data);
+                $('#modal-add-point-function').modal('show');
+            },
+            error: function (xhr, error, status) {
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function fnShowAlertFunction() {
+        $("#loader").show();
+        $.ajax({
+            url: '/Simulator/_AlertFunction',
+            type: 'Post',
+            data: '{siteId:' + $('#hdnsiteId').val() + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divAlertFunction').empty().append(data);
+                $('#modal-add-alert-function').modal('show');
+            },
+            error: function (xhr, error, status) {
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function fnUploadPointEventFileData() {
+        var mPointMachineDatas = [];
+        var mUploadFile = {};
+        mUploadFile.SiteId = $('#hdnsiteId').val();
+        var d = new Date();
+        debugger;
+        var isValid = true;
+        if ($('#drpPointAlertAlias').val() == null || $('#drpPointAlertAlias').val() == undefined || $('#drpPointAlertAlias').val() == '') {
+            alert('Json not configure')
+            isValid = false;
+        }
+
+        if ($('#drpPointAsset :selected').text() == null || $('#drpPointAsset :selected').text() == undefined || $('#drpPointAsset :selected').text() == '') {
+            alert('Asset is required')
+            isValid = false;
+        }
+
+        if ($('#drpPointDirection :selected').text() == null || $('#drpPointDirection :selected').text() == undefined || $('#drpPointDirection :selected').text() == '') {
+            alert('Direction is required')
+            isValid = false;
+        }
+        var mPointMachineData = {};
+        mPointMachineData.ArrayData = $('#drpPointAlertAlias').val();
+        mPointMachineData.AssetName = $('#drpPointAsset :selected').text();
+        mPointMachineData.Direction = $('#drpPointDirection :selected').text();
+        mPointMachineData.TimeStamp = d;
+
+        if ($('#drpPointAlertAlias :selected').text().includes("Current")) {
+            mPointMachineData.Direction = mPointMachineData.Direction + " " + "C";
+        }
+        else if ($('#drpPointAlertAlias :selected').text().includes("Voltage")) {
+            mPointMachineData.Direction = mPointMachineData.Direction + " " + "V";
+        } else {
+            mPointMachineData.Direction = mPointMachineData.Direction + " " + "C";
+        }
+
+        mPointMachineDatas.push(mPointMachineData);
+
+        mUploadFile.mPointMachineDatas = mPointMachineDatas;
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Simulator/UploadPointEventFileData',
+                type: 'Post',
+                data: '{mUploadFile:' + JSON.stringify(mUploadFile) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $('#modal-add-point-function').modal('hide');
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data.type == 'success') {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    }
+                    else {
+                        CommonNotification("ERROR", data.result, "Error");
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnSaveDefaultValue() {
+        var defaultValues = [];
+
+        $('.txtUploadAttributeData').each(function () {
+            var value = $(this).val();
+            if (value != null && value != undefined && value != '') {
+                var mDefaultValue = {};
+                mDefaultValue.SiteId = $('#hdnsiteId').val();
+                mDefaultValue.AssetId = $(this).data('assetid');
+                mDefaultValue.AttributeId = $(this).data('attributeid');
+                mDefaultValue.Value = value;
+                defaultValues.push(mDefaultValue);
+            }
+        });
+
+        $('.txtDataloggerUploadAttributeData').each(function () {
+            var value = $(this).val();
+            if (value != null && value != undefined && value != '') {
+                var mDefaultValue = {};
+                mDefaultValue.SiteId = $('#hdnsiteId').val();
+                mDefaultValue.AssetId = $(this).data('assetid');
+                mDefaultValue.DataLoggerAttributeId = $(this).data('dataloggerattributeid');
+                mDefaultValue.Value = value;
+                defaultValues.push(mDefaultValue);
+            }
+        });
+        $("#loader").show();
+        $.ajax({
+            url: '/Simulator/SaveDefaultValue',
+            type: 'Post',
+            data: '{defaultValues:' + JSON.stringify(defaultValues) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                debugger;
+                $("#loader").hide();
+                if (data != null && data != undefined && data.type == 'success') {
+                    CommonNotification("SUCCESS", data.result, "success");
+                    $('#modal-add-alert-function').modal('hide');
+                }
+                else {
+                    CommonNotification("ERROR", data.result, "Error");
+                }
+            },
+            error: function (xhr, error, status) {
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+
+</script>

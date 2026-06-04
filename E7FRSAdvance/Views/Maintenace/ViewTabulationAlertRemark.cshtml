@@ -1,0 +1,257 @@
+﻿@model List<Domain.AlertAudit>
+
+<div class="modal bounceIn animated" id="modalAlertRemark" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                @if (Model != null && Model.Count > 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span>Alert Remark - @Model.Select(x => x.Site).FirstOrDefault()</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span>Alert Remark</span></h4>
+                }
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="mail-body-wrapper">
+                    <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                        @if (Model != null && Model.Count > 0)
+                        {
+                            foreach (var site in Model.GroupBy(x => new { x.SiteId, x.Site }).Select(x => x.Key).ToList())
+                            {
+                                int smsCount = Model.Where(x => x.SiteId == site.SiteId).Count();
+                                int smsTrueCount = Model.Where(x => x.SiteId == site.SiteId && x.IsOpenClose).Count();
+                                int smsFalseCount = Model.Where(x => x.SiteId == site.SiteId && !x.IsOpenClose).Count();
+                                if (smsCount > 0)
+                                {
+                                    <li class="inbox-data" style="background-color:#f4f8f8">
+                                        <div class="inbox-message">
+
+                                            <div class="email-data">
+                                                <span style="float:left;">@site.Site &nbsp;</span>
+                                                <span class="span badge rounded-pill1 pill-badge-primary" style="color:white;">@smsCount</span>
+
+                                            </div>
+                                            <span class="pull-right">
+                                                <span class="span badge rounded-pill1 pill-badge-success" style="color:white;">Open @smsTrueCount</span>
+                                                <span class="span badge rounded-pill1 pill-badge-danger" style="color:white;">Close @smsFalseCount</span>
+                                                <a href="#" data-bs-original-title="" title=""><i class="fa fa-angle-up fa-3x" onclick="fnShowPortfolioRemarkBySite('@site.SiteId', this); return false;"></i></a>
+                                            </span>
+                                        </div>
+                                    </li>
+
+                                }
+
+
+                                foreach (var assetType in Model.Where(x => x.SiteId == site.SiteId).GroupBy(x => new { x.AssetTypeId, x.AssetType }).Select(x => x.Key).ToList())
+                                {
+
+                                    var smsAlertNameCount = Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId).Count();
+                                    <li class="inbox-data portfolioRemarkBySite_@(site.SiteId)" style="display:none">
+                                        <div class="mail-body-wrapper" style="width:100%;">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                <li class="inbox-data" style="background-color: #4bacc6;">
+                                                    <div class="inbox-message">
+                                                        <div class="email-data">
+                                                            <span style="float: left; color: white;">@assetType.AssetType  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAlertNameCount</span>
+                                                        </div>
+                                                        <span class="pull-right">
+                                                            <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowPortfolioRemarkByAssetType('@site.SiteId','@assetType.AssetTypeId', this); return false;"></i></a>
+                                                        </span>
+                                                    </div>
+                                                </li>
+                                                @foreach (var asset in Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId).GroupBy(x => new { x.AssetId, x.Asset }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                {
+                                                    var smsAssetCount = Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId && x.AssetId == asset.AssetId).Count();
+                                                    <li class="inbox-data  portfolioRemarkByAssetType_@(site.SiteId)_@(assetType.AssetTypeId)" style="display:none">
+                                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" style="width:100%;">
+                                                            <li class="inbox-data" style="background-color: #21596880; ">
+                                                                <div class="inbox-message">
+                                                                    <div class="email-data">
+                                                                        <span style="float: left; color: white;">@asset.Asset  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                    </div>
+                                                                    <span class="pull-right">
+                                                                        <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowPortfolioRemarkByAsset('@site.SiteId','@assetType.AssetTypeId','@asset.AssetId', this); return false;"></i></a>
+                                                                    </span>
+                                                                </div>
+                                                            </li>
+
+
+
+                                                            <li class="inbox-data  portfolioRemarkByAsset_@(site.SiteId)_@(assetType.AssetTypeId)_@(asset.AssetId)" style="display:none">
+                                                                <table class="table">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th>Alert</th>
+                                                                            <th>Tabulation Remark</th>
+                                                                            <th>Portfolio Remark</th>
+                                                                            <th class="text-center">Open / Close</th>
+                                                                            <th>Time Stamp</th>
+                                                                            <th>Created By</th>
+                                                                            <th>Portfolio Remark Updated By</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+
+                                                                        @foreach (var item in Model.Where(x => x.AssetTypeId == assetType.AssetTypeId && x.SiteId == site.SiteId && x.AssetId == asset.AssetId).ToList())
+                                                                        {
+                                                                            <tr>
+                                                                                <td>@item.Alert</td>
+                                                                                <td>@item.Remark</td>
+                                                                                <td>@item.PortfolioRemark</td>
+                                                                                <td class="text-center icon-state">
+
+                                                                                    @if (item.IsOpenClose)
+                                                                                    {
+                                                                                        <span class="span badge rounded-pill1 pill-badge-success" style="color:white;">Open</span>
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        <span class="span badge rounded-pill1 pill-badge-danger" style="color:white;">Close</span>
+                                                                                    }
+                                                                                </td>
+                                                                                <td>@item.CreatedDate</td>
+                                                                                <td>@item.CreatedName</td>
+                                                                                <td>
+                                                                                    @if (!string.IsNullOrEmpty(item.PortfolioRemark))
+                                                                                    {
+                                                                                       <span>@item.LastModifiedName</span>
+                                                                                    }
+                                                                                    
+                                                                                </td>
+
+                                                                            </tr>
+                                                                        }
+
+                                                                    </tbody>
+                                                                </table>
+                                                            </li>
+
+
+                                                        </ul>
+                                                    </li>
+                                                }
+
+
+                                            </ul>
+                                        </div>
+                                    </li>
+
+
+                                }
+
+
+
+                            }
+
+                        }
+                    </ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+
+    function fnShowPortfolioRemarkBySite(siteId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined) {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.portfolioRemarkBySite_' + siteId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.portfolioRemarkBySite_' + siteId).hide();
+            }
+        }
+    }
+
+    function fnShowPortfolioRemarkByAssetType(siteId, assetTypeId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.portfolioRemarkByAssetType_' + siteId + '_' + assetTypeId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.portfolioRemarkByAssetType_' + siteId + '_' + assetTypeId).hide();
+            }
+        }
+    }
+
+    function fnShowPortfolioRemarkByAsset(siteId, assetTypeId, assetId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && assetTypeId != null && assetTypeId != undefined && assetTypeId != '' && assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.portfolioRemarkByAsset_' + siteId + '_' + assetTypeId + '_' + assetId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.portfolioRemarkByAsset_' + siteId + '_' + assetTypeId + '_' + assetId).hide();
+            }
+        }
+    }
+
+    function fnAddPortfolioAlertAuditRemark(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/Maintenace/AddPortfolioAlertAuditRemark',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $('#divUpdatePortfolioAlertAudit').empty().append(data);
+                $('#modalPortfolioAlertRemark').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnUpdatePortfolioAlertAudit(id) {
+        var mAlertAudit = {};
+        mAlertAudit.Id = id;
+        mAlertAudit.PortfolioRemark = $('#txtPortfolioRemark').val();
+        if ($('#drpAlertAuditStatus').val() == 'Open') {
+            mAlertAudit.IsOpenClose = true;
+        }
+        else {
+            mAlertAudit.IsOpenClose = false;
+        }
+        if (mAlertAudit.PortfolioRemark != null && mAlertAudit.PortfolioRemark != undefined && mAlertAudit.PortfolioRemark != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/UpdatePortfolioAlertAudit',
+                type: 'Post',
+                data: '{mAlertAudit:' + JSON.stringify(mAlertAudit) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#modalPortfolioAlertRemark').modal('hide');
+                    if (data.type == "success") {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                    $('#frmPortfolioAlertAuditList').submit();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            alert('Remark is required!');
+        }
+
+    }
+</script>

@@ -1,0 +1,337 @@
+﻿@model Domain.WatchListLister
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+
+<div class="container-fluid">
+    <div class="email-wrap email-main-wrapper">
+        <div class="row">
+            <div class="col-xxl-12 col-xl-12 box-col-12">
+                <div class="email-right-aside">
+                    <div class="card email-body email-list">
+                        <div class="mail-header-wrapper">
+                            <div class="row">
+                                <div class="col-xl-12">
+
+                                    <div class="row p-4">
+                                        <div class="col-xl-2 col-lg-2 col-md-4">
+                                            <div class="form-group mb-2">
+                                                <label class="control-label center-block">Divisions:</label>
+                                                @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, ViewBag.Divisions as SelectList, new { @class = "form-control", tabindex = 1 })
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-2 col-lg-2 col-md-4">
+                                            <div class="form-group mb-2">
+                                                <label class="control-label center-block">Site:</label>
+                                                <select class="form-control" id="selSearchSiteName" name="SearchCriteria.SiteId">
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-1 col-lg-2 col-md-3">
+                                            <div class="form-group mb-2">
+                                                <label class="control-label center-block">Gear:</label>
+                                                <select class="form-control" name="SearchCriteria.AssetTypeId" id="drpSerchAssetTypeId">
+                                                    <option value="0">All</option>
+                                                    @if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+                                                    {
+                                                        foreach (var item in Model.AssetTypes)
+                                                        {
+                                                            <option @(Model.SearchCriteria.AssetTypeId == item.Id ? "selected" : "") value="@item.Id">@item.Name</option>
+
+                                                        }
+                                                    }
+
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-1 col-lg-2 col-md-3">
+                                            <div class="form-group mb-2">
+
+                                                <label class="control-label center-block">Asset:</label>
+                                                @Html.DropDownListFor(m => m.SearchCriteria.AssetId, ViewBag.Assets as SelectList, "Select", new { @class = "form-control", tabindex = 1 })
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-2 col-lg-2 col-md-3">
+                                            <div class="form-group mb-2">
+                                                <label class="control-label center-block">From Date:</label>
+                                                @Html.TextBoxFor(m => m.SearchCriteria.StartDate, "{0:d}", new { id = "txtFromDate", @class = "form-control" })
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-2 col-lg-2 col-md-3">
+                                            <div class="form-group mb-3">
+                                                <label class="control-label center-block">To Date:</label>
+                                                @Html.TextBoxFor(m => m.SearchCriteria.EndDate, "{0:d}", new { id = "txtToDate", @class = "form-control" })
+                                            </div>
+                                        </div>
+                                        <div class="col-xl-2 col-lg-3">
+                                            <a class="btn btn-success btn-quirk mt-4" onclick="fnSearch()" data-bs-original-title="" title="Search"><i class="fa fa-search"></i></a>
+                                            <a class="btn btn-primary btn-quirk mt-4" href="@Url.Action("DownloadWatchList")" data-bs-original-title="" title="Download csv"><i class="fa fa-download"></i></a>
+                                        </div>
+                                    </div>
+                                </div>
+                                @if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+                                {
+                                    <div class="col-xl-12" style="background-color: #215968; height: 45px;">
+                                        <div class="mail-header">
+                                            <div class="form-check form-check-inline">
+                                                <ul class="email-tabs nav" role="tablist">
+                                                    @if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+                                                    {
+                                                        foreach (var item in Model.AssetTypes)
+                                                        {
+
+                                                            <li class="nav-item">
+                                                                @{
+                                                                    var isActive = string.Empty;
+                                                                }
+
+                                                                @if (item == Model.AssetTypes.FirstOrDefault())
+                                                                {
+                                                                    isActive = "active";
+                                                                }
+
+                                                                <a class="nav-link @isActive" id="@item.Name.Replace(" ","")-pill-tab" data-bs-toggle="pill" href="#@item.Name.Replace(" ","")-pill" role="tab" aria-controls="@item.Name.Replace(" ","")-pill" aria-selected="false" style="color:white;" onclick="fnChangeTab('@item.Name.Replace(" ","")')">
+                                                                    <div>@item.Name</div>
+                                                                    <span class="span badge rounded-pill pill-badge-primary">@Model.WatchLists.Where(x => x.AssetTypeId == item.Id).Count()</span>
+                                                                </a>
+                                                            </li>
+
+                                                        }
+                                                    }
+
+
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+
+                            </div>
+                        </div>
+                        <div class="tab-content" id="email-pills-tabContent">
+                            @if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+                            {
+                                foreach (var assetType in Model.AssetTypes)
+                                {
+                                    var isActive = "";
+                                    if (assetType == Model.AssetTypes.FirstOrDefault())
+                                    {
+                                        isActive = "show active";
+                                    }
+                                    <div class="tab-pane fade @isActive" id="@assetType.Name.Replace(" ","")-pill" role="tabpanel" aria-labelledby="@assetType.Name.Replace(" ","")-pill-tab">
+                                        <div class="mail-body-wrapper">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                @foreach (var site in Model.WatchLists.Where(x => x.AssetTypeId == assetType.Id).GroupBy(x => new { x.SiteId, x.SiteName }).Select(x => x.Key).ToList())
+                                                {
+                                                    var probabilityCount = Model.WatchLists.Where(x => x.AssetTypeId == assetType.Id && x.SiteId == site.SiteId).Count();
+                                                    <li class="inbox-data" style="background-color:#f4f8f8">
+                                                        <div class="inbox-message">
+
+                                                            <div class="email-data">
+                                                                <span style="float:left;">@site.SiteName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary" style="color:white;">@probabilityCount</span>
+                                                            </div>
+                                                            <span class="pull-right">
+                                                                <a href="#" data-bs-original-title="" title=""><i class="fa fa-angle-up fa-3x" onclick="fnShowProbabilitySite('@site.SiteId',this); return false;"></i></a>
+                                                            </span>
+                                                        </div>
+                                                    </li>
+
+                                                    <li class="inbox-data  probabilitySite_@(site.SiteId)" style="display:none">
+                                                        <table class="table">
+                                                            <thead class="bg-primary">
+                                                                <tr>
+                                                                    <th style="background-color: #215968;color:white;">AssetType</th>
+                                                                    <th style="background-color: #215968;color:white;">Asset</th>
+                                                                    <th style="background-color: #215968;color:white;">Attribute</th>
+                                                                    <th style="background-color: #215968;color:white;">Cluster</th>
+                                                                    <th style="background-color: #215968;color:white;">Card</th>
+                                                                    <th style="background-color: #215968;color:white;">ADC</th>
+                                                                    <th style="background-color: #215968;color:white;">Pin</th>
+                                                                    <th style="background-color: #215968;color:white;">Value</th>
+                                                                    <th style="background-color: #215968;color:white;">Cause</th>
+                                                                    <th style="background-color: #215968;color:white;">Date</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+
+                                                                @foreach (var item in Model.WatchLists.Where(x => x.AssetTypeId == assetType.Id && x.SiteId == site.SiteId))
+                                                                {
+
+                                                                    <tr class="table-light">
+                                                                        <td>@item.AssetTypeName</td>
+                                                                        <td>@item.AssetName</td>
+                                                                        <td>@item.AttributeName</td>
+                                                                        <td>@item.ClusterName</td>
+                                                                        <td>@item.CardName</td>
+                                                                        <td>@item.ADCName</td>
+                                                                        <td>@item.Pin</td>
+                                                                        <td>@item.AttributeValue</td>
+                                                                        <td>@item.Cause</td>
+                                                                        <td>@item.CreatedDate</td>
+                                                                    </tr>
+
+                                                                }
+
+
+                                                            </tbody>
+
+                                                        </table>
+                                                    </li>
+                                                }
+
+                                            </ul>
+
+                                        </div>
+                                    </div>
+                                }
+                            }
+
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmWatchList").submit();
+        });
+
+          $('#txtFromDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtFromDate').val() == "@DateTime.MinValue") {
+            $('#txtFromDate').val('');
+        }
+
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtToDate').val() == "@DateTime.MinValue") {
+            $('#txtToDate').val('');
+        }
+
+        GetAllSite($('#SearchCriteria_DivisionId').val(),'@Model.SearchCriteria.SiteId');
+        $('#SearchCriteria_DivisionId').change(function () {
+            GetAllSite($(this).val(),'@Model.SearchCriteria.SiteId');
+        });
+
+    });
+
+
+    function fnGetCluster(assetTypeId, $this) {
+        if (assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trAsset_' + assetTypeId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trAsset_' + assetTypeId).hide();
+            }
+        }
+    }
+
+    function fnSearch() {
+        $("#hdnSkip").val(0);
+        $("#frmWatchList").submit();
+    }
+
+    function GetAllSite(divisionId, hdnSiteId) {
+        $("#selSearchSiteName").empty();
+        if (divisionId != null && divisionId != undefined && divisionId != '' && parseInt(divisionId) > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Watchlist/GetSitesBy',
+                type: 'Post',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        var html = "";
+                        html += "<option value='0'>All</option>";
+                        $.each(data, function (id, val) {
+                            if (hdnSiteId == val.Id) {
+                                html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+                            }
+                            else {
+                                html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                            }
+
+                        });
+                        $("#selSearchSiteName").append(html);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            GetSite(hdnSiteId);
+        }
+
+    }
+
+    function GetSite(hdnSiteId) {
+        $("#selSearchSiteName").empty();
+        $("#loader").hide();
+        $.ajax({
+            url: '/Probability/GetAllSites',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data.length > 0) {
+                    var html = "";
+                    html += "<option value='0'>All</option>";
+                    $.each(data, function (id, val) {
+                        if (hdnSiteId == val.Id) {
+                            html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+                        }
+                        else {
+                            html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                        }
+
+                    });
+                    $("#selSearchSiteName").append(html);
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    function fnShowProbabilitySite(siteId, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined) {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.probabilitySite_' + siteId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.probabilitySite_' + siteId).hide();
+            }
+        }
+    }
+</script>
+

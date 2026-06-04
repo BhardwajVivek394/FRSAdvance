@@ -1,0 +1,518 @@
+﻿@model Domain.AssetLister
+<style>
+    .popover {
+        width: 100%;
+    }
+
+    .popover-content {
+        color: black;
+    }
+
+    @@media only screen and (max-width: 1200px) {
+        .panel-body {
+        }
+    }
+</style>
+
+<style>
+    .sizeDiv {
+        padding: 15px;
+        background-color: #ffffff;
+        left: 50%;
+        top: 50%;
+        border: 1px solid #e9e9e9;
+        border-radius: 10px;
+        display: flex;
+        gap: 15px;
+    }
+
+
+    .tempBox {
+        background-color: #f7f7f7;
+        padding: 20px;
+        display: flex;
+        border-radius: 5px;
+        align-items: center;
+        /* box-shadow: rgba(100, 100, 111, 0.2) 0px 7px 29px 0px; */
+    }
+
+
+        .tempBox .fa-thermometer-empty {
+            font-size: 50px;
+            color: orange;
+        }
+
+        .tempBox h2 {
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 0px 0px 0px 10px;
+            margin: 0px;
+            font-size: 26px;
+            color: #3a3a3a;
+        }
+
+        .tempBox h5 {
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 0px 0px 0px 10px;
+            margin: 0px;
+            font-size: 16px;
+            color: #b7b7b7;
+        }
+
+        .tempBox .fa-tint {
+            font-size: 50px;
+            color: #6cc7f5;
+        }
+</style>
+<div class="people-options clearfix">
+    <div class="pull-left" style="display:inline-flex">
+        <div class="input-group " style="margin-left:20px;">
+            @Html.TextBoxFor(x => x.SearchCriteria.AssetName, new { @class = "form-control btn-pill asset-search", @placeholder = "Search Axle counter" })
+        </div>
+    </div>
+    @*<div class="btn-group pull-right people-pager">
+            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+        </div>
+        <div class="btn-group pull-right people-pager">
+            <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+            <button type="button" class="btn btn-default" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+        </div>*@
+    @{
+        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+        if (Model.mAssets.Count == 0)
+        {
+            start = 0;
+        }
+        decimal end = Math.Floor(Model.Pager.TotalRecord);
+        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+        {
+            if (Model.Pager.PageSize == -1)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+            else
+            {
+                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                if (end > Model.Pager.TotalRecord)
+                {
+                    end = Model.Pager.TotalRecord;
+                }
+            }
+        }
+    }
+    <span class="people-count pull-right">Showing <strong>@Model.mAssets.Count</strong> Assets</span>
+    @if (Model.SearchCriteria.IsListView == true)
+    {
+        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-info" onclick="fnListView()" title="List View"><i class="fa fa-list"></i></a></span>
+        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-primary" onclick="fnGridView()" title="Grid View"><i class="fa fa-th-large"></i></a></span>
+    }
+
+</div>
+@{
+    var bgColor = new string[] { "#215968", "#404040", "#4bacc6" };
+}
+<div class="card" id="gridView">
+    <div class="card-body" style="padding:15px;">
+        <div class="row">
+            @if (Model.mAssets != null && Model.mAssets.Count > 0)
+            {
+                foreach (var item in Model.mAssets)
+                {
+                    int cnt = item.AssetTypeName.Length + item.Name.Length;
+
+                    <div class="col-xl-3 xl-50 news box-col-6">
+                        <div class="card card-border">
+                            <div class="bg-secondary" style="padding:0;border-top-left-radius:15px;border-top-right-radius:15px;">
+                                <div class="" style="width:80%;float:left;padding:10px;border-top-left-radius:15px;">
+                                    <h6>
+                                        <a target="_blank" class="text-white" href="@item.HttpMisLink"> Temperature & Humidity : @item.Name</a>
+                                    </h6>
+                                </div>
+                                <div class="text-center bg-dark" style="width:20%;float:left;padding:2px 0px;border-top-right-radius:15px;line-height:1;height:50px">
+
+                                    @if (item.UnderMaintence == true)
+                                    {
+                                        <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-center">
+                                            <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                        </div>
+                                    }
+                                    <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer"> Graph </a>
+                                    <a onclick="fnGetSmsLog('@item.Id')" style="color:white;text-transform:capitalize;font-size:10px;display:flow-root;cursor:pointer">Event log</a>
+                                </div>
+
+                            </div>
+                            <div class="card-body" style="padding:5px;">
+                                <div class="table-responsive width100p tblAssetData">
+                                    <table class="table table-striped">
+                                        <tbody id="tblAttributeData@(item.Id)" class="tblAttributes">
+                                            <tr>
+                                                <td>
+                                                    <div class="sizeDiv">
+                                                        <div class="row">
+                                                            <div class="col-6">
+                                                                <div class="tempBox">
+                                                                    <i class="fa fa-tint" aria-hidden="true"></i>
+                                                                    <div>
+                                                                        <h2>46 %</h2>
+                                                                        <h5>Humidity</h5>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-6">
+                                                                <div class="tempBox">
+                                                                    <i class="fa fa-thermometer-empty" aria-hidden="true"></i>
+                                                                    <div>
+                                                                        <h2>25.5&deg;C</h2>
+                                                                        <h5>Temperature</h5>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+
+
+                                                    </div>
+                                                </td>
+
+                                                @*<td></td>*@
+                                            </tr>
+                                            @*@if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                                                {
+                                                    foreach (var assetAttribute in item.assetAttributes)
+                                                    {
+                                                        <tr>
+                                                            <td style="width:50%">
+                                                                @assetAttribute.Title
+
+                                                            </td>
+                                                            <td style="width:50%" class="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                                @assetAttribute.AttributeData
+
+                                                            </td>
+                                                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsCalibration)
+                                                            {
+                                                                <td style="width:50%">
+                                                                    <a class=""><i class="fa fa-pencil" onclick="fnAddCalibration('@item.Id','@assetAttribute.Id','@assetAttribute.Multiplication','@item.Name','@assetAttribute.Title')"></i></a>
+                                                                </td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td></td>
+                                                            }
+                                                        </tr>
+                                                    }
+
+                                                }
+                                                else
+                                                {
+                                                    <tr>
+                                                        <td class="text-center" colspan="3">No attributes found!</td>
+                                                    </tr>
+                                                }*@
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <p style="font-size:15px">No record found!</p>
+            }
+        </div>
+    </div>
+</div>
+
+@if (Model.SearchCriteria.IsListView == true)
+{
+
+    <div class="card" id="listView" style="display:none;">
+        <div class="card-header">
+            Track
+        </div>
+        <div class="card-body listBody" style="padding:15px;">
+            <div class="">
+                <div class="">
+                    <div class="tableFixHead">
+                        <table class="table">
+                            <thead class="bg-primary">
+                                @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                                {
+                                    int i = 0;
+                                    int j = 0;
+                                    foreach (var item in Model.mAssets)
+                                    {
+                                        if (item.assetAttributes != null && item.assetAttributes.Count > 0 && i == 0)
+                                        {
+                                            <tr>
+                                                <th style="background-color:#4bacc6;color:white;">
+                                                    @item.AssetTypeName
+                                                </th>
+                                                @foreach (var assetAttribute in item.assetAttributes)
+                                                {
+                                                    <th style="background-color:@bgColor[j];color:white;">
+                                                        @assetAttribute.Title
+                                                    </th>
+
+                                                    if (j == 2)
+                                                    { j = 0; }
+                                                    else
+                                                    { j++; }
+                                                }
+                                                <th style="background-color:#404040;color:white;width:80px;">Index Score</th>
+
+                                                <th style="background-color:#404040;color:white;width:150px;" colspan="3"></th>
+                                            </tr>
+                                        }
+                                        i++;
+                                    }
+
+                                }
+
+                            </thead>
+                            <tbody style="max-height: 620px;overflow-y:auto;">
+                                @if (Model.mAssets != null && Model.mAssets.Count > 0)
+                                {
+
+                                    foreach (var item in Model.mAssets)
+                                    {
+                                        if (item.assetAttributes != null && item.assetAttributes.Count > 0)
+                                        {
+                                            <tr>
+                                                <td class="hdnAssetNameTD@(item.Id)">
+                                                    <a href="@item.HttpMisLink" target="_blank"> @item.Name</a>
+                                                </td>
+                                                @foreach (var assetAttribute in item.assetAttributes)
+                                                {
+                                                    <td class="hdnAttributeData@(assetAttribute.Id)@(item.Id)">
+                                                        @assetAttribute.AttributeData
+                                                    </td>
+                                                }
+                                                <td class="@(item.IndexScore < 7 ? "text-danger" : "")">
+                                                    @item.IndexScore
+                                                </td>
+
+                                                @if (Model.SearchCriteria.AssetTypeName.ToLower() == "Track".ToLower())
+                                                {
+                                                    <td class="leakge">
+                                                    </td>
+                                                    <td data-id="@item.Id" class="checkHealth@(item.Id)">
+                                                        @if (item.IsAlarm)
+                                                        {
+                                                            <span style='cursor:pointer' onclick="GetLogByAssetId(@item.Id)" class="text-danger">Alarm</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-success">Ok</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <span class="text-success trackoc@(item.Id)">C</span>
+                                                    </td>
+                                                    <td style="">
+                                                        @if (item.UnderMaintence == true)
+                                                        {
+                                                            <div class="text-center"> <i class="fa fa-bell-slash" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i></div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="text-center">
+                                                                <i class="fa fa-bell" style="font-size:16px;cursor:pointer;" onclick="fnUnderMaintenance('@item.Id', this)" data-id="@item.Id"></i>
+                                                            </div>
+                                                        }
+                                                    </td>
+                                                }
+
+                                                <td>
+                                                    <a onclick="fnGetAssetGraph('@item.SiteId','@item.Id')" style="text-transform:capitalize;cursor:pointer;"> Graph </a>
+                                                </td>
+                                                <td>
+                                                    <a onclick="fnGetSmsLog('@item.Id')" style="text-transform:capitalize;cursor:pointer">Event log</a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
+
+<script>
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var isSiteKeeping = stringToBool('@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping');
+    (function ($) {
+        $.fn.focusTextToEnd = function () {
+            this.focus();
+            var $thisVal = this.val();
+            this.val('').val($thisVal);
+            return this;
+        }
+    }(jQuery));
+    $(document).ready(function () {
+        $(".asset-search").keyup(function (e) {
+            setTimeout(function () {
+                $("#frmAssetDetails").submit();
+            }, 3000)
+        });
+        $('[data-toggle="popover"]').popover();
+
+        $(".asset-search").focusTextToEnd();
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmAssetDetails").submit();
+        });
+
+     //   $('.dropDownList').select2({ minimumResultsForSearch: Infinity });
+        json = @Html.Raw(Json.Encode(Model));
+
+        if (json.SearchCriteria.MQTTPaths != null && json.SearchCriteria.MQTTPaths.length > 0)
+            mQQTPath = json.SearchCriteria.MQTTPaths[0];
+
+        if (json.SearchCriteria.ChannelList != null && json.SearchCriteria.ChannelList.length > 0) {
+            channels = json.SearchCriteria.ChannelList;
+        }
+        for (var i = 0; i < channels.length; i++) {
+            $("#c" + i).html('');
+        }
+        $('#spnDLLastUpdate').text('');
+        mQTT=@Html.Raw(Json.Encode(Model.MQTTDetail));
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+        if (isSiteKeeping || admin == '@E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode()') {
+            fnGetWatchList();
+        }
+
+    });
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+                client.subscribe(mQQTPath + channels[i].toLowerCase());
+            }
+        }
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            //location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message, val) {
+
+        if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['roles'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindHumidityData(message.destinationName, array);
+                }
+            }
+        } else {
+            var channeldata = message.payloadString.split(',');
+            BindHumidityData(message.destinationName, channeldata);
+        }
+
+
+        for (var i = 0; i < channels.length; i++) {
+            if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+
+                var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+                if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+                    var d = new Date();
+                    var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                    $("#c" + i).html(time);
+                }
+            }
+        }
+    }
+
+    function BindHumidityData(basePath, data) {
+
+        $.each(json.mAssets, function (id, item) {
+
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+                    var str1 = basePath.toLowerCase();
+                    if (inItem.AssetInfoChannel != null) {
+                        var str2 = inItem.AssetInfoChannel.toLowerCase();
+                        if (str1.indexOf(str2) != -1) {
+
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null) {
+                                var dataValue = data[infoValue];
+                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
+                                if (infoMultiplication != null) {
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = (Math.round(mainData * 100) / 100).toFixed(1);
+                                    if (parseFloat(v) <= 0) {
+                                        v = '0.0';
+                                    }
+                                    $(id).html(v);
+                                }
+                                else {
+                                    var v = (Math.round(dataValue * 100) / 100).toFixed(1)
+                                    $(id).html(v);
+                                }
+                            }
+                        }
+                    }
+
+                });
+            }
+        });
+    }
+
+    function fnGridView() {
+        $("#listView").hide();
+        $("#gridView").show();
+    }
+    function fnListView() {
+        $("#listView").show();
+        $("#gridView").hide();
+    }
+</script>

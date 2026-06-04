@@ -1,0 +1,247 @@
+﻿@model List<Domain.UtilityLog>
+
+@{
+    var mUtilityLogTests = ViewBag.UtilityLogTest as List<Domain.UtilityLogTest>;
+}
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-body " style="padding:15px;">
+                <div class="pull-left">
+                    @Html.DropDownList("ZoneId", new SelectList(ViewBag.Zones, "Id", "Name"), "Select Zone", new { @class = "form-control", id = "plcZone", tabindex = 1, onchange = "GetPLCDivisionByZone()" })
+                </div>
+                <div class="pull-left" style="margin-left:10px;">
+                    <select id="plcDivisions" class="form-control" onchange="GetPLCDivision()">
+                        <option>Select Division</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive">
+
+                    @if (ViewBag.Zones != null && ViewBag.Divisions != null)
+                    {
+                        foreach (var zone in ViewBag.Zones as List<Domain.Zone>)
+                        {
+                            var devision = ViewBag.Divisions as List<Domain.Division>;
+                            <table class="table plcTblZone" id="plcTblZone_@zone.Id">
+                                <thead>
+                                    <tr class="MainTh">
+                                        <th>
+                                            <span>
+                                                @zone.Name
+                                            </span>
+                                            <span class="pull-right">
+                                                <a href="#"><i class="fa fa-angle-up fa-3x plcArrowIcon" onclick="fnShowPLCDivision('@zone.Id', this); return false;"></i></a>
+                                            </span>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            @foreach (var division in devision.Where(x => x.ZoneId == zone.Id))
+                                            {
+                                                if (Model.Where(x => x.ZoneId == zone.Id && x.DivisionId == division.Id).Count() > 0)
+                                                {
+                                                    <table class="table plcTblDivision plcTblDivisionByZone_@zone.Id" id="plcTblDivision_@division.Id" style="display:none">
+                                                        <thead>
+                                                            <tr class="SubTh">
+                                                                <th>
+                                                                    @division.Name
+                                                                </th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr>
+                                                                <td>
+                                                                    <table class="table">
+                                                                        <thead class="bg-primary">
+                                                                            <tr>
+                                                                                <th>Site Name</th>
+                                                                                @{
+                                                                                    var alertNames = Model.Select(x => x.UtilityName).OrderBy(x => x).Distinct().ToList();
+                                                                                }
+                                                                                @if (alertNames != null && alertNames.Count > 0)
+                                                                                {
+                                                                                    foreach (var item in alertNames)
+                                                                                    {
+                                                                                        <th>@item</th>
+                                                                                    }
+                                                                                }
+
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            @if (Model != null && Model.Count > 0)
+                                                                            {
+                                                                                int counter = 0;
+                                                                                string color = string.Empty;
+                                                                                foreach (var item in Model.Where(x => x.ZoneId == zone.Id && x.DivisionId == division.Id).GroupBy(x => x.SiteName).ToList())
+                                                                                {
+                                                                                    counter++;
+                                                                                    if (counter % 2 == 0)
+                                                                                    {
+                                                                                        color = "#F1EFFF";
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        color = "#F8F7FF";
+                                                                                    }
+
+                                                                                    var IsLocalSiteCount = item.Where(x => x.IsLocalSite && x.IsSetupLocalSite != null && x.IsSetupLocalSite.Value).Count();
+
+                                                                                    <tr class="table-light">
+                                                                                        <td>
+                                                                                            <span>@item.Key</span>
+                                                                                            @if (IsLocalSiteCount > 0)
+                                                                                            {
+                                                                                                <br />
+                                                                                                <br />
+                                                                                                <br />
+                                                                                                <br />
+                                                                                                <span>- Local</span>
+                                                                                            }
+
+                                                                                        </td>
+
+                                                                                        @if (alertNames != null && alertNames.Count > 0)
+                                                                                        {
+                                                                                            foreach (var alertName in alertNames)
+                                                                                            {
+                                                                                                var record = item.Where(x => x.UtilityName == alertName).FirstOrDefault();
+
+                                                                                                if (record != null)
+                                                                                                {
+                                                                                                    record = item.Where(x => x.UtilityName == alertName && !x.IsLocalSite).FirstOrDefault();
+                                                                                                    <td>
+                                                                                                        @if (record != null && !record.IsLocalSite)
+                                                                                                        {
+                                                                                                            @record.TimeStamp.ToString("dd/MM/yyyy HH:mm:ss")
+                                                                                                            <br />
+
+                                                                                                            if (DateTime.Now.Subtract(record.TimeStamp).TotalMinutes > 5)
+                                                                                                            {
+                                                                                                                <span class="span badge rounded-pill pill-badge-danger">InActive</span>
+                                                                                                            }
+                                                                                                            else
+                                                                                                            {
+                                                                                                                var mUtilityLogTest = mUtilityLogTests.Where(x => x.SiteId == item.FirstOrDefault().SiteId && x.UtilityName == alertName).FirstOrDefault();
+                                                                                                                if (mUtilityLogTest != null && mUtilityLogTest.IsChecked)
+                                                                                                                {
+                                                                                                                    <span class="span badge rounded-pill pill-badge-warning">Active</span>
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <span class="span badge rounded-pill pill-badge-success">Active</span>
+
+                                                                                                                }
+                                                                                                            }
+                                                                                                        }
+                                                                                                        else
+                                                                                                        {
+                                                                                                            <span> N/A</span>
+                                                                                                        }
+
+
+                                                                                                        @{
+                                                                                                            var recordlocal = item.Where(x => x.UtilityName == alertName && x.IsLocalSite && x.IsSetupLocalSite != null && x.IsSetupLocalSite.Value).FirstOrDefault();
+                                                                                                        }
+
+                                                                                                        @if (recordlocal != null)
+                                                                                                        {
+                                                                                                            <br />
+                                                                                                            <br />
+                                                                                                            @recordlocal.TimeStamp.ToString("dd/MM/yyyy HH:mm:ss")
+                                                                                                            <br />
+                                                                                                            if (DateTime.Now.Subtract(recordlocal.TimeStamp).TotalMinutes > 5)
+                                                                                                            {
+                                                                                                                <span class="span badge rounded-pill pill-badge-danger">InActive</span>
+                                                                                                            }
+                                                                                                            else
+                                                                                                            {
+                                                                                                                var mUtilityLogTest = mUtilityLogTests.Where(x => x.SiteId == item.FirstOrDefault().SiteId && x.UtilityName == alertName).FirstOrDefault();
+                                                                                                                if (mUtilityLogTest != null && mUtilityLogTest.IsChecked)
+                                                                                                                {
+                                                                                                                    <span class="span badge rounded-pill pill-badge-warning">Active</span>
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <span class="span badge rounded-pill pill-badge-success">Active</span>
+
+                                                                                                                }
+                                                                                                                @*<span class="span badge rounded-pill pill-badge-success">Active</span>*@
+                                                                                                            }
+                                                                                                        }
+                                                                                                        else if (IsLocalSiteCount > 0)
+                                                                                                        {
+                                                                                                            <br />
+                                                                                                            <br />
+                                                                                                            <br />
+                                                                                                            <span> N/A</span>
+                                                                                                        }
+
+                                                                                                    </td>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <td>
+                                                                                                        N/A
+                                                                                                    </td>
+                                                                                                }
+
+                                                                                            }
+                                                                                        }
+
+
+                                                                                    </tr>
+
+
+
+                                                                                }
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <tr>
+                                                                                    <td colspan="10" class="text-center">
+                                                                                        No record found
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        </tbody>
+                                                                    </table>
+
+
+
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                }
+
+                                            }
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        }
+                    }
+
+
+
+
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>

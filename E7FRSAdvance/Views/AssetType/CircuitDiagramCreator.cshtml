@@ -1,0 +1,178 @@
+﻿@model Domain.AssetLister
+@{
+    ViewBag.Title = "CircuitDiagramCreator";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<link href="~/assets/circuitsip/css/rappid.css" rel="stylesheet" />
+<link href="~/assets/circuitsip/css/style.css" rel="stylesheet" />
+<link href="~/assets/circuitsip/css/theme-picker.css" rel="stylesheet" />
+<link href="~/assets/circuitsip/css/style.dark.css" rel="stylesheet" />
+<link href="~/assets/circuitsip/css/style.material.css" rel="stylesheet" />
+<link href="~/assets/circuitsip/css/style.modern.css" rel="stylesheet" />
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<div class="container-fluid">
+
+    <input type="hidden" id="hdnId" value="0" />
+    <input type="hidden" id="hdnassetTypeId" value="@ViewBag.AssetTypeId" />
+    <input type="hidden" id="hdndlAssetTypeId" value="@ViewBag.DlAssetTypeId" />
+    <button class="btn btn-success" onclick="SaveCircuitDiagramCreator()" id="save">Save</button>
+
+    <div id="app" style="height:800px">
+        <div class="app-header">
+            <div class="app-title">
+
+            </div>
+            <div class="toolbar-container"></div>
+        </div>
+        <div class="app-body mt-2">
+            <div class="stencil-container"></div>
+            <div class="paper-container"></div>
+            <div class="inspector-container"></div>
+            <div class="navigator-container"></div>
+        </div>
+    </div>
+
+</div>
+<div class="modal bounceIn animated" id="modal-add-asset" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-add-asset" style="overflow-y:hidden">
+    <div class="modal-dialog  modal-lg">
+        <div class="modal-content bradius4">
+
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"></span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body">
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSaveAsset()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--[if IE 9]>
+    <script>
+      // `-ms-user-select: none` doesn't work in IE9
+      document.onselectstart = function() { return false; };
+    </script>
+<![endif]-->
+<script>
+    var assetNames = null;
+    var isInteractive = true;
+    $(document).ready(function () {
+        assetNames = [
+            { value: '3T1', content: '<span>3T1</span>' },
+            { value: '06', content: '<span>06</span>' },
+            { value: '05', content: '<span>05</span>' }
+        ]
+    });
+</script>
+
+@*<svg style="height:0;width:0;position:absolute">
+    <defs>
+        <filter id="dropShadow" height="130%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+            <feOffset dx="2" dy="2" result="offsetblur" />
+            <feFlood flood-color="black" result="color" />
+            <feComposite in2="offsetblur" operator="in" />
+            <feMerge>
+                <feMergeNode />
+                <feMergeNode in="SourceGraphic" />
+            </feMerge>
+        </filter>
+    </defs>
+</svg>*@
+
+<script src="~/assets/circuitsip/js/lodash.js"></script>
+<script src="~/assets/circuitsip/js/backbone.js"></script>
+<script src="~/assets/circuitsip/js/graphlib.core.js"></script>
+<script src="~/assets/circuitsip/js/dagre.core.js"></script>
+<script src="~/assets/circuitsip/js/JavaScript.js"></script>
+<script src="~/assets/circuitsip/js/halo.js"></script>
+<script src="~/assets/circuitsip/js/selection.js"></script>
+<script src="~/assets/circuitsip/js/inspector.js"></script>
+<script src="~/assets/circuitsip/js/stencil.js"></script>
+<script src="~/assets/circuitsip/js/toolbar-main.js"></script>
+<script src="~/assets/circuitsip/js/main.js"></script>
+<script src="~/assets/circuitsip/js/theme-picker.js"></script>
+<script src="~/assets/circuitsip/js/joint.shapes.app.js"></script>
+<script src="~/assets/circuitsip/js/navigator.js"></script>
+
+<script>
+    var app = null;
+    var parseJson = null
+    $(document).ready(function () {
+        joint.setTheme('modern');
+        app = new App.MainView({ el: '#app' });
+        themePicker = new App.ThemePicker({ mainView: app });
+        themePicker.render().$el.appendTo(document.body);
+        //window.addEventListener('load', function () {
+        //    app.graph.fromJSON(JSON.parse(App.config.sampleGraphs.emergencyProcedure));
+        //});
+
+        GetSipView();
+
+    })
+
+    function SaveCircuitDiagramCreator() {
+        var mAssetTypeCircuitDiagram = {};
+        mAssetTypeCircuitDiagram.Id = $("#hdnId").val();
+        mAssetTypeCircuitDiagram.AssetTypeId = $("#hdnassetTypeId").val();
+        mAssetTypeCircuitDiagram.CircuitDiagram = JSON.stringify(app.graph.toJSON());// JSON.stringify(sipViewJson);
+        //   console.log(sipView.SipView1)
+        $.ajax({
+            url: '/AssetType/SaveCircuitDiagramCreator',
+            type: 'Post',
+            data: '{mAssetTypeCircuitDiagram:' + JSON.stringify(mAssetTypeCircuitDiagram) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data.type == 'success') {
+                    CommonNotification("success", data.result, "success");
+                }
+                else {
+                    CommonNotification("ERROR", data.result, "Error");
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+    function GetSipView() {
+        $.ajax({
+            url: '/AssetType/GetAssetTypeCircuitDiagram',
+            type: 'Post',
+            data: '{assetTypeId:' + $("#hdnassetTypeId").val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.Id > 0) {
+                    parseJson = JSON.parse(data.CircuitDiagram);
+                    app.graph.fromJSON(parseJson);
+                }
+                else {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>
+<script>
+    (function () {
+        var fs = (document.location.protocol === 'file:');
+        var ff = (navigator.userAgent.toLowerCase().indexOf('firefox') !== -1);
+        if (fs && !ff) {
+            (new joint.ui.Dialog({
+                width: 300,
+                type: 'alert',
+                title: 'Local File',
+                content: $('#message-fs').show()
+            })).open();
+        }
+    })();
+</script>

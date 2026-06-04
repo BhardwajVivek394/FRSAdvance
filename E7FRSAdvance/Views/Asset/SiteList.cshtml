@@ -1,0 +1,85 @@
+﻿@model Domain.SiteLister
+
+<div class="row">
+    <div class="col-12">
+        <div class="table-responsive tableFixHead">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th width="5%" style="background-color: #215968; color: white;">Zone</th>
+                        <th width="5%" style="background-color: #215968; color: white;">Division</th>
+                        <th width="10%" style="background-color: #215968; color: white;">Site</th>
+                        <th width="40%" style="background-color: #215968; color: white;">Asset</th>
+                        <th width="40%" style="background-color: #215968; color: white;">Cause Code</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.mSites != null && Model.mSites.Count > 0)
+                    {
+                        foreach (var item in Model.mSites)
+                        {
+                            <tr>
+                                <td>@item.ZoneName</td>
+                                <td>@item.DivisionName</td>
+                                <td>@item.Name</td>
+                                <td>
+                                    @if (ViewBag.Asset != null)
+                                    {
+                                        var mAssetLister = ViewBag.Asset as Domain.AssetLister;
+                                        if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssets.Count > 0)
+                                        {
+                                            var assets = mAssetLister.mAssets.Where(x => x.SiteId == item.Id && (x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.TRACK || x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE || x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL)).ToList();
+                                            if (assets != null && assets.Count > 0)
+                                            {
+                                                foreach (var assetType in assets.GroupBy(x => new { x.AssetTypeId, x.AssetTypeName }).Select(x => x.Key))
+                                                {
+                                                    <u><b>@assetType.AssetTypeName</b></u>
+                                                    <br />
+                                                    foreach (var asset in assets.Where(x => x.AssetTypeId == assetType.AssetTypeId))
+                                                    {
+                                                        <button type="button" class="btn btn-info mr-4 mt-1" onclick="fnUpdateAsset('@asset.Id','@asset.Name')">@asset.Name</button>
+                                                    }
+                                                    <br /><br />
+                                                }
+
+                                            }
+                                        }
+                                    }
+
+                                </td>
+                                <td>
+                                    @if (ViewBag.AlertInfoActivation != null)
+                                    {
+                                        var mAlertInfoActivations = ViewBag.AlertInfoActivation as List<Domain.AlertInfoActivation>;
+                                        if (mAlertInfoActivations != null && mAlertInfoActivations.Count > 0)
+                                        {
+                                            var alertInfoActivations = mAlertInfoActivations.Where(x => x.SiteId == item.Id && (x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.TRACK || x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE || x.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL)).ToList();
+                                            if (alertInfoActivations != null && alertInfoActivations.Count > 0)
+                                            {
+                                                foreach (var assetType in alertInfoActivations.GroupBy(x => new { x.AssetTypeId, x.AssetType }).Select(x => x.Key))
+                                                {
+                                                    <u><b>@assetType.AssetType</b></u>
+                                                    <br />
+                                                    foreach (var alertInfoActivation in alertInfoActivations.Where(x => x.AssetTypeId == assetType.AssetTypeId))
+                                                    {
+                                                        <button type="button" class="btn btn-info mr-4 mt-1" onclick="fnUpdateAlertInfoActivation('@alertInfoActivation.Id')">@alertInfoActivation.CauseCode - @alertInfoActivation.Asset</button>
+
+                                                    }
+                                                }
+
+                                            }
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+
+
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+

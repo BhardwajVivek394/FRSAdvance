@@ -1,0 +1,572 @@
+﻿@model Domain.FRSAlertLister
+
+<style>
+    #tblAlertSummary {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        color: #333;
+    }
+
+        #tblAlertSummary thead tr {
+            background-color: #f2f2f2;
+        }
+
+        #tblAlertSummary thead th {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-weight: 600;
+            font-size: 12px;
+            color: #333;
+            white-space: normal;
+            line-height: 1.4;
+            border: 1px solid #dee2e6;
+        }
+
+        #tblAlertSummary tbody tr {
+            background-color: #fff;
+            border-bottom: 1px solid #ececec;
+        }
+
+            #tblAlertSummary tbody tr:hover {
+                background-color: #f9f9f9;
+            }
+
+        #tblAlertSummary tbody td {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+</style>
+
+@{ // Process data once at the top
+    var alertSummaryReport = new List<dynamic>();
+    int totalAlerts = 0;
+    int totalTrueAlerts = 0;
+    int totalPTAlerts = 0;
+
+    if (Model != null && Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
+    {
+        alertSummaryReport = Model.mFRSAlerts
+            .GroupBy(c => new
+            {
+                c.ZoneName,
+                c.DivisionName,
+                c.SiteName,
+                c.AlertTypeId,
+                c.AssetType,
+                c.AssetName,
+                c.CauseCode
+            })
+            .Select(gcs => new
+            {
+                gcs.Key.ZoneName,
+                gcs.Key.DivisionName,
+                gcs.Key.SiteName,
+                gcs.Key.AlertTypeId,
+                gcs.Key.AssetType,
+                gcs.Key.AssetName,
+                gcs.Key.CauseCode,
+                Count = gcs.Count(),
+                TrueCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True),
+                PTCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)
+            })
+            .OrderBy(x => x.ZoneName)
+            .ThenBy(x => x.DivisionName)
+            .ThenBy(x => x.SiteName)
+            .ToList<dynamic>();
+
+        totalAlerts = alertSummaryReport.Sum(x => (int)x.Count);
+        totalTrueAlerts = alertSummaryReport.Sum(x => (int)x.TrueCount);
+        totalPTAlerts = alertSummaryReport.Sum(x => (int)x.PTCount);
+    }
+}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<div class="table-border">
+    <div class="my-4 px-lg-4 px-2 w-100">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+
+            <!-- ===== LEFT: Summary Badges ===== -->
+            <div class="d-flex align-items-center badge-cl gap-10">
+                @if (alertSummaryReport.Count > 0)
+                {
+                    <h6 class="m-0">Records: <span class="badge badge-primary">@alertSummaryReport.Count</span></h6>
+                    <h6 class="m-0">Total Alerts: <span class="badge badge-info">@totalAlerts</span></h6>
+                    <h6 class="m-0">True: <span class="badge badge-success">@totalTrueAlerts</span></h6>
+                    <h6 class="m-0">PT: <span class="badge badge-warning">@totalPTAlerts</span></h6>
+                }
+            </div>
+
+            <!-- ===== RIGHT: Date-Time Bar + Download button ===== -->
+            <div class="d-flex align-items-center gap-10">
+
+                <!-- Date-Time Display Bar -->
+                <div style="
+                    display:flex;
+                    align-items:center;
+                    background:#f0f4ff;
+                    border:1.5px solid #c7d8f8;
+                    border-radius:10px;
+                    padding:0 14px;
+                    height:40px;
+                    position:relative;
+                    box-shadow:0 2px 8px rgba(59,130,246,0.08);
+                    white-space:nowrap;
+                ">
+                    <!-- Left accent stripe -->
+                    <div style="
+                        position:absolute;left:0;top:0;bottom:0;
+                        width:4px;
+                        background:linear-gradient(180deg,#3b82f6,#6366f1);
+                        border-radius:10px 0 0 10px;
+                    "></div>
+
+                    <!-- FROM label -->
+                    <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;padding-left:6px;margin-right:8px;">From</span>
+
+                    <!-- From Date pill -->
+                    <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                            <rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" />
+                            <path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" />
+                            <path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" />
+                        </svg>
+                        <span id="dispFromDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:72px;">—</span>
+                    </div>
+
+                    <!-- From Time pill -->
+                    <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;margin-left:6px;">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" />
+                            <path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" />
+                        </svg>
+                        <span id="dispFromTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:36px;">—</span>
+                    </div>
+
+                    <!-- Arrow -->
+                    <div style="margin:0 10px;display:flex;align-items:center;">
+                        <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+                            <path d="M1 7h16M11 1l6 6-6 6" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+
+                    <!-- TO label -->
+                    <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;margin-right:8px;">To</span>
+
+                    <!-- To Date pill -->
+                    <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                            <rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" />
+                            <path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" />
+                            <path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" />
+                        </svg>
+                        <span id="dispToDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:72px;">—</span>
+                    </div>
+
+                    <!-- To Time pill -->
+                    <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:4px 10px;margin-left:6px;">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" />
+                            <path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" />
+                        </svg>
+                        <span id="dispToTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:36px;">—</span>
+                    </div>
+                </div>
+                <!-- End Date-Time Bar -->
+                <!-- Download Button -->
+                <div class="dropdown">
+                    <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
+                            aria-haspopup="true" aria-expanded="false" title="Download" style="width:40px">
+                        <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                             stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                            <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
+                        </svg>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload" style="min-width:130px;">
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadAlertSummaryExcel()">
+                            <i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel
+                        </a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadAlertSummaryCSV()">
+                            <i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+            <!-- ===== END RIGHT ===== -->
+
+        </div>
+    </div>
+
+    <!-- ===== TABLE ===== -->
+    <div class="row">
+        <div class="col">
+            <div id="listView">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tblAlertSummary" style="border-collapse:collapse;">
+
+                        <thead class="thead-light2">
+                            <tr>
+                                <th style="min-width:45px;">Sr.No</th>
+                                <th style="min-width:50px;">Zone</th>
+                                <th style="min-width:80px;">Division</th>
+                                <th style="min-width:90px;">Station</th>
+                                <th style="min-width:90px;">Asset Type</th>
+                                <th style="min-width:90px;">Alert Type</th>
+                                <th style="min-width:90px;">Asset<br />Number</th>
+                                <th style="min-width:150px;">Cause of Asset Failure</th>
+                                <th class="text-center" style="min-width:80px;">Total Alert<br />Count</th>
+                                <th class="text-center" style="min-width:80px;">True Alert<br />Count</th>
+                                <th class="text-center" style="min-width:80px;">PT Alert<br />Count</th>
+                                <th class="text-center" style="min-width:100px;">% of (True + Partially True)<br />Alerts out of Total Alerts</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (alertSummaryReport.Count > 0)
+                            {
+                                int counter = 0;
+                                foreach (var item in alertSummaryReport)
+                                {
+                                    counter++;
+                                    int trueCount = (int)item.TrueCount;
+                                    int ptCount = (int)item.PTCount;
+                                    int totalCount = (int)item.Count;
+                                    double percentage = totalCount > 0 ? Math.Round(((double)(trueCount + ptCount) / totalCount) * 100) : 0;
+
+                                    <tr>
+                                        <td>@counter</td>
+                                        <td>@item.ZoneName</td>
+                                        <td>@item.DivisionName</td>
+                                        <td>@item.SiteName</td>
+                                        <td>@item.AssetType</td>
+                                        <td>
+                                            @if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+                                            {
+                                                <span>@E7FRSAdvance.Utility.Utility.AlertType.Failure.ToString()</span>
+                                            }
+                                            else if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive)
+                                            {
+                                                <span>@E7FRSAdvance.Utility.Utility.AlertType.Predictive.ToString()</span>
+                                            }
+                                        </td>
+                                        <td>@item.AssetName</td>
+                                        <td>@item.CauseCode</td>
+                                        <td class="text-center"><strong>@totalCount</strong></td>
+                                        <td class="text-center"><span class="text-success">@trueCount</span></td>
+                                        <td class="text-center"><span class="text-warning">@ptCount</span></td>
+                                        <td class="text-center">
+                                            <span class="badge @(percentage >= 70 ? "badge-success" : percentage >= 40 ? "badge-warning" : "badge-secondary")">
+                                                @percentage%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="12" class="text-center py-4 text-muted">
+                                        <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                                        No data found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        @if (alertSummaryReport.Count > 0)
+                        {
+                            <tfoot style="display:none;">
+                                <tr>
+                                    <td colspan="8" class="text-right"><strong>Total:</strong></td>
+                                    <td class="text-center"><strong>@totalAlerts</strong></td>
+                                    <td class="text-center"><strong>@totalTrueAlerts</strong></td>
+                                    <td class="text-center"><strong>@totalPTAlerts</strong></td>
+                                    <td class="text-center">
+                                        @{ var totalPercentage = totalAlerts > 0 ? Math.Round(((double)(totalTrueAlerts + totalPTAlerts) / totalAlerts) * 100) : 0; }
+                                        <strong>@totalPercentage%</strong>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        }
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                @if (alertSummaryReport.Count > 0)
+                {
+                    <div class="d-flex justify-content-between align-items-center px-4 py-3 border-top">
+                        <div class="text-muted" id="paginationInfo" style="font-size:13px;">
+                            Showing <strong><span id="showingFrom">1</span></strong> to
+                            <strong><span id="showingTo">10</span></strong> of
+                            <strong>@alertSummaryReport.Count</strong> records
+                        </div>
+                        <nav>
+                            <ul class="pagination mb-0" id="pager">
+                                <li class="page-item" id="prevBtn">
+                                    <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
+                                        <i class="fas fa-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                                <li class="page-item" id="nextBtn">
+                                    <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==============================
+    // BIND DATE-TIME VALUES FROM PARENT PAGE INPUTS
+    // ==============================
+    (function () {
+        function fmt(val) { return val && val.trim() ? val.trim() : '—'; }
+        var ft = $('#txtFromTime').val();
+        var tt = $('#txtToTime').val();
+        $('#dispFromDate').text(fmt($('#txtFromDate').val()));
+        $('#dispFromTime').text(ft && ft.trim() ? ft.trim() : '00:00');
+        $('#dispToDate').text(fmt($('#txtToDate').val()));
+        $('#dispToTime').text(tt && tt.trim() ? tt.trim() : '00:00');
+    })();
+
+    // ==============================
+    // PAGINATION
+    // ==============================
+    (function () {
+        var rowsPerPage = 10;
+        var $table = $('#tblAlertSummary');
+        var $rows = $table.find('tbody tr');
+        var totalRows = $rows.length;
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var currentPage = 1;
+
+        if (totalRows === 1 && $rows.first().find('td[colspan]').length > 0) {
+            $('#paginationInfo').parent().hide();
+        } else if (totalRows > 0) {
+            showPage(1);
+        }
+
+        function showPage(page) {
+            if (page < 1) page = 1;
+            if (page > totalPages) page = totalPages;
+            currentPage = page;
+            var start = (page - 1) * rowsPerPage;
+            var end = start + rowsPerPage;
+            $rows.hide();
+            $rows.slice(start, end).show();
+            var showEnd = Math.min(end, totalRows);
+            $('#showingFrom').text(totalRows > 0 ? start + 1 : 0);
+            $('#showingTo').text(showEnd);
+            renderPagination();
+        }
+
+        function renderPagination() {
+            var $pager = $('#pager');
+            $pager.find('.page-number').remove();
+            $('#prevBtn').toggleClass('disabled', currentPage <= 1);
+            $('#nextBtn').toggleClass('disabled', currentPage >= totalPages);
+            var $nextBtn = $('#nextBtn');
+            var pagesToShow = [];
+            if (totalPages <= 7) {
+                for (var i = 1; i <= totalPages; i++) pagesToShow.push(i);
+            } else {
+                pagesToShow.push(1);
+                if (currentPage > 3) pagesToShow.push('...');
+                for (var i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                    if (pagesToShow.indexOf(i) === -1) pagesToShow.push(i);
+                }
+                if (currentPage < totalPages - 2) pagesToShow.push('...');
+                if (pagesToShow.indexOf(totalPages) === -1) pagesToShow.push(totalPages);
+            }
+            for (var j = 0; j < pagesToShow.length; j++) {
+                var p = pagesToShow[j];
+                var $li;
+                if (p === '...') {
+                    $li = $('<li class="page-item page-number disabled"><span class="page-link">...</span></li>');
+                } else {
+                    var activeClass = (p === currentPage) ? 'active' : '';
+                    $li = $('<li class="page-item page-number ' + activeClass + '"><a class="page-link" href="javascript:void(0);" onclick="goToPage(' + p + ')">' + p + '</a></li>');
+                }
+                $li.insertBefore($nextBtn);
+            }
+        }
+
+        window.changePage = function (direction) {
+            if (direction === 'prev' && currentPage > 1) showPage(currentPage - 1);
+            else if (direction === 'next' && currentPage < totalPages) showPage(currentPage + 1);
+        };
+        window.goToPage = function (page) { showPage(page); };
+    })();
+
+    // ==============================
+    // FORMAT DATE  dd/mm/yyyy hh:mm:ss AM/PM
+    // ==============================
+    function formatDateDDMMYYYY(date) {
+        var day = String(date.getDate()).padStart(2, '0');
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var year = date.getFullYear();
+        var hours = date.getHours();
+        var mins = String(date.getMinutes()).padStart(2, '0');
+        var secs = String(date.getSeconds()).padStart(2, '0');
+        var ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return day + '/' + month + '/' + year + ', ' + String(hours).padStart(2, '0') + ':' + mins + ':' + secs + ' ' + ampm;
+    }
+
+    // ==============================
+    // EXCEL DOWNLOAD
+    // ==============================
+    function fnDownloadAlertSummaryExcel() {
+        var table = document.getElementById('tblAlertSummary');
+        if (!table) { alert('No data available to download'); return; }
+        try {
+            $("#loader").show();
+            var workbook = new ExcelJS.Workbook();
+            workbook.creator = 'RDPMS'; workbook.created = new Date();
+            var worksheet = workbook.addWorksheet('Alert Summary');
+            var $allRows = $('#tblAlertSummary tbody tr');
+            var columnCount = 12;
+
+            var titleRow = worksheet.addRow(['Alert Summary Report']);
+            titleRow.height = 30;
+            worksheet.mergeCells(1, 1, 1, columnCount);
+            titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+            titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
+            titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+            var fromDateVal = $('#txtFromDate').val() || '—';
+            var fromTimeVal = $('#txtFromTime').val() || '00:00';
+            var toDateVal = $('#txtToDate').val() || '—';
+            var toTimeVal = $('#txtToTime').val() || '00:00';
+            var rangeText = 'Period: ' + fromDateVal + ' ' + fromTimeVal + '  →  ' + toDateVal + ' ' + toTimeVal;
+            var recordCount = $allRows.filter(function () { return !$(this).find('td[colspan]').length; }).length;
+            var summaryRow = worksheet.addRow([rangeText + '   |   Records: ' + recordCount + '   |   Generated: ' + formatDateDDMMYYYY(new Date())]);
+            summaryRow.height = 20;
+            worksheet.mergeCells(2, 1, 2, columnCount);
+            summaryRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+            summaryRow.getCell(1).alignment = { horizontal: 'center' };
+            worksheet.addRow([]);
+
+            var headers = ['Sr.No', 'Zone', 'Division', 'Site', 'Vendor Name', 'Asset Type', 'Alert Type', 'Asset Number', 'Cause of Asset Failure', 'Total Alert Count', 'True Alert Count', 'PT Alert Count', '% (True + PT)'];
+            var headerRow = worksheet.addRow(headers);
+            headerRow.height = 28;
+            headerRow.eachCell(function (cell) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = { top: { style: 'medium' }, left: { style: 'medium' }, bottom: { style: 'medium' }, right: { style: 'medium' } };
+            });
+
+            $allRows.show();
+            var dataRowIndex = 0;
+            $allRows.each(function () {
+                var $tr = $(this);
+                if ($tr.find('td[colspan]').length > 0) return;
+                dataRowIndex++;
+                var rowData = [];
+                $tr.find('td').each(function () { rowData.push($(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim()); });
+                rowData.splice(4, 0, 'Energy7');
+                var excelRow = worksheet.addRow(rowData);
+                excelRow.height = 22;
+                excelRow.eachCell(function (cell) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dataRowIndex % 2 === 0 ? 'FFF1F5F9' : 'FFFFFFFF' } };
+                    cell.font = { size: 10, name: 'Calibri' };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                    cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+                });
+            });
+
+            if (typeof goToPage === 'function') goToPage(1);
+
+            worksheet.addRow([]);
+            var $badges = $('.badge-cl h6 .badge');
+            var footerRow = worksheet.addRow(['', '', '', '', '', '', '', 'TOTAL:', $badges.eq(1).text() || '0', $badges.eq(2).text() || '0', $badges.eq(3).text() || '0', '']);
+            footerRow.height = 25;
+            footerRow.eachCell(function (cell, col) {
+                if (col >= 8) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+                    cell.font = { bold: true, size: 11, name: 'Calibri' };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                }
+            });
+
+            worksheet.getColumn(1).width = 8; worksheet.getColumn(2).width = 15;
+            worksheet.getColumn(3).width = 15; worksheet.getColumn(4).width = 15;
+            worksheet.getColumn(5).width = 15; worksheet.getColumn(6).width = 15;
+            worksheet.getColumn(7).width = 15; worksheet.getColumn(8).width = 30;
+            worksheet.getColumn(9).width = 18; worksheet.getColumn(10).width = 18;
+            worksheet.getColumn(11).width = 18; worksheet.getColumn(12).width = 15;
+
+            workbook.xlsx.writeBuffer().then(function (buffer) {
+                saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), getAlertSummaryFileName('xlsx'));
+                $("#loader").hide();
+                CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
+            });
+        } catch (e) {
+            $("#loader").hide();
+            CommonNotification("ERROR", "Error downloading Excel", "Error");
+        }
+    }
+
+    // ==============================
+    // CSV DOWNLOAD
+    // ==============================
+    function fnDownloadAlertSummaryCSV() {
+        var table = document.getElementById('tblAlertSummary');
+        if (!table) { alert('No data available to download'); return; }
+        try {
+            $("#loader").show();
+            var csv = [];
+            var headers = ['Sr.No', 'Zone', 'Division', 'Site', 'Vendor Name', 'Asset Type', 'Alert Type', 'Asset Number', 'Cause of Asset Failure', 'Total Alert Count', 'True Alert Count', 'PT Alert Count', '% (True + PT)'];
+            csv.push(headers.map(function (h) { return '"' + h + '"'; }).join(','));
+
+            var $allRows = $('#tblAlertSummary tbody tr');
+            $allRows.show();
+            $allRows.each(function () {
+                var $tr = $(this);
+                if ($tr.find('td[colspan]').length > 0) return;
+                var rowData = [];
+                $tr.find('td').each(function () { rowData.push('"' + $(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim().replace(/"/g, '""') + '"'); });
+                rowData.splice(4, 0, '"Energy7"');
+                csv.push(rowData.join(','));
+            });
+
+            if (typeof goToPage === 'function') goToPage(1);
+
+            var $badges = $('.badge-cl h6 .badge');
+            csv.push('');
+            csv.push('"","","","","","","","TOTAL:","' + ($badges.eq(1).text() || '0') + '","' + ($badges.eq(2).text() || '0') + '","' + ($badges.eq(3).text() || '0') + '",""');
+
+            saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getAlertSummaryFileName('csv'));
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
+        } catch (e) {
+            $("#loader").hide();
+            CommonNotification("ERROR", "Error downloading CSV", "Error");
+        }
+    }
+
+    // ==============================
+    // FILENAME HELPER
+    // ==============================
+    function getAlertSummaryFileName(ext) {
+        var now = new Date();
+        return 'AlertSummary_' +
+            now.getFullYear() +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0') + '_' +
+            String(now.getHours()).padStart(2, '0') +
+            String(now.getMinutes()).padStart(2, '0') +
+            '.' + ext;
+    }
+</script>

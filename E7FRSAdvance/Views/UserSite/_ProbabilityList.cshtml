@@ -1,0 +1,213 @@
+﻿@model Domain.SearchCriteria
+
+<script src="~/assets/js/sortable -table.js"></script>
+<style>
+    table.sortable thead {
+        background-color: #eee;
+        color: #666666;
+        font-weight: bold;
+        cursor: default;
+    }
+</style>
+
+@{
+    string[] color = { "#f4f8f8", "#f9f9fd", "#fdfdff", "#f4f8f8", "#f9f9fd", "#fdfdff", "#f4f8f8", "#f9f9fd", "#fdfdff", "#f4f8f8", "#f9f9fd", "#fdfdff", "#f4f8f8", "#f9f9fd", "#fdfdff", "#f4f8f8", "#f9f9fd", "#fdfdff" };
+    var mSMSLogLister = new Domain.SMSLogLister();
+    var mProbabilityLister = new Domain.ProbabilityLister();
+    if (ViewBag.Alert != null)
+    {
+        mSMSLogLister = ViewBag.Alert as Domain.SMSLogLister;
+    }
+
+    if (ViewBag.Probability != null)
+    {
+        mProbabilityLister = ViewBag.Probability as Domain.ProbabilityLister;
+    }
+}
+@Html.HiddenFor(x => x.AssetTypeId, new { @id = "ProbabilityAssetTypeId" })
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-6 mb15">
+                            <div class='btn-group mr5 assetTypes' style='margin:5px' data-id="1" data-name="Track" onclick="LoadProbabilityList('@((int)E7FRSAdvance.Utility.Utility.AssetType.TRACK)')">
+                                <input type="hidden" value="Track" id="AssetName" />
+                                <button type='button' style="border-radius: 15px; background-color: #4bacc6;" class='btn text-white'>Track</button>
+                            </div>
+                            <div class='btn-group mr5 assetTypes' style='margin:5px' data-id="1" data-name="Signal" onclick="LoadProbabilityList('@((int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL)')">
+                                <input type="hidden" value="Signal" id="AssetName" />
+                                <button type='button' style="border-radius: 15px; background-color: #215968;" class='btn text-white'>Signal</button>
+                            </div>
+                            <div class='btn-group mr5 assetTypes' style='margin:5px' data-id="1" data-name="POINT MACHINE" onclick="LoadProbabilityList('@((int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)')">
+                                <input type="hidden" value="Track" id="AssetName" />
+                                <button type='button' style="border-radius: 15px; background-color: #404040;" class='btn text-white'>POINT MACHINE</button>
+                            </div>
+                        </div>
+                        <div class="col-sm-1 mb15">
+                            @Html.DropDownList("Year", ViewBag.Years as SelectList, "Select Year", new { @class = "form-control", @id = "ProbabilityYear" })
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            @Html.DropDownListFor(m => m.Month, ViewBag.Months as SelectList, "Select Month", new { @class = "form-control", @id = "ProbabilityMonth" })
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            <select id="drpAssetTypeList" name="List" class="form-control">
+                                <option value="@((int)E7FRSAdvance.Utility.Utility.AssetType.TRACK)">Track</option>
+                                <option value="@((int)E7FRSAdvance.Utility.Utility.AssetType.TRACK),@((int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL)">Track - Signal</option>
+                                <option value="@((int)E7FRSAdvance.Utility.Utility.AssetType.TRACK),@((int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)">Track - Point Machine</option>
+                                <option value="@((int)E7FRSAdvance.Utility.Utility.AssetType.TRACK),@((int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL),@((int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)"> Track - Signal - Point Machine</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-1 mb15">
+                            <button type='button' class='btn btn-success' onclick="DownloadProbabilityList()">Download</button>
+                        </div>
+                    </div>
+
+
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        @if (Model != null && Model.DataTable.Columns != null && Model.DataTable.Rows != null && Model.DataTable.Rows.Count > 0)
+                        {
+                            <table class="table sortable">
+
+                                <thead class="bg-primary">
+                                    <tr>
+                                        <th></th>
+                                        @for (int i = 0; i < Model.DataTable.Columns.Count; i++)
+                                        {
+                                            var isValid = true;
+                                            string columnName = string.Empty;
+                                            var splitRound = Model.DataTable.Columns[i].ColumnName.ToString().Split(')');
+                                            if (splitRound.Length > 1)
+                                            {
+                                                var splitRoundLast = splitRound.LastOrDefault();
+                                                if (splitRoundLast.Contains("_y") || splitRoundLast.Contains("_Y"))
+                                                {
+                                                    isValid = false;
+                                                }
+
+                                                var splitRoundFirst = splitRound.FirstOrDefault();
+                                                var dsd = splitRoundFirst.Split('(');
+                                                if (dsd.Length > 1)
+                                                {
+                                                    columnName = dsd.FirstOrDefault();
+                                                    columnName += splitRoundLast;
+                                                }
+                                            }
+
+                                            if (Model.DataTable.Columns[i].ColumnName != "AssetId" && Model.DataTable.Columns[i].ColumnName != "SiteName" && isValid)
+                                            {
+                                                if (!string.IsNullOrEmpty(columnName))
+                                                {
+                                                    <th>
+
+                                                        @columnName
+                                                    </th>
+                                                }
+                                                else
+                                                {
+                                                    <th>
+                                                        @Model.DataTable.Columns[i].ColumnName
+                                                    </th>
+                                                }
+                                            }
+                                        }
+
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (int i = 0; i < Model.DataTable.Rows.Count; i++)
+                                    {
+                                        int k = 0;
+                                        int assetCount = 0;
+                                        int probabilityCount = 0;
+                                        int assetId = 0;
+                                        int.TryParse(Convert.ToString(Model.DataTable.Rows[i]["AssetId"]), out assetId);
+                                        if (mSMSLogLister != null && mSMSLogLister.mSMSLogs != null && mSMSLogLister.mSMSLogs.Count > 0)
+                                        {
+                                            assetCount = mSMSLogLister.mSMSLogs.Where(x => x.AssetId == assetId).Count();
+                                        }
+
+                                        if (mProbabilityLister != null && mProbabilityLister.Probability != null && mProbabilityLister.Probability.Count > 0)
+                                        {
+                                            probabilityCount = mProbabilityLister.Probability.Where(x => x.AssetId == assetId).Count();
+                                        }
+                                        <tr>
+                                            <td width="250">
+                                                <button type="button" class="btn btn-primary" title="Live Data" onclick="fnGetAssetAttribute('@assetId','@Model.AssetTypeId')">L</button>
+                                                <button type="button" class="btn btn-success" onclick="fnLoadProbabilityAlertList('@assetId')">A (@assetCount)</button>
+                                                <button type="button" class="btn btn-dark" onclick="fnLoadProbabilityCSVList('@assetId')">P (@probabilityCount)</button>
+                                                <button type="button" class="btn btn-info" onclick="fnLoadProbabilityCluster('@Model.AssetTypeId','@assetId')">C</button>
+                                            </td>
+                                            @for (int j = 0; j < Model.DataTable.Columns.Count; j++)
+                                            {
+                                                var isValid = true;
+                                                var splitRound = Model.DataTable.Columns[j].ColumnName.ToString().Split(')');
+                                                if (splitRound.Length > 1)
+                                                {
+                                                    var splitRoundLast = splitRound.LastOrDefault();
+                                                    if (splitRoundLast.Contains("_y") || splitRoundLast.Contains("_Y"))
+                                                    {
+                                                        isValid = false;
+                                                    }
+                                                }
+
+                                                if (Model.DataTable.Columns[j].ColumnName != "AssetId" && Model.DataTable.Columns[j].ColumnName != "SiteName" && isValid)
+                                                {
+                                                    if (color.Length >= k)
+                                                    {
+                                                        if (!string.IsNullOrEmpty(Model.DataTable.Rows[i][j].ToString()))
+                                                        {
+                                                            <td style="background-color:@color[k]">@Model.DataTable.Rows[i][j].ToString()</td>
+                                                        }
+                                                        else
+                                                        {
+                                                            <td style="background-color:@color[k]">N/A</td>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        if (!string.IsNullOrEmpty(Model.DataTable.Rows[i][j].ToString()))
+                                                        {
+                                                            <td>@Model.DataTable.Rows[i][j].ToString()</td>
+                                                        }
+                                                        else
+                                                        {
+                                                            <td>N/A</td>
+                                                        }
+                                                    }
+                                                    k++;
+
+                                                }
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <table class="table">
+                                <tr>
+                                    <td>No Record Found.</td>
+                                </tr>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#ProbabilityMonth').change(function () {
+            LoadProbabilityList('@((int)E7FRSAdvance.Utility.Utility.AssetType.TRACK)');
+        });
+    });
+</script>

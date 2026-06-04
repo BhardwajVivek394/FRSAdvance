@@ -1,0 +1,250 @@
+﻿@model Domain.ELDEventlogLister
+
+<style>
+    .collapsed .icon-class:before {
+        content: '>';
+    }
+
+    .icon-class:before {
+        content: 'v';
+    }
+
+    .table > :not(:last-child) > :last-child > * {
+        border-bottom-color: #87c7d9 !important;
+    }
+
+    .MainTh {
+        background-color: #7fcde22e !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .SubTh {
+        background-color: #f4f6fc !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .SubLastTh {
+        background-color: #eef7fb !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+</style>
+
+<div class="modal bounceIn animated" id="modalELDEventlog" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">ELD Event log (@Model.SearchCriteria.AssetName)</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+
+                    <div class="col-sm-12" id="model-div">
+                        <div class="row mb-5">
+                            <div class="col-sm-3">
+                                @if (Model.SearchCriteria.StartDate != DateTime.MinValue && Model.SearchCriteria.EndDate != DateTime.MinValue)
+                                {
+                                    <input class="form-control" type="text" id="txtRangeELDEvent" name="daterange" data-bs-original-title="" title="" value="@Model.SearchCriteria.StartDate - @Model.SearchCriteria.EndDate">
+                                }
+                                else
+                                {
+                                    <input class="form-control" type="text" id="txtRangeELDEvent" name="daterange" data-bs-original-title="" title="">
+                                }
+
+                            </div>
+                            <div class="col-sm-1">
+                                <a class="btn btn-success" href="@Url.Action("DownloadELDEventlog", new {SiteId=Model.SearchCriteria.SiteId,AssetId=Model.SearchCriteria.AssetId,AssetName = Model.SearchCriteria.AssetName,StartDate=Model.SearchCriteria.StartDate,EndDate=Model.SearchCriteria.EndDate})">Download</a>
+                            </div>
+                            <div class="col-sm-1 m-l-10">
+                                @*<button type="button">Analyze</button>*@
+                                <button type="button" class="btn btn-primary" onclick="fnGetELDAnalyze('@Model.SearchCriteria.SiteId','@Model.SearchCriteria.AssetId','@Model.SearchCriteria.AssetName','@Model.SearchCriteria.StartDate','@Model.SearchCriteria.EndDate')">Analyze</button>
+                            </div>
+
+                        </div>
+                        <div class="row">
+
+
+                            <div class="col-sm-12">
+                                <div class="table-responsive" style="max-height: 620px;">
+                                    <table class="table">
+                                        @if (Model != null && Model.ELDEventlogs != null && Model.ELDEventlogs.Count > 0)
+                                        {
+                                            foreach (var eldEventlog in Model.ELDEventlogs)
+                                            {
+                                                <thead>
+                                                    <tr class="MainTh">
+                                                        <th>
+                                                            <a><i class="fa fa-plus" onclick="fnShowELDEventlog('@eldEventlog.TimeStamp.Ticks',this)"></i></a>
+                                                        </th>
+                                                        <th>
+                                                            <span>
+                                                                @eldEventlog.TimeStamp
+                                                            </span>
+                                                        </th>
+                                                        <th>
+                                                            <span>
+                                                                @eldEventlog.Message
+                                                            </span>
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody style="display:none" class="tbody_@eldEventlog.TimeStamp.Ticks">
+                                                    <tr>
+                                                        <td colspan="3">
+                                                            @foreach (var assetTypeName in eldEventlog.mDeadbands.GroupBy(x => x.AssetTypeName).ToList())
+                                                            {
+                                                                <table class="table">
+                                                                    <thead>
+                                                                        <tr class="SubTh">
+                                                                            <th width="10">
+                                                                                <a><i class="fa fa-plus" onclick="fnShowELDEventlogAssetTypeName('@(assetTypeName.Key.Trim().Replace(" ","") + eldEventlog.TimeStamp.Ticks)',this)"></i></a>
+                                                                            </th>
+                                                                            <th>@assetTypeName.Key </th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody style="display:none" class="tbodysubAssetTypeName_@(assetTypeName.Key.Trim().Replace(" ","") + eldEventlog.TimeStamp.Ticks)">
+                                                                        <tr>
+                                                                            <td colspan="2">
+                                                                                @foreach (var assetName in eldEventlog.mDeadbands.Where(x => x.AssetTypeName == assetTypeName.Key).GroupBy(x => x.AssetName).ToList())
+                                                                                {
+                                                                                    <table class="table">
+                                                                                        <thead>
+                                                                                            <tr class="SubLastTh">
+                                                                                                <th width="10">
+                                                                                                    <a><i class="fa fa-plus" onclick="fnShowELDEventlogAssetName('@(assetName.Key.Trim().Replace(" ","") + eldEventlog.TimeStamp.Ticks)',this)"></i></a>
+                                                                                                </th>
+                                                                                                <th>@assetName.Key</th>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody style="display:none" class="tbodysubAssetName_@(assetName.Key.Trim().Replace(" ","") + eldEventlog.TimeStamp.Ticks)">
+                                                                                            <tr>
+                                                                                                <td colspan="2">
+                                                                                                    <table class="table">
+                                                                                                        <thead class="bg-primary">
+                                                                                                            <tr>
+                                                                                                                <th>TimeStamp</th>
+                                                                                                                <th>Asset Name</th>
+                                                                                                                <th>Attribute Name</th>
+                                                                                                                <th>Current Value</th>
+                                                                                                                <th>Previous Value</th>
+                                                                                                            </tr>
+                                                                                                        </thead>
+                                                                                                        <tbody>
+                                                                                                            @foreach (var mDeadband in eldEventlog.mDeadbands.Where(x => x.AssetTypeName.Trim() == assetTypeName.Key.Trim() && x.AssetName == assetName.Key).OrderBy(x => x.TimeStamp))
+                                                                                                            {
+                                                                                                                <tr>
+                                                                                                                    <td>@mDeadband.TimeStamp </td>
+                                                                                                                    <td>
+                                                                                                                        @mDeadband.AssetName
+                                                                                                                    </td>
+                                                                                                                    <td>
+                                                                                                                        @mDeadband.AttributeName
+                                                                                                                    </td>
+                                                                                                                    <td>
+                                                                                                                        @mDeadband.CurrentValue
+                                                                                                                    </td>
+                                                                                                                    <td>
+                                                                                                                        @mDeadband.PreviousValue
+                                                                                                                    </td>
+                                                                                                                </tr>
+                                                                                                            }
+
+
+                                                                                                        </tbody>
+                                                                                                    </table>
+                                                                                                </td>
+                                                                                            </tr>
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                }
+
+
+                                                                            </td>
+                                                                        </tr>
+                                                                    </tbody>
+                                                                </table>
+
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            }
+
+                                        }
+                                    </table>
+
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+
+    $(document).ready(function () {
+
+        $('#txtRangeELDEvent').daterangepicker();
+
+        $('#txtRangeELDEvent').on('apply.daterangepicker', function (ev, picker) {
+            $(this).val(picker.startDate.format('MM/DD/YYYY') + ' - ' + picker.endDate.format('MM/DD/YYYY'));
+            fnGetELDEventlog('@Model.SearchCriteria.SiteId','@Model.SearchCriteria.AssetId','@Model.SearchCriteria.AssetName',picker.startDate.format('MM/DD/YYYY'), picker.endDate.format('MM/DD/YYYY'));
+        });
+
+        $('#txtRangeELDEvent').on('cancel.daterangepicker', function (ev, picker) {
+            $(this).val('');
+            $("#sd").val('');
+            $("#ed").val('');
+        });
+    });
+    function fnShowELDEventlog(timeStamp, $this) {
+        if (timeStamp != null && timeStamp != undefined && timeStamp != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.tbody_' + timeStamp).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.tbody_' + timeStamp).hide();
+            }
+        }
+    }
+
+
+    function fnShowELDEventlogAssetTypeName(assetTypeName, $this) {
+        if (assetTypeName != null && assetTypeName != undefined && assetTypeName != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.tbodysubAssetTypeName_' + assetTypeName).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.tbodysubAssetTypeName_' + assetTypeName).hide();
+            }
+        }
+    }
+
+    function fnShowELDEventlogAssetName(assetName, $this) {
+        if (assetName != null && assetName != undefined && assetName != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.tbodysubAssetName_' + assetName).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.tbodysubAssetName_' + assetName).hide();
+            }
+        }
+    }
+
+</script>

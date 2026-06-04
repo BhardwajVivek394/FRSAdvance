@@ -1,0 +1,788 @@
+﻿@model Domain.Site
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<style>
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+</style>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">A10 Status</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12" id="divDeviceTime">
+            <div class="card mb-2">
+                <div class="card-body text-white" style="padding: 15px; font-size: 18px; background-color: #0e5068; border-radius: 12px;" id="divchannel">
+                    Last Update:
+                    @if (Model != null && Model.Id > 0)
+                    {
+                        for (int i = 0; i < Model.MQTTNoOfChannels; i++)
+                        {
+                            if (i == (Model.MQTTNoOfChannels - 1))
+                            {
+                                <span>@(i + 1):</span>
+                                <span id="c@(i)"></span>
+                            }
+                            else
+                            {
+                                <span>@(i + 1):</span>
+                                <span id="c@(i)"></span><span> || </span>
+                            }
+
+                        }
+                    }
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row" style="margin-bottom:10px;margin-top:10px">
+                        <div class="col-sm-12">
+                            <div class="people-options clearfix" style="padding:4px">
+                                <div class="pull-left">
+                                    <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Zones</strong>
+                                </div>
+                                <div class="pull-left">
+                                    @Html.DropDownListFor(m => m.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", tabindex = 1 })
+                                </div>
+                                <div class="pull-left">
+                                    <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Divisions</strong>
+                                </div>
+                                <div class="pull-left" style="margin-left:10px;">
+                                    <input type="hidden" id="hdnSearchDivisionId" value="@Model.DivisionId" />
+                                    @Html.DropDownListFor(m => m.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control drpSearch", tabindex = 1 })
+                                </div>
+                                <div class="pull-left">
+                                    <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                                </div>
+                                <div class="pull-left">
+                                    <input type="hidden" id="hdnSearchSiteId" value="@Model.Id" />
+                                    @Html.DropDownListFor(x => x.Id, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control drpSearch", tabindex = 1, @id = "drpSiteId" })
+                                </div>
+                                <div class="pull-right">
+                                    <a class="btn btn-success" onclick="fnAllGraph()">Graph</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body" id="bodyA10Status">
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modal-graph" tabindex="-1" role="dialog" data-bs-backdrop="static" aria-labelledby="modal-graph" style="overflow-y:hidden">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4>
+                    Graph
+                </h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-lg-2">
+                        <label style="margin-top:7px;font-weight:bold">Search Date:</label>
+                        <input type="text" class="form-control" id="searchDate" />
+                        <input type="hidden" class="form-control" id="hdnA10Id" />
+                    </div>
+                    <div class="col-lg-10">
+                        <button type="button" class="btn btn-success pull-left mt-4" onclick="fnGraph()">Search</button>
+                        <a class="btn btn-success pull-left mt-4 m-l-10" onclick="fnDownLoad()" href="javascript:void(0)">Download</a>
+                        
+                    </div>
+                    <div class="col-lg-12 mt-5">
+                        <div class="apache-cotainer" id="area-current-graph-echart">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+<script>
+    var pmchart;
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var mQTT = null;
+    var admin = '@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId';
+    $(document).ready(function () {
+
+        $('#searchDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#drpSiteId').change(function () {
+            if ($(this).val() != null && $(this).val() != undefined && $(this).val() != '' && $(this).val() != "0") {
+                window.location.href = "Index?siteId=" + $(this).val();
+            }
+        });
+
+        json = @Html.Raw(Json.Encode(Model));
+
+        mQTT =@Html.Raw(Json.Encode(ViewBag.MQTTDetail));
+
+        if (json.MQTTBasePath != null && json.MQTTBasePath != '')
+            mQQTPath = json.MQTTBasePath;
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+        GetDivisionByZone($("#ZoneId").val());
+
+        $("#ZoneId").change(function () {
+            GetDivisionByZone($(this).val());
+
+        });
+
+        $("#DivisionId").change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+
+        // GetSiteByDivisionId($("#DivisionId").val());
+
+        $('.th-count').click(function () {
+            var table = $(this).parents('table').eq(0)
+            var rows = table.find('tr:gt(0)').toArray().sort(comparer($(this).index()))
+            this.asc = !this.asc
+            if (!this.asc) { rows = rows.reverse() }
+            var th = $(this);
+            th.siblings().find(".sort-symbol").remove();
+            th.find('.sort-symbol').remove();
+            th.append(`<span class="sort-symbol">${this.asc ? '▲' : '▼'}</span>`);
+            for (var i = 0; i < rows.length; i++) { table.append(rows[i]) }
+        });
+
+    });
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        client.subscribe(mQQTPath + 'a10');
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        if (message.payloadString.includes("devices")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var array = parseJson['devices'];
+                if (array != null && array != undefined && array.length > 0) {
+                    BindData(message.destinationName, array);
+                }
+            }
+        }
+
+        var d = new Date();
+        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        $("#c0").html(time);
+
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/A10Status/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#DivisionId").empty();
+                    $("#DivisionId").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#DivisionId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#DivisionId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/A10Status/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpSiteId").empty();
+                    $("#drpSiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchSiteId').val() != '0' && $('#hdnSearchSiteId').val() == value.Id) {
+                            $("#drpSiteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#drpSiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function BindData(basePath, data) {
+        if (data != null && data.length > 0) {
+            var table = '<div class="tableFixHead"><table class="table" id="myTable">';
+            table += '<tr>';
+            table += '<thead class="bg-primary">';
+            table += '<th style="background-color:#215968;color:white;"></th>';
+            table += '<th style="background-color:#215968;color:white;">id</th>';
+            table += '<th style="background-color:#4bacc6;color:white;">name</th>';
+            table += '<th style="background-color:#215968;color:white;">last_response</th>';
+            table += '<th style="background-color:#4bacc6;color:white;" class="text-center">status</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">exceptions</th>';
+            table += '<th style="background-color:#4bacc6;color:white;" class="text-center">poll_time</th>';
+            table += '<th style="background-color:#215968;color:white;" class="text-center">params</th>';
+            table += '<th style="background-color:#4bacc6;color:white;" class="text-center">type</th>';
+            table += '</tr>';
+            table += '</thead>';
+            table += '<tbody class="sorting">';
+            $(data).each(function (id, item) {
+
+                var seconds = parseFloat(item.last_response);                          
+
+                if (parseInt(item.id) > 0) {
+                    table += '<tr>';
+                    table += '<td><a href="javascript:void(0)" onclick="fnGraph(' + item.id + ')"><i class="fa fa-bar-chart-o"></i></a></td>';
+                    table += '<td>' + item.id + '</td>';
+                    table += '<td>' + item.name + '</td>';
+
+                    if (seconds <= 15) {
+                        table += '<td class="text-success">' + seconds + '</td>';
+                    } else if (seconds > 15 && seconds < 50) {
+                        table += '<td class="text-warning">' + seconds + '</td>';
+                    } else if (seconds > 50) {
+                        table += '<td class="text-danger">' + seconds + '</td>';
+                    }
+
+                    if (seconds > 50) {
+                        table += '<td class="text-danger text-center">Error</td>';
+                    }
+                    else if (item.status == '1') {
+                        table += '<td class="text-success text-center">Active</td>';
+                    } else if (item.status == '0') {
+                        table += '<td class="text-danger text-center">Error</td>';
+                    }
+
+                    table += '<td class="text-center">' + item.exceptions + '</td>';
+                    table += '<td class="text-center">' + item.poll_time + '</td>';
+
+
+                    var param = parseInt(item.params);
+                    var minusparam = param - 1;
+                    if (param == 0) {
+                        table += '<td class="text-center">Wm1</td>';
+                    } else if (param == 1) {
+                        table += '<td class="text-center">Wm2</td>';
+                    } else if (param > 1) {
+                        table += '<td class="text-center">TCP' + minusparam + '</td>';
+                    }
+                    if (item.type != null && item.type != undefined && item.type != '') {
+                        table += '<td class="text-center">' + item.type + '</td>';
+                    } else {
+                        table += '<td class="text-center"></td>';
+                    }
+                  
+                    table += '</tr>';
+                }
+
+            });
+            table += '</tbody>';
+            table += '</table></div>';
+            $('#bodyA10Status').empty().append(table);
+        }
+
+    }
+
+
+    function fnConvertUTCDate(currentdate) {
+
+        return "" + (currentdate.getUTCMonth() + 1) + "/"
+            + currentdate.getUTCDate() + "/"
+            + currentdate.getUTCFullYear() + " "
+            + currentdate.getUTCHours() + ":"
+            + currentdate.getUTCMinutes() + ":"
+            + currentdate.getUTCSeconds();
+    }
+
+    function parseDate(dateString) {
+        if (!dateString) return new Date(0);
+
+        var [date, time] = dateString.split(' ');
+        if (!time) {
+            time = "00:00:00";
+        }
+        var [month, day, year] = date.split('/');
+        var [hours, minutes, seconds] = time.split(':');
+        if (isNaN(month) || isNaN(day) || isNaN(year) || isNaN(hours) || isNaN(minutes) || isNaN(seconds)) {
+            return new Date(0);
+        }
+        return new Date(year, month - 1, day, hours, minutes, seconds);
+    }
+
+    function sortTable($this) {
+        var table = $($this).parents('table').eq(0)
+        var rows = table.find('tr:gt(0)').toArray().sort(comparer($($this).index()))
+        $this.asc = !$this.asc
+        if (!$this.asc) { rows = rows.reverse() }
+        var th = $($this);
+        th.siblings().find(".sort-symbol").remove();
+        th.find('.sort-symbol').remove();
+        th.append(`<span class="sort-symbol">${$this.asc ? '▲' : '▼'}</span>`);
+        for (var i = 0; i < rows.length; i++) { table.append(rows[i]) }
+
+        //var table = $("#myTable");
+        //var rows = table.find("tbody tr").get();
+        //var isAscending = table.hasClass("ascending");
+        //rows.sort(function (a, b) {
+        //    var dateA = parseDate($(a).find("td").eq(columnIndex).text().trim());
+        //    var dateB = parseDate($(b).find("td").eq(columnIndex).text().trim());
+        //    return isAscending ? dateA - dateB : dateB - dateA;
+        //});
+        //$.each(rows, function (index, row) {
+        //    table.find(".sorting").append(row);
+        //});
+
+
+        //table.toggleClass("ascending", !isAscending);
+        //table.find("th span.sort-indicator").remove();
+        //var header = table.find("th").eq(columnIndex);
+        //var arrow = isAscending ? "↓" : "↑";
+        //header.append('<span class="sort-indicator" style="font-size: 20px; margin-left: 10px;">' + arrow + '</span>');
+    }
+
+    function comparer(index) {
+        return function (a, b) {
+            var valA = getCellValue(a, index), valB = getCellValue(b, index)
+            return $.isNumeric(valA) && $.isNumeric(valB) ? valA - valB : valA.toString().localeCompare(valB)
+        }
+    }
+
+    function getCellValue(row, index) { return $(row).children('td').eq(index).text() }
+
+    function fnGraph(a10Id) {
+        var siteId = $('#hdnSearchSiteId').val();
+        var date = $('#searchDate').val();
+        if (a10Id == null || a10Id == undefined || a10Id == '') {
+            a10Id = $('#hdnA10Id').val();
+        } else {
+            $('#hdnA10Id').val(a10Id)
+
+        }
+
+        if (siteId != null && siteId != undefined && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/A10Status/GetGraph',
+                data: '{siteId:' + siteId + ',date:"' + date + '",a10Id:"' + a10Id + '"}',
+                type: 'POST',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var DataSeriaes = [];
+                    var DataColor = [];
+                    var maxV = 0;
+                    var legends = [];
+                    var macLeft = 0;
+                    var lary = [];
+                    var xValue = [];
+
+                    if (data != null) {
+                        $.each(data, function (index, value) {
+                            legends.push(index);
+                            var lineColor = fnGetDarkColor();
+                            DataColor.push(lineColor);
+                            if (data != null && data != undefined && data != '') {
+
+                                var attr = {};
+                                attr.name = index;
+                                attr.type = 'line';
+                                attr.notShowSymbol = true;
+                                attr.sampling = sampling;
+                                attr.hoverAnimation = false;
+                                attr.clip = true;
+
+                                attr.data = [];
+                                var values = [];
+                                $.each(value, function (index2, value2) {
+
+                                    const d = new Date(value2.timestamp);
+                                    var dateString = d.getDate() + "-" + (d.getMonth() + 1) + " " + d.getHours() + ":" + d.getMinutes() + "";
+
+                                    if ($.inArray(dateString, xValue) != -1) {
+                                    } else {
+                                        xValue.push(dateString);
+                                    }
+                                    values.push(parseFloat(value2.last_response).toFixed(2));
+                                });
+                                $.each(values, function (i, j) {
+                                    var d = parseFloat(j);
+                                    if (d > maxV) {
+                                        maxV = d;
+                                    }
+                                });
+
+                                var yLeft = Math.max.apply(Math, values); // 3
+                                if (yLeft >= macLeft) {
+                                    macLeft = yLeft;
+                                }
+
+                                attr.connectNulls = true;
+                                attr.data = values;
+                                attr.datasetIndex = 0;
+                                DataSeriaes.push(attr);
+
+                            }
+
+                        });
+
+                        $("#modal-graph").modal("show");
+
+                        if (pmchart != null && pmchart != "" && pmchart != undefined) {
+                            pmchart.dispose();
+                        }
+                        pmchart = echarts.init(document.getElementById('area-current-graph-echart'));
+                        var sampling = 'none';
+                        pmchart.setOption({
+                            tooltip: {
+                                trigger: 'axis',
+                                axisPointer: {
+                                    type: 'cross',
+                                    label: {
+                                        backgroundColor: '#6a7985'
+                                    }
+                                }
+                            },
+                            legend: {
+                                data: legends,
+                                x: 'left'
+
+                            },
+                            toolbox: {
+                                show: true,
+                                feature: {
+                                    mark: { show: true },
+                                    dataView: { show: true, readOnly: false },
+                                    magicType: { show: true, type: ['line', 'bar'] },
+                                    restore: { show: true },
+                                    saveAsImage: { show: true }
+                                }
+                            },
+                            grid: {
+                                left: '3%',
+                                right: '4%',
+                                bottom: '3%',
+                                containLabel: true
+                            },
+                            xAxis: [
+                                {
+                                    type: 'category',
+                                    boundaryGap: false,
+                                    axisLine: { onZero: false },
+                                    interval: 50,
+                                    data: xValue,
+                                }
+                            ],
+                            yAxis: [
+                                {
+                                    type: 'value',
+                                    min: 0,
+                                    max: macLeft,
+                                    data: lary
+                                }
+                            ],
+                            height: 250,
+                            dataZoom: [{
+                                type: 'slider',
+                                height: 40,
+                                start: 0,
+                                end: 100,
+                                bottom: 0
+                            }],
+                            color: DataColor,
+
+                            series: DataSeriaes
+                        });
+
+
+                        window.onresize = pmchart.resize;
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnGetDarkColor() {
+        var allowed = "ABCDEF0123456789", S = "#";
+
+        while (S.length < 7) {
+            S += allowed.charAt(Math.floor((Math.random() * 16) + 1));
+        }
+        return S;
+    }
+
+    function fnAllGraph() {
+        var siteId = $('#hdnSearchSiteId').val();
+        var date = $('#searchDate').val();
+        $('#hdnA10Id').val();
+        if (siteId != null && siteId != undefined && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/A10Status/GetGraph',
+                data: '{siteId:' + siteId + ',date:"' + date + '"}',
+                type: 'POST',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var DataSeriaes = [];
+                    var DataColor = [];
+                    var maxV = 0;
+                    var legends = [];
+                    var macLeft = 0;
+                    var lary = [];
+                    var xValue = [];
+
+                    if (data != null) {
+                        $.each(data, function (index, value) {
+                            legends.push(index);
+                            var lineColor = fnGetDarkColor();
+                            DataColor.push(lineColor);
+                            if (data != null && data != undefined && data != '') {
+
+                                var attr = {};
+                                attr.name = index;
+                                attr.type = 'line';
+                                attr.notShowSymbol = true;
+                                attr.sampling = sampling;
+                                attr.hoverAnimation = false;
+                                attr.clip = true;
+
+                                attr.data = [];
+                                var values = [];
+                                $.each(value, function (index2, value2) {
+
+                                    const d = new Date(value2.timestamp);
+                                    var dateString = d.getDate() + "-" + (d.getMonth() + 1) + " " + d.getHours() + ":" + d.getMinutes() + "";
+
+                                    if ($.inArray(dateString, xValue) != -1) {
+                                    } else {
+                                        xValue.push(dateString);
+                                    }
+                                    values.push(parseFloat(value2.last_response).toFixed(2));
+                                });
+                                $.each(values, function (i, j) {
+                                    var d = parseFloat(j);
+                                    if (d > maxV) {
+                                        maxV = d;
+                                    }
+                                });
+
+                                var yLeft = Math.max.apply(Math, values); // 3
+                                if (yLeft >= macLeft) {
+                                    macLeft = yLeft;
+                                }
+
+                                attr.connectNulls = true;
+                                attr.data = values;
+                                attr.datasetIndex = 0;
+                                DataSeriaes.push(attr);
+
+                            }
+
+                        });
+
+                        $("#modal-graph").modal("show");
+
+                        if (pmchart != null && pmchart != "" && pmchart != undefined) {
+                            pmchart.dispose();
+                        }
+                        pmchart = echarts.init(document.getElementById('area-current-graph-echart'));
+                        var sampling = 'none';
+                        pmchart.setOption({
+                            tooltip: {
+                                trigger: 'axis',
+                                axisPointer: {
+                                    type: 'cross',
+                                    label: {
+                                        backgroundColor: '#6a7985'
+                                    }
+                                }
+                            },
+                            legend: {
+                                data: legends,
+                                x: 'left'
+
+                            },
+                            toolbox: {
+                                show: true,
+                                feature: {
+                                    mark: { show: true },
+                                    dataView: { show: true, readOnly: false },
+                                    magicType: { show: true, type: ['line', 'bar'] },
+                                    restore: { show: true },
+                                    saveAsImage: { show: true }
+                                }
+                            },
+                            grid: {
+                                left: '3%',
+                                right: '4%',
+                                bottom: '3%',
+                                containLabel: true
+                            },
+                            xAxis: [
+                                {
+                                    type: 'category',
+                                    boundaryGap: false,
+                                    axisLine: { onZero: false },
+                                    interval: 50,
+                                    data: xValue,
+                                }
+                            ],
+                            yAxis: [
+                                {
+                                    type: 'value',
+                                    min: 0,
+                                    max: macLeft,
+                                    data: lary
+                                }
+                            ],
+                            height: 250,
+                            dataZoom: [{
+                                type: 'slider',
+                                height: 40,
+                                start: 0,
+                                end: 100,
+                                bottom: 0
+                            }],
+                            color: DataColor,
+
+                            series: DataSeriaes
+                        });
+
+
+                        window.onresize = pmchart.resize;
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+    function fnDownLoad() {
+        if ($('#hdnSearchSiteId').val() != null && $('#hdnSearchSiteId').val() != undefined && $('#hdnSearchSiteId').val() != '' && $('#hdnSearchSiteId').val() != "0") {
+            if ($('#hdnA10Id').val() != null && $('#hdnA10Id').val() != undefined && $('#hdnA10Id').val() != '0') {
+                window.location.href = "@Url.Action("Download", "A10Status")?siteId=" + $('#hdnSearchSiteId').val() + "&date=" + $('#searchDate').val() + "&a10Id=" + $("#hdnA10Id").val();
+            } else {
+
+                window.location.href = "@Url.Action("Download", "A10Status")?siteId=" + $('#hdnSearchSiteId').val() + "&date=" + $('#searchDate').val();
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+    }
+
+
+</script>

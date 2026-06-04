@@ -1,0 +1,1891 @@
+﻿@model Domain.AdvanceAssetTypeCircuitDiagram
+
+@{
+    var asset = ViewBag.Asset as Domain.Asset;
+    var mPointMachineJsonN = new Domain.PointMachineJson();
+    var mPointMachineJsonR = new Domain.PointMachineJson();
+    var mCardLines = new List<Domain.CardLine>
+();
+    if (ViewBag.PointMachineDataN != null)
+    {
+        mPointMachineJsonN = ViewBag.PointMachineDataN as Domain.PointMachineJson;
+    }
+    if (ViewBag.PointMachineDataR != null)
+    {
+        mPointMachineJsonR = ViewBag.PointMachineDataR as Domain.PointMachineJson;
+    }
+    if (ViewBag.CardLine != null)
+    {
+        mCardLines = ViewBag.CardLine as List<Domain.CardLine>
+            ;
+    } }
+
+<link href="~/assets/sip/css/rappid.css" rel="stylesheet" />
+<link href="~/assets/sip/css/theme-picker.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.dark.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.material.css" rel="stylesheet" />
+<link href="~/assets/sip/css/style.modern.css" rel="stylesheet" />
+<link href="~/assets/sip/css/diagram.css" rel="stylesheet" />
+<style>
+    .joint-paper.joint-theme-default {
+        left: unset !important;
+        top: unset !important;
+    }
+
+    .joint-paper-background, .joint-paper-grid, .joint-paper > svg {
+        background-color: #0a1628 !important;
+    }
+
+    .joint-paper-scroller.joint-theme-modern {
+        background-color: #0a1628 !important;
+    }
+
+    .joint-paper-scroller {
+        overflow: auto;
+    }
+</style>
+
+<input type="hidden" id="hdnCircuitDiagramAssetId" value="@asset.Id" />
+<input type="hidden" id="hdnCircuitDiagramAssetTypeId" value="@asset.AssetTypeId" />
+
+<table id="dataTableCircuit" style="display:none;border:none">
+</table>
+<div class="row">
+    <div class="col-lg-12" style="border-bottom: 10px solid #156082;">
+        <div class="row">
+            @if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.TRACK)
+            {
+                <div class="col-lg-5">
+                    <div class="row">
+                        <div class="col-5">
+                            @*<img src="@Url.Content(" ~ /assets/images/track logo.png")" />*@
+                            <img src="~/assets/images/track logo.png" height="130" />
+                        </div>
+                        <div class="col-7">
+                            <img id="circuitDiagramLiveGif" src="~/assets/images/Live.png" height="30" />
+                            <h1>@asset.Name</h1>
+                            <h5 id="circuitDiagramLiveTimeStamp">Last Update:</h5>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6" id="divCircuitAlertMessage"> </div>
+                <div class="col-lg-1">
+
+                </div> }
+            else if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL)
+            {
+                <div class="col-lg-3">
+                    <div class="row">
+                        <div class="col-5">
+                            <img src="@Url.Content(" ~ /assets/images/Signal.png")" height="130" />
+
+                        </div>
+                        <div class="col-7">
+                            <img id="circuitDiagramLiveGif" src="~/assets/images/Live.png" height="30" />
+                            <h1>@asset.Name</h1>
+                            <h5 id="circuitDiagramLiveTimeStamp">Last Update:</h5>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6" id="divCircuitAlertMessage"> </div>
+                <div class="col-lg-2" id="divImgSignalCircuitAlertMessage">
+                </div>
+                <div class="col-lg-1">
+
+                </div> }
+            else if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
+            {
+                <div class="col-lg-5">
+                    <div class="row">
+                        <div class="col-5">
+                            @*<img src="@Url.Content(" ~ /assets/images/track logo.png")" height="130" />*@
+
+                        </div>
+                        <div class="col-7">
+                            <img id="circuitDiagramLiveGif" src="~/assets/images/Live.png" height="30" />
+                            <h1>@asset.Name</h1>
+                            <h5 id="circuitDiagramLiveTimeStamp">Last Update:</h5>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6" id="divCircuitAlertMessage"> </div>
+                <div class="col-lg-1">
+
+                </div>}
+
+        </div>
+    </div>
+    <div class="col-lg-12">
+        <div class="toolbar-container">
+        </div>
+        <div id="divMapExpand">
+            <div class="app-body">
+                <div class="stencil-container" style="display:none"></div>
+                <div class="paper-container" style="left:0px;right:0"></div>
+                <div class="inspector-container" style="display:none"></div>
+                <div class="navigator-container" style="display:none"></div>
+            </div>
+        </div>
+        @if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
+        {
+            <!-- PM Operations History Table — sits below the circuit diagram -->
+            <div id="pmLastOpPanel" style="display:none;margin:10px 0 4px 0;max-width:700px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.14);border:1.5px solid #1e3a5f;font-family:'Segoe UI',sans-serif;">
+            </div>
+        }
+    </div>
+</div>
+
+
+@* FIX: These scripts are loaded ONCE by fnBindCircuit in Index.cshtml using
+    a deduplicating loader. Using data-circuit-script prevents jQuery from
+    re-executing them (and re-calling GetAttributesByAssestId / GetDataloggerAttribute)
+    every time the circuit partial is appended into the page. *@
+<script data-circuit-script src="~/assets/circuitsip/js/lodash.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/backbone.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/graphlib.core.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/dagre.core.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/JavaScript.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/halo.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/selection.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/inspector.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/stencil.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/toolbar-main.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/main.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/theme-picker.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/joint.shapes.app.js"></script>
+<script data-circuit-script src="~/assets/circuitsip/js/navigator.js"></script>
+
+<script>
+var json = "";
+    var sitejson = "";
+    var mQQTPath = "";
+    var parseJson = null;
+    var isInteractive = false;
+    var appModel = null;
+    var pointMachineEventTime = '';
+    appModel = new App.MainView({ el: '#divMapExpand' });
+    var circuitjson = @Html.Raw(Json.Encode(Model));
+    var assetJson = JSON.parse('@Html.Raw(Json.Encode(ViewBag.Asset))');
+    assetJson.mAssetInfoDataloggers;
+    var attributeJson = JSON.parse('@Html.Raw(Json.Encode(ViewBag.AssetAttributes))');
+    var cardLines = JSON.parse('@Html.Raw(Json.Encode(mCardLines))');
+    sitejson =  JSON.parse('@Html.Raw(Json.Encode(ViewBag.Site))');
+
+    var pointMachineDataJsonN = JSON.parse('@Html.Raw(Json.Encode(mPointMachineJsonN))');
+    var pointMachineDataJsonR = JSON.parse('@Html.Raw(Json.Encode(mPointMachineJsonR))');
+    var pointScale20 = '@E7FRSAdvance.Utility.Utility.PMScale.Scale_20.GetHashCode()';
+    var pointScale100 = '@E7FRSAdvance.Utility.Utility.PMScale.Scale_100.GetHashCode()';
+    //$(document).on('hidden.bs.modal', '.modal', function () {
+    //    // Check if any other modal is still visible
+    //    if ($('.modal.show').length > 0) {
+    //        $('body').addClass('modal-open');
+    //    }
+    //});
+
+    $(document).ready(function () {
+// debugger; // REMOVED: was pausing execution in production
+        if (this.client && this.client.isConnected()) {
+            try {
+                this.client.disconnect();
+            } catch (err) {
+            }
+        }
+        joint.setTheme('modern');
+        parseJson = JSON.parse(circuitjson.CircuitDiagram);
+        appModel.graph.fromJSON(parseJson);
+        var assetTypeIdForZoom = $('#hdnCircuitDiagramAssetTypeId').val();
+        if (assetTypeIdForZoom == 1) {
+            $("input[name=zoom-slider]").val(20);
+            $("input[name=zoom-slider]").trigger('change');
+        } else {
+            $("input[name=zoom-slider]").val(20);
+            $("input[name=zoom-slider]").trigger('change');
+        }
+        appModel.paper.on('cell:pointerup', function (cellView) {
+            // We don't want a Halo for links.
+            if (cellView.model instanceof joint.dia.Link) return;
+            var halo = new joint.ui.Halo({ cellView: cellView });
+            halo.remove();
+        });
+
+        appModel.paper.on('cell:pointerup', function (cellView) {
+            // We don't want to transform links.
+            if (cellView.model instanceof joint.dia.Link) return;
+
+            var freeTransform = new joint.ui.FreeTransform({ cellView: cellView });
+            freeTransform.remove();
+        });
+
+        appModel.paper.on('cell:pointerclick', function (cellView) {
+
+            if ('label' in cellView.model.attributes.attrs && 'text' in cellView.model.attributes.attrs.label) {
+                if (cellView.model.attributes.attrs.label.text != undefined && cellView.model.attributes.attrs.label.text != "")
+                {
+                    if ($.trim(cellView.model.attributes.attrs.label.text).startsWith('(A)NW V') || $.trim(cellView.model.attributes.attrs.label.text).startsWith('(A)RW V')) {
+                        fnShowSignatureGraghCircuit(assetJson.Id, 'AV');
+                    }
+                    else if ($.trim(cellView.model.attributes.attrs.label.text).startsWith('(A)NW C') || $.trim(cellView.model.attributes.attrs.label.text).startsWith($.trim('(A)RW C'))) {
+                        fnShowSignatureGraghCircuit(assetJson.Id, 'AC');
+                    }
+                    else if ($.trim(cellView.model.attributes.attrs.label.text).startsWith('(B)NW V') || $.trim(cellView.model.attributes.attrs.label.text).startsWith('(B)RW V')) {
+                        fnShowSignatureGraghCircuit(assetJson.Id, 'BV');
+                    }
+                    else if ($.trim(cellView.model.attributes.attrs.label.text).startsWith('(B)NW C') || $.trim(cellView.model.attributes.attrs.label.text).startsWith($.trim('(B)RW C'))) {
+                        fnShowSignatureGraghCircuit(assetJson.Id, 'BC');
+                    }
+                }
+
+            }
+
+        });
+
+
+        if ($('#modalAssetTypeCircuitDiagram').hasClass('show')) {
+
+            fnGetPointMachineData('@asset.Id');
+        }
+
+        setTimeout(() => {
+            var assetTypeId = $('#hdnCircuitDiagramAssetTypeId').val();
+
+            $("input[name=zoom-slider]").val(20);
+            $("input[name=zoom-slider]").trigger('change');
+
+            // Step 2: Wait for zoom to settle, THEN fix position
+            setTimeout(function () {
+                if (assetTypeId == 2 || assetTypeId == 3) {
+                    let paper = $('.paper-scroller-background').find('div:eq(0)');
+                    paper.css("left", "0px");
+                    paper.css("top", "0px");
+                    paper.css("width", "1550px");
+
+                    let height = paper.height();
+                    let width = paper.width();
+                    $(".paper-scroller-background").css("width", width + "px");
+                    $(".paper-scroller-background").css("height", height + "px");
+
+                } else {
+                    let paper = $('.paper-scroller-background').find('div:eq(0)');
+                    paper.css("left", "0px");
+                    paper.css("top", "0px");
+
+                    let height = paper.height();
+                    let width = paper.width() || 1550;
+                    $(".paper-scroller-background").css("width", width + "px");
+                    $(".paper-scroller-background").css("height", height + "px");
+
+                    var $scroller = $('.joint-paper-scroller');
+                    $scroller.scrollLeft(0);
+                    $scroller.scrollTop(0);
+                }
+            }, 300);
+
+        }, 500);
+        setInterval(function () {
+            if ($('#modalAssetTypeCircuitDiagram').hasClass('show')) {
+                fnGetFRSAlertList();
+
+            }
+        }, 10000);
+
+        let pointIntervalId = setInterval(function () {
+            if ($('#modalAssetTypeCircuitDiagram').hasClass('show')) {
+
+                fnGetPointMachineData('@asset.Id');
+            }
+        }, 20000);
+
+
+        // MQTT disabled — all live data arrives via WebSocket from Index.cshtml.
+        // Index.cshtml syncs pointMachineDataJsonN/R from live WS data before
+        // calling BindCircuitPointSimulation so Text cells show the same values
+        // as the Point Machine table (A CURRENT, B CURRENT, A VOLTAGE, B VOLTAGE, etc.)
+    });
+
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        client.subscribe(mQQTPath + 'channel1');
+
+        client.subscribe(mQQTPath + 'dl/#');
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+        // FIX: Guard against reconnecting when already connected or connecting
+        // This prevents AMQJS0011E "Invalid state already connected" error
+        if (client && client.isConnected()) {
+            console.log("[MQTT] Already connected — skipping reconnect");
+            return;
+        }
+        var _isSecure = window.location.protocol === "https:";
+        try {
+            client.connect({
+                onSuccess: onConnect,
+                useSSL: _isSecure,
+                userName: mQTT.MQTTUsername,
+                password: mQTT.MQTTPassword,
+                cleanSession: true
+            });
+        } catch (reconnectErr) {
+            console.warn("[MQTT] Reconnect attempt failed:", reconnectErr.message);
+        }
+    }
+
+    function onMessageArrivedCircuit(message) {
+        if (message.destinationName.includes("/dl/")) {
+            var parseJson = JSON.parse(message.payloadString);
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var jsonData = parseJson['bits'];
+                if (jsonData != null && jsonData != undefined && jsonData.length > 0) {
+                    var jsonArrayString = '';
+                    for (var i = 0; i < jsonData.length; i++) {
+                        var decimalNumber = decimalToBinary(jsonData[i]);
+                        if (decimalNumber != null) {
+                            if (decimalNumber.length != 8) {
+                                decimalNumber = ("00000000" + decimalNumber.toString(2)).substr(-8);
+                            }
+                            const reversedString = decimalNumber.split("").reduce((acc, char) => char + acc, "");
+
+                            jsonArrayString += reversedString;
+                        }
+                    }
+                    var jsonArray = jsonArrayString.split('');
+                    if (jsonArray != null && jsonArray != undefined && jsonArray.length > 0) {
+                        try {
+                            if (sitejson.IsDatalogger == true) {
+
+                                try {
+
+                                    BindCircuitDataLoggerSimulation(message.destinationName, jsonArray);
+
+                                }
+                                catch (err) {
+
+                                }
+                            }
+                        }
+                        catch (err) {
+
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
+                var parseJson = JSON.parse(message.payloadString);
+                if (parseJson != null && parseJson != undefined && parseJson != '') {
+                    var array = parseJson['roles'];
+                    var tsarray = parseJson['ts'];
+                    if (array != null && array != undefined && array.length > 0) {
+
+                        try {
+                            var assetTypeId = $('#hdnCircuitDiagramAssetTypeId').val();
+                            if (assetTypeId == 1) {
+                                BindCircuitTrackSimulation(message.destinationName, array);
+                            }
+                            else if (assetTypeId == 2) {
+                                BindCircuitSignalSimulation(message.destinationName, array);
+                            }
+                            else if (assetTypeId == 3) {
+                                BindCircuitPointSimulation(message.destinationName, array);
+                            }
+
+                        }
+                        catch (err) {
+
+                        }
+                    }
+                }
+            }
+            else {
+            }
+
+            //for (var i = 0; i < channels.length; i++) {
+            //    if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
+            //        var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
+            //        if (message.destinationName.toLowerCase() == name.toLowerCase()) {
+            //            var d = new Date();
+            //            var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+            //            $("#c" + i).html(time);
+            //        }
+            //    }
+            //}
+        }
+
+
+    }
+
+    function fnShowSignatureGraghCircuit($this) {
+        var lastdate = new Date();
+        var firstDay = new Date();
+        var assetId = assetJson.Id;
+        var type = $($this).data('type');
+        var eventTime = $($this).data('time');
+        //alert('Hello')
+        //var lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        $("#loader").show();
+        $.ajax({
+            url: '/Site/GetPointMachineCurrentGraph',
+            type: 'Post',
+            data: '{assetId:' + assetJson.Id + ',startDate:"' + firstDay.toLocaleDateString() + '",endDate:"' + lastdate.toLocaleDateString() + '"}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    $(data).each(function (d, val) {
+                        if (val.Date != '' && val.Date.includes(eventTime)) {
+
+                            if (type == "AV" || type == "BV") {
+                                fnBindSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                            } else {
+                                if (type.includes('A')) {
+                                    if (val.Direction.toLowerCase() == "normal" && assetJson.MachineAReverseScale == pointScale20) {
+                                        fnBindCombineSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                                    }
+                                    else if (val.Direction.toLowerCase() == "reverse" && assetJson.MachineAReverseScale == pointScale20) {
+                                        fnBindCombineSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                                    } else {
+                                        fnBindSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                                    }
+                                } else {
+                                    if (val.Direction.toLowerCase() == "normal" && assetJson.MachineBReverseScale == pointScale20) {
+                                        fnBindCombineSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                                    }
+                                    else if (val.Direction.toLowerCase() == "reverse" && assetJson.MachineBReverseScale == pointScale20) {
+                                        fnBindCombineSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                                    } else {
+                                        fnBindSignatureGragh(JSON.stringify(val.PointMachineJson), type, val.Date, val.Direction, val.AssetType, assetId)
+                                    }
+                                }
+
+
+                            }
+                        }
+
+                    });
+
+                    //$('#modal-graph').on('show.bs.modal', function () {
+                    //    let zIndex = 1050 + ($('.modal:visible').length * 10);
+                    //    $(this).css('z-index', zIndex);
+                    //    setTimeout(function () {
+                    //        $('.modal-backdrop').not('.stacked').first().css('z-index', zIndex - 1).addClass('stacked');
+                    //    }, 0);
+                    //});
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function BindCircuitTrackSimulation(basePath, data) {
+        // setTimeout removed — was for MQTT polling delay, not needed with WebSocket
+        (function () {
+            if ($("#circuitDiagramLiveGif").attr("src") != '/assets/images/liveGif.gif') {
+                $("#circuitDiagramLiveGif").attr("src", "/assets/images/Live_green.gif");
+
+            }
+            var d = new Date();
+            var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+            $("#circuitDiagramLiveTimeStamp").html('Last Update: ' + time);
+
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var item = assetJson;
+                if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                    $.each(item.assetAttributes, function (idx, inItem) {
+
+                        var infoValue = inItem.AssetInfoValue;
+                        var infoMultiplication = inItem.Multiplication;
+                        if (infoValue != null) {
+
+                            var dataValue = data[infoValue];
+                            if (infoMultiplication != null) {
+                                $.each(parseJson.cells, function (id, val) {
+                                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                        var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                        var v = ((mainData * 100) / 100).toFixed(1);
+                                        if (val.type == "examples.Label") {
+                                            var attrName = inItem.Title;
+                                            var romovebracketAttr = inItem.Title;
+                                            if (inItem.AliasName != null && inItem.AliasName != undefined && inItem.AliasName != '') {
+                                                attrName = inItem.AliasName;
+                                                romovebracketAttr = inItem.AliasName.replace(/\(.*?\)/, '');
+
+                                            }
+                                            if ($.trim(val.attrs.label.text).startsWith($.trim(romovebracketAttr))) {
+
+                                                var attrNameStr = $.trim(attrName) + " : " + v;
+                                                val.attrs.label.text = attrNameStr.replaceAll('(', '\n(');
+                                                val.attrs.label.fill = "#e2e8f0";
+                                            }
+                                        }
+
+                                        if ($.trim(val.attrs.label.text) == 'LCBOXFEED') {
+
+                                            if (cardLines != null && cardLines != undefined && cardLines.length > 0) {
+                                                $(cardLines).each(function (d, data) {
+                                                    if (data.AttributeName == 'If mA') {
+                                                        var splitClu = data.ClusterName.split("/");
+                                                        val.attrs.label.text = splitClu[splitClu.length - 1];
+
+                                                    }
+                                                });
+
+                                            }
+                                        }
+
+                                        if ($.trim(val.attrs.label.text) == 'LCBOXRELAY') {
+
+                                            if (cardLines != null && cardLines != undefined && cardLines.length > 0) {
+                                                $(cardLines).each(function (d, data) {
+                                                    if (data.AttributeName == 'Ir mA') {
+                                                        var splitClu = data.ClusterName.split("/");
+                                                        val.attrs.label.text = splitClu[splitClu.length - 1];
+
+                                                    }
+                                                });
+
+                                            }
+                                        }
+
+                                        // LKGVAL is now handled below via window.circuitLeakage bridge
+                                    }
+
+                                });
+                            }
+                        }
+
+                    });
+                }
+
+                // Derived values — read from window.circuitDerived bridge (populated by
+                // Index.cshtml's updateCircuitFromWebSocket via calculateDerivedValues before
+                // calling BindCircuitTrackSimulation). Falls back to 0 if not yet available.
+                var _derived = window.circuitDerived || {};
+                var _lkgVal  = window.circuitLeakage != null ? window.circuitLeakage : 0;
+
+                $.each(parseJson.cells, function (id, val) {
+                    if ('label' in val.attrs && 'text' in val.attrs.label && val.type == "examples.Label") {
+                        var txt = $.trim(val.attrs.label.text);
+                        if (txt == 'LKGVAL' || txt.startsWith('LKGVAL')) {
+                            val.attrs.label.text = _lkgVal;
+                        } else if (txt.startsWith('RTC VAR RES') || txt.startsWith('VTC VAR RES') ||
+                                   txt.startsWith('ITC BATT CHARG') || txt.startsWith('RTC CH FEED END') ||
+                                   txt.startsWith('VTC TR') || txt.startsWith('IBALST') || txt.startsWith('RRAIL')) {
+                            // Map label prefix → derived key
+                            var derivedMap = {
+                                'RTC VAR RES':    { key: 'rtcVarRes',    unit: '(ohm)' },
+                                'VTC VAR RES':    { key: 'vtcVarRes',    unit: '(V)' },
+                                'ITC BATT CHARG': { key: 'itcBattCharg', unit: '(mA)' },
+                                'RTC CH FEED END':{ key: 'rtcChFeedEnd', unit: '(Ω)' },
+                                'VTC TR':         { key: 'vtcTr',        unit: '(V)' },
+                                'IBALST':         { key: 'ibalst',       unit: '(mA)' },
+                                'RRAIL':          { key: 'rrail',        unit: '(Ω)' }
+                            };
+                            for (var prefix in derivedMap) {
+                                if (txt.startsWith(prefix)) {
+                                    var dKey = derivedMap[prefix].key;
+                                    var dVal = (_derived[dKey] !== undefined && !isNaN(_derived[dKey]))
+                                               ? parseFloat(_derived[dKey]).toFixed(2) : '0.00';
+                                    // Preserve original label prefix (use first colon part if already set)
+                                    var labelBase = txt.split(':')[0].split('\n')[0].trim();
+                                    val.attrs.label.text = labelBase + ' :\n' + dVal;
+                                    val.attrs.label.fill = '#e2e8f0';
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                appModel.graph.fromJSON(parseJson);
+            }
+
+        })(); // immediately-invoked — no setTimeout delay
+
+
+
+
+    }
+
+    function BindCircuitSignalSimulation(basePath, data) {
+
+        var d = new Date();
+        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        $("#circuitDiagramLiveTimeStamp").html('Last Update: ' + time);
+
+
+        if ($("#circuitDiagramLiveGif").attr("src") != '/assets/images/liveGif.gif')
+        {
+            $("#circuitDiagramLiveGif").attr("src", "/assets/images/Live_green.gif");
+
+        }
+
+        // setTimeout removed — was for MQTT polling delay, not needed with WebSocket
+        if (parseJson != null && parseJson != undefined && parseJson != '') {
+            // First pass: reset all SingleCircle fills to default
+            $.each(parseJson.cells, function (id, val) {
+                if (val.type == "examples.SingleCircle") {
+                    val.attrs.path.fill = "#1e293b";
+                }
+            });
+            appModel.graph.fromJSON(parseJson);
+            var item = assetJson;
+            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+                $.each(item.assetAttributes, function (idx, inItem) {
+
+                    var infoValue = inItem.AssetInfoValue;
+                    var infoMultiplication = inItem.Multiplication;
+                    if (infoValue != null) {
+
+                        var dataValue = data[infoValue];
+                        if (infoMultiplication != null) {
+                            $.each(parseJson.cells, function (id, val) {
+                                if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = ((mainData * 100) / 100).toFixed(2);
+                                    if (val.type == "examples.Label") {
+                                        var attrName = inItem.Title;
+                                        if (inItem.AliasName != null && inItem.AliasName != undefined && inItem.AliasName != '') {
+                                            attrName = inItem.AliasName;
+                                        }
+                                        if ($.trim(val.attrs.label.text).startsWith($.trim(attrName))) {
+                                            val.attrs.label.text = $.trim(attrName) + " : " + v
+                                            val.attrs.label.fill = "#e2e8f0";
+                                        }
+                                    }
+                                }
+
+                                if (val.type == "examples.Text") {
+                                    if (val.attrs != null && val.attrs.label != null && val.attrs.label != undefined && val.attrs.label.text != null && val.attrs.label.text != undefined) {
+                                        if ($.trim(val.attrs.label.text) == 'SLCBOX') {
+
+                                            if (cardLines != null && cardLines != undefined && cardLines.length > 0) {
+                                                $(cardLines).each(function (d, data) {
+                                                    if (data.AttributeName == 'RG mA') {
+                                                        var splitClu = data.ClusterName.split("/");
+                                                        val.attrs.label.text = splitClu[splitClu.length - 1];
+
+                                                    }
+                                                });
+
+                                            }
+                                        }
+                                    }
+
+                                }
+
+
+                                if (val.type == "examples.SingleCircle") {
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    var v = ((mainData * 100) / 100).toFixed(2);
+
+                                    if (val.attrs != null && val.attrs.label != null && val.attrs.label != undefined && val.attrs.label.text != null && val.attrs.label.text != undefined) {
+                                        if (val.attrs.label.text == "RG mA" && inItem.Title == "RG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                            val.attrs.path.fill = "#FF0E0E";
+
+                                        }
+                                        else if (val.attrs.label.text == "DG mA" && inItem.Title == "DG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                            val.attrs.path.fill = "#00FF00";
+
+                                        }
+                                        else if (val.attrs.label.text == "HG mA" && inItem.Title == "HG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                            val.attrs.path.fill = "#FFBF00";
+                                        }
+                                        else if (val.attrs.label.text == "HHG mA" && inItem.Title == "HHG mA" && parseFloat(v) > parseFloat(item.ZeroOffsetValue)) {
+                                            val.attrs.path.fill = "#FFBF00";
+
+                                        }
+                                    }
+
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+
+            appModel.graph.fromJSON(parseJson);
+        }
+
+    }
+
+    function BindCircuitDataLoggerSimulation(basePath, data) {
+        //Bind Datalogger Attribute
+        var item = assetJson;
+        if (parseJson != null && parseJson != undefined && parseJson != '') {
+            if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.length > 0) {
+                $.each(item.mAssetInfoDataloggers, function (idx, inItem) {
+                    if (inItem.Value != null && inItem.Value != '') {
+                        var dataValue = data[inItem.Value - 1];
+                        if (dataValue != null) {
+                            //if (sitejson.IsDataLoggerJsonReverse == true) {
+                            //    if (parseInt(dataValue) == 0)
+                            //        dataValue = 1;
+                            //    else if (parseInt(dataValue) == 1)
+                            //        dataValue = 0;
+                            //}
+
+                            $.each(parseJson.cells, function (id, val) {
+
+                                if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                    if (val.type == "examples.LabelDataLogger") {
+                                        var attrName = inItem.DataloggerAttribute;
+                                        if ($.trim(val.attrs.label.text).startsWith($.trim(attrName))) {
+
+                                            if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'front') {
+                                                if (parseInt(dataValue) == 1) {
+                                                    val.attrs.label.fill = "#54BA4A";
+                                                    val.attrs.label.text = $.trim(attrName) + " " + "🢁";
+                                                }
+                                                else if (parseInt(dataValue) == 0) {
+                                                    val.attrs.label.fill = "#FFAA05";
+                                                    val.attrs.label.text = $.trim(attrName) + " " + "🡻";
+                                                }
+                                            } else if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'back') {
+                                                if (parseInt(dataValue) == 1) {
+                                                    val.attrs.label.fill = "#FFAA05";
+                                                    val.attrs.label.text = $.trim(attrName) + " " + "🡻";
+
+                                                }
+                                                else if (parseInt(dataValue) == 0) {
+                                                    val.attrs.label.fill = "#54BA4A";
+                                                    val.attrs.label.text = $.trim(attrName) + " " + "🢁";
+                                                }
+                                            }
+
+                                        }
+                                    }
+                                }
+
+                            });
+
+
+                        }
+                    }
+                });
+            }
+
+            appModel.graph.fromJSON(parseJson);
+        }
+
+    }
+
+    function BindCircuitPointSimulation(basePath, data) {
+        // setTimeout removed — was for MQTT polling delay, not needed with WebSocket
+        (function () {
+
+            var d = new Date();
+            var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+            $("#circuitDiagramLiveTimeStamp").html('Last Update: ' + time);
+
+            if (parseJson != null && parseJson != undefined && parseJson != '') {
+                var item = assetJson;
+// debugger; // REMOVED: was pausing execution in production
+                if (item.assetAttributes != null && item.assetAttributes.length > 0) {
+
+                    // ---------------------------------------------------------------
+                    // Read NWKR/RWKR analog values from window.circuitPmAnalog bridge.
+                    // This is built by Index.cshtml from wsAttrs directly by AttrId,
+                    // which is reliable. The old data[AssetInfoValue] approach failed
+                    // because AssetInfoValue indices don't align with RDPMS attrs.
+                    // ---------------------------------------------------------------
+                    var _pa = window.circuitPmAnalog || {};
+                    var _getVal = function(bridgeVal, dataFallback) {
+                        // Use bridge value if valid and non-NaN
+                        if (bridgeVal !== null && bridgeVal !== undefined && !isNaN(bridgeVal)) {
+                            return parseFloat(bridgeVal).toFixed(2);
+                        }
+                        // Fallback to dataArray-derived value
+                        if (dataFallback !== null && dataFallback !== undefined && !isNaN(parseFloat(dataFallback))) {
+                            return parseFloat(dataFallback).toFixed(2);
+                        }
+                        return null;
+                    };
+
+                    // Legacy dataArray values (kept as fallback)
+                    var _legacyNWKRA = null, _legacyRWKRA = null, _legacyNWKRB = null, _legacyRWKRB = null;
+                    var _legacyNWKRALoc = null, _legacyRWKRALoc = null, _legacyNWKRBLoc = null, _legacyRWKRBLoc = null;
+
+                    $.each(item.assetAttributes, function (idx, inItem) {
+                        var str1 = basePath.toLowerCase();
+                        var str2 = "";
+                        if (inItem.AssetInfoChannel != null && inItem.AssetInfoChannel != "") {
+                            str2 = inItem.AssetInfoChannel;
+                        }
+                        if (str2 == null || str2 == "" || str1.indexOf(str2) != -1) {
+                            var infoValue = inItem.AssetInfoValue;
+                            var infoMultiplication = inItem.Multiplication;
+                            if (infoValue != null && infoMultiplication != null) {
+                                var dataValue = data[infoValue];
+                                if (dataValue !== undefined && dataValue !== null) {
+                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
+                                    if (!isNaN(mainData)) {
+                                        var v = ((mainData * 100) / 100).toFixed(2);
+                                        if (inItem.Title == "A End - NWKR")       _legacyNWKRA = v;
+                                        else if (inItem.Title == "B End - NWKR")  _legacyNWKRB = v;
+                                        else if (inItem.Title == "A End - RWKR")  _legacyRWKRA = v;
+                                        else if (inItem.Title == "B End - RWKR")  _legacyRWKRB = v;
+                                        else if (inItem.Title == "A End - NWKR (Loc)") _legacyNWKRALoc = v;
+                                        else if (inItem.Title == "A End - RWKR (Loc)") _legacyRWKRALoc = v;
+                                        else if (inItem.Title == "B End - NWKR (Loc)") _legacyNWKRBLoc = v;
+                                        else if (inItem.Title == "B End - RWKR (Loc)") _legacyRWKRBLoc = v;
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Final values: circuitPmAnalog bridge wins over dataArray legacy
+                    var aNWKRVal    = _getVal(_pa.aNWKR,    _legacyNWKRA);
+                    var aRWKRVal    = _getVal(_pa.aRWKR,    _legacyRWKRA);
+                    var bNWKRVal    = _getVal(_pa.bNWKR,    _legacyNWKRB);
+                    var bRWKRVal    = _getVal(_pa.bRWKR,    _legacyRWKRB);
+                    var aNWKRLocVal = _getVal(_pa.aNWKRLoc, _legacyNWKRALoc);
+                    var aRWKRLocVal = _getVal(_pa.aRWKRLoc, _legacyRWKRALoc);
+                    var bNWKRLocVal = _getVal(_pa.bNWKRLoc, _legacyNWKRBLoc);
+                    var bRWKRLocVal = _getVal(_pa.bRWKRLoc, _legacyRWKRBLoc);
+
+
+                    if (aNWKRVal != null) {
+
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text) == $.trim('A End - NWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(A)NWKR:'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(A)NWKR: " + aNWKRVal;
+                                    }
+                                }
+
+                            }
+                            //if (val.type == "examples.RectBox") {
+                            //    if ($.trim(val.attrs.label.text).endsWith($.trim('NWKR')) || $.trim(val.attrs.label.text).endsWith($.trim('RWKR'))) {
+
+                            //        val.attrs.path.fill = "#54BA4A";
+                            //    }
+                            //}
+                        });
+
+                    }
+                    if (aRWKRVal != null) {
+
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text) == $.trim('A End - RWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(A)RWKR:'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(A)RWKR: " + aRWKRVal;
+                                    }
+                                }
+
+                            }
+                        });
+                    }
+
+                    if (bNWKRVal != null) {
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text) == $.trim('B End - NWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(B)NWKR:'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(B)NWKR:" + bNWKRVal;
+                                    }
+                                }
+
+                            }
+                        });
+                    }
+                    if (bRWKRVal != null) {
+
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text) == $.trim('B End - RWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(B)RWKR:'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(B)RWKR:" + bRWKRVal;
+                                    }
+                                }
+
+                            }
+                        });
+                    }
+
+                    if (aNWKRLocVal != null) {
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text).includes($.trim('A End - NWKR (Loc)')) || $.trim(val.attrs.label.text).includes($.trim('(A)NWKR(LOC):'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(A)NWKR(LOC):" + aNWKRLocVal;
+                                    }
+                                }
+                            }
+                        });
+
+                    }
+                    if (aRWKRLocVal != null) {
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text).includes($.trim('A End - RWKR (Loc)')) || $.trim(val.attrs.label.text).includes($.trim('(A)RWKR(LOC):'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(A)RWKR(LOC):" + aRWKRLocVal;
+                                    }
+                                }
+                            }
+                        });
+
+                    }
+                    if (bNWKRLocVal != null) {
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text).includes($.trim('B End - NWKR (Loc)')) || $.trim(val.attrs.label.text).includes($.trim('(B)NWKR(LOC):'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(B)NWKR(LOC):" + bNWKRLocVal;
+                                    }
+                                }
+                            }
+                        });
+
+                    }
+                    if (bRWKRLocVal != null) {
+                        $.each(parseJson.cells, function (id, val) {
+                            if ('label' in val.attrs && 'text' in val.attrs.label) {
+
+                                if (val.type == "examples.Label") {
+                                    if ($.trim(val.attrs.label.text).includes($.trim('B End - RWKR (Loc)')) || $.trim(val.attrs.label.text).includes($.trim('(B)RWKR(LOC):'))) {
+                                        val.attrs.label.fill = "#e2e8f0";
+                                        val.attrs.label.text = "(B)RWKR(LOC):" + bRWKRLocVal;
+                                    }
+                                }
+                            }
+                        });
+
+                    }
+
+                    $.each(parseJson.cells, function (id, val) {
+                        if (val.type == "examples.Text") {
+                            if ($.trim(val.attrs.label.text).startsWith('(A)NW V') || $.trim(val.attrs.label.text).startsWith('(A)RW V')) {
+                                if (aNWKRVal != null && parseFloat(aNWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(A)NW V" + " : " + pointMachineDataJsonN.A_V_AVERAGE
+                                }
+                                else if (aRWKRVal != null && parseFloat(aRWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(A)RW V" + " : " + pointMachineDataJsonR.A_V_AVERAGE
+                                }
+                            } else if ($.trim(val.attrs.label.text).startsWith('(A)NW C') || $.trim(val.attrs.label.text).startsWith($.trim('(A)RW C'))) {
+                                if (aNWKRVal != null && parseFloat(aNWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(A)NW C" + " : " + pointMachineDataJsonN.A_C_MAX;
+                                }
+                                else if (aRWKRVal != null && parseFloat(aRWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(A)RW C" + " : " + pointMachineDataJsonR.A_C_MAX;
+                                }
+                            }
+                            else if ($.trim(val.attrs.label.text).startsWith('(A)Time')) {
+
+                                if (aNWKRVal != null && parseFloat(aNWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(A)Time" + " : " + pointMachineDataJsonN.A_C_TIME;
+                                }
+                                else if (aRWKRVal != null && parseFloat(aRWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(A)Time" + " : " + pointMachineDataJsonR.A_C_TIME;
+                                }
+
+                            }
+
+
+                            if ($.trim(val.attrs.label.text).startsWith('(B)NW V') || $.trim(val.attrs.label.text).startsWith('(B)RW V')) {
+
+                                if (bNWKRVal != null && parseFloat(bNWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(B)NW V" + " : " + pointMachineDataJsonN.B_V_AVERAGE;
+                                }
+                                else if (bRWKRVal != null && parseFloat(bRWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(B)RW V" + " : " + pointMachineDataJsonR.B_V_AVERAGE;
+                                }
+
+                            } else if ($.trim(val.attrs.label.text).startsWith('(B)NW C') || $.trim(val.attrs.label.text).startsWith($.trim('(B)RW C'))) {
+                                if (bNWKRVal != null && parseFloat(bNWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(B)NW C" + " : " + pointMachineDataJsonN.B_C_MAX;
+                                }
+                                else if (bRWKRVal != null && parseFloat(bRWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(B)RW C" + " : " + pointMachineDataJsonR.B_C_MAX;
+                                }
+                            }
+                            else if ($.trim(val.attrs.label.text).startsWith('(B)Time')) {
+                                if (bNWKRVal != null && parseFloat(bNWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(B)Time" + " : " + pointMachineDataJsonN.B_C_TIME;
+                                }
+                                else if (bRWKRVal != null && parseFloat(bRWKRVal) > 4.5) {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "(B)Time" + " : " + pointMachineDataJsonR.B_C_TIME;
+                                }
+                            }
+
+                            if ($.trim(val.attrs.label.text).startsWith('Time:')) {
+                                if (pointMachineEventTime != null && pointMachineEventTime != '') {
+                                    val.attrs.label.fill = "#e2e8f0";
+                                    val.attrs.label.text = "Time: " + pointMachineEventTime;
+                                }
+                            }
+                        }
+                    });
+
+
+
+                }
+
+                appModel.graph.fromJSON(parseJson);
+                // Panel is rendered by renderPmLastOpPanel() called from Index.cshtml
+            }
+        })(); // immediately-invoked — no setTimeout delay
+
+    }
+
+
+    function fnGetFRSAlertList() {
+
+        var assetId = $('#hdnCircuitDiagramAssetId').val();
+        // FIX: Guard against invalid/empty assetId that causes 500 errors on the server
+        if (assetId != null && assetId != undefined && assetId !== '' && assetId !== '0') {
+            $.ajax({
+                url: '/Site/GetFRSAlertList',
+                type: 'Post',
+                data: '{assetId:' + assetId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data != null && data != undefined && data.mFRSAlerts != null && data.mFRSAlerts.length > 0) {
+                        $("#circuitDiagramLiveGif").attr("src", "/assets/images/liveGif.gif");
+                        var tblAlertMsg = '';
+                        $(data.mFRSAlerts).each(function (v, d) {
+                            var aDirection = assetJson.Name + "_A";
+                            var bDirection = assetJson.Name + "_B";
+                            var isHalfPoint = false;
+                            var isSeries = false;
+
+                            tblAlertMsg += '<div class="card" style="box-shadow:1px 1px 5px 1px red !important"><div class="card-body" style="padding:15px !important"><b>' + d.CauseCode + '</b>' + ': ' + d.SetAlertMessage + '<br/>' + d.Description +'</div></div>';
+
+                            if (d.Description != null && d.Description != '' && d.AssetTypeId == 2) {
+
+                                if (d.Description.includes("RG")) {
+                                    $('#divImgSignalCircuitAlertMessage').empty().append('<img src="/assets/images/Signle_Red.png" />');
+
+                                }
+                                else if (d.Description.includes("DG")) {
+                                    $('#divImgSignalCircuitAlertMessage').empty().append('<img src="/assets/images/Signle_Green.png" />');
+
+                                }
+                                else if (d.Description.includes("HHG")) {
+                                    $('#divImgSignalCircuitAlertMessage').empty().append('<img src="/assets/images/Signle_Yellow_2.png" />');
+
+                                }
+                                else if (d.Description.includes("HG")) {
+                                    $('#divImgSignalCircuitAlertMessage').empty().append('<img src="/assets/images/Signle_Yellow_1.png" />');
+                                }
+
+                            }
+
+                            if (parseJson != null && parseJson != undefined && parseJson != '') {
+
+                                $.each(parseJson.cells, function (id, val) {
+
+                                    if ('label' in val.attrs && 'text' in val.attrs.label) {
+                                        if (val.type == "examples.Label") {
+
+                                            if ($.trim(val.attrs.label.text).startsWith($.trim('VTC RELAY END'))) {
+                                                if (d.CauseCode == 'TC UNDER ENERIZATION') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC OVER ENERIZATION') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC VTC FEED END FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('ITC RELAY END'))) {
+                                                if (d.CauseCode == 'TC BLST/SLPR RES LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC SHORT') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC TFC O/P OFF') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('VTC 24 DC TPR I/P'))) {
+                                                if (d.CauseCode == 'TC TPR I/P LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC TR UP TPR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('VTC 24 DC LOC'))) {
+                                                if (d.CauseCode == 'TC TR CONTACT RES HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC TR DEFECT') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('VTC TFC I/P'))) {
+                                                if (d.CauseCode == 'TC TFC I/P LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('TC TFC O/P'))) {
+                                                if (d.CauseCode == 'TC BT CHG CUR OFF') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC TFC O/P OFF') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC BT CHG CUR HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('VTC TFC O/P'))) {
+                                                if (d.CauseCode == 'TC TFC O/P LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'TC TFC O/P OFF') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('ITC FEED END'))) {
+                                                if (d.CauseCode == 'TC BT CHG CUR HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('VTC FEED END'))) {
+                                                if (d.CauseCode == 'TC VTC FEED END FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+
+
+                                            if ($.trim(val.attrs.label.text).startsWith($.trim('HHG mA'))) {
+                                                if (d.CauseCode == 'SIG HHG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HHG CURR HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HHG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HHG V'))) {
+                                                if (d.CauseCode == 'SIG HHG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HHG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HG mA'))) {
+                                                if (d.CauseCode == 'SIG HG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HG CURR HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HG V'))) {
+                                                if (d.CauseCode == 'SIG HG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('RG mA'))) {
+                                                if (d.CauseCode == 'SIG RG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG RG CURR HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG RG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('RG V'))) {
+                                                if (d.CauseCode == 'SIG RG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG RG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('DG mA'))) {
+                                                if (d.CauseCode == 'SIG DG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG DG CURR HIGH') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG DG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('DG V'))) {
+                                                if (d.CauseCode == 'SIG DG V/I FAIL') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                } else if (d.CauseCode == 'SIG DG V/I LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HHPR'))) {
+                                                if (d.CauseCode == 'SIG HHPR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HHPR LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('DPR'))) {
+                                                if (d.CauseCode == 'SIG DPR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                } else if (d.CauseCode == 'SIG DPR LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HPR'))) {
+                                                if (d.CauseCode == 'SIG HPR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HPR LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HPR'))) {
+                                                if (d.CauseCode == 'SIG HPR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                                else if (d.CauseCode == 'SIG HPR LOW') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('A End - NWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(A)NWKR:'))) {
+                                                if (aDirection != null && aDirection != undefined && aDirection != '' && d.SetAlertMessage.includes(aDirection) && d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                    if (d.CauseCode == 'PT NWKR V LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O NWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT A/O NWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('A End - RWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(A)RWKR:'))) {
+                                                if (aDirection != null && aDirection != undefined && aDirection != '' && d.SetAlertMessage.includes(aDirection) && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT RWKR V LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O RWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT A/O RWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('B End - NWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(B)NWKR:'))) {
+
+                                                if (bDirection != null && bDirection != undefined && bDirection != '' && d.SetAlertMessage.includes(bDirection) && d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                    if (d.CauseCode == 'PT NWKR V LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O NWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT A/O NWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('B End - RWKR') || $.trim(val.attrs.label.text).startsWith($.trim('(B)RWKR:'))) {
+                                                if (bDirection != null && bDirection != undefined && bDirection != '' && d.SetAlertMessage.includes(bDirection) && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT RWKR V LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O RWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT A/O RWKR DN') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('A End - NWKR (Loc)') || $.trim(val.attrs.label.text).startsWith($.trim('(A)RWKR(LOC):'))) {
+                                                if (aDirection != null && aDirection != undefined && aDirection != '' && d.SetAlertMessage.includes(aDirection) && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT N IND AT LOC LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O N IND AT LOC FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('A End - RWKR (Loc)') || $.trim(val.attrs.label.text).startsWith($.trim('(A)RWKR(LOC):'))) {
+                                                if (aDirection != null && aDirection != undefined && aDirection != '' && d.SetAlertMessage.includes(aDirection) && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT R IND AT LOC LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O R IND AT LOC FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('B End - NWKR (Loc)') || $.trim(val.attrs.label.text).startsWith($.trim('(B)NWKR(LOC):'))) {
+                                                if (bDirection != null && bDirection != undefined && bDirection != '' && d.SetAlertMessage.includes(bDirection) && d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                    if (d.CauseCode == 'PT N IND AT LOC LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O N IND AT LOC FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+                                            else if ($.trim(val.attrs.label.text) == $.trim('B End - RWKR (Loc)') || $.trim(val.attrs.label.text).startsWith($.trim('(B)RWKR(LOC):'))) {
+                                                if (bDirection != null && bDirection != undefined && bDirection != '' && d.SetAlertMessage.includes(bDirection) && d.SetAlertMessage.toLowerCase().includes('reverse'))
+                                                {
+                                                    if (d.CauseCode == 'PT R IND AT LOC LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT W/O R IND AT LOC FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+
+                                            }
+
+                                        }
+
+                                        if (val.type == "examples.LabelDataLogger") {
+                                            if ($.trim(val.attrs.label.text).startsWith($.trim('HHECR'))) {
+                                                if (d.CauseCode == 'SIG HHECR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('DECR'))) {
+                                                if (d.CauseCode == 'SIG DECR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+                                            else if ($.trim(val.attrs.label.text).startsWith($.trim('HECR'))) {
+                                                if (d.CauseCode == 'SIG HECR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            } else if ($.trim(val.attrs.label.text).startsWith($.trim('RECR'))) {
+                                                if (d.CauseCode == 'SIG RECR DN') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            } else if ($.trim(val.attrs.label.text).startsWith($.trim('TPR'))) {
+                                                if (d.CauseCode == 'TC TPR DEFECT') {
+                                                    val.attrs.label.fill = "#FF0E0E";
+                                                }
+                                            }
+
+
+                                        }
+
+                                        if (val.type == "examples.Text") {
+
+
+                                            if (aDirection != null && aDirection != undefined && aDirection != '' && d.SetAlertMessage.includes(aDirection)) {
+
+                                                if ($.trim(val.attrs.label.text).startsWith('(A)NW V') && d.SetAlertMessage.toLowerCase().includes('normal')) {
+
+                                                    if (d.CauseCode == 'PT N V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(A)RW V') && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT R V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    } else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(A)NW C') && d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                    if (d.CauseCode == 'PT N V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith($.trim('(A)RW C')) && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT R V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(A)Time')) {
+
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                        if (d.CauseCode == 'PT R TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                    else if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                        if (d.CauseCode == 'PT N TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+
+                                            }
+                                            else if (bDirection != null && bDirection != undefined && bDirection != '' && d.SetAlertMessage.includes(bDirection)) {
+
+                                                if ($.trim(val.attrs.label.text).startsWith('(B)NW V')) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                        if (d.CauseCode == 'PT N V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(B)RW V')) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                        if (d.CauseCode == 'PT R V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(B)NW C')) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+
+                                                        if (d.CauseCode == 'PT N V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith($.trim('(B)RW C'))) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+
+                                                        if (d.CauseCode == 'PT R V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(B)Time')) {
+
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+
+                                                        if (d.CauseCode == 'PT R TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                    else if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                        if (d.CauseCode == 'PT N TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+
+                                            }
+                                            else {
+
+                                                if ($.trim(val.attrs.label.text).startsWith('(A)NW V') && d.SetAlertMessage.toLowerCase().includes('normal')) {
+
+                                                    if (d.CauseCode == 'PT N V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(A)RW V') && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT R V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    } else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(A)NW C') && d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                    if (d.CauseCode == 'PT N V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith($.trim('(A)RW C')) && d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                    if (d.CauseCode == 'PT R V/I LOW') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                    else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                        val.attrs.label.fill = "#FF0E0E";
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(A)Time')) {
+
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                        if (d.CauseCode == 'PT R TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                    else if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                        if (d.CauseCode == 'PT N TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+
+                                                if ($.trim(val.attrs.label.text).startsWith('(B)NW V')) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                        if (d.CauseCode == 'PT N V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(B)RW V')) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+                                                        if (d.CauseCode == 'PT R V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(B)NW C')) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+
+                                                        if (d.CauseCode == 'PT N V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith($.trim('(B)RW C'))) {
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+
+                                                        if (d.CauseCode == 'PT R V/I LOW') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R V/I FAIL') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+                                                else if ($.trim(val.attrs.label.text).startsWith('(B)Time')) {
+
+                                                    if (d.SetAlertMessage.toLowerCase().includes('reverse')) {
+
+                                                        if (d.CauseCode == 'PT R TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT R OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                    else if (d.SetAlertMessage.toLowerCase().includes('normal')) {
+                                                        if (d.CauseCode == 'PT N TIME HIGH') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                        else if (d.CauseCode == 'PT N OBS') {
+                                                            val.attrs.label.fill = "#FF0E0E";
+                                                        }
+                                                    }
+                                                }
+
+                                            }
+
+                                        }
+                                    }
+                                });
+
+                            }
+                        });
+
+                        $('#divCircuitAlertMessage').empty().append(tblAlertMsg);
+
+                        appModel.graph.fromJSON(parseJson);
+                        // Panel rendered by renderPmLastOpPanel() via Index.cshtml buildCircuitPmRows
+                    }
+                    else {
+                        $("#circuitDiagramLiveGif").attr("src", "/assets/images/Live_green.gif");
+                        $('#divCircuitCauseCode').empty();
+                        $('#divCircuitAlertMessage').empty();
+                        $('#divImgSignalCircuitAlertMessage').empty();
+                    }
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnGetPointMachineData(assetId) {
+        // FIX: Guard against invalid assetId causing 500 server errors
+        if (!assetId || assetId === '' || assetId === '0') return;
+
+        var pointMachineData = {};
+        pointMachineData.AssetId = assetId;
+        pointMachineData.StartDate = new Date();
+        pointMachineData.EndDate = new Date();
+
+        $.ajax({
+            url: '/Site/GetPointMachineData',
+            type: 'Post',
+            data: '{pointMachineData:' + JSON.stringify(pointMachineData) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.length > 0) {
+
+                    if (data.length > 2) {
+                        const lastThree = data.slice(0, 3);
+                        var str = '';
+                        if (lastThree) {
+                            str += '<tr><th style="padding:5px;background-color: #085885; color: white;">Date</th><th style="padding:5px;background-color: #085885; color: white;">Direction</th><th style="padding:5px;background-color: #085885; color: white;" class="text-center">A <br /> Current</th><th style="padding:5px;background-color: #085885; color: white;" class="text-center">A <br /> Voltage</th><th style="background-color: #085885; color: white;">A <br /> Time</th><th style="background-color: #085885; color: white; padding:5px;" class="text-center">B <br /> Current</th><th style="background-color: #085885; color: white;padding:5px;" class="text-center">B <br /> Voltage</th><th style="background-color: #085885; color: white;padding:5px;">B<br />Time</th></tr>';
+                            $(lastThree).each(function (d, val) {
+                                str += '<tr>';
+                                str += '<td style="padding:5px">' + val.Date +'</td>';
+                                str += '<td>' + val.Direction + '</td>';
+                                str += "<td style='padding:5px' class='text-center'><a onclick='fnShowSignatureGraghCircuit(this)' data-type='AC' data-time='" + val.Date +"'>" + val.PointMachineJson.A_C_MAX + "</a></td>";
+                                str += "<td style='padding:5px' class='text-center'><a onclick='fnShowSignatureGraghCircuit(this)' data-type='AV' data-time='" + val.Date + "'>" + val.PointMachineJson.A_V_AVERAGE + "</a></td>";
+                                str += '<td>' + val.PointMachineJson.A_C_TIME + '</td>';
+                                str += "<td style='padding:5px' class='text-center'><a onclick='fnShowSignatureGraghCircuit(this)' data-type='BC' data-time='" + val.Date + "'>" + val.PointMachineJson.B_C_MAX + "</a></td>";
+                                str += "<td style='padding:5px' class='text-center'><a onclick='fnShowSignatureGraghCircuit(this)' data-type='BV' data-time='" + val.Date + "'>" + val.PointMachineJson.B_V_AVERAGE + "</a></td>";
+                                str += '<td style="padding:5px">' + val.PointMachineJson.B_C_TIME + '</td>';
+                                str += '</tr>';
+                            });
+                        }
+
+                        $('#dataTableCircuit').empty().append(str);
+
+                    }
+
+
+                    const PointMachineDataR = data
+                        .filter(x => x.Direction === "Reverse")[0]; // Get the first item (same as FirstOrDefault)
+
+                    if (PointMachineDataR != null && PointMachineDataR.PointMachineJson != null) {
+                        pointMachineDataJsonR = PointMachineDataR.PointMachineJson;
+
+                        pointMachineEventTime = PointMachineDataR.Date.split(" ")[1];
+                    }
+
+                    const PointMachineDataN = data
+                        .filter(x => x.Direction === "Normal")[0]; // Get the first item (same as FirstOrDefault)
+
+                    if (PointMachineDataN != null && PointMachineDataN.PointMachineJson != null) {
+                        pointMachineDataJsonN = PointMachineDataN.PointMachineJson;
+
+                        pointMachineEventTime = PointMachineDataN.Date.split(" ")[1];
+                    }
+                }
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    // =======================================================================
+    // PM OPERATIONS TABLE — renderPmLastOpPanel
+    // =======================================================================
+    // Renders a clean data table into #pmLastOpPanel showing both Normal and
+    // Reverse rows from window.circuitPmRows. Called from Index.cshtml after
+    // new WS data. Change-signature guard prevents redundant re-renders.
+    // =======================================================================
+    var _pmPanelLastSig = null;
+
+    window.renderPmLastOpPanel = function () {
+        var p = document.getElementById('pmLastOpPanel');
+        if (!p) return;
+
+        var rows = window.circuitPmRows;
+        if (!rows || rows.length === 0) { p.style.display = 'none'; return; }
+
+        // Only show the most recent operation (index 0)
+        var rows = [rows[0]];
+
+        // Build sig from all rows
+        var sig = rows.map(function(r) {
+            return [r.direction, r.date, r.aCurrent, r.aVoltage, r.aTime, r.bCurrent, r.bVoltage, r.bTime].join('|');
+        }).join('||');
+        if (sig === _pmPanelLastSig) return;
+        _pmPanelLastSig = sig;
+
+        // ── Build table rows HTML ────────────────────────────────────────────
+        var rowsHtml = '';
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i];
+            var isRev = (r.direction === 'Reverse');
+            var isLast = (i === 0);  // index 0 = most recent operation
+            var dirStyle = isRev
+                ? 'background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;'
+                : 'background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;';
+            var rowBg = isLast ? '#f8faff' : '#fff';
+            var acVal  = r.aCurrent || '—';
+            var avVal  = r.aVoltage || '—';
+            var atVal  = r.aTime    || '—';
+            var bcVal  = r.bCurrent || '—';
+            var bvVal  = r.bVoltage || '—';
+            var btVal  = r.bTime    || '—';
+
+            rowsHtml +=
+                '<tr style="background:' + rowBg + ';border-bottom:1px solid #e2e8f0;">' +
+                  // Date
+                  '<td style="padding:7px 10px;font-size:11px;color:#475569;white-space:nowrap;">' + (r.date || '—') + '</td>' +
+                  // Direction badge
+                  '<td style="padding:7px 10px;text-align:center;">' +
+                    '<span style="' + dirStyle + 'font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;display:inline-block;">' + (r.direction || '—') + '</span>' +
+                  '</td>' +
+                  // A Current
+                  '<td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b;">' + acVal + '<small style="font-weight:400;color:#94a3b8;font-size:10px;"> A</small></td>' +
+                  // A Voltage
+                  '<td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b;">' + avVal + '<small style="font-weight:400;color:#94a3b8;font-size:10px;"> V</small></td>' +
+                  // A Time
+                  '<td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b;">' + atVal + '<small style="font-weight:400;color:#94a3b8;font-size:10px;"> ms</small></td>' +
+                  // B Current
+                  '<td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b;">' + bcVal + '<small style="font-weight:400;color:#94a3b8;font-size:10px;"> A</small></td>' +
+                  // B Voltage
+                  '<td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b;">' + bvVal + '<small style="font-weight:400;color:#94a3b8;font-size:10px;"> V</small></td>' +
+                  // B Time
+                  '<td style="padding:7px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e293b;">' + btVal + '<small style="font-weight:400;color:#94a3b8;font-size:10px;"> ms</small></td>' +
+                '</tr>';
+        }
+
+        p.innerHTML =
+            // ── Header bar ──────────────────────────────────────────────────
+            '<div style="background:#0a3d62;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;border-radius:8px 8px 0 0;">' +
+              '<span style="color:#fff;font-size:12px;font-weight:700;letter-spacing:.5px;">&#x26A1;&nbsp;Operations History</span>' +
+              '<span style="color:#93c5fd;font-size:10px;">Live</span>' +
+            '</div>' +
+            // ── Table ────────────────────────────────────────────────────────
+            '<div style="overflow-x:auto;">' +
+              '<table style="width:100%;border-collapse:collapse;font-family:\'Segoe UI\',sans-serif;">' +
+                // Column headers
+                '<thead>' +
+                  '<tr style="background:#1e3a5f;">' +
+                    '<th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Date</th>' +
+                    '<th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:.5px;">Direction</th>' +
+                    '<th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;color:#7dd3fc;text-transform:uppercase;letter-spacing:.5px;" colspan="3">A End</th>' +
+                    '<th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;color:#6ee7b7;text-transform:uppercase;letter-spacing:.5px;" colspan="3">B End</th>' +
+                  '</tr>' +
+                  '<tr style="background:#162d4a;border-bottom:2px solid #0a3d62;">' +
+                    '<th style="padding:5px 10px;"></th>' +
+                    '<th style="padding:5px 10px;"></th>' +
+                    '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#7dd3fc;font-weight:600;">I Max</th>' +
+                    '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#7dd3fc;font-weight:600;">V Avg</th>' +
+                    '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#7dd3fc;font-weight:600;">Op Time</th>' +
+                    '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#6ee7b7;font-weight:600;">I Max</th>' +
+                    '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#6ee7b7;font-weight:600;">V Avg</th>' +
+                    '<th style="padding:5px 10px;text-align:right;font-size:10px;color:#6ee7b7;font-weight:600;">Op Time</th>' +
+                  '</tr>' +
+                '</thead>' +
+                '<tbody>' + rowsHtml + '</tbody>' +
+              '</table>' +
+            '</div>';
+
+        p.style.display = 'block';
+    };
+
+    // Legacy stub — kept so any remaining call sites don't throw errors
+    function fnBindPointTable() {}
+
+    function decimalToBinary(num) {
+        let binary = "";
+        while (num > 0) {
+            let digit = num % 2;
+            binary = "" + digit + binary;
+            num = parseInt(num / 2);
+        }
+        return binary.padStart(8, '0');
+    }</script>

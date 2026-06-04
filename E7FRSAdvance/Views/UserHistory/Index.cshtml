@@ -1,0 +1,360 @@
+﻿@model Domain.SiteLister
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">User History</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="">
+    @*<div class="">
+
+            @using (Ajax.BeginForm("_List", "UserHistory", new AjaxOptions()
+            {
+                HttpMethod = "POST",
+                UpdateTargetId = "divUserList",
+                InsertionMode = InsertionMode.Replace,
+                LoadingElementId = "loader",
+            }, new { id = "frmGetUserList" }))
+            {
+                <div id="divUserList">
+                    @Html.Action("_List", "UserHistory", Model)
+                </div>
+            }
+
+        </div>*@
+
+    <div class="">
+
+        @using (Ajax.BeginForm("SiteList", "UserHistory", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divSiteList",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+        }, new { id = "frmSiteList" }))
+        {
+            <div id="divSiteList">
+                @Html.Action("SiteList", "UserHistory", Model)
+            </div>
+        }
+
+    </div>
+    <div class="">
+
+        @using (Ajax.BeginForm("SaveUserTraining", "UserHistory", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divAddUserTraining",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+        }, new { id = "frmAddUserTraining" }))
+        {
+            <div id="divAddUserTraining">
+                @Html.Partial("_SiteTraining", new Domain.SiteTraining())
+            </div>
+        }
+
+    </div>
+    <div class="">
+
+        @using (Ajax.BeginForm("SaveSiteBenefit", "UserHistory", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divAddSiteBenefit",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+        }, new { id = "frmAddSiteBenefit" }))
+        {
+            <div id="divAddSiteBenefit">
+                @Html.Partial("_SiteBenefit", new Domain.SiteBenefit())
+            </div>
+        }
+
+    </div>
+</div>
+<div class="modal bounceIn animated" id="modelSiteTrainingList" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Site Training Date List</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <table id="tblSiteTrainingDateList" class="table table-bordered"></table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="divUserData"></div>
+<div id="divHistoryDetails"></div>
+<div id="divFRSAlertList"></div>
+<script>
+
+
+    function fnAddTraining() {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserHistory/_SiteTraining',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddUserTraining").empty().append(data);
+                $("#modal-add-User-Training").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnAddSiteBenefit() {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserHistory/_SiteBenefit',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddSiteBenefit").empty().append(data);
+                $("#modal-User-SiteBenefit").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/UserHistory/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_DivisionId").empty();
+                    $("#SearchCriteria_DivisionId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnUserHistoryDivisionId').val() != '0' && $('#hdnUserHistoryDivisionId').val() == value.Id) {
+                            $("#SearchCriteria_DivisionId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SearchCriteria_DivisionId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/UserHistory/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_SiteId").empty();
+                    $("#SearchCriteria_SiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnUserHistorySiteId').val() != '0' && $('#hdnUserHistorySiteId').val() == value.Id) {
+                            $("#SearchCriteria_SiteId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#SearchCriteria_SiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteTrainingList(siteId) {
+        if (siteId != null && siteId != undefined && siteId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/UserHistory/GetSiteTrainingList',
+                type: 'POST',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    var tbl = '';
+                    tbl += '<tr><th>Training Date</th></tr>';
+                    if (data != null && data != undefined) {
+                        $.each(data, function (key, value) {
+                            const timestamp = parseInt(value.TimeStamp.match(/\d+/)[0], 10);
+                            const jsDate = new Date(timestamp);
+
+                            const year = jsDate.getFullYear();
+                            const month = String(jsDate.getMonth() + 1).padStart(2, '0'); // Months are 0-based
+                            const day = String(jsDate.getDate()).padStart(2, '0');
+                            const dateOnly = `${day}-${month}-${year}`;
+                            tbl += '<tr>';
+                            tbl += '<td>' + dateOnly + '</td>';
+                            tbl += '</tr>';
+
+                        });
+                    }
+                    $('#tblSiteTrainingDateList').empty().append(tbl);
+                    $("#modelSiteTrainingList").modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetUserById(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserHistory/GetUserById',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divUserData").empty().append(data);
+                $("#modal-user-data").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function GetHistoryDetails(userId) {
+        $("#loader").show();
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.StartTime = $('#txtFromDate').val();
+        mSearchCriteria.EndTime = $('#txtToDate').val();
+        mSearchCriteria.UserId = userId;
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $.ajax({
+            url: '/UserHistory/_HistoryDetails',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            success: function (data) {
+                $("#loader").hide();
+                $("#divHistoryDetails").empty().append(data);
+                $("#modal-User-History-Details").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowFRSAlertList() {
+        $("#loader").show();
+        var mFRSAlertLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpSiteBenefitSite').val();
+        mSearchCriteria.FromDate = $('#txtSiteBenefitTimeStamp').val();
+        mSearchCriteria.ToDate = $('#txtSiteBenefitTimeStamp').val();
+        mFRSAlertLister.SearchCriteria = mSearchCriteria;
+
+        $.ajax({
+            url: '/UserHistory/GetFRSAlertList',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            data: JSON.stringify(mFRSAlertLister),
+            success: function (data) {
+                $("#loader").hide();
+                $("#divFRSAlertList").empty().append(data);
+                $("#modal-view-FRSAlertList").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnUpdateFRSAlertForBenefit() {
+        var tralertList = '';
+        var counter = 1;
+        $('.chkBenefitFRSAlertList').each(function () {
+            if ($(this).prop('checked') == true) {
+                debugger;
+                var id = $(this).val();
+                tralertList += '<input type="hidden" class="hdnselectBenefitFRSAlertList" value="' + id + '"/>';
+                counter++;
+            }
+        });
+
+        debugger;
+        $('#divSelectedBenefitAlertList').empty().append(tralertList);
+        $('#modal-view-FRSAlertList').modal('hide');
+    }
+
+    function fnShowBenefitAlert(siteBenefitId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserHistory/GetSiteBenefitFRSAlert',
+            type: 'Post',
+            data: '{siteBenefitId:' + siteBenefitId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divFRSAlertList").empty().append(data);
+                $("#modal-view-FRSAlertList").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>
+
+

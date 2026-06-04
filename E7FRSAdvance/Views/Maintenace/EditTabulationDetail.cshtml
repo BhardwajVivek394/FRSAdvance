@@ -1,0 +1,127 @@
+﻿@model Domain.SearchCriteria
+@{
+    ViewBag.Title = "EditTabulationDetail";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+
+<style>
+    /*Alert and predictive*/
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+
+    body .mail-body-wrapper ul li {
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        border-bottom: 1px solid #bebebe;
+    }
+
+    .pull-right {
+        float: right;
+    }
+
+    body .mail-body-wrapper ul li .inbox-message .email-data .badge {
+        border-radius: 20px;
+    }
+
+    body .mail-body-wrapper ul li .inbox-message {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        gap: 16px;
+    }
+
+        body .mail-body-wrapper ul li .inbox-message .email-data span {
+            font-weight: 500;
+            letter-spacing: 0.3;
+            display: -webkit-box;
+            max-width: 100%;
+            margin: 0 auto;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: rgba(82, 82, 108, 0.8);
+        }
+</style>
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-body">
+                @Html.Raw(ViewBag.StringInBase64)
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="divProbabilityAlert"></div>
+<div id="divAlertRemark"></div>
+
+<script>
+
+    function ShowTabulationDetails(siteId, alertTypeId) {
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = $("#hdnlapAssetId").val();
+        mSearchCriteria.StartDate = '@Model.StartDate';
+        mSearchCriteria.EndDate = '@Model.EndDate';
+        mSearchCriteria.AlertTypeId = alertTypeId;
+
+        if (siteId != null && siteId != undefined && siteId > 0 && alertTypeId != null && alertTypeId != undefined && alertTypeId > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/_EditTabulationAlertList',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(mSearchCriteria),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divProbabilityAlert").empty().append(data);
+                    $("#modalProbabilityAlert").modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+
+    }
+
+    function ViewTabulationAlertRemark(siteId, type, assetType) {
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.StartDate = '@Model.StartDate';
+        mSearchCriteria.EndDate = '@Model.EndDate';
+        mSearchCriteria.Type = type;
+        mSearchCriteria.AssetType = assetType;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/Maintenace/ViewTabulationAlertRemark',
+            type: 'Post',
+            dataType: 'html',
+            data: '{searchCriteria:' + JSON.stringify(mSearchCriteria) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertRemark").empty().append(data);
+                $("#modalAlertRemark").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+
+
+    }
+</script>
+
+
+

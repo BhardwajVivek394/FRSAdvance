@@ -1,0 +1,401 @@
+﻿@model Domain.SMSLogLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+@Html.HiddenFor(m => m.SearchCriteria.AssetTypeId, new { id = "hdnAssetTypeId" })
+@*@Html.HiddenFor(m => m.SearchCriteria.IsSmsLogActive, new { id = "hdnIsSmsLogActive" })*@
+
+<input id="hdnIsSmsLogActive" name="SearchCriteria.IsActive" type="hidden" value="@Model.SearchCriteria.IsActive">
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<style>
+    td, th {
+        vertical-align: middle;
+    }
+</style>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12 mt-4 default-according style-1 faq-accordion job-accordion">
+            <div class="card mb-1">
+                <div class="card-header">
+                    <h6>Search</h6>
+                </div>
+                <div class="card-body filter-cards-view animate-chk" style="padding:0px 15px;">
+                    <div class="row">
+                        <div class="col-sm-3">
+                            <div class="form-group mb-2">
+                                <label class="control-label center-block">Divisions:</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, ViewBag.Divisions as SelectList, new { @class = "form-control", tabindex = 1 })
+
+                            </div>
+                            <div class="form-group mb-2">
+                                <label class="control-label center-block">Asset Name:</label>
+                                @Html.TextBoxFor(m => m.SearchCriteria.AssetName, new { @class = "form-control" })
+                            </div>
+                        </div>
+                        <div class="col-sm-3">
+                            <div class="form-group mb-2">
+                                <label class="control-label center-block">Site Name:</label>
+                                @Html.HiddenFor(m => m.SearchCriteria.SiteId, new { id = "hdnSiteId" })
+                                <select class="form-control" id="selSearchSiteName">
+                                </select>
+                            </div>
+                            <div class="form-group mb-2">
+                                <label class="control-label center-block">From Date:</label>
+                                @Html.TextBoxFor(m => m.SearchCriteria.FromDate, new { id = "txtFromDate", @class = "form-control" })
+                            </div>
+                        </div>
+                        <div class="col-sm-3">
+                            <div class="form-group mb-2">
+                                <label class="control-label center-block">Active :</label>
+                                <br />
+
+                                <label class="radio-inline">
+                                    @if (Model.SearchCriteria.IsSmsLogActive == true)
+                                    {
+                                        <input type="radio" name="filter" checked id="rdActive" value="1" />
+                                    }
+                                    else
+                                    {
+                                        <input type="radio" name="filter" id="rdActive" value="1" />
+                                    }
+                                    Active
+                                </label>
+                                <label class="radio-inline">
+                                    @if (Model.SearchCriteria.IsSmsLogActive == false)
+                                    {
+                                        <input type="radio" name="filter" checked id="rdInActive" value="0" />
+                                    }
+                                    else
+                                    {
+                                        <input type="radio" name="filter" id="rdInActive" value="0" />
+                                    }
+                                    In Active
+                                </label>
+                            </div>
+                            <div class="form-group mb-3">
+                                <label class="control-label center-block">To Date:</label>
+                                @Html.TextBoxFor(m => m.SearchCriteria.ToDate, new { id = "txtToDate", @class = "form-control" })
+                            </div>
+                        </div>
+
+                        <div class="col-sm-3">
+                            <label class="control-label center-block">Gear :</label>
+                            <br />
+                            <select class="form-control" id="selGear">
+                                <option value="0">All</option>
+                                @foreach (var item in Model.AssetTypes)
+                                {
+                                    <option @(Model.SearchCriteria.AssetTypeId == item.Id ? "selected" : "") value="@item.Id">@item.Name</option>
+
+                                }
+                            </select>
+
+                        </div>
+                        <div class="col-sm-1">
+                            <a class="btn btn-success btn-quirk" onclick="fnSearchSMSLog()" data-bs-original-title="" title="">Search</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                            <a class="btn btn-primary mt-4" href="#" onclick="fnDeleteSelected()" data-bs-original-title="" title="">Delete Selected</a>
+                        </div>
+                        <div class="pull-left">
+                            <a class="btn btn-primary mt-4 m-l-10" href="@Url.Action("DownloadSMSLog")" data-bs-original-title="" title="">Download</a>
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.mSMSLogs.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> SMSLogs</span>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    <div class="table-responsive" style="max-height: 620px;">
+                        <table class="table" id="tblSMSLog">
+                            <thead class="bg-primary">
+                                <tr>
+                                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                    {
+                                        <th>
+                                            <input type="checkbox" id="chkAllSMSLogDelete" onchange="fnchkAllSMSLogDelete(this)" />
+
+                                        </th>
+                                        <th>
+                                            Action <br />
+
+                                            @*<button onclick="fnDeleteSelected()">Delete Selected</button>*@
+                                        </th>
+                                    }
+                                    <th>Site Name</th>
+                                    <th data-sortcolumn="Message" class="sorting" id="thMessage" onclick="SortList('Message');">Message</th>
+                                    <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Time Stamp</th>
+                                    <th data-sortcolumn="IsActive" class="sorting" style="width:100px;"> Active</th>
+                                    <th class="text-center">
+                                        Debug
+                                    </th>
+                                    <th>
+                                        Remark
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ string type = string.Empty; }
+                                @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                {
+
+                                    foreach (var item in Model.mSMSLogs.GroupBy(x => x.AssetTypeName).ToList())
+                                    {
+                                        if (type != item.Key)
+                                        {
+                                            <tr>
+                                                <td colspan="8" class="text-center bg-primary">
+                                                    @item.Key
+                                                </td>
+                                            </tr>
+                                            type = item.Key;
+                                        }
+
+                                        foreach (var val in item.ToList())
+                                        {
+                                            <tr class="table-light">
+                                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                                {
+                                                    <td>
+                                                        <input type="checkbox" name="chkSMSLogDelete" value="@val.Id" />
+                                                    </td>
+                                                    <td class="text-center width60" style="width:50px;">
+                                                        <a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete"><i class="fa fa-trash text-danger" onclick="DeleteSMSLogById('@val.Id')"></i></a>
+                                                    </td>
+                                                }
+                                                <td>@val.SiteName</td>
+                                                <td>@val.Message</td>
+                                                <td>@val.TimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+                                                <td class="">
+                                                    @if (val.IsSmsLogActive == true)
+                                                    {
+                                                        <span class="span badge rounded-pill pill-badge-success">Active</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="span badge rounded-pill pill-badge-danger">InActive</span>
+                                                    }
+
+                                                </td>
+                                                <td class="text-center">
+                                                    <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= val.SiteId,assetId = val.AssetId, timeStamp = val.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug <i class="fa fa-download"></i></a>
+
+                                                    @if (val.AssetTypeName == "TRACK" && val.Message.Contains("trk " + val.AssetName + " Failed"))
+                                                    {
+                                                        <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= val.SiteId,assetId = val.AssetId, timeStamp = val.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-success" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+                                                    }
+
+                                                </td>
+
+                                                <td class="text-center">
+                                                    <a href="#"><i class="fa fa-plus" onclick="GetRemarks(this,'@val.Id')"></i></a>
+                                                </td>
+                                            </tr>
+                                            <tr id="trSMSLogRemark@(val.Id)" style="display:none;">
+                                                <td colspan="7">
+                                                    <textarea class="form-control" id="txtRemark@(val.Id)">@val.Remark</textarea>
+                                                    <button onclick="fnUpdateRemarks('@val.Id')" class="btn btn-success text-right mt-2">Update</button>
+                                                </td>
+                                            </tr>
+                                        }
+
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="8" class="text-center">
+                                            No record found
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-2 xl-40">
+
+        </div>
+    </div>
+</div>
+
+
+
+<script src="~/Content/PageJS/SMSLog/SMSLogList.js"></script>
+<script>
+    $(document).ready(function () {
+        $('#txtFromDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtFromDate').val() == "@DateTime.MinValue") {
+            $('#txtFromDate').val('');
+        }
+            
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'mm/dd/yy',
+            autoClose: true
+        });
+
+        if ($('#txtToDate').val() == "@DateTime.MinValue") {
+            $('#txtToDate').val('');
+        }
+
+
+        $("input:checkbox[name=chkSMSLogDelete]").change(function () {
+            if ($('input:checkbox[name=chkSMSLogDelete]').not(':checked').length > 0) {
+                $('#chkAllSMSLogDelete').prop('checked', false);
+            } else {
+
+                $('#chkAllSMSLogDelete').prop('checked', true);
+            }
+
+        });
+    });
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetSMSLogList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize) {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetSMSLogList").submit();
+            }
+        }
+    }
+        
+
+    function GetRemarks($this, id) {
+        if ($($this).hasClass("fa-plus")) {
+            $($this).removeClass("fa-plus").addClass("fa-minus");
+            $("#trSMSLogRemark" + id).show();
+        } else {
+            $($this).removeClass("fa-minus").addClass("fa-plus");
+            $("#trSMSLogRemark" + id).hide();
+        }
+    }
+
+    function fnUpdateRemarks(id) {
+        var mSMSLog = {};
+        mSMSLog.Id = id;
+        mSMSLog.Remark = $("#txtRemark" + id).val();
+
+        $.ajax({
+            url: '/SMSLog/UpdateRemarks',
+            type: 'Post',
+            data: JSON.stringify(mSMSLog),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null & data != undefined && data == true) {
+                    CommonNotification("SUCCESS", "Remark has been Updated.", "success");
+                }
+                else {
+                    CommonNotification("ERROR", "Internal server error!", "Error");
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnchkAllSMSLogDelete($this) {
+        if ($($this).prop('checked') == true) {
+            $('input:checkbox[name=chkSMSLogDelete]').prop('checked', true);
+        } else {
+            $('input:checkbox[name=chkSMSLogDelete]').prop('checked', false);
+        }
+    }
+
+    function fnDeleteSelected() {
+        var j = 0;
+        var selectedValue = [];
+        $("input:checkbox[name=chkSMSLogDelete]:checked").each(function () {
+            selectedValue.push($(this).val());
+        });
+        if (selectedValue != null && selectedValue != undefined && selectedValue.length > 0) {
+            if (confirm('Are you sure you want to delete selected record')) {
+                $.ajax({
+                    url: '/SMSLog/DeleteSMSLogByIds',
+                    type: 'Post',
+                    data: JSON.stringify(selectedValue),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        CommonNotification("SUCCESS", "Alert Log has been deleted.", "success");
+                        $("#frmGetSMSLogList").submit();
+
+                        //j++;
+                        //if (j == $("input:checkbox[name=chkSMSLogDelete]:checked").length) {
+                        //    $("#frmGetSMSLogList").submit();
+                        //    CommonNotification("SUCCESS", "Alert Log has been deleted.", "success");
+                        //}
+
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "error");
+                    }
+                });
+            }
+
+        } else {
+            CommonNotification("ERROR", "Please select any option for delete alert log", "error");
+        }
+    }
+</script>

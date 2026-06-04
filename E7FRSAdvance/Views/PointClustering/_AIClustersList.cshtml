@@ -1,0 +1,195 @@
+﻿@model Domain.AIClustersLister
+
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 people-list">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="btn-group pull-right people-pager">
+                        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                        @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                    @{
+                        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                        if (Model.AIClusters.Count == 0)
+                        {
+                            start = 0;
+                        }
+                        decimal end = Math.Floor(Model.Pager.TotalRecord);
+                        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                        {
+                            if (Model.Pager.PageSize == -1)
+                            {
+                                end = Model.Pager.TotalRecord;
+                            }
+                            else
+                            {
+                                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                if (end > Model.Pager.TotalRecord)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                            }
+                        }
+                    }
+                    <span class="people-count pull-right">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Cluster</span>
+                </div>
+            </div>
+
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th style="width:70px;" class="text-center">Action</th>
+                                <th>Asset Type</th>
+                                <th>Cluster</th>
+                                <th>Remark</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.AIClusters != null && Model.AIClusters.Count > 0)
+                            {
+                                foreach (var item in Model.AIClusters)
+                                {
+                                    <tr class="table-light">
+                                        @*<td class="text-center" style="width:50px;">
+                                                <a title="Edit">
+                                                    <i class="text-vision fa fa-edit" onclick="GetById('@item.Id')"></i>
+                                                </a>
+                                            </td>*@
+                                        <td class="text-center" style="width:50px;">
+                                            <a title="Delete">
+                                                <i class="text-danger fa fa-trash" onclick="Delete('@item.Id')"></i>
+                                            </a>
+                                        </td>
+                                        <td>
+                                            @item.AssetType
+                                        </td>
+                                        <td>
+                                            <a href="javascript:void(0)" onclick="ShowImage('@item.Id')">@item.Cluster</a>
+                                        </td>
+                                        <td>
+                                            @item.Remark
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="9" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        $(".txtSearchName").keyup(function (e) {
+            e.preventDefault();
+            if (e.keyCode === 13) {
+                $("#hdnSkip").val('0');
+                $("#frmAIClusteringList").submit();
+            }
+        });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmAIClusteringList").submit();
+        });
+
+    });
+
+    function Delete(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/PointClustering/Delete',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data.type == "success") {
+                        CommonNotification("success", "Cluster has been deleted.");
+                        $("#frmAIClusteringList").submit();
+                    } else if (data.type == "error") {
+                        CommonNotification("ERROR", "Error occured while deleting cluster!");
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.");
+                }
+            });
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAIClusteringList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmAIClusteringList").submit();
+            }
+        }
+    }
+
+    function ShowImage(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/PointClustering/GetAIClustersById',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                debugger;
+                if (data != null && data.ImageBase64 != null && data.ImageBase64 != undefined && data.ImageBase64 != '') {
+                    document.getElementById('btn').onclick = function () {
+                        var val = document.getElementById('imagename').value,
+                            src = data.ImageBase64,
+                            img = document.createElement('img');
+
+                        img.src = src;
+                        document.body.appendChild(img);
+                    }
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+</script>
+
+

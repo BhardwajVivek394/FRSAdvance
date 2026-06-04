@@ -1,0 +1,149 @@
+﻿@model List<Domain.Asset>
+
+
+@{
+
+    List<string> clusters = new List<string>();
+}
+
+@if (Model != null && Model.Count() > 0)
+{
+    <div class="table-responsive">
+        @if (Model != null && Model.Count > 0)
+        {
+            foreach (var asset in Model)
+            {
+                if (asset.mPointMachineData != null && asset.mPointMachineData.Count > 0)
+                {
+                    foreach (var pointData in asset.mPointMachineData)
+                    {
+                        if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterA))
+                        {
+                            var clusterASplit = pointData.PointMachineJson.ClusterA.Split('-');
+                            if (clusterASplit != null && clusterASplit.Count() > 0)
+                            {
+                                if (clusters.Where(x => x == clusterASplit.FirstOrDefault().Trim()).Count() <= 0)
+                                {
+                                    clusters.Add(clusterASplit.FirstOrDefault().Trim());
+                                }
+                            }
+                        }
+
+                        if (asset.IsHalfPointMachine == null || (asset.IsHalfPointMachine != null && !asset.IsHalfPointMachine.Value))
+                        {
+                            if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterB))
+                            {
+                                var clusterBSplit = pointData.PointMachineJson.ClusterB.Split('-');
+                                if (clusterBSplit != null && clusterBSplit.Count() > 0)
+                                {
+                                    if (clusters.Where(x => x == clusterBSplit.FirstOrDefault().Trim()).Count() <= 0)
+                                    {
+                                        clusters.Add(clusterBSplit.FirstOrDefault().Trim());
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            <table class="table">
+                @if (clusters != null && clusters.Count > 0)
+                {
+                    var grouped = clusters.GroupBy(label => label.Substring(0, 2)).OrderBy(g => g.Key);
+                    foreach (var group in grouped)
+                    {
+                        foreach (var cluster in group)
+                        {
+                            Dictionary<int, int> assets = new Dictionary<int, int>();
+                            var pointData = Model.SelectMany(x => x.mPointMachineData).Where(x => x.ClusterA == cluster || x.ClusterB == cluster).ToList();
+
+                            <tr>
+                                <td>@cluster</td>
+                                <td>
+
+                                    @if (pointData != null && pointData.Count > 0)
+                                    {
+                                        int counter = 0;
+                                        int colorCounter = 0;
+
+                                        var siteIds = pointData.Select(x => x.SiteId).ToList().Distinct();
+                                        if (siteIds != null && siteIds.Count() > 0)
+                                        {
+                                            foreach (var siteId in siteIds)
+                                            {
+                                                var colorClass = string.Empty;
+                                                counter++;
+                                                colorCounter++;
+                                                if (colorCounter == 1)
+                                                {
+                                                    colorClass = "btn-success";
+                                                }
+                                                else if (colorCounter == 2)
+                                                {
+                                                    colorClass = "btn-warning";
+                                                }
+                                                else if (colorCounter == 3)
+                                                {
+                                                    colorClass = "btn-info";
+                                                }
+                                                else
+                                                {
+                                                    colorClass = "btn-primary";
+                                                    colorCounter = 0;
+                                                }
+
+                                                var siteName = Model.Where(x => x.SiteId == siteId).Select(x => x.SiteName).FirstOrDefault();
+
+                                                <div class="btn-group mt-1">
+                                                    <button type="button" class="btn dropdown-toggle" style="background-color: #0e5068 !important; color: white " data-bs-toggle="dropdown">@siteName</button>
+                                                    <ul class="dropdown-menu">
+                                                        @{
+                                                            var pointdDataAssets = pointData.Where(x => x.SiteId == siteId).GroupBy(x => new { x.AssetId, x.AssetName }).Select(x => x.Key).ToList();
+                                                        }
+                                                        @if (pointdDataAssets != null && pointdDataAssets.Count > 0)
+                                                        {
+                                                            foreach (var pointdDataAsset in pointdDataAssets)
+                                                            {
+                                                                <li><a class="dropdown-item" href="javascript:void(0)" onclick="fnShowPointMachineEventData('@siteId','@pointdDataAsset.AssetId','@cluster')">@pointdDataAsset.AssetName</a></li>
+
+                                                            }
+                                                        }
+
+                                                    </ul>
+                                                </div>
+                                                if (counter > 15)
+                                                {
+                                                    counter = 0;
+                                                    <br />
+                                                }
+                                            }
+                                        }
+                                    }
+
+
+                                </td>
+                            </tr>
+                        }
+
+                    }
+
+
+
+                }
+            </table>
+        }
+
+
+    </div>
+
+}
+
+<script>
+    $(document).ready(function () {
+        $("[data-bs-toggle='popover']").popover();
+    });
+
+</script>

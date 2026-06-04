@@ -1,0 +1,163 @@
+﻿@model List<Domain.CardLine>
+
+
+<div class="modal bounceIn animated" id="modelChangeADC" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Change ADC</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body">
+                @if (Model != null && Model.Count > 0)
+                {
+                    var assetGroup = Model.GroupBy(x => x.AssetId).ToList();
+
+                    <div class="card-body">
+                        <div class="table-responsive" style="max-height: 620px;">
+                            <table class="table">
+                                <thead class="bg-primary">
+                                    <tr>
+                                        <th></th>
+                                        <th>Asset Name</th>
+                                    </tr>
+                                </thead>
+                                @foreach (var asset in assetGroup)
+                                {
+                                    var attributeNameGroup = Model.Where(x => x.AttributeName != null).GroupBy(x => x.AttributeName).ToList();
+                                    <tbody>
+                                        <tr>
+                                            <td><i class="fa fa-plus" onclick="fnGetByAssetName('@asset.FirstOrDefault().AssetId',this)"></i></td>
+                                            <td class="font-weight-bold">
+                                                <a href="#" onclick="fnGetAssetAttribute('@asset.FirstOrDefault().AssetId','@asset.FirstOrDefault().AssetTypeId')"> @asset.FirstOrDefault().AssetName</a>
+                                            </td>
+                                        </tr>
+                                        <tr style="display:none" class="trAsset_@asset.FirstOrDefault().AssetId">
+                                            <td colspan="2">
+                                                <table class="table">
+                                                    <thead class="bg-primary">
+                                                        <tr>
+                                                            <th>Attribute</th>
+                                                            <th>ADC</th>
+                                                            <th>ADC Type</th>
+                                                            <th></th>
+                                                        </tr>
+
+
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var attributeName in attributeNameGroup)
+                                                        {
+                                                            <tr>
+                                                                <td><b>@attributeName.Key</b></td>
+                                                                @foreach (var item in Model.Where(x => x.AssetId == asset.Key && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()))
+                                                                {
+                                                                    <td>
+                                                                        ADC @item.SequenceNumber<br />
+                                                                        (@item.ADCNumber) <br />
+                                                                        @if (item.ADCTypeId == 1)
+                                                                        {
+                                                                            <span>Special 1056</span>
+                                                                        }
+
+                                                                        @if (item.ADCTypeId == 2)
+                                                                        {
+                                                                            <span>Normal</span>
+                                                                        }
+
+                                                                        @if (item.ADCTypeId == 3)
+                                                                        {
+                                                                            <span>Special 1507</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>
+
+                                                                        <br />
+                                                                        <select class="form-control" id="drpChangeADCType@(item.Id)">
+                                                                            <option>Select Type</option>
+                                                                            @if (item.mADCs != null && item.mADCs.Count > 0)
+                                                                            {
+                                                                                foreach (var mADC in item.mADCs)
+                                                                                {
+                                                                                    var type = string.Empty;
+                                                                                    if (mADC.ADCTypeId == 1)
+                                                                                    {
+                                                                                        type = "Special 1056";
+                                                                                    }
+                                                                                    else if (mADC.ADCTypeId == 2)
+                                                                                    {
+                                                                                        type = "Normal";
+                                                                                    }
+                                                                                    else if (mADC.ADCTypeId == 3)
+                                                                                    {
+                                                                                        type = "Special 1507";
+                                                                                    }
+                                                                                    if (item.ADCId != null && item.ADCId == mADC.Id)
+                                                                                    {
+                                                                                        <option value="@mADC.Id" selected>ADC@(mADC.SequenceNumber) (@mADC.ADCNumber) - @type</option>
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        <option value="@mADC.Id">ADC@(mADC.SequenceNumber) @mADC.ADCNumber - @type</option>
+                                                                                    }
+                                                                                }
+                                                                            }
+
+                                                                        </select>
+                                                                    </td>
+                                                                    <td>
+                                                                        <button type="button" class="btn btn-success" onclick="fnUpdateADCType('@item.Id')">Update</button>
+                                                                    </td>
+                                                                }
+                                                                @if (Model.Where(x => x.AssetId == asset.Key && x.AttributeName != null && x.AttributeName.Trim().ToUpper() == attributeName.Key.Trim().ToUpper()).Count() <= 0)
+                                                                {
+                                                                    <td></td>
+                                                                    <td></td>
+                                                                    <td></td>
+                                                                }
+                                                            </tr>
+
+
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </td>
+                                        </tr>
+
+                                    </tbody>
+
+
+
+                                }
+                            </table>
+
+                        </div>
+                    </div>
+                }
+
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" aria-label="Close">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+
+    function fnGetByAssetName(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trAsset_' + assetId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trAsset_' + assetId).hide();
+            }
+        }
+    }
+</script>
+

@@ -1,0 +1,194 @@
+﻿@model List<Domain.UtilityLog>
+
+@{
+    var mUtilityLogTests = ViewBag.UtilityLogTest as List<Domain.UtilityLogTest>;
+}
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="">
+
+                    <table class="table">
+                        @if (ViewBag.Zones != null && ViewBag.Divisions != null)
+                        {
+                            foreach (var zone in ViewBag.Zones as List<Domain.Zone>)
+                            {
+                                var devision = ViewBag.Divisions as List<Domain.Division>;
+                                <thead>
+                                    <tr class="MainTh">
+                                        <th>
+                                            <span>
+                                                @zone.Name
+                                            </span>
+                                            <span class="pull-right">
+                                                <a href="#"><i class="fa fa-angle-down fa-3x" onclick="fnShowUtilityLogDivision('@zone.Id', this); return false;"></i></a>
+                                            </span>
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            @foreach (var division in devision.Where(x => x.ZoneId == zone.Id))
+                                            {
+                                                if (Model.Where(x => x.ZoneId == zone.Id && x.DivisionId == division.Id).Count() > 0)
+                                                {
+                                                    <table class="table utilityLogDivisionByZone_@zone.Id">
+                                                        <thead>
+                                                            <tr class="SubTh">
+                                                                <th>
+                                                                    <span>
+                                                                        @division.Name
+                                                                    </span>
+                                                                    <span class="pull-right">
+                                                                        <a href="#"><i style="color: #a189f2;" class="fa fa-angle-down fa-3x" onclick="fnShowUtilityLogSite('@division.Id', this); return false;"></i></a>
+                                                                    </span>
+                                                                </th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr>
+                                                                <td>
+                                                                    <table class="table utilityLogSiteByDivision_@division.Id">
+                                                                        <thead class="bg-primary">
+                                                                            <tr>
+                                                                                <th>Site Name</th>
+                                                                                @{
+                                                                                    var alertNames = Model.Select(x => x.UtilityName).OrderBy(x => x).Distinct().ToList();
+                                                                                }
+                                                                                @if (alertNames != null && alertNames.Count > 0)
+                                                                                {
+                                                                                    foreach (var item in alertNames)
+                                                                                    {
+                                                                                        <th>@item</th>
+                                                                                    }
+                                                                                }
+
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            @if (Model != null && Model.Count > 0)
+                                                                            {
+                                                                                int counter = 0;
+                                                                                string color = string.Empty;
+                                                                                foreach (var item in Model.Where(x => x.ZoneId == zone.Id && x.DivisionId == division.Id).GroupBy(x => x.SiteName).ToList())
+                                                                                {
+                                                                                    counter++;
+                                                                                    if (counter % 2 == 0)
+                                                                                    {
+                                                                                        color = "#F1EFFF";
+                                                                                    }
+                                                                                    else
+                                                                                    {
+                                                                                        color = "#F8F7FF";
+                                                                                    }
+
+
+                                                                                    <tr class="table-light">
+                                                                                        <td>
+                                                                                            <span>@item.Key</span>
+                                                                                           
+
+                                                                                        </td>
+
+                                                                                        @if (alertNames != null && alertNames.Count > 0)
+                                                                                        {
+                                                                                            foreach (var alertName in alertNames)
+                                                                                            {
+                                                                                                var record = item.Where(x => x.UtilityName == alertName).FirstOrDefault();
+
+                                                                                                if (record != null)
+                                                                                                {
+                                                                                                    record = item.Where(x => x.UtilityName == alertName && !x.IsLocalSite).FirstOrDefault();
+                                                                                                    <td>
+                                                                                                        @if (record != null && !record.IsLocalSite)
+                                                                                                        {
+                                                                                                            @record.TimeStamp.ToString("dd/MM/yyyy HH:mm:ss")
+                                                                                                            <br />
+
+                                                                                                            if (DateTime.Now.Subtract(record.TimeStamp).TotalMinutes > 5)
+                                                                                                            {
+                                                                                                                <span class="span badge rounded-pill pill-badge-danger">InActive</span>
+                                                                                                            }
+                                                                                                            else
+                                                                                                            {
+                                                                                                                var mUtilityLogTest = mUtilityLogTests.Where(x => x.SiteId == item.FirstOrDefault().SiteId && x.UtilityName == alertName).FirstOrDefault();
+                                                                                                                if (mUtilityLogTest != null && mUtilityLogTest.IsChecked)
+                                                                                                                {
+                                                                                                                    <span class="span badge rounded-pill pill-badge-warning">Active</span>
+                                                                                                                }
+                                                                                                                else
+                                                                                                                {
+                                                                                                                    <span class="span badge rounded-pill pill-badge-success">Active</span>
+
+                                                                                                                }
+                                                                                                            }
+                                                                                                        }
+                                                                                                        else
+                                                                                                        {
+                                                                                                            <span> N/A</span>
+                                                                                                        }
+
+
+
+                                                                                                    </td>
+                                                                                                }
+                                                                                                else
+                                                                                                {
+                                                                                                    <td>
+                                                                                                        N/A
+                                                                                                    </td>
+                                                                                                }
+
+                                                                                            }
+                                                                                        }
+
+
+                                                                                    </tr>
+
+
+
+                                                                                }
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                <tr>
+                                                                                    <td colspan="10" class="text-center">
+                                                                                        No record found
+                                                                                    </td>
+                                                                                </tr>
+                                                                            }
+                                                                        </tbody>
+                                                                    </table>
+
+
+
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                }
+
+                                            }
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            }
+                        }
+
+
+                    </table>
+
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+

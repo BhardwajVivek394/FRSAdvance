@@ -1,0 +1,201 @@
+﻿@model Domain.LoginHistoryLister
+
+@Html.HiddenFor(x => x.SearchCriteria.UserId, new { id = "hdnlUserId" })
+<div class="row">
+    <div class="col-sm-3">
+        <label>Select User</label>
+        @Html.DropDownListFor(m => m.SearchCriteria.UserId, (IEnumerable<SelectListItem>)ViewBag.Users, new { @class = "form-control", style = "width:100%", id = "drpUsers", tabindex = 1, onchange = "fnGetLoginHistory(this)" })
+
+    </div>
+    <div class="col-sm-2">
+        <label>From Date</label>
+        @if (Model.SearchCriteria.FormDate.HasValue)
+        {
+            <div class="input-group">
+                <input type="text" name="SearchCriteria.FormDate" class="form-control digits" value="@Model.SearchCriteria.FormDate.Value.ToString("MM/dd/yyyy")" data-language="en" id="from-date">
+                <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+            </div>
+        }
+        else
+        {
+            <div class="input-group">
+                <input type="text" name="SearchCriteria.FormDate" class="form-control digits" data-language="en" id="from-date">
+                <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+            </div>
+        }
+
+    </div>
+    <div class="col-sm-2">
+        <label>To Date</label>
+        @if (Model.SearchCriteria.ToDate.HasValue)
+        {
+            <div class="input-group">
+                <input type="text" name="SearchCriteria.ToDate" class="form-control digits" value="@Model.SearchCriteria.ToDate.Value.ToString("MM/dd/yyyy")" data-language="en" id="to-date">
+                <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+            </div>
+        }
+        else
+        {
+            <div class="input-group">
+                <input type="text" name="SearchCriteria.ToDate" class="form-control digits" data-language="en" id="to-date">
+                <span class="input-group-text"><i class="fa fa-calendar"></i></span>
+            </div>
+        }
+
+    </div>
+    <div class="col-sm-2">
+        <label>Sites</label>
+        <div class="input-group">
+            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites,"Select", new { @class = "drpSearch form-control", tabindex = 1, id = "drpLoginHistorySiteId" })
+        </div>
+    </div>
+    <div class="col-sm-3" style="margin-top:30px;">
+        <a class="btn btn-success" onclick="SearchLog()">Search</a>
+        <a class="btn btn-default" onclick="ClearLog()">Clear</a>
+    </div>
+</div>
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="btn-group pull-right people-pager">
+                        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip1" })
+                        @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize1" })
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                    @{
+                        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                        if (Model.LoginHistorys.Count == 0)
+                        {
+                            start = 0;
+                        }
+                        decimal end = Math.Floor(Model.Pager.TotalRecord);
+                        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                        {
+                            if (Model.Pager.PageSize == -1)
+                            {
+                                end = Model.Pager.TotalRecord;
+                            }
+                            else
+                            {
+                                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                if (end > Model.Pager.TotalRecord)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                            }
+                        }
+                    }
+                    <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Logs</span>
+                </div>
+            </div>
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th>Email </th>
+                                <th class="sorting">IpAddress</th>
+                                <th>City</th>
+                                <th>Login In</th>
+                                <th>Login Out</th>
+
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.LoginHistorys != null && Model.LoginHistorys.Count > 0)
+                            {
+                                foreach (var item in Model.LoginHistorys)
+                                {
+                                    <tr class="table-light">
+                                        <td>@item.EmailAddress</td>
+                                        <td>@item.IpAddress</td>
+                                        <td>@item.City</td>
+                                        <td>
+                                            @if (item.LogInTime.HasValue)
+                                            {
+                                                @item.LogInTime.Value.ToString("dd/MM/yyyy HH:mm")
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (item.LogOutTime.HasValue)
+                                            {
+                                                @item.LogOutTime.Value.ToString("dd/MM/yyyy HH:mm")
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="10" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    $(document).ready(function () {
+
+
+        $('#from-date').datepicker();
+
+        $('#to-date').datepicker();
+
+        $('#drpPageSize1').change(function (e) {
+            $("#hdnSkip1").val('0');
+            $("#fnGetLoginHistory").submit();
+        });
+
+        $('#drpLoginHistorySiteId').change(function (e) {
+            $("#hdnSkip1").val('0');
+            $("#fnGetLoginHistory").submit();
+        });
+    });
+
+    function SearchLog() {
+        $("#hdnSkip1").val('0');
+        $("#fnGetLoginHistory").submit();
+    }
+
+    function ClearLog() {
+        $("#hdnSkip1").val('0');
+        $("#to-date").val('');
+        $("#from-date").val('');
+        $("#fnGetLoginHistory").submit();
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip1").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip1").val(skip);
+                $("#fnGetLoginHistory").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip1").val(skip);
+                $("#fnGetLoginHistory").submit();
+            }
+        }
+    }
+</script>

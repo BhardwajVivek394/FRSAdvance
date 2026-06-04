@@ -1,0 +1,138 @@
+﻿@model Domain.AssetLister
+@using System.Linq;
+
+@if (Model.mAssets != null && Model.mAssets.Count > 0)
+{
+    <div class="table-responsive">
+        <table class="table">
+            @foreach (var asset in Model.mAssets)
+            {
+
+                List<string> cluster = new List<string>();
+                if (asset.mPointMachineData != null && asset.mPointMachineData.Count > 0)
+                {
+                    foreach (var pointData in asset.mPointMachineData)
+                    {
+                        if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterA))
+                        {
+                            var clusterASplit = pointData.PointMachineJson.ClusterA.Split('-');
+                            if (clusterASplit != null && clusterASplit.Count() > 0)
+                            {
+                                if (cluster.Where(x => x == clusterASplit.FirstOrDefault().Trim()).Count() <= 0)
+                                {
+                                    cluster.Add(clusterASplit.FirstOrDefault().Trim());
+                                }
+                            }
+                        }
+
+                        if (asset.IsHalfPointMachine == null || (asset.IsHalfPointMachine != null && !asset.IsHalfPointMachine.Value))
+                        {
+                            if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterB))
+                            {
+                                var clusterBSplit = pointData.PointMachineJson.ClusterB.Split('-');
+                                if (clusterBSplit != null && clusterBSplit.Count() > 0)
+                                {
+                                    if (cluster.Where(x => x == clusterBSplit.FirstOrDefault().Trim()).Count() <= 0)
+                                    {
+                                        cluster.Add(clusterBSplit.FirstOrDefault().Trim());
+
+                                    }
+                                }
+                            }
+                        }
+
+                    }
+
+                }
+                if (cluster != null && cluster.Count > 0)
+                {
+                    var grouped = cluster.GroupBy(label => label.Substring(0, 2)).OrderBy(g => g.Key);
+
+
+                    <tr>
+                        <td>@asset.Name</td>
+                        <td>
+                            <div class="btn-group">
+                                @foreach (var group in grouped)
+                                {
+                                    var colorClass = string.Empty;
+                                    if (group.Key.ToUpper().Contains("G"))
+                                    {
+                                        if (group.Key.StartsWith("T"))
+                                        {
+                                            colorClass = "btn-success-dark";
+                                        }
+                                        else
+                                        {
+                                            colorClass = "btn-success";
+                                        }
+                                    }
+                                    else if (group.Key.ToUpper().Contains("B"))
+                                    {
+                                        if (group.Key.StartsWith("T"))
+                                        {
+                                            colorClass = "btn-danger-dark";
+                                        }
+                                        else
+                                        {
+                                            colorClass = "btn-danger";
+                                        }
+                                    }
+                                    else if (group.Key.ToUpper().Contains("M"))
+                                    {
+                                        if (group.Key.StartsWith("T"))
+                                        {
+                                            colorClass = "btn-warning-dark";
+                                        }
+                                        else
+                                        {
+                                            colorClass = "btn-warning";
+                                        }
+                                    }
+                                    else
+                                    {
+                                        colorClass = "btn-primary";
+                                    }
+                                    foreach (var item in group)
+                                    {
+
+                                        if (asset.mPointMachineData != null && asset.mPointMachineData.Count > 0)
+                                        {
+                                            int part = 0;
+                                            foreach (var pointData in asset.mPointMachineData)
+                                            {
+                                                if (pointData.PointMachineJson != null)
+                                                {
+                                                    if (pointData.PointMachineJson.ClusterA.StartsWith(item) || pointData.PointMachineJson.ClusterB.StartsWith(item))
+                                                    {
+                                                        part++;
+                                                    }
+                                                }
+
+                                            }
+                                            double percentage = ((double)part / asset.mPointMachineData.Count) * 100;
+
+                                            <button type="button" data-bs-toggle="popover" data-bs-content="@Math.Round(percentage, 2) %" data-bs-placement="top" data-bs-trigger="hover" class="btn @colorClass" onclick="fnShowPointMachineEventData('@asset.SiteId','@asset.Id','@item')">@item</button>
+
+                                        }
+                                    }
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+
+            }
+
+        </table>
+
+    </div>
+
+}
+
+<script>
+    $(document).ready(function () {
+        $("[data-bs-toggle='popover']").popover();
+    });
+
+</script>

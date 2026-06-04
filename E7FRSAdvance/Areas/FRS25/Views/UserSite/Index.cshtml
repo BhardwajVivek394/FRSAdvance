@@ -1,0 +1,166 @@
+﻿@model Domain.SiteLister
+
+@{
+    ViewBag.Title = "User Sites";
+}
+
+<style>
+    .delete {
+        position: absolute;
+        right: 18px;
+        color: white;
+        font-size: 13px;
+        cursor: pointer;
+        top: 20px;
+    }
+
+    .edit {
+        position: absolute;
+        right: 45px;
+        color: white;
+        font-size: 13px;
+        cursor: pointer;
+        top: 20px;
+    }
+
+    .card .card-header-sitelist {
+        background-color: #08495e !important;
+        color: white !important;
+    }
+
+    .tblYellow {
+        background-color: #E6AD5C !important;
+        color: white !important;
+    }
+
+    .tblRed {
+        background-color: #ff4d4f !important;
+        color: white !important;
+    }
+
+    .tblGreen {
+        background-color: #247F52 !important;
+        color: white !important;
+    }
+
+
+    .clsDivIndexAlertLogs {
+        padding: 6px 12px;
+        border: 1px solid #ccc; /* THIS */
+        border-radius: 4px; /* THIS */
+    }
+</style>
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+@*<audio id="alarm-ring" controls="controls" style="display:none">
+        <source src="~/Content/Audio/soundAlert.wav"  />
+    </audio>*@
+<audio id="alarm-ring">
+    <source src="~/Content/Audio/soundAlert.wav" />
+</audio>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li><i class="fa fa-cog" aria-hidden="true" onclick="OpenSettings()"></i></li>
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Sites</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="">
+    <div class="">
+        @using (Ajax.BeginForm("SiteList", "UserSite", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divSiteList",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+        }, new { id = "frmGetSiteList" }))
+        {
+            { HtmlHelper.ClientValidationEnabled = false; }
+            <div id="divSiteList">
+                @Html.Action("SiteList", Model)
+            </div>
+        }
+
+
+    </div>
+    <div>
+        <div id="divLoadAnalysis">
+            @Html.Partial("_Analysis", new List<Domain.AnalyticsLog>())
+        </div>
+    </div>
+    <div>
+        @using (Ajax.BeginForm("_Setting", "UserSite", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divSetting",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader",
+        }, new { id = "frmHooterSetting" }))
+        {
+            { HtmlHelper.ClientValidationEnabled = false; }
+            <div id="divSetting">
+                @Html.Partial("_Setting", new Domain.HooterSetting())
+            </div>
+        }
+
+    </div>
+    <div>
+        <div id="divSMSLogLister">
+            @Html.Partial("_SMSLogLister", new Domain.SMSLogLister())
+        </div>
+        <div id="divSummaryView"></div>
+        <div id="divPerformanceList"></div>
+
+    </div>
+</div>
+<div id="divAssetAttributePartial"></div>
+
+<script>
+    function OpenSettings() {
+        $("#loader").show();
+        $.ajax({
+            url: '/UserSite/Setting',
+            type: 'Get',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSetting").empty().append(data);
+                $("#modal-setting").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    };
+
+    function fnGetAssetAttribute(siteName, assetId, assetTypeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + siteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+
+    }
+</script>

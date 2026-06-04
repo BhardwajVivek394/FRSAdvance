@@ -1,0 +1,171 @@
+﻿@model Domain.ConsolidatedLister
+
+<div class="modal bounceIn animated" id="modalConsolidatedProbability" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Probability</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+
+                    <div class="col-sm-12" id="model-div">
+
+                        <div class="mail-body-wrapper">
+                            <ul id="paginated-list" data-current-page="1" aria-live="polite" class="modal-fixed-height">
+
+                                @foreach (var asset in Model.Probability.GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                {
+                                    int probabilityAssetCount = Model.Probability.Where(x => x.AssetId == asset.AssetId).Count();
+                                    <li class="inbox-data probabilitySite_@(asset.AssetId)" style="background-color: white !important;">
+                                        <div class="mail-body-wrapper" style="width:100%">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                <li class="inbox-data" style="background-color:#4bacc6;">
+                                                    <div class="inbox-message">
+                                                        <div class="email-data">
+                                                            <span style="float: left; color: white;">@asset.AssetName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@probabilityAssetCount</span>
+                                                        </div>
+                                                        <span class="pull-right">
+                                                            <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowProbabilityAsset('@asset.AssetId', this); return false;"></i></a>
+                                                        </span>
+                                                    </div>
+                                                </li>
+
+                                                <li class="inbox-data  probabilityAsset_@(asset.AssetId)" style="display:none">
+                                                    <table class="table">
+                                                        <thead class="bg-primary">
+                                                            <tr>
+                                                                <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Date</th>
+                                                                <th data-sortcolumn="SiteName" class="sorting" id="thSiteName" onclick="SortList('SiteName');">SiteName</th>
+                                                                <th data-sortcolumn="AssetName" class="sorting" id="thAssetName" onclick="SortList('AssetName');">Gear Name</th>
+                                                                <th data-sortcolumn="Category" class="sorting" id="thCategory" onclick="SortList('Category');">Category</th>
+                                                                <th>Delete</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+
+
+                                                            @foreach (var item in Model.Probability.Where(x => x.AssetId == asset.AssetId))
+                                                            {
+
+                                                                <tr class="table-light">
+                                                                    <td>
+                                                                        @if (item.TimeStamp != null && item.TimeStamp != DateTime.MinValue)
+                                                                        {
+                                                                            <span>@item.TimeStamp.ToString()</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>@item.SiteName</td>
+                                                                    <td>@item.AssetName</td>
+                                                                    <td>
+                                                                        @if (item.Category.Contains("TrainMomentLog"))
+                                                                        {
+                                                                            <span>
+                                                                                @item.Category.Replace("TrainMomentLog", "Prone To Shorting")
+                                                                            </span>
+                                                                        }
+                                                                        else if (item.Category.Contains("GluedLog"))
+                                                                        {
+                                                                            <span>
+                                                                                @item.Category.Replace("GluedLog", "Glued")
+                                                                            </span>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span>
+                                                                                @item.Category
+                                                                            </span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>
+                                                                        <i class="fa fa-trash-o trash-3 f-20" title="Remarks" onclick="fnDeleteProbability('@item.SiteId','@item.AssetId','@item.TimeStamp.ToString()','@item.CategoryAlias')" aria-hidden="true"></i>
+                                                                    </td>
+                                                                </tr>
+
+                                                            }
+
+
+                                                        </tbody>
+
+                                                    </table>
+                                                </li>
+
+                                            </ul>
+                                        </div>
+                                    </li>
+                                }
+
+
+
+
+                            </ul>
+
+                        </div>
+
+                        <div class="row">
+
+                            <div class="col-sm-12">
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-success btn-quirk" href="@Url.Action("DownloadProbability")">Download</a>
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+
+    function fnShowProbabilityAsset(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.probabilityAsset_' + assetId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.probabilityAsset_' + assetId).hide();
+            }
+        }
+    }
+
+    function fnDeleteProbability(siteId, assetId, timeStamp, category) {
+        var mProbability = {};
+        mProbability.SiteId = siteId;
+        mProbability.AssetId = assetId;
+        mProbability.TimeStamp = timeStamp;
+        mProbability.Category = category;
+        if (confirm('Are you sure you want to delete this record?')) {
+            $.ajax({
+                url: '/Probability/DeleteProbability',
+                type: 'Post',
+                data: '{mProbability:' + JSON.stringify(mProbability) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data != null && data != undefined && data != '') {
+                        if (data.type == "success") {
+                            fnLoadProbability('@Model.SearchCriteria.AssetTypeId');
+                            CommonNotification("SUCCESS", data.result, "success");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "Error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+
+    }
+</script>

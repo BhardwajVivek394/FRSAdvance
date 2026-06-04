@@ -1,0 +1,2009 @@
+﻿@model Domain.AssetLister
+@{ ViewBag.Title = "Asset Detail";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+
+<style>
+    .search-section {
+        padding: 20px 0px;
+        position: relative;
+        z-index: 100;
+    }
+
+    .search-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    .filter-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 100;
+    }
+
+    .filter-item {
+        flex-shrink: 0;
+        position: relative;
+        z-index: 100;
+    }
+
+        .filter-item label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+    .select-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #333;
+        cursor: pointer;
+        min-width: 160px;
+        height: 40px;
+    }
+
+        .select-btn:hover {
+            border-color: #999;
+        }
+
+        .select-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+
+        .select-btn .text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .select-btn i {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+    .filter-input {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        height: 40px;
+        width: 120px;
+        outline: none;
+        background: #fff;
+    }
+
+        .filter-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+
+    .filter-dropdown {
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+        min-width: 260px;
+        max-width: 320px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+    .dropdown-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .dropdown-search input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+            .dropdown-search input:focus {
+                border-color: #3b82f6;
+            }
+
+            .dropdown-search input::placeholder {
+                color: #aaa;
+            }
+
+    .dropdown-header {
+        padding: 10px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .dropdown-header input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .dropdown-header label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            margin: 0;
+        }
+
+    .dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: #f5f7fa;
+        }
+
+        .dropdown-item.checked {
+            background: #e8f2ff;
+        }
+
+        .dropdown-item.hidden {
+            display: none;
+        }
+
+        .dropdown-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+            flex-shrink: 0;
+        }
+
+        .dropdown-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .dropdown-item.checked span {
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+
+        .dropdown-item span mark {
+            background: #fef08a;
+            color: #333;
+            padding: 0;
+            border-radius: 2px;
+        }
+
+    .dropdown-empty {
+        padding: 25px;
+        text-align: center;
+        color: #888;
+        font-size: 14px;
+    }
+
+    .dropdown-no-results {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+        font-size: 13px;
+        display: none;
+    }
+
+        .dropdown-no-results.show {
+            display: block;
+        }
+
+    .btn-search {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+        .btn-search:hover {
+            background: var(--primary);
+        }
+
+        .btn-search i {
+            font-size: 14px;
+        }
+
+    .dropdown-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9998;
+        display: none;
+    }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
+    .table-border {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* ===== CHART STYLES ===== */
+    .chart-summary-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .summary-card {
+        flex: 1;
+        min-width: 140px;
+        padding: 16px 18px;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        transition: box-shadow 0.2s ease;
+    }
+
+        .summary-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .summary-card .card-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .summary-card .card-value {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 2px;
+            color: #1e293b;
+        }
+
+        .summary-card .card-label {
+            font-size: 11px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 500;
+        }
+
+        .summary-card.total-assets {
+            border-left: 3px solid #6366f1;
+        }
+
+            .summary-card.total-assets .card-icon {
+                background: #eef2ff;
+                color: #6366f1;
+            }
+
+        .summary-card.total-makes {
+            border-left: 3px solid #10b981;
+        }
+
+            .summary-card.total-makes .card-icon {
+                background: #ecfdf5;
+                color: #10b981;
+            }
+
+        .summary-card.top-make {
+            border-left: 3px solid #f59e0b;
+        }
+
+            .summary-card.top-make .card-icon {
+                background: #fffbeb;
+                color: #f59e0b;
+            }
+
+        .summary-card.avg-count {
+            border-left: 3px solid #3b82f6;
+        }
+
+            .summary-card.avg-count .card-icon {
+                background: #eff6ff;
+                color: #3b82f6;
+            }
+
+    .ad-chart-wrapper {
+        position: relative;
+        height: 380px;
+        width: 100%;
+        padding: 16px;
+        background: #fafbfc;
+        border-radius: 8px;
+        border: 1px solid #e5e7eb;
+    }
+
+    .chart-title-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .chart-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .chart-subtitle {
+        font-size: 12px;
+        color: #94a3b8;
+        margin-top: 3px;
+    }
+
+    .chart-type-badge {
+        padding: 5px 12px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #e2e8f0;
+    }
+
+    .chart-data-table {
+        margin-top: 20px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+    }
+
+        .chart-data-table table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+        }
+
+        .chart-data-table th {
+            background: #f8fafc;
+            color: #475569;
+            padding: 10px 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .chart-data-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 13px;
+            color: #475569;
+        }
+
+        .chart-data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .chart-data-table tr:hover td {
+            background: #f8fafc;
+        }
+
+        .chart-data-table .color-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .chart-data-table .percentage-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: #f1f5f9;
+            overflow: hidden;
+            min-width: 80px;
+        }
+
+        .chart-data-table .percentage-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .chart-data-table .rank-badge {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 11px;
+        }
+
+            .chart-data-table .rank-badge.gold {
+                background: #fef3c7;
+                color: #b45309;
+            }
+
+            .chart-data-table .rank-badge.silver {
+                background: #f1f5f9;
+                color: #475569;
+            }
+
+            .chart-data-table .rank-badge.bronze {
+                background: #fed7aa;
+                color: #9a3412;
+            }
+
+            .chart-data-table .rank-badge.normal {
+                background: #f8fafc;
+                color: #94a3b8;
+            }
+
+    .no-data-container {
+        height: 350px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #fafbfc;
+        border-radius: 8px;
+        border: 1px dashed #d1d5db;
+    }
+
+        .no-data-container i {
+            font-size: 48px;
+            color: #d1d5db;
+            margin-bottom: 16px;
+        }
+
+        .no-data-container p {
+            color: #94a3b8;
+            font-size: 14px;
+            margin: 0;
+        }
+
+    .doughnut-center-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        pointer-events: none;
+    }
+
+        .doughnut-center-text .center-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1e293b;
+            line-height: 1;
+        }
+
+        .doughnut-center-text .center-label {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+</style>
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">Asset</li>
+                                    <li class="breadcrumb-item active" aria-current="page">
+                                        <a href="#">Asset Detail</a>
+                                    </li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Asset Detail</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="search-section">
+                        <div class="search-title">Search</div>
+
+                        <div class="dropdown-backdrop" id="backdrop"></div>
+
+                        <div class="filter-row">
+
+                            <div class="filter-item">
+                                <label>Zone</label>
+                                <div class="select-btn" id="btnZone" data-target="ddZone">
+                                    <span class="text" id="txtZone">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>Division</label>
+                                <div class="select-btn" id="btnDivision" data-target="ddDivision">
+                                    <span class="text" id="txtDivision">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>Station</label>
+                                <div class="select-btn" id="btnSite" data-target="ddSite">
+                                    <span class="text" id="txtSite">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>Asset Type</label>
+                                <div class="select-btn" id="btnAssetType" data-target="ddAssetType">
+                                    <span class="text" id="txtAssetType">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>Asset Make</label>
+                                <div class="select-btn" id="btnAssetMake" data-target="ddAssetMake">
+                                    <span class="text" id="txtAssetMake">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>From Date</label>
+                                <input type="text" class="filter-input" id="txtFromDate"
+                                       placeholder="Select" readonly>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>To Date</label>
+                                <input type="text" class="filter-input" id="txtToDate"
+                                       placeholder="Select" readonly>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>View</label>
+                                <div class="select-btn" id="btnViewType" data-target="ddViewType">
+                                    <span class="text" id="txtViewType">Table</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-search" onclick="fnSearch()">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Zone Dropdown -->
+                    <div class="filter-dropdown" id="ddZone">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search zone..."
+                                   onkeyup="filterDropdown('zone', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllZone">
+                            <label for="chkAllZone">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listZone">
+                            @if (ViewBag.Zones != null)
+                            {
+                                foreach (var zone in (IEnumerable<SelectListItem>)ViewBag.Zones)
+                                {
+                                    <div class="dropdown-item"
+                                         data-value="@zone.Value" data-text="@zone.Text">
+                                        <input type="checkbox" class="cb-zone" value="@zone.Value">
+                                        <span>@zone.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Division Dropdown -->
+                    <div class="filter-dropdown" id="ddDivision">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search division..."
+                                   onkeyup="filterDropdown('division', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllDivision">
+                            <label for="chkAllDivision">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listDivision">
+                            @if (ViewBag.Divisions != null)
+                            {
+                                foreach (var division in (IEnumerable<SelectListItem>)ViewBag.Divisions)
+                                {
+                                    <div class="dropdown-item"
+                                         data-value="@division.Value" data-text="@division.Text">
+                                        <input type="checkbox" class="cb-division" value="@division.Value">
+                                        <span>@division.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Site Dropdown -->
+                    <div class="filter-dropdown" id="ddSite">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search station..."
+                                   onkeyup="filterDropdown('site', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllSite">
+                            <label for="chkAllSite">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listSite">
+                            @if (ViewBag.Sites != null)
+                            {
+                                foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                {
+                                    <div class="dropdown-item"
+                                         data-value="@site.Value" data-text="@site.Text">
+                                        <input type="checkbox" class="cb-site" value="@site.Value">
+                                        <span>@site.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Asset Type Dropdown -->
+                    <div class="filter-dropdown" id="ddAssetType">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search asset type..."
+                                   onkeyup="filterDropdown('assetType', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllAssetType">
+                            <label for="chkAllAssetType">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listAssetType">
+                            @if (ViewBag.AssetTypes != null)
+                            {
+                                foreach (var assettype in (IEnumerable<SelectListItem>)ViewBag.AssetTypes)
+                                {
+                                    <div class="dropdown-item"
+                                         data-value="@assettype.Value" data-text="@assettype.Text">
+                                        <input type="checkbox" class="cb-assetType" value="@assettype.Value">
+                                        <span>@assettype.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Asset Make Dropdown -->
+                    <div class="filter-dropdown" id="ddAssetMake">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search asset make..."
+                                   onkeyup="filterDropdown('assetMake', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllAssetMake">
+                            <label for="chkAllAssetMake">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listAssetMake">
+                            @if (ViewBag.RailwayAssetMake != null)
+                            {
+                                foreach (var item in ViewBag.RailwayAssetMake as List<string>)
+                                {
+                                    <div class="dropdown-item"
+                                         data-value="@item" data-text="@item">
+                                        <input type="checkbox" class="cb-assetMake" value="@item">
+                                        <span>@item</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- View Type Dropdown (Single Select) -->
+                    <div class="filter-dropdown" id="ddViewType">
+                        <div class="dropdown-list" id="listViewType">
+                            <div class="dropdown-item selected checked"
+                                 data-value="Table" data-text="Table">
+                                <i class="fas fa-table"
+                                   style="color:#6366f1;width:20px;"></i>
+                                <span>Table</span>
+                            </div>
+                            <div class="dropdown-item" data-value="Pie" data-text="Pie">
+                                <i class="fas fa-chart-pie"
+                                   style="color:#10b981;width:20px;"></i>
+                                <span>Pie</span>
+                            </div>
+                            <div class="dropdown-item" data-value="Bar" data-text="Bar">
+                                <i class="fas fa-chart-bar"
+                                   style="color:#f59e0b;width:20px;"></i>
+                                <span>Bar</span>
+                            </div>
+                            <div class="dropdown-item" data-value="Graph" data-text="Graph">
+                                <i class="fas fa-chart-line"
+                                   style="color:#3b82f6;width:20px;"></i>
+                                <span>Graph</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-border">
+                        <div class="my-4 px-lg-4 px-2 w-100">
+                            <div class="d-md-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center badge-cl gap-10"></div>
+                                <div class="d-flex justify-content-between align-items-center btn-icon-size">
+                                    <div class="d-flex gap-10 my-lg-0 my-3" id="buttonGroupLeft">
+                                        <div class="dropdown">
+                                            <button class="btn btn-inactive" id="btn2"
+                                                    data-toggle="dropdown" aria-haspopup="true"
+                                                    aria-expanded="false" title="Download">
+                                                <svg fill="none" stroke="currentColor"
+                                                     stroke-width="1.5" viewBox="0 0 24 24"
+                                                     stroke-linecap="round" stroke-linejoin="round"
+                                                     xmlns="http://www.w3.org/2000/svg">
+                                                    <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3
+                                                             3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5
+                                                             L12 15.5 8.5 12' />
+                                                </svg>
+                                            </button>
+                                            <div class="dropdown-menu dropdown-menu-right"
+                                                 aria-labelledby="btn2">
+                                                <a class="dropdown-item" href="javascript:void(0);"
+                                                   onclick="fnDownloadExcel()">
+                                                    <i class="fa fa-file-excel mr-2"
+                                                       style="color:#22c55e;"></i> Excel
+                                                </a>
+                                                <a class="dropdown-item" href="javascript:void(0);"
+                                                   onclick="fnDownloadCSV()">
+                                                    <i class="fa fa-file-alt mr-2"
+                                                       style="color:#3b82f6;"></i> CSV
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div id="divAlertDetailReport" class="col-12"></div>
+
+                            <div id="divPagination" class="col-12 px-4 pb-3" style="display:none;">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap">
+                                    <div class="showing-records text-muted" id="showingRecords">
+                                        Showing 1 to 10 of 0 records
+                                    </div>
+                                    <nav aria-label="Page navigation">
+                                        <ul class="pagination mb-0" id="paginationUl"></ul>
+                                    </nav>
+                                </div>
+                            </div>
+
+                            <!-- Chart Container -->
+                            <div id="adChartContainer" class="col-12"
+                                 style="display:none; padding:10px 15px;"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    // ==========================================================================
+    // GLOBALS
+    // ==========================================================================
+    var openDropdown = null;
+    var adChartList = [];
+    var selectedViewType = 'Table';
+    var currentPage = 1;
+    var totalPages = 1;
+    var totalRecords = 0;
+    var pageSize = 10;
+
+    var adChartColors = [
+        '#6366f1', '#8b5cf6', '#a78bfa', '#818cf8', '#6d28d9',
+        '#7c3aed', '#5b21b6', '#4f46e5', '#4338ca', '#3730a3',
+        '#3b82f6', '#22c55e', '#f59e0b', '#ec4899', '#f43f5e',
+        '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#e11d48'
+    ];
+
+    // ==========================================================================
+    // DOCUMENT READY
+    // ==========================================================================
+    $(document).ready(function () {
+        setDefaultDates();
+
+        $('#txtFromDate').datepicker({ dateFormat: 'dd/mm/yy', autoClose: true });
+        $('#txtToDate').datepicker({ dateFormat: 'dd/mm/yy', autoClose: true });
+
+        window._originalItems = {
+            division: $('#listDivision').html(),
+            site: $('#listSite').html()
+        };
+
+        $('.select-btn').on('click', function (e) {
+            e.stopPropagation();
+            toggleDD($(this).data('target'), this);
+        });
+
+        $('#backdrop').on('click', closeDD);
+
+
+        // Handle dropdown item click — row background OR direct checkbox click
+        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAssetType .dropdown-item, #ddAssetMake .dropdown-item', function (e) {
+            e.stopPropagation();
+
+            var $item = $(this);
+            var $cb = $item.find('input[type="checkbox"]');
+
+            // If clicked directly on checkbox, browser already toggled it — don't reverse
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $item.toggleClass('checked', $cb.prop('checked'));
+
+            var cbClass = $cb.attr('class') || '';
+            var type = cbClass.replace('cb-', '');
+
+            updateSelectAllState(type);
+            updateText(type);
+
+            if (type === 'zone') {
+                loadDivisionsByZone();
+            } else if (type === 'division') {
+                loadSitesByDivision();
+            }
+        });
+
+        // Handle Select All header — checkbox, label, or row background
+        $(document).on('click', '.dropdown-header', function (e) {
+            e.stopPropagation();
+            var $chk = $(this).find('input[type="checkbox"]');
+            var type = $chk.attr('id').replace('chkAll', '').charAt(0).toLowerCase()
+                + $chk.attr('id').replace('chkAll', '').slice(1);
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                setTimeout(function () { selectAll(type, $chk.prop('checked')); }, 0);
+            } else {
+                var newState = !$chk.prop('checked');
+                $chk.prop('checked', newState);
+                selectAll(type, newState);
+            }
+        });
+
+        // Single select — View Type
+        $(document).on('click', '#ddViewType .dropdown-item', function (e) {
+            e.stopPropagation();
+            $('#ddViewType .dropdown-item').removeClass('selected checked');
+            $(this).addClass('selected checked');
+            selectedViewType = $(this).data('value');
+            $('#txtViewType').text($(this).data('text'));
+            closeDD();
+            // Re-render if data is already loaded
+            if ($('#divAlertDetailReport table').length > 0 ||
+                $('#adChartContainer').children().length > 0) {
+                adRenderView(selectedViewType);
+            }
+        });
+
+        $(document).on('click', '.dropdown-search', function (e) { e.stopPropagation(); });
+    });
+
+    // ==========================================================================
+    // DATE HELPERS
+    // ==========================================================================
+    function setDefaultDates() {
+        var today = new Date();
+        var fd = formatDate(today);
+        $('#txtFromDate').val(fd);
+        $('#txtToDate').val(fd);
+    }
+
+    function formatDate(date) {
+        var day = String(date.getDate()).padStart(2, '0');
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var year = date.getFullYear();
+        return day + '/' + month + '/' + year;
+    }
+
+    function formatDateDDMMYYYY(date) {
+        var day = String(date.getDate()).padStart(2, '0');
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var year = date.getFullYear();
+        var h = date.getHours();
+        var mi = String(date.getMinutes()).padStart(2, '0');
+        var ss = String(date.getSeconds()).padStart(2, '0');
+        var ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12; h = h ? h : 12;
+        return day + '/' + month + '/' + year + ', ' + String(h).padStart(2, '0') + ':' + mi + ':' + ss + ' ' + ampm;
+    }
+
+    function ensureddmmyyyy(dateStr) {
+        if (!dateStr) return '';
+        var parts = dateStr.split('/');
+        if (parts.length === 3) {
+            var d = parts[0], m = parts[1], y = parts[2];
+            if (y.length === 2) y = '20' + y;
+            return String(d).padStart(2, '0') + '/' + String(m).padStart(2, '0') + '/' + y;
+        }
+        return dateStr;
+    }
+
+    // ==========================================================================
+    // DROPDOWN HELPERS
+    // ==========================================================================
+    function filterDropdown(type, searchText) {
+        var $dropdown = $('#dd' + capitalize(type));
+        var $items = $dropdown.find('.dropdown-list .dropdown-item');
+        var $noResults = $dropdown.find('.dropdown-no-results');
+        var search = searchText.toLowerCase().trim();
+        var visible = 0;
+
+        $items.each(function () {
+            var $item = $(this);
+            var text = ($item.data('text') || $item.find('span').text()).toLowerCase();
+            if (search === '' || text.indexOf(search) > -1) {
+                $item.removeClass('hidden');
+                visible++;
+                if (search !== '') {
+                    var orig = $item.data('text') || $item.find('span').text();
+                    var regex = new RegExp('(' + escapeRegex(searchText) + ')', 'gi');
+                    $item.find('span').html(orig.replace(regex, '<mark>$1</mark>'));
+                } else {
+                    var origText = $item.data('text');
+                    if (origText) $item.find('span').text(origText);
+                }
+            } else {
+                $item.addClass('hidden');
+            }
+        });
+
+        $noResults.toggleClass('show', visible === 0 && search !== '');
+        updateSelectAllState(type);
+    }
+
+    function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    function toggleDD(id, btn) {
+        if (openDropdown === id) { closeDD(); return; }
+        closeDD();
+
+        var $dd = $('#' + id);
+        $('body').append($dd);
+
+        var rect = btn.getBoundingClientRect();
+        $dd.css({ position: 'absolute', visibility: 'hidden', display: 'block', top: '-9999px', left: '-9999px' });
+
+        var ddH = $dd.outerHeight();
+        var ddW = $dd.outerWidth();
+        var top = rect.bottom + 4;
+        var left = rect.left;
+
+        if (top + ddH > window.innerHeight) top = rect.top - ddH - 4;
+        if (left + ddW > window.innerWidth) left = window.innerWidth - ddW - 8;
+
+        $dd.css({ visibility: '', display: '', top: top + 'px', left: left + 'px' });
+        $dd.addClass('open');
+        $(btn).addClass('active');
+        $('#backdrop').addClass('show');
+        openDropdown = id;
+
+        setTimeout(function () {
+            var $s = $dd.find('.dropdown-search input');
+            if ($s.length) $s.focus();
+        }, 100);
+    }
+
+    function closeDD() {
+        if (openDropdown) {
+            var $dd = $('#' + openDropdown);
+            $dd.find('.dropdown-search input').val('');
+            $dd.find('.dropdown-item').removeClass('hidden');
+            $dd.find('.dropdown-no-results').removeClass('show');
+            $dd.find('.dropdown-item').each(function () {
+                var origText = $(this).data('text');
+                if (origText) $(this).find('span').text(origText);
+            });
+            $dd.removeClass('open');
+            $('.select-btn').removeClass('active');
+            $('#backdrop').removeClass('show');
+
+            var ddId = openDropdown;
+            var type = ddId.replace('dd', '').toLowerCase();
+            if (type === 'assettype') type = 'assetType';
+            if (type === 'assetmake') type = 'assetMake';
+            updateSelectAllState(type);
+
+            openDropdown = null;
+        }
+    }
+
+    function onSelectAllClick(type, checked) {
+        event.stopPropagation();
+        selectAll(type, checked);
+        if (type === 'zone') loadDivisionsByZone();
+        else if (type === 'division') loadSitesByDivision();
+    }
+
+    function selectAll(type, checked) {
+        $('#list' + capitalize(type) + ' .dropdown-item').each(function () {
+            var $item = $(this);
+            if (!$item.hasClass('hidden')) {
+                var $cb = $item.find('input[type="checkbox"]');
+                $cb.prop('checked', checked);
+                $item.toggleClass('checked', checked);
+            }
+        });
+        updateText(type);
+    }
+
+    function updateSelectAllState(type) {
+        var $list = $('#list' + capitalize(type));
+        var $all = $list.find('.dropdown-item');
+        var total = $all.length;
+        var checked = $all.find('.cb-' + type + ':checked').length;
+        $('#chkAll' + capitalize(type)).prop('checked', total > 0 && total === checked);
+    }
+
+    function updateText(type) {
+        var $all = $('.cb-' + type);
+        var $checked = $('.cb-' + type + ':checked');
+        var count = $checked.length;
+        var total = $all.length;
+        var text = 'All';
+        if (count === 0) text = 'All';
+        else if (count === 1) text = $checked.first().closest('.dropdown-item').data('text') || $checked.first().closest('.dropdown-item').find('span').text();
+        else if (count === total && total > 0) text = 'All (' + count + ')';
+        else text = count + ' selected';
+        $('#txt' + capitalize(type)).text(text);
+    }
+
+    function getValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () { vals.push($(this).val()); });
+        return vals;
+    }
+
+    function capitalize(str) {
+        if (str === 'assetType') return 'AssetType';
+        if (str === 'assetMake') return 'AssetMake';
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    // ==========================================================================
+    // CASCADING
+    // ==========================================================================
+    function loadDivisionsByZone() {
+        var zoneIds = getValues('zone').map(Number);
+        clearDropdown('division'); clearDropdown('site');
+        if (zoneIds.length === 0) {
+            reloadOriginal('division'); reloadOriginal('site'); return;
+        }
+        $.ajax({
+            url: '/FRS25/AssetDetail/GetDivisionByZoneId',
+            type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { ZoneIds: zoneIds } }),
+            success: function (data) { rebuildDropdown('division', data); clearDropdown('site'); },
+            error: function () { CommonNotification("ERROR", "Failed to load divisions!", "Error"); }
+        });
+    }
+
+    function loadSitesByDivision() {
+        var divIds = getValues('division').map(Number);
+        clearDropdown('site');
+        if (divIds.length === 0) { reloadOriginal('site'); return; }
+        $.ajax({
+            url: '/FRS25/AssetDetail/GetSiteByDivisionId',
+            type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { DivisionIds: divIds } }),
+            success: function (data) { rebuildDropdown('site', data); },
+            error: function () { CommonNotification("ERROR", "Failed to load sites!", "Error"); }
+        });
+    }
+
+    function clearDropdown(type) {
+        $('#list' + capitalize(type)).empty();
+        $('#chkAll' + capitalize(type)).prop('checked', false);
+        $('#txt' + capitalize(type)).text('All');
+    }
+
+    function rebuildDropdown(type, items) {
+        var $list = $('#list' + capitalize(type));
+        $list.empty();
+        $.each(items, function (i, item) {
+            var val = item.Id || item.id;
+            var name = item.Name || item.name;
+            $list.append(
+                '<div class="dropdown-item" data-value="' + val + '" data-text="' + name + '">' +
+                '<input type="checkbox" class="cb-' + type + '" value="' + val + '">' +
+                '<span>' + name + '</span></div>'
+            );
+        });
+        $('#chkAll' + capitalize(type)).prop('checked', false);
+        $('#txt' + capitalize(type)).text('All');
+    }
+
+    function reloadOriginal(type) {
+        if (window._originalItems && window._originalItems[type]) {
+            var $list = $('#list' + capitalize(type));
+            $list.html(window._originalItems[type]);
+            $list.find('input[type="checkbox"]').prop('checked', false);
+            $list.find('.dropdown-item').removeClass('checked');
+            $('#chkAll' + capitalize(type)).prop('checked', false);
+            $('#txt' + capitalize(type)).text('All');
+        }
+    }
+
+    // ==========================================================================
+    // SEARCH
+    // ==========================================================================
+    function fnSearch() { currentPage = 1; fnLoadData(); }
+    function fnGetAssetDetailReport() { fnSearch(); }
+
+    function fnLoadData() {
+        var mAssetLister = { SearchCriteria: {} };
+        mAssetLister.SearchCriteria.ZoneIds = getValues('zone');
+        mAssetLister.SearchCriteria.DivisionIds = getValues('division');
+        mAssetLister.SearchCriteria.SiteIds = getValues('site');
+        mAssetLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mAssetLister.SearchCriteria.siteAttributeDatasList = getValues('assetMake');
+        mAssetLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mAssetLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mAssetLister.SearchCriteria.PageNumber = currentPage;
+        mAssetLister.SearchCriteria.PageSize = pageSize;
+
+        adDestroyAllCharts();
+
+        $("#loader").show();
+        $('#divAlertDetailReport').html(
+            '<div class="text-center p-5">' +
+            '<i class="fas fa-spinner fa-spin fa-2x text-primary"></i>' +
+            '<br/><small class="text-muted mt-2">Loading data...</small></div>'
+        );
+
+        $.ajax({
+            url: '/FRS25/AssetDetail/_Details',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertDetailReport").empty().append(data);
+                fnUpdatePagination();
+                adRenderView(selectedViewType);
+            },
+            error: function () {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    // ==========================================================================
+    // PAGINATION
+    // ==========================================================================
+    function fnUpdatePagination() {
+        var $table = $('#divAlertDetailReport table');
+        if ($table.length === 0) { $('#divPagination').hide(); return; }
+
+        var fromServer = $('#hdnTotalRecords').val();
+        if (fromServer) {
+            totalRecords = parseInt(fromServer);
+            totalPages = Math.ceil(totalRecords / pageSize);
+        } else {
+            var rowCount = $table.find('tbody tr').filter(function () {
+                return !$(this).find('td[colspan]').length;
+            }).length;
+            totalRecords = rowCount;
+            totalPages = rowCount >= pageSize ? currentPage + 1 : currentPage;
+        }
+
+        var fromRec = totalRecords === 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
+        var toRec = Math.min(currentPage * pageSize, totalRecords);
+        $('#showingRecords').text('Showing ' + fromRec + ' to ' + toRec + ' of ' + totalRecords + ' records');
+
+        fnRenderPagination();
+        $('#divPagination').show();
+    }
+
+    function fnRenderPagination() {
+        var html = '';
+
+        html += '<li class="page-item ' + (currentPage <= 1 ? 'disabled' : '') + '">' +
+            '<a class="page-link" href="javascript:void(0);" ' +
+            (currentPage > 1 ? 'onclick="fnGoToPage(' + (currentPage - 1) + ')"' : '') + '>' +
+            '<i class="fas fa-chevron-left"></i> Previous</a></li>';
+
+        var startP = 1, endP = totalPages, maxV = 5;
+        if (totalPages > maxV) {
+            if (currentPage <= 3) { startP = 1; endP = maxV - 1; }
+            else if (currentPage >= totalPages - 2) { startP = totalPages - maxV + 2; endP = totalPages; }
+            else { startP = currentPage - 1; endP = currentPage + 1; }
+        }
+
+        if (startP > 1) {
+            html += '<li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(1)">1</a></li>';
+            if (startP > 2) html += '<li class="page-item disabled"><a class="page-link">...</a></li>';
+        }
+        for (var i = startP; i <= endP; i++) {
+            html += '<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+                '<a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(' + i + ')">' + i + '</a></li>';
+        }
+        if (endP < totalPages) {
+            if (endP < totalPages - 1) html += '<li class="page-item disabled"><a class="page-link">...</a></li>';
+            html += '<li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(' + totalPages + ')">' + totalPages + '</a></li>';
+        }
+
+        html += '<li class="page-item ' + (currentPage >= totalPages ? 'disabled' : '') + '">' +
+            '<a class="page-link" href="javascript:void(0);" ' +
+            (currentPage < totalPages ? 'onclick="fnGoToPage(' + (currentPage + 1) + ')"' : '') + '>' +
+            'Next <i class="fas fa-chevron-right"></i></a></li>';
+
+        $('#paginationUl').html(html);
+    }
+
+    function fnGoToPage(page) {
+        if (page < 1 || page > totalPages || page === currentPage) return;
+        currentPage = page;
+        fnLoadData();
+    }
+
+    // ==========================================================================
+    // DESTROY ALL CHARTS
+    // ==========================================================================
+    function adDestroyAllCharts() {
+        adChartList.forEach(function (c) { if (c) c.destroy(); });
+        adChartList = [];
+    }
+
+    // ==========================================================================
+    // EXTRACT DATA FROM TABLE
+    // Columns: 0=Sr.No 1=Zone 2=Division 3=Station
+    //          4=AssetType 5=AssetMake 6=CountOfAsset
+    // ==========================================================================
+    function extractAdData() {
+        var data = {
+            rows: [],
+            makeGroups: {},   // assetMake → totalCount
+            assetTypeGroups: {},   // assetType → totalCount
+            stationGroups: {},   // station+type → totalCount
+            totalCount: 0
+        };
+
+        $('#divAlertDetailReport table tbody tr').each(function () {
+            var $tds = $(this).find('td');
+            if ($tds.length < 7) return;
+            if ($(this).find('td[colspan]').length > 0) return;
+
+            var zone = $.trim($tds.eq(1).text());
+            var division = $.trim($tds.eq(2).text());
+            var station = $.trim($tds.eq(3).text());
+            var assetType = $.trim($tds.eq(4).text());
+            var assetMake = $.trim($tds.eq(5).text());
+            var count = parseInt($.trim($tds.eq(6).text())) || 0;
+
+            data.rows.push({
+                zone: zone, division: division, station: station,
+                assetType: assetType, assetMake: assetMake, count: count
+            });
+
+            // Group by Asset Make
+            if (!data.makeGroups[assetMake]) data.makeGroups[assetMake] = 0;
+            data.makeGroups[assetMake] += count;
+
+            // Group by Asset Type
+            if (!data.assetTypeGroups[assetType]) data.assetTypeGroups[assetType] = 0;
+            data.assetTypeGroups[assetType] += count;
+
+            // Group by Station + AssetType
+            var stKey = station + ' (' + assetType + ')';
+            if (!data.stationGroups[stKey]) data.stationGroups[stKey] = 0;
+            data.stationGroups[stKey] += count;
+
+            data.totalCount += count;
+        });
+
+        return data;
+    }
+
+    // ==========================================================================
+    // CHART HELPERS
+    // ==========================================================================
+    function adHexToRgba(hex, alpha) {
+        hex = hex.replace('#', '');
+        return 'rgba(' +
+            parseInt(hex.substring(0, 2), 16) + ',' +
+            parseInt(hex.substring(2, 4), 16) + ',' +
+            parseInt(hex.substring(4, 6), 16) + ',' + alpha + ')';
+    }
+
+    function adNoData() {
+        $('#adChartContainer').html(
+            '<div class="no-data-container">' +
+            '<i class="fas fa-chart-pie"></i>' +
+            '<p>No data available for visualization.</p>' +
+            '<p class="mt-2" style="font-size:12px;color:#cbd5e1;">Try adjusting your search filters</p>' +
+            '</div>'
+        );
+    }
+
+    // Creates a titled chart box, returns canvas 2D context
+    function adCreateBox(title, subtitle, typeBadge, height, canvasId, showCenter) {
+        var centerHtml = showCenter
+            ? '<div class="doughnut-center-text">' +
+            '<div class="center-value" id="' + canvasId + 'CenterVal"></div>' +
+            '<div class="center-label">Total Assets</div></div>'
+            : '';
+
+        var $box = $('<div></div>').css({
+            padding: '20px', background: '#fff', borderRadius: '12px',
+            boxShadow: '0 2px 14px rgba(0,0,0,0.07)', marginBottom: '16px'
+        });
+
+        $box.append(
+            '<div class="chart-title-section">' +
+            '<div><h3 class="chart-title">' + title + '</h3>' +
+            (subtitle ? '<p class="chart-subtitle">' + subtitle + '</p>' : '') +
+            '</div><span class="chart-type-badge">' + typeBadge + '</span></div>'
+        );
+
+        var $wrap = $('<div class="ad-chart-wrapper" style="position:relative;height:' + height + 'px;"></div>');
+        var $canvas = $('<canvas id="' + canvasId + '"></canvas>');
+        $wrap.append($canvas);
+        if (showCenter) $wrap.append(centerHtml);
+        $box.append($wrap);
+        $('#adChartContainer').append($box);
+        return $canvas[0].getContext('2d');
+    }
+
+    // Builds the summary cards row HTML
+    function adSummaryHtml(data) {
+        var makeKeys = Object.keys(data.makeGroups);
+        var topMake = makeKeys.reduce(function (a, b) {
+            return data.makeGroups[a] >= data.makeGroups[b] ? a : b;
+        }, makeKeys[0] || '—');
+        var topCount = topMake !== '—' ? data.makeGroups[topMake] : 0;
+        var avg = makeKeys.length > 0
+            ? (data.totalCount / makeKeys.length).toFixed(1)
+            : '0';
+
+        return '<div class="chart-summary-row">' +
+            '<div class="summary-card total-assets"><div class="card-icon"><i class="fa fa-cubes"></i></div>' +
+            '<div class="card-value">' + data.totalCount.toLocaleString() + '</div>' +
+            '<div class="card-label">Total Assets</div></div>' +
+
+            '<div class="summary-card total-makes"><div class="card-icon"><i class="fa fa-industry"></i></div>' +
+            '<div class="card-value">' + makeKeys.length + '</div>' +
+            '<div class="card-label">Unique Makes</div></div>' +
+
+            '<div class="summary-card top-make"><div class="card-icon"><i class="fa fa-trophy"></i></div>' +
+            '<div class="card-value">' + topMake + '</div>' +
+            '<div class="card-label">Top Make (' + topCount + ')</div></div>' +
+
+            '<div class="summary-card avg-count"><div class="card-icon"><i class="fa fa-chart-line"></i></div>' +
+            '<div class="card-value">' + avg + '</div>' +
+            '<div class="card-label">Avg per Make</div></div>' +
+            '</div>';
+    }
+
+    // Builds the data summary table below a chart
+    function adDataTableHtml(labels, values, total, unit) {
+        unit = unit || '';
+        var sorted = labels.map(function (l, i) {
+            return { label: l, value: values[i], pct: total > 0 ? ((values[i] / total) * 100).toFixed(1) : '0.0', color: adChartColors[i % adChartColors.length] };
+        }).sort(function (a, b) { return b.value - a.value; });
+
+        var rows = '';
+        sorted.forEach(function (item, idx) {
+            var rankClass = idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : 'normal';
+            rows += '<tr>' +
+                '<td><span class="rank-badge ' + rankClass + '">' + (idx + 1) + '</span></td>' +
+                '<td><span class="color-indicator" style="background:' + item.color + ';"></span>' + item.label + '</td>' +
+                '<td><strong>' + item.value.toLocaleString() + '</strong>' + (unit ? ' ' + unit : '') + '</td>' +
+                '<td>' + item.pct + '%</td>' +
+                '<td><div class="percentage-bar"><div class="percentage-bar-fill" style="width:' + item.pct + '%;background:' + item.color + ';"></div></div></td>' +
+                '</tr>';
+        });
+
+        return '<div class="chart-data-table"><table>' +
+            '<thead><tr><th style="width:50px;">#</th><th>Label</th>' +
+            '<th style="width:80px;">Count</th><th style="width:90px;">Share</th>' +
+            '<th style="width:180px;">Distribution</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>';
+    }
+
+    // ==========================================================================
+    // MAIN DISPATCHER
+    // ==========================================================================
+    function adRenderView(view) {
+        adDestroyAllCharts();
+
+        if (!view || view === 'Table') {
+            $('#divAlertDetailReport').show();
+            $('#divPagination').show();
+            $('#adChartContainer').hide().empty();
+            return;
+        }
+
+        $('#divAlertDetailReport').hide();
+        $('#divPagination').hide();
+        $('#adChartContainer').show().empty();
+
+        var data = extractAdData();
+        if (data.rows.length === 0) { adNoData(); return; }
+
+        // Inject summary cards
+        $('#adChartContainer').append(adSummaryHtml(data));
+
+        if (view === 'Bar') adRenderBar(data);
+        else if (view === 'Pie') adRenderPie(data);
+        else if (view === 'Graph') adRenderGraph(data);
+    }
+
+    // ==========================================================================
+    // BAR CHART
+    // Chart 1 — Count per Asset Make
+    // Chart 2 — Count per Asset Type
+    // ==========================================================================
+    function adRenderBar(data) {
+        var makeKeys = Object.keys(data.makeGroups);
+        var typeKeys = Object.keys(data.assetTypeGroups);
+
+        if (makeKeys.length === 0) { adNoData(); return; }
+
+        var makeVals = makeKeys.map(function (k) { return data.makeGroups[k]; });
+        var typeVals = typeKeys.map(function (k) { return data.assetTypeGroups[k]; });
+        var colors1 = makeKeys.map(function (_, i) { return adChartColors[i % adChartColors.length]; });
+        var colors2 = typeKeys.map(function (_, i) { return adChartColors[(i + 5) % adChartColors.length]; });
+        var thick1 = makeKeys.length > 12 ? 'flex' : 36;
+        var thick2 = typeKeys.length > 12 ? 'flex' : 36;
+
+        // Chart 1: Per Asset Make
+        var ctx1 = adCreateBox(
+            'Asset Distribution by Make',
+            'Count of assets grouped by manufacturer',
+            'Bar Chart',
+            Math.max(340, makeKeys.length * 55),
+            'adBarMake', false
+        );
+        Chart.register(ChartDataLabels);
+        var c1 = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: makeKeys,
+                datasets: [{
+                    label: 'Asset Count',
+                    data: makeVals,
+                    backgroundColor: colors1.map(function (c) { return c + 'cc'; }),
+                    borderColor: colors1,
+                    borderWidth: 1,
+                    borderRadius: 5,
+                    barThickness: thick1
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    datalabels: { anchor: 'end', align: 'end', color: '#475569', font: { weight: '600', size: 11 } },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.88)', padding: 12, cornerRadius: 8,
+                        callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: '#64748b' } },
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 }, stepSize: 1, color: '#94a3b8' } }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+        adChartList.push(c1);
+        $('#adChartContainer').append(adDataTableHtml(makeKeys, makeVals, data.totalCount));
+
+        // Chart 2: Per Asset Type
+        if (typeKeys.length > 0) {
+            var ctx2 = adCreateBox(
+                'Asset Distribution by Type',
+                'Count of assets grouped by asset type',
+                'Bar Chart',
+                Math.max(300, typeKeys.length * 55),
+                'adBarType', false
+            );
+            var c2 = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: typeKeys,
+                    datasets: [{
+                        label: 'Asset Count',
+                        data: typeVals,
+                        backgroundColor: colors2.map(function (c) { return c + 'cc'; }),
+                        borderColor: colors2,
+                        borderWidth: 1,
+                        borderRadius: 5,
+                        barThickness: thick2
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: { anchor: 'end', align: 'end', color: '#475569', font: { weight: '600', size: 11 } },
+                        tooltip: {
+                            backgroundColor: 'rgba(15,23,42,0.88)', padding: 12, cornerRadius: 8,
+                            callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: '#64748b' } },
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 }, stepSize: 1, color: '#94a3b8' } }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+            adChartList.push(c2);
+            $('#adChartContainer').append(adDataTableHtml(typeKeys, typeVals, data.totalCount));
+        }
+    }
+
+    // ==========================================================================
+    // PIE / DOUGHNUT CHART
+    // Doughnut 1 — Count per Asset Make
+    // Doughnut 2 — Count per Asset Type
+    // ==========================================================================
+    function adRenderPie(data) {
+        var makeKeys = Object.keys(data.makeGroups);
+        var typeKeys = Object.keys(data.assetTypeGroups);
+
+        if (makeKeys.length === 0) { adNoData(); return; }
+
+        Chart.register(ChartDataLabels);
+
+        // Pie 1: Per Asset Make
+        var makeVals = makeKeys.map(function (k) { return data.makeGroups[k]; });
+        var total1 = makeVals.reduce(function (a, b) { return a + b; }, 0);
+        var colors1 = makeKeys.map(function (_, i) { return adChartColors[i % adChartColors.length]; });
+
+        if (total1 > 0) {
+            var ctx1 = adCreateBox(
+                'Asset Distribution by Make',
+                'Proportion of assets per manufacturer',
+                'Doughnut Chart', 380, 'adPieMake', true
+            );
+
+            var c1 = new Chart(ctx1, {
+                type: 'doughnut',
+                data: {
+                    labels: makeKeys,
+                    datasets: [{
+                        data: makeVals,
+                        backgroundColor: colors1,
+                        borderColor: '#fff', borderWidth: 2, hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '68%',
+                    plugins: {
+                        legend: {
+                            position: makeKeys.length > 10 ? 'bottom' : 'right',
+                            labels: { padding: 14, usePointStyle: true, font: { size: 12 }, color: '#64748b' }
+                        },
+                        datalabels: {
+                            color: '#fff', font: { weight: '600', size: 11 },
+                            formatter: function (value) {
+                                var pct = ((value / total1) * 100).toFixed(0);
+                                return pct > 5 ? pct + '%' : '';
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15,23,42,0.88)', padding: 12, cornerRadius: 8,
+                            callbacks: {
+                                label: function (c) {
+                                    var pct = total1 > 0 ? ((c.parsed / total1) * 100).toFixed(1) : '0.0';
+                                    return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
+                                }
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+            adChartList.push(c1);
+            $('#adPieMakeCenterVal').text(total1.toLocaleString());
+            $('#adChartContainer').append(adDataTableHtml(makeKeys, makeVals, total1));
+        }
+
+        // Pie 2: Per Asset Type
+        if (typeKeys.length > 0) {
+            var typeVals = typeKeys.map(function (k) { return data.assetTypeGroups[k]; });
+            var total2 = typeVals.reduce(function (a, b) { return a + b; }, 0);
+            var colors2 = typeKeys.map(function (_, i) { return adChartColors[(i + 5) % adChartColors.length]; });
+
+            if (total2 > 0) {
+                var ctx2 = adCreateBox(
+                    'Asset Distribution by Type',
+                    'Proportion of assets per asset type',
+                    'Doughnut Chart', 340, 'adPieType', true
+                );
+
+                var c2 = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: typeKeys,
+                        datasets: [{
+                            data: typeVals,
+                            backgroundColor: colors2,
+                            borderColor: '#fff', borderWidth: 2, hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '68%',
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: { padding: 14, usePointStyle: true, font: { size: 12 }, color: '#64748b' }
+                            },
+                            datalabels: {
+                                color: '#fff', font: { weight: '600', size: 11 },
+                                formatter: function (value) {
+                                    var pct = ((value / total2) * 100).toFixed(0);
+                                    return pct > 5 ? pct + '%' : '';
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.88)', padding: 12, cornerRadius: 8,
+                                callbacks: {
+                                    label: function (c) {
+                                        var pct = total2 > 0 ? ((c.parsed / total2) * 100).toFixed(1) : '0.0';
+                                        return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    plugins: [ChartDataLabels]
+                });
+                adChartList.push(c2);
+                $('#adPieTypeCenterVal').text(total2.toLocaleString());
+                $('#adChartContainer').append(adDataTableHtml(typeKeys, typeVals, total2));
+            }
+        }
+    }
+
+    // ==========================================================================
+    // LINE GRAPH
+    // Graph 1 — Count per Asset Make
+    // Graph 2 — Count per Asset Type
+    // ==========================================================================
+    function adRenderGraph(data) {
+        var makeKeys = Object.keys(data.makeGroups);
+        if (makeKeys.length === 0) { adNoData(); return; }
+
+        Chart.register(ChartDataLabels);
+
+        var makeVals = makeKeys.map(function (k) { return data.makeGroups[k]; });
+        var thinPoints = makeKeys.length > 40;
+        var color1 = '#6366f1';
+        var color2 = '#10b981';
+
+        // Graph 1: Per Asset Make
+        var ctx1 = adCreateBox(
+            'Asset Trend by Make',
+            'Count of assets across manufacturers',
+            'Line Graph', 380, 'adLineMake', false
+        );
+
+        var c1 = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: makeKeys,
+                datasets: [{
+                    label: 'Asset Count',
+                    data: makeVals,
+                    borderColor: color1,
+                    backgroundColor: adHexToRgba(color1, 0.06),
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: thinPoints ? 0 : 5,
+                    pointBackgroundColor: '#ffffff',
+                    pointBorderColor: color1,
+                    pointBorderWidth: 2,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        anchor: 'end', align: 'top',
+                        color: color1, font: { weight: '600', size: thinPoints ? 0 : 11 }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.88)', padding: 12, cornerRadius: 8,
+                        callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#64748b', maxRotation: 40, minRotation: 20, maxTicksLimit: 30, autoSkip: false } },
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 }, stepSize: 1, color: '#94a3b8' } }
+                }
+            },
+            plugins: [ChartDataLabels]
+        });
+        adChartList.push(c1);
+        $('#adChartContainer').append(adDataTableHtml(makeKeys, makeVals, data.totalCount));
+
+        // Graph 2: Per Asset Type
+        var typeKeys = Object.keys(data.assetTypeGroups);
+        if (typeKeys.length > 0) {
+            var typeVals = typeKeys.map(function (k) { return data.assetTypeGroups[k]; });
+
+            var ctx2 = adCreateBox(
+                'Asset Trend by Type',
+                'Count of assets across asset types',
+                'Line Graph', 360, 'adLineType', false
+            );
+
+            var c2 = new Chart(ctx2, {
+                type: 'line',
+                data: {
+                    labels: typeKeys,
+                    datasets: [{
+                        label: 'Asset Count',
+                        data: typeVals,
+                        borderColor: color2,
+                        backgroundColor: adHexToRgba(color2, 0.06),
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 5,
+                        pointBackgroundColor: '#ffffff',
+                        pointBorderColor: color2,
+                        pointBorderWidth: 2,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            anchor: 'end', align: 'top',
+                            color: color2, font: { weight: '600', size: 11 }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15,23,42,0.88)', padding: 12, cornerRadius: 8,
+                            callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#64748b', maxRotation: 40, minRotation: 20, autoSkip: false } },
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 11 }, stepSize: 1, color: '#94a3b8' } }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+            adChartList.push(c2);
+            $('#adChartContainer').append(adDataTableHtml(typeKeys, typeVals, data.totalCount));
+        }
+    }
+
+    // ==========================================================================
+    // EXCEL DOWNLOAD
+    // ==========================================================================
+    function fnDownloadExcel() {
+        if (selectedViewType !== 'Table') { alert('Please switch to Table view to download'); return; }
+        var table = document.querySelector('#divAlertDetailReport table');
+        if (!table) { alert('No data available to download'); return; }
+
+        try {
+            $("#loader").show();
+            var workbook = new ExcelJS.Workbook();
+            workbook.creator = 'RDPMS'; workbook.created = new Date();
+            var worksheet = workbook.addWorksheet('Asset Detail');
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Asset Type', 'Asset Make', 'Count of Asset'];
+            var colCount = headers.length;
+
+            var fromDate = ensureddmmyyyy($('#txtFromDate').val());
+            var toDate = ensureddmmyyyy($('#txtToDate').val());
+
+            var titleRow = worksheet.addRow(['Asset Detail Report']);
+            titleRow.height = 30;
+            worksheet.mergeCells(1, 1, 1, colCount);
+            titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+            titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
+            titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+            var dateRow = worksheet.addRow(['Period: ' + fromDate + ' to ' + toDate + ' | Generated: ' + formatDateDDMMYYYY(new Date())]);
+            dateRow.height = 20;
+            worksheet.mergeCells(2, 1, 2, colCount);
+            dateRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+            dateRow.getCell(1).alignment = { horizontal: 'center' };
+
+            worksheet.addRow([]);
+
+            var headerRow = worksheet.addRow(headers);
+            headerRow.height = 28;
+            headerRow.eachCell(function (cell) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = { top: { style: 'medium', color: { argb: 'FF1E3A5F' } }, left: { style: 'medium', color: { argb: 'FF1E3A5F' } }, bottom: { style: 'medium', color: { argb: 'FF1E3A5F' } }, right: { style: 'medium', color: { argb: 'FF1E3A5F' } } };
+            });
+
+            var rowIndex = 0;
+            table.querySelectorAll('tbody tr').forEach(function (tr) {
+                if (tr.querySelector('td[colspan]')) return;
+                rowIndex++;
+                var rowData = [];
+                tr.querySelectorAll('td').forEach(function (td) { rowData.push(td.innerText.trim()); });
+                rowData.splice(4, 0, 'Energy7');
+
+                var excelRow = worksheet.addRow(rowData);
+                excelRow.height = 22;
+                excelRow.eachCell(function (cell) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowIndex % 2 === 0 ? 'FFF1F5F9' : 'FFFFFFFF' } };
+                    cell.font = { size: 10, name: 'Calibri' };
+                    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                    cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+                });
+            });
+
+            [8, 12, 15, 18, 14, 15, 15, 15].forEach(function (w, i) {
+                worksheet.getColumn(i + 1).width = w;
+            });
+
+            worksheet.addRow([]);
+            var footerRow = worksheet.addRow(['Total Records: ' + rowIndex]);
+            footerRow.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF64748B' } };
+
+            workbook.xlsx.writeBuffer().then(function (buffer) {
+                saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), getDownloadFileName('xlsx'));
+                $("#loader").hide();
+                CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
+            });
+
+        } catch (err) {
+            $("#loader").hide();
+            console.error('Excel Error:', err);
+            CommonNotification("ERROR", "Error downloading Excel", "Error");
+        }
+    }
+
+    // ==========================================================================
+    // CSV DOWNLOAD
+    // ==========================================================================
+    function fnDownloadCSV() {
+        if (selectedViewType !== 'Table') { alert('Please switch to Table view to download'); return; }
+        var table = document.querySelector('#divAlertDetailReport table');
+        if (!table) { alert('No data available to download'); return; }
+
+        try {
+            $("#loader").show();
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Asset Type', 'Asset Make', 'Count of Asset'];
+            var csv = [headers.map(function (h) { return '"' + h + '"'; }).join(',')];
+
+            table.querySelectorAll('tbody tr').forEach(function (row) {
+                if (row.querySelector('td[colspan]')) return;
+                var rowData = [];
+                row.querySelectorAll('td').forEach(function (col) {
+                    var text = col.innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim().replace(/"/g, '""');
+                    rowData.push('"' + text + '"');
+                });
+                rowData.splice(4, 0, '"Energy7"');
+                csv.push(rowData.join(','));
+            });
+
+            saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getDownloadFileName('csv'));
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
+        } catch (err) {
+            $("#loader").hide();
+            console.error('CSV Error:', err);
+            CommonNotification("ERROR", "Error downloading CSV", "Error");
+        }
+    }
+
+    function getDownloadFileName(ext) {
+        var now = new Date();
+        return 'AssetDetail_' +
+            now.getFullYear() +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0') + '_' +
+            String(now.getHours()).padStart(2, '0') +
+            String(now.getMinutes()).padStart(2, '0') +
+            '.' + ext;
+    }
+</script>

@@ -1,0 +1,838 @@
+﻿
+@{
+    ViewBag.Title = "Modbus";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Modbus</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="divTagPartial"></div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-2">
+                            <div class="mb-3">
+                                <strong>Channel</strong>
+                                <select class="form-control" id="drpChannel">
+                                    <option>Select Channel</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-2">
+                            <div class="mb-3">
+                                <strong>Zone <span class="text-danger">*</span></strong>
+                                @Html.DropDownList("zoneId", (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", id = "zoneId", tabindex = 1 })
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="col-sm-2">
+                            <div class="mb-3">
+                                <strong>Division <span class="text-danger">*</span></strong>
+                                @Html.DropDownList("divisionId", (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "divisionId", tabindex = 1 })
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+                        <div class="col-sm-2">
+                            <div class="mb-3">
+                                <strong>Site <span class="text-danger">*</span></strong>
+                                <select class="form-control" id="selSearchSiteName" name="SearchCriteria.SiteId">
+                                </select>
+                                <span class="text-danger"></span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="card-body">
+                    <table class="table" id="tblModbus">
+                        <thead>
+                            <tr>
+                                <th>Id</th>
+                                <th>Type</th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="modelModbusValue" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Value</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body">
+                <table class="table" id="tblModbusValue">
+                    <thead>
+                        <tr>
+                            <th>Pin</th>
+                            <th>ADC</th>
+                            <th>Raw ADC</th>
+                            <th>Asset Type</th>
+                            <th>Asset</th>
+                            <th>Asset Attribute</th>
+                            <th>Cluster Name</th>
+                            <th>Card Number</th>
+                            <th>Multiplication</th>
+                            <th>Final Value</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal bounceIn animated" id="modelModbusCalibration" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Calibration</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body">
+                <table class="table" id="tblModbusCalibrationNormal">
+                    <thead>
+                        <tr>
+                            <th>Pin</th>
+                            <th>Offset</th>
+                            <th>Multiplier</th>
+                            <th>Divider</th>
+                            <th>Mode</th>
+                        </tr>
+                    </thead>
+                </table>
+
+                <table class="table" id="tblModbusCalibrationPoint" style="display:none">
+                    <thead>
+                        <tr>
+                            <th>Pin</th>
+                            <th>Offset</th>
+                            <th>Multiplier</th>
+                            <th>Divider</th>
+                            <th>Mode</th>
+                            <th>Threshold</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var adcNumbers = [];
+    var mqttURI = "energy7.in";
+    var mqttUser = "energy7";
+    var mqttPassword = "k3806557";
+    var mqttPort = 8083;
+    var modbus = "/modbus/#";
+    var objectList = null;
+    var client = null;
+
+    $(document).ready(function () {
+        MqqtConnect();
+
+        setInterval(function () {
+            MqqtConnect();
+        }, 5000);
+
+        $('#drpChannel').change(function () {
+            $('.clstbodyModbus').hide();
+            $('#tbody' + $(this).val() + '').show();
+        });
+
+        GetDivisionByZone($("#zoneId").val());
+
+        $("#zoneId").change(function () {
+            GetDivisionByZone($(this).val());
+        });
+
+        $("#divisionId").change(function () {
+            GetAllSite($(this).val());
+        });
+
+
+    });
+
+    function GetAllAssetType() {
+        $(".clsAssetTypeId").empty();
+        $.ajax({
+            url: '/Modbus/GetAllAssetType',
+            type: 'Post',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.length > 0) {
+                    var html = "";
+                    html += "<option value='0'>Select Asset Type</option>";
+                    $.each(data, function (id, val) {
+                        //if (hdnSiteId == val.Id) {
+                        //    html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+                        //}
+                        //else {
+
+                        //}
+                        html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                    });
+                    $(".clsAssetTypeId").append(html);
+                }
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Modbus/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divisionId").empty();
+                    $("#divisionId").append($("<option></option>").val('0').html('Select Divison'));
+                    $.each(data, function (key, value) {
+                        //if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                        //    $("#divisionId").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        //} else {
+                        //    $("#divisionId").append($("<option></option>").val(value.Id).html(value.Name));
+                        //}
+                        $("#divisionId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetAllSite(divisionId) {
+        $("#selSearchSiteName").empty();
+        if (divisionId != null && divisionId != undefined && divisionId != '' && parseInt(divisionId) > 0) {
+            $.ajax({
+                url: '/Modbus/GetSitesBy',
+                type: 'Post',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data != null && data.length > 0) {
+                        var html = "";
+                        html += "<option value='0'>Select</option>";
+                        $.each(data, function (id, val) {
+                            //if (hdnSiteId == val.Id) {
+                            //    html += "<option value=" + val.Id + " selected>" + val.Name + "</option>";
+                            //}
+                            //else {
+
+                            //}
+                            html += "<option value=" + val.Id + ">" + val.Name + "</option>";
+                        });
+                        $("#selSearchSiteName").append(html);
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            GetSite(hdnSiteId);
+        }
+    }
+
+    function MqqtConnect() {
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mqttURI, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mqttUser,
+            password: mqttPassword,
+            cleanSession: true
+        });
+    }
+
+    function onConnect() {
+        client.subscribe(modbus);
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        //alert("Lost");
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+        }
+        // location.reload();
+
+        client.connect({
+            onSuccess: onConnect,
+            userName: mqttUser,
+            password: mqttPassword,
+            cleanSession: true
+        });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+        //if (IsCheckDropDown(message)) {
+        BindDropDown(message);
+        BindData(message);
+        BindModelValue(message);
+        BindModelCalibration(message);
+        //}
+
+    }
+
+    function BindDropDown(message) {
+        if (message != null) {
+            if (message.destinationName != null && message.destinationName != undefined && message.destinationName != '') {
+                var destinationName = message.destinationName.split("/");
+                var newDestinationName = destinationName[destinationName.length - 1];
+                if (!SelectHasValue(newDestinationName)) {
+                    $("#drpChannel").append($("<option />").val(newDestinationName).text(destinationName[2] + "/" + newDestinationName));
+                }
+            }
+        }
+
+    }
+
+    function IsCheckDropDown(message) {
+        var isValid = false;
+        if (message != null && message != undefined && message.payloadString != null && message.payloadString != '') {
+            var obj = JSON.parse(message.payloadString);
+            var destinationName = message.destinationName.split("/");
+            var newDestinationName = destinationName[destinationName.length - 1];
+            if (obj != null && obj != undefined && obj.length > 0) {
+                var adcNumber = GetADCNumber(obj);
+                if ($.inArray(adcNumber, adcNumbers) >= 0) {
+                } else {
+                    isValid = true;
+                    adcNumbers.push(adcNumber);
+                }
+            }
+        }
+        return isValid;
+    }
+
+    function fnShowModbusValue(channel, tblADCId) {
+        var mergedADC = channel + '' + tblADCId;
+        $('.clstbodyValueModbus').hide();
+        $('#tbodyValue' + mergedADC).show();
+
+        GetYardConfigBy($("#selSearchSiteName").val(), tblADCId, mergedADC);
+        $('#modelModbusValue').modal("show");
+    }
+
+    function GetYardConfigBy(siteId, tblADCId, mergedADC) {
+        if (siteId != null && siteId != undefined && siteId != '' && parseInt(siteId) > 0 && tblADCId != null && tblADCId != undefined && tblADCId != '' && parseInt(tblADCId) > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/Modbus/GetYardConfigBy',
+                type: 'Post',
+                data: '{siteId:' + siteId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.length > 0) {
+                        $('#tbodyValue' + mergedADC + '> tr').each(function () {
+                            var pinNumber = $(this).find("td:first").text();
+                            var adcNumber = $(this).find("td:nth-child(2)").text();
+                            $(data).each(function (ne, value) {
+                                if (value.ADCNumber == parseInt(tblADCId) && value.Pin == parseInt(pinNumber)) {
+                                    var tblADCPIN = mergedADC + pinNumber;
+                                    var finalVal = parseFloat(adcNumber) * parseFloat(value.Multiplication);
+                                    $('#spnAssetType_' + tblADCPIN).text(value.AssetTypeName);
+                                    $('#spnAssetId_' + tblADCPIN).text(value.AssetName);
+                                    $('#hdnAssetId_' + tblADCPIN).val(value.AssetId);
+                                    $('#spnAssetAttributeId_' + tblADCPIN).text(value.AttributeName);
+                                    $('#hdnAssetAttributeId_' + tblADCPIN).val(value.AttributeId);
+                                    $('#spnClusterName_' + tblADCPIN).text(value.ClusterName);
+                                    $('#spncardNumber_' + tblADCPIN).text(value.CardName);
+                                    $('#spnMultiplication_' + tblADCPIN).text(value.Multiplication);
+                                    $('#txtFinalMultiplication_' + tblADCPIN).val(finalVal);
+                                }
+                            });
+
+                        });
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnShowModbusCalibration(channel, tblADCId) {
+        $('.clstbodyCalibrationNormalModbus').hide();
+        $('.clstbodyCalibrationPointModbus').hide();
+        var mergedADC = channel + '' + tblADCId;
+        var rowCount = $('#tbodyCalibrationNormal' + mergedADC + ' > tr').length;
+        if (rowCount > 0) {
+            $('#tbodyCalibrationNormal' + mergedADC).show();
+            $('#tbodyCalibrationPoint' + mergedADC).hide();
+
+            $('#tblModbusCalibrationPoint').hide();
+            $('#tblModbusCalibrationNormal').show();
+        } else {
+            $('#tbodyCalibrationNormal' + mergedADC).hide();
+            $('#tbodyCalibrationPoint' + mergedADC).show();
+
+            $('#tblModbusCalibrationPoint').show();
+            $('#tblModbusCalibrationNormal').hide();
+        }
+        $('#modelModbusCalibration').modal("show");
+    }
+
+    function BindData(message) {
+        if (message != null && message != undefined && message.payloadString != null && message.payloadString != '') {
+            var obj = JSON.parse(message.payloadString);
+            var destinationName = message.destinationName.split("/");
+            var newDestinationName = destinationName[destinationName.length - 1];
+            if (obj != null && obj != undefined && obj.length > 0) {
+                var adcNumber = GetADCNumber(obj);
+                var typeStr = GetType(obj);
+                if (adcNumber != null && adcNumber != undefined && adcNumber != '') {
+                    if ($('#tbody' + newDestinationName + '').length > 0) {
+                        var tableModbus = '';
+                        tableModbus += '<tr>';
+                        tableModbus += '<td>' + adcNumber + '</td>';
+                        tableModbus += '<td>' + typeStr + '</td>';
+                        tableModbus += '<td><a href="#" onclick="fnShowModbusValue(\'' + newDestinationName + '\',' + adcNumber + ')">Value</a></td>';
+                        tableModbus += '<td><a href="#" onclick="fnShowModbusCalibration(\'' + newDestinationName + '\',' + adcNumber + ')">Calibration</a></td>';
+                        tableModbus += '</tr>';
+                        tableModbus += '</tbody>';
+                        if (!FindChannel('#tbody' + newDestinationName + '', adcNumber)) {
+                            $('#tbody' + newDestinationName + '').append(tableModbus);
+                        }
+                        // var mergedADC = newDestinationName + '' + adcNumber;
+                        //  GetYardConfigBy($("#selSearchSiteName").val(), adcNumber, mergedADC);
+
+                    } else {
+                        var tableModbus = '';
+                        tableModbus += '<tbody class="clstbodyModbus" id="tbody' + newDestinationName + '" style="display:none">';
+                        tableModbus += '<tr>';
+                        tableModbus += '<td>' + adcNumber + '</td>';
+                        tableModbus += '<td>' + typeStr + '</td>';
+                        tableModbus += '<td><a href="#" onclick="fnShowModbusValue(\'' + newDestinationName + '\',' + adcNumber + ')">Value</a></td>';
+                        tableModbus += '<td><a href="#" onclick="fnShowModbusCalibration(\'' + newDestinationName + '\',' + adcNumber + ')">Calibration</a></td>';
+                        tableModbus += '</tr>';
+                        tableModbus += '</tbody>';
+                        $('#tblModbus').append(tableModbus);
+                    }
+                }
+
+            }
+        }
+    }
+
+    function BindModelValue(message) {
+
+        if (message != null && message != undefined && message.payloadString != null && message.payloadString != '') {
+            var obj = JSON.parse(message.payloadString);
+            var destinationName = message.destinationName.split("/");
+            var newDestinationName = destinationName[destinationName.length - 1];
+            if (obj != null && obj != undefined && obj.length > 0) {
+                //Bind Modbus Value
+                var tblADCId = '';
+
+                var adcNumber = GetADCNumber(obj);
+                if (adcNumber != null && adcNumber != undefined && adcNumber != '') {
+                    tblADCId = newDestinationName + adcNumber;
+                }
+
+                if ($('#tbodyValue' + tblADCId + '').length > 0) {
+                    var tableModbus = '';
+                    //$('#tbodyValue' + tblADCId + '').empty();
+                    $(obj).each(function (a, val) {
+
+                        var values = val.split(" ");
+                        var tblADCPIN = '';
+                        if (values.length == 4) {
+                            tblADCPIN = tblADCId + values[1];
+
+                            var assetTypeName = $('#spnAssetType_' + tblADCPIN).text();
+                            var assetName = $('#spnAssetId_' + tblADCPIN).text();
+                            var assetId = $('#hdnAssetId_' + tblADCPIN).val();
+                            var assetAttributeName = $('#spnAssetAttributeId_' + tblADCPIN).text();
+                            var assetAttributeId = $('#hdnAssetAttributeId_' + tblADCPIN).val();
+                            var clusterName = $('#spnClusterName_' + tblADCPIN).text();
+                            var cardNumber = $('#spncardNumber_' + tblADCPIN).text();
+                            var multiplication = $('#spnMultiplication_' + tblADCPIN).text();
+
+
+                            tableModbus += '<tr>';
+                            tableModbus += '<td>' + values[1] + '</td>';
+                            tableModbus += '<td>' + values[2] + '</td>';
+                            tableModbus += '<td>' + values[3] + '</td>';
+
+                            if (assetTypeName != null && assetTypeName != undefined && assetTypeName != '') {
+                                tableModbus += '<td><span id="spnAssetType_' + tblADCPIN + '">' + assetTypeName + '</span></td>';
+                            } else {
+                                tableModbus += '<td><span id="spnAssetType_' + tblADCPIN + '"></span></td>';
+                            }
+
+                            if (assetName != null && assetName != undefined && assetName != '' && assetId != null && assetId != undefined && assetId != '') {
+                                tableModbus += '<td><span id="spnAssetId_' + tblADCPIN + '">' + assetName + '</span>   <input type="hidden" id="hdnAssetId_' + tblADCPIN + '" value="' + assetId + '"/></td>';
+                            } else {
+                                tableModbus += '<td><span id="spnAssetId_' + tblADCPIN + '"></span>   <input type="hidden" id="hdnAssetId_' + tblADCPIN + '" /></td>';
+                            }
+
+                            if (assetAttributeName != null && assetAttributeName != undefined && assetAttributeName != '' && assetAttributeId != null && assetAttributeId != undefined && assetAttributeId != '') {
+                                tableModbus += '<td><span id="spnAssetAttributeId_' + tblADCPIN + '">' + assetAttributeName + '</span> <input type="hidden" id="hdnAssetAttributeId_' + tblADCPIN + '" value="' + assetAttributeId + '"/></td>';
+                            } else {
+                                tableModbus += '<td><span id="spnAssetAttributeId_' + tblADCPIN + '"></span> <input type="hidden" id="hdnAssetAttributeId_' + tblADCPIN + '" /></td>';
+                            }
+
+                            if (clusterName != null && clusterName != undefined && clusterName != '') {
+                                tableModbus += '<td><span id="spnClusterName_' + tblADCPIN + '">' + clusterName +'</span></td>';
+                            } else {
+                                tableModbus += '<td><span id="spnClusterName_' + tblADCPIN + '"></span></td>';
+                            }
+
+                            if (cardNumber != null && cardNumber != undefined && cardNumber != '') {
+                                tableModbus += '<td><span id="spncardNumber_' + tblADCPIN + '">' + cardNumber +'</span></td>';
+                            } else {
+                                tableModbus += '<td><span id="spncardNumber_' + tblADCPIN + '"></span></td>';
+                            }
+
+                            if (multiplication != null && multiplication != undefined && multiplication != '') {
+                                tableModbus += '<td><span id="spnMultiplication_' + tblADCPIN + '">' + multiplication +'</span></td>';
+                            } else {
+                                tableModbus += '<td><span id="spnMultiplication_' + tblADCPIN + '"></span></td>';
+                            }
+                           
+                            if (multiplication != null && multiplication != undefined && multiplication != '' && values[2] != null && values[2] != undefined && values[2] != '') {
+                                var finalVal = parseFloat(values[2]) * parseFloat(multiplication);
+                                tableModbus += '<td><input type="number" class="form-control" id="txtFinalMultiplication_' + tblADCPIN + '" value="' + finalVal + '" /></td>';
+                            } else {
+                                tableModbus += '<td><input type="number" class="form-control" id="txtFinalMultiplication_' + tblADCPIN + '" /></td>';
+                            }
+
+                           
+                            tableModbus += '<td><button type="button" class="btn btn-success" onClick=fnUpdateMultiplication(\'' + tblADCPIN + '\')>Update</button></td>';
+                            tableModbus += '</tr>';
+                        }
+                    });
+                    $('#tbodyValue' + tblADCId + '').empty().append(tableModbus);
+
+                } else {
+                    var tblADCPIN = '';
+                    var tableModbusValue = '<tbody class="clstbodyValueModbus" id="tbodyValue' + tblADCId + '" style="display:none">';
+                    $(obj).each(function (a, val) {
+                        var values = val.split(" ");
+                        if (values.length == 4) {
+                            tblADCPIN = tblADCId + values[1];
+                            tableModbusValue += '<tr>';
+                            tableModbusValue += '<td>' + values[1] + '</td>';
+                            tableModbusValue += '<td>' + values[2] + '</td>';
+                            tableModbusValue += '<td>' + values[3] + '</td>';
+                            tableModbusValue += '<td><span id="spnAssetType_' + tblADCPIN + '"></span></td>';
+                            tableModbusValue += '<td><span id="spnAssetId_' + tblADCPIN + '"></span></td>';
+                            tableModbusValue += '<td><span id="spnAssetAttributeId_' + tblADCPIN + '"></span></td>';
+                            tableModbusValue += '<td><span id="spnClusterName_' + tblADCPIN + '"></span></td>';
+                            tableModbusValue += '<td><span id="spncardNumber_' + tblADCPIN + '"></span></td>';
+                            tableModbusValue += '<td><span id="spnMultiplication_' + tblADCPIN + '"></span></td>';
+                            tableModbusValue += '<td><input type="number" class="form-control" id="txtFinalMultiplication_' + tblADCPIN + '" /></td>';
+                            tableModbusValue += '<td><button type="button" class="btn btn-success" onClick=fnUpdateMultiplication(\'' + tblADCPIN + '\')>Update</button></td>';
+                            tableModbusValue += '</tr>';
+                        }
+                    });
+                    tableModbusValue += '</tbody>';
+                    $('#tblModbusValue').append(tableModbusValue);
+
+                }
+
+            }
+
+            //var channeldata = message.payloadString.split(',');
+
+        }
+    }
+
+    function BindModelCalibration(message) {
+        if (message != null && message != undefined && message.payloadString != null && message.payloadString != '') {
+            var obj = JSON.parse(message.payloadString);
+            var destinationName = message.destinationName.split("/");
+            var newDestinationName = destinationName[destinationName.length - 1];
+            if (obj != null && obj != undefined && obj.length > 0) {
+                //Bind Modbus Value
+                var tblADCId = '';
+                var adcNumber = GetADCNumber(obj);
+                if (adcNumber != null && adcNumber != undefined && adcNumber != '') {
+                    tblADCId = newDestinationName + adcNumber;
+                }
+                if ($('#tbodyCalibrationNormal' + tblADCId + '').length > 0) {
+                    var tableModbusCalibrationNormal = '';
+                    $('#tbodyCalibrationNormal' + tblADCId + '').empty();
+                    $(obj).each(function (a, val) {
+                        var values = val.split(" ");
+                        if (values.length == 6) {
+                            tableModbusCalibrationNormal += '<tr>';
+                            tableModbusCalibrationNormal += '<td>' + values[1] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[2] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[3] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[4] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[5] + '</td>';
+                            tableModbusCalibrationNormal += '</tr>';
+                        }
+                    });
+
+                    $('#tbodyCalibrationNormal' + tblADCId + '').append(tableModbusCalibrationNormal);
+
+                } else {
+                    var tableModbusCalibrationNormal = '<tbody class="clstbodyCalibrationNormalModbus" id="tbodyCalibrationNormal' + tblADCId + '" style="display:none">';
+                    $(obj).each(function (a, val) {
+                        var values = val.split(" ");
+                        if (values.length == 6) {
+                            tableModbusCalibrationNormal += '<tr>';
+                            tableModbusCalibrationNormal += '<td>' + values[1] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[2] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[3] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[4] + '</td>';
+                            tableModbusCalibrationNormal += '<td>' + values[5] + '</td>';
+                            tableModbusCalibrationNormal += '</tr>';
+                        }
+                    });
+                    tableModbusCalibrationNormal += '</tbody>';
+
+                    $('#tblModbusCalibrationNormal').append(tableModbusCalibrationNormal);
+
+                }
+
+                //Bind Modbus Calibration Point
+                if ($('#tbodyCalibrationPoint' + tblADCId + '').length > 0) {
+                    var tableModbusCalibrationPoint = '';
+                    $('#tbodyCalibrationPoint' + tblADCId + '').empty();
+                    $(obj).each(function (a, val) {
+                        var values = val.split(" ");
+                        if (values.length == 7) {
+                            tableModbusCalibrationPoint += '<tr>';
+                            tableModbusCalibrationPoint += '<td>' + values[1] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[2] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[3] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[4] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[5] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[6] + '</td>';
+                            tableModbusCalibrationPoint += '</tr>';
+                        }
+                    });
+
+                    $('#tbodyCalibrationPoint' + tblADCId + '').append(tableModbusCalibrationPoint);
+
+                } else {
+                    var tableModbusCalibrationPoint = '<tbody class="clstbodyCalibrationPointModbus" id="tbodyCalibrationPoint' + tblADCId + '" style="display:none">';
+                    $(obj).each(function (a, val) {
+                        var values = val.split(" ");
+                        if (values.length == 7) {
+                            tableModbusCalibrationPoint += '<tr>';
+                            tableModbusCalibrationPoint += '<td>' + values[1] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[2] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[3] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[4] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[5] + '</td>';
+                            tableModbusCalibrationPoint += '<td>' + values[6] + '</td>';
+                            tableModbusCalibrationPoint += '</tr>';
+                        }
+                    });
+                    tableModbusCalibrationPoint += '</tbody>';
+
+                    $('#tblModbusCalibrationPoint').append(tableModbusCalibrationPoint);
+
+                }
+
+            }
+
+            //var channeldata = message.payloadString.split(',');
+
+        }
+    }
+
+    function SelectHasValue(value) {
+        var IsExists = false;
+        $('#drpChannel option').each(function () {
+            if (this.value == value)
+                IsExists = true;
+        });
+        return IsExists;
+    }
+
+    function FindChannel(tbody, value) {
+        var IsExists = false;
+        $(tbody + " tr").each(function () {
+            if ($(this).find("td:first").text() == value) {
+                IsExists = true;
+            }
+        });
+        return IsExists;
+    }
+
+    function GetADCNumber(obj) {
+        var adcNumber = '';
+        if (obj != null && obj != '') {
+            $(obj).each(function (a, val) {
+                adcNumber = val.split(" ")[0];
+                if (adcNumber != null && adcNumber != undefined && adcNumber != '') {
+                    return false;
+                }
+            });
+        }
+        return adcNumber;
+    }
+
+    function GetType(obj) {
+        var type = '';
+        $(obj).each(function (a, val) {
+            var values = val.split(" ");
+            if (values.length == 6) {
+                type = 'Normal';
+            }
+            else if (values.length == 7) {
+                type = 'Point';
+            }
+        });
+
+        return type;
+    }
+
+    function fnShowTagPartial(pinNo, adcId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/Modbus/_TagPartial',
+            type: 'Post',
+            data: '{adcId:' + adcId + ',pinNo:' + pinNo + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divTagPartial").empty().append(data);
+                $("#modelModbusValue").modal('hide');
+                $("#modal-add-modbus-tag").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+
+    }
+
+    function fnUpdateMultiplication(tblADCPIN) {
+        var mAssetInfo = {}
+        mAssetInfo.Multiplication = $('#txtFinalMultiplication_' + tblADCPIN).val();
+        mAssetInfo.AssetId = $('#hdnAssetId_' + tblADCPIN).text();
+        mAssetInfo.AssetAttributeId = $('#hdnAssetAttributeId_' + tblADCPIN).text();
+        var isValid = true;
+        if (mAssetInfo.Multiplication == null || mAssetInfo.Multiplication == undefined || mAssetInfo.Multiplication == '') {
+            alert("Multiplication is required!");
+            isValid = false;
+        }
+        else if (mAssetInfo.AssetId == null || mAssetInfo.AssetId == undefined || mAssetInfo.AssetId == '') {
+            alert("Asset not set.");
+            isValid = false;
+        }
+        else if (mAssetInfo.AssetAttributeId == null || mAssetInfo.AssetAttributeId == undefined || mAssetInfo.AssetAttributeId == '') {
+            alert("Asset Attribute not set.");
+            isValid = false;
+        }
+
+        if (isValid) {
+            if (confirm('Are you sure you want to update multiplication this record?')) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/Modbus/UpdateMultiplication',
+                    type: 'Post',
+                    data: '{mAssetInfo:' + JSON.stringify(mAssetInfo) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null) {
+                            if (data.type == "success") {
+                                alert(data.result);
+                            }
+                            else if (data.type == "error") {
+                                alert(data.result);
+                            }
+                            else if (data.type == "error") {
+                                alert(data.result);
+                            }
+
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        alert("Something went wrong!");
+                    }
+                });
+            }
+
+
+        }
+
+
+    }
+
+    function fnValidMultiplication(mAssetInfo) {
+        if (mAssetInfo != null && mAssetInfo != undefined) {
+            if (mAssetInfo.Multiplication == null || mAssetInfo.Multiplication == undefined || mAssetInfo.Multiplication == '') {
+
+            }
+            else if (mAssetInfo.Multiplication == null || mAssetInfo.Multiplication == undefined || mAssetInfo.Multiplication == '') {
+
+            }
+        }
+    }
+</script>

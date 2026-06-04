@@ -1,0 +1,1071 @@
+﻿@model Domain.FRSAlertLister
+
+@{
+    var failFRSAlert = Model.mFRSAlerts.ToList();
+}
+
+@{
+    var failFRSAlertCount = Model.mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
+    var predictiveFRSAlertCount = Model.mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).Count();
+}
+<style>
+    .boxGrid {
+        display: grid;
+        grid-template-columns: auto,auto;
+    }
+
+        .boxGrid > div {
+            border: 1px solid black;
+            font-size: 10px;
+            text-align: center;
+        }
+
+    .rounded-pill1 {
+        border-radius: 55rem !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+
+    td {
+        padding: 10px;
+        /*  white-space: nowrap;*/
+    }
+
+    .custom-popover {
+        max-width: 600px;
+    }
+</style>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-lg-1">
+                                <strong class="mt-4">Search</strong>
+                            </div>
+                            <div class="col-xl-2 col-lg-3 col-md-6">
+                                <span>From Date</span>
+                                <input type="text" class="form-control" id="txtAlertLiveStatusFromDate" value="@(Model.SearchCriteria.FromDate != null && Model.SearchCriteria.FromDate != DateTime.MinValue? Model.SearchCriteria.FromDate.ToShortDateString() : "")" />
+                            </div>
+                            <div class="col-xl-2 col-lg-3 col-md-6">
+                                <span>To Date</span>
+                                <input type="text" class="form-control" id="txtAlertLiveStatusToDate" value="@(Model.SearchCriteria.ToDate != null && Model.SearchCriteria.ToDate != DateTime.MinValue? Model.SearchCriteria.ToDate.ToShortDateString() : "")" />
+                            </div>
+                            <div class="col-lg-2 mt-4">
+                                <label class="radio-inline">
+                                    @if (Model.SearchCriteria.AlertStatus == (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active)
+                                    {
+                                        <input type="radio" name="SearchCriteria.AlertStatus" checked id="rdActive" value="@((int)E7FRSAdvance.Utility.Utility.AlertStatus.Active)" />
+                                    }
+                                    else
+                                    {
+                                        <input type="radio" name="SearchCriteria.AlertStatus" id="rdActive" value="@((int)E7FRSAdvance.Utility.Utility.AlertStatus.Active)" />
+                                    }
+                                    Active
+                                </label>
+
+                                <label class="radio-inline">
+                                    @if (Model.SearchCriteria.AlertStatus == (int)E7FRSAdvance.Utility.Utility.AlertStatus.InActive)
+                                    {
+                                        <input type="radio" name="SearchCriteria.AlertStatus" checked id="rdInActive" value="@((int)E7FRSAdvance.Utility.Utility.AlertStatus.InActive)" />
+                                    }
+                                    else
+                                    {
+                                        <input type="radio" name="SearchCriteria.AlertStatus" id="rdInActive" value="@((int)E7FRSAdvance.Utility.Utility.AlertStatus.InActive)" />
+                                    }
+                                    InActive
+                                </label>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                                <span>Zone</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", @id = "drpAlertLiveStatusZone", tabindex = 1 })
+                            </div>
+                            <div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+                                <input type="hidden" id="hdnAlertLiveStatusDivisionId" value="@Model.SearchCriteria.DivisionId" />
+                                <span>Division</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", @id = "drpAlertLiveStatusDivision", tabindex = 2 })
+                            </div>
+                            <div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+                                <span>Section</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.SectionId, (IEnumerable<SelectListItem>)ViewBag.Sections, "All", new { @class = "form-control", @id = "drpAlertLiveStatusSection", tabindex = 3 })
+                            </div>
+                            <div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+                                <span>Site</span>
+                                <input type="hidden" id="hdnAlertLiveStatusSiteId" value="@Model.SearchCriteria.SiteId" />
+                                @Html.DropDownListFor(x => x.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", @id = "drpAlertLiveStatusSites", tabindex = 3 })
+                            </div>
+                            <div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+                                <span>Asset Type</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.AssetTypeId, (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "All", new { @class = "form-control", @id = "drpAlertLiveStatusAssetType", tabindex = 4 })
+                            </div>
+                            <div class=" col-xxl-1 col-xl-2 col-lg-4 col-md-4 mt-2">
+                                <span>Alert Type</span>
+                                @Html.DropDownListFor(x => x.SearchCriteria.AlertTypeId, Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.AlertType)).Cast<E7FRSAdvance.Utility.Utility.AlertType>().Select(x => new SelectListItem { Text = x.ToString(), Value = ((int)x).ToString() }), "All", new { @class = "form-control", tabindex = 6, @id = "drpAlertLiveStatusAlertType" })
+                            </div>
+                            <div class="col-xxl-2 col-xl-4 col-lg-5 mt-4">
+                                <a class="btn btn-success btn-quirk mt-1" onclick="fnGetAlertLiveStatus()"><i class="fa fa-search"></i></a>
+                                <a href="@Url.Action("DownloadFRSAlertLiveStatus", "FRSReport")" class="btn btn-primary mt-1"><i class="fa fa-download"></i></a>
+                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                {
+                                    <a href="javascript:void(0)" class="btn btn-danger btn-quirk mt-1" onclick="fnDeleteSelected()" data-bs-original-title="" title="Delete selected FRS Alert"><i class="fa fa-trash"></i></a>
+                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnDownloadImage(); return false;" data-bs-original-title="" title="" style="color: black"><img class="mt-1" style="width:40px;" src="@Url.Content("~/assets/images/download_image.png")" /></a>
+                                    @*<a href="@Url.Action("Debug", "FRSReport")" class="btn btn-info mt-1">Debug</a>*@
+
+                                    <div class="form-check form-switch" style="margin-left:30px;">
+                                        @Html.CheckBoxFor(x => x.SearchCriteria.IsAutoRefresh, new { @class = "form-check-input f-24", @id = "switchAutoRefreshMode", @title = "Auto Refresh Mode On/Off" })
+                                        @*<input type="checkbox" title="Auto Refresh Mode On/Off" class="form-check-input f-24" id="switchAutoRefreshMode" />*@
+                                    </div>
+                                }
+
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="row">
+                            <div class="col-xl-2 col-lg-4 col-md-4 col-sm-4 col-12">
+                                <table class="table table-bordered bg-info" style="border:2px;">
+                                    <tr>
+                                        <td width="10%" style="font-size:15px"><b>Predictive</b></td>
+                                        <td width="5%">@predictiveFRSAlertCount</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class=" col-xl-2 col-lg-3 col-md-3 col-sm-4 col-12">
+                                <table class="table table-bordered bg-danger">
+                                    <tr>
+                                        <td width="10%" style="font-size:15px"><b>Failure</b></td>
+                                        <td width="5%">@failFRSAlertCount</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-xl-2 col-lg-3 col-md-3 col-sm-2 col-12">
+                                <table class="table table-bordered bg-success">
+                                    <tr>
+                                        <td width="10%" style="font-size:15px"><b>Total</b></td>
+                                        <td width="5%">@failFRSAlert.Count</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="row mt-4">
+                            <div class="col-md-12 mt-2">
+                                <div class="row">
+                                    <div class="col-xl-12">
+                                        <span class="pull-left">Last Update:</span>
+                                        <span class="pull-left" id="spnAlertLiveStatusUpdateTime"></span>
+                                        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-primary" onclick="fnGroupFailureAlertsView()" title="Grid View"><i class="fa fa-group"></i></a></span>
+                                        <span class="pull-right" style="margin-right:20px;"><a class="btn btn-sm btn-info" onclick="fnListFailureAlertsView()" title="List View"><i class="fa fa-list"></i></a></span>
+                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                        {
+                                            <span class="pull-right" style="margin-right:20px;"><a href="javascript:void(0)" class="btn btn-primary" onclick="ClearRemarkColumn()">Clear Remark</a></span>
+                                            <span class="pull-right" style="margin-right:20px;"><a href="javascript:void(0)" class="btn btn-primary" onclick="AddRemarkColumn()">Add Remark</a></span>
+                                        }
+                                    </div>
+                                    <div class="col-xl-12 mt-4" id="failureAlertsListView">
+                                        <div class="table-responsive tableFixHead" style="max-height: 620px;">
+                                            <table class="table" id="downloadIMG">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="background-color: #4bacc6;color:white;">Sr.No</th>
+                                                        <th style="background-color: #215968; color: white;">Zone</th>
+                                                        <th style="background-color: #404040; color: white;">Division</th>
+                                                        <th style="background-color: #4bacc6; color: white;">Section</th>
+                                                        <th style="background-color: #215968; color: white; ">Station</th>
+                                                        <th style="background-color: #404040; color: white;">Alert Type</th>
+                                                        <th style="background-color: #4bacc6; color: white;">Asset Type</th>
+                                                        <th style="background-color: #215968; color: white;">Asset Number</th>
+                                                        <th style="background-color: #404040; color: white;">Incidence Date & Time</th>
+                                                        <th style="background-color: #4bacc6; color: white;">Duration (h:m)</th>
+                                                        <th style="background-color: #215968; color: white;" class="resetTimeStamp">Rectification Date & Time</th>
+                                                        <th style="background-color: #4bacc6; display: none; color: white;" class="showRemark">Add Remark</th>
+                                                        <th style="background-color: #404040; color: white;">Cause_code</th>
+                                                        <th style="background-color: #4bacc6; color: white;" class="text-center">Status</th>
+                                                        <th style="background-color: #215968; color: white;">Alert Message</th>
+                                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                        {
+                                                            <th class="text-center" style="background-color: #4bacc6; color: white;">Alert Insight</th>
+                                                            <th class="text-center" style="background-color: #215968; color: white;">Alert Instance</th>
+                                                            <th style="background-color: #4bacc6; color: white;" colspan="3" class="text-center">Actions required for feedback</th>
+                                                        }
+                                                        else
+                                                        {
+                                                            <th style="background-color: #4bacc6; color: white;" colspan="3" class="text-center">Actions required for feedback</th>
+
+                                                        }
+                                                        <th style="background-color: #215968; color: white;" class="text-center"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody style="max-height: 620px;overflow-y:auto;" id="tbodyAlertLiveStatusChange">
+                                                    @if (Model != null && Model.mFRSAlerts != null && failFRSAlert != null && failFRSAlert.Count > 0)
+                                                    {
+                                                        int counter = 0;
+                                                        foreach (var item in failFRSAlert)
+                                                        {
+                                                            counter++;
+                                                            <tr class="colorCheck_@item.Id" data-id="@item.Id">
+                                                                <td>@counter</td>
+                                                                <td>@item.ZoneName</td>
+                                                                <td>@item.DivisionName</td>
+                                                                <td>@item.SectionName</td>
+                                                                <td>@item.SiteName</td>
+                                                                <td>
+                                                                    @if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+                                                                    {
+                                                                        <span>@E7FRSAdvance.Utility.Utility.AlertType.Failure.ToString()</span>
+                                                                    }
+                                                                    else if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive)
+                                                                    {
+                                                                        <span>@E7FRSAdvance.Utility.Utility.AlertType.Predictive.ToString()</span>
+                                                                    }
+                                                                </td>
+                                                                <td>@item.AssetType</td>
+                                                                <td>@item.AssetName</td>
+                                                                <td>
+                                                                    @item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss")
+                                                                </td>
+                                                                <td>
+                                                                    @if (item.ResetTimeStamp != null && item.ResetTimeStamp.Value != DateTime.MinValue)
+                                                                    {
+                                                                        TimeSpan span = item.ResetTimeStamp.Value.Subtract(item.SetTimeStamp);
+                                                                        <span>@Convert.ToInt32(span.Hours):@Convert.ToInt32(span.Minutes)</span>
+                                                                    }
+                                                                </td>
+                                                                <td>
+                                                                    @if (item.ResetTimeStamp != null && item.ResetTimeStamp != DateTime.MinValue)
+                                                                    {
+                                                                        <span>@item.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                                                    }
+                                                                </td>
+                                                                <td class="showRemark" id="RemarkId_@item.Id" onchange="fnAddRemark(this,'@item.Id')" style="display:none;">
+                                                                    @if (!string.IsNullOrEmpty(item.TempRemark))
+                                                                    {
+                                                                        @item.TempRemark
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <textarea rows="4" cols="15" class="form-control textRemark"></textarea>
+                                                                    }
+                                                                </td>
+                                                                <td>@item.CauseCode</td>
+
+                                                                <td class="text-center">
+                                                                    @if (item.IsActive == true)
+                                                                    {
+                                                                        <div class="span badge rounded-pill pill-badge-danger">@E7FRSAdvance.Utility.Utility.AlertStatus.Active.ToString()</div>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <div class="span badge rounded-pill pill-badge-success">@E7FRSAdvance.Utility.Utility.AlertStatus.InActive.ToString()</div>
+                                                                    }
+
+                                                                    @if (item.IsSetWatchList != null && item.IsSetWatchList.Value)
+                                                                    {
+                                                                        <div>
+                                                                            <span class="text-danger">False</span>
+                                                                        </div>
+                                                                    }
+                                                                </td>
+
+                                                                <td>
+                                                                    <span>
+                                                                        @item.SetAlertMessage
+                                                                    </span>
+                                                                    <span>
+                                                                        @Html.Raw(item.Description)
+                                                                    </span>
+
+                                                                    @if (!string.IsNullOrEmpty(item.ResetAlertMessage))
+                                                                    {
+                                                                        <br />
+                                                                        <b>
+                                                                            <u>
+                                                                                Reset Message
+                                                                            </u>
+                                                                        </b>
+                                                                        <span>
+                                                                            @Html.Raw(item.ResetAlertMessage)
+                                                                        </span>
+                                                                    }
+                                                                </td>
+                                                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                                {
+                                                                    <td class="text-center">
+                                                                        <span>@item.AlertInsight</span>
+                                                                    </td>
+                                                                    <td class="text-center">
+                                                                        @if (item.AlertInstanceCount > 0)
+                                                                        {
+                                                                            <div>
+                                                                                <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowFRSAlertInstance(@item.Id); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="@Url.Content("~/assets/images/Vector.png")" /></a>
+                                                                            </div>
+                                                                        }
+                                                                        <div>
+                                                                            <span>@item.AlertInstanceCount</span>
+                                                                        </div>
+
+                                                                    </td>
+
+                                                                }
+
+                                                                <td>
+                                                                    <button type="button" class="btn btn-info" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()')"
+                                                                            data-alerttypeid="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()">
+                                                                        T
+                                                                    </button>
+                                                                </td>
+                                                                <td>
+                                                                    <button type="button" class="btn btn-info" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()')" data-alerttypeid="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()">F</button>
+                                                                </td>
+                                                                <td>
+                                                                    <button type="button" class="btn btn-info" onclick="fnUpdateAckStatus('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()')" data-alerttypeid="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()">M</button>
+                                                                </td>
+                                                                <td>
+                                                                    @if (item.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.TRACK && item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+                                                                    {
+                                                                        <a href="Javascript:void(0)" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" onclick="ShowDebugTrackFail('@item.Id')">Debug </a>
+
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+
+                                                    }
+
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-xl-12 mt-4" id="failureAlertsgroupView" style="display:none">
+
+                                        @if (Model.AssetTypes != null && Model.AssetTypes.Count > 0)
+                                        {
+                                            <div class="container-fluid">
+                                                <div class="email-wrap email-main-wrapper">
+                                                    <div class="row">
+                                                        <div class="col-xxl-12 col-xl-12 box-col-12">
+                                                            <div class="email-right-aside">
+                                                                <div class="card email-body email-list">
+                                                                    <div class="mail-header-wrapper" style="background-color:#215968; color:white; border-top-left-radius: 15px; border-top-right-radius:15px;">
+                                                                        <div class="col-xl-12">
+                                                                            <div class="mail-header">
+                                                                                <div class="form-check form-check-inline">
+                                                                                    <input class="form-check-input checkbox-primary" id="allSelectCheckbox" type="checkbox" value="@Model.AssetTypes.FirstOrDefault().Name.Replace(" ","")">
+                                                                                    <label class="form-check-label" for="allSelectCheckbox"></label>
+                                                                                    <ul class="email-tabs nav" role="tablist">
+                                                                                        @foreach (var item in Model.AssetTypes)
+                                                                                        {
+
+                                                                                            <li class="nav-item">
+                                                                                                @{
+                                                                                                    var isActive = string.Empty;
+                                                                                                }
+
+                                                                                                @if (item == Model.AssetTypes.FirstOrDefault())
+                                                                                                {
+                                                                                                    isActive = "active";
+                                                                                                }
+
+                                                                                                <a class="nav-link @isActive" id="@item.Name.Replace(" ","")" data-bs-toggle="pill" href="#@item.Name.Replace(" ","")-pill-failureAlerts-tab" role="tab" aria-controls="@item.Name.Replace(" ","")-pill" aria-selected="false" onclick="fnChangeTab('@item.Name.Replace(" ","")')" style="color:white;">
+                                                                                                    <div>@item.Name</div>
+                                                                                                    <span class="span badge rounded-pill pill-badge-primary">@failFRSAlert.Where(x => x.AssetTypeId == item.Id).Count()</span>
+                                                                                                </a>
+                                                                                            </li>
+
+                                                                                        }
+
+                                                                                    </ul>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="tab-content" id="email-pills-tabContent">
+                                                                        @foreach (var item in Model.AssetTypes)
+                                                                        {
+                                                                            var isActive = "";
+                                                                            if (item == Model.AssetTypes.FirstOrDefault())
+                                                                            {
+                                                                                isActive = "show active";
+                                                                            }
+                                                                            <div class="tab-pane fade @isActive" id="@item.Name.Replace(" ","")-pill-failureAlerts-tab" role="tabpanel" aria-labelledby="@item.Name.Replace(" ","")-pill-tab">
+                                                                                <div class="mail-body-wrapper">
+                                                                                    <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                                        @if (failFRSAlert != null && failFRSAlert.Count > 0)
+                                                                                        {
+                                                                                            foreach (var site in failFRSAlert.Where(x => x.AssetTypeId == item.Id).GroupBy(x => new { x.SiteId, x.SiteName }).Select(x => x.Key).ToList())
+                                                                                            {
+                                                                                                int smsCount = failFRSAlert.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId).Count();
+                                                                                                if (smsCount > 0)
+                                                                                                {
+                                                                                                    <li class="inbox-data" style="background-color:#f4f8f8">
+                                                                                                        <div class="inbox-message">
+
+                                                                                                            <div class="email-data">
+                                                                                                                <span style="float:left;">@site.SiteName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary" style="color:white;">@smsCount</span>
+                                                                                                            </div>
+                                                                                                            <span class="pull-right">
+                                                                                                                <a href="#" data-bs-original-title="" title=""><i class="fa fa-angle-up fa-3x" onclick="fnShowFailureAlertLogSite('@site.SiteId','@item.Name.Replace(" ", "")', this); return false;"></i></a>
+                                                                                                            </span>
+                                                                                                        </div>
+                                                                                                    </li>
+
+                                                                                                }
+
+
+                                                                                                foreach (var alert in failFRSAlert.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId).GroupBy(x => new { x.AlertTypeId, x.CauseCode }).Select(x => x.Key).ToList())
+                                                                                                {
+
+                                                                                                    var smsAlertNameCount = failFRSAlert.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.CauseCode == alert.CauseCode).Count();
+                                                                                                    <li class="inbox-data  maintenaceALertLogBySite_@(site.SiteId)_@(item.Name.Replace(" ",""))" style="display:none">
+                                                                                                        <div class="mail-body-wrapper" style="width:100%;">
+                                                                                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                                                                <li class="inbox-data" style="background-color: #4bacc6;">
+                                                                                                                    <div class="inbox-message">
+                                                                                                                        <div class="email-data">
+                                                                                                                            <span style="float: left; color: white;">@alert.CauseCode  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAlertNameCount</span>
+                                                                                                                        </div>
+                                                                                                                        <span class="pull-right">
+                                                                                                                            <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowFailureAlertLogAlertName('@site.SiteId','@E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode)', this); return false;"></i></a>
+                                                                                                                        </span>
+                                                                                                                    </div>
+                                                                                                                </li>
+                                                                                                                @foreach (var asset in failFRSAlert.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.CauseCode == alert.CauseCode).GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                                                                                {
+                                                                                                                    var smsAssetCount = failFRSAlert.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.CauseCode == alert.CauseCode && x.AssetId == asset.AssetId).Count();
+                                                                                                                    <li class="inbox-data  maintenaceALertLogByAletType_@(site.SiteId)_@(E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode))" style="display:none">
+                                                                                                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" style="width:100%;">
+                                                                                                                            <li class="inbox-data" style="background-color: #21596880; ">
+                                                                                                                                <div class="inbox-message">
+                                                                                                                                    <div class="email-data">
+                                                                                                                                        <span style="float: left; color: white;">@asset.AssetName  &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                                                                                    </div>
+                                                                                                                                    <span class="pull-right">
+
+                                                                                                                                        <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowFailureAlertLogAsset('@site.SiteId','@asset.AssetId','@E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode)', this); return false;"></i></a>
+                                                                                                                                    </span>
+                                                                                                                                </div>
+                                                                                                                            </li>
+
+                                                                                                                            @foreach (var fRSAlert in failFRSAlert.Where(x => x.AssetTypeId == item.Id && x.SiteId == site.SiteId && x.AssetId == asset.AssetId && x.CauseCode == alert.CauseCode).ToList())
+                                                                                                                            {
+                                                                                                                                <li class="inbox-data  maintenaceALertLogByAsset_@(site.SiteId + "" + asset.AssetId)_@(E7FRSAdvance.Utility.ExtensionMethod.RemoveSpecialCharactersWithSpace(alert.CauseCode))" style="display:none">
+                                                                                                                                    <div class="inbox-user">
+
+                                                                                                                                        <div class="form-check form-check-inline m-0">
+                                                                                                                                            <input class="form-check-input checkbox-primary clsSelectAlltype clsSelectCheckbox_@item.Name.Replace(" ","")" id="frsCheckbox" type="checkbox" name="chkFRSAlertDelete" value="@fRSAlert.Id">
+                                                                                                                                            <label class="form-check-label" for="emailCheckboxB"></label>
+                                                                                                                                        </div>                                                                                                                          <p>@fRSAlert.SiteName</p>
+                                                                                                                                    </div>
+                                                                                                                                    <div class="inbox-message">
+                                                                                                                                        <div class="email-data">
+                                                                                                                                            <span>@fRSAlert.SetAlertMessage</span>
+                                                                                                                                            <span>@Html.Raw(fRSAlert.Description)</span>
+                                                                                                                                            @if (!string.IsNullOrEmpty(fRSAlert.ResetAlertMessage))
+                                                                                                                                            {
+                                                                                                                                                <b>
+                                                                                                                                                    <u>
+                                                                                                                                                        Reset Message
+                                                                                                                                                    </u>
+                                                                                                                                                </b>
+                                                                                                                                                <span class="popper" data-bs-trigger="hover" data-bs-toggle="popover">
+                                                                                                                                                    @Html.Raw(fRSAlert.ResetAlertMessage)
+                                                                                                                                                </span>
+                                                                                                                                                <div class="popper-content d-none">@Html.Raw(fRSAlert.ResetAlertMessage)</div>
+                                                                                                                                            }
+                                                                                                                                            @if (fRSAlert.IsActive == true)
+                                                                                                                                            {
+                                                                                                                                                <div class="span badge rounded-pill pill-badge-danger">@E7FRSAdvance.Utility.Utility.AlertStatus.Active.ToString()</div>
+                                                                                                                                            }
+                                                                                                                                            else
+                                                                                                                                            {
+                                                                                                                                                <div class="span badge rounded-pill pill-badge-success">@E7FRSAdvance.Utility.Utility.AlertStatus.InActive.ToString()</div>
+                                                                                                                                            }
+
+                                                                                                                                        </div>
+                                                                                                                                        <div class="email-timing"><span>@fRSAlert.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss")</span></div>
+                                                                                                                                        <div class="email-options">
+                                                                                                                                            <table>
+                                                                                                                                                <thead>
+                                                                                                                                                    <tr>
+                                                                                                                                                        <th colspan="5"></th>
+                                                                                                                                                    </tr>
+                                                                                                                                                </thead>
+                                                                                                                                                <tbody>
+                                                                                                                                                    <tr class="colorCheck_@fRSAlert.Id">
+                                                                                                                                                        <td>
+                                                                                                                                                            <button type="button" class="btn btn-info" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()')"
+                                                                                                                                                                    data-alerttypeid="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()">
+                                                                                                                                                                T
+                                                                                                                                                            </button>
+                                                                                                                                                        </td>
+                                                                                                                                                        <td>
+                                                                                                                                                            <button type="button" class="btn btn-info" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()')" data-alerttypeid="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()">F</button>
+                                                                                                                                                        </td>
+                                                                                                                                                        <td>
+                                                                                                                                                            <button type="button" class="btn btn-info" onclick="fnUpdateAckStatus('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()')" data-alerttypeid="@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()">M</button>
+                                                                                                                                                        </td>
+
+                                                                                                                                                        @if (fRSAlert.AlertInstanceCount > 0)
+                                                                                                                                                        {
+                                                                                                                                                            <td class="text-center">
+                                                                                                                                                                <div>
+                                                                                                                                                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowFRSAlertInstance(@fRSAlert.Id); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="@Url.Content("~/assets/images/Vector.png")" /></a>
+                                                                                                                                                                </div>
+
+                                                                                                                                                            </td>
+                                                                                                                                                        }
+                                                                                                                                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                                                                                                                                        {
+                                                                                                                                                            <td>
+                                                                                                                                                                <a href="javascript:void(0)" class="btn btn-danger btn-quirk" onclick="Delete(@fRSAlert.Id)" data-bs-original-title="" title="Delete FRS Alert"><i class="fa fa-trash" style="color:white"></i></a>
+                                                                                                                                                            </td>
+                                                                                                                                                        }
+                                                                                                                                                    </tr>
+                                                                                                                                                </tbody>
+                                                                                                                                            </table>
+
+                                                                                                                                        </div>
+                                                                                                                                    </div>
+                                                                                                                                </li>
+                                                                                                                            }
+
+                                                                                                                        </ul>
+                                                                                                                    </li>
+                                                                                                                }
+
+
+                                                                                                            </ul>
+                                                                                                        </div>
+                                                                                                    </li>
+
+                                                                                                }
+                                                                                            }
+
+                                                                                        }
+                                                                                    </ul>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
+
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal bounceIn animated" id="modelAddRemark" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title">Add Remark</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="hdnAlertRemarkId" />
+                <input type="hidden" id="hdnAlertAlertStatusId" />
+                <textarea class="form-control" id="txtAlertRemark" rows="3"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnUpdateRemark()">Save</button>
+                <a class="btn btn-default" data-bs-dismiss="modal" data-bs-original-title="" title="">Close</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(document).ready(function () {
+
+        $('#txtAlertLiveStatusFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#txtAlertLiveStatusToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        GetDivisionByZone($("#drpAlertLiveStatusZone").val(), $('#drpAlertLiveStatusDivision'), $('#hdnAlertLiveStatusDivisionId'));
+
+        GetSiteByDivisionId($("#drpAlertLiveStatusDivision").val(), $('#drpAlertLiveStatusSites'), $('#hdnAlertLiveStatusSiteId'));
+
+        $("#drpAlertLiveStatusZone").change(function () {
+            GetDivisionByZone($(this).val(), $('#drpAlertLiveStatusDivision'));
+
+        });
+
+        $("#drpAlertLiveStatusDivision").change(function () {
+            GetSiteByDivisionId($(this).val(), $('#drpAlertLiveStatusSites'));
+        });
+
+        $('#allSelectCheckbox').change(function () {
+            if ($(this).prop('checked') == true) {
+                $('.clsSelectCheckbox_' + $(this).val()).prop('checked', true);
+            } else {
+                $('.clsSelectCheckbox_' + $(this).val()).prop('checked', false);
+
+                $('.clsSelectAlltype').prop('checked', false);
+            }
+        });
+
+        $('.popper').popover({
+            placement: 'top',
+            container: 'body',
+            html: true,
+            content: function () {
+                return $(this).next('.popper-content').html();
+            },
+            template: '<div class="popover custom-popover" role="tooltip"><div class="arrow"></div><h3 class="popover-header"></h3><div class="popover-body"></div></div>'
+        });
+
+    });
+
+    function fnUpdateAckStatus(alertId, acknowledgemenStatusId) {
+
+        if (confirm('Are you sure you want to update acknowledgement?')) {
+            var mFRSAlert = {};
+
+            mFRSAlert.AcknowledgemenStatusId = acknowledgemenStatusId;
+            mFRSAlert.Id = alertId
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/UpdateAcknowledgementStatus',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mFRSAlert),
+                dataType: 'json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                            fnGetAlertLiveStatus();
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+
+    function ChangeColor(alertId, element) {
+        if ($('.colorCheck_' + alertId).find("btn-primary")) {
+            $('.colorChange_' + alertId).removeClass("btn-primary").addClass('btn-info');
+        }
+        if ($(element).hasClass("btn-info")) {
+            $(element).removeClass("btn-info").addClass('btn-primary');
+            if ($(element).hasClass("check")) {
+                $('.ackbutton_' + alertId).hide();
+            }
+            else {
+                $('.ackbutton_' + alertId).show();
+            }
+
+        }
+    }
+
+
+    function fnListFailureAlertsView() {
+        $("#failureAlertsListView").show();
+        $("#failureAlertsgroupView").hide();
+    }
+
+    function fnGroupFailureAlertsView() {
+        $("#failureAlertsListView").hide();
+        $("#failureAlertsgroupView").show();
+    }
+
+    function fnShowFailureAlertLogSite(siteId, typeName, $this) {
+
+        if (siteId != null && siteId != '' && siteId != undefined && typeName != null && typeName != undefined && typeName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogBySite_' + siteId + '_' + typeName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogBySite_' + siteId + '_' + typeName).hide();
+            }
+        }
+    }
+
+    function fnShowFailureAlertLogAsset(siteId, assetId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnShowFailureAlertLogAlertName(siteId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAletType_' + siteId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAletType_' + siteId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function AddRemark(id, statusId) {
+        if (id != null && id != undefined && id != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/GetBy',
+                type: 'POST',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.Id > 0) {
+                        $('#hdnAlertRemarkId').val(id);
+                        $('#txtAlertRemark').val(data.Remark);
+                        $('#hdnAlertAlertStatusId').val(statusId);
+                    }
+
+                    $('#modelAddRemark').modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnUpdateRemark() {
+        if ($('#txtAlertRemark').val() != null && $('#txtAlertRemark').val() != undefined && $('#txtAlertRemark').val() != '') {
+            var mFRSAlert = {};
+            mFRSAlert.Id = $('#hdnAlertRemarkId').val();
+            mFRSAlert.Remark = $('#txtAlertRemark').val();
+            mFRSAlert.AcknowledgemenStatusId = $('#hdnAlertAlertStatusId').val();
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/UpdateRemark',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mFRSAlert),
+                dataType: 'json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#modelAddRemark').modal('hide');
+                    fnGetAlertLiveStatus();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $('#modelAddRemark').modal('hide');
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            alert('Remark is required.')
+        }
+
+
+    }
+
+    //function ChangeColor(element) {
+    //    debugger
+    //    if ($(".colorCheck").find("btn-primary")) {
+    //        $(".colorChange").removeClass("btn-primary").addClass('btn-info');
+    //    }
+    //    if ($(element).hasClass("btn-info")) {
+    //        $(element).removeClass("btn-info").addClass('btn-primary');
+
+    //    }
+    //    else {
+    //        $(element).removeClass("btn-primary").addClass('btn-info');
+    //    }
+    //}
+
+    function fnPredictiveAlertsListView() {
+        $("#predictiveAlertsListView").show();
+        $("#predictiveAlertsgroupView").hide();
+    }
+
+    function fnPredictiveAlertsGroupView() {
+        $("#predictiveAlertsListView").hide();
+        $("#predictiveAlertsgroupView").show();
+    }
+
+    function fnShowPredictiveAlertLogSite(siteId, typeName, $this) {
+
+        if (siteId != null && siteId != '' && siteId != undefined && typeName != null && typeName != undefined && typeName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.predictiveALertLogBySite_' + siteId + '_' + typeName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.predictiveALertLogBySite_' + siteId + '_' + typeName).hide();
+            }
+        }
+    }
+
+    function fnShowPredictiveAlertLogAsset(siteId, assetId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.predictiveALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.predictiveALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnShowPredictiveAlertLogAlertName(siteId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.predictiveALertLogByAletType_' + siteId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.predictiveALertLogByAletType_' + siteId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnChangeTab(type) {
+        $('#allSelectCheckbox').val(type);
+    }
+
+    function Delete(id) {
+        if (confirm('Are you sure you want to delete selected record')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/DeleteFRSAlertById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                            fnGetAlertLiveStatus();
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "error");
+                }
+            });
+        }
+
+    }
+
+    function fnDeleteSelected() {
+        var j = 0;
+        var selectedValue = [];
+        $("input:checkbox[name=chkFRSAlertDelete]:checked").each(function () {
+            selectedValue.push($(this).val());
+        });
+        if (selectedValue != null && selectedValue != undefined && selectedValue.length > 0) {
+            if (confirm('Are you sure you want to delete selected record')) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/FRSReport/DeleteFRSAlertByIds',
+                    type: 'Post',
+                    data: JSON.stringify(selectedValue),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null) {
+                            if (data.type == "success") {
+                                CommonNotification("SUCCESS", data.result, "success");
+                                fnGetAlertLiveStatus();
+                            }
+                            else if (data.type == "error") {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                            else if (data.type == "error") {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "error");
+                    }
+                });
+            }
+
+        }
+        else {
+            CommonNotification("ERROR", "Please select any option for delete FRS Alert", "error");
+        }
+    }
+
+    function fnShowFRSAlertInstance(frsAlertId) {
+        var mFRSAlertInstance = {};
+        mFRSAlertInstance.FRSAlertId = frsAlertId;
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/GetFRSAlertInstance',
+            type: 'POST',
+            dataType: 'html',
+            data: JSON.stringify(mFRSAlertInstance),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divFRSAlertInstance").empty().append(data);
+                $('#modalFRSAlertInstance').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnDownloadImage() {
+        html2canvas($("#downloadIMG")[0], {
+            allowTaint: true,
+            scrollX: 0,
+            scrollY: -window.scrollY
+        }).then((canvas) => {
+            const linkSource = canvas.toDataURL();;
+            const downloadLink = document.createElement("a");
+            const fileName = 'Alert_Screenshot' + '.jpeg';
+            downloadLink.href = linkSource;
+            downloadLink.download = fileName;
+            downloadLink.click();
+        });
+    }
+
+    function AddRemarkColumn() {
+        $(".showRemark").show();
+    }
+
+    function fnAddRemark($this, itemId) {
+        var remark_val = $($this).children('.textRemark').val();
+        if (remark_val != null && remark_val != undefined && remark_val != '') {
+            $.ajax({
+                url: '/FRSReport/UpdateTempRemark',
+                type: 'POST',
+                dataType: 'html',
+                data: '{Id:' + itemId + ',tempRemark:"' + remark_val + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#RemarkId_" + itemId).append('<span>' + remark_val + '</span>');
+                    $($this).children('.textRemark').remove();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            alert("Remark is required")
+        }
+
+    }
+
+    function ClearRemarkColumn() {
+        $.ajax({
+            url: '/FRSReport/ClearTempRemark',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                fnGetAlertLiveStatus();
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function ShowDebugTrackFail(id) {
+        if (id != null && id != undefined && id != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/_DebugTrackFail',
+                type: 'POST',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#divFRSFailAlertDebbug').empty().append(data);
+                    $('#model-FRS-Fail-Alert-Debbug').modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+
+</script>

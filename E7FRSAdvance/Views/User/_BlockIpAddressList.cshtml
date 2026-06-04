@@ -1,0 +1,179 @@
+﻿@model Domain.BlockIPAddressLister
+
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="people-options clearfix">
+                    <div class="pull-left">
+                        <a id="btnIp" class="btn btn-primary btn-quirk" >Add IpAddress</a>
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip2" })
+                        @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize2" })
+                    </div>
+                    <div class="btn-group pull-right people-pager">
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                        <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                    </div>
+                    @{
+                        int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                        if (Model.BlockIPAddress.Count == 0)
+                        {
+                            start = 0;
+                        }
+                        decimal end = Math.Floor(Model.Pager.TotalRecord);
+                        if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                        {
+                            if (Model.Pager.PageSize == -1)
+                            {
+                                end = Model.Pager.TotalRecord;
+                            }
+                            else
+                            {
+                                end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                if (end > Model.Pager.TotalRecord)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                            }
+                        }
+                    }
+                    <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Record </span>
+                </div>
+            </div>
+            <div class="card-body " style="padding:15px;">
+                <div class="table-responsive" style="max-height: 620px;">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th style="width:100px;">Action </th>
+                                <th>Ip Adress </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.BlockIPAddress != null && Model.BlockIPAddress.Count > 0)
+                            {
+                                foreach (var item in Model.BlockIPAddress)
+                                {
+                                    <tr class="table-light">
+                                        <td class="text-center width60"><a href="#"><i class="fa fa-trash text-danger" onclick="DeleteIpById('@item.Id')"></i></a></td>
+                                        <td>@item.IpAddress</td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="10" class="text-center">
+                                        No record found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        $('#drpPageSize2').change(function (e) {
+            $("#hdnSkip2").val('0');
+            $("#fnGetBlockIpList").submit();
+        });
+
+        $("#btnIp").click(function () {
+            $("#modal-add-ipaddress").modal('show');
+            $("#txtIpAddress").val('');
+        });
+
+    });
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip2").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip1) + parseInt(pageSize);
+                $("#hdnSkip2").val(skip);
+                $("#fnGetBlockIpList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip2").val(skip);
+                $("#fnGetBlockIpList").submit();
+            }
+        }
+    }
+
+    function fnBlockIpSave() {
+
+        if ($.trim($("#txtIpAddress").val()).length > 0) {
+            var blockIp = {};
+            blockIp.IpAddress = $("#txtIpAddress").val();
+            $.ajax({
+                url: '/User/SaveBlockIp',
+                type: 'Post',
+                data: '{mBlockIP:' + JSON.stringify(blockIp) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Record has been saved.", "success");
+                        $("#fnGetBlockIpList").submit();
+                    } else if (data === false) {
+                        CommonNotification("ERROR", "Error occured while saving record!", "error");
+                    }
+                    $("#modal-add-ipaddress").modal('hide');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Ip Address required!", "error");
+        }
+       
+    }
+
+
+    function DeleteIpById(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/User/DeleteIpById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data === true) {
+                        CommonNotification("SUCCESS", "Record has been deleted.", "success");
+                        $("#fnGetBlockIpList").submit();
+                    } else if (data === false) {
+                        if (data.Message.includes("Could not delete this record")) {
+                            CommonNotification("WARNING", data.Message, "warning");
+                        } 
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+</script>

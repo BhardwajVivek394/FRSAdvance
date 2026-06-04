@@ -1,0 +1,64 @@
+﻿@model Domain.JobCardLister
+
+@if (Model != null && Model.mJobCards != null && Model.mJobCards.Count > 0)
+{
+
+    var dateGrouped = Model.mJobCards
+               .GroupBy(p => new
+               {
+                   month = p.CreatedDate.Month,
+                   year = p.CreatedDate.Year,
+               }).Select(d => new
+               {
+                   d.Key.month,
+                   d.Key.year,
+
+               }).ToList();
+
+    @Html.HiddenFor(x => x.SearchCriteria.SiteId)
+    <div class="row">
+
+        @foreach (var jobcard in dateGrouped)
+        {
+            <div class="col-12" id="">
+                <div class="card mb-2">
+                    <div class="card-body text-white" style="padding: 15px; font-size: 18px; background-color: #4bacc6; border-radius: 12px; " id="divDateGroup">
+                        @System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(jobcard.month) / @jobcard.year
+                        <div class="pull-right">
+                            <a href="javascript:void(0)"><i class="fa fa-angle-up f-48" style="color:#fff;" onclick="fnShowJobCardDiv('@jobcard.month',this)"></i></a>
+                        </div>
+                    </div>
+                </div>
+                @foreach (var item in Model.mJobCards)
+                {
+                    if (item.CreatedDate.Month == jobcard.month)
+                    {
+                        <div class="col-lg-12 jobCardDiv_@jobcard.month" style="display: none; padding: 20px;">
+                            <div id="divJobCard@(item.Id)">
+                                @Html.Partial("_JobCardPartial", item)
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+
+    </div>
+
+}
+<script>
+    function fnShowJobCardDiv(jobCardCreatedMonth, $this) {
+
+        if ($($this).hasClass("fa-angle-up")) {
+            $($this).removeClass("fa-angle-up").addClass("fa-angle-down");
+
+            $('.jobCardDiv_' + jobCardCreatedMonth).show();
+
+        } else {
+            $($this).removeClass("fa-angle-down").addClass("fa-angle-up");
+            $('.jobCardDiv_' + jobCardCreatedMonth).hide();
+
+        }
+
+    }
+</script>

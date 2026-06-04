@@ -1,0 +1,389 @@
+﻿@model Domain.SMSLogLister
+
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 ">
+        <div class="card">
+            <div class="card-body p-1">
+                <ul class="nav nav-tabs border-tab nav-primary" id="info-tab" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="Maintenance-tab" data-bs-toggle="tab" href="#Maintenance" role="tab" aria-controls="Maintenance" aria-selected="true" data-bs-original-title="" title="">
+                            <i class="fa fa-home"></i>Maintenance
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="Predictive-tab" data-bs-toggle="tab" href="#Predictive" role="tab" aria-controls="Predictive" aria-selected="false" data-bs-original-title="" title="">
+                            <i class="fa fa-gear"></i>Predictive
+                        </a>
+                    </li>
+                    @if (ViewBag.PointMachineEvent != null)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" id="PointEvent-tab" data-bs-toggle="tab" href="#PointEvent" role="tab" aria-controls="PointEvent" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-gear"></i>Point Event
+                            </a>
+                        </li>
+                    }
+                    @if (ViewBag.Datalogger != null)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" id="Datalogger-tab" data-bs-toggle="tab" href="#Datalogger" role="tab" aria-controls="Datalogger" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-gear"></i>Datalogger
+                            </a>
+                        </li>
+                    }
+
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade active show" id="Maintenance" role="tabpanel" aria-labelledby="Maintenance-tab">
+                        <div class="table-responsive" style="max-height: 600px;">
+                            <table class="table table-bordered">
+                                <thead class="bg-primary">
+                                    <tr>
+                                        <th></th>
+                                        <th>Site Name</th>
+                                        <th data-sortcolumn="Message" class="sorting" id="thMessage" onclick="SortList('Message');">Message</th>
+                                        <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Time Stamp</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                    {
+                                        foreach (var item in Model.mSMSLogs)
+                                        {
+                                            <tr class="table-light" id="trSMSLogs@(item.Id)">
+                                                <td>
+                                                    @*<a onclick="fnShowAlert()"><i class="fa fa-Plus"></i> </a>*@
+                                                    @if (item.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.Earth_Fault)
+                                                    {
+                                                        <a href="javascript:void(0)"><i class="fa fa-plus text-vision trSMSLogs@(item.Id)" data-Id="@item.Id" onclick="fnShowDeadband('@item.TimeStamp', '@item.Id', '@item.AssetId', 'false'); return false;"></i></a>
+                                                    }
+                                                </td>
+                                                <td>@item.SiteName</td>
+                                                <td>@item.Message</td>
+                                                <td>@item.TimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" role="tabpanel" aria-labelledby="Predictive-tab" id="Predictive">
+                        <div class="table-responsive" style="max-height: 600px;">
+                            @if (ViewBag.Probability != null)
+                            {
+                                var mProbabilities = ViewBag.Probability as List<Domain.Probability>;
+
+
+                                <table class="table table-bordered">
+                                    <thead class="bg-primary">
+                                        <tr>
+                                            <th></th>
+                                            <th>Site Name</th>
+                                            <th data-sortcolumn="Message" class="sorting" id="thMessage" onclick="SortList('Message');">Message</th>
+                                            <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Time Stamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (mProbabilities != null && mProbabilities.Count > 0)
+                                        {
+                                            foreach (var item in mProbabilities)
+                                            {
+                                                <tr class="table-light">
+                                                    <td>
+                                                    </td>
+                                                    <td>@item.SiteName</td>
+                                                    <td>
+                                                        @if (item.Category.Contains("TrainMomentLog"))
+                                                        {
+                                                            <span>
+                                                                @item.Category.Replace("TrainMomentLog", "Prone To Shorting")
+                                                            </span>
+                                                        }
+                                                        else if (item.Category.Contains("GluedLog"))
+                                                        {
+                                                            <span>
+                                                                @item.Category.Replace("GluedLog", "Glued")
+                                                            </span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span>
+                                                                @item.Category
+                                                            </span>
+                                                        }
+                                                    </td>
+                                                    <td>@item.TimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+                                                </tr>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <tr>
+                                                <td colspan="5" class="text-center">
+                                                    No record found
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+
+
+                            }
+
+                        </div>
+                    </div>
+
+                    @if (ViewBag.PointMachineEvent != null)
+                    {
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="PointEvent-tab" id="PointEvent">
+                            <div class="table-responsive" style="max-height: 600px;">
+                                @if (ViewBag.PointMachineEvent != null)
+                                {
+                                    var mPointMachineEvents = ViewBag.PointMachineEvent as List<Domain.PointMachineEvent>;
+
+
+                                    <table class="table table-bordered">
+                                        <thead class="bg-primary">
+                                            <tr>
+                                                <th>Asset Name</th>
+                                                <th>Type</th>
+                                                <th>Direction</th>
+                                                <th>Voltage Count</th>
+                                                <th>Current Count</th>
+                                                <th>Time Of Opration</th>
+                                                <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Operation Time</th>
+                                                <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Capture Time</th>
+                                                <th data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Update Time</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @if (mPointMachineEvents != null && mPointMachineEvents.Count > 0)
+                                            {
+                                                var oldTime = DateTime.Now;
+                                                foreach (var item in mPointMachineEvents)
+                                                {
+                                                    //bool isshow = true;
+                                                    //if (oldTime == item.OperationTime)
+                                                    //{
+                                                    //    isshow = false;
+                                                    //}
+                                                    //oldTime = item.OperationTime;
+                                                    //if (isshow)
+                                                    //{
+
+                                                    //}
+
+                                                    <tr class="table-light">
+                                                        <td>@item.AssetName</td>
+                                                        <td>@item.Type</td>
+                                                        <td>
+                                                            @item.Direction
+                                                        </td>
+                                                        <td>
+                                                            @item.VoltageCount
+                                                        </td>
+                                                        <td>
+                                                            @item.CurrentCount
+                                                        </td>
+                                                        <td>
+                                                            @item.TimeOfOpration
+                                                        </td>
+                                                        <td>@item.OperationTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                        <td>@item.CaptureTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                        <td>@item.UpdateTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                    </tr>
+
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr>
+                                                    <td colspan="5" class="text-center">
+                                                        No record found
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+
+
+                                }
+
+                            </div>
+                        </div>
+                    }
+
+
+                    @if (ViewBag.Datalogger != null)
+                    {
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="Datalogger-tab" id="Datalogger">
+                            <div class="row">
+                                <div class="col-xl-12">
+                                    <div class="row">
+                                        <div class="col-xl-10"></div>
+                                        <div class="col-xl-2">
+                                            <input type="text" class="form-control mb-2" id="txtDataloggerSearchDate" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-xl-12">
+                                    <div class="table-responsive" id="divSearchDataloggerEvent" style="max-height: 600px;">
+                                        @if (ViewBag.Datalogger != null)
+                                        {
+                                            var mDataloggerEventDatas = ViewBag.Datalogger as List<Domain.Datalogger>;
+
+                                           @Html.Partial("_EventDataLoggerGraph", mDataloggerEventDatas)
+                                            @*<table class="table table-bordered">
+                                                <thead class="bg-primary">
+                                                    <tr>
+                                                        <th>SrNo</th>
+                                                        <th>Asset Name</th>
+                                                        <th>Current Value</th>
+                                                        <th>Time Stamp</th>
+                                                        <th>Update Time</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (mDataloggerEventDatas != null && mDataloggerEventDatas.Count > 0)
+                                                    {
+                                                        foreach (var item in mDataloggerEventDatas.OrderByDescending(x => x.Date))
+                                                        {
+                                                            <tr class="table-light">
+                                                                <td>@item.SrNo</td>
+                                                                <td>@item.AssetName</td>
+                                                                <td>
+                                                                    @if (item.CurrentValue == "Pickup")
+                                                                    {
+                                                                        <span class='badge badge-success'>Pickup</span>
+                                                                    }
+                                                                    else if (item.CurrentValue == "Drop")
+                                                                    {
+                                                                        <span class='badge badge-warning'>DROP</span>
+                                                                    }
+
+                                                                </td>
+                                                                <td>@item.Timestamp</td>
+                                                                <td>@item.CurrentDate.ToString("dd/MM/yyyy hh:mm:ss tt")</td>
+                                                            </tr>
+                                                        }
+
+
+                                                    }
+                                                    else
+                                                    {
+                                                        <tr>
+                                                            <td colspan="4" class="text-center">
+                                                                No record found
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>*@
+
+
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+    <!-- panel -->
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#txtDataloggerSearchDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtDataloggerSearchDate').change(function () {
+
+            var siteId = $('#hdnsiteId').val();
+            var searchCriteria = {};
+            searchCriteria.SearchDate = $(this).val();
+            searchCriteria.AssetId = '@Model.SearchCriteria.Id';
+            searchCriteria.SiteId = siteId;
+
+
+            if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+                $("#loader").show();
+                $.ajax({
+                    url: '/SMSLog/_EventDataLoggerGraph',
+                    type: 'Post',
+                    dataType: 'html',
+                    data: JSON.stringify(searchCriteria),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        $("#divSearchDataloggerEvent").empty().append(data);
+                    },
+                    error: function (response) {
+                        CommonNotification("error", "Something went wrong!");
+                    }
+                });
+            }
+
+
+        });
+    })
+
+    function fnShowDeadband(timeStemp, id, assetId, isGear) {
+        if ($(".trSMSLogs" + id).hasClass("fa-plus")) {
+            $('#loader').show();
+            $.ajax({
+                url: '/SMSLog/GetDeadband',
+                type: 'Post',
+                data: '{id:' + id + ',siteId:' + $("#hdnsiteId").val() + ',assetId:' + assetId + ',timeStemp:"' + timeStemp + '",isGear:' + isGear + '}',
+                dataType: "html",
+                contentType: 'application/json',
+                success: function (response) {
+                    $('#loader').hide();
+                    $('.trSMSLogs').removeClass("fa-minus").addClass("fa-plus");
+                    $("#trSMSLogs" + id).after(response);
+                },
+                error: function (response) {
+                    $('#loader').hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+            $(".trSMSLogs" + id).removeClass("fa-plus").addClass("fa-minus");
+            $("#trDeadband" + id).fadeIn(500);
+        }
+        else {
+            $(".trSMSLogs" + id).removeClass("fa-minus").addClass("fa-plus");
+            $("#trDeadband" + id).remove();
+        }
+
+    }
+
+    function fnBindDeadband(timeStemp, id, assetId) {
+        var isGear = false;
+        if ($("#drpDeadbandType" + id).val() == "Gear") {
+            isGear = true;
+        }
+        $(".trSMSLogs" + id).removeClass("fa-minus").addClass("fa-plus");
+        $("#trDeadband" + id).remove();
+
+        fnShowDeadband(timeStemp, id, assetId, isGear);
+
+    }
+</script>

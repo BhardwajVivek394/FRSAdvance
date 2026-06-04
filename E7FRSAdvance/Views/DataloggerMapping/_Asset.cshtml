@@ -1,0 +1,139 @@
+﻿@model Domain.RailwayAsset
+
+<div class="card">
+    <div class="card-body" style="padding:15px;">
+        <div class="">
+            <div class="">
+                <div class="tableFixHead">
+                    <table class="table">
+                        <thead class="bg-primary">
+                            <tr>
+                                <th style="background-color:#4bacc6;color:white;width:30%;">
+                                    @ViewBag.AssetTypeName
+                                </th>
+                                <th style="background-color: #215968; color: white; width: 30%;">
+                                    Select RDPMS Asset
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody style="max-height: 620px;overflow-y:auto;">
+                            @if (Model.info != null && Model.info.Count > 0)
+                            {
+                                foreach (var item in Model.info)
+                                {
+                                    string type = string.Empty;
+                                    string make = string.Empty;
+                                    foreach (var addinfo in item.additional_info)
+                                    {
+                                        if (addinfo.key == "type")
+                                        {
+                                            type = addinfo.value;
+                                        }
+                                        if (addinfo.key == "make")
+                                        {
+                                            make = addinfo.value;
+                                            if (!string.IsNullOrEmpty(make))
+                                            {
+
+                                            }
+                                        }
+                                    }
+
+                                    <tr>
+                                        <td>@item.smms_asset_number</td>
+                                        <td>
+                                            <select id="drpAssetTypeMap" class="form-control drpAssetTypeMap" data-assetname="@item.smms_asset_number" data-assettypename="@ViewBag.AssetTypeName" data-railwayassetcode="@item.smms_asset_code" data-typecode="@type" data-make="@make">
+                                                @if (ViewBag.Assets != null)
+                                                {
+                                                    <option value="">Select</option>
+                                                    var mAssets = ViewBag.Assets as List<Domain.Asset>;
+                                                    if (mAssets != null && mAssets.Count > 0)
+                                                    {
+                                                        if (ViewBag.DataloggerAssetMappings != null)
+                                                        {
+                                                            var mapAsset = ViewBag.DataloggerAssetMappings as List<Domain.DataloggerAssetMapping>;
+
+                                                            foreach (var mAsset in mAssets)
+                                                            {
+                                                                if (mapAsset.Where(x => x.RailwayAssetName == item.smms_asset_number && x.AssetId == mAsset.Id).Count() > 0)
+                                                                {
+                                                                    <option value="@mAsset.Id" selected>@mAsset.Name</option>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <option value="@mAsset.Id">@mAsset.Name</option>
+                                                                }
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            foreach (var mAsset in mAssets)
+                                                            {
+                                                                <option value="@mAsset.Id">@mAsset.Name</option>
+                                                            }
+                                                        }
+
+                                                    }
+                                                }
+                                            </select>
+                                        </td>
+                                    </tr>
+
+                                }
+                            }
+
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('.drpAssetTypeMap').change(function () {
+            var selectedAssetId = $(this).val();
+            var selectedDataloggerAssetId = $(this).data('dataloggerassetid');
+            $('.drpAssetTypeMap').each(function () {
+                if (selectedDataloggerAssetId != null && selectedDataloggerAssetId != undefined && selectedDataloggerAssetId != '' && selectedAssetId != null && selectedAssetId != undefined && selectedAssetId != '') {
+                    if ($(this).data('dataloggerassetid') != selectedDataloggerAssetId) {
+                        $(this).find('option[value="' + selectedAssetId + '"]').remove();
+                    }
+                }
+
+            });
+        });
+
+
+        $.ajax({
+            url: '/DataloggerMapping/Get',
+            type: 'Post',
+            data: '{siteId:' + $('#SiteId').val() + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                if (data != null && data.length > 0) {
+                    $(data).each(function (d, val) {
+                        $('#drpAssetTypeMap_' + val.DataloggerAssetId).val(val.AssetId);
+                        $('.drpAssetTypeMap').each(function () {
+                            if (val.DataloggerAssetId != null && val.DataloggerAssetId != undefined && val.DataloggerAssetId != '' && val.AssetId != null && val.AssetId != undefined && val.AssetId != '') {
+                                if ($(this).data('dataloggerassetid') != val.DataloggerAssetId) {
+                                    $(this).find('option[value="' + val.AssetId + '"]').remove();
+                                }
+                            }
+
+                        });
+                    });
+                }
+
+            },
+            error: function (response) {
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    });
+</script>
+
+

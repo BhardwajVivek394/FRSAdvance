@@ -1,0 +1,671 @@
+﻿@model Domain.Asset
+
+<div class="row">
+    <div class="col-sm-12 col-md-12 col-lg-12 ">
+        <div class="card">
+            <div class="card-body p-1">
+                <ul class="nav nav-tabs border-tab nav-primary" id="info-tab" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="Fail-tab" data-bs-toggle="tab" href="#Fail-Alert-tab" role="tab" aria-controls="Maintenance" aria-selected="true" data-bs-original-title="" title="">
+                            <i class="fa fa-gear"></i>Fail Alert
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="Predictive-tab" data-bs-toggle="tab" href="#Predictive-Alert-tab" role="tab" aria-controls="Predictive" aria-selected="false" data-bs-original-title="" title="">
+                            <i class="fa fa-gear"></i>Predictive Alert
+                        </a>
+                    </li>
+                    @if (Model.IsDatalogger)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" id="Datalogger-tab" data-bs-toggle="tab" href="#Datalogger" role="tab" aria-controls="Datalogger" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-history"></i>Datalogger
+                            </a>
+                        </li>
+
+                        if (ViewBag.PeriodicDatalogger != null)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link" id="Periodic-datalogger-tab" data-bs-toggle="tab" href="#PeriodicDatalogger" role="tab" aria-controls="PeriodicDatalogger" aria-selected="false" data-bs-original-title="" title="">
+                                    <i class="fa fa-history"></i>Periodic DL
+                                </a>
+                            </li>
+                        }
+
+                    }
+                    @if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" id="PointEvent-tab" data-bs-toggle="tab" href="#PointEvent" role="tab" aria-controls="PointEvent" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-calendar"></i>Point Event
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="PointClusterEvent-tab" data-bs-toggle="tab" href="#PointClusterEvent" role="tab" aria-controls="PointEvent" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-calendar"></i>Cluster Log
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="PointMQTTEvent-tab" data-bs-toggle="tab" href="#PointMQTTEvent" role="tab" aria-controls="PointMQTTEvent" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-calendar"></i>MQTT Log
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="PointFTPEvent-tab" data-bs-toggle="tab" href="#PointFTPEvent" role="tab" aria-controls="PointMQTTEvent" aria-selected="false" data-bs-original-title="" title="">
+                                <i class="fa fa-calendar"></i>FTP Log
+                            </a>
+                        </li>
+                    }
+                    <li class="nav-item">
+                        <a class="nav-link" id="Change-tab" data-bs-toggle="tab" href="#Change-Time-tab" role="tab" aria-controls="Predictive" aria-selected="false" data-bs-original-title="" title="">
+                            <i class="fa fa-gear"></i>Change Time
+                        </a>
+                    </li>
+
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade active show" id="Fail-Alert-tab" role="tabpanel" aria-labelledby="Fail-Alert-tab">
+                        <div class="table-responsive tablemodalFixHead">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th style="background-color: #215968; color: white;">Site</th>
+                                        <th style="background-color: #215968; color: white;">Asset</th>
+                                        <th style="background-color: #215968; color: white;">Cause Code</th>
+                                        <th style="background-color: #215968; color: white;">Status</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="Message" class="sorting" id="thMessage" onclick="SortList('Message');">Message</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Time Stamp</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (ViewBag.FRSAlerts != null)
+                                    {
+                                        var mFRSAlerts = ViewBag.FRSAlerts as List<Domain.FRSAlert>;
+                                        foreach (var item in mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).ToList())
+                                        {
+                                            <tr class="table-light" id="trSMSLogs@(item.Id)">
+
+                                                <td>@item.SiteName</td>
+                                                <td>@item.AssetName</td>
+                                                <td>@item.CauseCode</td>
+                                                <td>
+                                                    @if (item.IsActive == true)
+                                                    {
+                                                        <div class="span badge rounded-pill pill-badge-danger">@E7FRSAdvance.Utility.Utility.AlertStatus.Active.ToString()</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="span badge rounded-pill pill-badge-success">@E7FRSAdvance.Utility.Utility.AlertStatus.InActive.ToString()</div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span>@item.SetAlertMessage</span> <br />
+                                                    <span>@Html.Raw(item.Description)</span>
+                                                </td>
+                                                <td>@item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" role="tabpanel" aria-labelledby="Predictive-tab" id="Predictive-Alert-tab">
+                        <div class="table-responsive tablemodalFixHead">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th style="background-color: #215968; color: white;">Site</th>
+                                        <th style="background-color: #215968; color: white;">Asset</th>
+                                        <th style="background-color: #215968; color: white;">Cause Code</th>
+                                        <th style="background-color: #215968; color: white;">Status</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="Message" class="sorting" id="thMessage" onclick="SortList('Message');">Message</th>
+                                        <th style="background-color: #215968; color: white;" data-sortcolumn="TimeStamp" class="sorting" id="thTimeStamp" onclick="SortList('TimeStamp');">Time Stamp</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (ViewBag.FRSAlerts != null)
+                                    {
+                                        var mFRSAlerts = ViewBag.FRSAlerts as List<Domain.FRSAlert>;
+                                        foreach (var item in mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).ToList())
+                                        {
+                                            <tr class="table-light" id="trSMSLogs@(item.Id)">
+
+                                                <td>@item.SiteName</td>
+                                                <td>@item.AssetName</td>
+                                                <td>@item.CauseCode</td>
+                                                <td>
+                                                    @if (item.IsActive == true)
+                                                    {
+                                                        <div class="span badge rounded-pill pill-badge-danger">@E7FRSAdvance.Utility.Utility.AlertStatus.Active.ToString()</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="span badge rounded-pill pill-badge-success">@E7FRSAdvance.Utility.Utility.AlertStatus.InActive.ToString()</div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span>@item.SetAlertMessage</span> <br />
+                                                    <span>@Html.Raw(item.Description)</span>
+                                                </td>
+                                                <td>@item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="5" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+
+                        </div>
+                    </div>
+
+                    @if (Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
+                    {
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="PointEvent-tab" id="PointEvent">
+                            <div class="row">
+                                <div class="col-xl-9"></div>
+                                <div class="col-xl-3">
+                                    <input type="text" class="form-control mb-2" id="txtPointEventSearchDate" />
+                                </div>
+                                <div class="col-xl-12">
+                                    <div class="table-responsive tablemodalFixHead" id="divSearchPointEvent">
+                                        @if (ViewBag.PointMachineEvent != null)
+                                        {
+                                            var mPointMachineEvents = ViewBag.PointMachineEvent as List<Domain.PointMachineEvent>;
+                                            @Html.Partial("_PointMachineEvent", mPointMachineEvents)
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="PointClusterEvent-tab" id="PointClusterEvent">
+                            <div class="row">
+                                @*<div class="col-xl-9"></div>
+                                    <div class="col-xl-3">
+                                        <input type="text" class="form-control mb-2" id="txtPointEventSearchDate" />
+                                    </div>*@
+                                <div class="col-xl-12">
+                                    <div class="table-responsive tablemodalFixHead">
+                                        @if (ViewBag.PointEventLog != null)
+                                        {
+                                            // var pointLists = new List<Domain.PointCsv>();
+                                            var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
+                                            if (mPointEventLogs != null && mPointEventLogs.Count > 0)
+                                            {
+                                                <table class="table">
+                                                    <tr>
+                                                        <th width="10">Event Time</th>
+                                                        <th width="20">Direction</th>
+                                                        <th width="10">Capture Time</th>
+                                                        <th width="10" class="text-center">Response Counter</th>
+                                                    </tr>
+                                                    @foreach (var item in mPointEventLogs.Where(x => x.TypeId == 1).OrderByDescending(x => x.EventTime))
+                                                    {
+                                                        <tr>
+                                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+
+                                                            <td>@item.Name</td>
+                                                            <td>
+                                                                @item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")
+                                                            </td>
+                                                            <td class="text-center">@item.ResponseCounter</td>
+                                                        </tr>
+                                                    }
+
+
+                                                </table>
+
+                                            }
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="PointMQTTEvent-tab" id="PointMQTTEvent">
+                            <div class="row">
+
+                                <div class="col-xl-12">
+                                    <div class="table-responsive tablemodalFixHead">
+                                        @if (ViewBag.PointEventLog != null)
+                                        {
+                                            // var pointLists = new List<Domain.PointCsv>();
+                                            var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
+                                            if (mPointEventLogs != null && mPointEventLogs.Count > 0)
+                                            {
+                                                <table class="table">
+                                                    <tr>
+                                                        <th width="10">Event Time</th>
+                                                        <th width="20">Direction</th>
+                                                        <th width="10">Capture Time</th>
+                                                        <th width="10" class="text-center">Response Counter</th>
+                                                    </tr>
+                                                    @foreach (var item in mPointEventLogs.Where(x => x.TypeId == 2).OrderByDescending(x => x.EventTime))
+                                                    {
+                                                        <tr>
+                                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+
+                                                            <td>@item.Name</td>
+                                                            <td>
+                                                                @item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")
+                                                            </td>
+                                                            <td class="text-center">@item.ResponseCounter</td>
+                                                        </tr>
+                                                    }
+
+
+                                                </table>
+
+                                            }
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="PointFTPEvent-tab" id="PointFTPEvent">
+                            <div class="row">
+
+                                <div class="col-xl-12">
+                                    <div class="table-responsive tablemodalFixHead">
+                                        @if (ViewBag.PointEventLog != null)
+                                        {
+                                            var pointLists = new List<Domain.PointCsv>();
+                                            var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
+                                            if (mPointEventLogs != null && mPointEventLogs.Count > 0)
+                                            {
+                                                <table class="table">
+                                                    <tr>
+                                                        <th width="10">Event Time</th>
+                                                        <th width="20">Direction</th>
+                                                        <th width="20">Capture Time</th>
+                                                        <th width="10" class="text-center">Response Counter</th>
+                                                    </tr>
+                                                    @foreach (var item in mPointEventLogs.Where(x => x.TypeId == 3).OrderByDescending(x => x.EventTime))
+                                                    {
+                                                        <tr>
+                                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+
+                                                            <td>@item.Name</td>
+                                                            <td>
+                                                                @item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")
+                                                            </td>
+                                                            <td class="text-center">@item.ResponseCounter</td>
+                                                        </tr>
+                                                    }
+
+                                                </table>
+
+                                            }
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+
+                    @if (Model.IsDatalogger)
+                    {
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="Datalogger-tab" id="Datalogger">
+                            <div class="row">
+                                <div class="col-xl-12">
+                                    <div class="row">
+                                        <div class="col-xl-7"></div>
+                                        <div class="col-xl-2">
+                                            <select class="form-control js-example-basic-multiple" id="drpDataloggerSearchAttribute" multiple>
+
+                                                @if (ViewBag.AssetInfoDatalogger != null)
+                                                {
+
+                                                    var assetInfoDataloggers = ViewBag.AssetInfoDatalogger as List<Domain.AssetInfoDatalogger>;
+                                                    foreach (var assetInfoDatalogger in assetInfoDataloggers)
+                                                    {
+                                                        <option value="@assetInfoDatalogger.Value">@assetInfoDatalogger.DataloggerAttribute</option>
+                                                    }
+                                                }
+
+                                            </select>
+                                        </div>
+                                        <div class="col-xl-2">
+                                            <input type="text" class="form-control mb-2" id="txtDataloggerSearchDate" />
+                                        </div>
+                                        <div class="col-xl-1">
+                                            <a href="javascript:void(0)" class="btn btn-info" onclick="fnSearchEventDataLoggerGraph()"><i class="fa fa-search"></i> </a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-xl-12">
+                                    <div id="divSearchDataloggerEvent" class="table-responsive  tablemodalFixHead">
+                                        @if (ViewBag.Datalogger != null)
+                                        {
+                                            var mDataloggerEventDatas = ViewBag.Datalogger as List<Domain.Datalogger>;
+
+                                            @Html.Partial("_EventDataLoggerGraph", mDataloggerEventDatas)
+
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="tab-pane fade" role="tabpanel" aria-labelledby="Datalogger-tab" id="PeriodicDatalogger">
+                            <div class="row">
+                                <div class="col-xl-12">
+                                    <div class="row">
+                                        <div class="col-xl-10"></div>
+                                        <div class="col-xl-2">
+                                            <input type="text" class="form-control mb-2" id="txtDataloggerSearchDate" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-xl-12">
+                                    <div id="divSearchPeriodicDataloggerEvent" class="table-responsive  tablemodalFixHead">
+                                        @if (ViewBag.PeriodicDatalogger != null)
+                                        {
+                                            var mDataloggerEventDatas = ViewBag.PeriodicDatalogger as List<Domain.Datalogger>;
+
+                                            <table class="table">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="background-color: #215968; color: white;">SR No.</th>
+                                                        <th style="background-color: #215968; color: white;">Asset</th>
+                                                        <th style="background-color: #215968; color: white;">Attribute</th>
+                                                        <th style="background-color: #215968; color: white;">Current Value</th>
+                                                        <th style="background-color: #215968; color: white;">Time Stamp</th>
+                                                        <th style="background-color: #215968; color: white;">Update Time</th>
+                                                        <th style="background-color: #215968; color: white;">Type</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (mDataloggerEventDatas != null && mDataloggerEventDatas.Count > 0)
+                                                    {
+                                                        foreach (var item in mDataloggerEventDatas.OrderByDescending(x => x.Date))
+                                                        {
+                                                            <tr>
+                                                                <td>@item.SrNo</td>
+                                                                <td>@item.AssetName</td>
+                                                                <td>@item.AttributeName</td>
+                                                                <td>
+                                                                    @if (item.CurrentValue == "Pickup")
+                                                                    {
+                                                                        <span class='badge badge-success'>Pickup</span>
+                                                                    }
+                                                                    else if (item.CurrentValue == "Drop")
+                                                                    {
+                                                                        <span class='badge badge-warning'>DROP</span>
+                                                                    }
+
+                                                                </td>
+                                                                <td>@item.Timestamp.ToString()</td>
+                                                                <td>@item.CurrentDate.ToString("dd/MM/yyyy hh:mm:ss tt")</td>
+                                                                <td>@item.Type</td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </tbody>
+
+                                            </table>
+
+                                        }
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+
+                    <div class="tab-pane fade" role="tabpanel" aria-labelledby="Change-Time-tab" id="Change-Time-tab">
+                        <div class="table-responsive tablemodalFixHead">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        @if (ViewBag.AssetInfos != null)
+                                        {
+                                            var mAssetInfos = ViewBag.AssetInfos as List<Domain.AssetInfo>;
+                                            if (mAssetInfos != null && mAssetInfos.Count > 0)
+                                            {
+                                                foreach (var assetAttribute in mAssetInfos)
+                                                {
+                                                    if (!string.IsNullOrEmpty(assetAttribute.AttributeAliasName))
+                                                    {
+                                                        <th style="background-color: #215968; color: white;">@assetAttribute.AttributeAliasName</th>
+                                                    }
+                                                    else
+                                                    {
+                                                        <th style="background-color: #215968; color: white;">@assetAttribute.AttributeName</th>
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        @if (ViewBag.AssetInfos != null && ViewBag.ChangeTimeAssets != null)
+                                        {
+                                            var mAssetInfos = ViewBag.AssetInfos as List<Domain.AssetInfo>;
+                                            var mChangeTimeAssets = ViewBag.ChangeTimeAssets as List<Domain.DynamoTable>;
+                                            if (mChangeTimeAssets != null && mChangeTimeAssets.Count > 0 && mAssetInfos != null && mAssetInfos.Count > 0)
+                                            {
+                                                foreach (var mAssetInfo in mAssetInfos)
+                                                {
+                                                    <td style="vertical-align:top">
+                                                        <table class="table table-bordered">
+                                                            @foreach (var mChangeTimeAsset in mChangeTimeAssets.Where(x => x.asset_attribute_id == mAssetInfo.AssetAttributeId).OrderByDescending(x => x.change_timestamp))
+                                                            {
+                                                                <tr>
+                                                                    <td>
+                                                                        <span>@mChangeTimeAsset.asset_attribute_value</span>
+                                                                        <span>(@mChangeTimeAsset.change_timestamp.ToString("dd-mm-yyyy HH:mm:ss"))</span>
+
+                                                                    </td>
+                                                                </tr>
+                                                            }
+
+                                                        </table>
+                                                    </td>
+                                                }
+
+                                                @*var strOldDatas = new Dictionary<int, string>();
+
+                                                    var count = mAsset.assetAttributes.Select(x => x.Data.Count()).FirstOrDefault();
+                                                    for (int i = 0; i < count; i++)
+                                                    {
+                                                        var changeAttrs = new List<int>();
+                                                        bool isUpdate = false;
+                                                        foreach (var attr in mAsset.assetAttributes)
+                                                        {
+                                                            if (attr.Data != null && attr.Id > 0)
+                                                            {
+                                                                var strval = attr.Data[i];
+                                                                string result = System.Text.RegularExpressions.Regex.Match(strval, @"\(\d{2}:\d{2}:\d{2}\)$").Value;
+                                                                if (result != null && result != "(00:00:00)")
+                                                                {
+                                                                    if (strOldDatas != null && strOldDatas.Count > 0)
+                                                                    {
+                                                                        var oldData = strOldDatas.Where(x => x.Key == attr.Id).FirstOrDefault();
+                                                                        if (oldData.Key > 0)
+                                                                        {
+                                                                            if (oldData.Value != result)
+                                                                            {
+                                                                                isUpdate = true;
+                                                                                strOldDatas[attr.Id] = result;
+
+                                                                                changeAttrs.Add(attr.Id);
+                                                                            }
+
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            strOldDatas.Add(attr.Id, result);
+                                                                        }
+
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        strOldDatas.Add(attr.Id, result);
+                                                                    }
+                                                                }
+
+                                                            }
+                                                        }
+
+                                                        if (isUpdate && changeAttrs != null && changeAttrs.Count > 0)
+                                                        {
+                                                            <tr>
+                                                                @foreach (var attr in mAsset.assetAttributes)
+                                                                {
+                                                                    if (changeAttrs.Where(x => x == attr.Id).Count() > 0)
+                                                                    {
+                                                                        var strval = attr.Data[i];
+                                                                        string firstValue = strval.Split(' ')[0];
+                                                                        string result = System.Text.RegularExpressions.Regex.Match(strval, @"\(\d{2}:\d{2}:\d{2}\)$").Value;
+                                                                        <td>
+                                                                            @firstValue<br />
+                                                                            @result
+                                                                        </td>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <td>
+                                                                        </td>
+                                                                    }
+
+                                                                }
+                                                            </tr>
+
+                                                        }
+                                                    }*@
+                                            }
+                                        }
+
+                                    </tr>
+
+                                </tbody>
+                            </table>
+
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+    <!-- panel -->
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#drpDataloggerSearchAttribute').select2();
+
+        $('#txtDataloggerSearchDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtPointEventSearchDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtDataloggerSearchDate').change(function () {
+            fnSearchEventDataLoggerGraph();
+        });
+
+        $('#txtPointEventSearchDate').change(function () {
+            fnSearchPointEvent();
+        });
+    })
+
+    function fnSearchEventDataLoggerGraph() {
+        var siteId = '@Model.SiteId';
+        var attrSrNo = $('#drpDataloggerSearchAttribute').val();
+        var searchCriteria = {};
+        searchCriteria.SearchDate = $('#txtDataloggerSearchDate').val();
+        searchCriteria.AssetId = '@Model.Id';
+        searchCriteria.SiteId = siteId;
+
+        searchCriteria.SrNumbers = [];
+        if (attrSrNo != null && attrSrNo != undefined && attrSrNo != '') {
+            $(attrSrNo).each(function (att, val) {
+                searchCriteria.SrNumbers.push(val);
+            });
+        }
+
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/_EventDataLoggerGraph',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(searchCriteria),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divSearchDataloggerEvent").empty().append(data);
+                },
+                error: function (response) {
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+    }
+
+    function fnSearchPointEvent() {
+        var siteId = '@Model.SiteId';
+        var searchCriteria = {};
+        searchCriteria.SearchDate = $('#txtPointEventSearchDate').val();
+        searchCriteria.AssetId = '@Model.Id';
+        searchCriteria.SiteId = siteId;
+
+
+        if (siteId != null && siteId != undefined && siteId != '' && siteId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Site/_PointMachineEvent',
+                type: 'Post',
+                dataType: 'html',
+                data: JSON.stringify(searchCriteria),
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divSearchPointEvent").empty().append(data);
+                },
+                error: function (response) {
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+    }
+
+
+</script>

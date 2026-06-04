@@ -1,0 +1,135 @@
+﻿@model Domain.Site
+
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/paho-mqtt.js"></script>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Calibration Detail</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", @value = Model.Id, tabindex = 1 })
+                            </div>
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Date</strong>
+                            </div>
+                            <div class="pull-left m-l-10">
+                                <input type="text" class="form-control" id="searchFromDate" />
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-success btn-sm btn-success" onclick="fnSearchCalibration()" data-bs-original-title="" title="">Search</a>
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-info btn-sm btn-info" href="javascript:void()" data-bs-original-title="" title="" onclick="fnDownload()">Download</a>
+                            </div>
+                        </div>
+
+                        <div class="col-sm-12 mt-3">
+                            @using (Ajax.BeginForm("_GetAssetType", "CalibrationDetail", new AjaxOptions() { UpdateTargetId = "divAssetType", InsertionMode = InsertionMode.Replace, LoadingElementId = "loader" }, new { @id = "frmAssetType", enctype = "multipart/form-data" }))
+                            {
+                                if (Model != null)
+                                {
+                                    <div id="divLeftInfo">
+                                        @Html.Action("_GetAssetType", new { siteId = Model.Id })
+                                    </div>
+                                }
+
+                            }
+
+                        </div>
+                        <div class="col-sm-12 mt-3">
+                            @using (Ajax.BeginForm("_List", "CalibrationDetail", new AjaxOptions() { UpdateTargetId = "divAssetDetails", InsertionMode = InsertionMode.Replace, LoadingElementId = "loader" }, new { @id = "frmAssetDetails" }))
+                            {
+
+                                <input type="hidden" name="SearchCriteria.AssetTypeId" id="hdnassetTypeId" />
+                                <input type="hidden" name="SearchCriteria.AssetTypeName" id="hdAssetTypeName" />
+                                <input type="hidden" name="SearchCriteria.SiteId" id="hdnsiteId" value="@Model.Id" />
+                                <div class="people-list" id="divAssetDetails">
+                                </div>
+                            }
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+
+<script>
+
+
+    $(document).ready(function () {
+        $('#searchFromDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#searchFromDate').val('');
+
+        $('#SiteId').change(function () {
+            if ($(this).val() != null && $(this).val() != undefined && $(this).val() != '' && $(this).val() != "0") {
+                window.location.href = "Index?siteId=" + $(this).val();
+            }
+        });
+    });
+
+    function fnSearchCalibration() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0") {
+            window.location.href = "Index?siteId=" + $('#SiteId').val();
+        }
+    }
+
+    function SearchAsset(id, name) {
+        if (this.client && this.client.isConnected()) {
+            try {
+                this.client.disconnect();
+            } catch (err) {
+            }
+        } 
+
+
+        $("#hdnassetTypeId").val(id);
+        $("#hdAssetTypeName").val(name);
+        $("#hdnSkip").val('0');
+        $(".asset-search").val("");
+        $("#frmAssetDetails").submit();
+    }
+
+    function fnDownload() {
+        if ($('#SiteId').val() == null || $('#SiteId').val() == undefined || $('#SiteId').val() == '' || $('#SiteId').val() == "0") {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+        else {
+            window.location.href = '@Url.Action("DownloadPDF")?siteId=' + $('#SiteId').val() + '&assetTypeId=' + $("#hdnassetTypeId").val() + "&date=" + $("#searchFromDate").val();
+        }
+    }
+
+</script>

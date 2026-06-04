@@ -1,0 +1,932 @@
+﻿@model Domain.FRSAlertLister
+
+@{ var failFRSAlert = Model.mFRSAlerts.ToList(); }
+
+@{ var failFRSAlertCount = Model.mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
+    var predictiveFRSAlertCount = Model.mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).Count();
+
+    int pageSize = Model.Pager.PageSize > 0 ? Model.Pager.PageSize : 10;
+    int totalRecord = Convert.ToInt32(Model.Pager.TotalRecord);
+    int currentSkip = Model.Pager.Skip;
+    int currentPage = (currentSkip / pageSize) + 1;
+    int totalPages = totalRecord > 0 ? (int)Math.Ceiling((double)totalRecord / pageSize) : 1;
+    int showFrom = totalRecord > 0 ? currentSkip + 1 : 0;
+    int showTo = Math.Min(currentSkip + pageSize, totalRecord); }
+
+<style>
+    .boxGrid {
+        display: grid;
+        grid-template-columns: auto,auto;
+    }
+
+        .boxGrid > div {
+            border: 1px solid black;
+            font-size: 10px;
+            text-align: center;
+        }
+
+    .rounded-pill1 {
+        border-radius: 55rem !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+
+    td {
+        padding: 10px;
+    }
+
+    .custom-popover {
+        max-width: 600px;
+    }
+
+    /* ===== PAGINATION BAR ===== */
+    .alert-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 10px;
+        border-top: 1px solid #e2e8f0;
+        background: #f8fafc;
+        border-radius: 0 0 8px 8px;
+    }
+
+        .alert-pagination .page-info {
+            font-size: 13px;
+            color: #475569;
+            font-weight: 500;
+        }
+
+            .alert-pagination .page-info b {
+                color: #1e293b;
+            }
+
+        .alert-pagination .page-size-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #475569;
+        }
+
+            .alert-pagination .page-size-wrap select {
+                border: 1px solid #d1d5db;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                outline: none;
+                cursor: pointer;
+                background: #fff;
+            }
+
+        .alert-pagination .pagination {
+            margin: 0;
+        }
+
+        .alert-pagination .page-link {
+            font-size: 13px;
+            padding: 6px 12px;
+        }
+
+    #tblAlertLive {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        color: #333;
+    }
+
+        #tblAlertLive thead tr {
+            background-color: #f2f2f2;
+        }
+
+        #tblAlertLive thead th {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-weight: 600;
+            font-size: 12px;
+            color: #333;
+            white-space: normal;
+            line-height: 1.4;
+            border: 1px solid #dee2e6;
+        }
+
+        #tblAlertLive tbody tr {
+            background-color: #fff;
+            border-bottom: 1px solid #ececec;
+        }
+
+            #tblAlertLive tbody tr:hover {
+                background-color: #f9f9f9;
+            }
+
+        #tblAlertLive tbody td {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+</style>
+
+<div class="">
+    <div class="my-4 px-lg-4 px-2 w-100">
+        <div class="d-md-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center badge-cl gap-10">
+                <h6 class="">Predictive <span class="badge badge-yellow">@Model.PredictiveCount</span></h6>
+                <h6 class="">Failure <span class="badge badge-red">@Model.FailCount</span></h6>
+                <h6>Total <span class="badge badge-green">@(Model.FailCount + Model.PredictiveCount)</span></h6>
+
+                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                {
+                    <a class="btn btn-success" href="@Url.Action("AlertAnalysis")">Alert Analysis</a>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col">
+        <!-- List View -->
+        <div id="listView">
+            <div class="table-responsive">
+                <table class="table table-hover vh-100" id="tblAlertLive">
+                    <thead class="thead-light2">
+                        <tr>
+                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                            {
+                                <th></th>
+                            }
+                            <th style="min-width:45px;">Sr.No</th>
+                            <th style="min-width:50px;">Zone</th>
+                            <th style="min-width:80px;">Division</th>
+                            <th style="min-width:90px;">Station</th>
+                            <th style="min-width:80px;">Alert Type</th>
+                            <th style="min-width:90px;">Asset Type</th>
+                            <th style="min-width:70px;">Asset Number</th>
+                            <th style="min-width:120px;">Incidence<br />Date &amp; Time</th>
+                            <th style="min-width:130px;">Duration<br />(day-hh:mm:ss)</th>
+                            <th style="min-width:120px;">Rectification<br />Date &amp; Time</th>
+                            <th style="min-width:150px;">Cause of Asset Failure</th>
+                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode())
+                            {
+                                <th style="min-width:130px;">Feedback<br />&amp; Remarks</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ int counter = currentSkip; }
+                        @foreach (var item in Model.mFRSAlerts)
+                        {
+                            counter++;
+                            <tr>
+                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                {
+                                    <td>
+                                        @*<a href="javascript:void(0)" class="btn btn-danger" onclick="Delete(@item.Id)" data-bs-original-title="" title="Delete FRS Alert"></a>*@
+
+                                        <i class="fa fa-trash text-danger" onclick="Delete(@item.Id)"></i>
+                                    </td>
+                                }
+                                <td>@counter</td>
+                                <td>@item.ZoneName</td>
+                                <td>@item.DivisionName</td>
+                                <td>@item.SiteName</td>
+                                <td>
+                                    @if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AlertType.Failure.ToString()</span>
+                                    }
+                                    else if (item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive)
+                                    {
+                                        <span>@E7FRSAdvance.Utility.Utility.AlertType.Predictive.ToString()</span>
+                                    }
+                                </td>
+                                <td>@item.AssetType</td>
+                                <td>@item.AssetName</td>
+                                <td>@item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                <td>
+                                    @if (item.ResetTimeStamp != null && item.ResetTimeStamp.Value != DateTime.MinValue)
+                                    {
+                                        TimeSpan span = item.ResetTimeStamp.Value.Subtract(item.SetTimeStamp);
+                                        <span>
+                                            @span.Days-@span.Hours.ToString("D2"):@span.Minutes.ToString("D2"):@span.Seconds.ToString("D2")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @{
+                                        var mFRSAlertRemarks = new List<Domain.FRSAlertRemark>();
+                                        if (ViewBag.FRSAlertRemarks != null)
+                                        {
+                                            mFRSAlertRemarks = ViewBag.FRSAlertRemarks as List<Domain.FRSAlertRemark>;
+                                        }
+                                    }
+
+                                    @if (item.ResetTimeStamp != null && item.ResetTimeStamp != DateTime.MinValue)
+                                    {
+                                        <span>@item.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                    }
+                                    else if (mFRSAlertRemarks != null && mFRSAlertRemarks.Count > 0 && mFRSAlertRemarks.Where(x => x.FRSAlertId == item.Id).Count() > 0)
+                                    {
+                                        var mFRSAlertRemark = mFRSAlertRemarks.Where(x => x.FRSAlertId == item.Id).OrderByDescending(x => x.Id).FirstOrDefault();
+                                        if (mFRSAlertRemark != null && mFRSAlertRemark.RectificationDateTime != null)
+                                        {
+                                            <span>@mFRSAlertRemark.RectificationDateTime.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                        }
+                                        else
+                                        {
+                                            <span>-</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span id="spnAlertmsg@(item.Id)" style="display:none">
+                                        @item.SetAlertMessage
+                                    </span>
+                                    <span id="spnAlertDescription@(item.Id)" style="display:none">
+                                        @Html.Raw(item.Description)
+                                    </span>
+                                    <span id="spnResetAlertmsg@(item.Id)" style="display:none">
+                                        @Html.Raw(item.ResetAlertMessage)
+                                    </span>
+                                    <a href="javascript:void(0)" onclick="fnShowAlertMessage('@item.Id')">@item.CauseCode</a>
+                                </td>
+
+                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode())
+                                {
+                                    string tableHtml = string.Empty;
+                                    tableHtml += "<div>";
+                                    tableHtml += "<table class='table table-bordered table-sm'>";
+                                    tableHtml += "<tr>";
+                                    tableHtml += "<th class='f-14'>Type</th>";
+                                    tableHtml += "<th class='f-14'>AC</th>";
+                                    tableHtml += "<th class='f-14'>AV</th>";
+                                    tableHtml += "<th class='f-14'>BC</th>";
+                                    tableHtml += "<th class='f-14'>BV</th>";
+                                    tableHtml += "</tr>";
+                                    tableHtml += "</table>";
+                                    tableHtml += "</div>";
+                                    <td>
+                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode() || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode())
+                                        {
+                                            bool isShowbtn = true;
+                                            var mAppConfigs = new List<Domain.AppConfig>();
+                                            if (ViewBag.AppConfigs != null)
+                                            {
+                                                mAppConfigs = ViewBag.AppConfigs as List<Domain.AppConfig>;
+                                            }
+
+                                            if (mAppConfigs != null && mAppConfigs.Count > 0)
+                                            {
+                                                var mMaintainerFeedbackType = mAppConfigs.Where(x => x.AppKey == "MaintainerFeedbackType").FirstOrDefault();
+
+                                                var mAppConfig = mAppConfigs.Where(x => x.ZoneId == item.ZoneId && x.AssetTypeId == item.AssetTypeId && x.UserClassId == E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId && x.AlertInfoId == item.AlertTypeId).FirstOrDefault();
+                                                if (mAppConfig != null && mAppConfig.Id > 0)
+                                                {
+                                                    try
+                                                    {
+                                                        var ackSetTimeStamp = item.SetTimeStamp.AddHours(Convert.ToInt32(mAppConfig.AppValue));
+                                                        if (ackSetTimeStamp < DateTime.Now)
+                                                        {
+                                                            isShowbtn = false;
+                                                        }
+
+                                                    }
+                                                    catch (Exception)
+                                                    {
+                                                    }
+                                                }
+
+
+                                            }
+
+                                            if (mFRSAlertRemarks != null && mFRSAlertRemarks.Count > 0)
+                                            {
+                                                if (mFRSAlertRemarks.Where(x => x.FRSAlertId == item.Id && x.MaintainerId == E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId).Count() > 0)
+                                                {
+                                                    isShowbtn = false;
+                                                }
+                                            }
+
+                                            if (isShowbtn)
+                                            {
+                                                if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode())
+                                                {
+                                                    <div class="d-flex gap-10">
+                                                        <span class="badge badge-pill pill-yellow" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()')">PT</span>
+                                                        <span class="badge badge-pill pill-red" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()')">False</span>
+                                                        @if (!string.IsNullOrEmpty(item.Remark))
+                                                        {
+                                                            <span class="badge badge-pill pill-blue" data-trigger="hover" data-toggle="popover" data-html="true" data-placement="top" title="Remark" data-content="@tableHtml" onclick="fnShowRemark('@item.Id')">Remark</span>
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="d-flex gap-10">
+                                                        <span class="badge badge-pill pill-yellow" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()')">PT</span>
+                                                        <span class="badge badge-pill pill-green" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode()')">True</span>
+                                                        <span class="badge badge-pill pill-red" onclick="AddRemark('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()')">False</span>
+                                                        <span class="badge badge-pill pill-yellow" onclick="fnUpdateAckStatus('@item.Id','@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode()')">Maintenance</span>
+                                                        @if (!string.IsNullOrEmpty(item.Remark))
+                                                        {
+                                                            <span class="badge badge-pill pill-blue" data-trigger="hover" data-toggle="popover" data-html="true" data-placement="top" title="Remark" data-content="@tableHtml" onclick="fnShowRemark('@item.Id')">Remark</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                            else if (!string.IsNullOrEmpty(item.Remark))
+                                            {
+                                                <span class="badge badge-pill pill-blue" data-trigger="hover" data-toggle="popover" data-html="true" data-placement="top" title="Remark" data-content="@tableHtml" onclick="fnShowRemark('@item.Id')">Remark</span>
+                                            }
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            @if (totalRecord > 0)
+            {
+                <div class="alert-pagination">
+                    <!-- Left: Showing info -->
+                    <span class="page-info">
+                        Showing <b>@showFrom–@showTo</b> of <b>@totalRecord</b>
+                    </span>
+
+                    <!-- Center: Page buttons -->
+                    @if (totalPages > 1)
+                    {
+                        <nav>
+                            <ul class="pagination mb-0">
+                                <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                                    <a class="page-link" href="javascript:void(0);" onclick="GoToPage(1)" title="First">
+                                        <i class="fas fa-angle-double-left"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item @(currentPage <= 1 ? "disabled" : "")">
+                                    <a class="page-link" href="javascript:void(0);" onclick="GoToPage(@(currentPage - 1))">
+                                        <i class="fas fa-chevron-left"></i> Prev
+                                    </a>
+                                </li>
+                                @{
+                                    int startPage = Math.Max(1, currentPage - 2);
+                                    int endPage = Math.Min(totalPages, currentPage + 2);
+                                    if (endPage - startPage < 4)
+                                    {
+                                        startPage = Math.Max(1, endPage - 4);
+                                        endPage = Math.Min(totalPages, startPage + 4);
+                                    }
+
+                                    if (startPage > 1)
+                                    {
+                                        <li class="page-item">
+                                            <a class="page-link" href="javascript:void(0);" onclick="GoToPage(1)">1</a>
+                                        </li>
+                                        if (startPage > 2)
+                                        {
+                                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                                        }
+                                    }
+
+                                    for (int p = startPage; p <= endPage; p++)
+                                    {
+                                        <li class="page-item @(p == currentPage ? "active" : "")">
+                                            <a class="page-link" href="javascript:void(0);" onclick="GoToPage(@p)">@p</a>
+                                        </li>
+                                    }
+
+                                    if (endPage < totalPages)
+                                    {
+                                        if (endPage < totalPages - 1)
+                                        {
+                                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                                        }
+                                        <li class="page-item">
+                                            <a class="page-link" href="javascript:void(0);" onclick="GoToPage(@totalPages)">@totalPages</a>
+                                        </li>
+                                    }
+                                }
+                                <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                                    <a class="page-link" href="javascript:void(0);" onclick="GoToPage(@(currentPage + 1))">
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item @(currentPage >= totalPages ? "disabled" : "")">
+                                    <a class="page-link" href="javascript:void(0);" onclick="GoToPage(@totalPages)" title="Last">
+                                        <i class="fas fa-angle-double-right"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    }
+
+                    <!-- Right: Page size -->
+                    <div class="page-size-wrap">
+                        <span>Rows:</span>
+                        <select onchange="changeAlertPageSize(this.value)">
+                            <option value="10" @(pageSize == 10 ? "selected" : "")>10</option>
+                            <option value="25" @(pageSize == 25 ? "selected" : "")>25</option>
+                            <option value="50" @(pageSize == 50 ? "selected" : "")>50</option>
+                            <option value="100" @(pageSize == 100 ? "selected" : "")>100</option>
+                        </select>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+
+        // ===== KEY LINE: Tell parent the current page skip so auto-refresh stays on same page =====
+        window._alertCurrentSkip = @currentSkip;
+
+        $('[data-toggle="popover"]').popover({
+            container: 'body',
+            html: true
+        });
+
+        $('#allSelectCheckbox').change(function () {
+            if ($(this).prop('checked') == true) {
+                $('.clsSelectCheckbox_' + $(this).val()).prop('checked', true);
+            } else {
+                $('.clsSelectCheckbox_' + $(this).val()).prop('checked', false);
+                $('.clsSelectAlltype').prop('checked', false);
+            }
+        });
+    });
+
+    // ===== PAGINATION =====
+    function GoToPage(pageNum) {
+        var ps = @pageSize;
+        var tp = @totalPages;
+        if (pageNum < 1 || pageNum > tp) return;
+        fnGetAlertDetailReport((pageNum - 1) * ps);
+    }
+
+    function changeAlertPageSize(newSize) {
+        window._alertPageSize = parseInt(newSize) || 10;
+        fnGetAlertDetailReport(0);
+    }
+
+    // ===== HELPER: stay on current page after actions =====
+    function reloadCurrentPage() {
+        fnGetAlertDetailReport(@currentSkip);
+    }
+
+    function fnUpdateAckStatus(alertId, acknowledgemenStatusId) {
+        if (confirm('Are you sure you want to update acknowledgement?')) {
+            var mFRSAlert = {};
+            mFRSAlert.AcknowledgemenStatusId = acknowledgemenStatusId;
+            mFRSAlert.Id = alertId;
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/AlertLive/UpdateAcknowledgementStatus',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mFRSAlert),
+                dataType: 'json',
+                success: function (data) {
+                    $("#loader").hide();
+                    reloadCurrentPage();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        }
+                        else if (data.type == "error") {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function ChangeColor(alertId, element) {
+        if ($('.colorCheck_' + alertId).find("btn-primary")) {
+            $('.colorChange_' + alertId).removeClass("btn-primary").addClass('btn-info');
+        }
+        if ($(element).hasClass("btn-info")) {
+            $(element).removeClass("btn-info").addClass('btn-primary');
+            if ($(element).hasClass("check")) {
+                $('.ackbutton_' + alertId).hide();
+            } else {
+                $('.ackbutton_' + alertId).show();
+            }
+        }
+    }
+
+    function fnListFailureAlertsView() {
+        $("#failureAlertsListView").show();
+        $("#failureAlertsgroupView").hide();
+    }
+
+    function fnGroupFailureAlertsView() {
+        $("#failureAlertsListView").hide();
+        $("#failureAlertsgroupView").show();
+    }
+
+    function fnShowFailureAlertLogSite(siteId, typeName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && typeName != null && typeName != undefined && typeName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogBySite_' + siteId + '_' + typeName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogBySite_' + siteId + '_' + typeName).hide();
+            }
+        }
+    }
+
+    function fnShowFailureAlertLogAsset(siteId, assetId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnShowFailureAlertLogAlertName(siteId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAletType_' + siteId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAletType_' + siteId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function AddRemark(id, statusId) {
+        if (id != null && id != undefined && id != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/AlertLive/GetBy',
+                type: 'POST',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.Id > 0) {
+                        $('#hdnAlertRemarkId').val(id);
+                        $('#txtAlertRemark').val(data.Remark);
+                        $('#hdnAlertAlertStatusId').val(statusId);
+                    }
+
+                    if (data.mAlertInfos != null && data.mAlertInfos.length > 0 && statusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
+                        $('#divRemarkAlertInfo').show();
+                        $('#drpRemarkAlertInfo').empty();
+                        $('#drpRemarkAlertInfo').append($("<option></option>").val('').html('Select'));
+                        $(data.mAlertInfos).each(function (d, value) {
+                            $('#drpRemarkAlertInfo').append($("<option></option>").val(value.Id).html(value.Name));
+                        });
+                    } else {
+                        $('#drpRemarkAlertInfo').empty();
+                        $('#divRemarkAlertInfo').hide();
+                    }
+
+                    $('#modelAddRemark').modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnUpdateRemark() {
+        var isValid = true;
+        if ($('#txtAlertRemark').val() != null && $('#txtAlertRemark').val() != undefined && $('#txtAlertRemark').val() != '') {
+            var mFRSAlert = {};
+            mFRSAlert.Id = $('#hdnAlertRemarkId').val();
+            mFRSAlert.Remark = $('#txtAlertRemark').val();
+
+            var rectificationValue = $('#txtRectificationDateTime').val();
+
+            if (rectificationValue != null && rectificationValue != '') {
+                mFRSAlert.RectificationDateTime = new Date(rectificationValue).toISOString();
+                var rectificationDate = new Date(rectificationValue);
+                var now = new Date();
+                if (rectificationDate > now) {
+                    alert("Future date & time is not allowed.");
+                    return false;
+                }
+            }
+
+            mFRSAlert.AcknowledgemenStatusId = $('#hdnAlertAlertStatusId').val();
+            if (mFRSAlert.AcknowledgemenStatusId != null && mFRSAlert.AcknowledgemenStatusId != undefined && mFRSAlert.AcknowledgemenStatusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
+                mFRSAlert.PTAlertInfoId = $('#drpRemarkAlertInfo').val();
+                if (mFRSAlert.PTAlertInfoId != null && mFRSAlert.PTAlertInfoId != undefined && mFRSAlert.PTAlertInfoId != '') {
+                } else {
+                    isValid = false;
+                    alert('Cause Code is required.');
+                }
+            }
+            if (isValid) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/FRS25/AlertLive/UpdateRemark',
+                    type: 'Post',
+                    contentType: 'application/json',
+                    data: JSON.stringify(mFRSAlert),
+                    dataType: 'json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        $('#modelAddRemark').modal('hide');
+                        reloadCurrentPage();
+                        if (data != null) {
+                            if (data.type == "success") {
+                                alert(data.result);
+                            }
+                            else if (data.type == "error") {
+                                alert(data.result);
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        $('#modelAddRemark').modal('hide');
+                        $("#loader").hide();
+                        alert("Something went wrong!");
+                    }
+                });
+            }
+        } else {
+            alert('Remark is required.');
+        }
+    }
+
+    function fnPredictiveAlertsListView() {
+        $("#predictiveAlertsListView").show();
+        $("#predictiveAlertsgroupView").hide();
+    }
+
+    function fnPredictiveAlertsGroupView() {
+        $("#predictiveAlertsListView").hide();
+        $("#predictiveAlertsgroupView").show();
+    }
+
+    function fnShowPredictiveAlertLogSite(siteId, typeName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && typeName != null && typeName != undefined && typeName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.predictiveALertLogBySite_' + siteId + '_' + typeName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.predictiveALertLogBySite_' + siteId + '_' + typeName).hide();
+            }
+        }
+    }
+
+    function fnShowPredictiveAlertLogAsset(siteId, assetId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.predictiveALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.predictiveALertLogByAsset_' + siteId + "" + assetId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnShowPredictiveAlertLogAlertName(siteId, alertName, $this) {
+        if (siteId != null && siteId != '' && siteId != undefined && alertName != null && alertName != undefined && alertName != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.predictiveALertLogByAletType_' + siteId + '_' + alertName).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.predictiveALertLogByAletType_' + siteId + '_' + alertName).hide();
+            }
+        }
+    }
+
+    function fnChangeTab(type) {
+        $('#allSelectCheckbox').val(type);
+    }
+
+    function Delete(id) {
+        if (confirm('Are you sure you want to delete selected record')) {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/AlertLive/DeleteFRSAlertById',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null) {
+                        if (data.type == "success") {
+                            alert(data.result)
+                            reloadCurrentPage();
+                        }
+                        else if (data.type == "error") {
+                            alert(data.result)
+                        }
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    alert("Something went wrong!")
+                }
+            });
+        }
+    }
+
+    function fnDeleteSelected() {
+        var selectedValue = [];
+        $("input:checkbox[name=chkFRSAlertDelete]:checked").each(function () {
+            selectedValue.push($(this).val());
+        });
+        if (selectedValue != null && selectedValue != undefined && selectedValue.length > 0) {
+            if (confirm('Are you sure you want to delete selected record')) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/FRS25/AlertLive/DeleteFRSAlertByIds',
+                    type: 'Post',
+                    data: JSON.stringify(selectedValue),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null) {
+                            if (data.type == "success") {
+                                CommonNotification("SUCCESS", data.result, "success");
+                                reloadCurrentPage();
+                            }
+                            else if (data.type == "error") {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "error");
+                    }
+                });
+            }
+        } else {
+            CommonNotification("ERROR", "Please select any option for delete FRS Alert", "error");
+        }
+    }
+
+    function fnShowFRSAlertInstance(frsAlertId) {
+        var mFRSAlertInstance = {};
+        mFRSAlertInstance.FRSAlertId = frsAlertId;
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/AlertLive/GetFRSAlertInstance',
+            type: 'POST',
+            dataType: 'html',
+            data: JSON.stringify(mFRSAlertInstance),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divFRSAlertInstance").empty().append(data);
+                $('#modalFRSAlertInstance').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowRemark(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/AlertLive/_FRSRemark',
+            type: 'POST',
+            dataType: 'html',
+            data: '{id:' + id + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divFRSAlertRemark").empty().append(data);
+                $('#modalFRSAlertRemark').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowAlertMessage(id) {
+        var alertmsg = $('#spnAlertmsg' + id).text();
+        var alertDesc = $('#spnAlertDescription' + id).text();
+        var resetAlertDesc = $('#spnResetAlertmsg' + id).text();
+        var msg = "";
+        msg = alertmsg.replace(/\n/g, "") + "<br>" + alertDesc.replace(/\n/g, "");
+        if (resetAlertDesc != null && resetAlertDesc != '') {
+            msg += "<br><b>Reset Message</b>" + "<br>" + resetAlertDesc.replace(/\n/g, "");
+        }
+        $('#spnAlertMessage').html(msg.replace(/\n/g, "<br>"));
+        $('#modelShowAlertMessage').modal('show');
+    }
+
+    function AddRemarkColumn() {
+        $(".showRemark").show();
+    }
+
+    function fnAddRemark($this, itemId) {
+        var remark_val = $($this).children('.textRemark').val();
+        if (remark_val != null && remark_val != undefined && remark_val != '') {
+            $.ajax({
+                url: '/FRS25/AlertLive/UpdateTempRemark',
+                type: 'POST',
+                dataType: 'html',
+                data: '{Id:' + itemId + ',tempRemark:"' + remark_val + '"}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#RemarkId_" + itemId).append('<span>' + remark_val + '</span>');
+                    $($this).children('.textRemark').remove();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            alert("Remark is required");
+        }
+    }
+
+    function ClearRemarkColumn() {
+        $.ajax({
+            url: '/FRS25/AlertLive/ClearTempRemark',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                reloadCurrentPage();
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function ShowDebugTrackFail(id) {
+        if (id != null && id != undefined && id != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/AlertLive/_DebugTrackFail',
+                type: 'POST',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#divFRSFailAlertDebbug').empty().append(data);
+                    $('#model-FRS-Fail-Alert-Debbug').modal('show');
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnDownloadImage() {
+        html2canvas($("#downloadIMG")[0], {
+            allowTaint: true,
+            scrollX: 0,
+            scrollY: -window.scrollY
+        }).then((canvas) => {
+            const linkSource = canvas.toDataURL();
+            const downloadLink = document.createElement("a");
+            const fileName = 'Alert_Screenshot' + '.jpeg';
+            downloadLink.href = linkSource;
+            downloadLink.download = fileName;
+            downloadLink.click();
+        });
+    }
+</script>

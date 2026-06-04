@@ -1,0 +1,1961 @@
+﻿@model Domain.FRSAlertLister
+@{ ViewBag.Title = "Alert Summary";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+
+<style>
+    /* ===== SEARCH SECTION ===== */
+    .search-section {
+        padding: 20px 0px;
+        position: relative;
+        z-index: 100;
+    }
+
+    .search-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    /* ===== FILTER ROW ===== */
+    .filter-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 100;
+    }
+
+    .filter-item {
+        flex-shrink: 0;
+        position: relative;
+        z-index: 100;
+    }
+
+        .filter-item label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+    /* ===== SELECT BUTTON ===== */
+    .select-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #333;
+        cursor: pointer;
+        min-width: 118px;
+        height: 40px;
+    }
+
+        .select-btn:hover {
+            border-color: #999;
+        }
+
+        .select-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+
+        .select-btn .text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .select-btn i {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+    /* ===== DROPDOWN ===== */
+    .filter-dropdown {
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+        min-width: 260px;
+        max-width: 320px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+    .dropdown-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .dropdown-search input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+        }
+
+            .dropdown-search input:focus {
+                border-color: #3b82f6;
+            }
+
+    .dropdown-header {
+        padding: 10px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .dropdown-header input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .dropdown-header label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            margin: 0;
+        }
+
+    .dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: #f5f7fa;
+        }
+
+        .dropdown-item.checked {
+            background: #e8f2ff;
+        }
+
+        .dropdown-item.hidden {
+            display: none;
+        }
+
+        .dropdown-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+            flex-shrink: 0;
+        }
+
+        .dropdown-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .dropdown-item.checked span {
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+
+        .dropdown-item span mark {
+            background: #fef08a;
+            color: #333;
+            padding: 0;
+            border-radius: 2px;
+        }
+
+    .dropdown-empty {
+        padding: 25px;
+        text-align: center;
+        color: #888;
+        font-size: 14px;
+    }
+
+    .dropdown-no-results {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+        font-size: 13px;
+        display: none;
+    }
+
+        .dropdown-no-results.show {
+            display: block;
+        }
+
+    /* ===== INPUT FIELDS ===== */
+    .filter-input {
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        height: 40px;
+        width: 100px;
+        outline: none;
+    }
+
+        .filter-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+
+    /* ===== SEARCH BUTTON ===== */
+    .btn-search {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #fff;
+        transition: background 0.2s;
+    }
+
+        .btn-search i {
+            font-size: 16px;
+        }
+
+    /* ===== BACKDROP ===== */
+    .dropdown-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9998;
+        display: none;
+    }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
+    /* ===== TABLE SECTION ===== */
+    .table-border {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* ===== CUSTOM CHART STYLES ===== */
+
+    /* --- Legend --- */
+    .custom-chart-legend {
+        display: flex;
+        justify-content: center;
+        gap: 50px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .custom-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .custom-legend-box {
+        width: 24px;
+        height: 14px;
+        border-radius: 2px;
+    }
+
+        .custom-legend-box.clr-false {
+            background: #d3d3d3;
+            border: 1px solid #bbb;
+        }
+
+        .custom-legend-box.clr-true {
+            background: #2e7d32;
+        }
+
+        .custom-legend-box.clr-pt {
+            background: #b3e5fc;
+            border: 1px solid #90caf9;
+        }
+
+    .custom-legend-text {
+        font-size: 13px;
+        color: #333;
+    }
+
+    /* --- Chart Wrapper Panel --- */
+    .custom-chart-panel {
+        padding: 24px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        margin: 15px;
+    }
+
+    .custom-chart-title {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #555;
+        font-style: italic;
+    }
+
+    .no-data-box {
+        height: 300px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 16px;
+    }
+
+        .no-data-box i {
+            font-size: 50px;
+            margin-bottom: 15px;
+            color: #cbd5e1;
+        }
+
+    /* --- Stacked Bar Chart --- */
+    .bar-chart-outer {
+        display: flex;
+        align-items: flex-end;
+        position: relative;
+        height: 350px;
+        margin-left: 55px;
+        margin-bottom: 130px;
+        border-left: 1px solid #333;
+        border-bottom: 1px solid #333;
+    }
+
+    .bar-y-axis {
+        position: absolute;
+        left: -50px;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column-reverse;
+        justify-content: space-between;
+        pointer-events: none;
+    }
+
+    .bar-y-tick {
+        font-size: 11px;
+        color: #555;
+        text-align: right;
+        width: 22px;
+        position: relative;
+    }
+
+        .bar-y-tick::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: 50%;
+            width: 5px;
+            height: 1px;
+            background: #555;
+        }
+
+    .bar-y-label {
+        position: absolute;
+        left: -52px;
+        top: 50%;
+        transform: rotate(-90deg) translateX(50%);
+        font-size: 12px;
+        color: #333;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .bar-grid-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: #e5e7eb;
+        pointer-events: none;
+    }
+
+    .bar-bars-container {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-around;
+        width: 100%;
+        height: 100%;
+        padding: 0 10px;
+    }
+
+    .bar-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+
+    .bar-wrapper {
+        display: flex;
+        flex-direction: column-reverse;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .bar-seg {
+        width: 44px;
+    }
+
+        .bar-seg.seg-false {
+            background: #d3d3d3;
+            border: 1px solid #bbb;
+            border-bottom: none;
+        }
+
+        .bar-seg.seg-true {
+            background: #2e7d32;
+        }
+
+        .bar-seg.seg-pt {
+            background: #b3e5fc;
+            border: 1px solid #90caf9;
+            border-bottom: none;
+        }
+
+    .bar-pct-label {
+        position: absolute;
+        top: -20px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 11px;
+        font-weight: 600;
+        color: #333;
+        white-space: nowrap;
+    }
+
+    .bar-x-label {
+        position: absolute;
+        bottom: -128px;
+        left: 50%;
+        transform: translateX(-50%) rotate(-40deg);
+        transform-origin: top left;
+        text-align: right;
+        font-size: 9px;
+        color: #555;
+        line-height: 1.4;
+        white-space: nowrap;
+    }
+
+    .bar-x-label-site {
+        font-weight: 600;
+    }
+
+    /* --- Pie Chart Grid --- */
+    .pie-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 36px 24px;
+        margin-bottom: 20px;
+    }
+
+    .pie-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .pie-total-label {
+        text-align: center;
+        font-size: 13px;
+        color: #444;
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+
+    .pie-container {
+        position: relative;
+        width: 160px;
+        height: 160px;
+        cursor: pointer;
+    }
+
+    .pie-svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    .pie-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        pointer-events: none;
+    }
+
+    .pie-pct-val {
+        font-size: 22px;
+        font-weight: 700;
+        color: #333;
+        line-height: 1;
+    }
+
+    .pie-pct-sub {
+        font-size: 9px;
+        color: #888;
+    }
+
+    .pie-info {
+        text-align: center;
+        margin-top: 10px;
+    }
+
+    .pie-site-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .pie-division-name {
+        font-size: 10px;
+        color: #64748b;
+    }
+
+    .pie-cause-name {
+        font-size: 9px;
+        color: #94a3b8;
+        max-width: 150px;
+        word-break: break-word;
+    }
+
+    /* --- Line / Graph Chart --- */
+    /* line chart uses Canvas — no extra CSS needed */
+    #lineChartCanvas {
+        cursor: crosshair;
+    }
+
+    /* --- Shared Tooltip --- */
+    .cust-tooltip {
+        display: none;
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 12px 16px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        font-size: 12px;
+        min-width: 200px;
+        max-height: 360px;
+        overflow-y: auto;
+        z-index: 99999;
+        pointer-events: none;
+    }
+
+        .cust-tooltip.show {
+            display: block;
+        }
+
+    .cust-tt-title {
+        font-weight: 700;
+        font-size: 13px;
+        color: #1e293b;
+        margin-bottom: 2px;
+    }
+
+    .cust-tt-sub {
+        font-size: 11px;
+        color: #64748b;
+        margin-bottom: 2px;
+    }
+
+    .cust-tt-cause {
+        font-size: 10px;
+        color: #94a3b8;
+        margin-bottom: 8px;
+    }
+
+    .cust-tt-divider {
+        border-top: 1px solid #f0f0f0;
+        padding-top: 8px;
+    }
+
+    .cust-tt-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+        font-size: 12px;
+    }
+
+    .cust-tt-box {
+        width: 11px;
+        height: 11px;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+
+        .cust-tt-box.b-false {
+            background: #d3d3d3;
+            border: 1px solid #bbb;
+        }
+
+        .cust-tt-box.b-true {
+            background: #2e7d32;
+        }
+
+        .cust-tt-box.b-pt {
+            background: #b3e5fc;
+            border: 1px solid #90caf9;
+        }
+
+    .cust-tt-accuracy {
+        font-weight: 600;
+        color: #1e293b;
+        margin-top: 8px;
+        border-top: 1px solid #f0f0f0;
+        padding-top: 8px;
+        font-size: 12px;
+    }
+
+    /* --- Chart Pagination (matches table pager) --- */
+    .chart-pager-wrap {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border-top: 1px solid #e5e7eb;
+        margin-top: 12px;
+    }
+
+    .chart-pager-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+</style>
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">Alert</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Alert Summary</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Alert Summary</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="search-section">
+                        <div class="search-title">Search</div>
+
+                        <div class="dropdown-backdrop" id="backdrop"></div>
+
+                        <div class="filter-row">
+                            <!-- Zone -->
+                            <div class="filter-item">
+                                <label>Zone</label>
+                                <div class="select-btn" id="btnZone" data-target="ddZone">
+                                    <span class="text" id="txtZone">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Division -->
+                            <div class="filter-item">
+                                <label>Division</label>
+                                <div class="select-btn" id="btnDivision" data-target="ddDivision">
+                                    <span class="text" id="txtDivision">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Site -->
+                            <div class="filter-item">
+                                <label>Station</label>
+                                <div class="select-btn" id="btnSite" data-target="ddSite">
+                                    <span class="text" id="txtSite">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Alert Type -->
+                            <div class="filter-item">
+                                <label>Alert Type</label>
+                                <div class="select-btn" id="btnAlertType" data-target="ddAlertType">
+                                    <span class="text" id="txtAlertType">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Asset Type -->
+                            <div class="filter-item">
+                                <label>Asset Type</label>
+                                <div class="select-btn" id="btnAssetType" data-target="ddAssetType">
+                                    <span class="text" id="txtAssetType">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Asset Number -->
+                            <div class="filter-item">
+                                <label>Asset Number</label>
+                                <div class="select-btn" id="btnAssetNumber" data-target="ddAssetNumber">
+                                    <span class="text" id="txtAssetNumber">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Cause -->
+                            <div class="filter-item">
+                                <label>Cause</label>
+                                <div class="select-btn" id="btnCause" data-target="ddCause">
+                                    <span class="text" id="txtCause">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- From Date -->
+                            <div class="filter-item">
+                                <label>From Date</label>
+                                <input type="text" class="filter-input" id="txtFromDate" placeholder="Select" readonly>
+                            </div>
+                            <!-- From Time -->
+                            <div class="filter-item">
+                                <label>From Time</label>
+                                <input type="text" class="filter-input" id="txtFromTime" placeholder="00:00">
+                            </div>
+                            <!-- To Date -->
+                            <div class="filter-item">
+                                <label>To Date</label>
+                                <input type="text" class="filter-input" id="txtToDate" placeholder="Select" readonly>
+                            </div>
+                            <!-- To Time -->
+                            <div class="filter-item">
+                                <label>To Time</label>
+                                <input type="text" class="filter-input" id="txtToTime" placeholder="00:00">
+                            </div>
+                            <!-- View Type -->
+                            <div class="filter-item">
+                                <label>View</label>
+                                <div class="select-btn" id="btnViewType" data-target="ddViewType" style="min-width: 100px;">
+                                    <span class="text" id="txtViewType">Table</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <!-- Search Button -->
+                            <div class="filter-item">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-search" onclick="fnGetAlertDetailReport()">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DROPDOWNS -->
+                    <div class="filter-dropdown" id="ddZone">
+                        <div class="dropdown-search"><input type="text" placeholder="Search zone..." onkeyup="filterDropdown('zone', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllZone"><label for="chkAllZone">Select All</label></div>
+                        <div class="dropdown-list" id="listZone">
+                            @if (ViewBag.Zones != null)
+                            {
+                                foreach (var zone in (IEnumerable<SelectListItem>)ViewBag.Zones)
+                                {
+                                    <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
+                                        <input type="checkbox" class="cb-zone" value="@zone.Value">
+                                        <span>@zone.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddDivision">
+                        <div class="dropdown-search"><input type="text" placeholder="Search division..." onkeyup="filterDropdown('division', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllDivision"><label for="chkAllDivision">Select All</label></div>
+                        <div class="dropdown-list" id="listDivision">
+                            @if (ViewBag.Divisions != null)
+                            {
+                                foreach (var division in (IEnumerable<SelectListItem>)ViewBag.Divisions)
+                                {
+                                    <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
+                                        <input type="checkbox" class="cb-division" value="@division.Value">
+                                        <span>@division.Text</span>
+                                    </div>}
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddSite">
+                        <div class="dropdown-search"><input type="text" placeholder="Search station..." onkeyup="filterDropdown('site', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllSite"><label for="chkAllSite">Select All</label></div>
+                        <div class="dropdown-list" id="listSite">
+                            @if (ViewBag.Sites != null)
+                            {
+                                foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                {
+                                    <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                                        <input type="checkbox" class="cb-site" value="@site.Value">
+                                        <span>@site.Text</span>
+                                    </div>}
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddAlertType">
+                        <div class="dropdown-search"><input type="text" placeholder="Search alert type..." onkeyup="filterDropdown('alertType', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllAlertType"><label for="chkAllAlertType">Select All</label></div>
+                        <div class="dropdown-list" id="listAlertType">
+                            @foreach (var alerttype in Enum.GetValues(typeof(E7FRSAdvance.Utility.Utility.AlertType)).Cast<E7FRSAdvance.Utility.Utility.AlertType>().Select(x => new SelectListItem { Text = x.ToString(), Value = ((int)x).ToString() }))
+                            {
+                                <div class="dropdown-item" data-value="@alerttype.Value" data-text="@alerttype.Text">
+                                    <input type="checkbox" class="cb-alertType" value="@alerttype.Value">
+                                    <span>@alerttype.Text</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddAssetType">
+                        <div class="dropdown-search"><input type="text" placeholder="Search asset type..." onkeyup="filterDropdown('assetType', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllAssetType"><label for="chkAllAssetType">Select All</label></div>
+                        <div class="dropdown-list" id="listAssetType">
+                            @if (ViewBag.AssetTypes != null)
+                            {
+                                foreach (var assettype in (IEnumerable<SelectListItem>)ViewBag.AssetTypes)
+                                {
+                                    <div class="dropdown-item" data-value="@assettype.Value" data-text="@assettype.Text">
+                                        <input type="checkbox" class="cb-assetType" value="@assettype.Value">
+                                        <span>@assettype.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddAssetNumber">
+                        <div class="dropdown-search"><input type="text" placeholder="Search asset number..." onkeyup="filterDropdown('assetNumber', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllAssetNumber"><label for="chkAllAssetNumber">Select All</label></div>
+                        <div class="dropdown-list" id="listAssetNumber"><div class="dropdown-empty">Select Site &amp; Asset Type</div></div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddCause">
+                        <div class="dropdown-search"><input type="text" placeholder="Search cause..." onkeyup="filterDropdown('cause', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllCause"><label for="chkAllCause">Select All</label></div>
+                        <div class="dropdown-list" id="listCause">
+                            @if (ViewBag.CauseCode != null)
+                            {
+                                foreach (var causecode in (IEnumerable<SelectListItem>)ViewBag.CauseCode)
+                                {
+                                    <div class="dropdown-item" data-value="@causecode.Value" data-text="@causecode.Text">
+                                        <input type="checkbox" class="cb-cause" value="@causecode.Value">
+                                        <span>@causecode.Text</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- View Type Dropdown (Single Select) -->
+                    <div class="filter-dropdown" id="ddViewType">
+                        <div class="dropdown-list" id="listViewType">
+                            <div class="dropdown-item checked" data-value="Table" data-text="Table"><span>Table</span></div>
+                            <div class="dropdown-item" data-value="Pie" data-text="Pie"><span>Pie</span></div>
+                            <div class="dropdown-item" data-value="Bar" data-text="Bar"><span>Bar</span></div>
+                            <div class="dropdown-item" data-value="Graph" data-text="Graph"><span>Graph</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Table View Container -->
+                    <div class="table-border" id="divTableContainer"></div>
+
+                    <!-- Chart View Container -->
+                    <div id="divChartContainer" style="display:none;"></div>
+
+                    <!-- Shared Tooltip -->
+                    <div class="cust-tooltip" id="custTooltip"></div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    var openDropdown = null;
+    var debounceTimer = null;
+    var selectedViewType = 'Table';
+    var DATE_FORMAT = 'mm/dd/yy';
+
+    // ==============================
+    // INIT
+    // ==============================
+    $(document).ready(function () {
+        setDefaultDates();
+
+        $('#txtFromDate').datepicker({ dateFormat: DATE_FORMAT, autoClose: true });
+        $('#txtToDate').datepicker({ dateFormat: DATE_FORMAT, autoClose: true });
+        $('#txtFromTime').clockpicker({ placement: 'bottom', align: 'right', autoclose: true, 'default': '00:00' });
+        $('#txtToTime').clockpicker({ placement: 'bottom', align: 'right', autoclose: true, 'default': '00:00' });
+
+        $('.select-btn').on('click', function (e) {
+            e.stopPropagation();
+            toggleDD($(this).data('target'), this);
+        });
+
+        $('#backdrop').on('click', closeDD);
+
+        //$('#chkAllZone').on('change', function () { selectAll('zone', this.checked); });
+        //$('#chkAllDivision').on('change', function () { selectAll('division', this.checked); });
+        //$('#chkAllSite').on('change', function () { selectAll('site', this.checked); });
+        //$('#chkAllAlertType').on('change', function () { selectAll('alertType', this.checked); });
+        //$('#chkAllAssetType').on('change', function () { selectAll('assetType', this.checked); });
+        //$('#chkAllAssetNumber').on('change', function () { selectAll('assetNumber', this.checked); });
+        //$('#chkAllCause').on('change', function () { selectAll('cause', this.checked); });
+
+        // Multi-select item click handlers
+        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAlertType .dropdown-item, #ddAssetType .dropdown-item, #ddAssetNumber .dropdown-item, #ddCause .dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+            // If user clicked directly on the checkbox, browser already toggled it — don't reverse it
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $(this).toggleClass('checked', $cb.prop('checked'));
+
+            var cbClass = $cb.attr('class') || '';
+            var type = cbClass.replace('cb-', '');
+
+            updateSelectAllState(type);
+            updateText(type);
+            onFilterChange(type);
+        });
+
+        // Single select for View Type
+        $(document).on('click', '#ddViewType .dropdown-item', function (e) {
+            e.stopPropagation();
+            $('#ddViewType .dropdown-item').removeClass('checked');
+            $(this).addClass('checked');
+            selectedViewType = $(this).data('value');
+            $('#txtViewType').text($(this).data('text'));
+            closeDD();
+        });
+
+        $(document).on('click', '.dropdown-header', function (e) {
+            e.stopPropagation();
+            var $chk = $(this).find('input[type="checkbox"]');
+            // If user clicked the checkbox or label (label triggers native toggle), browser already toggled — don't reverse it
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                var id = $chk.attr('id') || '';
+                var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+                selectAll(type, $chk.prop('checked'));
+                return;
+            }
+            // Clicked on the row background — toggle manually
+            var newState = !$chk.prop('checked');
+            $chk.prop('checked', newState);
+            var id = $chk.attr('id') || '';
+            var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+            selectAll(type, newState);
+        });
+
+        $(document).on('click', '.dropdown-search', function (e) { e.stopPropagation(); });
+
+        fnGetAlertDetailReport();
+    });
+
+    // ==============================
+    // DATE HELPERS
+    // ==============================
+    function setDefaultDates() {
+        var today = new Date();
+        var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        $('#txtFromDate').val(formatDate(firstDay));
+        $('#txtToDate').val(formatDate(today));
+    }
+    function formatDate(d) {
+        return String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/' + d.getFullYear();
+    }
+
+    // ==============================
+    // DROPDOWN HELPERS
+    // ==============================
+    function filterDropdown(type, searchText) {
+        var $dd = $('#dd' + capitalize(type));
+        var $items = $dd.find('.dropdown-item');
+        var $noRes = $dd.find('.dropdown-no-results');
+        var search = searchText.toLowerCase().trim();
+        var visible = 0;
+        $items.each(function () {
+            var $item = $(this);
+            var text = ($item.data('text') || $item.find('span').text()).toLowerCase();
+            if (search === '' || text.indexOf(search) > -1) {
+                $item.removeClass('hidden');
+                visible++;
+                if (search !== '') {
+                    var orig = $item.data('text') || $item.find('span').text();
+                    $item.find('span').html(orig.replace(new RegExp('(' + escapeRegex(searchText) + ')', 'gi'), '<mark>$1</mark>'));
+                } else {
+                    var orig2 = $item.data('text');
+                    if (orig2) $item.find('span').text(orig2);
+                }
+            } else {
+                $item.addClass('hidden');
+            }
+        });
+        $noRes.toggleClass('show', visible === 0 && search !== '');
+    }
+    function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    function toggleDD(id, btn) {
+        if (openDropdown === id) { closeDD(); return; }
+        closeDD();
+        var $dd = $('#' + id);
+        $('body').append($dd);
+        $dd.css({ position: 'absolute', visibility: 'hidden', display: 'block', top: '-9999px', left: '-9999px' });
+        var ddH = $dd.outerHeight(), ddW = $dd.outerWidth();
+        var rect = btn.getBoundingClientRect();
+        var top = rect.bottom + 4, left = rect.left;
+        if (top + ddH > window.innerHeight) top = rect.top - ddH - 4;
+        if (left + ddW > window.innerWidth) left = window.innerWidth - ddW - 8;
+        $dd.css({ visibility: '', display: '', top: top + 'px', left: left + 'px' }).addClass('open');
+        $(btn).addClass('active');
+        $('#backdrop').addClass('show');
+        openDropdown = id;
+        setTimeout(function () { $dd.find('.dropdown-search input').focus(); }, 100);
+    }
+
+    function closeDD() {
+        if (!openDropdown) return;
+        var $dd = $('#' + openDropdown);
+        $dd.find('.dropdown-search input').val('');
+        $dd.find('.dropdown-item').removeClass('hidden');
+        $dd.find('.dropdown-no-results').removeClass('show');
+        $dd.find('.dropdown-item').each(function () { var t = $(this).data('text'); if (t) $(this).find('span').text(t); });
+        $dd.removeClass('open');
+        $('.select-btn').removeClass('active');
+        $('#backdrop').removeClass('show');
+        openDropdown = null;
+    }
+
+    function selectAll(type, checked) {
+        $('.cb-' + type).each(function () {
+            var $item = $(this).closest('.dropdown-item');
+            if (!$item.hasClass('hidden')) { $(this).prop('checked', checked); $item.toggleClass('checked', checked); }
+        });
+        updateText(type);
+        onFilterChange(type);
+    }
+    function updateSelectAllState(type) {
+        var $vis = $('#list' + capitalize(type) + ' .dropdown-item:not(.hidden)');
+        $('#chkAll' + capitalize(type)).prop('checked', $vis.length > 0 && $vis.length === $vis.find('.cb-' + type + ':checked').length);
+    }
+    function updateText(type) {
+        var $checked = $('.cb-' + type + ':checked');
+        var count = $checked.length;
+        var text = count === 1
+            ? ($checked.first().closest('.dropdown-item').data('text') || $checked.first().closest('.dropdown-item').find('span').text())
+            : count > 1 ? count + ' selected' : 'All';
+        $('#txt' + capitalize(type)).text(text);
+    }
+    function getValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () { vals.push($(this).val()); });
+        return vals;
+    }
+    function getFirstValue(type) { var v = getValues(type); return v.length ? v[0] : ''; }
+    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    function onFilterChange(type) {
+        if (type === 'site' || type === 'assetType') debounceAssetNumbers();
+        else if (type === 'zone') loadDivisions();
+        else if (type === 'division') loadSites();
+    }
+
+    // ==============================
+    // ASSET NUMBER LOAD
+    // ==============================
+    function debounceAssetNumbers() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(loadAssetNumbers, 300);
+    }
+    function loadAssetNumbers() {
+        var siteIds = getValues('site').filter(function (id) { return id && id !== '0'; });
+        var typeIds = getValues('assetType').filter(function (id) { return id && id !== '0'; });
+        $('#listAssetNumber').html('<div class="dropdown-empty">Select Site &amp; Asset Type</div>');
+        $('#chkAllAssetNumber').prop('checked', false);
+        $('#txtAssetNumber').text('All');
+        if (!siteIds.length || !typeIds.length) return;
+        $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>');
+        $("#loader").show();
+        var allAssets = [], seen = {}, done = 0, total = siteIds.length * typeIds.length;
+        siteIds.forEach(function (siteId) {
+            typeIds.forEach(function (typeId) {
+                $.ajax({
+                    url: '/FRS25/AlertLive/GetAssestBy', type: 'POST',
+                    data: '{siteId:' + siteId + ',assetTypeId:' + typeId + '}',
+                    contentType: 'application/json', dataType: 'json',
+                    success: function (data) {
+                        if (data && data.length) data.forEach(function (item) { if (item && item.Id && !seen[item.Id]) { seen[item.Id] = true; allAssets.push({ Id: item.Id, Name: item.Name || item.AssetName || '' }); } });
+                        if (++done >= total) renderAssetNumbers(allAssets);
+                    },
+                    error: function () { if (++done >= total) renderAssetNumbers(allAssets); }
+                });
+            });
+        });
+    }
+    function renderAssetNumbers(assets) {
+        $("#loader").hide();
+        assets.sort(function (a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
+        if (assets.length) {
+            $('#listAssetNumber').html(assets.map(function (a) {
+                return '<div class="dropdown-item" data-value="' + a.Id + '" data-text="' + a.Name + '"><input type="checkbox" class="cb-assetNumber" value="' + a.Id + '"><span>' + a.Name + '</span></div>';
+            }).join(''));
+        } else {
+            $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>');
+        }
+    }
+
+    // ==============================
+    // MAIN SEARCH
+    // ==============================
+    function fnGetAlertDetailReport() {
+        var sc = {
+            ZoneIds: getValues('zone'), DivisionIds: getValues('division'), SiteIds: getValues('site'),
+            AlertTypeIds: getValues('alertType'), AssetTypeIds: getValues('assetType'),
+            AssetIds: getValues('assetNumber'), AlertInfoIds: getValues('cause'),
+            ZoneId: getFirstValue('zone'),
+            AlertTypeId: getFirstValue('alertType'), AssetTypeId: getFirstValue('assetType'),
+            AssetId: getFirstValue('assetNumber'), AlertInfoId: getFirstValue('cause'),
+            FromDate: $('#txtFromDate').val(), ToDate: $('#txtToDate').val(),
+            FromTime: $('#txtFromTime').val(), ToTime: $('#txtToTime').val()
+        };
+        var payload = { SearchCriteria: sc };
+        if (selectedViewType === 'Table') fnLoadTableView(payload);
+        else fnLoadChartView(payload, selectedViewType);
+    }
+
+    // ==============================
+    // TABLE VIEW
+    // ==============================
+    function fnLoadTableView(payload) {
+        $("#loader").show();
+        $('#divTableContainer').show();
+        $('#divChartContainer').hide().empty();
+        $.ajax({
+            url: '/FRS25/AlertSummaryReport/_List', type: 'POST',
+            contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html',
+            success: function (data) { $("#loader").hide(); $("#divTableContainer").empty().append(data); },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+
+    // ==============================
+    // CHART VIEW
+    // ==============================
+    function fnLoadChartView(payload, viewType) {
+        $("#loader").show();
+        $('#divTableContainer').hide();
+        $('#divChartContainer').show().empty();
+        $.ajax({
+            url: '/FRS25/AlertSummaryReport/_List', type: 'POST',
+            contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html',
+            success: function (html) {
+                $("#loader").hide();
+                var items = parseTableRows(html);
+                if (!items.length) { renderNoData(); return; }
+                if (viewType === 'Pie') renderPieCharts(items);
+                else if (viewType === 'Bar') renderBarChart(items);
+                else if (viewType === 'Graph') renderLineChart(items);
+            },
+            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        });
+    }
+
+    // ==============================
+    // PARSE TABLE ROWS → items array
+    // ==============================
+    function parseTableRows(htmlData) {
+        var $temp = $('<div>').html(htmlData);
+        var items = [];
+        $temp.find('tbody tr').each(function () {
+            var $tds = $(this).find('td');
+            // Skip colspan "no data" row
+            if ($tds.length < 12 || $(this).find('td[colspan]').length) return;
+            var totalCount = parseInt($tds.eq(8).text().trim()) || 0;
+            var trueCount  = parseInt($tds.eq(9).text().trim()) || 0;
+            var ptCount    = parseInt($tds.eq(10).text().trim()) || 0;
+            var pct        = parseFloat($tds.eq(11).text().replace('%','').trim()) || 0;
+            var falseCount = Math.max(0, totalCount - trueCount - ptCount);
+            var site = $tds.eq(3).text().trim();
+            if (!site || site === '-') return;
+            items.push({
+                zone:        $tds.eq(1).text().trim(),
+                division:    $tds.eq(2).text().trim(),
+                site:        site,
+                assetType:   $tds.eq(4).text().trim(),
+                alertType:   $tds.eq(5).text().trim(),
+                assetNumber: $tds.eq(6).text().trim(),
+                cause:       $tds.eq(7).text().trim(),
+                False:       falseCount,
+                True:        trueCount,
+                PartialTrue: ptCount,
+                total:       totalCount,
+                percentage:  pct
+            });
+        });
+        return items;
+    }
+
+    // ==============================
+    // NO DATA
+    // ==============================
+    function renderNoData() {
+        $('#divChartContainer').html(
+            '<div class="custom-chart-panel"><div class="no-data-box">' +
+            '<i class="fas fa-chart-bar"></i><p>No data available for visualization</p>' +
+            '</div></div>'
+        );
+    }
+
+    // ==============================
+    // TOOLTIP HELPERS
+    // ==============================
+    function showTooltip(item, e) {
+        var $tt = $('#custTooltip');
+        var html = '<div class="cust-tt-title">' + item.site + (item.assetNumber ? ' – ' + item.assetNumber : '') + '</div>';
+        html += '<div class="cust-tt-sub">' + item.division + ', ' + item.zone + '</div>';
+        if (item.cause) html += '<div class="cust-tt-cause">' + item.cause + '</div>';
+        html += '<div class="cust-tt-divider">';
+        html += '<div class="cust-tt-row"><span class="cust-tt-box b-false"></span>False: <strong>' + item.False + '</strong></div>';
+        html += '<div class="cust-tt-row"><span class="cust-tt-box b-true"></span>True: <strong>' + item.True + '</strong></div>';
+        html += '<div class="cust-tt-row"><span class="cust-tt-box b-pt"></span>PT: <strong>' + item.PartialTrue + '</strong></div>';
+        html += '<div class="cust-tt-accuracy">Accuracy: ' + item.percentage + '%</div>';
+        html += '</div>';
+        $tt.html(html).addClass('show');
+        positionTooltip(e);
+    }
+    function positionTooltip(e) {
+        var $tt = $('#custTooltip');
+        var x = e.clientX + 16, y = e.clientY + 16;
+        if (x + 220 > window.innerWidth) x = e.clientX - 230;
+        if (y + $tt.outerHeight() > window.innerHeight) y = e.clientY - $tt.outerHeight() - 8;
+        $tt.css({ left: x + 'px', top: y + 'px' });
+    }
+    function hideTooltip() { $('#custTooltip').removeClass('show'); }
+
+    // ==============================
+    // ===== PIE CHART (multi-grid) =====
+    // Pie = one donut per row (site-wise multiple)
+    // ==============================
+    var pieCurrentPage = 1;
+    var PIE_PER_PAGE = 6;
+    var _pieItems = [];
+
+    function renderPieCharts(items) {
+        _pieItems = items;
+        pieCurrentPage = 1;
+        var $c = $('#divChartContainer').empty();
+
+        var $panel = $('<div class="custom-chart-panel"></div>');
+
+        // Legend
+        $panel.append(buildLegend());
+        // Title
+        $panel.append('<div class="custom-chart-title">% of (True + PT) Alerts out of Total Alerts – per Asset</div>');
+
+        // Grid
+        var $grid = $('<div class="pie-grid" id="pieGridInner"></div>');
+        $panel.append($grid);
+
+        // Pagination wrapper (matches table pager)
+        var $pag = $('<div class="chart-pager-wrap" id="piePagination"></div>');
+        $panel.append($pag);
+
+        $c.append($panel);
+        drawPiePage();
+    }
+
+    function drawPiePage() {
+        var start = (pieCurrentPage - 1) * PIE_PER_PAGE;
+        var pageItems = _pieItems.slice(start, start + PIE_PER_PAGE);
+        var $grid = $('#pieGridInner').empty();
+
+        pageItems.forEach(function (item) {
+            var total = item.False + item.True + item.PartialTrue;
+            if (total === 0) total = 1; // guard
+            var circ = 2 * Math.PI * 54; // radius 54 in 180x180 viewBox (cx=90,cy=90)
+            var r = 54;
+
+            var falseLen = (item.False / total) * circ;
+            var trueLen  = (item.True  / total) * circ;
+            var ptLen    = (item.PartialTrue / total) * circ;
+
+            var trueOffset  = -falseLen;
+            var ptOffset    = -(falseLen + trueLen);
+
+            // Build SVG donut
+            var svgParts = '<svg class="pie-svg" viewBox="0 0 180 180" style="transform:rotate(-90deg)">';
+            // bg
+            svgParts += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="#f0f0f0" stroke-width="52"/>';
+            if (item.False > 0)
+                svgParts += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="#d3d3d3" stroke-width="52" stroke-dasharray="' + falseLen + ' ' + (circ - falseLen) + '" stroke-dashoffset="0"/>';
+            if (item.True > 0)
+                svgParts += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="#2e7d32" stroke-width="52" stroke-dasharray="' + trueLen + ' ' + (circ - trueLen) + '" stroke-dashoffset="' + trueOffset + '"/>';
+            if (item.PartialTrue > 0)
+                svgParts += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="#b3e5fc" stroke-width="52" stroke-dasharray="' + ptLen + ' ' + (circ - ptLen) + '" stroke-dashoffset="' + ptOffset + '"/>';
+            svgParts += '</svg>';
+
+            var $pieItem = $('<div class="pie-item"></div>');
+            $pieItem.append('<div class="pie-total-label">Total – ' + (item.False + item.True + item.PartialTrue) + '</div>');
+
+            var $pieCont = $('<div class="pie-container"></div>').html(svgParts);
+
+            // Center text
+            var $center = $('<div class="pie-center"></div>')
+                .append('<div class="pie-pct-val">' + item.percentage + '%</div>')
+                .append('<div class="pie-pct-sub">Accuracy</div>');
+            $pieCont.append($center);
+
+            // Segment number labels (positioned on donut ring)
+            addPieSegmentLabel($pieCont, item.False, 0, item, total, '#555');
+            addPieSegmentLabel($pieCont, item.True, item.False, item, total, '#fff');
+            addPieSegmentLabel($pieCont, item.PartialTrue, item.False + item.True, item, total, '#333');
+
+            // Tooltip events
+            $pieCont.on('mouseenter', function (e) { showTooltip(item, e); })
+                    .on('mousemove',  function (e) { positionTooltip(e); })
+                    .on('mouseleave', hideTooltip);
+
+            var $info = $('<div class="pie-info"></div>')
+                .append('<div class="pie-site-name">' + item.site + (item.assetNumber ? ', ' + item.assetNumber : '') + '</div>')
+                .append('<div class="pie-division-name">' + item.division + ', ' + item.zone + '</div>')
+                .append('<div class="pie-cause-name">' + item.cause + '</div>');
+
+            $pieItem.append($pieCont).append($info);
+            $grid.append($pieItem);
+        });
+
+        // draw pagination
+        drawPiePagination();
+    }
+
+    function addPieSegmentLabel($cont, count, startCount, item, total, color) {
+        if (count <= 0) return;
+        var midFrac = (startCount + count / 2) / total;
+        var ang = midFrac * 2 * Math.PI - Math.PI / 2; // -90° offset to match SVG rotation
+        var lx = 90 + 38 * Math.cos(ang); // 38 = label radius
+        var ly = 90 + 38 * Math.sin(ang);
+        var $lbl = $('<div></div>').css({
+            position: 'absolute', left: lx + 'px', top: ly + 'px',
+            transform: 'translate(-50%,-50%)', fontSize: '13px', fontWeight: '700',
+            color: color, pointerEvents: 'none', lineHeight: '1'
+        }).text(count);
+        $cont.append($lbl);
+    }
+
+    function drawPiePagination() {
+        var totalPages = Math.ceil(_pieItems.length / PIE_PER_PAGE);
+        var start = (pieCurrentPage - 1) * PIE_PER_PAGE + 1;
+        var end   = Math.min(pieCurrentPage * PIE_PER_PAGE, _pieItems.length);
+        renderChartPager('#piePagination', pieCurrentPage, totalPages, _pieItems.length, start, end, function (pg) {
+            pieCurrentPage = pg; drawPiePage();
+        });
+    }
+
+    // ==============================
+    // ===== BAR CHART (stacked per row) =====
+    // ==============================
+    var barCurrentPage = 1;
+    var BAR_PER_PAGE = 8;
+    var _barItems = [];
+
+    function renderBarChart(items) {
+        _barItems = items;
+        barCurrentPage = 1;
+        var $c = $('#divChartContainer').empty();
+        var $panel = $('<div class="custom-chart-panel"></div>');
+        $panel.append(buildLegend());
+        $panel.append('<div class="custom-chart-title">% of (True + PT) Alerts out of Total Alerts – per Asset (Stacked Bar)</div>');
+        // chart area + y-axis label
+        var $outer = $('<div style="position:relative;"></div>');
+        var $yLabel = $('<div class="bar-y-label">Total Alert Count</div>');
+        var $chartArea = $('<div class="bar-chart-outer" id="barChartOuter"></div>');
+        $chartArea.append('<div class="bar-y-axis" id="barYAxis"></div>');
+        $chartArea.append('<div class="bar-bars-container" id="barBarsInner"></div>');
+        $outer.append($yLabel).append($chartArea);
+        $panel.append($outer);
+        var $pag = $('<div class="chart-pager-wrap" id="barPagination"></div>');
+        $panel.append($pag);
+        $c.append($panel);
+        drawBarPage();
+    }
+
+    function drawBarPage() {
+        var start = (barCurrentPage - 1) * BAR_PER_PAGE;
+        var pageItems = _barItems.slice(start, start + BAR_PER_PAGE);
+
+        var maxVal = 0;
+        pageItems.forEach(function (d) { var t = d.False + d.True + d.PartialTrue; if (t > maxVal) maxVal = t; });
+        var yMax = Math.max(maxVal + 1, 2);
+        var chartH = 350;
+        var unitH = chartH / yMax;
+
+        // Y-axis ticks
+        var $yAxis = $('#barYAxis').empty();
+        for (var i = 0; i <= yMax; i++) {
+            $yAxis.append('<div class="bar-y-tick">' + i + '</div>');
+        }
+
+        // Grid lines
+        $('#barChartOuter .bar-grid-line').remove();
+        for (var g = 1; g <= yMax; g++) {
+            var $gl = $('<div class="bar-grid-line"></div>').css('bottom', (g / yMax * 100) + '%');
+            $('#barChartOuter').append($gl);
+        }
+
+        // Bars
+        var $bars = $('#barBarsInner').empty();
+        pageItems.forEach(function (item) {
+            var $grp = $('<div class="bar-group"></div>');
+            var $wrap = $('<div class="bar-wrapper"></div>');
+
+            // Pct label
+            if (item.percentage > 0) {
+                $wrap.append('<div class="bar-pct-label">' + item.percentage + '%</div>');
+            }
+
+            // False (bottom)
+            if (item.False > 0)
+                $wrap.append('<div class="bar-seg seg-false" style="height:' + (item.False * unitH) + 'px"></div>');
+            // True (middle)
+            if (item.True > 0)
+                $wrap.append('<div class="bar-seg seg-true" style="height:' + (item.True * unitH) + 'px"></div>');
+            // PT (top)
+            if (item.PartialTrue > 0)
+                $wrap.append('<div class="bar-seg seg-pt" style="height:' + (item.PartialTrue * unitH) + 'px"></div>');
+
+            // X label
+            var lblText = item.site + (item.assetNumber ? ', ' + item.assetNumber : '');
+            $grp.append('<div class="bar-x-label"><span class="bar-x-label-site">' + item.site +
+                (item.assetNumber ? ', ' + item.assetNumber : '') + '</span><br>' +
+                item.division + ', ' + item.zone + '<br>' + item.cause + '</div>');
+
+            // Tooltip
+            $wrap.on('mouseenter', function (e) { showTooltip(item, e); })
+                 .on('mousemove',  function (e) { positionTooltip(e); })
+                 .on('mouseleave', hideTooltip);
+
+            $grp.prepend($wrap);
+            $bars.append($grp);
+        });
+
+        drawBarPagination();
+    }
+
+    function drawBarPagination() {
+        var totalPages = Math.ceil(_barItems.length / BAR_PER_PAGE);
+        var start = (barCurrentPage - 1) * BAR_PER_PAGE + 1;
+        var end   = Math.min(barCurrentPage * BAR_PER_PAGE, _barItems.length);
+        renderChartPager('#barPagination', barCurrentPage, totalPages, _barItems.length, start, end, function (pg) {
+            barCurrentPage = pg; drawBarPage();
+        });
+    }
+
+    // ==============================
+    // ===== LINE / GRAPH CHART =====
+    // Canvas-based | X-axis = Sites | One line per Cause Code | Cause-paged
+    // ==============================
+
+    var LINE_COLORS = [
+        '#3b82f6','#e11d48','#f59e0b','#8b5cf6','#10b981',
+        '#ef4444','#06b6d4','#f97316','#6366f1','#84cc16',
+        '#ec4899','#14b8a6','#a855f7','#eab308','#0ea5e9',
+        '#22d3ee','#fb923c','#4ade80','#f472b6','#94a3b8'
+    ];
+
+    var _lineItems   = [];
+    var _lineSites   = [];
+    var _lineSiteMeta= {};
+    var _lineCauses  = [];
+    var _lineMatrix  = {};
+    var linePage     = 1;
+    var LINE_PER_PAGE= 5;   // cause codes per page
+
+    function renderLineChart(items) {
+        if (!items.length) { renderNoData(); return; }
+
+        // ── 1. Collect unique sites & causes ──────────────────────────────
+        _lineItems = items;
+        _lineSites = []; _lineSiteMeta = {}; _lineCauses = []; _lineMatrix = {};
+        var siteSet = {}, causeSet = {};
+
+        items.forEach(function (item) {
+            if (!siteSet[item.site]) {
+                siteSet[item.site] = true;
+                _lineSites.push(item.site);
+                _lineSiteMeta[item.site] = { division: item.division, zone: item.zone };
+            }
+            if (item.cause && !causeSet[item.cause]) {
+                causeSet[item.cause] = true;
+                _lineCauses.push(item.cause);
+            }
+        });
+
+        // ── 2. Build matrix[cause][site] ─────────────────────────────────
+        _lineCauses.forEach(function (cause) {
+            _lineMatrix[cause] = {};
+            _lineSites.forEach(function (site) {
+                _lineMatrix[cause][site] = { total: 0, trueCount: 0, ptCount: 0, falseCount: 0 };
+            });
+        });
+        items.forEach(function (item) {
+            if (!item.cause) return;
+            var c = _lineMatrix[item.cause][item.site];
+            c.total      += item.False + item.True + item.PartialTrue;
+            c.trueCount  += item.True;
+            c.ptCount    += item.PartialTrue;
+            c.falseCount += item.False;
+        });
+
+        // ── 3. Build DOM shell ───────────────────────────────────────────
+        var $c = $('#divChartContainer').empty();
+        var $panel = $('<div class="custom-chart-panel"></div>');
+        $panel.append('<div class="custom-chart-title">Total Alerts per Station – one line per Cause Code</div>');
+
+        // Canvas wrapper (scrollable horizontally)
+        var $canvasWrap = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
+        var $canvas = $('<canvas id="lineChartCanvas" style="display:block;"></canvas>');
+        $canvasWrap.append($canvas);
+
+        // Crosshair + tooltip overlay
+        var $overlay = $('<div id="lineOverlay" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;"></div>');
+        $canvasWrap.append($overlay);
+
+        $panel.append($canvasWrap);
+
+        // Legend strip
+        var $legend = $('<div id="lineLegend" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:14px;padding:0 4px;"></div>');
+        $panel.append($legend);
+
+        // Pager
+        var $pager = $('<div class="chart-pager-wrap" id="linePagination"></div>');
+        $panel.append($pager);
+
+        $c.append($panel);
+
+        // ── 4. First draw ─────────────────────────────────────────────────
+        linePage = 1;
+        drawLinePage($canvas[0], $legend, $canvasWrap[0]);
+        buildLineLegend($legend);
+        drawLinePagination();
+
+        // ── 5. Mouse events on canvas ─────────────────────────────────────
+        $canvas[0].addEventListener('mousemove', function (e) {
+            handleLineHover(e, $canvas[0]);
+        });
+        $canvas[0].addEventListener('mouseleave', function () {
+            hideTooltip();
+            redrawLineChart($canvas[0]); // clear crosshair
+        });
+    }
+
+    // ── Draw the canvas for current page ─────────────────────────────────────
+    function drawLinePage(canvas, $legend, wrapper) {
+        var PAD_L = 58, PAD_R = 24, PAD_T = 28, PAD_B = 130;
+        var INNER_H = 300;
+        var MIN_COL = 72, MAX_COL = 120;
+        var colW = Math.min(MAX_COL, Math.max(MIN_COL, Math.floor(900 / _lineSites.length)));
+        var INNER_W = colW * _lineSites.length;
+        var CW = INNER_W + PAD_L + PAD_R;
+        var CH = INNER_H + PAD_T + PAD_B;
+
+        canvas.width  = CW;
+        canvas.height = CH;
+        canvas.style.width  = CW + 'px';
+        canvas.style.height = CH + 'px';
+        wrapper.style.height = CH + 'px';
+
+        // Store layout on canvas for hover use
+        canvas._layout = { PAD_L: PAD_L, PAD_T: PAD_T, INNER_W: INNER_W, INNER_H: INNER_H,
+                            colW: colW, CW: CW, CH: CH, PAD_B: PAD_B };
+
+        redrawLineChart(canvas);
+    }
+
+    function redrawLineChart(canvas, hoverSiteIdx) {
+        if (!canvas._layout) return;
+        var L = canvas._layout;
+        var PAD_L = L.PAD_L, PAD_T = L.PAD_T, INNER_W = L.INNER_W, INNER_H = L.INNER_H, colW = L.colW;
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Page causes
+        var start  = (linePage - 1) * LINE_PER_PAGE;
+        var pageCauses = _lineCauses.slice(start, start + LINE_PER_PAGE);
+
+        // Y scale from current page max
+        var maxVal = 1;
+        pageCauses.forEach(function (cause) {
+            _lineSites.forEach(function (site) {
+                var v = _lineMatrix[cause][site].total;
+                if (v > maxVal) maxVal = v;
+            });
+        });
+        var yMax  = maxVal + Math.max(1, Math.ceil(maxVal * 0.12));
+        var yStep = yMax <= 10 ? 1 : yMax <= 20 ? 2 : yMax <= 50 ? 5 : Math.ceil(yMax / 8);
+        canvas._yMax = yMax; // store for hover
+
+        // X positions
+        var xPos = _lineSites.map(function (s, i) { return PAD_L + i * colW + colW / 2; });
+        canvas._xPos = xPos;
+
+        // ── Background ────────────────────────────────────────────────────
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // ── Grid + Y ticks ────────────────────────────────────────────────
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.font = '11px Segoe UI, Arial, sans-serif';
+        for (var yv = 0; yv <= yMax; yv += yStep) {
+            var gy = PAD_T + INNER_H - (yv / yMax) * INNER_H;
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(PAD_L, gy); ctx.lineTo(PAD_L + INNER_W, gy); ctx.stroke();
+            ctx.fillStyle = '#64748b';
+            ctx.fillText(yv, PAD_L - 6, gy);
+        }
+
+        // ── Y-axis label ──────────────────────────────────────────────────
+        ctx.save();
+        ctx.translate(14, PAD_T + INNER_H / 2);
+        ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '12px Segoe UI, Arial, sans-serif';
+        ctx.fillStyle = '#475569';
+        ctx.fillText('Total Alert Count', 0, 0);
+        ctx.restore();
+
+        // ── Axes ──────────────────────────────────────────────────────────
+        ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(PAD_L, PAD_T); ctx.lineTo(PAD_L, PAD_T + INNER_H);
+        ctx.lineTo(PAD_L + INNER_W, PAD_T + INNER_H);
+        ctx.stroke();
+
+        // ── Hover column highlight ─────────────────────────────────────────
+        if (hoverSiteIdx !== undefined && hoverSiteIdx >= 0 && hoverSiteIdx < _lineSites.length) {
+            var hx = xPos[hoverSiteIdx];
+            ctx.fillStyle = 'rgba(59,130,246,0.07)';
+            ctx.fillRect(hx - colW / 2, PAD_T, colW, INNER_H);
+            ctx.strokeStyle = 'rgba(59,130,246,0.25)'; ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(hx, PAD_T); ctx.lineTo(hx, PAD_T + INNER_H); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // ── X-axis tick marks ─────────────────────────────────────────────
+        xPos.forEach(function (x) {
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, PAD_T + INNER_H); ctx.lineTo(x, PAD_T + INNER_H + 5); ctx.stroke();
+        });
+
+        // ── Draw lines ────────────────────────────────────────────────────
+        pageCauses.forEach(function (cause, ci) {
+            var color = LINE_COLORS[(start + ci) % LINE_COLORS.length];
+            var pts = _lineSites.map(function (site, si) {
+                var val = _lineMatrix[cause][site].total;
+                return { x: xPos[si], y: PAD_T + INNER_H - (val / yMax) * INNER_H, val: val };
+            });
+
+            // Line
+            ctx.strokeStyle = color; ctx.lineWidth = 2.2;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            pts.forEach(function (p, i) { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
+            ctx.stroke();
+
+            // Dots + value labels
+            pts.forEach(function (p) {
+                // Dot
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ffffff'; ctx.fill();
+                ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
+
+                // Value label above dot (skip 0 if many causes to reduce clutter)
+                if (p.val > 0 && pageCauses.length <= 4) {
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 10px Segoe UI, Arial, sans-serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    ctx.fillText(p.val, p.x, p.y - 8);
+                }
+            });
+        });
+
+        // ── X-axis site labels (rotated 45°) ──────────────────────────────
+        _lineSites.forEach(function (site, si) {
+            var x = xPos[si];
+            var yBase = PAD_T + INNER_H + 10;
+            var meta  = _lineSiteMeta[site];
+
+            ctx.save();
+            ctx.translate(x, yBase);
+            ctx.rotate(Math.PI / 4);
+            ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+
+            ctx.font = 'bold 10px Segoe UI, Arial, sans-serif';
+            ctx.fillStyle = '#1e293b';
+            ctx.fillText(site, 0, 0);
+
+            ctx.font = '9px Segoe UI, Arial, sans-serif';
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillText(meta.division + ', ' + meta.zone, 0, 13);
+
+            ctx.restore();
+        });
+    }
+
+    // ── Hover handler ─────────────────────────────────────────────────────────
+    function handleLineHover(e, canvas) {
+        if (!canvas._layout || !canvas._xPos) return;
+        var L = canvas._layout;
+        var rect = canvas.getBoundingClientRect();
+        var mx = e.clientX - rect.left;
+        var my = e.clientY - rect.top;
+
+        // Find closest site column
+        var closest = -1, minDist = L.colW;
+        canvas._xPos.forEach(function (x, i) {
+            var d = Math.abs(mx - x);
+            if (d < minDist) { minDist = d; closest = i; }
+        });
+
+        if (closest === -1 || my < L.PAD_T || my > L.PAD_T + L.INNER_H) {
+            hideTooltip();
+            redrawLineChart(canvas);
+            return;
+        }
+
+        redrawLineChart(canvas, closest);
+
+        // Build tooltip showing ALL paged causes at this site
+        var site = _lineSites[closest];
+        var meta = _lineSiteMeta[site] || {};
+        var start = (linePage - 1) * LINE_PER_PAGE;
+        var pageCauses = _lineCauses.slice(start, start + LINE_PER_PAGE);
+
+        var $tt = $('#custTooltip');
+        var html = '<div class="cust-tt-title">' + site + '</div>';
+        html += '<div class="cust-tt-sub">' + (meta.division || '') + ', ' + (meta.zone || '') + '</div>';
+        html += '<div class="cust-tt-divider">';
+        pageCauses.forEach(function (cause, ci) {
+            var color = LINE_COLORS[(start + ci) % LINE_COLORS.length];
+            var cell  = _lineMatrix[cause][site];
+            html += '<div class="cust-tt-row" style="margin-bottom:6px;">' +
+                '<span style="display:inline-block;width:12px;height:3px;background:' + color + ';border-radius:2px;margin-right:6px;vertical-align:middle;flex-shrink:0;"></span>' +
+                '<span style="color:#475569;font-size:11px;flex:1;">' + cause + '</span>' +
+                '<strong style="margin-left:8px;">' + cell.total + '</strong>' +
+                '</div>';
+        });
+        html += '</div>';
+        $tt.html(html).addClass('show');
+        positionTooltip(e);
+    }
+
+    // ── Legend ────────────────────────────────────────────────────────────────
+    function buildLineLegend($legend) {
+        $legend.empty();
+        var start = (linePage - 1) * LINE_PER_PAGE;
+        var pageCauses = _lineCauses.slice(start, start + LINE_PER_PAGE);
+        pageCauses.forEach(function (cause, ci) {
+            var color = LINE_COLORS[(start + ci) % LINE_COLORS.length];
+            $legend.append(
+                '<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;">' +
+                '<span style="display:inline-block;width:28px;height:3px;background:' + color + ';border-radius:2px;flex-shrink:0;"></span>' +
+                '<span>' + escapeHtml(cause) + '</span></span>'
+            );
+        });
+    }
+
+    // ── Pagination ───────────────────────────────────────────────────────────
+    function drawLinePagination() {
+        var totalPages = Math.ceil(_lineCauses.length / LINE_PER_PAGE);
+        var s = (linePage - 1) * LINE_PER_PAGE + 1;
+        var e = Math.min(linePage * LINE_PER_PAGE, _lineCauses.length);
+        renderChartPager('#linePagination', linePage, totalPages, _lineCauses.length, s, e, function (pg) {
+            linePage = pg;
+            var canvas = document.getElementById('lineChartCanvas');
+            var $legend = $('#lineLegend');
+            redrawLineChart(canvas);
+            buildLineLegend($legend);
+            drawLinePagination();
+        });
+    }
+
+    // small helpers to keep SVG safe
+    function escapeAttr(s) { return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+    function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    // ==============================
+    // SHARED CHART PAGER (Bootstrap style — matches table pager)
+    // ==============================
+    function renderChartPager(selector, currentPage, totalPages, totalRecords, showFrom, showTo, onPageClick) {
+        var $wrap = $(selector).empty();
+
+        // Left: info text
+        var $info = $('<div class="chart-pager-info">Showing <strong>' + showFrom + '</strong> to <strong>' + showTo + '</strong> of <strong>' + totalRecords + '</strong> records</div>');
+
+        // Right: Bootstrap nav
+        var $ul = $('<ul class="pagination mb-0"></ul>');
+
+        // Previous button
+        var $prev = $('<li class="page-item' + (currentPage <= 1 ? ' disabled' : '') + '"><a class="page-link" href="javascript:void(0);"><i class="fas fa-chevron-left"></i> Previous</a></li>');
+        if (currentPage > 1) {
+            $prev.find('a').on('click', function () { onPageClick(currentPage - 1); });
+        }
+        $ul.append($prev);
+
+        // Page numbers (smart ellipsis — same logic as table pager)
+        var pagesToShow = [];
+        if (totalPages <= 7) {
+            for (var i = 1; i <= totalPages; i++) pagesToShow.push(i);
+        } else {
+            pagesToShow.push(1);
+            if (currentPage > 3) pagesToShow.push('...');
+            for (var i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                if (pagesToShow.indexOf(i) === -1) pagesToShow.push(i);
+            }
+            if (currentPage < totalPages - 2) pagesToShow.push('...');
+            if (pagesToShow.indexOf(totalPages) === -1) pagesToShow.push(totalPages);
+        }
+
+        pagesToShow.forEach(function (p) {
+            if (p === '...') {
+                $ul.append('<li class="page-item disabled"><span class="page-link">...</span></li>');
+            } else {
+                var $li = $('<li class="page-item' + (p === currentPage ? ' active' : '') + '"><a class="page-link" href="javascript:void(0);">' + p + '</a></li>');
+                if (p !== currentPage) {
+                    (function (pg) { $li.find('a').on('click', function () { onPageClick(pg); }); })(p);
+                }
+                $ul.append($li);
+            }
+        });
+
+        // Next button
+        var $next = $('<li class="page-item' + (currentPage >= totalPages ? ' disabled' : '') + '"><a class="page-link" href="javascript:void(0);">Next <i class="fas fa-chevron-right"></i></a></li>');
+        if (currentPage < totalPages) {
+            $next.find('a').on('click', function () { onPageClick(currentPage + 1); });
+        }
+        $ul.append($next);
+
+        $wrap.append($info).append($('<nav></nav>').append($ul));
+    }
+
+    // ==============================
+    // LEGEND BUILDER
+    // ==============================
+    function buildLegend() {
+        return $('<div class="custom-chart-legend">' +
+            '<div class="custom-legend-item"><div class="custom-legend-box clr-false"></div><span class="custom-legend-text">False</span></div>' +
+            '<div class="custom-legend-item"><div class="custom-legend-box clr-true"></div><span class="custom-legend-text">True</span></div>' +
+            '<div class="custom-legend-item"><div class="custom-legend-box clr-pt"></div><span class="custom-legend-text">PT (Partial True)</span></div>' +
+            '</div>');
+    }
+
+    function fnDownloadAlertDetailReport() {
+        window.location.href = '@Url.Action("DownloadFRSAlertLiveStatus", "AlertLive")';
+    }
+
+    // ==============================
+    // LOAD DIVISIONS & SITES
+    // ==============================
+    function loadDivisions() {
+        var zoneIds = getValues('zone');
+        $('#listDivision').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllDivision').prop('checked', false); $('#txtDivision').text('All');
+        $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+        $('#chkAllSite').prop('checked', false); $('#txtSite').text('All');
+        if (!zoneIds.length) { $('#listDivision').html('<div class="dropdown-empty">Select Zone first</div>'); return; }
+        $.ajax({
+            url: '/FRS25/AlertLive/GetDivisionByZoneId', type: 'POST',
+            data: JSON.stringify({ SearchCriteria: { ZoneIds: zoneIds } }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length) {
+                    $('#listDivision').html(data.map(function (v) {
+                        return '<div class="dropdown-item" data-value="' + v.Id + '" data-text="' + v.Name + '"><input type="checkbox" class="cb-division" value="' + v.Id + '"><span>' + v.Name + '</span></div>';
+                    }).join(''));
+                } else { $('#listDivision').html('<div class="dropdown-empty">No divisions found</div>'); }
+            },
+            error: function () { $('#listDivision').html('<div class="dropdown-empty">Error loading divisions</div>'); }
+        });
+    }
+
+    function loadSites() {
+        var divIds = getValues('division');
+        $('#listSite').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllSite').prop('checked', false); $('#txtSite').text('All');
+        if (!divIds.length) { $('#listSite').html('<div class="dropdown-empty">Select Division first</div>'); return; }
+        $.ajax({
+            url: '/FRS25/AlertLive/GetSiteByDivisionId', type: 'POST',
+            data: JSON.stringify({ SearchCriteria: { DivisionIds: divIds } }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length) {
+                    $('#listSite').html(data.map(function (v) {
+                        return '<div class="dropdown-item" data-value="' + v.Id + '" data-text="' + v.Name + '"><input type="checkbox" class="cb-site" value="' + v.Id + '"><span>' + v.Name + '</span></div>';
+                    }).join(''));
+                } else { $('#listSite').html('<div class="dropdown-empty">No sites found</div>'); }
+            },
+            error: function () { $('#listSite').html('<div class="dropdown-empty">Error loading sites</div>'); }
+        });
+    }
+</script>

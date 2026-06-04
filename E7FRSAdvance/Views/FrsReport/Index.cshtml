@@ -1,0 +1,623 @@
+﻿
+@{
+    ViewBag.Title = "Maintenance Report";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/paho-mqtt.js"></script>
+<style>
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+</style>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">FRS Report</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-body" style="padding:15px;">
+                    <div class="row">
+                        <div class="col-12">
+                            <ul class="nav nav-tabs border-tab nav-primary mb-0" id="info-tab" role="tablist">
+                                <li class="nav-item active" onclick="fnGetAlertLiveStatus()"><a class="nav-link active" href="#tabAlertLiveStatus" data-bs-toggle="tab"><strong>Alert Live Status</strong></a></li>
+                                <li class="nav-item" onclick="fnGetAlertDetailReport()"><a a class="nav-link" href="#tabAlertDetailReport" data-bs-toggle="tab"><strong>Alert Detail Report </strong></a></li>
+                                <li class="nav-item" onclick="fnGetAlertSummaryReport()"><a a class="nav-link" href="#tabAlertSummaryReport" data-bs-toggle="tab"><strong>Alert Summary Report</strong></a></li>
+                                <li class="nav-item" onclick="fnGetAssetList()"><a a class="nav-link" href="#tabAssetDetailReport" data-bs-toggle="tab"><strong>Asset Detail Report</strong></a></li>
+                            </ul>
+                        </div>
+                        <div class="col-12">
+                            <div class="tab-content mt-4">
+                                <div class="tab-pane fade active show" id="tabAlertLiveStatus">
+                                    <div id="divAlertLiveStatus">
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade" id="tabAlertDetailReport">
+                                    <div id="divAlertDetailReport">
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade" id="tabAlertSummaryReport">
+                                    <div id="divAlertSummaryReport">
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade" id="tabAssetDetailReport">
+                                    <div id="divAssetDetailReport">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <!--<div class="card">
+        <div class="card-header">
+            <div class="row">
+                <div class="col-12">
+                    <select class="form-control" onchange="fnChangeFRSReportType(this)">
+                        <option value="1">Alert Live Status</option>
+                        <option value="2">Alert Detail Report</option>
+                        <option value="3">Alert Summary Report</option>
+                        <option value="4">Asset Detail Report</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="tab-content mt-0">
+                <div class="tab-pane fade active show" id="tabAlertLiveStatus">
+                    <div id="divAlertLiveStatus">-->
+    @*@Url.Action("_RFStatus")*@
+
+    <!--</div>
+    </div>
+    <div class="tab-pane fade active show" id="tabAlertDetailReport">
+        <div id="divAlertDetailReport">-->
+    <!--</div>
+    </div>
+    <div class="tab-pane fade active show" id="tabAlertSummaryReport">
+        <div id="divAlertSummaryReport">-->
+    <!--</div>
+    </div>
+    <div class="tab-pane fade active show" id="tabAssetDetailReport">
+        <div id="divAssetDetailReport">-->
+    <!--</div>
+            </div>
+        </div>
+        </div>
+    </div>-->
+
+
+</div>
+
+<div id="divFRSAlertInstance"></div>
+<div id="divFRSFailAlertDebbug"></div>
+<div id="divAssetAttributePartial"></div>
+<div id="divDataLoggerEventData"></div>
+<script>
+
+    $(document).ready(function () {
+        fnGetAlertLiveStatus();
+
+
+        setInterval(function () {
+            if ($('#tabAlertLiveStatus').hasClass("active")) {
+                if ($("#switchAutoRefreshMode").prop('checked') == true) {
+                    fnGetAlertLiveStatusAutoRefresh();
+                }
+            }
+        }, 30000);
+
+      //  ConnectWebSocket();
+    });
+
+    function fnChangeFRSReportType($this) {
+        $('.tab-pane').removeClass('active');
+        $('.tab-pane').removeClass('show');
+        var value = $($this).val();
+        if (value == "1") {
+            $('#tabAlertLiveStatus').addClass("active");
+            $('#tabAlertLiveStatus').addClass("show");
+            fnGetAlertLiveStatus();
+        }
+        else if (value == "2") {
+            $('#tabAlertDetailReport').addClass("active");
+            $('#tabAlertDetailReport').addClass("show");
+            fnGetAlertDetailReport();
+        }
+        else if (value == "3") {
+            $('#tabAlertSummaryReport').addClass("active");
+            $('#tabAlertSummaryReport').addClass("show");
+            fnGetAlertSummaryReport();
+        }
+        else if (value == "4") {
+            $('#tabAssetDetailReport').addClass("active");
+            $('#tabAssetDetailReport').addClass("show");
+            fnGetAssetList();
+        }
+
+    }
+
+    function fnGetAssetList() {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpAssetDetailSites').val();
+        mSearchCriteria.AssetTypeId = $('#drpAssetDetailAssetType').val();
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/_AssetList',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetDetailReport").empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnGetAlertLiveStatusAutoRefresh() {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpAlertLiveStatusSites').val();
+        mSearchCriteria.ZoneId = $('#drpAlertLiveStatusZone').val();
+        mSearchCriteria.DivisionId = $('#drpAlertLiveStatusDivision').val();
+        mSearchCriteria.AssetTypeId = $('#drpAlertLiveStatusAssetType').val();
+        mSearchCriteria.AlertTypeId = $('#drpAlertLiveStatusAlertType').val();
+        mSearchCriteria.SectionId = $('#drpAlertLiveStatusSection').val();
+        mSearchCriteria.FromDate = $('#txtAlertLiveStatusFromDate').val();
+        mSearchCriteria.ToDate = $('#txtAlertLiveStatusToDate').val();
+
+        if ($("#switchAutoRefreshMode").prop('checked') == true) {
+            mSearchCriteria.IsAutoRefresh = true;
+        } else {
+            mSearchCriteria.IsAutoRefresh = false;
+        }
+
+        var selected = $("input[type='radio'][name='SearchCriteria.AlertStatus']:checked");
+        if (selected.length > 0) {
+            var selectedVal = selected.val();
+            mSearchCriteria.AlertStatus = selectedVal;
+
+        } else {
+            mSearchCriteria.AlertStatus = 2;
+        }
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $.ajax({
+            url: '/FRSReport/_AlertList',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#divAlertLiveStatus").empty().append(data);
+                var d = new Date();
+                var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                $("#spnAlertLiveStatusUpdateTime").text(time);
+            },
+            error: function (response) {
+                //CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnGetAlertLiveStatus() {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpAlertLiveStatusSites').val();
+        mSearchCriteria.ZoneId = $('#drpAlertLiveStatusZone').val();
+        mSearchCriteria.DivisionId = $('#drpAlertLiveStatusDivision').val();
+        mSearchCriteria.AssetTypeId = $('#drpAlertLiveStatusAssetType').val();
+        mSearchCriteria.AlertTypeId = $('#drpAlertLiveStatusAlertType').val();
+        mSearchCriteria.SectionId = $('#drpAlertLiveStatusSection').val();
+        mSearchCriteria.FromDate = $('#txtAlertLiveStatusFromDate').val();
+        mSearchCriteria.ToDate = $('#txtAlertLiveStatusToDate').val();
+        if ($("#switchAutoRefreshMode").prop('checked') == true) {
+            mSearchCriteria.IsAutoRefresh = true;
+        } else {
+            mSearchCriteria.IsAutoRefresh = false;
+        }
+        var selected = $("input[type='radio'][name='SearchCriteria.AlertStatus']:checked");
+        if (selected.length > 0) {
+            var selectedVal = selected.val();
+            mSearchCriteria.AlertStatus = selectedVal;
+
+        } else {
+            mSearchCriteria.AlertStatus = 2;
+        }
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/_AlertList',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertLiveStatus").empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnGetAlertDetailReport() {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.ZoneId = $('#drpAlertDetailZone').val();
+        mSearchCriteria.DivisionId = $('#drpAlertDetailDivision').val();
+        mSearchCriteria.SiteId = $('#drpAlertDetailSites').val();
+        mSearchCriteria.AssetTypeId = $('#drpAlertDetailAssetType').val();
+        mSearchCriteria.AlertTypeId = $('#drpAlertDetailAlertType').val();
+        mSearchCriteria.AssetId = $('#drpAlertDetailAssetNumber').val();
+        mSearchCriteria.FromDate = $('#txtAlertDetailFromDate').val();
+        mSearchCriteria.ToDate = $('#txtAlertDetailToDate').val();
+        mSearchCriteria.SectionId = $('#drpAlertDetailSection').val();
+        mSearchCriteria.AlertInfoId = $('#drpAlertDetailCauseCode').val();
+        mSearchCriteria.AlertStatus = $('#drpAlertDetailAlertStatus').val();
+        mSearchCriteria.AcknowledgemenStatusId = $('#drpAlertDetailAcknowledgemenStatusId').val();
+
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/_AlertDetailReportList',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertDetailReport").empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        })
+    }
+
+    function fnGetAlertSummaryReport() {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpAlertSummarySites').val();
+        mSearchCriteria.ZoneId = $('#drpAlertSummaryZone').val();
+        mSearchCriteria.DivisionId = $('#drpAlertSummaryDivision').val();
+        mSearchCriteria.AssetTypeId = $('#drpAlertSummaryAssetType').val();
+        mSearchCriteria.AlertTypeId = $('#drpAlertSummaryAlertType').val();
+        mSearchCriteria.AssetId = $('#drpAlertSummaryAssetNumber').val();
+        mSearchCriteria.FromDate = $('#txtAlertSummaryFromDate').val();
+        mSearchCriteria.ToDate = $('#txtAlertSummaryToDate').val();
+        mSearchCriteria.SectionId = $('#drpAlertSummarySection').val();
+        mSearchCriteria.AlertStatus = $('#drpAlertSummaryAlertStatus').val();
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/_AlertSummaryReport',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAlertSummaryReport").empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        })
+    }
+
+    function GetDivisionByZone(zoneId, $division, $seldivid) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $($division).empty();
+                    $($division).append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        if ($($seldivid).val() != '0' && $($seldivid).val() == value.Id) {
+                            $($division).append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $($division).append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetSiteByDivisionId(divisionId, $drpSiteId, $selsiteid) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $($drpSiteId).empty();
+                    $($drpSiteId).append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+
+                        if ($($selsiteid).val() != '0' && $($selsiteid).val() == value.Id) {
+                            $($drpSiteId).append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $($drpSiteId).append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function BindAssetType(AssetTypeId, SiteId, AssetId) {
+        if (AssetTypeId != null && AssetTypeId != undefined && AssetTypeId != '' && SiteId != null && SiteId != undefined && SiteId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/GetAssestBy',
+                type: 'POST',
+                data: '{siteId:' + SiteId + ',assetTypeId:' + AssetTypeId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $(AssetId).empty();
+                    $(AssetId).append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        $(AssetId).append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function BindAlertInfo(AssetTypeId, selId) {
+        if (AssetTypeId != null && AssetTypeId != undefined && AssetTypeId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRSReport/GetAlertInfo',
+                type: 'POST',
+                data: '{assetTypeId:' + AssetTypeId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+
+                    $("#loader").hide();
+                    $('#drpAlertDetailCauseCode').empty();
+                    $('#drpAlertDetailCauseCode').append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        if (selId != undefined && selId != '0' && selId == value.Id) {
+                            $('#drpAlertDetailCauseCode').append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $('#drpAlertDetailCauseCode').append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function fnGetLiveData(siteName, assetId, assetTypeId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AssetAttribute/_AssetAttributePartial',
+            type: 'Post',
+            data: '{siteName:"' + siteName + '",assetId:' + assetId + ',assetTypeId:' + assetTypeId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAssetAttributePartial").empty().append(data);
+                $("#modal-assetLister").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("danger", "Something went wrong!");
+            }
+        });
+    }
+
+    function fnGetDataloggerEventData(siteId, assetName, searchDate) {
+        var searchCriteria = {};
+        searchCriteria.AssetName = assetName;
+        searchCriteria.SiteId = siteId;
+        //searchCriteria.StartTime = startdate;
+        //searchCriteria.EndTime = endTime;
+        searchCriteria.SearchDate = searchDate;
+        var relayName = [];
+        if (assetName != null && assetName != undefined && assetName != '') {
+            var splitaname = assetName.split(',');
+            if (splitaname != null) {
+                $(splitaname).each(function (v, da) {
+                    debugger;
+                    relayName.push(da);
+
+                });
+            }
+        }
+
+        searchCriteria.RelayNames = relayName;
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRSReport/_DataLoggerEvent',
+            type: 'Post',
+            dataType: 'html',
+            data: JSON.stringify(searchCriteria),
+            contentType: 'application/json',
+            success: function (data) {
+                debugger;
+                $("#loader").hide();
+                $("#divDataLoggerEventData").empty().append(data);
+                $("#modalDataloggerEventData").modal('show');
+            },
+            error: function (response) {
+                CommonNotification("error", "Something went wrong!");
+            }
+        });
+
+
+    }
+
+    function ConnectWebSocket() {
+        //SearchData(17290);
+
+        // Replace with your WebSocket server URL
+        var socket = new WebSocket('ws://energy7.in:118/api/WebSocket/Connect');
+
+        socket.onopen = function () {
+            console.log('WebSocket connection opened');
+        };
+
+        socket.onmessage = function (event) {
+            debugger;
+            var str = event.data.replace(/(\r\n|\n|\r)/gm, "");
+            var assetJson = JSON.parse(str);
+
+            if (assetJson != null && assetJson != undefined && assetJson.Id > 0) {
+                var mSearchCriteria = {};
+                mSearchCriteria.SiteId = $('#drpAlertLiveStatusSites').val();
+                mSearchCriteria.ZoneId = $('#drpAlertLiveStatusZone').val();
+                mSearchCriteria.DivisionId = $('#drpAlertLiveStatusDivision').val();
+                mSearchCriteria.AssetTypeId = $('#drpAlertLiveStatusAssetType').val();
+                mSearchCriteria.AlertTypeId = $('#drpAlertLiveStatusAlertType').val();
+                mSearchCriteria.SectionId = $('#drpAlertLiveStatusSection').val();
+                mSearchCriteria.FromDate = $('#txtAlertLiveStatusFromDate').val();
+                mSearchCriteria.ToDate = $('#txtAlertLiveStatusToDate').val();
+                var selected = $("input[type='radio'][name='SearchCriteria.AlertStatus']:checked");
+                if (selected.length > 0) {
+                    var selectedVal = selected.val();
+                    mSearchCriteria.AlertStatus = selectedVal;
+
+                } else {
+                    mSearchCriteria.AlertStatus = 2;
+                }
+
+
+                if (assetJson.ResetAlertMessage != undefined && assetJson.ResetAlertMessage != null && assetJson.ResetAlertMessage != '') {
+                    var isHasRecord = false;
+                    $('#tbodyAlertLiveStatusChange').find('tr').each(function () {
+                        var dataId = $(this).data('id');
+                        if (dataId == assetJson.Id) {
+                            // SearchData(item.Id);
+                            debugger;
+                            isHasRecord = true;
+                            $(this).remo
+                        }
+                    });
+                    if (isHasRecord) {
+
+                    }
+                } else {
+
+                  
+
+                    var isHasRecord = false;
+                    $('#tbodyAlertLiveStatusChange').find('tr').each(function () {
+                        var dataId = $(this).data('id');
+                        if (assetJson.Id == dataId) {
+                            // SearchData(item.Id);
+                            isHasRecord = true;
+                        }
+                    });
+
+                    if (!isHasRecord) {
+                        $.ajax({
+                            url: '/FRSReport/_FRSAlertPartial',
+                            type: 'POST',
+                            data: '{id:' + assetJson.Id + '}',
+                            contentType: 'application/json',
+                            dataType: 'html',
+                            success: function (data) {
+                                debugger;
+
+                                $("#loader").hide();
+                                $('#tbodyAlertLiveStatusChange').prepend(data);
+                               
+
+                            },
+                            error: function (response) {
+                                $("#loader").hide();
+                                CommonNotification("ERROR", "Something went wrong!", "Error");
+                            }
+                        });
+                    }
+
+                    
+
+                }
+
+
+            }
+            console.log('Message received: ' + event.data);
+        };
+    }
+
+    function ResetAlertMessage() {
+
+    }
+</script>

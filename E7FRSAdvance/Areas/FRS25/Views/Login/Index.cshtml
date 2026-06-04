@@ -1,0 +1,395 @@
+﻿@model Domain.Login
+@{ 
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Energy7</title>
+
+    <!-- General CSS Files -->
+    <link href="~/Areas/FRS25/assets/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css" rel="stylesheet">
+    <link href="~/Areas/FRS25/assets/css/style.css" rel="stylesheet" />
+
+    <style>
+        /* OTP Verification Styles */
+        .otp-input.success {
+            border-color: #35d95a !important;
+            background-color: rgba(40, 167, 69, 0.1) !important;
+        }
+
+        .otp-input.error {
+            border-color: #dc3545 !important;
+            background-color: rgba(220, 53, 69, 0.1) !important;
+        }
+
+        .otp-message {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+            .otp-message.success {
+                color: #35d95a;
+            }
+
+            .otp-message.error {
+                color: #dc3545;
+            }
+
+        .otp-loader {
+            display: none;
+            margin-top: 15px;
+        }
+
+        .otp-input:disabled {
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container d-flex min-vh-100">
+        <!-- Left Side - Login Form -->
+        <div class="login-left d-flex flex-column align-items-center justify-content-center bg-white p-4 p-lg-5">
+            <!-- Logo -->
+            <div class="logo-login mb-5">
+                <a href="index.html"><img src="~/Areas/FRS25/assets/img/logo1.png"></a>
+            </div>
+
+            <!-- Login Form -->
+            <div class="login-form-wrapper">
+                <h1 class="login-title mb-2">Welcome back</h1>
+                <p class="login-subtitle mb-4">OTP sent to your registered mobile number.</p>
+
+                @using (Html.BeginForm("Index", "Login", FormMethod.Post, new { @id = "loginForm", @class = "theme-form" }))
+                {
+                    <div class="form-group">
+                        <label for="userId" class="form-label">Email</label>
+                        @Html.TextBoxFor(m => m.EmailAddress, new { @class = "form-control", placeholder = "Email address" })
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password" class="form-label">Password</label>
+                        <div class="password-wrapper position-relative">
+                            @Html.TextBoxFor(m => m.Password, new { @class = "form-control", type = "password", placeholder = "Password" })
+                            <span class="password-toggle position-absolute" onclick="togglePassword()">
+                                <svg id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ADADAD" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="custom-switch-wrapper d-flex align-items-center mb-4">
+                        <label class="toggle-switch mb-0">
+                            <input type="checkbox" id="rememberMe" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label ml-2">Remember me for 30 days</span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary-custom btn-block mb-4">Login</button>
+                }
+            </div>
+        </div>
+
+        <!-- Right Side - OTP Entry -->
+        <div class="login-right position-relative d-flex align-items-center justify-content-center" id="loginRight">
+            <!-- Background blur layer -->
+            <div class="bg-blur-layer"></div>
+
+            <!-- OTP Card -->
+            <div class="otp-card text-center" id="otpCard">
+                <h2 class="otp-title mb-2">Enter code</h2>
+                <p class="otp-subtitle mb-4">We sent a code to <a href="#" class="text-white" id="displayMobile">@ViewBag.MobileNumber</a>.</p>
+
+                <div class="otp-inputs d-flex justify-content-center mb-3">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="0">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="1">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="2">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="3">
+                </div>
+
+                <!-- OTP Message -->
+                <p class="otp-message" id="otpMessage"></p>
+
+                <!-- Loader -->
+                <div class="otp-loader" id="otpLoader">
+                    <i class="fa fa-spinner fa-spin"></i> Verifying...
+                </div>
+
+                <!-- Resend Section -->
+                <p class="resend-link mb-0">
+                    <span id="timerSection">Resend OTP in <strong id="countdown">@ViewBag.OTPResendDelay</strong>s</span>
+                    <a href="javascript:void(0)" class="text-white text-decoration-underline" id="btnResend" style="display:none;" onclick="resendOtp()">Click to resend</a>
+                </p>
+                <p class="resend-link mt-2">Didn't get a code? <a href="javascript:void(0)" class="text-white text-decoration-underline" id="btnResendLink" style="display:none;" onclick="resendOtp()">Click to resend</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden field for mobile number -->
+    <input type="hidden" id="hdnMobileNumber" value="@ViewBag.MobileNumber" />
+    <input type="hidden" id="hdnMacAddress" value="@ViewBag.MacAddress" />
+    <input type="hidden" id="hdnUserId" value="@ViewBag.UserId" />
+
+    <!-- Use full jQuery (not slim) for AJAX support -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="~/Areas/FRS25/assets/js/popper.js"></script>
+    <script src="~/Areas/FRS25/assets/js/bootstrap.min.js"></script>
+
+    <script>
+        var mobileNumber = '';
+        var macAddress = '';
+        var userId = '';
+        var timerInterval;
+
+        $(document).ready(function () {
+
+            if ('@ViewBag.Error' != "") {
+                @*CommonNotify("danger", '@ViewBag.Error');*@
+
+                     alert('@ViewBag.Error');
+            }
+            // Get mobile number from hidden field
+            mobileNumber = $('#hdnMobileNumber').val();
+            macAddress =  $('#hdnMacAddress').val();
+            userId =  $('#hdnUserId').val();
+            // Check if OTP card should be shown
+            var isRedirect = '@ViewBag.IsRedirect';
+            if (isRedirect != null && isRedirect != '' && isRedirect != 'False') {
+                showOtpCard();
+            }
+
+            // OTP Input - Allow only numbers
+            $('.otp-input').on('input', function () {
+                this.value = this.value.replace(/[^0-9]/g, '');
+            });
+
+            // OTP Input Auto-focus and Auto-verify
+            $('.otp-input').each(function (index) {
+                var inputs = $('.otp-input');
+
+                $(this).on('input', function () {
+                    // Move to next input
+                    if (this.value.length === 1 && index < inputs.length - 1) {
+                        inputs.eq(index + 1).focus();
+                    }
+
+                    // Check if all 4 digits entered
+                    checkAndVerifyOtp();
+                });
+
+                $(this).on('keydown', function (e) {
+                    // Backspace - move to previous input
+                    if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                        inputs.eq(index - 1).focus();
+                    }
+                });
+
+                // Handle paste
+                $(this).on('paste', function (e) {
+                    e.preventDefault();
+                    var pastedData = (e.originalEvent.clipboardData || window.clipboardData).getData('text');
+                    pastedData = pastedData.replace(/[^0-9]/g, '').substring(0, 4);
+
+                    if (pastedData.length > 0) {
+                        for (var i = 0; i < pastedData.length && i < 4; i++) {
+                            inputs.eq(i).val(pastedData[i]);
+                        }
+                        if (pastedData.length >= 4) {
+                            inputs.eq(3).focus();
+                            checkAndVerifyOtp();
+                        } else {
+                            inputs.eq(pastedData.length).focus();
+                        }
+                    }
+                });
+            });
+        });
+
+        // Check if all 4 digits entered and verify OTP
+        function checkAndVerifyOtp() {
+            var otp = getOtpValue();
+
+            if (otp.length === 4) {
+                verifyOtp(otp);
+            }
+        }
+
+        // Get OTP value from all inputs
+        function getOtpValue() {
+            var otp = '';
+            $('.otp-input').each(function () {
+                otp = otp + $(this).val();
+            });
+            return otp;
+        }
+
+        // Verify OTP via AJAX
+        function verifyOtp(otp) {
+            // Show loader
+            $('#otpLoader').show();
+            $('#otpMessage').hide();
+
+            // Disable inputs
+            $('.otp-input').prop('disabled', true);
+
+            debugger;
+            $.ajax({
+                url: '@Url.Action("VerifyOtp", "Login")',
+                type: 'POST',
+                data: {
+                    Mobile: mobileNumber,
+                    otp: otp,
+                    MacAddress : macAddress,
+                    userId : userId,
+                },
+                success: function (response) {
+                    $('#otpLoader').hide();
+                    debugger;
+                    if (response.type == "success") {
+                        // Success
+                        $('.otp-input').addClass('success').removeClass('error');
+                        showOtpMessage(response.message, 'success');
+                        // ── Pass password to AI sidebar immediately ──────────
+                        if (window.E7AI) {
+                            E7AI.setPassword($('#Password').val());
+                        }
+                        // ─────────────────────────────────────────────────────
+
+                        // Redirect after success
+                        setTimeout(function () {
+                            window.location.href = response.redirectUrl || '@Url.Action("Index", "Home")';
+                        }, 1000);
+                    } else {
+                        // Error
+                        $('.otp-input').addClass('error').removeClass('success');
+                        showOtpMessage(response.message, 'error');
+
+                        // Clear inputs and enable
+                        setTimeout(function () {
+                            clearOtpInputs();
+                            $('.otp-input').prop('disabled', false).removeClass('error');
+                            $('.otp-input').first().focus();
+                        }, 1500);
+                    }
+                    if (window.E7AI) {
+                        E7AI.setApiKey($('#Password').val());
+                    }
+                },
+                error: function () {
+                    $('#otpLoader').hide();
+                    $('.otp-input').prop('disabled', false);
+                    showOtpMessage('Error verifying OTP. Please try again.', 'error');
+                }
+            });
+        }
+
+        // Resend OTP
+        function resendOtp() {
+            $('#btnResend').hide();
+            $('#btnResendLink').hide();
+            $('#timerSection').show();
+
+            $.ajax({
+                url: '@Url.Action("ResendOtp", "Login")',
+                type: 'POST',
+                data: {
+                    mobileNumber: mobileNumber
+                },
+                success: function (response) {
+                    if (response.type == "success") {
+                        debugger;
+                        showOtpMessage(response.message, 'success');
+                        clearOtpInputs();
+                        $('.otp-input').removeClass('error success');
+                        $('.otp-input').first().focus();
+                        startTimer('@ViewBag.OTPResendDelay');
+                    } else {
+                        showOtpMessage(response.message, 'error');
+                        $('#btnResend').show();
+                        $('#btnResendLink').show();
+                        $('#timerSection').hide();
+                    }
+                },
+                error: function () {
+                    showOtpMessage('Error resending OTP.', 'error');
+                    $('#btnResend').show();
+                    $('#btnResendLink').show();
+                    $('#timerSection').hide();
+                }
+            });
+        }
+
+        // Clear OTP inputs
+        function clearOtpInputs() {
+            $('.otp-input').val('');
+        }
+
+        // Show OTP message
+        function showOtpMessage(message, type) {
+            $('#otpMessage')
+                .removeClass('success error')
+                .addClass(type)
+                .text(message)
+                .show();
+        }
+
+        // Countdown timer
+        function startTimer(seconds) {
+            $('#countdown').text(seconds);
+            $('#timerSection').show();
+            $('#btnResend').hide();
+            $('#btnResendLink').hide();
+
+            timerInterval = setInterval(function () {
+                seconds--;
+                $('#countdown').text(seconds);
+
+                if (seconds <= 0) {
+                    clearInterval(timerInterval);
+                    $('#timerSection').hide();
+                    $('#btnResend').show();
+                    $('#btnResendLink').show();
+                }
+            }, 1000);
+        }
+
+        // Password Toggle
+        function togglePassword() {
+            var passwordInput = document.getElementById('Password');
+            var eyeIcon = document.getElementById('eyeIcon');
+
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
+        }
+
+        // Show OTP Card
+        function showOtpCard() {
+            var loginRight = document.getElementById('loginRight');
+            var otpCard = document.getElementById('otpCard');
+
+            loginRight.classList.add('blurred');
+            otpCard.classList.add('visible');
+
+            // Start countdown timer
+            startTimer('@ViewBag.OTPResendDelay');
+
+            // Focus on first OTP input
+            setTimeout(function () {
+                $('.otp-input').first().focus();
+            }, 500);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+﻿@model Domain.Site
+@{
+    ViewBag.Title = "CombineWatchlistClear";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<style>
+    .yesno-red {
+        background-color: #fff0f0;
+        border: 1px solid #ff4848;
+        color: #ff4848;
+        width: 50px;
+        height: 20px;
+        font-size: 11px;
+        display: block;
+        text-align: center;
+        border-radius: 40px;
+    }
+
+    .yesno-green {
+        background-color: #effef5;
+        border: 1px solid #08b759;
+        color: #08b759;
+        width: 50px;
+        height: 20px;
+        font-size: 11px;
+        display: block;
+        text-align: center;
+        border-radius: 40px;
+    }
+</style>
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-6">
+                <input type="hidden" id="hdnSiteId" value="@Model.Id" />
+                <label style="font-size:18px;margin-top:7px;font-weight:bold">Site:</label>
+                <label style="font-size:16px;margin-top:7px"> @Model.Name </label>
+            </div>
+            <div class="col-6">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#" data-bs-original-title="" title=""> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Clear</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="row">
+            <div class="col-xl-1">
+                <strong class="mt-4">Search</strong>
+            </div>
+            <div class="col-xl-2 col-lg-4 col-md-4">
+                <span>From Date</span>
+                <input type="text" class="form-control" id="txtFromDate">
+            </div>
+            <div class="col-xl-2 col-lg-4 col-md-4">
+                <span>To Date</span>
+                <input type="text" class="form-control" id="txtToDate">
+            </div>
+
+            <div class="col-xl-1 col-lg-1 mt-3">
+                <a class="btn btn-success btn-quirk mt-1" onclick="fnSearch()" title=""><i class="fa fa-search"></i></a>
+                <a class="btn btn-info btn-quirk mt-1" onclick="fnDownload()" title=""><i class="fa fa-download"></i></a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body" id="divCombineWatchlistClearPartial">
+
+    </div>
+</div>
+
+<div class="modal bounceIn animated" id="model-Force-Resolved" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modalConfirm-dialog modal-lg">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title"><span id="spHeader">Force Resolved</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <div class="row">
+                    <div class="col-xl-2">
+                        <h5>Remark :</h5>
+                    </div>
+                    <div class="col-xl-10">
+                        <span id="spnResolvedRemark"></span>
+                    </div>
+                    <hr />
+                    <div class="col-xl-12">
+                        <img id="imgResolved" />
+                    </div>
+                </div>          
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#txtFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#txtFromDate').val('');
+        $('#txtToDate').val('');
+
+        fnSearch();
+    });
+
+    function fnSearch() {
+
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#hdnSiteId').val();
+        mSearchCriteria.StartDate = $('#txtFromDate').val();
+        mSearchCriteria.EndDate = $('#txtToDate').val();
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/_CombineWatchlistClearPartial',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mSearchCriteria),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divCombineWatchlistClearPartial").empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowCombineOverallTarget(id) {
+
+        $("#loader").show();
+        $.ajax({
+            url: '/MaintenaceOperation/GetCombineOverallTarget',
+            type: 'Post',
+            contentType: 'application/json',
+            data: '{id:' + id + '}',
+            success: function (data) {
+                debugger;
+                $("#loader").hide();
+                $('#spnResolvedRemark').text(data.ForceResolvedRemark);
+                $("#imgResolved").attr("src","data:image/png;base64,"+ data.FileBase64);
+                $('#model-Force-Resolved').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnDownload() {
+
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#hdnSiteId').val();
+        mSearchCriteria.StartDate = $('#txtFromDate').val();
+        mSearchCriteria.EndDate = $('#txtToDate').val();
+
+        window.location.href = "/MaintenaceOperation/DownloadClearCombineWatchlist?SiteId=" + mSearchCriteria.SiteId + "&StartDate=" + mSearchCriteria.StartDate + "&EndDate=" + mSearchCriteria.EndDate;
+
+    }
+</script>

@@ -1,0 +1,852 @@
+﻿
+@{
+    ViewBag.Title = "RDPMS Health Live";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+<style>
+    /* ===== SEARCH SECTION ===== */
+    .search-section {
+        padding: 20px 0px;
+        position: relative;
+        z-index: 100;
+    }
+
+    .search-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 20px;
+    }
+
+    /* ===== FILTER ROW ===== */
+    .filter-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 100;
+    }
+
+    /* ===== FILTER ITEM ===== */
+    .filter-item {
+        flex-shrink: 0;
+        position: relative;
+        z-index: 100;
+    }
+
+        .filter-item label {
+            display: block;
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+    /* ===== SELECT BUTTON ===== */
+    .select-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #333;
+        cursor: pointer;
+        min-width: 230px;
+        height: 40px;
+    }
+
+        .select-btn:hover {
+            border-color: #999;
+        }
+
+        .select-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .select-btn .text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .select-btn i {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+    /* ===== DROPDOWN - FIXED POSITION ===== */
+    .filter-dropdown {
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        min-width: 260px;
+        max-width: 320px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+    /* Search Box in Dropdown */
+    .dropdown-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .dropdown-search input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+            .dropdown-search input:focus {
+                border-color: #3b82f6;
+            }
+
+            .dropdown-search input::placeholder {
+                color: #aaa;
+            }
+
+    /* Select All Header */
+    .dropdown-header {
+        padding: 10px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .dropdown-header input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .dropdown-header label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            margin: 0;
+        }
+
+    /* Options List */
+    .dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover {
+            background: #f5f7fa;
+        }
+
+        .dropdown-item.checked {
+            background: #e8f2ff;
+        }
+
+        .dropdown-item.hidden {
+            display: none;
+        }
+
+        .dropdown-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+            flex-shrink: 0;
+        }
+
+        .dropdown-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .dropdown-item.checked span {
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+
+        /* Highlight matched text */
+        .dropdown-item span mark {
+            background: #fef08a;
+            color: #333;
+            padding: 0;
+            border-radius: 2px;
+        }
+
+    /* Empty/Loading State */
+    .dropdown-empty {
+        padding: 25px;
+        text-align: center;
+        color: #888;
+        font-size: 14px;
+    }
+
+    /* No results message */
+    .dropdown-no-results {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+        font-size: 13px;
+        display: none;
+    }
+
+        .dropdown-no-results.show {
+            display: block;
+        }
+
+    /* ===== SEARCH BUTTON ===== */
+    .btn-search {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+        .btn-search:hover {
+            background: var(--primary);
+        }
+
+    /* ===== BACKDROP ===== */
+    .dropdown-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9998;
+        display: none;
+    }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
+    /* ===== TABLE SECTION ===== */
+    .table-border {
+        position: relative;
+        z-index: 1;
+    }
+</style>
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item ">
+                                        RDPMS
+                                    </li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">RDPMS Health Live</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">RDPMS Health Live</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+
+                <div class="card-body p-0">
+                    <div class="search-section">
+                        <div class="search-title">Search</div>
+
+                        <!-- Backdrop for closing dropdowns -->
+                        <div class="dropdown-backdrop" id="backdrop"></div>
+
+                        <div class="filter-row">
+                            <!-- Zone -->
+                            <div class="filter-item">
+                                <label>Zone</label>
+                                <div class="select-btn" id="btnZone" data-target="ddZone">
+                                    <span class="text" id="txtZone">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- Division -->
+                            <div class="filter-item">
+                                <label>Division</label>
+                                <div class="select-btn" id="btnDivision" data-target="ddDivision">
+                                    <span class="text" id="txtDivision">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- Site -->
+                            <div class="filter-item">
+                                <label>Station</label>
+                                <div class="select-btn" id="btnSite" data-target="ddSite">
+                                    <span class="text" id="txtSite">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <!-- Asset Type -->
+                            <div class="filter-item">
+                                <label>Asset Type</label>
+                                <div class="select-btn" id="btnAssetType" data-target="ddAssetType">
+                                    <span class="text" id="txtAssetType">All</span>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                            </div>
+
+                            <div class="filter-item">
+                                <label for="sel1">View</label>
+                                <select class="form-control">
+                                    <option>Table</option>
+                                    <option>Pictorial</option>
+                                </select>
+                            </div>
+
+                            <!-- Search Button -->
+                            <div class="filter-item">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-search" onclick="fnGetAlertDetailReport(0)">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DROPDOWNS -->
+                    <!-- Zone Dropdown -->
+                    <div class="filter-dropdown" id="ddZone">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search zone..." onkeyup="filterDropdown('zone', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllZone">
+                            <label for="chkAllZone">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listZone">
+                            @if (ViewBag.Zones != null)
+                            {
+                                foreach (var zone in (IEnumerable<SelectListItem>)ViewBag.Zones)
+                                {
+                                    <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
+                                        <input type="checkbox" class="cb-zone" value="@zone.Value">
+                                        <span>@zone.Text</span>
+                                    </div>}
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Division Dropdown -->
+                    <div class="filter-dropdown" id="ddDivision">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search division..." onkeyup="filterDropdown('division', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllDivision">
+                            <label for="chkAllDivision">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listDivision">
+                            @if (ViewBag.Divisions != null)
+                            {
+                                foreach (var division in (IEnumerable<SelectListItem>)ViewBag.Divisions)
+                                {
+                                    <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
+                                        <input type="checkbox" class="cb-division" value="@division.Value">
+                                        <span>@division.Text</span>
+                                    </div>}
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Site Dropdown -->
+                    <div class="filter-dropdown" id="ddSite">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search site..." onkeyup="filterDropdown('site', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllSite">
+                            <label for="chkAllSite">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listSite">
+                            @if (ViewBag.Sites != null)
+                            {
+                                foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                                {
+                                    <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                                        <input type="checkbox" class="cb-site" value="@site.Value">
+                                        <span>@site.Text</span>
+                                    </div>}
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+                    <!-- Asset Type Dropdown -->
+                    <div class="filter-dropdown" id="ddAssetType">
+                        <div class="dropdown-search">
+                            <input type="text" placeholder="Search asset type..." onkeyup="filterDropdown('assetType', this.value)">
+                        </div>
+                        <div class="dropdown-header">
+                            <input type="checkbox" id="chkAllAssetType">
+                            <label for="chkAllAssetType">Select All</label>
+                        </div>
+                        <div class="dropdown-list" id="listAssetType">
+                            @if (ViewBag.AssetTypes != null)
+                            {
+                                foreach (var assettype in (IEnumerable<SelectListItem>)ViewBag.AssetTypes)
+                                {
+                                    <div class="dropdown-item" data-value="@assettype.Value" data-text="@assettype.Text">
+                                        <input type="checkbox" class="cb-assetType" value="@assettype.Value">
+                                        <span>@assettype.Text</span>
+                                    </div>}
+                            }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+
+
+
+                    <div id="divRDPMSHealthLive">
+
+
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+@*<div id="wsStatusBar" style="display:none;"></div>*@
+<script>
+    var openDropdown = null;
+
+    $(document).ready(function () {
+        // Bind button clicks
+        $('.select-btn').on('click', function (e) {
+            e.stopPropagation();
+            var target = $(this).data('target');
+            toggleDD(target, this);
+        });
+
+        // Backdrop click
+        $('#backdrop').on('click', closeDD);
+
+        // Item click handlers using event delegation
+        $(document).on('click', '.dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $(this).toggleClass('checked', $cb.prop('checked'));
+
+            var cbClass = $cb.attr('class') || '';
+            var type = cbClass.replace('cb-', '');
+
+            updateSelectAllState(type);
+            updateText(type);
+            onFilterChange(type);
+        });
+
+        $(document).on('click', '.dropdown-header', function (e) {
+            e.stopPropagation();
+            var $chk = $(this).find('input[type="checkbox"]');
+            // If user clicked the checkbox or label (label triggers native toggle), browser already toggled — don't reverse it
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                var id = $chk.attr('id') || '';
+                var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+                selectAll(type, $chk.prop('checked'));
+                return;
+            }
+            // Clicked on the row background — toggle manually
+            var newState = !$chk.prop('checked');
+            $chk.prop('checked', newState);
+            var id = $chk.attr('id') || '';
+            var type = id.replace('chkAll', '').charAt(0).toLowerCase() + id.replace('chkAll', '').slice(1);
+            selectAll(type, newState);
+        });
+
+
+        // Prevent dropdown close when clicking inside search box
+        $(document).on('click', '.dropdown-search', function (e) {
+            e.stopPropagation();
+        });
+
+        // Load data on page load
+       // fnGetAlertDetailReport(0);
+    });
+
+    // ===== DROPDOWN SEARCH FILTER =====
+    function filterDropdown(type, searchText) {
+        var $dropdown = $('#dd' + capitalize(type));
+        var $items = $dropdown.find('.dropdown-item');
+        var $noResults = $dropdown.find('.dropdown-no-results');
+        var search = searchText.toLowerCase().trim();
+        var visibleCount = 0;
+
+        $items.each(function () {
+            var $item = $(this);
+            var text = ($item.data('text') || $item.find('span').text()).toLowerCase();
+
+            if (search === '' || text.indexOf(search) > -1) {
+                $item.removeClass('hidden');
+                visibleCount++;
+
+                if (search !== '') {
+                    var originalText = $item.data('text') || $item.find('span').text();
+                    var regex = new RegExp('(' + escapeRegex(searchText) + ')', 'gi');
+                    var highlighted = originalText.replace(regex, '<mark>$1</mark>');
+                    $item.find('span').html(highlighted);
+                } else {
+                    var origText = $item.data('text');
+                    if (origText) $item.find('span').text(origText);
+                }
+            } else {
+                $item.addClass('hidden');
+            }
+        });
+
+        if (visibleCount === 0 && search !== '') {
+            $noResults.addClass('show');
+        } else {
+            $noResults.removeClass('show');
+        }
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function toggleDD(id, btn) {
+        if (openDropdown === id) {
+            closeDD();
+            startAutoRefresh();
+            _isDropdownOpen = false;
+            return;
+        }
+        closeDD();
+
+        _isDropdownOpen = true;
+
+        var $dd = $('#' + id);
+
+        // Move to body to escape all parent stacking contexts
+        $('body').append($dd);
+
+        var rect = btn.getBoundingClientRect();
+
+        // Temporarily show invisible to measure real height
+        $dd.css({
+            position: 'absolute',
+            visibility: 'hidden',
+            display: 'block',
+            top: '-9999px',
+            left: '-9999px'
+        });
+
+        var ddHeight = $dd.outerHeight();
+        var ddWidth = $dd.outerWidth();
+
+        var top = rect.bottom + 4;
+        var left = rect.left;
+
+        // Flip upward if overflows bottom of screen
+        if (top + ddHeight > window.innerHeight) {
+            top = rect.top - ddHeight - 4;
+        }
+
+        // Shift left if overflows right of screen
+        if (left + ddWidth > window.innerWidth) {
+            left = window.innerWidth - ddWidth - 8;
+        }
+
+        // Now position correctly and show
+        $dd.css({
+            visibility: '',
+            display: '',
+            top: top + 'px',
+            left: left + 'px'
+        });
+
+        $dd.addClass('open');
+        $(btn).addClass('active');
+        $('#backdrop').addClass('show');
+        openDropdown = id;
+
+        setTimeout(function () {
+            var $searchInput = $dd.find('.dropdown-search input');
+            if ($searchInput.length) $searchInput.focus();
+        }, 100);
+    }
+
+    function closeDD() {
+        if (openDropdown) {
+            var $dd = $('#' + openDropdown);
+            $dd.find('.dropdown-search input').val('');
+            $dd.find('.dropdown-item').removeClass('hidden');
+            $dd.find('.dropdown-no-results').removeClass('show');
+            $dd.find('.dropdown-item').each(function () {
+                var origText = $(this).data('text');
+                if (origText) $(this).find('span').text(origText);
+            });
+            $dd.removeClass('open');
+            $('.select-btn').removeClass('active');
+            $('#backdrop').removeClass('show');
+            openDropdown = null;
+        }
+    }
+
+    function selectAll(type, checked) {
+        $('.cb-' + type).each(function () {
+            var $item = $(this).closest('.dropdown-item');
+            if (!$item.hasClass('hidden')) {
+                $(this).prop('checked', checked);
+                $item.toggleClass('checked', checked);
+            }
+        });
+        updateText(type);
+        onFilterChange(type);
+    }
+
+    function updateSelectAllState(type) {
+        var $visible = $('#list' + capitalize(type) + ' .dropdown-item:not(.hidden)');
+        var total = $visible.length;
+        var checked = $visible.find('.cb-' + type + ':checked').length;
+        $('#chkAll' + capitalize(type)).prop('checked', total > 0 && total === checked);
+    }
+
+    function updateText(type) {
+        var $checked = $('.cb-' + type + ':checked');
+        var count = $checked.length;
+        var text = 'All';
+
+        if (count === 1) {
+            text = $checked.first().closest('.dropdown-item').data('text') ||
+                $checked.first().closest('.dropdown-item').find('span').text();
+        } else if (count > 1) {
+            text = count + ' selected';
+        }
+        $('#txt' + capitalize(type)).text(text);
+    }
+
+    function getValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () {
+            vals.push($(this).val());
+        });
+        return vals;
+    }
+
+    function getFirstValue(type) {
+        var vals = getValues(type);
+        return vals.length > 0 ? vals[0] : '';
+    }
+
+    function capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function onFilterChange(type) {
+        if (type === 'zone') {
+            loadDivisions();
+        } else if (type === 'division') {
+            loadSites();
+        }
+    }
+
+    // ===== LOAD DIVISIONS =====
+    function loadDivisions() {
+        var zoneIds = getValues('zone');
+
+        // Clear dependent dropdowns
+        $('#listDivision').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllDivision').prop('checked', false);
+        $('#txtDivision').text('All');
+
+        $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+
+        if (zoneIds.length === 0) {
+            $('#listDivision').html('<div class="dropdown-empty">Select Zone first</div>');
+            return;
+        }
+
+        var requestData = {
+            SearchCriteria: {
+                ZoneIds: zoneIds
+            }
+        };
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetDivisionByZoneId',
+            type: 'POST',
+            data: JSON.stringify(requestData),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-division" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span>';
+                        html += '</div>';
+                    });
+                    $('#listDivision').html(html);
+                } else {
+                    $('#listDivision').html('<div class="dropdown-empty">No divisions found</div>');
+                }
+            },
+            error: function () {
+                $('#listDivision').html('<div class="dropdown-empty">Error loading divisions</div>');
+            }
+        });
+    }
+
+    // ===== LOAD SITES =====
+    function loadSites() {
+        var divisionIds = getValues('division');
+
+        // Clear dependent dropdown
+        $('#listSite').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+
+        if (divisionIds.length === 0) {
+            $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
+            return;
+        }
+
+        var requestData = {
+            SearchCriteria: {
+                DivisionIds: divisionIds
+            }
+        };
+
+        $.ajax({
+            url: '/FRS25/AlertLive/GetSiteByDivisionId',
+            type: 'POST',
+            data: JSON.stringify(requestData),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-site" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span>';
+                        html += '</div>';
+                    });
+                    $('#listSite').html(html);
+                } else {
+                    $('#listSite').html('<div class="dropdown-empty">No sites found</div>');
+                }
+            },
+            error: function () {
+                $('#listSite').html('<div class="dropdown-empty">Error loading sites</div>');
+            }
+        });
+    }
+
+    // ===== MAIN SEARCH FUNCTION =====
+    function fnGetAlertDetailReport(skip) {
+
+        var m = { SearchCriteria: {}, Pager: {} };
+
+        debugger;
+
+        // Multi-select values (arrays)
+        m.SearchCriteria.ZoneIds = getValues('zone');
+        m.SearchCriteria.DivisionIds = getValues('division');
+        m.SearchCriteria.SiteIds = getValues('site');
+        m.SearchCriteria.AssetTypeIds = getValues('assetType');
+        if (m.SearchCriteria.SiteIds == null || m.SearchCriteria.SiteIds == undefined || m.SearchCriteria.SiteIds.length <= 0) {
+            alert('Station is required');
+            return;
+        }
+
+        // Single values for backward compatibility
+        //m.SearchCriteria.ZoneId = getFirstValue('zone');
+        //m.SearchCriteria.DivisionId = getFirstValue('division');
+        //m.SearchCriteria.SiteId = getFirstValue('site');
+        //m.SearchCriteria.AssetTypeId = getFirstValue('assetType');
+
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/RDPMSHealthLive/_List',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(m),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divRDPMSHealthLive").empty().append(data);
+
+                connectWebSocket();
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        })
+    }
+
+    function fnDownloadAlertDetailReport() {
+        window.location.href = '@Url.Action("DownloadFRSAlertLiveStatus", "AlertLive")';
+    }
+
+</script>
+

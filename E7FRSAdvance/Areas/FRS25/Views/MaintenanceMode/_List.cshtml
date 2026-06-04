@@ -1,0 +1,622 @@
+﻿@model Domain.MaintenanceModeLister
+
+@{ var maintenanceList = (Model != null && Model.mMaintenanceModes != null)
+                       ? Model.mMaintenanceModes.ToList()
+                       : new List<Domain.MaintenanceMode>();
+    var totalRecords = maintenanceList.Count;
+    var activeCount = maintenanceList.Count(x => x.IsMaintenceMode);
+    var clearedCount = totalRecords - activeCount; }
+
+<style>
+    /* ===== SUMMARY BADGES ===== */
+    .summary-badges {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+
+    .summary-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #475569;
+    }
+
+        .summary-item .label {
+            font-weight: 500;
+        }
+
+    .summary-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 32px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .badge-total {
+        background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+        color: #4338ca;
+        border: 1px solid #a5b4fc;
+    }
+
+    .badge-active {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        color: #b45309;
+        border: 1px solid #fbbf24;
+    }
+
+    .badge-cleared {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        color: #047857;
+        border: 1px solid #6ee7b7;
+    }
+
+    /* ===== ACTION BUTTONS ===== */
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s ease;
+    }
+
+        .action-btn i {
+            font-size: 11px;
+        }
+
+    .btn-clear {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        color: #dc2626;
+        border: 1px solid #fca5a5;
+    }
+
+        .btn-clear:hover {
+            background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+            transform: scale(1.02);
+            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+        }
+
+    .status-cleared {
+        background: #f1f5f9;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+        cursor: default;
+    }
+
+        .status-cleared i {
+            color: #22c55e;
+        }
+
+    #tblMaintenanceMode tbody tr:hover {
+        background-color: #f8fafc;
+    }
+
+    #tblMaintenanceMode .text-center {
+        text-align: center;
+    }
+    #tblMaintenanceMode {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        color: #333;
+    }
+
+        #tblMaintenanceMode thead tr {
+            background-color: #f2f2f2;
+        }
+
+        #tblMaintenanceMode thead th {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-weight: 600;
+            font-size: 12px;
+            color: #333;
+            white-space: normal;
+            line-height: 1.4;
+            border: 1px solid #dee2e6;
+        }
+
+        #tblMaintenanceMode tbody td {
+            padding: 8px 10px;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+</style>
+
+<div class="table-border">
+    <div class="">
+        <div class="my-4 px-lg-4 px-2 w-100">
+            <div class="d-md-flex justify-content-between align-items-center">
+                <div class="summary-badges">
+                    @if (totalRecords > 0)
+                    {
+                        <div class="summary-item">
+                            <span class="label">Total:</span>
+                            <span class="summary-badge badge-total">@totalRecords</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Active:</span>
+                            <span class="summary-badge badge-active">@activeCount</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="label">Cleared:</span>
+                            <span class="summary-badge badge-cleared">@clearedCount</span>
+                        </div>
+                    }
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center btn-icon-size">
+                    <div class="d-flex gap-10 my-lg-0 my-3" id="buttonGroupLeft">
+                        <div class="dropdown">
+                            <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
+                                    aria-haspopup="true" aria-expanded="false" title="Download">
+                                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                                     stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12"></path>
+                                </svg>
+                            </button>
+                            <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload" style="min-width: 130px;">
+                                <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadMaintenanceExcel()">
+                                    <i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel
+                                </a>
+                                <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadMaintenanceCSV()">
+                                    <i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div id="listView">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tblMaintenanceMode">
+                        <thead class="thead-light2">
+                            <tr>
+                                <th style="min-width:45px;">Sr.No</th>
+                                <th style="min-width:50px;">Zone</th>
+                                <th style="min-width:80px;">Division</th>
+                                <th style="min-width:90px;">Station</th>
+                                <th style="min-width:90px;">Asset Type</th>
+                                <th style="min-width:90px;">Asset Number</th>
+                                <th style="min-width:130px;">Date and Time of<br /> Maintenance mode to activate</th>
+                                <th style="min-width:130px;">Date and Time of<br /> Maintenance mode to clear</th>
+                                <th class="text-center" style="min-width:80px;">Click icon to clear<br /> Maintenance mode</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (totalRecords > 0)
+                            {
+                                int counter = 0;
+                                foreach (var item in maintenanceList)
+                                {
+                                    counter++;
+                                    string statusText = item.IsMaintenceMode ? "Active" : "Inactive";
+                                    <tr data-status="@statusText">
+                                        <td>@counter</td>
+                                        <td>@item.Zone</td>
+                                        <td>@item.Division</td>
+                                        <td>@item.Site</td>
+                                        <td>@item.AssetType</td>
+                                        <td>@item.Asset</td>
+                                        <td>@item.ActiveTime</td>
+                                        <td>@item.InActiveTime</td>
+                                        <td class="text-center">
+                                            @if (item.IsMaintenceMode)
+                                            {
+                                                <span class="action-btn btn-clear" onclick="fnUpdateMaintenanceInActiveMode('@item.AssetId')">
+                                                    <i class="fas fa-times-circle"></i> Clear
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="action-btn status-cleared">
+                                                    <i class="fas fa-check-circle"></i> Cleared
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="9" class="text-center py-4 text-muted">
+                                        <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                                        No maintenance mode records found
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (totalRecords > 0)
+                {
+                    <div class="d-flex justify-content-between align-items-center px-4 py-3 border-top">
+                        <div class="text-muted" id="paginationInfo" style="font-size: 13px;">
+                            Showing <strong><span id="showingFrom">1</span></strong> to
+                            <strong><span id="showingTo">10</span></strong> of
+                            <strong>@totalRecords</strong> records
+                        </div>
+                        <nav>
+                            <ul class="pagination mb-0" id="pager">
+                                <li class="page-item" id="prevBtn">
+                                    <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
+                                        <i class="fas fa-chevron-left"></i> Previous
+                                    </a>
+                                </li>
+                                <li class="page-item" id="nextBtn">
+                                    <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
+                                        Next <i class="fas fa-chevron-right"></i>
+                                    </a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<script>
+    (function () {
+        var rowsPerPage = 10;
+        var $table = $('#tblMaintenanceMode');
+        var $rows = $table.find('tbody tr');
+        var totalRows = $rows.length;
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var currentPage = 1;
+
+        // Check if we have data rows
+        var hasNoDataRow = totalRows === 1 && $rows.first().find('td[colspan]').length > 0;
+
+        if (hasNoDataRow) {
+            $('#paginationInfo').closest('.d-flex').hide();
+        } else if (totalRows > 0) {
+            showPage(1);
+        }
+
+        function showPage(page) {
+            if (page < 1) page = 1;
+            if (page > totalPages) page = totalPages;
+            currentPage = page;
+
+            // ===== KEY LINE: Tell parent the current page so auto-refresh can restore it =====
+            window._maintenanceCurrentPage = currentPage;
+
+            var start = (page - 1) * rowsPerPage;
+            var end = start + rowsPerPage;
+
+            $rows.hide();
+            $rows.slice(start, end).show();
+
+            var showEnd = Math.min(end, totalRows);
+            $('#showingFrom').text(totalRows > 0 ? start + 1 : 0);
+            $('#showingTo').text(showEnd);
+
+            renderPagination();
+        }
+
+        function renderPagination() {
+            var $pager = $('#pager');
+            $pager.find('.page-number').remove();
+
+            $('#prevBtn').toggleClass('disabled', currentPage <= 1);
+            $('#nextBtn').toggleClass('disabled', currentPage >= totalPages);
+
+            var $nextBtn = $('#nextBtn');
+            var pagesToShow = [];
+
+            if (totalPages <= 7) {
+                for (var i = 1; i <= totalPages; i++) pagesToShow.push(i);
+            } else {
+                pagesToShow.push(1);
+                if (currentPage > 3) pagesToShow.push('...');
+                for (var i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+                    if (pagesToShow.indexOf(i) === -1 && i !== '...') pagesToShow.push(i);
+                }
+                if (currentPage < totalPages - 2) pagesToShow.push('...');
+                if (pagesToShow.indexOf(totalPages) === -1) pagesToShow.push(totalPages);
+            }
+
+            for (var j = 0; j < pagesToShow.length; j++) {
+                var p = pagesToShow[j];
+                var $li;
+                if (p === '...') {
+                    $li = $('<li class="page-item page-number disabled"><span class="page-link">...</span></li>');
+                } else {
+                    var activeClass = (p === currentPage) ? 'active' : '';
+                    $li = $('<li class="page-item page-number ' + activeClass + '">' +
+                        '<a class="page-link" href="javascript:void(0);" onclick="goToPage(' + p + ')">' + p + '</a></li>');
+                }
+                $li.insertBefore($nextBtn);
+            }
+        }
+
+        window.changePage = function (direction) {
+            if (direction === 'prev' && currentPage > 1) showPage(currentPage - 1);
+            else if (direction === 'next' && currentPage < totalPages) showPage(currentPage + 1);
+        };
+
+        window.goToPage = function (page) {
+            showPage(page);
+        };
+    })();
+
+    function fnDownloadMaintenanceExcel() {
+
+        var mMaintenanceModeLister = { SearchCriteria: {} };
+
+        mMaintenanceModeLister.SearchCriteria.ZoneIds = getValues('zone');
+        mMaintenanceModeLister.SearchCriteria.DivisionIds = getValues('division');
+        mMaintenanceModeLister.SearchCriteria.SiteIds = getValues('site');
+        mMaintenanceModeLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mMaintenanceModeLister.SearchCriteria.AssetIds = getValues('assetNumber');
+        mMaintenanceModeLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mMaintenanceModeLister.SearchCriteria.FromTime = $('#txtFromTime').val();
+        mMaintenanceModeLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mMaintenanceModeLister.SearchCriteria.ToTime = $('#txtToTime').val();
+
+        $("#loader").show();
+
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/DownloadMaintenanceMode',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mMaintenanceModeLister),
+            success: function (data) {
+                $("#loader").hide();
+
+                if (!data || !data.length) {
+                    showError('No data available for specified date to download', 'Download Error');
+                    return;
+                }
+
+                try {
+                    $("#loader").show();
+
+                    var workbook = new ExcelJS.Workbook();
+                    workbook.creator = 'RDPMS';
+                    workbook.created = new Date();
+
+                    var worksheet = workbook.addWorksheet('Maintenance Mode');
+                    var columnCount = 9;
+
+                    // ===== TITLE ROW =====
+                    var titleRow = worksheet.addRow(['Maintenance Mode Report']);
+                    titleRow.height = 30;
+                    worksheet.mergeCells(1, 1, 1, columnCount);
+                    titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+                    titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
+                    titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+                    // ===== SUMMARY ROW =====
+                    var totalCount = data.length;
+                    var activeCount = data.filter(function (x) { return x.IsMaintenceMode; }).length;
+                    var summaryText = 'Total: ' + totalCount + ' | Active: ' + activeCount + ' | Generated: ' + new Date().toLocaleString();
+                    var summaryRow = worksheet.addRow([summaryText]);
+                    summaryRow.height = 20;
+                    worksheet.mergeCells(2, 1, 2, columnCount);
+                    summaryRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+                    summaryRow.getCell(1).alignment = { horizontal: 'center' };
+
+                    // ===== BLANK ROW =====
+                    worksheet.addRow([]);
+
+                    // ===== HEADER ROW =====
+                    var headers = [
+                        'Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
+                        'Asset Number', 'Maintenance Mode Activate', 'Maintenance Mode Clear', 'Status'
+                    ];
+                    var headerRow = worksheet.addRow(headers);
+                    headerRow.height = 28;
+                    headerRow.eachCell(function (cell) {
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+                        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+                        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                        cell.border = {
+                            top: { style: 'medium', color: { argb: 'FF1E3A5F' } },
+                            left: { style: 'medium', color: { argb: 'FF1E3A5F' } },
+                            bottom: { style: 'medium', color: { argb: 'FF1E3A5F' } },
+                            right: { style: 'medium', color: { argb: 'FF1E3A5F' } }
+                        };
+                    });
+
+                    // ===== DATA ROWS =====
+                    $.each(data, function (index, item) {
+                        var status = item.IsMaintenceMode ? 'Active' : 'Cleared';
+                        var rowData = [
+                            index + 1,
+                            item.Zone || '',
+                            item.Division || '',
+                            item.Site || '',
+                            item.AssetType || '',
+                            item.Asset || '',
+                            parseMSDate(item.ActiveTime),    // ✅ parsed
+                            parseMSDate(item.InActiveTime),  // ✅ parsed
+                            status
+                        ];
+
+                        var excelRow = worksheet.addRow(rowData);
+                        excelRow.height = 22;
+                        excelRow.eachCell(function (cell, colNumber) {
+                            cell.fill = {
+                                type: 'pattern', pattern: 'solid',
+                                fgColor: { argb: (index + 1) % 2 === 0 ? 'FFF1F5F9' : 'FFFFFFFF' }
+                            };
+                            cell.font = { size: 10, name: 'Calibri' };
+                            cell.alignment = {
+                                vertical: 'middle',
+                                horizontal: colNumber === 1 ? 'center' : 'left'
+                            };
+                            cell.border = {
+                                top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                                left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                                bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                                right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+                            };
+
+                            // ===== STATUS COLUMN STYLING =====
+                            if (colNumber === 9) {
+                                cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                                cell.font = {
+                                    size: 10, name: 'Calibri', bold: true,
+                                    color: { argb: cell.value === 'Active' ? 'FFB45309' : 'FF047857' }
+                                };
+                            }
+                        });
+                    });
+
+                    // ===== COLUMN WIDTHS =====
+                    worksheet.columns.forEach(function (column, index) {
+                        var maxLength = headers[index] ? headers[index].length : 12;
+                        column.eachCell({ includeEmpty: true }, function (cell) {
+                            var cellLength = cell.value ? cell.value.toString().length : 10;
+                            if (cellLength > maxLength) maxLength = cellLength;
+                        });
+                        column.width = Math.min(maxLength + 2, 35);
+                    });
+                    worksheet.getColumn(1).width = 8;
+                    worksheet.getColumn(7).width = 25;
+                    worksheet.getColumn(8).width = 25;
+                    worksheet.getColumn(9).width = 12;
+
+                    // ===== EXPORT =====
+                    workbook.xlsx.writeBuffer().then(function (buffer) {
+                        var blob = new Blob([buffer], {
+                            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        });
+                        saveAs(blob, getMaintenanceFileName('xlsx'));
+                        $("#loader").hide();
+
+                        showSuccess('Excel downloaded successfully!', 'Success');
+                    });
+
+                } catch (error) {
+                    $("#loader").hide();
+                    showError('Error generating Excel', 'Download Error');
+                }
+            },
+            error: function (xhr, status, error) {
+                $("#loader").hide();
+                showError('Something went wrong!', 'Error');
+            }
+        });
+    }
+
+    // ===== CSV DOWNLOAD =====
+    function fnDownloadMaintenanceCSV() {
+        debugger;
+        var mMaintenanceModeLister = { SearchCriteria: {} };
+
+        mMaintenanceModeLister.SearchCriteria.ZoneIds = getValues('zone');
+        mMaintenanceModeLister.SearchCriteria.DivisionIds = getValues('division');
+        mMaintenanceModeLister.SearchCriteria.SiteIds = getValues('site');
+        mMaintenanceModeLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mMaintenanceModeLister.SearchCriteria.AssetIds = getValues('assetNumber');
+        mMaintenanceModeLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mMaintenanceModeLister.SearchCriteria.FromTime = $('#txtFromTime').val();
+        mMaintenanceModeLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mMaintenanceModeLister.SearchCriteria.ToTime = $('#txtToTime').val();
+
+        $("#loader").show();
+        debugger;
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/DownloadMaintenanceMode',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mMaintenanceModeLister),
+            success: function (data) {
+                $("#loader").hide();
+
+                debugger;
+                if (!data || !data.length) {
+                    showError('No data available for specified date to download', 'Download Error');
+                    return;
+                }
+
+                try {
+                    var headers = [
+                        'Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
+                        'Asset Number', 'Maintenance Mode Activate', 'Maintenance Mode Clear', 'Status'
+                    ];
+
+                    var csv = [];
+                    csv.push(headers.map(function (h) { return '"' + h + '"'; }).join(','));
+
+                    $.each(data, function (index, item) {
+                        var status = item.IsMaintenceMode ? 'Active' : 'Cleared';
+                        var row = [
+                            '"' + (index + 1) + '"',
+                            '"' + (item.Zone || '') + '"',
+                            '"' + (item.Division || '') + '"',
+                            '"' + (item.Site || '') + '"',
+                            '"' + (item.AssetType || '') + '"',
+                            '"' + (item.Asset || '') + '"',
+                            '"' + parseMSDate(item.ActiveTime) + '"',   
+                            '"' + parseMSDate(item.InActiveTime) + '"',  
+                            '"' + status + '"'
+                        ];
+                        csv.push(row.join(','));
+                    });
+
+                    var blob = new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+                    saveAs(blob, getMaintenanceFileName('csv'));
+                    showSuccess('CSV downloaded successfully!', 'Success');
+
+                } catch (error) {
+                    showError("Error generating CSV", 'Download Error');
+                }
+            },
+            error: function (xhr, status, error) {
+                $("#loader").hide();
+                showError('Something went wrong!', 'Error');
+            }
+        });
+    }
+
+    function parseMSDate(dateStr) {
+        if (!dateStr) return '';
+        var match = /\/Date\((\d+)\)\//.exec(dateStr);
+        if (!match) return dateStr; // already a plain string, return as-is
+        var date = new Date(parseInt(match[1]));
+        var day = String(date.getDate()).padStart(2, '0');
+        var month = String(date.getMonth() + 1).padStart(2, '0');
+        var year = date.getFullYear();
+        var hours = String(date.getHours()).padStart(2, '0');
+        var mins = String(date.getMinutes()).padStart(2, '0');
+        var secs = String(date.getSeconds()).padStart(2, '0');
+        return day + '/' + month + '/' + year + ' ' + hours + ':' + mins + ':' + secs;
+    }
+
+    function getMaintenanceFileName(extension) {
+        var now = new Date();
+        var timestamp = now.getFullYear() +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0') + '_' +
+            String(now.getHours()).padStart(2, '0') +
+            String(now.getMinutes()).padStart(2, '0');
+        return 'MaintenanceMode_' + timestamp + '.' + extension;
+    }
+</script>

@@ -1,0 +1,989 @@
+﻿
+@{
+    ViewBag.Title = "Telemetry History";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/paho-mqtt.js"></script>
+
+<style>
+    #tablePager {
+        text-align: right;
+    }
+
+        #tablePager .page-number {
+            cursor: pointer;
+            padding: 4px 8px;
+            margin: 2px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        #tablePager .active {
+            background: #007bff;
+            color: #fff;
+            border-color: #007bff;
+        }
+</style>
+
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="row">
+                    <div class="col-12 col-sm-5">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item ">Telemetry</li>
+                                <li class="breadcrumb-item active" aria-current="page"><a href="#">Telemetry History</a></li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                        <h2 class="page-name">Telemetry History</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header mb-4">
+                <div class="d-flex justify-content-between">
+                    <h4 class="m-0">Search</h4>
+
+                    <div class="d-flex gap-10">
+                       
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>Zone</span>
+                        @Html.DropDownList("ZoneId", (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", @id = "drpZones", tabindex = 1 })
+                    </div>
+                    <div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+                        <span>Division</span>
+                        @Html.DropDownList("DivisionId", (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", @id = "drpDivisions", tabindex = 2 })
+                    </div>
+                    <div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+                        <span>Site</span>
+                        @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", @id = "drpSite", tabindex = 3 })
+                    </div>
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>Asset Type</span>
+                        @Html.DropDownList("AssetTypeId", (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "All", new { @class = "form-control", @id = "drpAssetType", tabindex = 4 })
+                    </div>
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>Asset Number</span>
+                        <select class="form-control" id="drpAsset">
+                        </select>
+                    </div>
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>From Date</span>
+                        <input type="text" class="form-control" id="txtFromDate" />
+                    </div>
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>From Time</span>
+                        <input type="text" class="form-control" id="txtFromTime" />
+                    </div>
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>To Date</span>
+                        <input type="text" class="form-control" id="txtToDate" />
+                    </div>
+                    <div class="col-xxl-1 col-xl-1 col-lg-4 col-md-4 mt-2">
+                        <span>To Time</span>
+                        <input type="text" class="form-control" id="txtToTime" />
+                    </div>
+                    @*<div class="col-xxl-2 col-xl-2 col-lg-4 col-md-4 mt-2">
+            <span>View</span>
+            <select class="form-control" id="drpView">
+                <option value="Table">Table</option>
+                <option value="Graph">Graph</option>
+                <option value="Circuit">Circuit</option>
+                <option value="Yard">Yard</option>
+            </select>
+        </div>*@
+                    <div class="col-xxl-1 col-xl-1 col-lg-1 mt-4">
+
+                        <button type="button" class="btn btn-primary-search" onclick="fnSearchView()">
+                            <img src="~/Areas/FRS25/assets/img/search.svg">
+                        </button>
+
+                    </div>
+                </div>
+                <div class="table-border">
+
+                    <div class="">
+                        <div class="my-4 px-lg-4 px-2 w-100">
+                            <div class="d-md-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center badge-cl gap-10">
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center btn-icon-size">
+
+                                    <div class="d-flex gap-10  mr-lg-4 my-lg-0 my-3 " id="buttonGroupLeft">
+                                  
+                                        <button class="btn btn-inactive" id="btn2" data-toggle="tooltip"
+                                                data-original-title="Download">
+                                            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                                                 stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
+                                            </svg>
+                                        </button>
+
+                                    </div>
+                                                                                    
+                                </div>
+                            </div>
+
+
+
+                            <!-- Your tables and pagination go here -->
+                        </div>
+                    </div>
+
+                    <div class="row">
+
+
+                        <div class="col">
+                            <!-- List View -->
+                            <div id="listView">
+
+                            </div>
+
+                            <!-- Grid View -->
+
+                            <div id="gridView" style="display:none;" class="plr-15">
+                                <div class="row g-10">
+
+                                    <div class="col-lg-4 col-sm-6 col-12">
+                                        <div class="mb-4 grid-div">
+
+                                            <div class="d-flex justify-content-end gap-10">
+                                                <button type="button" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Alert"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalGraph" data-toggle="tooltip" data-placement="top" title="Graph"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M21 21H9.4c-2.24 0-3.36 0-4.216-.436a4 4 0 0 1-1.748-1.748C3 17.96 3 16.84 3 14.6V3' /><path d='M19 17c-3.355-1.678-3.924-6.346-5.089-9.58-.476-1.322-2.346-1.322-2.822 0C9.924 10.654 9.355 15.322 6 17' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalEventLog" data-toggle="tooltip" data-placement="top" title="Event Log"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M2.707 10.295a2.41 2.41 0 0 0 0 3.41l7.588 7.588a2.41 2.41 0 0 0 3.41 0l7.588-7.588a2.41 2.41 0 0 0 0-3.41l-7.588-7.588a2.41 2.41 0 0 0-3.41 0z' /><path d='m14.908 9.7.132.131c1.022 1.023 1.534 1.534 1.534 2.169s-.512 1.147-1.534 2.17l-.132.13M13.072 8l-2.143 8M9.092 9.7l-.132.131C7.938 10.854 7.427 11.365 7.427 12s.51 1.147 1.533 2.17l.132.13' /></svg></button>
+                                            </div>
+
+                                            <table class="w-100">
+                                                <tr>
+                                                    <td>Sr.No :</td>
+                                                    <td>1</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TRACK :</td>
+                                                    <td>
+                                                        137BT <svg width="18" height="18" fill="none" stroke="currentColor"
+                                                                   stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                   stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d='M18 12h-6m0 0H6m6 0V6m0 6v6' />
+                                                        </svg>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TC TFC O/P(mA) :</td>
+                                                    <td>1053.4</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>VTC FEED END(V) :</td>
+                                                    <td>4.0</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>ITC FEED END(mA) :</td>
+                                                    <td>409.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Last Update Feed End( sec ago) :</td>
+                                                    <td>15.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="text-left pr-0" colspan="2">
+                                                        <div id="collapse1" class="panel-collapse collapse">
+                                                            <table class="w-100">
+                                                                <tr>
+                                                                    <td>VTC RELAY END(V) :</td>
+                                                                    <td>3.4</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>ITC RELAY END(mA) :</td>
+                                                                    <td>316.0</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>VTC 24 DC TPR I/P(V) :</td>
+                                                                    <td>24.1</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Last Update Relay End( sec ago) :</td>
+                                                                    <td>12.9</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Index Score :</td>
+                                                                    <td>7</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Leakge :</td>
+                                                                    <td>99.5</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>HEALTH :</td>
+                                                                    <td class="text-success">Ok</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>TRACK O/C :</td>
+                                                                    <td class="text-success">C</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>
+                                                                        <svg width="24" height="24" fill="none" stroke="currentColor"
+                                                                             stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                             stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                                            <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' />
+                                                                        </svg>
+                                                                    </td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Graph</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Event log</td>
+                                                                </tr>
+
+                                                            </table>
+
+                                                        </div>
+
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td> </td>
+                                                    <td>
+                                                        <a class="moreIn" data-toggle="collapse" href="#collapse1">
+                                                            More Information<i class="fa-solid fa-angle-down" id="arrowIcon"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-lg-4 col-sm-6 col-12">
+                                        <div class="mb-4 grid-div">
+                                            <div class="d-flex justify-content-end gap-10">
+                                                <button type="button" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Alert"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalGraph" data-toggle="tooltip" data-placement="top" title="Graph"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M21 21H9.4c-2.24 0-3.36 0-4.216-.436a4 4 0 0 1-1.748-1.748C3 17.96 3 16.84 3 14.6V3' /><path d='M19 17c-3.355-1.678-3.924-6.346-5.089-9.58-.476-1.322-2.346-1.322-2.822 0C9.924 10.654 9.355 15.322 6 17' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalEventLog" data-toggle="tooltip" data-placement="top" title="Event Log"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M2.707 10.295a2.41 2.41 0 0 0 0 3.41l7.588 7.588a2.41 2.41 0 0 0 3.41 0l7.588-7.588a2.41 2.41 0 0 0 0-3.41l-7.588-7.588a2.41 2.41 0 0 0-3.41 0z' /><path d='m14.908 9.7.132.131c1.022 1.023 1.534 1.534 1.534 2.169s-.512 1.147-1.534 2.17l-.132.13M13.072 8l-2.143 8M9.092 9.7l-.132.131C7.938 10.854 7.427 11.365 7.427 12s.51 1.147 1.533 2.17l.132.13' /></svg></button>
+                                            </div>
+                                            <table class="w-100">
+                                                <tr>
+                                                    <td>Sr.No :</td>
+                                                    <td>1 </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TRACK :</td>
+                                                    <td>
+                                                        137BT <svg width="18" height="18" fill="none" stroke="currentColor"
+                                                                   stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                   stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d='M18 12h-6m0 0H6m6 0V6m0 6v6' />
+                                                        </svg>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TC TFC O/P(mA) :</td>
+                                                    <td>1053.4</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>VTC FEED END(V) :</td>
+                                                    <td>4.0</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>ITC FEED END(mA) :</td>
+                                                    <td>409.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Last Update Feed End( sec ago) :</td>
+                                                    <td>15.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="text-left pr-0" colspan="2">
+                                                        <div id="collapse2" class="panel-collapse collapse">
+                                                            <table class="w-100">
+                                                                <tr>
+                                                                    <td>VTC RELAY END(V) :</td>
+                                                                    <td>3.4</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>ITC RELAY END(mA) :</td>
+                                                                    <td>316.0</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>VTC 24 DC TPR I/P(V) :</td>
+                                                                    <td>24.1</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Last Update Relay End( sec ago) :</td>
+                                                                    <td>12.9</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Index Score :</td>
+                                                                    <td>7</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Leakge :</td>
+                                                                    <td>99.5</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>HEALTH :</td>
+                                                                    <td class="text-success">Ok</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>TRACK O/C :</td>
+                                                                    <td class="text-success">C</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>
+                                                                        <svg width="24" height="24" fill="none" stroke="currentColor"
+                                                                             stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                             stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                                            <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' />
+                                                                        </svg>
+                                                                    </td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Graph</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Event log</td>
+                                                                </tr>
+
+                                                            </table>
+
+                                                        </div>
+
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td> </td>
+                                                    <td>
+                                                        <a class="moreIn" data-toggle="collapse" href="#collapse2">
+                                                            More Information<i class="fa-solid fa-angle-down" id="arrowIcon"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                    </div>
+
+
+
+                                    <div class="col-lg-4 col-sm-6 col-12">
+                                        <div class="mb-4 grid-div">
+                                            <div class="d-flex justify-content-end gap-10">
+                                                <button type="button" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Alert"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalGraph" data-toggle="tooltip" data-placement="top" title="Graph"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M21 21H9.4c-2.24 0-3.36 0-4.216-.436a4 4 0 0 1-1.748-1.748C3 17.96 3 16.84 3 14.6V3' /><path d='M19 17c-3.355-1.678-3.924-6.346-5.089-9.58-.476-1.322-2.346-1.322-2.822 0C9.924 10.654 9.355 15.322 6 17' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalEventLog" data-toggle="tooltip" data-placement="top" title="Event Log"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M2.707 10.295a2.41 2.41 0 0 0 0 3.41l7.588 7.588a2.41 2.41 0 0 0 3.41 0l7.588-7.588a2.41 2.41 0 0 0 0-3.41l-7.588-7.588a2.41 2.41 0 0 0-3.41 0z' /><path d='m14.908 9.7.132.131c1.022 1.023 1.534 1.534 1.534 2.169s-.512 1.147-1.534 2.17l-.132.13M13.072 8l-2.143 8M9.092 9.7l-.132.131C7.938 10.854 7.427 11.365 7.427 12s.51 1.147 1.533 2.17l.132.13' /></svg></button>
+                                            </div>
+                                            <table class="w-100">
+                                                <tr>
+                                                    <td>Sr.No :</td>
+                                                    <td>1</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TRACK :</td>
+                                                    <td>
+                                                        137BT <svg width="18" height="18" fill="none" stroke="currentColor"
+                                                                   stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                   stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d='M18 12h-6m0 0H6m6 0V6m0 6v6' />
+                                                        </svg>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TC TFC O/P(mA) :</td>
+                                                    <td>1053.4</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>VTC FEED END(V) :</td>
+                                                    <td>4.0</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>ITC FEED END(mA) :</td>
+                                                    <td>409.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Last Update Feed End( sec ago) :</td>
+                                                    <td>15.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="text-left pr-0" colspan="2">
+                                                        <div id="collapse3" class="panel-collapse collapse">
+                                                            <table class="w-100">
+                                                                <tr>
+                                                                    <td>VTC RELAY END(V) :</td>
+                                                                    <td>3.4</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>ITC RELAY END(mA) :</td>
+                                                                    <td>316.0</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>VTC 24 DC TPR I/P(V) :</td>
+                                                                    <td>24.1</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Last Update Relay End( sec ago) :</td>
+                                                                    <td>12.9</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Index Score :</td>
+                                                                    <td>7</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Leakge :</td>
+                                                                    <td>99.5</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>HEALTH :</td>
+                                                                    <td class="text-success">Ok</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>TRACK O/C :</td>
+                                                                    <td class="text-success">C</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>
+                                                                        <svg width="24" height="24" fill="none" stroke="currentColor"
+                                                                             stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                             stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                                            <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' />
+                                                                        </svg>
+                                                                    </td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Graph</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Event log</td>
+                                                                </tr>
+
+                                                            </table>
+
+                                                        </div>
+
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td> </td>
+                                                    <td>
+                                                        <a class="moreIn" data-toggle="collapse" href="#collapse3">
+                                                            More Information<i class="fa-solid fa-angle-down" id="arrowIcon"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                    </div>
+
+
+                                    <div class="col-lg-4 col-sm-6 col-12">
+                                        <div class="mb-4 grid-div">
+                                            <div class="d-flex justify-content-end gap-10">
+                                                <button type="button" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Alert"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalGraph" data-toggle="tooltip" data-placement="top" title="Graph"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M21 21H9.4c-2.24 0-3.36 0-4.216-.436a4 4 0 0 1-1.748-1.748C3 17.96 3 16.84 3 14.6V3' /><path d='M19 17c-3.355-1.678-3.924-6.346-5.089-9.58-.476-1.322-2.346-1.322-2.822 0C9.924 10.654 9.355 15.322 6 17' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalEventLog" data-toggle="tooltip" data-placement="top" title="Event Log"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M2.707 10.295a2.41 2.41 0 0 0 0 3.41l7.588 7.588a2.41 2.41 0 0 0 3.41 0l7.588-7.588a2.41 2.41 0 0 0 0-3.41l-7.588-7.588a2.41 2.41 0 0 0-3.41 0z' /><path d='m14.908 9.7.132.131c1.022 1.023 1.534 1.534 1.534 2.169s-.512 1.147-1.534 2.17l-.132.13M13.072 8l-2.143 8M9.092 9.7l-.132.131C7.938 10.854 7.427 11.365 7.427 12s.51 1.147 1.533 2.17l.132.13' /></svg></button>
+                                            </div>
+                                            <table class="w-100">
+                                                <tr>
+                                                    <td>Sr.No :</td>
+                                                    <td>1</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TRACK :</td>
+                                                    <td>
+                                                        137BT <svg width="18" height="18" fill="none" stroke="currentColor"
+                                                                   stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                   stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d='M18 12h-6m0 0H6m6 0V6m0 6v6' />
+                                                        </svg>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TC TFC O/P(mA) :</td>
+                                                    <td>1053.4</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>VTC FEED END(V) :</td>
+                                                    <td>4.0</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>ITC FEED END(mA) :</td>
+                                                    <td>409.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Last Update Feed End( sec ago) :</td>
+                                                    <td>15.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="text-left pr-0" colspan="2">
+                                                        <div id="collapse4" class="panel-collapse collapse">
+                                                            <table class="w-100">
+                                                                <tr>
+                                                                    <td>VTC RELAY END(V) :</td>
+                                                                    <td>3.4</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>ITC RELAY END(mA) :</td>
+                                                                    <td>316.0</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>VTC 24 DC TPR I/P(V) :</td>
+                                                                    <td>24.1</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Last Update Relay End( sec ago) :</td>
+                                                                    <td>12.9</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Index Score :</td>
+                                                                    <td>7</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Leakge :</td>
+                                                                    <td>99.5</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>HEALTH :</td>
+                                                                    <td class="text-success">Ok</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>TRACK O/C :</td>
+                                                                    <td class="text-success">C</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>
+                                                                        <svg width="24" height="24" fill="none" stroke="currentColor"
+                                                                             stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                             stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                                            <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' />
+                                                                        </svg>
+                                                                    </td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Graph</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Event log</td>
+                                                                </tr>
+
+                                                            </table>
+
+                                                        </div>
+
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td> </td>
+                                                    <td>
+                                                        <a class="moreIn" data-toggle="collapse" href="#collapse4">
+                                                            More Information<i class="fa-solid fa-angle-down" id="arrowIcon"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                    </div>
+
+
+                                    <div class="col-lg-4 col-sm-6 col-12">
+                                        <div class="mb-4 grid-div">
+                                            <div class="d-flex justify-content-end gap-10">
+                                                <button type="button" class="btn btn-secondary btn-sm" data-toggle="tooltip" data-placement="top" title="Alert"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalGraph" data-toggle="tooltip" data-placement="top" title="Graph"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M21 21H9.4c-2.24 0-3.36 0-4.216-.436a4 4 0 0 1-1.748-1.748C3 17.96 3 16.84 3 14.6V3' /><path d='M19 17c-3.355-1.678-3.924-6.346-5.089-9.58-.476-1.322-2.346-1.322-2.822 0C9.924 10.654 9.355 15.322 6 17' /> </svg></button>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="openModalEventLog" data-toggle="tooltip" data-placement="top" title="Event Log"> <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"> <path d='M2.707 10.295a2.41 2.41 0 0 0 0 3.41l7.588 7.588a2.41 2.41 0 0 0 3.41 0l7.588-7.588a2.41 2.41 0 0 0 0-3.41l-7.588-7.588a2.41 2.41 0 0 0-3.41 0z' /><path d='m14.908 9.7.132.131c1.022 1.023 1.534 1.534 1.534 2.169s-.512 1.147-1.534 2.17l-.132.13M13.072 8l-2.143 8M9.092 9.7l-.132.131C7.938 10.854 7.427 11.365 7.427 12s.51 1.147 1.533 2.17l.132.13' /></svg></button>
+                                            </div>
+                                            <table class="w-100">
+                                                <tr>
+                                                    <td>Sr.No :</td>
+                                                    <td>1 </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TRACK :</td>
+                                                    <td>
+                                                        137BT <svg width="18" height="18" fill="none" stroke="currentColor"
+                                                                   stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                   stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                            <path d='M18 12h-6m0 0H6m6 0V6m0 6v6' />
+                                                        </svg>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>TC TFC O/P(mA) :</td>
+                                                    <td>1053.4</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>VTC FEED END(V) :</td>
+                                                    <td>4.0</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>ITC FEED END(mA) :</td>
+                                                    <td>409.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Last Update Feed End( sec ago) :</td>
+                                                    <td>15.8</td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="text-left pr-0" colspan="2">
+                                                        <div id="collapse5" class="panel-collapse collapse">
+                                                            <table class="w-100">
+                                                                <tr>
+                                                                    <td>VTC RELAY END(V) :</td>
+                                                                    <td>3.4</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>ITC RELAY END(mA) :</td>
+                                                                    <td>316.0</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>VTC 24 DC TPR I/P(V) :</td>
+                                                                    <td>24.1</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Last Update Relay End( sec ago) :</td>
+                                                                    <td>12.9</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Index Score :</td>
+                                                                    <td>7</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>Leakge :</td>
+                                                                    <td>99.5</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>HEALTH :</td>
+                                                                    <td class="text-success">Ok</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td>TRACK O/C :</td>
+                                                                    <td class="text-success">C</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>
+                                                                        <svg width="24" height="24" fill="none" stroke="currentColor"
+                                                                             stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round"
+                                                                             stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                                                            <path d='M15.019 17h-6.04m6.04 0h3.614c1.876 0 1.559-1.86.61-2.804C15.825 10.801 20.68 3 11.999 3s-3.825 7.8-7.243 11.196c-.913.908-1.302 2.804.61 2.804H8.98m6.039 0c0 1.925-.648 4-3.02 4s-3.02-2.075-3.02-4' />
+                                                                        </svg>
+                                                                    </td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Graph</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td></td>
+                                                                    <td>Event log</td>
+                                                                </tr>
+
+                                                            </table>
+
+                                                        </div>
+
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td> </td>
+                                                    <td>
+                                                        <a class="moreIn" data-toggle="collapse" href="#collapse5">
+                                                            More Information<i class="fa-solid fa-angle-down" id="arrowIcon"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            </table>
+                                        </div>
+                                    </div>
+
+
+
+
+                                </div>
+                            </div>
+
+
+
+                        </div>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    $(document).ready(function () {
+
+        $('#txtFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+
+        $('#txtFromTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+        $('#txtToTime').clockpicker({
+            placement: 'bottom',
+            align: 'right',
+            autoclose: true,
+            'default': '00:00'
+        });
+
+    });
+
+    $('#drpZones').change(function () {
+        GetDivisionByZone($(this).val());
+    });
+
+    $('#drpDivisions').change(function () {
+        GetByDivisionId($(this).val());
+    });
+
+    $('#drpAssetType').change(function () {
+        GetByAssest($('#drpSite').val(), $(this).val());
+    });
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/Telemetry/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpDivisions").empty();
+                    $("#drpDivisions").append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        $("#drpDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/Telemetry/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpSite").empty();
+                    $("#drpSite").append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        $("#drpSite").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function GetByAssest(siteId, assetTypeId) {
+        if (siteId != null && siteId != undefined && siteId != '' && assetTypeId != null && assetTypeId != undefined && assetTypeId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/Telemetry/GetAssestBy',
+                type: 'POST',
+                data: '{siteId:' + siteId + ',assetTypeId:' + assetTypeId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpAsset").empty();
+                    $("#drpAsset").append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        $("#drpAsset").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnSearchView() {
+        var isValid = true;
+
+        var mAsset = {};
+        mAsset.Id = $("#drpAsset").val();
+        mAsset.SiteId = $("#drpSite").val();
+        mAsset.AssetTypeId = $('#drpAssetType').val();
+
+        mAsset.StartDate = $('#txtFromDate').val();
+        mAsset.EndDate = $('#txtToDate').val();
+
+        mAsset.StartTime = $('#txtFromTime').val();
+        mAsset.EndTime = $('#txtToTime').val();
+
+        mAsset.IsReadHttpPost = false;
+        //if ($("#selDatabase").val() == "HTTP") {
+        //    mAsset.IsReadHttpPost = true;
+        //}
+        if (mAsset.SiteId == null || mAsset.SiteId == undefined || mAsset.SiteId == '') {
+            isValid = false;
+            alert('select site')
+        }
+        else if (mAsset.AssetTypeId == null || mAsset.AssetTypeId == undefined || mAsset.AssetTypeId == '') {
+            isValid = false;
+            alert('select asset type')
+        }
+        else if (mAsset.Id == null || mAsset.Id == undefined || mAsset.Id == '') {
+            isValid = false;
+            alert('select asset')
+        }
+        else if (mAsset.StartDate == null || mAsset.StartDate == undefined || mAsset.StartDate == '') {
+            isValid = false;
+            alert('select from date')
+        }
+        else if (mAsset.EndDate == null || mAsset.EndDate == undefined || mAsset.EndDate == '') {
+            isValid = false;
+            alert('select to date')
+        }
+
+        if (isValid) {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/Telemetry/_DetailList',
+                type: 'Post',
+                data: '{asset:' + JSON.stringify(mAsset) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    $('#listView').empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+     
+
+        //if ($('#drpView').val() == "Table") {
+        //    fnBindTable();
+        //}
+        //else if ($('#drpView').val() == "Graph") {
+
+        //}
+        //else if ($('#drpView').val() == "Circuit") {
+
+        //}
+        //else if ($('#drpView').val() == "Yard") {
+        //    fnBindYard();
+        //}
+    }
+
+    function fnBindTable() {
+        var mAssetLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpSite').val();
+        mSearchCriteria.Id = $('#drpAsset').val();
+        mSearchCriteria.AssetTypeId = $('#drpAssetType').val();
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        $.ajax({
+            url: '/FRS25/Telemetry/_Table',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            success: function (data) {
+
+
+                $('#divTelemetryLive').empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    function fnBindYard() {
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $('#drpSite').val();
+        mSearchCriteria.Id = $('#drpAsset').val();
+        mSearchCriteria.AssetTypeId = $('#drpAssetType').val();
+
+        $.ajax({
+            url: '/FRS25/Telemetry/_Yard',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mSearchCriteria),
+            success: function (data) {
+
+
+                $('#divTelemetryLive').empty().append(data);
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+</script>
+
+
+

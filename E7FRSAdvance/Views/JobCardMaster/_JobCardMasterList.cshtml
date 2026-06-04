@@ -1,0 +1,293 @@
+﻿@model Domain.JobCardLister
+
+<div class="row">
+    <div class="col-xl-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="col-lg-12">
+                    <div class="row">
+                        <div class="col-lg-2 col-md-3 col-sm-4">
+                            <strong style="margin-top:10px;">Division</strong>
+                            @Html.DropDownListFor(x => x.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @id = "drpDivision", @class = "form-control", tabindex = 1 })
+                        </div>
+                        <div class="col-lg-2 col-md-3 col-sm-4">
+                            <strong style="margin-top:10px;">Site</strong>
+                            @Html.DropDownListFor(x => x.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @id = "drpSiteId", @class = "form-control", tabindex = 2 })
+                        </div>
+                        <div class="col-lg-2 col-md-2 col-sm-3 mt-4">
+                            <input type="button" class="btn btn-success m-l-10" value="Search" onclick="fnSearch()" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body" style="padding:15px;">
+
+                @if (Model != null && Model.mJobCards.Count > 0)
+                {
+                    foreach (var site in Model.mJobCards.GroupBy(x => new { x.SiteId, x.SiteName }).Select(x => x.Key).OrderBy(x => x.SiteName).ToList())
+                    {
+                        var mJobCard = Model.mJobCards.Where(x => x.SiteId == site.SiteId).OrderByDescending(x => x.Id).FirstOrDefault();
+                        if (mJobCard != null && mJobCard.Id > 0)
+                        {
+                            <div class="col-12">
+                                <div class="card mb-2">
+                                    <div class="card-body text-white" style="padding: 15px; font-size: 18px; background-color: #21596880; border-radius: 12px; " id="divDateGroup">
+                                        <div class="row">
+                                            <div class="col-7">
+                                                @site.SiteName
+                                            </div>
+                                            <div class="col-5">
+                                                <div class="pull-right">
+                                                    @if (mJobCard.mJobCardOverallTargets != null && mJobCard.mJobCardOverallTargets.Count > 0 && mJobCard.mJobCardOverallTargets.Count == mJobCard.mJobCardOverallTargets.Where(x => x.IsResolved).Count())
+                                                    {
+                                                        if (mJobCard.IsLock)
+                                                        {
+                                                            <img class="pull-left mt-2" src="@Url.Content("~/assets/images/JobCard/Lock_green.png")" />
+                                                        }
+                                                        else
+                                                        {
+                                                            if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                                            {
+                                                                <img class="pull-left mt-2" src="@Url.Content("~/assets/images/JobCard/Unlock_Yellow.png")" />
+                                                            }
+                                                            else
+                                                            {
+                                                                <img class="pull-left mt-2" src="@Url.Content("~/assets/images/JobCard/Unlock_Yellow.png")" />
+                                                            }
+                                                        }
+
+                                                    }
+                                                    else
+                                                    {
+                                                        <img class="pull-left mt-2" src="@Url.Content("~/assets/images/JobCard/Unlock_blue.png")" />
+                                                    }
+                                                    <a href="javascript:void(0)" class="m-l-30 mt-2"><i class="fa fa-angle-up f-48" style="color:#fff;" onclick="fnGetJobCardById('@site.SiteId',this)"></i></a>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-12 jobCardDiv_@site.SiteId" style="display: none; padding: 20px;">
+                                    <div id="divJobCard@(site.SiteId)">
+
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                    }
+
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    $(document).ready(function () {
+
+        GetSiteByDivisionId($('#drpDivision').val());
+
+        $('#drpDivision').change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+
+    });
+
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/JobCard/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpSiteId").empty();
+                    $("#drpSiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#drpSiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnSingleJobCard(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/JobCard/_SingleJobCard',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSingleJobCard").empty().append(data);
+                $("#modal-single-job-card").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnSearch() {
+        $("#hdnSkip").val('0');
+        if ($('#drpSearchIsLock').val() == "Lock") {
+
+            $('#SearchCriteria_IsLock').val(true);
+        }
+        else if ($('#drpSearchIsLock').val() == "UnLock") {
+            $('#SearchCriteria_IsLock').val(false);
+        }
+        $('#frmJobCardList').submit();
+    }
+
+    function GetDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/Maintenace/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#SearchCriteria_SiteId").empty();
+                    $("#SearchCriteria_SiteId").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#SearchCriteria_SiteId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnGetJobCardDescription(jobCardId, date) {
+
+        $("#loader").show();
+        $.ajax({
+            url: '/JobCard/GetJobCardDescription',
+            type: 'Post',
+            data: '{jobCardId:' + jobCardId + ',date:"' + date + '"}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null) {
+                    $('.spnRemark_' + jobCardId).text(data.Remark);
+                    $('.spnDailywork_' + jobCardId).text(data.DailyWork);
+
+                    $('.clsbtnSearchDates' + jobCardId).each(function (v, value) {
+                        var txtVal = $(this).text();
+                        if (txtVal == date.replaceAll("-", "/")) {
+                            if ($(this).hasClass("btn-primary")) {
+                                $(this).removeClass("btn-primary").addClass("btn-info");
+                            }
+                        } else {
+                            $(this).removeClass("btn-info").addClass("btn-primary");
+                        }
+
+
+                    });
+                }
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnSiteKeepingOverallTargets(jobCardId) {
+        $("#loader").show();
+
+        $.ajax({
+            url: '/JobCard/_SiteKeepingOverallTargets',
+            type: 'Post',
+            data: '{jobCardId:' + jobCardId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divSiteKeepingOverallTargets").empty().append(data);
+                $("#modal-siteKeeping-overall-targets").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnShowJobCardStatus(jobCardId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/JobCard/_JobCardStatus',
+            type: 'Post',
+            data: '{jobCardId:' + jobCardId + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divJobCardStatus").empty().append(data);
+                $("#modal-jobcard-status").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "error");
+            }
+        });
+    }
+
+    function fnGetJobCardById(siteId, $this) {
+
+        if ($($this).hasClass("fa-angle-up")) {
+            $("#loader").show();
+
+            var mJobCardLister = {};
+            var mSearchCriteria = {};
+            mSearchCriteria.SiteId = siteId;
+            mJobCardLister.SearchCriteria = mSearchCriteria;
+            $.ajax({
+                url: '/JobCardMaster/GetJobCardMasterById',
+                type: 'Post',
+                data: JSON.stringify(mJobCardLister),
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $($this).removeClass("fa-angle-up").addClass("fa-angle-down");
+                    $('.jobCardDiv_' + siteId).empty().show();
+                    $('.jobCardDiv_' + siteId).append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        } else {
+            $($this).removeClass("fa-angle-down").addClass("fa-angle-up");
+            $('.jobCardDiv_' + siteId).hide();
+
+        }
+    }
+
+</script>

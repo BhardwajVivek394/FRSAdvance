@@ -1,0 +1,410 @@
+﻿@model Domain.SiteLister
+
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="people-options clearfix">
+                        <div class="pull-left">
+                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                            {
+                                <a id="btnAddSite" class="btn btn-primary btn-quirk" data-bs-toggle="modal" data-bs-target="#modal-add-site">Add Site</a>
+                            }
+                        </div>
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode() || (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                        {
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Search</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", id = "zoneAdd1", tabindex = 1 })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <input type="hidden" id="hdnSearchDivisionId" value="@Model.SearchCriteria.DivisionId" />
+                                @Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "form-control", id = "divisions", tabindex = 1 })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                @Html.TextBoxFor(m => m.SearchCriteria.Name, new { @class = "form-control", @placeholder = "Name" })
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-success btn-quirk" onclick="Search()">Search</a>
+                            </div>
+                            <div class="pull-left" style="margin-left:10px;">
+                                <a class="btn btn-default btn-quirk" onclick="Clear()">Clear</a>
+                            </div>
+
+                        }
+
+                        <div class="btn-group pull-right people-pager">
+                            @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                            @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                        </div>
+                        <div class="btn-group pull-right people-pager">
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left "></i></button>
+                            <button type="button" class="btn btn-outline-dark" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+                        </div>
+                        @{
+                            int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+                            if (Model.mSites.Count == 0)
+                            {
+                                start = 0;
+                            }
+                            decimal end = Math.Floor(Model.Pager.TotalRecord);
+                            if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+                            {
+                                if (Model.Pager.PageSize == -1)
+                                {
+                                    end = Model.Pager.TotalRecord;
+                                }
+                                else
+                                {
+                                    end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+                                    if (end > Model.Pager.TotalRecord)
+                                    {
+                                        end = Model.Pager.TotalRecord;
+                                    }
+                                }
+                            }
+                        }
+                        <span class="people-count pull-right" style="margin-top:10px;">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Sites</span>
+                    </div>
+                </div>
+                <div class="card-body " style="padding:15px;">
+                    @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                    {
+                        <div class="table-responsive vh-100">
+                            <table class="table">
+                                <thead class="bg-primary">
+                                    <tr>
+                                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                        {
+                                            <th colspan="6" class="text-center">Action</th>
+                                        }
+                                        else
+                                        {
+                                            <th class="text-center">Action</th>
+                                        }
+                                        <th data-sortcolumn="Name" class="sorting" id="thName" onclick="SortList('Name');">Name</th>
+                                        <th data-sortcolumn="DLStatus" class="sorting text-center" id="thDLStatus" onclick="SortList('DLStatus');">DL Status</th>
+                                        <th data-sortcolumn="StationCode" class="sorting" id="thStationCode">Station Code</th>
+                                        <th data-sortcolumn="ZoneName" class="sorting" id="thName">Zone Name</th>
+                                        <th data-sortcolumn="DivisionName" class="sorting" id="thName">Division Name</th>
+                                        <th data-sortcolumn="RebootDayValue" class="sorting text-center" id="thRebootDayValue">Reboot Day Value</th>
+                                        <th data-sortcolumn="IsActive" class="sorting" id="thIsActive" onclick="SortList('IsActive');" style="width:100px">Active?</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.mSites != null && Model.mSites.Count > 0)
+                                    {
+                                        foreach (var item in Model.mSites)
+                                        {
+                                            <tr class="table-light sites" data-Id="@item.Id">
+                                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode())
+                                                {
+                                                    <td class="text-center width60">
+                                                        <a href="javascript:void(0)"><i class="fa fa-plus text-vision" data-Id="@item.Id" onclick="GetAssestTypesById('@item.Id',this)"></i></a>
+                                                    </td>
+                                                    <td class="text-center width60">
+                                                        <a href="@Url.Action("EditSite",new { siteId = item.Id})" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Edit"><i class="fa fa-edit text-vision"></i></a>
+                                                    </td>
+                                                    <td class="text-center width60"><a href="#" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Delete"><i class="fa fa-trash text-danger" onclick="DeleteSiteById('@item.Id')"></i></a></td>
+                                                }
+                                                <td class="text-center width60">
+                                                    @if (item.Name == "Simulator")
+                                                    {
+                                                        <a href="@Url.Action("Index", "Simulator",new { siteId = item.Id })" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="View"><i class="fa fa-eye text-vision"></i></a>
+                                                    }
+                                                    else
+                                                    {
+                                                        <a href="@Url.Action("SiteAssetData",new { siteId = item.Id})" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="View"><i class="fa fa-eye text-vision"></i></a>
+                                                    }
+                                                </td>
+                                                <td class="text-center width60">
+                                                    <a href="@Url.Action("SipView",new { siteId = item.Id})" target="_blank" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="SipView"><i class="fa fa-diamond"></i></a>
+                                                </td>
+                                                <td class="text-center width60">
+                                                    <a href="@Url.Action("Index", "OprationalView",new { siteId = item.Id})" target="_blank" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Oprational View" data-bs-original-title="" title=""><i class="fa fa-cog"></i></a>
+                                                </td>
+                                                <td>
+                                                    <div class="row">
+                                                        <div class="col-8">
+                                                            @item.Name
+                                                        </div>
+                                                        <div class="col-4" id="siteMQQTChannelDown_@item.Id"></div>
+                                                    </div>
+
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (item.IsDatalogger)
+                                                    {
+                                                        if (item.IsDataloggerStatus)
+                                                        {
+                                                            <h5><i class="fa fa-check-circle text-success" aria-hidden="true"></i></h5>
+                                                        }
+                                                        else
+                                                        {
+                                                            <h5><i class='fa fa-exclamation-triangle text-danger' aria-hidden='true'></i></h5>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>N/A</span>
+                                                    }
+                                                </td>
+                                                <td>@item.StationCode</td>
+                                                <td>@item.ZoneName</td>
+                                                <td>@item.DivisionName</td>
+                                                <td class="text-center">@item.RebootDayValue</td>
+                                                <td class="">
+                                                    @if (item.IsActive)
+                                                    {
+                                                        <span class="span badge rounded-pill pill-badge-success">Active</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="span badge rounded-pill pill-badge-yellow">In Active</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                            <tr id="trAssetType@(item.Id)" style="display:none;">
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="13" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode())
+                    {
+                        <div class="table-responsive vh-100">
+                            <table class="table">
+                                <thead class="table-dark">
+                                    <tr>
+                                        @if (Model.mSites != null && Model.mSites.Where(x => x.IsUnderDevlopment != null && x.IsUnderDevlopment.Value).Count() > 0 && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping)
+                                        {
+                                            <th class="text-center" colspan="3">Action</th>
+                                        }
+                                        <th data-sortcolumn="Name" class="sorting" id="thName" onclick="SortList('Name');">Name</th>
+                                        <th data-sortcolumn="StationCode" class="sorting" id="thStationCode">Station Code</th>
+                                        <th data-sortcolumn="DivisionName" class="sorting" id="thName">Division Name</th>
+                                        <th data-sortcolumn="ZoneName" class="sorting" id="thName">Zone Name</th>
+                                        @if ((E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                        {
+                                            <th data-sortcolumn="RebootDayValue" class="sorting text-center" id="thRebootDayValue">Reboot Day Value</th>
+                                        }
+                                        <th data-sortcolumn="IsActive" class="sorting" id="thIsActive" onclick="SortList('IsActive');" style="width:100px">Active?</th>
+                                        <th class="text-center" colspan="3">Action</th>
+
+
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model.mSites != null && Model.mSites.Count > 0)
+                                    {
+                                        foreach (var item in Model.mSites)
+                                        {
+                                            <tr>
+                                                @if (Model.mSites != null && Model.mSites.Where(x => x.IsUnderDevlopment != null && x.IsUnderDevlopment.Value).Count() > 0 && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping)
+                                                {
+                                                    <td class="text-center width60">
+                                                        @if (item.IsUnderDevlopment != null && item.IsUnderDevlopment.Value && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping)
+                                                        {
+                                                            <a href="javascript:void(0)"><i class="fa fa-plus text-vision" data-Id="@item.Id" onclick="GetAssestTypesById('@item.Id',this)"></i></a>
+                                                        }
+                                                    </td>
+                                                    <td class="text-center width60">
+                                                        @if (item.IsUnderDevlopment != null && item.IsUnderDevlopment.Value && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping)
+                                                        {
+                                                            <a href="@Url.Action("SipView",new { siteId = item.Id})" target="_blank" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="SipView"><i class="fa fa-diamond"></i></a>
+                                                        }
+                                                    </td>
+                                                    <td class="text-center width60">
+                                                        @if (item.IsUnderDevlopment != null && item.IsUnderDevlopment.Value && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping)
+                                                        {
+                                                            <a href="@Url.Action("Index", "OprationalView",new { siteId = item.Id})" target="_blank" data-placement="top" data-toggle="tooltip" class="tooltips" data-original-title="Oprational View" data-bs-original-title="" title=""><i class="fa fa-cog"></i></a>
+                                                        }
+                                                    </td>
+                                                }
+
+
+                                                <td>@item.Name</td>
+                                                <td>@item.StationCode</td>
+                                                <td>@item.DivisionName</td>
+                                                <td>@item.ZoneName</td>
+                                                @if ((E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.User.GetHashCode() && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping))
+                                                {
+                                                    <td class="text-center">@item.RebootDayValue</td>
+                                                }
+
+                                                <td class="">
+                                                    @if (item.IsActive)
+                                                    {
+                                                        <span class="span badge rounded-pill pill-badge-success">Active</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="span badge rounded-pill pill-badge-yellow">In Active</span>
+                                                    }
+                                                </td>
+                                                <td class="text-center" style="width:115px">
+                                                    @*<div class="pull-right btn-group">*@
+                                                    <a href="@Url.Action("SiteAssetData",new { siteId = item.Id})" class="btn btn-default">View</a>
+                                                    @*</div>*@
+                                                </td>
+                                                <td class="text-center" style="width:115px">
+                                                    @*<div class="pull-right btn-group">*@
+                                                    @if (item.IsSipView)
+                                                    {
+                                                        <a href="@Url.Action("Sview",new { siteId = item.Id})" class="btn btn-dark">Sip View</a>
+                                                    }
+                                                    @*</div>*@
+                                                </td>
+                                                <td class="text-center" style="width:115px">
+                                                    @*<div class="pull-right btn-group">*@
+                                                    @if (item.IsEIEnable != null && item.IsEIEnable.Value)
+                                                    {
+                                                        <a style="background-color:#4bacc6 !important;border-color:#4bacc6 !important;" href="@Url.Action("EIView",new { siteId = item.Id})" target="_blank" class="btn btn-dark m-l-10">EI View</a>
+                                                    }
+                                                    @*</div>*@
+                                                </td>
+
+                                            </tr>
+                                            <tr id="trAssetType@(item.Id)" style="display:none;">
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr>
+                                            <td colspan="11" class="text-center">
+                                                No record found
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<script src="~/Content/PageJS/Site/SiteList.js"></script>
+<script>
+    var siteIds = [];
+    $(document).ready(function () {
+
+
+        $('.sites').each(function () {
+            siteIds.push(parseInt($(this).data('id')));
+        });
+        fnAllSiteCheckChannelDown();
+        //setInterval(function () {
+        //    fnAllSiteCheckChannelDown(siteIds);
+
+        //}, 30000);
+
+    });
+
+    function fnAllSiteCheckChannelDown() {
+        if (siteIds != null && siteIds != undefined && siteIds.length > 0) {
+
+            $.ajax({
+                url: '/Site/CheckChannelIsDownBySiteId',
+                type: 'Post',
+                data: JSON.stringify(siteIds),
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data != "" && data != null && data.length > 0) {
+                        $.each(data, function (id, site) {
+                            if (site.ChannelConfigs != null && site.ChannelConfigs.length > 0) {
+                                var html = "";
+                                var htmlChannel = "";
+                                var count = 0;
+                                var siteDown = true;
+                                $.each(site.ChannelConfigs, function (i, ch) {
+                                    if ($("#ch" + site.Id).attr("data-http") == "True") {
+                                        html += "<p>N/A</p>"
+                                        htmlChannel += "<p>" + ch.Channel + " - " + ch.MacId + "</p>";
+                                    }
+                                    else {
+                                        if (ch.IsDown == false) {
+                                            htmlChannel += '<p>' + ch.Channel + ' - ' + ch.MacId + '</p> <p><span class="span badge rounded-pill pill-badge-success">' + ch.TimeStamp + '</span></p>';
+                                            //html += '<p><span class="span badge rounded-pill pill-badge-success">' + ch.TimeStamp + '</span></p>';
+                                        }
+                                        else {
+                                            siteDown = false;
+                                            count = count + 1;
+                                            htmlChannel += '<p>' + ch.Channel + ' - ' + ch.MacId + '</p> <p><span class="span badge rounded-pill pill-badge-secondary">Down</span> </p>';
+                                            //  html += '<p><span class="span badge rounded-pill pill-badge-secondary">Down</span> </p>';
+                                        }
+                                    }
+
+
+                                });
+                                if (siteDown) {
+                                    $('#siteMQQTChannelDown_' + site.Id).empty();
+                                    $('#siteMQQTChannelDown_' + site.Id).append("<h5><i class='fa fa-check-circle text-success' aria-hidden='true'></i></h5>");
+                                } else {
+                                    $('#siteMQQTChannelDown_' + site.Id).empty();
+                                    $('#siteMQQTChannelDown_' + site.Id).append("<h5><i class='fa fa-exclamation-triangle text-danger' aria-hidden='true' data-bs-trigger='hover' data-container='body' data-bs-toggle='popover' data-bs-html='true' data-bs-placement='top' data-bs-original-title='Rf Down' data-bs-content='" + htmlChannel + "' ></i></h5>");
+                                }
+
+                            }
+                        });
+                        $('[data-bs-toggle="popover"]').popover();
+                    }
+                },
+                error: function (response) {
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+</script>
+
+<script>
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetSiteList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize)
+            {
+                var skip =@Model.Pager.Skip;
+                skip = skip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(skip);
+                $("#frmGetSiteList").submit();
+            }
+        }
+    }
+</script>

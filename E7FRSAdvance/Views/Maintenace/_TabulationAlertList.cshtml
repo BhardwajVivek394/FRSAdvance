@@ -1,0 +1,145 @@
+﻿
+@model Domain.SMSLogLister
+
+<style>
+    .collapsed .icon-class:before {
+        content: '>';
+    }
+
+    .icon-class:before {
+        content: 'v';
+    }
+
+    .table > :not(:last-child) > :last-child > * {
+        border-bottom-color: #87c7d9 !important;
+    }
+
+    .MainTh {
+        background-color: #7fcde22e !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .SubTh {
+        background-color: #f4f6fc !important;
+        border-bottom-color: #87c9db !important;
+        border-bottom-width: 2px !important;
+    }
+
+    .pill-badge-primary1 {
+        background-color: White;
+    }
+</style>
+
+<div class="modal bounceIn animated" id="modalProbabilityAlert" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                @if (Model != null && Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span>Alert Log - @Model.mSMSLogs.Select(x => x.SiteName).FirstOrDefault()</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title" id="myModalLabel">Alert Log</h4>
+                }
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+
+                    <div class="col-sm-12" id="model-div">
+                        <div class="row">
+                            <div class="col-sm-12">
+                                @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                {
+                                    <div class="mail-body-wrapper">
+                                        <ul id="paginated-list" data-current-page="1" aria-live="polite" class="modal-fixed-height">
+                                            @if (Model.mSMSLogs != null && Model.mSMSLogs.Count > 0)
+                                            {
+                                                foreach (var asset in Model.mSMSLogs.GroupBy(x => new { x.AssetId, x.AssetName }).Select(g => new { g.Key, Count = g.Count() }).OrderByDescending(x => x.Count).Select(x => x.Key).ToList())
+                                                {
+                                                    var smsAssetCount = Model.mSMSLogs.Where(x => x.AssetId == asset.AssetId).Count();
+                                                    <li class="inbox-data" style="background-color: white !important;">
+                                                        <div class="mail-body-wrapper" style="width:100%">
+                                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                                <li class="inbox-data" style="background-color:#4bacc6">
+                                                                    <div class="inbox-message">
+                                                                        <div class="email-data">
+                                                                            <span style="float: left; color: white;">@asset.AssetName &nbsp;</span><span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@smsAssetCount</span>
+                                                                        </div>
+                                                                        <span class="pull-right">
+                                                                            <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowMaintenaceAlertLogAsset('@asset.AssetId', this); return false;"></i></a>
+                                                                        </span>
+                                                                    </div>
+                                                                </li>
+
+                                                                @foreach (var smsLog in Model.mSMSLogs.Where(x => x.AssetId == asset.AssetId).ToList())
+                                                                {
+
+                                                                    <li class="inbox-data maintenaceALertLogByAsset_@(asset.AssetId)" style="display:none">
+                                                                        <div class="inbox-message">
+                                                                            <div class="email-data">
+                                                                                <span onclick="fnGetAssetAttribute('@smsLog.SiteName','@smsLog.AssetId','@smsLog.AssetTypeId')">@smsLog.Message</span>
+                                                                                @if (smsLog.IsSmsLogActive == true)
+                                                                                {
+                                                                                    <div class="span badge rounded-pill pill-badge-success">Active</div>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    <div class="span badge rounded-pill pill-badge-danger">InActive</div>
+                                                                                }
+                                                                                <a href="@Url.Action("DownloadReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-warning" data-original-title="Debug">Debug </a>
+
+
+                                                                                @if (smsLog.AssetTypeName == "TRACK" && smsLog.Message.Contains("trk " + smsLog.AssetName + " Failed"))
+                                                                                {
+                                                                                    <a href="@Url.Action("DownloadTprReportCsv","SMSLog",new { siteId= smsLog.SiteId,assetId = smsLog.AssetId, timeStamp = smsLog.TimeStamp})" data-placement="top" data-toggle="tooltip" class="span badge rounded-pill pill-badge-primary" data-original-title="Debug">Debug Tpr <i class="fa fa-download"></i></a>
+                                                                                }
+
+
+                                                                            </div>
+                                                                            <div class="email-timing"><span>@smsLog.TimeStamp.ToString()</span></div>
+
+                                                                        </div>
+                                                                    </li>
+                                                                }
+                                                            </ul>
+                                                        </div>
+                                                    </li>
+                                                }
+
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+    function fnShowMaintenaceAlertLogAsset(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.maintenaceALertLogByAsset_' + assetId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.maintenaceALertLogByAsset_' + assetId).hide();
+            }
+        }
+    }
+
+</script>

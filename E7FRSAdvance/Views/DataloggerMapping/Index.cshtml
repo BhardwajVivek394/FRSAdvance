@@ -1,0 +1,223 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">RDPMS Mapping</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-12">
+
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            @*<div class="pull-left">
+                                <input type="file" class="form-control ml-3" style="margin-left:5px" accept="text/plain" onchange="fnUploadDataLogger(this)" />
+                            </div>*@
+                            <div class="pull-left" style="margin-left:10px;">
+                                <button class="btn btn-primary" type="button" onclick="SearchDataloggerMapping()">Search</button>
+
+                                <button class="btn btn-success" type="button" onclick="fnUpdateDataloggerMapping()">Update</button>
+
+                            </div>
+                        </div>
+
+
+                    </div>
+
+                </div>
+                <div class="card-body">
+                    <div class="row" id="divEditDataloggerMapping" style="display:none">
+                        <div class="col-sm-12">
+                            <div id="divDataloggerAssetTypeListMapping">
+
+                            </div>
+
+                            <div id="divDataloggerListMapping">
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<script type="text/javascript">
+
+    function fnUploadDataLogger($this) {
+
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+
+            var fileUpload = $($this).get(0);
+            var files = fileUpload.files;
+            var fileData = new FormData();
+            fileData.append("siteId", $('#SiteId').val());
+            fileData.append(files[0].name, files[0]);
+            $("#loader").show();
+            $.ajax({
+                url: "/DataloggerMapping/UploadDataLogger",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                success: function (data) {
+                    debugger;
+
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        if (data.type == 'success') {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        } else if (data.type == 'error') {
+                            CommonNotification("ERROR", data.result, "Error");
+                        }
+
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+
+    }
+
+    function SearchDataloggerMapping() {
+        $('#divEditDataloggerMapping').show();
+        fnBindAssetTypeForMapping();
+    }
+
+    function fnBindAssetTypeForMapping() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/DataloggerMapping/GetAssetType',
+                type: 'Post',
+                data: '{siteId:' + $('#SiteId').val() + '}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divDataloggerListMapping").empty();
+                    $("#divDataloggerAssetTypeListMapping").empty().append(data);
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+    }
+
+    function fnBindDataloggerForMapping(assetTypeName) {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+
+            $("#loader").show();
+            $.ajax({
+                url: '/DataloggerMapping/GetAsset',
+                type: 'Post',
+                data: '{siteId:' + $('#SiteId').val() + ',assetTypeName:"' + assetTypeName + '"}',
+                dataType: 'html',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#divDataloggerListMapping").empty().append(data);
+                    //$("#modal-rdpms-mapping").modal("show");
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+    }
+
+    function fnUpdateDataloggerMapping() {
+        var isExisting = false;
+        var mDataloggerAssetMappings = [];
+
+        $('.drpAssetTypeMap').each(function () {
+            if ($(this).val() != null && $(this).val() != undefined && $(this).val() != '') {
+                isExisting = true;
+                debugger;
+                var mDataloggerAssetMapping = {};
+                mDataloggerAssetMapping.AssetId = $(this).val();
+                mDataloggerAssetMapping.RailwayAssetName = $(this).data('assetname');
+                mDataloggerAssetMapping.RailwayAssetcode = $(this).data('railwayassetcode');
+                mDataloggerAssetMapping.RailwayAssetType = $(this).data('assettypename');
+                mDataloggerAssetMapping.RailwayAssetTypeCode = $(this).data('typecode');
+                mDataloggerAssetMapping.RailwayAssetMake = $(this).data('make');
+                mDataloggerAssetMappings.push(mDataloggerAssetMapping);
+            }
+        });
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != '0') {
+            if (mDataloggerAssetMappings != null && mDataloggerAssetMappings.length > 0) {
+                $("#loader").show();
+                $.ajax({
+                    url: "/DataloggerMapping/Create",
+                    type: "POST",
+                    contentType: "application/json; charset=utf-8",
+                    datatype: "json",
+                    async: true,
+                    data: '{siteId:' + $('#SiteId').val() + ',mDataloggerMappings:' + JSON.stringify(mDataloggerAssetMappings) + '}',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null && data != undefined) {
+                            if (data.type == "success") {
+                                CommonNotification("SUCCESS", data.result, "success");
+                            }
+                            else if (data.type == "error") {
+                                CommonNotification("ERROR", data.result, "Error");
+                            }
+                        }
+                    },
+                    error: function (err) {
+                        $("#loader").hide();
+                    }
+                });
+            }
+
+            if (!isExisting) {
+                CommonNotification("ERROR", "Select at least one asset for mapping!", "Error");
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Please select site.", "Error");
+        }
+    }
+</script>

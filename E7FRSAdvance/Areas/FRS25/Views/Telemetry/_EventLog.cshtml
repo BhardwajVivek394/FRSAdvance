@@ -1,0 +1,1042 @@
+﻿@model Domain.Asset
+@* ================================================================
+    _EventLog.cshtml - Updated to match TelemetryController.cs
+    - Uses correct ViewBag property names from original
+    - C# 5 compatible (no null-conditional operators)
+    - FRS theme styling
+    ================================================================ *@
+
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+
+<style>
+    /* Event Log Modal - FRS Theme */
+    .eventlog-container {
+        font-family: inherit;
+    }
+
+    .eventlog-tabs {
+        border-bottom: 2px solid #e2e8f0;
+        background: #fff;
+        margin-bottom: 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+        .eventlog-tabs .nav-link {
+            border: none;
+            border-bottom: 3px solid transparent;
+            background: transparent;
+            color: #64748b;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 14px 18px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: -2px;
+        }
+
+            .eventlog-tabs .nav-link:hover {
+                color: #0a4a6e;
+                background: #f1f5f9;
+                border-bottom-color: #cbd5e1;
+            }
+
+            .eventlog-tabs .nav-link.active {
+                color: #0a4a6e;
+                font-weight: 600;
+                border-bottom-color: #0a4a6e;
+                background: transparent;
+            }
+
+    .eventlog-tab-content {
+        background: #fff;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        border: 1px solid #e2e8f0;
+    }
+
+        .eventlog-tab-content > .tab-pane {
+            display: none;
+        }
+
+            .eventlog-tab-content > .tab-pane.active {
+                display: block;
+            }
+
+    .eventlog-search-form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: flex-end;
+        padding: 16px;
+        background: #f8fafc;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 20px;
+    }
+
+    .eventlog-form-group {
+        flex: 1;
+        min-width: 200px;
+    }
+
+        .eventlog-form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+
+    .eventlog-form-control {
+        width: 100%;
+        height: 42px;
+        padding: 10px 14px;
+        font-size: 14px;
+        color: #1f2937;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+
+        .eventlog-form-control:focus {
+            outline: none;
+            border-color: #0a4a6e;
+            box-shadow: 0 0 0 3px rgba(10, 74, 110, 0.15);
+        }
+
+    .eventlog-container .select2-container {
+        width: 100% !important;
+    }
+
+    .eventlog-container .select2-container--default .select2-selection--single {
+        height: 42px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #fff;
+        padding: 6px 12px;
+    }
+
+        .eventlog-container .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 28px;
+            padding-left: 0;
+            color: #1f2937;
+        }
+
+        .eventlog-container .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 40px;
+            right: 8px;
+        }
+
+    .eventlog-btn-search {
+        background: linear-gradient(135deg, #042c43 0%, #0a4a6e 100%);
+        border: none;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-width: 100px;
+        height: 42px;
+    }
+
+        .eventlog-btn-search:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(10, 74, 110, 0.3);
+        }
+
+    .eventlog-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        background: #fff;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        font-size: 13px;
+    }
+
+        .eventlog-table thead tr {
+            background: linear-gradient(135deg, #042c43 0%, #0a4a6e 100%);
+        }
+
+        .eventlog-table thead th {
+            color: #fff;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 14px 16px;
+            border: none;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        .eventlog-table tbody td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #374151;
+            vertical-align: middle;
+        }
+
+        .eventlog-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .eventlog-table tbody tr:hover {
+            background: #f8fafc;
+        }
+
+        .eventlog-table tbody tr:nth-child(even) {
+            background: #fafbfc;
+        }
+
+    .eventlog-empty {
+        text-align: center;
+        padding: 40px 20px;
+        color: #94a3b8;
+    }
+
+        .eventlog-empty i {
+            font-size: 32px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+            display: block;
+        }
+
+    .eventlog-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: #e0f2fe;
+        border: 1px solid #7dd3fc;
+        border-radius: 8px;
+        color: #075985;
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+
+    .ui-datepicker {
+        z-index: 999999 !important;
+    }
+
+    .select2-container--open {
+        z-index: 999999 !important;
+    }
+
+    .select2-dropdown {
+        z-index: 999999 !important;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    }
+
+    .select2-container--default .select2-results__option--highlighted[aria-selected] {
+        background: linear-gradient(135deg, #042c43 0%, #0a4a6e 100%);
+    }
+
+    .badge-active, .pill-badge-danger {
+        background: #fee2e2;
+        color: #991b1b;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .badge-resolved, .pill-badge-success {
+        background: #dcfce7;
+        color: #166534;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .badge-pending {
+        background: #fef3c7;
+        color: #92400e;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .tablemodalFixHead {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+</style>
+
+@{ var modelId = Model != null ? Model.Id : 0;
+                var modelSiteId = Model != null ? Model.SiteId : 0;
+                var isDatalogger = Model != null && Model.IsDatalogger;
+                var isPointMachine = Model != null && Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE; }
+
+<div class="eventlog-container" data-asset-id="@modelId" data-site-id="@modelSiteId">
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs eventlog-tabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" data-toggle="tab" data-bs-toggle="tab" href="#tabFailAlert" role="tab">
+                <i class="fas fa-exclamation-triangle"></i> Fail Alert
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabPredictiveAlert" role="tab">
+                <i class="fas fa-chart-line"></i> Predictive Alert
+            </a>
+        </li>
+        @if (isDatalogger)
+        {
+<li class="nav-item">
+    <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabDatalogger" role="tab">
+        <i class="fas fa-database"></i> Datalogger
+    </a>
+</li> if (ViewBag.PeriodicDatalogger != null)
+                {
+<li class="nav-item">
+    <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabPeriodicDatalogger" role="tab">
+        <i class="fas fa-history"></i> Periodic DL
+    </a>
+</li>}
+            }
+        @if (isPointMachine)
+        {
+<li class="nav-item">
+    <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabPointEvent" role="tab">
+        <i class="fas fa-map-marker-alt"></i> Point Event
+    </a>
+</li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabClusterLog" role="tab">
+                        <i class="fas fa-server"></i> Cluster Log
+                    </a>
+                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabMQTTLog" role="tab">
+                                        <i class="fas fa-wifi"></i> MQTT Log
+                                    </a>
+                                </li>
+                                                <li class="nav-item">
+                                                    <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabFTPLog" role="tab">
+                                                        <i class="fas fa-folder"></i> FTP Log
+                                                    </a>
+                                                </li>}
+        <li class="nav-item">
+            <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabChangeTime" role="tab">
+                <i class="fas fa-clock"></i> Change Time
+            </a>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content eventlog-tab-content">
+        <!-- Fail Alert Tab -->
+        <div class="tab-pane fade show active" id="tabFailAlert" role="tabpanel">
+            <div class="table-responsive tablemodalFixHead">
+                <table class="eventlog-table">
+                    <thead>
+                        <tr>
+                            <th>Site</th>
+                            <th>Asset</th>
+                            <th>Cause Code</th>
+                            <th>Status</th>
+                            <th>Message</th>
+                            <th>Time Stamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyFailAlert">
+                        @if (ViewBag.FRSAlerts != null)
+                        {
+                            var mFRSAlerts = ViewBag.FRSAlerts as List<Domain.FRSAlert>;
+                            var failAlerts = mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).ToList();
+                            if (failAlerts.Count > 0)
+                            {
+                                foreach (var item in failAlerts)
+                                {
+            <tr>
+                <td>@item.SiteName</td>
+                <td>@item.AssetName</td>
+                <td>@item.CauseCode</td>
+                <td>
+                    @if (item.IsActive == true)
+                    {
+<span class="badge-active">Active</span> }
+                        else
+                        {
+<span class="badge-resolved">Inactive</span>}
+                </td>
+                <td>
+                    <span>@item.SetAlertMessage</span>
+                    @if (!string.IsNullOrEmpty(item.Description))
+                    {
+<br /><span>@Html.Raw(item.Description)</span>}
+                </td>
+                <td>@item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+            </tr> }
+                            }
+                            else
+                            {
+            <tr>
+                <td colspan="6" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No fail alerts found</p>
+                </td>
+            </tr> }
+                        }
+                        else
+                        {
+            <tr>
+                <td colspan="6" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No fail alerts found</p>
+                </td>
+            </tr>}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Predictive Alert Tab -->
+        <div class="tab-pane fade" id="tabPredictiveAlert" role="tabpanel">
+            <div class="table-responsive tablemodalFixHead">
+                <table class="eventlog-table">
+                    <thead>
+                        <tr>
+                            <th>Site</th>
+                            <th>Asset</th>
+                            <th>Cause Code</th>
+                            <th>Status</th>
+                            <th>Message</th>
+                            <th>Time Stamp</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyPredictiveAlert">
+                        @if (ViewBag.FRSAlerts != null)
+                        {
+                            var mFRSAlerts = ViewBag.FRSAlerts as List<Domain.FRSAlert>;
+                            var predictiveAlerts = mFRSAlerts.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive).ToList();
+                            if (predictiveAlerts.Count > 0)
+                            {
+                                foreach (var item in predictiveAlerts)
+                                {
+            <tr>
+                <td>@item.SiteName</td>
+                <td>@item.AssetName</td>
+                <td>@item.CauseCode</td>
+                <td>
+                    @if (item.IsActive == true)
+                    {
+<span class="badge-active">Active</span> }
+                        else
+                        {
+<span class="badge-resolved">Inactive</span>}
+                </td>
+                <td>
+                    <span>@item.SetAlertMessage</span>
+                    @if (!string.IsNullOrEmpty(item.Description))
+                    {
+<br /><span>@Html.Raw(item.Description)</span>}
+                </td>
+                <td>@item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm")</td>
+            </tr> }
+                            }
+                            else
+                            {
+            <tr>
+                <td colspan="6" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No predictive alerts found</p>
+                </td>
+            </tr> }
+                        }
+                        else
+                        {
+            <tr>
+                <td colspan="6" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No predictive alerts found</p>
+                </td>
+            </tr>}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Datalogger Tab -->
+        @if (isDatalogger)
+        {
+<div class="tab-pane fade" id="tabDatalogger" role="tabpanel">
+    <div class="eventlog-search-form">
+        <div class="eventlog-form-group">
+            <label for="drpDataloggerSearchAttribute">Select Attribute</label>
+            <!-- SINGLE SELECT dropdown -->
+            <select id="drpDataloggerSearchAttribute" class="eventlog-form-control">
+                <option value="">-- Select Attribute --</option>
+                @if (ViewBag.AssetInfoDatalogger != null)
+                {
+                    var assetInfoDataloggers = ViewBag.AssetInfoDatalogger as List<Domain.AssetInfoDatalogger>;
+                    foreach (var assetInfoDatalogger in assetInfoDataloggers)
+                    {
+<option value="@assetInfoDatalogger.Value">@assetInfoDatalogger.DataloggerAttribute</option>}
+                }
+            </select>
+        </div>
+        <div class="eventlog-form-group" style="max-width: 200px;">
+            <label for="txtDataloggerSearchDate">Select Date</label>
+            <input type="text" id="txtDataloggerSearchDate" class="eventlog-form-control" placeholder="DD/MM/YYYY" readonly>
+        </div>
+        <div class="eventlog-form-group" style="flex: 0 0 auto; min-width: auto;">
+            <button type="button" class="eventlog-btn-search at-eventlog-search-btn" onclick="fnSearchDatalogger()">
+                <i class="fas fa-search"></i> Search
+            </button>
+        </div>
+    </div>
+
+    <div class="eventlog-info">
+        <i class="fas fa-info-circle"></i>
+        Select attribute and date, then search to view datalogger events
+    </div>
+
+    <div id="divSearchDataloggerEvent" class="table-responsive tablemodalFixHead">
+        @if (ViewBag.Datalogger != null)
+        {
+            var mDataloggerEventDatas = ViewBag.Datalogger as List<Domain.Datalogger>;
+@Html.Partial("_EventDataLoggerGraph", mDataloggerEventDatas)}
+    </div>
+</div> <!-- Periodic Datalogger Tab --> if (ViewBag.PeriodicDatalogger != null)
+                                {
+                <div class="tab-pane fade" id="tabPeriodicDatalogger" role="tabpanel">
+                    <div class="table-responsive tablemodalFixHead">
+                        @{ var mPeriodicDatalogger = ViewBag.PeriodicDatalogger as List<Domain.Datalogger>; }
+                        <table class="eventlog-table">
+                            <thead>
+                                <tr>
+                                    <th>SR No.</th>
+                                    <th>Asset</th>
+                                    <th>Attribute</th>
+                                    <th>Current Value</th>
+                                    <th>Time Stamp</th>
+                                    <th>Update Time</th>
+                                    <th>Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (mPeriodicDatalogger != null && mPeriodicDatalogger.Count > 0)
+                                {
+                                    foreach (var item in mPeriodicDatalogger.OrderByDescending(x => x.Date))
+                                    {
+            <tr>
+                <td>@item.SrNo</td>
+                <td>@item.AssetName</td>
+                <td>@item.AttributeName</td>
+                <td>
+                    @if (item.CurrentValue == "Pickup")
+                    {
+<span class="badge-resolved">Pickup</span> }
+                            else if (item.CurrentValue == "Drop")
+                            {
+<span class="badge-pending">DROP</span> }
+                            else
+                            {
+@item.CurrentValue}
+                </td>
+                <td>@item.Timestamp.ToString()</td>
+                <td>@item.CurrentDate.ToString("dd/MM/yyyy hh:mm:ss tt")</td>
+                <td>@item.Type</td>
+            </tr> }
+                                }
+                                else
+                                {
+            <tr>
+                <td colspan="7" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No periodic datalogger records found</p>
+                </td>
+            </tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>}
+                            }
+
+        <!-- Point Event Tab -->
+        @if (isPointMachine)
+        {
+<div class="tab-pane fade" id="tabPointEvent" role="tabpanel">
+    <div class="eventlog-search-form">
+        <div class="eventlog-form-group" style="max-width: 200px;">
+            <label for="txtPointEventSearchDate">Select Date</label>
+            <input type="text" id="txtPointEventSearchDate" class="eventlog-form-control" placeholder="DD/MM/YYYY" readonly>
+        </div>
+        <div class="eventlog-form-group" style="flex: 0 0 auto; min-width: auto;">
+            <button type="button" class="eventlog-btn-search at-eventlog-search-btn" onclick="fnSearchPointEvent()">
+                <i class="fas fa-search"></i> Search
+            </button>
+        </div>
+    </div>
+
+    <div id="divSearchPointEvent" class="table-responsive tablemodalFixHead">
+        @if (ViewBag.PointMachineEvent != null)
+        {
+            var mPointMachineEvents = ViewBag.PointMachineEvent as List<Domain.PointMachineEvent>;
+@Html.Partial("_PointMachineEvent", mPointMachineEvents) }
+                else
+                {
+<div class="eventlog-empty">
+    <i class="fas fa-inbox"></i>
+    <p>No point events found. Select a date and search.</p>
+</div>}
+    </div>
+</div> <!-- Cluster Log Tab -->
+                                <div class="tab-pane fade" id="tabClusterLog" role="tabpanel">
+                                    <div class="table-responsive tablemodalFixHead">
+                                        @if (ViewBag.PointEventLog != null)
+                                        {
+                                            var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
+                                            var clusterLogs = mPointEventLogs.Where(x => x.TypeId == 1).OrderByDescending(x => x.EventTime).ToList();
+                                            if (clusterLogs.Count > 0)
+                                            {
+                        <table class="eventlog-table">
+                            <thead>
+                                <tr>
+                                    <th>Event Time</th>
+                                    <th>Direction</th>
+                                    <th>Capture Time</th>
+                                    <th>Response Counter</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in clusterLogs)
+                                {
+        <tr>
+            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+            <td>@item.Name</td>
+            <td>@item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+            <td class="text-center">@item.ResponseCounter</td>
+        </tr>}
+                            </tbody>
+                        </table> }
+                                            else
+                                            {
+                        <div class="eventlog-empty">
+                            <i class="fas fa-inbox"></i>
+                            <p>No cluster logs found</p>
+                        </div> }
+                                        }
+                                        else
+                                        {
+                        <div class="eventlog-empty">
+                            <i class="fas fa-inbox"></i>
+                            <p>No cluster logs found</p>
+                        </div>}
+                                    </div>
+                                </div> <!-- MQTT Log Tab -->
+                                                                <div class="tab-pane fade" id="tabMQTTLog" role="tabpanel">
+                                                                    <div class="table-responsive tablemodalFixHead">
+                                                                        @if (ViewBag.PointEventLog != null)
+                                                                        {
+                                                                            var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
+                                                                            var mqttLogs = mPointEventLogs.Where(x => x.TypeId == 2).OrderByDescending(x => x.EventTime).ToList();
+                                                                            if (mqttLogs.Count > 0)
+                                                                            {
+                                                        <table class="eventlog-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Event Time</th>
+                                                                    <th>Direction</th>
+                                                                    <th>Capture Time</th>
+                                                                    <th>Response Counter</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                @foreach (var item in mqttLogs)
+                                                                {
+                                        <tr>
+                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                            <td>@item.Name</td>
+                                            <td>@item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                            <td class="text-center">@item.ResponseCounter</td>
+                                        </tr>}
+                                                            </tbody>
+                                                        </table> }
+                                                                            else
+                                                                            {
+                                                        <div class="eventlog-empty">
+                                                            <i class="fas fa-inbox"></i>
+                                                            <p>No MQTT logs found</p>
+                                                        </div> }
+                                                                        }
+                                                                        else
+                                                                        {
+                                                        <div class="eventlog-empty">
+                                                            <i class="fas fa-inbox"></i>
+                                                            <p>No MQTT logs found</p>
+                                                        </div>}
+                                                                    </div>
+                                                                </div> <!-- FTP Log Tab -->
+                                                                                                <div class="tab-pane fade" id="tabFTPLog" role="tabpanel">
+                                                                                                    <div class="table-responsive tablemodalFixHead">
+                                                                                                        @if (ViewBag.PointEventLog != null)
+                                                                                                        {
+                                                                                                            var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
+                                                                                                            var ftpLogs = mPointEventLogs.Where(x => x.TypeId == 3).OrderByDescending(x => x.EventTime).ToList();
+                                                                                                            if (ftpLogs.Count > 0)
+                                                                                                            {
+                                                                                        <table class="eventlog-table">
+                                                                                            <thead>
+                                                                                                <tr>
+                                                                                                    <th>Event Time</th>
+                                                                                                    <th>Direction</th>
+                                                                                                    <th>Capture Time</th>
+                                                                                                    <th>Response Counter</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody>
+                                                                                                @foreach (var item in ftpLogs)
+                                                                                                {
+                                                                        <tr>
+                                                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                                            <td>@item.Name</td>
+                                                                            <td>@item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                                            <td class="text-center">@item.ResponseCounter</td>
+                                                                        </tr>}
+                                                                                            </tbody>
+                                                                                        </table> }
+                                                                                                            else
+                                                                                                            {
+                                                                                        <div class="eventlog-empty">
+                                                                                            <i class="fas fa-inbox"></i>
+                                                                                            <p>No FTP logs found</p>
+                                                                                        </div> }
+                                                                                                        }
+                                                                                                        else
+                                                                                                        {
+                                                                                        <div class="eventlog-empty">
+                                                                                            <i class="fas fa-inbox"></i>
+                                                                                            <p>No FTP logs found</p>
+                                                                                        </div>}
+                                                                                                    </div>
+                                                                                                </div>}
+
+        <!-- Change Time Tab -->
+        <div class="tab-pane fade" id="tabChangeTime" role="tabpanel">
+            <div class="table-responsive tablemodalFixHead">
+                <table class="eventlog-table">
+                    <thead>
+                        <tr>
+                            @if (ViewBag.AssetInfos != null)
+                            {
+                                var mAssetInfos = ViewBag.AssetInfos as List<Domain.AssetInfo>;
+                                if (mAssetInfos != null && mAssetInfos.Count > 0)
+                                {
+                                    foreach (var assetAttribute in mAssetInfos)
+                                    {
+                                        if (!string.IsNullOrEmpty(assetAttribute.AttributeAliasName))
+                                        {
+                <th>@assetAttribute.AttributeAliasName</th> }
+                                        else
+                                        {
+                <th>@assetAttribute.AttributeName</th>}
+                                    }
+                                }
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            @if (ViewBag.AssetInfos != null && ViewBag.ChangeTimeAssets != null)
+                            {
+                                var mAssetInfos = ViewBag.AssetInfos as List<Domain.AssetInfo>;
+                                var mChangeTimeAssets = ViewBag.ChangeTimeAssets as List<Domain.DynamoTable>;
+                                if (mChangeTimeAssets != null && mChangeTimeAssets.Count > 0 && mAssetInfos != null && mAssetInfos.Count > 0)
+                                {
+                                    foreach (var mAssetInfo in mAssetInfos)
+                                    {
+                <td style="vertical-align:top; padding: 0;">
+                    <table class="eventlog-table" style="margin: 0; box-shadow: none; border-radius: 0;">
+                        @foreach (var mChangeTimeAsset in mChangeTimeAssets.Where(x => x.asset_attribute_id == mAssetInfo.AssetAttributeId).OrderByDescending(x => x.change_timestamp))
+                        {
+<tr>
+    <td style="border-bottom: 1px solid #e2e8f0;">
+        <span>@mChangeTimeAsset.asset_attribute_value</span><br />
+        <small style="color: #64748b;">(@mChangeTimeAsset.change_timestamp.ToString("dd-MM-yyyy HH:mm:ss"))</small>
+    </td>
+</tr>}
+                    </table>
+                </td> }
+                                }
+                                else
+                                {
+                <td colspan="10" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No change time records found</p>
+                </td> }
+                            }
+                            else
+                            {
+                <td colspan="10" class="eventlog-empty">
+                    <i class="fas fa-inbox"></i>
+                    <p>No change time records found</p>
+                </td>}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
+<script>
+    // Store asset info from model (C# 5 compatible)
+    var eventLogAssetId = @modelId;
+    var eventLogSiteId = @modelSiteId;
+
+    // Also set on window for external access
+    window.currentEventLogAssetId = eventLogAssetId;
+    window.currentEventLogSiteId = eventLogSiteId;
+
+    (function () {
+        console.log('[EventLog] Initializing with AssetId:', eventLogAssetId, 'SiteId:', eventLogSiteId);
+        setTimeout(function () {
+            initializeEventLogControls();
+        }, 200);
+    })();
+
+    function initializeEventLogControls() {
+        console.log('[EventLog] Setting up controls...');
+
+        // === Initialize Select2 as SINGLE SELECT ===
+        var $attrSelect = $('#drpDataloggerSearchAttribute');
+        if ($attrSelect.length && typeof $.fn.select2 !== 'undefined') {
+            if ($attrSelect.hasClass('select2-hidden-accessible')) {
+                try { $attrSelect.select2('destroy'); } catch (e) { }
+            }
+
+            // Ensure NOT multiple
+            $attrSelect.removeAttr('multiple');
+
+            $attrSelect.select2({
+                dropdownParent: $('#modalalertlogs .modal-content'),
+                placeholder: 'Select Attribute',
+                allowClear: true,
+                width: '100%'
+            });
+            console.log('[EventLog] Select2 initialized as SINGLE select');
+        }
+
+        // === Initialize Datepickers ===
+        var today = new Date();
+        var todayFormatted = today.getDate() + '/' + (today.getMonth() + 1) + '/' + today.getFullYear();
+
+        var $dlDate = $('#txtDataloggerSearchDate');
+        if ($dlDate.length) {
+            if (typeof $.fn.datepicker !== 'undefined') {
+                try {
+                    $dlDate.datepicker({
+                        dateFormat: 'd/m/yy',
+                        maxDate: new Date(),
+                        showOtherMonths: true,
+                        selectOtherMonths: true,
+                        changeMonth: true,
+                        changeYear: true,
+                        beforeShow: function (input, inst) {
+                            setTimeout(function () {
+                                inst.dpDiv.css({ 'z-index': 999999 });
+                            }, 10);
+                        }
+                    });
+                    $dlDate.datepicker('setDate', today);
+                } catch (e) {
+                    $dlDate.val(todayFormatted);
+                }
+            } else {
+                $dlDate.val(todayFormatted);
+            }
+        }
+
+        var $peDate = $('#txtPointEventSearchDate');
+        if ($peDate.length) {
+            if (typeof $.fn.datepicker !== 'undefined') {
+                try {
+                    $peDate.datepicker({
+                        dateFormat: 'd/m/yy',
+                        maxDate: new Date(),
+                        beforeShow: function (input, inst) {
+                            setTimeout(function () {
+                                inst.dpDiv.css({ 'z-index': 999999 });
+                            }, 10);
+                        }
+                    });
+                    $peDate.datepicker('setDate', today);
+                } catch (e) {
+                    $peDate.val(todayFormatted);
+                }
+            } else {
+                $peDate.val(todayFormatted);
+            }
+        }
+
+        setupTabHandlers();
+    }
+
+    function setupTabHandlers() {
+        $('#modalalertlogs').off('click.eventLogTabs').on('click.eventLogTabs', '.nav-tabs .nav-link', function (e) {
+            e.preventDefault();
+            var $this = $(this);
+            var target = $this.attr('href') || $this.data('bs-target') || $this.data('target');
+
+            $this.closest('.nav-tabs').find('.nav-link').removeClass('active');
+            var $tabContent = $this.closest('.eventlog-container').find('.tab-content');
+            $tabContent.find('.tab-pane').removeClass('show active');
+
+            $this.addClass('active');
+            $(target).addClass('show active');
+
+            if (target === '#tabDatalogger') {
+                setTimeout(function () {
+                    var $sel = $('#drpDataloggerSearchAttribute');
+                    if ($sel.length && !$sel.hasClass('select2-hidden-accessible') && typeof $.fn.select2 !== 'undefined') {
+                        $sel.select2({
+                            dropdownParent: $('#modalalertlogs .modal-content'),
+                            placeholder: 'Select Attribute',
+                            allowClear: true,
+                            width: '100%'
+                        });
+                    }
+                }, 100);
+            }
+        });
+    }
+
+    // ================================================================
+    // SEARCH DATALOGGER - Calls _EventDataLoggerGraph
+    // Controller expects: SearchCriteria { AssetId, SiteId, SearchDate, SrNumbers[] }
+    // ================================================================
+    function fnSearchDatalogger() {
+        var searchDate = $('#txtDataloggerSearchDate').val();
+        var selectedAttr = $('#drpDataloggerSearchAttribute').val(); // Single value
+
+        if (!searchDate || searchDate.trim() === '') {
+            if (typeof showWarning === 'function') showWarning('Please select a date', 'Validation');
+            else alert('Please select a date');
+            return;
+        }
+
+        if (!selectedAttr || selectedAttr === '') {
+            if (typeof showWarning === 'function') showWarning('Please select an attribute', 'Validation');
+            else alert('Please select an attribute');
+            return;
+        }
+
+        var assetId = eventLogAssetId || window.currentEventLogAssetId;
+        var siteId = eventLogSiteId || window.currentEventLogSiteId || $('#drpSite').val();
+
+        if (!assetId || assetId === 0) {
+            if (typeof showWarning === 'function') showWarning('Asset ID not found', 'Error');
+            else alert('Asset ID not found');
+            return;
+        }
+
+        console.log('[Datalogger] Searching:', { date: searchDate, attr: selectedAttr, assetId: assetId, siteId: siteId });
+
+        $('#divSearchDataloggerEvent').html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading...</p></div>');
+
+        // Build search criteria matching original format
+        var searchCriteria = {
+            AssetId: assetId,
+            SiteId: siteId,
+            SearchDate: searchDate,
+            SrNumbers: [selectedAttr]  // Controller expects array
+        };
+
+        $.ajax({
+            url: '/FRS25/Telemetry/_EventDataLoggerGraph',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(searchCriteria),
+            success: function (data) {
+                if (data) {
+                    $('#divSearchDataloggerEvent').html(data);
+                } else {
+                    $('#divSearchDataloggerEvent').html('<div class="eventlog-empty"><i class="fas fa-inbox"></i><p>No data found</p></div>');
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('[Datalogger] Error:', error);
+                $('#divSearchDataloggerEvent').html('<div class="text-center text-danger p-4"><i class="fas fa-exclamation-circle fa-2x"></i><p class="mt-2">Failed to load data</p></div>');
+                if (typeof showError === 'function') showError('Failed to load data', 'Error');
+            }
+        });
+    }
+
+    // ================================================================
+    // SEARCH POINT EVENT - Calls _PointMachineEvent
+    // Controller expects: SearchCriteria { AssetId, SiteId, SearchDate }
+    // ================================================================
+    function fnSearchPointEvent() {
+        var searchDate = $('#txtPointEventSearchDate').val();
+
+        if (!searchDate || searchDate.trim() === '') {
+            if (typeof showWarning === 'function') showWarning('Please select a date', 'Validation');
+            else alert('Please select a date');
+            return;
+        }
+
+        var assetId = eventLogAssetId || window.currentEventLogAssetId;
+        var siteId = eventLogSiteId || window.currentEventLogSiteId || $('#drpSite').val();
+
+        if (!assetId || assetId === 0) {
+            if (typeof showWarning === 'function') showWarning('Asset ID not found', 'Error');
+            else alert('Asset ID not found');
+            return;
+        }
+
+        console.log('[PointEvent] Searching:', { date: searchDate, assetId: assetId, siteId: siteId });
+
+        $('#divSearchPointEvent').html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading...</p></div>');
+
+        // Build search criteria matching original format
+        var searchCriteria = {
+            AssetId: assetId,
+            SiteId: siteId,
+            SearchDate: searchDate
+        };
+
+        $.ajax({
+            url: '/FRS25/Telemetry/_PointMachineEvent',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(searchCriteria),
+            success: function (data) {
+                if (data) {
+                    $('#divSearchPointEvent').html(data);
+                } else {
+                    $('#divSearchPointEvent').html('<div class="eventlog-empty"><i class="fas fa-inbox"></i><p>No data found</p></div>');
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('[PointEvent] Error:', error);
+                $('#divSearchPointEvent').html('<div class="text-center text-danger p-4"><i class="fas fa-exclamation-circle fa-2x"></i><p class="mt-2">Failed to load data</p></div>');
+                if (typeof showError === 'function') showError('Failed to load data', 'Error');
+            }
+        });
+    }
+
+    console.log('[EventLog] Partial view script loaded.');
+</script>

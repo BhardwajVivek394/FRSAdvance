@@ -1,0 +1,193 @@
+﻿@model List<Domain.SiteSurvey>
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal bounceIn animated" id="modal-add-point-asset" tabindex="-1" aria-labelledby="modal-add-point-asset" role="dialog" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader"> Assign Point</span></h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <table class="table table-bordered">
+                    <tr>
+                        <th>Name</th>
+                        <th>Half Point Machine</th>
+                        <th>Thick Wave</th>
+                        <th>Series Opration</th>
+                    </tr>
+                    @{
+                        var mSurveyPointMachines = new List<Domain.SurveyPointMachine>();
+                        if (ViewBag.SurveyPointMachine != null)
+                        {
+                            mSurveyPointMachines = ViewBag.SurveyPointMachine as List<Domain.SurveyPointMachine>;
+                        }
+                    }
+
+                    <tbody id="tbodyPointAssets">
+                        @if (Model != null && Model.Count > 0)
+                        {
+                            var trAssets = new List<string>();
+                            var trPointMachine = Model.Where(x => x.PointMachine != null && x.PointMachine != string.Empty).Select(x => x.PointMachine).ToList();
+                            if (trPointMachine != null && trPointMachine.Count > 0)
+                            {
+                                trPointMachine.ForEach(x =>
+                                {
+                                    var splitstr = x.Split(',');
+                                    if (splitstr != null && splitstr.Count() > 0)
+                                    {
+                                        trAssets.AddRange(splitstr);
+                                    }
+                                });
+                            }
+
+                            if (trAssets != null && trAssets.Count > 0)
+                            {
+                                int counter = 1;
+                                foreach (var asset in trAssets)
+                                {
+                                    var mSurveyPointMachine = mSurveyPointMachines.Where(x => x.Name.Trim().ToLower() == asset.Trim().ToLower()).FirstOrDefault();
+                                    <tr data-id="@counter">
+                                        <td>@asset</td>
+                                        <td>
+                                            <input type="checkbox" id="IsHalfPointMachine@(counter)" @(mSurveyPointMachine != null && mSurveyPointMachine.IsHalfPointMachine ? "checked":"")/>
+                                            <label for="IsHalfPointMachine@(counter)">Is Half Point Machine</label>
+                                        </td>
+                                        <td>
+                                            <input type="checkbox" id="IsThickWave@(counter)" onchange="fnChangeIsThickWave(this,'@counter')" @(mSurveyPointMachine != null && mSurveyPointMachine.IsThickWave ? "checked":"")/>
+                                            <label for="IsThickWave@(counter)">Is Thick Wave</label>
+
+                                            <div id="divThickWaveType@(counter)" style="display:none">
+                                                <label class="control-label">
+                                                    <span>Thick Wave Type</span>
+                                                    @Html.DropDownList("ThickWaveType" + counter, EnumHelper.GetSelectList(typeof(E7FRSAdvance.Utility.Utility.ThickWaveType)), new { @class = "form-control" })
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <input type="checkbox" id="IsSeriesOpration@(counter)" onchange="fnChangeSeriesOprationType(this,'@counter')" @(mSurveyPointMachine != null && mSurveyPointMachine.IsSeriesOpration ? "checked":"")/>
+                                            <label for="IsSeriesOpration@(counter)">Is Series Opration</label>
+
+                                            <div id="divSeriesOprationType@(counter)" style="display:none">
+                                                <label class="control-label">
+                                                    <span>Series Opration Type</span>
+                                                    @Html.DropDownList("SeriesOprationTypeId" + counter, EnumHelper.GetSelectList(typeof(E7FRSAdvance.Utility.Utility.SeriesOprationType)), new { @class = "form-control" })
+                                                </label>
+                                                <label class="control-label">
+                                                    <span>Direction A</span>
+                                                    @Html.TextBox("AliasDirectionA" + counter, "", new { @class = "form-control", @style = "Width:150px", @placeHolder = "Direction A" })
+                                                </label>
+                                                <label class="control-label">
+                                                    <span>Direction B</span>
+                                                    @Html.TextBox("AliasDirectionB" + counter, "", new { @class = "form-control", @style = "Width:150px", @placeHolder = "Direction B" })
+
+                                                </label>
+                                            </div>
+                                        </td>
+                                    </tr>
+
+                                    counter++;
+                                }
+
+                            }
+                        }
+                    </tbody>
+
+                </table>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSavePoint()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+
+    function fnChangeIsThickWave($this, id) {
+        if ($($this).is(":checked")) {
+            $('#divThickWaveType' + id).show();
+        } else {
+            $('#divThickWaveType' + id).hide();
+        }
+    }
+
+    function fnChangeSeriesOprationType($this, id) {
+        if ($($this).is(":checked")) {
+            $('#divSeriesOprationType' + id).show();
+        } else {
+            $('#divSeriesOprationType' + id).hide();
+        }
+    }
+
+    function fnSavePoint() {
+
+        var mSurveyPointMachines = [];
+        $("#tbodyPointAssets tr").each(function () {
+            var mSurveyPointMachine = {};
+            var val = $(this).data("id");
+
+            mSurveyPointMachine.Name = $(this).find("td").eq(0).text();
+            mSurveyPointMachine.SiteId = $('#hdnSiteId').val();
+            if ($('#IsHalfPointMachine' + val).is(":checked")) {
+                mSurveyPointMachine.IsHalfPointMachine = true;
+            } else {
+                mSurveyPointMachine.IsHalfPointMachine = false;
+            }
+
+            if ($('#IsThickWave' + val).is(":checked")) {
+                mSurveyPointMachine.IsThickWave = true;
+                mSurveyPointMachine.ThickWaveTypeId = $('#ThickWaveType' + val).val();
+            } else {
+                mSurveyPointMachine.IsThickWave = false;
+                mSurveyPointMachine.ThickWaveTypeId = null;
+            }
+
+            if ($('#IsSeriesOpration' + val).is(":checked")) {
+                mSurveyPointMachine.IsSeriesOpration = true;
+                mSurveyPointMachine.SeriesOprationTypeId = $('#SeriesOprationTypeId' + val).val();
+                mSurveyPointMachine.AliasDirectionA = $('#AliasDirectionA' + val).val();
+                mSurveyPointMachine.AliasDirectionB = $('#AliasDirectionA' + val).val();
+            } else {
+                mSurveyPointMachine.IsSeriesOpration = false;
+                mSurveyPointMachine.SeriesOprationTypeId = null;
+                mSurveyPointMachine.AliasDirectionA = null;
+                mSurveyPointMachine.AliasDirectionB = null;
+            }
+
+            mSurveyPointMachines.push(mSurveyPointMachine);
+        });
+        if (mSurveyPointMachines != null && mSurveyPointMachines != undefined && mSurveyPointMachines.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/SiteSurvey/SavePointPartial',
+                type: 'Post',
+                data: '{mSurveyPointMachines:' + JSON.stringify(mSurveyPointMachines) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#modal-add-point-asset").modal('hide');
+                    if (data != null && data.type == "success") {
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            $("#modal-add-point-asset").modal('hide');
+            CommonNotification("ERROR", "Point record not found!", "Error");
+        }
+
+    }
+</script>

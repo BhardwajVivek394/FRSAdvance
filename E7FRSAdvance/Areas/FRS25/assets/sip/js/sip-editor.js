@@ -1,0 +1,1682 @@
+/* ==========================================================================
+ *  SIP Editor — Aurora Edition (rewritten 15-05-2026)
+ *  ------------------------------------------------------------------------
+ *  A vanilla-JS yard editor that works DIRECTLY on the legacy Rappid cell
+ *  shape ({ type, position, size, attrs, ... }) — every state mutation,
+ *  every render and every public getLayout()/setLayout() call uses that
+ *  one canonical shape.
+ *
+ *  Public API (called from Index.cshtml)
+ *  -------------------------------------
+ *    SipEditor.loadPreset('blank' | 'sample')
+ *    SipEditor.undo() / redo()
+ *    SipEditor.openImport() / exportLayoutJs() / exportSvg()
+ *    SipEditor.closeModal() / copyModal() / downloadModal()
+ *    SipEditor.duplicateSelected() / deleteSelected()
+ *    SipEditor.toggleFullscreen()
+ *    SipEditor.getLayout()       → { cells: [...] }    [OLD RAPPID FORMAT]
+ *    SipEditor.setLayout(layout) → accepts { cells: [...] }
+ *                                  OR a [{ type, props }, ...] array
+ *                                    (auto-converted on the way in)
+ *    SipEditor.refreshAssetRegistry()
+ *    SipEditor.loadAssetsForType(type, callback)
+ *
+ *  Depends on:  sip-library.js  (must load first — defines window.SIP)
+ *
+ *  Internal state shape:
+ *    state = {
+ *      cells       : [<Rappid cell>, …],
+ *      selectedId  : string | null,
+ *      viewBox     : "0 0 W H",
+ *      history     : [<deep snapshot>, …],
+ *      historyIdx  : int,
+ *      snap        : { enabled: bool, size: int }
+ *    }
+ * ========================================================================== */
+
+(function () {
+    'use strict';
+
+    if (!window.SIP) {
+        console.error('[sip-editor] window.SIP missing — load sip-library.js first.');
+        return;
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  STATE
+     * ------------------------------------------------------------------------ */
+    const state = {
+        cells: [],
+        selectedId: null,
+        viewBox: '0 0 2000 740',
+        history: [],
+        historyIdx: -1,
+        snap: { enabled: true, size: 10 }
+    };
+
+    let canvasEl, gridEl, toolboxEl, inspectorEl, statusEls;
+
+    /* ------------------------------------------------------------------------ *
+     *  HELPERS
+     * ------------------------------------------------------------------------ */
+    function deepClone(x) { return JSON.parse(JSON.stringify(x)); }
+    function snap(v) { return state.snap.enabled ? Math.round(v / state.snap.size) * state.snap.size : v; }
+    function $(sel, root) { return (root || document).querySelector(sel); }
+    function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
+    function cellById(id) { return state.cells.find(c => c.id === id); }
+    function selectedCell() { return state.selectedId ? cellById(state.selectedId) : null; }
+
+    /* ------------------------------------------------------------------------ *
+     *  SIGNAL → BACKGROUND AUTO-FIT
+     *  ------------------------------------------------------------------------
+     *  When a signal lamp is dropped (newly spawned, or finished being dragged)
+     *  and its centre lands inside the bounds of an examples.SignalBackground
+     *  cell, we resize the lamp to match the background's height and centre
+     *  it vertically. The user's horizontal position is preserved (just
+     *  clamped inside the background), so multiple lamps can be lined up
+     *  along one background.
+     * ------------------------------------------------------------------------ */
+    const LAMP_TYPES_FOR_SNAP = {
+        'examples.Signald90': 1,
+        'examples.Signal45': 1,
+        'examples.Signal90': 1,
+        'examples.Signald45': 1
+    };
+
+    function backgroundUnderCell(cell) {
+        if (!cell || !LAMP_TYPES_FOR_SNAP[cell.type]) return null;
+        const cx = cell.position.x + cell.size.width / 2;
+        const cy = cell.position.y + cell.size.height / 2;
+        let best = null, bestZ = -Infinity;
+        for (const b of state.cells) {
+            if (b.id === cell.id) continue;
+            if (b.type !== 'examples.SignalBackground') continue;
+            const bx = b.position.x, by = b.position.y;
+            const bw = b.size.width, bh = b.size.height;
+            if (cx >= bx && cx <= bx + bw && cy >= by && cy <= by + bh) {
+                const z = b.z || 0;
+                if (z >= bestZ) { best = b; bestZ = z; }
+            }
+        }
+        return best;
+    }
+
+    function fitLampToBackground(lamp, bg) {
+        const pad = 3;                                  // breathing room top/bottom
+        const targetH = Math.max(8, bg.size.height - pad * 2);
+        const targetW = targetH;                        // square footprint = circular lamp
+        lamp.size.width = targetW;
+        lamp.size.height = targetH;
+        // Centre Y on the background tray
+        lamp.position.y = bg.position.y + (bg.size.height - targetH) / 2;
+        // Keep X where the user dropped, but clamp inside the bg horizontally
+        const cx = lamp.position.x + targetW / 2;
+        const minCx = bg.position.x + targetW / 2;
+        const maxCx = bg.position.x + bg.size.width - targetW / 2;
+        const clampedX = Math.max(minCx, Math.min(maxCx, cx)) - targetW / 2;
+        lamp.position.x = snap(clampedX);
+        // Make sure the lamp draws above its tray
+        lamp.z = (bg.z || 0) + 1;
+    }
+
+    function maybeSnapToBackground(cell) {
+        const bg = backgroundUnderCell(cell);
+        if (bg) { fitLampToBackground(cell, bg); return true; }
+        return false;
+    }
+
+    function parseViewBox(vb) {
+        const a = String(vb || state.viewBox).split(/\s+/).map(Number);
+        return { x: a[0] || 0, y: a[1] || 0, w: a[2] || 2000, h: a[3] || 740 };
+    }
+
+    function clientToWorld(evt) {
+        const svg = canvasEl.querySelector('svg');
+        if (!svg) return { x: 0, y: 0 };
+        const rect = svg.getBoundingClientRect();
+        const vb = parseViewBox(state.viewBox);
+        const sx = vb.w / rect.width;
+        const sy = vb.h / rect.height;
+        return {
+            x: vb.x + (evt.clientX - rect.left) * sx,
+            y: vb.y + (evt.clientY - rect.top) * sy
+        };
+    }
+
+    function toast(msg) {
+        const t = document.getElementById('toast');
+        if (!t) return;
+        t.textContent = msg;
+        t.classList.add('show');
+        clearTimeout(t._tid);
+        t._tid = setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  HISTORY (undo / redo)
+     * ------------------------------------------------------------------------ */
+    function pushHistory() {
+        // Drop any "future" history after the current cursor before pushing.
+        state.history = state.history.slice(0, state.historyIdx + 1);
+        state.history.push(JSON.stringify({ cells: state.cells, viewBox: state.viewBox }));
+        state.historyIdx = state.history.length - 1;
+        if (state.history.length > 200) {
+            state.history.shift();
+            state.historyIdx--;
+        }
+        refreshHistoryButtons();
+    }
+    function undo() {
+        if (state.historyIdx <= 0) return;
+        state.historyIdx--;
+        applyHistory();
+    }
+    function redo() {
+        if (state.historyIdx >= state.history.length - 1) return;
+        state.historyIdx++;
+        applyHistory();
+    }
+    function applyHistory() {
+        const snapdata = JSON.parse(state.history[state.historyIdx]);
+        state.cells = snapdata.cells;
+        state.viewBox = snapdata.viewBox;
+        state.selectedId = null;
+        const vbInput = $('#viewbox-input');
+        if (vbInput) vbInput.value = state.viewBox;
+        render();
+        refreshHistoryButtons();
+    }
+    function refreshHistoryButtons() {
+        const u = $('#undo-btn'), r = $('#redo-btn');
+        if (u) u.disabled = state.historyIdx <= 0;
+        if (r) r.disabled = state.historyIdx >= state.history.length - 1;
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  RENDER — paint the whole canvas from state.cells
+     * ------------------------------------------------------------------------ */
+    function render() {
+        if (typeof SIP.prepareRailContext === 'function') SIP.prepareRailContext(state.cells);   // ← ADD THIS LINE
+
+        const fragments = state.cells.map(c => {
+            const inner = SIP.renderCell(c);
+            const sel = (c.id === state.selectedId) ? ' selected' : '';
+            return `<g data-eid="${c.id}" class="editable${sel}">${inner}</g>`;
+        });
+
+        const vb = parseViewBox(state.viewBox);
+        const grid = makeGrid(vb);
+        // Rail layer sits BETWEEN grid and individual cells so the continuous
+        // rail passes behind tick marks / labels and curves stay on top.
+        const railLayer = (typeof SIP.renderRailLayer === 'function')
+            ? SIP.renderRailLayer(state.cells)
+            : '';
+        const standLayer = (typeof SIP.renderStandLayer === 'function')
+            ? SIP.renderStandLayer(state.cells)
+            : '';
+        const breakerLayer = (typeof SIP.renderBreakerLayer === 'function')
+            ? SIP.renderBreakerLayer(state.cells)
+            : '';
+        const sel = state.selectedId ? renderSelectionBox(cellById(state.selectedId)) : '';
+
+        canvasEl.innerHTML =
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.viewBox}" ` +
+            `class="sip-yard" preserveAspectRatio="xMidYMid meet">` +
+            `<defs>` +
+            `<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">` +
+            `<stop offset="0%"   stop-color="#0c1530"/>` +
+            `<stop offset="55%"  stop-color="#08101c"/>` +
+            `<stop offset="100%" stop-color="#060a14"/>` +
+            `</linearGradient>` +
+            `</defs>` +
+            `<rect width="100%" height="100%" fill="url(#sipBg)"/>` +
+            grid +
+            railLayer +
+            standLayer +
+            breakerLayer +
+            fragments.join('') +
+            sel +
+            `</svg>`;
+
+        renderInspector();
+        updateStatusBar();
+        refreshHistoryButtons();
+    }
+
+    function makeGrid(vb) {
+        const step = 50;
+        const MINOR = 'rgba(127,197,255,0.05)';
+        const MAJOR = 'rgba(127,197,255,0.12)';
+        let lines = '';
+        for (let x = Math.ceil(vb.x / step) * step; x < vb.x + vb.w; x += step) {
+            const major = x % 200 === 0;
+            lines += `<line x1="${x}" y1="${vb.y}" x2="${x}" y2="${vb.y + vb.h}" stroke="${major ? MAJOR : MINOR}" stroke-width="1"/>`;
+        }
+        for (let y = Math.ceil(vb.y / step) * step; y < vb.y + vb.h; y += step) {
+            const major = y % 200 === 0;
+            lines += `<line x1="${vb.x}" y1="${y}" x2="${vb.x + vb.w}" y2="${y}" stroke="${major ? MAJOR : MINOR}" stroke-width="1"/>`;
+        }
+        return `<g class="grid" pointer-events="none">${lines}</g>`;
+    }
+
+    function renderSelectionBox(cell) {
+        if (!cell) return '';
+        const x = cell.position.x, y = cell.position.y;
+        const w = cell.size.width, h = cell.size.height;
+        const x2 = x + w, y2 = y + h;
+        const mx = x + w / 2, my = y + h / 2;
+        const r = 5;   // handle radius in viewBox units
+
+        // Each handle gets a data-handle="<dir>" used by the mousedown router.
+        // pointer-events stays ON on this group so the handles are clickable.
+        let svg = `<g class="selection-overlay">`;
+        // Dashed bounding box (passive)
+        svg += `<rect x="${x - 2}" y="${y - 2}" width="${w + 4}" height="${h + 4}" ` +
+            `fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="6,4" pointer-events="none"/>`;
+        // 8 handles
+        const handles = [
+            ['nw', x, y, 'nwse-resize'],
+            ['n', mx, y, 'ns-resize'],
+            ['ne', x2, y, 'nesw-resize'],
+            ['e', x2, my, 'ew-resize'],
+            ['se', x2, y2, 'nwse-resize'],
+            ['s', mx, y2, 'ns-resize'],
+            ['sw', x, y2, 'nesw-resize'],
+            ['w', x, my, 'ew-resize']
+        ];
+        for (const h of handles) {
+            svg += `<circle class="resize-handle" data-handle="${h[0]}" ` +
+                `cx="${h[1]}" cy="${h[2]}" r="${r}" ` +
+                `fill="#0f172a" stroke="#22d3ee" stroke-width="2" ` +
+                `style="cursor:${h[3]}"/>`;
+        }
+        svg += `</g>`;
+        return svg;
+    }
+
+    function updateStatusBar() {
+        const ec = $('#element-count');
+        const sl = $('#selection-label');
+        if (ec) ec.textContent = state.cells.length + ' element' + (state.cells.length === 1 ? '' : 's');
+        if (sl) {
+            if (!state.selectedId) sl.textContent = 'No selection';
+            else {
+                const c = selectedCell();
+                const s = c && SIP.spec(c.type);
+                sl.textContent = c ? ('Selected: ' + (s ? s.label : c.type)) : 'No selection';
+            }
+        }
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  TOOLBOX — build the asset palette
+     * ------------------------------------------------------------------------ */
+    /* ---- Recent-types tracker (for "Recently Used" section) ---- */
+    const recentTypes = [];
+
+    function buildToolbox() {
+        if (!toolboxEl) return;
+
+        /* ---- Search box at the top ---- */
+        let html = `<div class="field" style="margin-bottom:10px;">` +
+            `<input type="text" id="toolbox-search" placeholder="Search assets…" /></div>`;
+
+        /* ---- "Recently Used" section (shows after first use) ---- */
+        if (recentTypes.length > 0) {
+            html += `<div class="tb-group" data-tbgroup="recent">`;
+            html += `<div class="tb-group-h" style="color:#22d3ee;">Recently Used</div>`;
+            html += `<div class="tb-group-items">`;
+            for (const type of recentTypes) {
+                const s = SIP.spec(type);
+                if (!s) continue;
+                html += `<button class="tb-item" data-type="${type}" title="${s.label}">` +
+                    `<div class="tb-icon">${s.icon()}</div>` +
+                    `<div class="tb-name">${s.label}</div>` +
+                    `</button>`;
+            }
+            html += `</div></div>`;
+        }
+
+        /* ---- Standard groups (same as before) ---- */
+        for (const grp of SIP.GROUPS) {
+            const items = SIP.PALETTE.filter(t => {
+                const s = SIP.spec(t);
+                return s && s.group === grp.key && !s.hidden;
+            });
+            if (!items.length) continue;
+            html += `<div class="tb-group" data-tbgroup="${grp.key}">`;
+            html += `<div class="tb-group-h">${grp.label}</div>`;
+            html += `<div class="tb-group-items">`;
+            for (const type of items) {
+                const s = SIP.spec(type);
+                html += `<button class="tb-item" data-type="${type}" title="${s.label}">` +
+                    `<div class="tb-icon">${s.icon()}</div>` +
+                    `<div class="tb-name">${s.label}</div>` +
+                    `</button>`;
+            }
+            html += `</div></div>`;
+        }
+        toolboxEl.innerHTML = html;
+
+        /* ---- Wire click/drag on each toolbox button ---- */
+        toolboxEl.querySelectorAll('.tb-item').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                startToolboxDrag(btn.getAttribute('data-type'), e);
+            });
+        });
+
+        /* ---- Wire the search filter ---- */
+        const searchInput = toolboxEl.querySelector('#toolbox-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', function () {
+                const q = this.value.toLowerCase().trim();
+                toolboxEl.querySelectorAll('.tb-item').forEach(btn => {
+                    const name = (btn.getAttribute('title') || '').toLowerCase();
+                    btn.style.display = (!q || name.indexOf(q) !== -1) ? '' : 'none';
+                });
+                // Hide groups where ALL items are hidden
+                toolboxEl.querySelectorAll('.tb-group').forEach(grp => {
+                    const visible = grp.querySelectorAll('.tb-item:not([style*="display: none"])');
+                    grp.style.display = visible.length ? '' : 'none';
+                });
+            });
+        }
+    }
+
+    /* ---- Drag-from-toolbox: press, drag ghost, release on canvas ---- */
+    let toolboxDrag = null;
+
+    function startToolboxDrag(type, evt) {
+        const spec = SIP.spec(type);
+        if (!spec) return;
+
+        // Create a small ghost element that follows the cursor
+        const ghost = document.createElement('div');
+        ghost.innerHTML = spec.icon();
+        ghost.style.cssText =
+            'position:fixed;pointer-events:none;opacity:0.75;z-index:9999;' +
+            'width:56px;height:36px;filter:brightness(1.5);';
+        ghost.style.left = (evt.clientX - 28) + 'px';
+        ghost.style.top = (evt.clientY - 18) + 'px';
+        document.body.appendChild(ghost);
+        toolboxDrag = { type: type, ghostEl: ghost, moved: false, startX: evt.clientX, startY: evt.clientY };
+
+        function onMove(e) {
+            ghost.style.left = (e.clientX - 28) + 'px';
+            ghost.style.top = (e.clientY - 18) + 'px';
+            // Mark as moved if the user dragged more than 5px
+            if (Math.abs(e.clientX - toolboxDrag.startX) > 5 ||
+                Math.abs(e.clientY - toolboxDrag.startY) > 5) {
+                toolboxDrag.moved = true;
+            }
+        }
+        function onUp(e) {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            ghost.remove();
+
+            // Check if released over the canvas
+            const svgEl = canvasEl ? canvasEl.querySelector('svg') : null;
+            if (svgEl && toolboxDrag.moved) {
+                const rect = svgEl.getBoundingClientRect();
+                if (e.clientX >= rect.left && e.clientX <= rect.right &&
+                    e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                    // Place at the drop position
+                    addCellAtPosition(type, e);
+                    toolboxDrag = null;
+                    return;
+                }
+            }
+            // Fallback: click (no drag or dropped outside canvas) → add at center
+            addCellFromToolbox(type);
+            toolboxDrag = null;
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    /* Place a new cell at the exact mouse position on the canvas */
+    function addCellAtPosition(type, evt) {
+        const pos = clientToWorld(evt);
+        const c = SIP.makeCell(type, snap(pos.x), snap(pos.y));
+        c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
+        state.cells.push(c);
+        const snapped = maybeSnapToBackground(c);
+        state.selectedId = c.id;
+        trackRecentType(type);
+        pushHistory();
+        render();
+        toast('Added ' + SIP.spec(type).label + (snapped ? ' (snapped to background)' : ''));
+    }
+
+    /* Track recently used types for the "Recently Used" toolbox section */
+    function trackRecentType(type) {
+        const idx = recentTypes.indexOf(type);
+        if (idx > -1) recentTypes.splice(idx, 1);  // remove duplicate
+        recentTypes.unshift(type);                   // add to front
+        if (recentTypes.length > 5) recentTypes.pop(); // max 5
+        buildToolbox();                               // refresh toolbox to show updated "Recent"
+    }
+
+    function addCellFromToolbox(type) {
+        const vb = parseViewBox(state.viewBox);
+        const cx = snap(vb.x + vb.w / 2);
+        const cy = snap(vb.y + vb.h / 2);
+        const c = SIP.makeCell(type, cx, cy);
+        c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
+        state.cells.push(c);
+        // If a signal lamp was spawned on top of a SignalBackground that's
+        // already at canvas centre, auto-fit it to the tray.
+        const snapped = maybeSnapToBackground(c);
+        state.selectedId = c.id;
+        trackRecentType(type);
+        pushHistory();
+        render();
+        toast('Added ' + SIP.spec(type).label + (snapped ? ' (snapped to background)' : ''));
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  INSPECTOR — properties of the selected cell
+     * ------------------------------------------------------------------------ */
+    let assetRegistryCache = {}; // stencilType → [{id, name}]
+
+    function renderInspector() {
+        if (!inspectorEl) return;
+        const c = selectedCell();
+        if (!c) {
+            inspectorEl.innerHTML = `<p class="muted">Nothing selected.<br/><br/>Click an element on the canvas, or add one from the toolbox.</p>`;
+            return;
+        }
+        const s = SIP.spec(c.type);
+        const labelTxt = (c.attrs && c.attrs.label && c.attrs.label.text != null)
+            ? String(c.attrs.label.text) : '';
+        const labelFill = (c.attrs && c.attrs.label && c.attrs.label.fill) || '';
+        const labelSize = (c.attrs && c.attrs.label && c.attrs.label.fontSize) || '';
+
+        let html = '';
+        html += `<div class="insp-row"><b>Type</b><span>${s ? s.label : c.type}</span></div>`;
+        html += `<div class="insp-row"><b>Stencil</b><code>${c.type}</code></div>`;
+        html += `<div class="field"><label>Asset name (label)</label>` +
+            `<input type="text" id="insp-label" value="${escAttr(labelTxt)}" placeholder="e.g. 3T1, S18 RG, 06"/></div>`;
+        html += `<div class="field"><label>Asset (from registry)</label>` +
+            `<select id="insp-asset-select"><option value="">— loading —</option></select></div>`;
+        html += `<div class="insp-grid">`;
+        html += `<div class="field"><label>X</label><input type="number" id="insp-x" value="${c.position.x}" step="${state.snap.size}"/></div>`;
+        html += `<div class="field"><label>Y</label><input type="number" id="insp-y" value="${c.position.y}" step="${state.snap.size}"/></div>`;
+        html += `<div class="field"><label>Width</label><input type="number" id="insp-w" value="${c.size.width}" step="10"/></div>`;
+        html += `<div class="field"><label>Height</label><input type="number" id="insp-h" value="${c.size.height}" step="10"/></div>`;
+        html += `</div>`;
+        html += `<div class="insp-grid">`;
+        html += `<div class="field"><label>Label colour</label><input type="text" id="insp-lf" value="${escAttr(labelFill)}" placeholder="#d7d7d7"/></div>`;
+        html += `<div class="field"><label>Label size</label><input type="number" id="insp-ls" value="${labelSize || 14}" min="6" max="40"/></div>`;
+        html += `</div>`;
+
+        /* ---- Composite-signal-only fields (Signal composite + Shunts) ---- */
+        const SIG_STAND_TYPES = {
+            'examples.Signal': 1,
+            'examples.SignalShunt': 1,
+            'examples.Shaunt': 1,
+            'examples.Shaunt2': 1,
+            'examples.Shaunt3': 1
+        };
+        if (SIG_STAND_TYPES[c.type]) {
+            const sigProps = (c.attrs && c.attrs.signal) || {};
+            const standMode = sigProps.stand || 'bottom';
+            const standLen = +sigProps.standLength || 30;
+            const standArm = +sigProps.standArm || 0;
+            html += `<div class="tb-group-h" style="margin-top:14px">` +
+                (c.type === 'examples.Signal' ? 'Signal Composite' :
+                    c.type === 'examples.SignalShunt' ? 'Signal + Shunt (combined)' :
+                        c.type === 'examples.Shaunt' ? 'Shunt · 3-Aspect · Proceed' :
+                            c.type === 'examples.Shaunt2' ? 'Shunt · 3-Aspect · Diverge' :
+                                c.type === 'examples.Shaunt3' ? 'Shunt · 3-Aspect · Off' :
+                                    'Shunt') +
+                `</div>`;
+
+            /* Signal position: above or below the track.
+               'up'   = signal body sits ABOVE the track, stand drops DOWN
+               'down' = signal body sits BELOW the track, stand rises UP */
+            const signalSide = sigProps.signalSide || 'up';
+            html += `<div class="field"><label>Signal position (relative to track)</label>` +
+                `<select id="insp-sig-side">` +
+                `<option value="up"   ${signalSide === 'up' || signalSide === 'left' ? 'selected' : ''}>Above track (Up direction)</option>` +
+                `<option value="down" ${signalSide === 'down' || signalSide === 'right' ? 'selected' : ''}>Below track (Down direction)</option>` +
+                `</select></div>`;
+
+            /* Lamp/lit controls only apply to the composite signal */
+            if (c.type === 'examples.Signal') {
+                const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps) || 'BBB';
+                const litStr = (typeof sigProps.lit === 'string' && sigProps.lit) || '';
+
+                /* ---- Visual lamp editor: clickable coloured circles ---- */
+                const LAMP_COLORS = { B: '#aaaaaa', R: '#FF2E2E', Y: '#FFD400', G: '#22D142', X: '#c8a800' };
+                const LAMP_NAMES = { B: 'Blank', R: 'Red', Y: 'Yellow', G: 'Green', X: 'Dbl Yellow' };
+                const LAMP_ORDER = ['B', 'R', 'Y', 'G', 'X'];
+
+                html += `<div class="field"><label>Lamps (click to change colour, + to add, − to remove)</label>`;
+                html += `<div id="insp-lamp-row" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;">`;
+                for (let li = 0; li < lampsStr.length; li++) {
+                    const ch = lampsStr.charAt(li).toUpperCase();
+                    const col = LAMP_COLORS[ch] || LAMP_COLORS['B'];
+                    html += `<div class="sip-lamp-dot" data-idx="${li}" data-kind="${ch}" ` +
+                        `style="width:28px;height:28px;border-radius:50%;background:${col};` +
+                        `border:2px solid rgba(255,255,255,0.3);cursor:pointer;` +
+                        `display:flex;align-items:center;justify-content:center;` +
+                        `font-size:10px;font-weight:700;color:#0a0f1e;" ` +
+                        `title="${LAMP_NAMES[ch] || ch}">` +
+                        `${ch}</div>`;
+                }
+                html += `<div id="insp-lamp-add" style="width:24px;height:24px;border-radius:50%;` +
+                    `background:rgba(34,211,238,0.15);border:1px dashed rgba(34,211,238,0.5);` +
+                    `cursor:pointer;display:flex;align-items:center;justify-content:center;` +
+                    `font-size:14px;color:#22d3ee;" title="Add lamp">+</div>`;
+                if (lampsStr.length > 1) {
+                    html += `<div id="insp-lamp-remove" style="width:24px;height:24px;border-radius:50%;` +
+                        `background:rgba(255,46,46,0.12);border:1px dashed rgba(255,46,46,0.4);` +
+                        `cursor:pointer;display:flex;align-items:center;justify-content:center;` +
+                        `font-size:14px;color:#FF6666;" title="Remove last lamp">−</div>`;
+                }
+                html += `</div></div>`;
+
+                html += `<div class="field"><label>Lit aspects (letters from the lamps string that are ON)</label>` +
+                    `<input type="text" id="insp-sig-lit" value="${escAttr(litStr)}" placeholder="(none)"/></div>`;
+            }
+
+            html += `<div class="field"><label>Stand</label>` +
+                `<select id="insp-sig-stand">` +
+                `<option value="none"   ${standMode === 'none' ? 'selected' : ''}>None</option>` +
+                `<option value="top"    ${standMode === 'top' ? 'selected' : ''}>Top (rises up)</option>` +
+                `<option value="bottom" ${standMode === 'bottom' ? 'selected' : ''}>Bottom (drops down)</option>` +
+                `</select></div>`;
+
+            /* Stand side: left / center / right — where the vertical drop
+               starts horizontally on the signal/shunt body */
+            const standSide = sigProps.standSide || 'center';
+            html += `<div class="field"><label>Stand side</label>` +
+                `<select id="insp-sig-stand-side">` +
+                `<option value="left"   ${standSide === 'left' ? 'selected' : ''}>Left</option>` +
+                `<option value="center" ${standSide === 'center' ? 'selected' : ''}>Centre</option>` +
+                `<option value="right"  ${standSide === 'right' ? 'selected' : ''}>Right</option>` +
+                `</select></div>`;
+
+            const standArmBefore = +sigProps.standArmBefore || 0;
+            html += `<div class="insp-grid">`;
+            html += `<div class="field"><label>Stand length (vertical)</label><input type="number" id="insp-sig-stand-len" value="${standLen}" min="0" max="400" step="2"/></div>`;
+            html += `<div class="field"><label>Arm before drop (+ R / − L)</label><input type="number" id="insp-sig-stand-arm-before" value="${standArmBefore}" min="-300" max="300" step="2"/></div>`;
+            html += `</div>`;
+            html += `<div class="field"><label>Arm after drop (+ right / − left)</label><input type="number" id="insp-sig-stand-arm" value="${standArm}" min="-300" max="300" step="2"/></div>`;
+
+            /* Visual hint about stand shape */
+            html += `<div style="font-size:10px;color:var(--muted);line-height:1.5;padding:4px 0;">` +
+                `Shape: signal → arm-before → vertical drop → arm-after → endpoint</div>`;
+        }
+
+        html += `<div class="insp-actions">`;
+        html += `<button class="tb" onclick="SipEditor.duplicateSelected()">Duplicate</button>`;
+        html += `<button class="tb danger" onclick="SipEditor.deleteSelected()">Delete</button>`;
+        html += `</div>`;
+        inspectorEl.innerHTML = html;
+
+        // Wire up the inputs
+        bindInspectorInput('insp-label', v => {
+            c.attrs = c.attrs || {};
+            c.attrs.label = c.attrs.label || {};
+            c.attrs.label.text = v;
+        });
+        bindInspectorInput('insp-lf', v => {
+            c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+            c.attrs.label.fill = v || undefined;
+        });
+        bindInspectorInputNum('insp-ls', v => {
+            c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+            if (v) c.attrs.label.fontSize = v;
+        });
+        bindInspectorInputNum('insp-x', v => { c.position.x = v; });
+        bindInspectorInputNum('insp-y', v => { c.position.y = v; });
+        bindInspectorInputNum('insp-w', v => { c.size.width = v; });
+        bindInspectorInputNum('insp-h', v => { c.size.height = v; });
+
+        /* ---- Composite-signal inspector bindings (Signal composite + Shunts) ---- */
+        const SIG_STAND_BIND_TYPES = {
+            'examples.Signal': 1,
+            'examples.SignalShunt': 1,
+            'examples.Shaunt': 1,
+            'examples.Shaunt2': 1,
+            'examples.Shaunt3': 1
+        };
+        if (SIG_STAND_BIND_TYPES[c.type]) {
+            const ensureSig = () => {
+                c.attrs = c.attrs || {};
+                c.attrs.signal = c.attrs.signal || {};
+                return c.attrs.signal;
+            };
+            /* Lamp/lit only exist for the composite signal */
+            if (c.type === 'examples.Signal') {
+                /* ---- Visual lamp editor: wire click handlers ---- */
+                const LAMP_CYCLE = ['B', 'R', 'Y', 'G', 'X'];
+                const lampRow = $('#insp-lamp-row');
+                if (lampRow) {
+                    // Click a lamp circle → cycle to next colour
+                    lampRow.querySelectorAll('.sip-lamp-dot').forEach(dot => {
+                        dot.addEventListener('click', () => {
+                            const sp = ensureSig();
+                            let lamps = String(sp.lamps || 'BBB').split('');
+                            const idx = parseInt(dot.getAttribute('data-idx'), 10);
+                            const curKind = dot.getAttribute('data-kind');
+                            const nextIdx = (LAMP_CYCLE.indexOf(curKind) + 1) % LAMP_CYCLE.length;
+                            lamps[idx] = LAMP_CYCLE[nextIdx];
+                            sp.lamps = lamps.join('');
+                            render();
+                            pushHistory();
+                        });
+                    });
+                    // "+" button → add a blank lamp
+                    const addBtn = $('#insp-lamp-add');
+                    if (addBtn) {
+                        addBtn.addEventListener('click', () => {
+                            const sp = ensureSig();
+                            sp.lamps = (sp.lamps || 'BBB') + 'B';
+                            render();
+                            pushHistory();
+                        });
+                    }
+                    // "−" button → remove last lamp
+                    const removeBtn = $('#insp-lamp-remove');
+                    if (removeBtn) {
+                        removeBtn.addEventListener('click', () => {
+                            const sp = ensureSig();
+                            if (sp.lamps && sp.lamps.length > 1) {
+                                sp.lamps = sp.lamps.slice(0, -1);
+                                render();
+                                pushHistory();
+                            }
+                        });
+                    }
+                }
+
+                bindInspectorInput('insp-sig-lit', v => {
+                    const sp = ensureSig();
+                    sp.lit = String(v || '').toUpperCase().replace(/[^BRYGX]/g, '');
+                });
+            }
+            bindInspectorInput('insp-sig-stand', v => {
+                const sp = ensureSig();
+                sp.stand = (v === 'top' || v === 'bottom') ? v : 'none';
+            });
+            bindInspectorInput('insp-sig-side', v => {
+                const sp = ensureSig();
+                sp.signalSide = (v === 'up' || v === 'down') ? v : 'up';
+                // Auto-set stand direction to match:
+                sp.stand = (v === 'down') ? 'top' : 'bottom';
+
+                /* ---- Auto-snap: move signal to the nearest track ---- *
+                 *  Find the closest track cell and position the signal
+                 *  directly above or below it, with stand auto-connected.
+                 * ----------------------------------------------------- */
+                const sigCell = cellById(state.selectedId);
+                if (!sigCell) return;
+
+                // Find all track cells
+                const TRACK_TYPES = {
+                    'examples.Track': 1, 'examples.Track1': 1, 'examples.Track2': 1
+                };
+                const tracks = state.cells.filter(cc => TRACK_TYPES[cc.type]);
+                if (!tracks.length) return;
+
+                // Find nearest track by vertical distance from signal centre
+                const sigCy = sigCell.position.y + (sigCell.size.height || 24) / 2;
+                const sigCx = sigCell.position.x + (sigCell.size.width || 90) / 2;
+                let bestTrack = null;
+                let bestDist = Infinity;
+                for (const tr of tracks) {
+                    const trCy = tr.position.y + (tr.size.height || 100) / 2;
+                    const trLeft = tr.position.x;
+                    const trRight = tr.position.x + (tr.size.width || 300);
+                    // Only consider tracks that the signal overlaps horizontally
+                    if (sigCx >= trLeft - 50 && sigCx <= trRight + 50) {
+                        const dist = Math.abs(sigCy - trCy);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestTrack = tr;
+                        }
+                    }
+                }
+                // Fallback: if no horizontal overlap, just pick closest by Y
+                if (!bestTrack) {
+                    for (const tr of tracks) {
+                        const trCy = tr.position.y + (tr.size.height || 100) / 2;
+                        const dist = Math.abs(sigCy - trCy);
+                        if (dist < bestDist) { bestDist = dist; bestTrack = tr; }
+                    }
+                }
+                if (!bestTrack) return;
+
+                const trY = bestTrack.position.y;
+                const trH = bestTrack.size.height || 100;
+                const sigH = sigCell.size.height || 24;
+                const gap = 8;  // px gap between signal and track edge
+
+                if (v === 'up') {
+                    // Position ABOVE the track
+                    sigCell.position.y = snap(trY - sigH - gap);
+                    sp.stand = 'bottom';
+                    sp.standLength = Math.round(gap + 2);
+                } else {
+                    // Position BELOW the track
+                    sigCell.position.y = snap(trY + trH + gap);
+                    sp.stand = 'top';
+                    sp.standLength = Math.round(gap + 2);
+                }
+            });
+            bindInspectorInput('insp-sig-stand-side', v => {
+                const sp = ensureSig();
+                sp.standSide = (v === 'left' || v === 'right') ? v : 'center';
+            });
+            bindInspectorInputNum('insp-sig-stand-len', v => {
+                const sp = ensureSig();
+                sp.standLength = v;
+            });
+            bindInspectorInputNum('insp-sig-stand-arm-before', v => {
+                const sp = ensureSig();
+                sp.standArmBefore = v;
+            });
+            bindInspectorInputNum('insp-sig-stand-arm', v => {
+                const sp = ensureSig();
+                sp.standArm = v;
+            });
+        }
+
+        // Asset dropdown — pull from registry (server) or harvest from current yard.
+        loadAssetsForType(c.type, function (list) {
+            const sel = $('#insp-asset-select');
+            if (!sel) return;
+            const harvested = harvestLocalAssetNames(c.type);
+            const merged = mergeAssetLists(list, harvested);
+            let opts = '<option value="">— pick existing —</option>';
+            for (const a of merged) {
+                const v = escAttr(a.name);
+                opts += `<option value="${v}" ${a.name === labelTxt ? 'selected' : ''}>${escapeXml(a.name)}</option>`;
+            }
+            sel.innerHTML = opts;
+            sel.addEventListener('change', () => {
+                const lbl = $('#insp-label');
+                if (lbl) {
+                    lbl.value = sel.value;
+                    c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+                    c.attrs.label.text = sel.value;
+                    render();
+                    pushHistory();
+                }
+            });
+        });
+    }
+
+    function bindInspectorInput(id, setter) {
+        const el = $('#' + id);
+        if (!el) return;
+        el.addEventListener('input', () => { setter(el.value); render(); });
+        el.addEventListener('change', () => pushHistory());
+    }
+    function bindInspectorInputNum(id, setter) {
+        const el = $('#' + id);
+        if (!el) return;
+        el.addEventListener('input', () => { const v = parseFloat(el.value); if (!isNaN(v)) { setter(v); render(); } });
+        el.addEventListener('change', () => pushHistory());
+    }
+    function escAttr(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    }
+    function escapeXml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function harvestLocalAssetNames(type) {
+        const seen = new Set();
+        const out = [];
+        for (const c of state.cells) {
+            if (c.type !== type) continue;
+            const t = c.attrs && c.attrs.label && c.attrs.label.text;
+            if (t && !seen.has(t)) { seen.add(t); out.push({ id: t, name: t }); }
+        }
+        return out;
+    }
+    function mergeAssetLists(a, b) {
+        const seen = new Set();
+        const out = [];
+        for (const list of [a || [], b || []]) {
+            for (const x of list) {
+                if (!x || !x.name) continue;
+                if (seen.has(x.name)) continue;
+                seen.add(x.name);
+                out.push(x);
+            }
+        }
+        return out.sort((p, q) => p.name.localeCompare(q.name));
+    }
+
+    function refreshAssetRegistry() { assetRegistryCache = {}; }
+
+    function loadAssetsForType(type, cb) {
+        if (assetRegistryCache[type]) { cb(assetRegistryCache[type]); return; }
+        if (typeof window.SipAssetSource === 'function') {
+            window.SipAssetSource(type, function (list) {
+                assetRegistryCache[type] = list || [];
+                cb(assetRegistryCache[type]);
+            });
+        } else {
+            cb([]);
+        }
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  INTERACTION — select / drag / delete
+     * ------------------------------------------------------------------------ */
+    let drag = null;    // { id, offX, offY, moved }   — moving an existing cell
+    let resize = null;  // { id, handle, ox, oy, ow, oh, moved } — resizing
+
+    function onCanvasMouseDown(evt) {
+        // (a) Was it a resize handle?
+        let node = evt.target;
+        if (node && node.classList && node.classList.contains('resize-handle')) {
+            const dir = node.getAttribute('data-handle');
+            const c = selectedCell();
+            if (!c) return;
+            resize = {
+                id: c.id, handle: dir,
+                ox: c.position.x, oy: c.position.y,
+                ow: c.size.width, oh: c.size.height,
+                moved: false
+            };
+            evt.preventDefault();
+            return;
+        }
+        // (b) Otherwise look up the editable group as before
+        while (node && node !== canvasEl) {
+            if (node.classList && node.classList.contains('editable')) break;
+            node = node.parentNode;
+        }
+        if (!node || node === canvasEl) {
+            if (state.selectedId) {
+                state.selectedId = null;
+                render();
+            }
+            return;
+        }
+        const eid = node.getAttribute('data-eid');
+        state.selectedId = eid;
+        render();
+
+        const c = cellById(eid);
+        if (!c) return;
+        const start = clientToWorld(evt);
+        drag = {
+            id: eid,
+            offX: start.x - c.position.x,
+            offY: start.y - c.position.y,
+            moved: false
+        };
+        evt.preventDefault();
+    }
+    function onCanvasMouseMove(evt) {
+        // Cursor readout always
+        const w = clientToWorld(evt);
+        const cc = $('#cursor-coords');
+        if (cc) cc.textContent = Math.round(w.x) + ',' + Math.round(w.y);
+
+        // RESIZE has priority over drag
+        if (resize) {
+            const c = cellById(resize.id);
+            if (!c) return;
+            const MIN = 20;
+            let nx = resize.ox, ny = resize.oy, nw = resize.ow, nh = resize.oh;
+
+            // Right side dragging east?  handles e/ne/se
+            if (/e/.test(resize.handle)) {
+                nw = Math.max(MIN, snap(w.x - resize.ox));
+            }
+            // Left side dragging west?  handles w/nw/sw
+            if (/w/.test(resize.handle)) {
+                const right = resize.ox + resize.ow;
+                nx = Math.min(snap(w.x), right - MIN);
+                nw = right - nx;
+            }
+            // Bottom side?  handles s/se/sw
+            if (/^s|s$/.test(resize.handle)) {
+                nh = Math.max(MIN, snap(w.y - resize.oy));
+            }
+            // Top side?  handles n/ne/nw
+            if (/^n|n$/.test(resize.handle)) {
+                const bottom = resize.oy + resize.oh;
+                ny = Math.min(snap(w.y), bottom - MIN);
+                nh = bottom - ny;
+            }
+            if (nx !== c.position.x || ny !== c.position.y ||
+                nw !== c.size.width || nh !== c.size.height) {
+                c.position.x = nx;
+                c.position.y = ny;
+                c.size.width = nw;
+                c.size.height = nh;
+                resize.moved = true;
+                render();
+            }
+            return;
+        }
+
+        // DRAG (original behaviour)
+        if (!drag) return;
+        const c = cellById(drag.id);
+        if (!c) return;
+        const nx = snap(w.x - drag.offX);
+        const ny = snap(w.y - drag.offY);
+        if (nx !== c.position.x || ny !== c.position.y) {
+            c.position.x = nx;
+            c.position.y = ny;
+            drag.moved = true;
+            render();
+        }
+    }
+
+    function onCanvasMouseUp() {
+        if (resize && resize.moved) pushHistory();
+        if (drag && drag.moved) {
+            // If the cell being dragged is a signal lamp and we let go over
+            // a SignalBackground, snap-fit it to the tray.
+            const c = cellById(drag.id);
+            if (c && maybeSnapToBackground(c)) render();
+            pushHistory();
+        }
+        drag = null;
+        resize = null;
+    }
+
+    function onKey(evt) {
+        if (evt.target && /^(INPUT|TEXTAREA|SELECT)$/.test(evt.target.tagName)) return;
+        if (evt.key === 'Delete' || evt.key === 'Backspace') {
+            if (state.selectedId) { deleteSelected(); evt.preventDefault(); }
+        } else if (evt.key === 'Escape') {
+            if (state.selectedId) { state.selectedId = null; render(); }
+        } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
+            evt.preventDefault();
+            if (evt.shiftKey) redo(); else undo();
+        } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'y') {
+            evt.preventDefault(); redo();
+        } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'd') {
+            evt.preventDefault(); duplicateSelected();
+        }
+    }
+
+    function deleteSelected() {
+        if (!state.selectedId) return;
+        state.cells = state.cells.filter(c => c.id !== state.selectedId);
+        state.selectedId = null;
+        pushHistory();
+        render();
+    }
+    function duplicateSelected() {
+        const c = selectedCell();
+        if (!c) return;
+        const copy = deepClone(c);
+        copy.id = SIP._uid();
+        copy.position.x += 20;
+        copy.position.y += 20;
+        copy.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
+        state.cells.push(copy);
+        state.selectedId = copy.id;
+        pushHistory();
+        render();
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  IMPORT / EXPORT MODAL
+     * ------------------------------------------------------------------------ */
+    let modalMode = 'export';
+
+    function openImport() {
+        modalMode = 'import';
+        $('#modal-title').textContent = 'IMPORT';
+        $('#modal-hint').textContent = 'Paste OLD-Rappid { "cells": [...] } JSON, then click Import.';
+        $('#modal-text').value = JSON.stringify({ cells: state.cells }, null, 2);
+        $('#modal-action').textContent = 'Import';
+        $('#modal').classList.add('show');
+    }
+    function exportLayoutJs() {
+        modalMode = 'export-js';
+        $('#modal-title').textContent = 'EXPORT  ·  .JS';
+        $('#modal-hint').textContent = 'CommonJS module — exports the cells array verbatim.';
+        const code =
+            `// Generated by SipEditor.\n` +
+            `// Paste this into a .js file alongside sip-library.js & call SIP.renderYard({ viewBox, cells }).\n` +
+            `const cells = ${JSON.stringify(state.cells, null, 2)};\n` +
+            `const yardSvg = SIP.renderYard({ viewBox: '${state.viewBox}', cells });\n` +
+            `module.exports = { yardSvg, cells };\n`;
+        $('#modal-text').value = code;
+        $('#modal-action').textContent = 'Download';
+        $('#modal').classList.add('show');
+    }
+    function exportSvg() {
+        modalMode = 'export-svg';
+        $('#modal-title').textContent = 'EXPORT  ·  .SVG';
+        $('#modal-hint').textContent = 'A standalone SVG of the current yard.';
+        $('#modal-text').value = SIP.renderYard({ viewBox: state.viewBox, cells: state.cells });
+        $('#modal-action').textContent = 'Download';
+        $('#modal').classList.add('show');
+    }
+    function closeModal() { $('#modal').classList.remove('show'); }
+    function copyModal() {
+        const ta = $('#modal-text');
+        ta.select();
+        try { document.execCommand('copy'); toast('Copied to clipboard.'); }
+        catch (e) { toast('Copy failed.'); }
+    }
+    function downloadModal() {
+        const t = $('#modal-text').value;
+        if (modalMode === 'import') {
+            try {
+                const parsed = JSON.parse(t);
+                setLayout(parsed);
+                toast('Imported ' + state.cells.length + ' cells.');
+                closeModal();
+            } catch (e) {
+                toast('Invalid JSON: ' + e.message);
+            }
+            return;
+        }
+        const ext = modalMode === 'export-svg' ? 'svg' : 'js';
+        const mime = modalMode === 'export-svg' ? 'image/svg+xml' : 'text/javascript';
+        const blob = new Blob([t], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'sip-yard.' + ext;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  PRESETS (Blank / Sample)
+     * ------------------------------------------------------------------------ */
+    function loadPreset(name) {
+        if (name === 'sample' || name === 'arnetha') {
+            state.cells = samplePreset();
+            state.viewBox = '0 0 1400 400';
+        } else {
+            state.cells = [];
+            state.viewBox = '0 0 2000 740';
+        }
+        state.selectedId = null;
+        const vbInput = $('#viewbox-input');
+        if (vbInput) vbInput.value = state.viewBox;
+        pushHistory();
+        render();
+    }
+
+    function samplePreset() {
+        // A tiny demonstration yard — two parallel tracks, one point, one signal.
+        const cells = [];
+        cells.push(Object.assign(SIP.makeCell('examples.Track1', 400, 160), { size: { width: 600, height: 100 } }));
+        cells[cells.length - 1].attrs.label.text = '3T1';
+        cells.push(Object.assign(SIP.makeCell('examples.Track1', 400, 320), { size: { width: 600, height: 100 } }));
+        cells[cells.length - 1].attrs.label.text = '5T';
+        cells.push(SIP.makeCell('examples.PointMachine', 720, 240));
+        cells[cells.length - 1].attrs.label.text = '06';
+        cells.push(SIP.makeCell('examples.Signald90', 900, 100));
+        cells[cells.length - 1].attrs.label.text = 'S18 RG';
+        cells.push(SIP.makeCell('examples.Signal90', 950, 100));
+        cells[cells.length - 1].attrs.label.text = 'S18 DG';
+        cells.push(SIP.makeCell('examples.Signal45', 1000, 100));
+        cells[cells.length - 1].attrs.label.text = 'S18 HG';
+        cells.push(SIP.makeCell('examples.BusBar', 1200, 50));
+        cells[cells.length - 1].attrs.label.text = 'B1';
+        return cells;
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  FIT ALL — auto-zoom to show every element
+     * ------------------------------------------------------------------------ */
+    function fitAll() {
+        if (!state.cells.length) {
+            toast('No elements to fit.');
+            return;
+        }
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const c of state.cells) {
+            const x = (c.position && c.position.x) || 0;
+            const y = (c.position && c.position.y) || 0;
+            const w = (c.size && c.size.width) || 60;
+            const h = (c.size && c.size.height) || 60;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x + w > maxX) maxX = x + w;
+            if (y + h > maxY) maxY = y + h;
+        }
+        const pad = 80;
+        state.viewBox = Math.floor(minX - pad) + ' ' + Math.floor(minY - pad) + ' ' +
+            Math.ceil(maxX - minX + pad * 2) + ' ' + Math.ceil(maxY - minY + pad * 2);
+        const vbInput = $('#viewbox-input');
+        if (vbInput) vbInput.value = state.viewBox;
+        pushHistory();
+        render();
+        toast('Fitted to ' + state.cells.length + ' elements');
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  FULLSCREEN
+     * ------------------------------------------------------------------------ */
+    function toggleFullscreen() {
+        const app = document.querySelector('.sip-app');
+        if (!app) return;
+        app.classList.toggle('sip-fullscreen');
+        setTimeout(render, 50);
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  PUBLIC: getLayout / setLayout — OLD RAPPID FORMAT
+     * ------------------------------------------------------------------------ */
+    function getLayout() {
+        // Return a CLEAN { cells: [...] } object that drops straight into the
+        // advancesipview.SipView1 column. The shape is byte-for-byte the same as
+        // the original Rappid `app.graph.toJSON()` output, so Sview.cshtml reads
+        // it with zero changes.
+        return { cells: deepClone(state.cells) };
+    }
+
+    function setLayout(layout) {
+        if (!layout) return;
+
+        // Accept three shapes:
+        //   1. { cells: [...] }   — canonical OLD Rappid format (preferred)
+        //   2. [<cell>, …]        — bare array of Rappid cells
+        //   3. [{type, props}, …] — NEW Aurora-editor element shape; convert
+        let cells = null;
+        if (Array.isArray(layout)) {
+            // Heuristic: cells have `position`; new elements have `props`.
+            if (layout.length === 0) {
+                cells = [];
+            } else if (layout[0].position || layout[0].size || layout[0].attrs) {
+                cells = layout;
+            } else if (layout[0].props || layout[0].type) {
+                cells = convertNewElementsToCells(layout);
+            } else {
+                cells = layout; // last-ditch
+            }
+        } else if (layout.cells && Array.isArray(layout.cells)) {
+            cells = layout.cells;
+        } else if (layout.elements && Array.isArray(layout.elements)) {
+            cells = convertNewElementsToCells(layout.elements);
+        } else {
+            console.warn('[sip-editor] setLayout: unrecognised payload shape, ignoring.');
+            return;
+        }
+
+        // Make sure every cell has an id and a minimal attrs.label.
+        state.cells = cells.map(function (c) {
+            const c2 = deepClone(c);
+            if (!c2.id) c2.id = SIP._uid();
+            c2.attrs = c2.attrs || {};
+            c2.attrs.label = c2.attrs.label || { text: '' };
+            // Fill in defaults from the spec where they're missing (so first render
+            // doesn't fail on an unknown asset).
+            const s = SIP.spec(c2.type);
+            if (s) {
+                for (const k of Object.keys(s.attrs)) {
+                    c2.attrs[k] = Object.assign({}, s.attrs[k], c2.attrs[k] || {});
+                }
+                if (!c2.size) c2.size = Object.assign({}, s.size);
+            } else if (!c2.size) {
+                c2.size = { width: 100, height: 100 };
+            }
+            if (!c2.position) c2.position = { x: 0, y: 0 };
+            return c2;
+        });
+
+        // Auto-fit viewBox to the loaded cells. The legacy editor saved real-world
+        // yards spanning x:0..2700 and y:0..1100; our default 0 0 2000 740 viewBox
+        // would crop the right half. Compute the actual extent and resize so the
+        // operator can see everything on load.
+        if (state.cells.length > 0) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const c of state.cells) {
+                const x = (c.position && c.position.x) || 0;
+                const y = (c.position && c.position.y) || 0;
+                const w = (c.size && c.size.width) || 60;
+                const h = (c.size && c.size.height) || 60;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x + w > maxX) maxX = x + w;
+                if (y + h > maxY) maxY = y + h;
+            }
+            const pad = 80;
+            const vbX = Math.floor(minX - pad);
+            const vbY = Math.floor(minY - pad);
+            const vbW = Math.ceil((maxX - minX) + pad * 2);
+            const vbH = Math.ceil((maxY - minY) + pad * 2);
+            state.viewBox = vbX + ' ' + vbY + ' ' + vbW + ' ' + vbH;
+            const vbInput = $('#viewbox-input');
+            if (vbInput) vbInput.value = state.viewBox;
+        }
+
+        state.selectedId = null;
+        pushHistory();
+        render();
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  NEW-format → OLD cells converter (used only by setLayout's input
+     *  detection, so a save from an older iteration of this editor still loads)
+     * ------------------------------------------------------------------------ */
+    function convertNewElementsToCells(els) {
+        if (!Array.isArray(els)) return [];
+        const cells = [];
+        const xoverByKey = {};
+        const pointByKey = {};
+        for (const e of els) {
+            if (!e || !e.type) continue;
+            const k = (e.assetName || '') + '::' + (e.stencilType || '');
+            if (e.type === 'crossover') xoverByKey[k] = e;
+            else if (e.type === 'point') pointByKey[k] = e;
+        }
+        const emittedPM = {};
+
+        const LAMP_TYPE = {
+            R: 'examples.Signald90', r: 'examples.Signald90',
+            G: 'examples.Signal90', g: 'examples.Signal90',
+            Y: 'examples.Signal45', y: 'examples.Signal45',
+            X: 'examples.Signald45', x: 'examples.Signald45',
+            W: 'examples.Signald90'
+        };
+        const LAMP_SUFFIX = { R: 'RG', r: 'RG', G: 'DG', g: 'DG', Y: 'HG', y: 'HG', X: 'HHG', x: 'HHG', W: 'RG' };
+
+        function newCell(type, x, y, w, h, attrs) {
+            return {
+                type, position: { x, y }, size: { width: w, height: h },
+                angle: 0, id: SIP._uid(), z: cells.length + 1, attrs
+            };
+        }
+
+        for (const e of els) {
+            const p = e.props || {};
+            switch (e.type) {
+                case 'rail':
+                    // Skipped — sections render the rail.
+                    break;
+                case 'section': {
+                    const stencil = e.stencilType || 'examples.Track1';
+                    const w = +p.width || (stencil === 'examples.Track' ? 300 : stencil === 'examples.Track2' ? 400 : 100);
+                    const lbl = p.label != null ? String(p.label) : (e.assetName || 'T');
+                    cells.push(newCell(stencil, (+p.x || 0) - w / 2, (+p.y || 0) - 50, w, 100, {
+                        path: { type: 'path', fill: 'none', stroke: '#6a7596', strokeWidth: 3 },
+                        label: { text: lbl, fill: '#d7d7d7', fontSize: 14, fontWeight: 'bold' }
+                    }));
+                    break;
+                }
+                case 'crossover':
+                case 'point': {
+                    const k = (e.assetName || '') + '::' + (e.stencilType || '');
+                    if (emittedPM[k]) break;
+                    const co = xoverByKey[k], pt = pointByKey[k];
+                    const stencil = (co && co.stencilType) || (pt && pt.stencilType) || 'examples.PointMachine';
+                    let x, y, w, h;
+                    if (co) {
+                        const cp = co.props || {};
+                        x = Math.min(+cp.x1, +cp.x2);
+                        y = Math.min(+cp.y1, +cp.y2);
+                        w = Math.max(60, Math.abs(+cp.x2 - +cp.x1));
+                        h = Math.max(60, Math.abs(+cp.y2 - +cp.y1));
+                    } else {
+                        const pp = pt.props || {};
+                        x = (+pp.x || 0) - 50; y = (+pp.y || 0) - 30; w = 100; h = 60;
+                    }
+                    const lbl = (pt && pt.props && pt.props.label) || (co && co.props && co.props.label) || e.assetName || '';
+                    const isMirror = stencil === 'examples.PointMachine1';
+                    cells.push(newCell(stencil, x, y, w, h, {
+                        body: { type: 'path', fill: 'none', stroke: '#6a7596', strokeWidth: 3 },
+                        circle1: { cx: isMirror ? 54 : 35, cy: isMirror ? 50 : 54, r: 6, stroke: 'black', fill: '#d4d4d4' },
+                        label: { text: lbl, fill: '#FFC919', fontSize: 14, fontWeight: 'bold' }
+                    }));
+                    emittedPM[k] = true;
+                    break;
+                }
+                case 'signal': {
+                    const lamps = String(p.lamps || 'R');
+                    const prefix = (p.label != null && p.label !== '')
+                        ? String(p.label).trim()
+                        : String(e.assetName || '').replace(/\s*\(.*\)\s*$/, '').trim();
+                    const spacing = 50;
+                    const startX = (+p.x || 0) - ((lamps.length - 1) / 2) * spacing;
+                    for (let i = 0; i < lamps.length; i++) {
+                        const ch = lamps.charAt(i);
+                        const t = LAMP_TYPE[ch] || 'examples.Signald90';
+                        const lx = startX + i * spacing;
+                        const txt = prefix ? (prefix + ' ' + (LAMP_SUFFIX[ch] || '')) : '';
+                        cells.push(newCell(t, lx - 50, (+p.y || 0) - 30, 100, 60, {
+                            circle1: { cx: 10, cy: 10, r: 10, stroke: 'black', fill: '#d4d4d4' },
+                            path1: { type: 'path', fill: 'none', stroke: '#6a7596', strokeWidth: 1 },
+                            label: { text: txt, fill: '#d7d7d7', fontSize: 11, fontWeight: 'bold' }
+                        }));
+                    }
+                    break;
+                }
+                case 'shunt': {
+                    const stencil = e.stencilType || (String(p.state) === '2' ? 'examples.Shaunt2' : 'examples.Shaunt');
+                    cells.push(newCell(stencil, (+p.x || 0) - 50, (+p.y || 0) - 50, 100, 100, {
+                        body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3 },
+                        label: { text: p.label || e.assetName || '', fill: '#d7d7d7', fontSize: 14, fontWeight: 'bold' }
+                    }));
+                    break;
+                }
+                case 'sidingLabel': {
+                    const stencil = e.stencilType || 'examples.Post';
+                    const sz = (stencil === 'examples.BusBar')
+                        ? { w: 100, h: 25 }
+                        : { w: 100, h: 100 };
+                    cells.push(newCell(stencil, (+p.x || 0) - sz.w / 2, (+p.y || 0) - sz.h / 2, sz.w, sz.h, {
+                        label: { text: p.text || e.assetName || '', fill: '#d7d7d7', fontSize: 16, fontWeight: 'bold' }
+                    }));
+                    break;
+                }
+                case 'topLine':
+                case 'bottomLine': {
+                    const stencil = e.stencilType ||
+                        (e.type === 'topLine' ? 'examples.TopLine' : 'examples.BottomLine');
+                    // Default L-bracket size if length isn't specified
+                    const w = +p.width || 37;
+                    const h = +p.length || +p.height || (e.type === 'topLine' ? 49 : 56);
+                    cells.push(newCell(stencil, (+p.x || 0), (+p.y || 0), w, h, {
+                        path: { type: 'path', fill: 'none', stroke: '#606060', strokeWidth: 4 }
+                    }));
+                    break;
+                }
+            }
+        }
+        return cells;
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  RIGHT-CLICK CONTEXT MENU — place assets at click position
+     * ------------------------------------------------------------------------ *
+     *  Right-click on empty canvas → shows asset picker grouped by category
+     *  Right-click on an element   → shows element actions + asset picker
+     *  Click an asset item         → places it at the right-click world position
+     * ------------------------------------------------------------------------ */
+    let ctxMenu = null;       // the floating <div> element
+    let ctxWorldPos = null;   // { x, y } world coordinates where user right-clicked
+
+    function showContextMenu(evt) {
+        evt.preventDefault();
+        closeContextMenu();
+
+        // Compute world position of the click
+        ctxWorldPos = clientToWorld(evt);
+
+        // Check if right-clicking on an existing element
+        let clickedCell = null;
+        let node = evt.target;
+        while (node && node !== canvasEl) {
+            if (node.classList && node.classList.contains('editable')) {
+                const eid = node.getAttribute('data-eid');
+                clickedCell = cellById(eid);
+                break;
+            }
+            node = node.parentNode;
+        }
+
+        // Build the menu HTML
+        let html = '';
+
+        // If clicked on an element, show element actions first
+        if (clickedCell) {
+            state.selectedId = clickedCell.id;
+            render();
+            const spec = SIP.spec(clickedCell.type);
+            html += `<div class="ctx-header">${spec ? spec.label : clickedCell.type}</div>`;
+            html += `<div class="ctx-item" data-action="duplicate"><span class="ctx-key">Ctrl+D</span>Duplicate</div>`;
+            html += `<div class="ctx-item ctx-danger" data-action="delete"><span class="ctx-key">Del</span>Delete</div>`;
+            html += `<div class="ctx-sep"></div>`;
+        }
+
+        // Asset picker — grouped by category (click-to-expand accordion)
+        html += `<div class="ctx-header">Place asset here</div>`;
+        for (const grp of SIP.GROUPS) {
+            const items = SIP.PALETTE.filter(t => {
+                const s = SIP.spec(t);
+                return s && s.group === grp.key && !s.hidden;
+            });
+            if (!items.length) continue;
+
+            html += `<div class="ctx-group" data-grp="${grp.key}">`;
+            html += `<div class="ctx-group-label" data-toggle="${grp.key}">${grp.label}<span class="ctx-arrow">+</span></div>`;
+            html += `<div class="ctx-subitems" id="ctx-sub-${grp.key}" style="display:none;">`;
+            for (const type of items) {
+                const s = SIP.spec(type);
+                html += `<div class="ctx-item ctx-subitem" data-place="${type}">${s.label}</div>`;
+            }
+            html += `</div></div>`;
+        }
+
+        // Create the menu element
+        ctxMenu = document.createElement('div');
+        ctxMenu.className = 'sip-ctx-menu';
+        ctxMenu.innerHTML = html;
+
+        // Position near the mouse (keep within viewport)
+        const mw = 240;
+        let mx = evt.clientX;
+        let my = evt.clientY;
+        if (mx + mw > window.innerWidth - 10) mx = window.innerWidth - mw - 10;
+        if (my + 350 > window.innerHeight - 10) my = Math.max(10, window.innerHeight - 360);
+        ctxMenu.style.left = mx + 'px';
+        ctxMenu.style.top = my + 'px';
+
+        document.body.appendChild(ctxMenu);
+
+        // Wire group toggle (click to expand/collapse)
+        ctxMenu.querySelectorAll('.ctx-group-label[data-toggle]').forEach(lbl => {
+            lbl.addEventListener('click', function () {
+                const key = this.getAttribute('data-toggle');
+                const sub = document.getElementById('ctx-sub-' + key);
+                const arrow = this.querySelector('.ctx-arrow');
+                if (!sub) return;
+                const isOpen = sub.style.display !== 'none';
+                // Close all other groups first
+                ctxMenu.querySelectorAll('.ctx-subitems').forEach(s => { s.style.display = 'none'; });
+                ctxMenu.querySelectorAll('.ctx-arrow').forEach(a => { a.textContent = '+'; });
+                // Toggle this one
+                if (!isOpen) {
+                    sub.style.display = 'block';
+                    if (arrow) arrow.textContent = '\u2212';  // minus sign
+                    // Recheck if menu goes below viewport, scroll into view
+                    var menuRect = ctxMenu.getBoundingClientRect();
+                    if (menuRect.bottom > window.innerHeight - 10) {
+                        ctxMenu.style.top = Math.max(10, window.innerHeight - menuRect.height - 10) + 'px';
+                    }
+                }
+            });
+        });
+
+        // Wire asset placement click handlers
+        ctxMenu.querySelectorAll('.ctx-item[data-place]').forEach(item => {
+            item.addEventListener('click', () => {
+                const type = item.getAttribute('data-place');
+                if (type && ctxWorldPos) {
+                    const c = SIP.makeCell(type, snap(ctxWorldPos.x), snap(ctxWorldPos.y));
+                    c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
+                    state.cells.push(c);
+                    maybeSnapToBackground(c);
+                    state.selectedId = c.id;
+                    trackRecentType(type);
+                    pushHistory();
+                    render();
+                    toast('Added ' + SIP.spec(type).label);
+                }
+                closeContextMenu();
+            });
+        });
+        // Wire element action click handlers
+        ctxMenu.querySelectorAll('.ctx-item[data-action]').forEach(item => {
+            item.addEventListener('click', () => {
+                const action = item.getAttribute('data-action');
+                if (action === 'duplicate') duplicateSelected();
+                else if (action === 'delete') deleteSelected();
+                closeContextMenu();
+            });
+        });
+
+        // Close on click outside or Escape
+        setTimeout(() => {
+            document.addEventListener('mousedown', onCtxOutsideClick);
+            document.addEventListener('keydown', onCtxEscape);
+        }, 10);
+    }
+
+    function closeContextMenu() {
+        if (ctxMenu && ctxMenu.parentNode) {
+            ctxMenu.parentNode.removeChild(ctxMenu);
+        }
+        ctxMenu = null;
+        ctxWorldPos = null;
+        document.removeEventListener('mousedown', onCtxOutsideClick);
+        document.removeEventListener('keydown', onCtxEscape);
+    }
+
+    function onCtxOutsideClick(evt) {
+        if (ctxMenu && !ctxMenu.contains(evt.target)) {
+            closeContextMenu();
+        }
+    }
+    function onCtxEscape(evt) {
+        if (evt.key === 'Escape') closeContextMenu();
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  GENERAL WIRE-UP
+     * ------------------------------------------------------------------------ */
+    function init() {
+        canvasEl = document.getElementById('canvas');
+        toolboxEl = document.getElementById('toolbox-grid');
+        inspectorEl = document.getElementById('inspector-body');
+        statusEls = {
+            coords: document.getElementById('cursor-coords'),
+            count: document.getElementById('element-count'),
+            sel: document.getElementById('selection-label')
+        };
+
+        if (!canvasEl || !toolboxEl) {
+            console.error('[sip-editor] required DOM elements missing.');
+            return;
+        }
+
+        buildToolbox();
+
+        // Pointer interaction
+        canvasEl.addEventListener('mousedown', onCanvasMouseDown);
+        document.addEventListener('mousemove', onCanvasMouseMove);
+        document.addEventListener('mouseup', onCanvasMouseUp);
+        document.addEventListener('keydown', onKey);
+
+        // Right-click context menu
+        canvasEl.addEventListener('contextmenu', showContextMenu);
+
+        // ---- ZOOM: scroll-wheel zooms around cursor position ----
+        canvasEl.addEventListener('wheel', function (evt) {
+            evt.preventDefault();
+            const vb = parseViewBox(state.viewBox);
+            const cursor = clientToWorld(evt);
+            const scale = evt.deltaY > 0 ? 1.12 : 0.89;   // zoom out / zoom in
+
+            const newW = vb.w * scale;
+            const newH = vb.h * scale;
+            // Keep the cursor point stationary on screen
+            const newX = cursor.x - (cursor.x - vb.x) * scale;
+            const newY = cursor.y - (cursor.y - vb.y) * scale;
+
+            state.viewBox = Math.round(newX) + ' ' + Math.round(newY) + ' ' +
+                Math.round(newW) + ' ' + Math.round(newH);
+            const vbInput = $('#viewbox-input');
+            if (vbInput) vbInput.value = state.viewBox;
+            render();
+        }, { passive: false });
+
+        // ---- PAN: middle-button drag moves the viewport ----
+        let panState = null;
+        canvasEl.addEventListener('mousedown', function (evt) {
+            if (evt.button === 1) {  // middle mouse button
+                evt.preventDefault();
+                panState = {
+                    startX: evt.clientX,
+                    startY: evt.clientY,
+                    vb: parseViewBox(state.viewBox)
+                };
+            }
+        });
+        document.addEventListener('mousemove', function (evt) {
+            if (!panState) return;
+            const svgEl = canvasEl.querySelector('svg');
+            if (!svgEl) return;
+            const rect = svgEl.getBoundingClientRect();
+            const vb = panState.vb;
+            const dx = (evt.clientX - panState.startX) * (vb.w / rect.width);
+            const dy = (evt.clientY - panState.startY) * (vb.h / rect.height);
+            state.viewBox = Math.round(vb.x - dx) + ' ' + Math.round(vb.y - dy) +
+                ' ' + vb.w + ' ' + vb.h;
+            const vbInput = $('#viewbox-input');
+            if (vbInput) vbInput.value = state.viewBox;
+            render();
+        });
+        document.addEventListener('mouseup', function (evt) {
+            if (panState && evt.button === 1) {
+                pushHistory();
+                panState = null;
+            }
+        });
+
+        // Snap controls
+        const snapToggle = $('#snap-toggle');
+        if (snapToggle) snapToggle.addEventListener('change', () => { state.snap.enabled = snapToggle.checked; });
+        const snapSize = $('#snap-size');
+        if (snapSize) snapSize.addEventListener('change', () => {
+            const v = parseInt(snapSize.value, 10); if (v > 0) state.snap.size = v;
+        });
+
+        // ViewBox
+        const vb = $('#viewbox-input');
+        if (vb) {
+            vb.value = state.viewBox;
+            vb.addEventListener('change', () => {
+                const parts = vb.value.trim().split(/\s+/).map(Number);
+                if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+                    state.viewBox = parts.join(' ');
+                    render();
+                    pushHistory();
+                }
+            });
+        }
+
+        // Initial snapshot for undo
+        pushHistory();
+        render();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  Public façade
+     * ------------------------------------------------------------------------ */
+    window.SipEditor = {
+        loadPreset, undo, redo,
+        openImport, exportLayoutJs, exportSvg,
+        closeModal, copyModal, downloadModal,
+        duplicateSelected, deleteSelected,
+        toggleFullscreen, fitAll,
+        getLayout, setLayout,
+        refreshAssetRegistry, loadAssetsForType
+    };
+})();

@@ -1,0 +1,405 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<style>
+    .ui-autocomplete {
+        position: absolute;
+        z-index: 1060;
+        max-height: 200px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        left: 23.2%;
+        top: 52%;
+        transform: translateX(-50.5% -20%);
+    }
+</style>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Add Stock</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">
+        <h5>
+            Add Stock
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-xl-6">
+                <div class="row">
+                    <label class="control-label col-2">Type <span class="text-danger">*</span></label>
+                    <div class="col-10">
+                        <select class="form-control" id="drpTypeId" tabindex="1">
+                            <option value="1">Project</option>
+                            <option value="2">Opration</option>
+                        </select>
+                        <span class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <label class="control-label col-2">Zone <span class="text-danger">*</span></label>
+                    <div class="col-10">
+                        @Html.DropDownList("drpZone", (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "form-control", @tabindex = "2" })
+                        <span class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <label class="control-label col-2">Division <span class="text-danger">*</span></label>
+                    <div class="col-10">
+                        <select class="form-control" id="drpDivision" tabindex="3">
+                        </select>
+                        <span class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="row">
+                    <label class="control-label col-2">Project <span class="text-danger">*</span></label>
+                    <div class="col-10">
+                        <input type="text" class="form-control" tabindex="4" id="txtProject" />
+                        <span class="text-danger"></span>
+                    </div>
+                </div>
+                <div class="row">
+                    <label class="control-label col-2">Site <span class="text-danger">*</span></label>
+                    <div class="col-10">
+                        <select id="drpSite" tabindex="5" class="js-example-basic-multiple form-control" multiple>
+                        </select>
+                        <span class="text-danger" id="spnSite"></span>
+                    </div>
+                </div>
+                <div class="row">
+                    <label class="control-label col-2">Material <span class="text-danger">*</span></label>
+                    <div class="col-10">
+                        <select id="drpMaterial" tabindex="6" class="js-example-basic-multiple form-control" multiple>
+                            @if (ViewBag.Materials != null)
+                            {
+                                foreach (var item in ViewBag.Materials as List<Domain.WorksheetMaterial>)
+                                {
+                                    <option class="divisionId_@item.Id" value="@item.Id">@item.Name</option>
+
+                                }
+                            }
+                        </select>
+                        <span class="text-danger" id="spnMaterial"></span>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-8">
+                        <input type="hidden" id="hdnId" />
+                        <span id="spnTokenNumber" class="text-success"></span>
+                    </div>
+                    <div class="col-4">
+                        <button type="button" class="btn btn-info m-l-10 pull-right" onclick="fnSave()">Save</button>
+                        <a type="button" class="btn btn-primary pull-right" href="@Url.Action("Index")">Back</a>
+
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-6"></div>
+            
+            <div class="col-xl-6">
+                <hr />
+                <div class="table-responsive">
+                    <table class="table" id="tblMaterialQuantity"></table>
+                </div>
+            </div>
+               
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function () {
+        $('#drpSite').select2();
+
+        $("#drpZone").change(function () {
+            GetDivisionByZone($(this).val());
+
+        });
+
+        $("#drpDivision").change(function () {
+            fnBindSite($(this).val());
+
+        });
+
+        $("#txtProject").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '/StockOpration/SearchProject',
+                    type: 'Post',
+                    data: '{name:"' + $("#txtProject").val() + '"}',
+                    contentType: "application/json; charset=utf-8",
+                    dataFilter: function (data) { return data; },
+                    success: function (data) {
+                        response($.map(data, function (item) {
+                            return {
+                                value: item.Name
+                            }
+                        }))
+                    },
+                    error: function (response) {
+                        CommonNotification("error", "Something went wrong!");
+                    }
+                });
+            },
+            minLength: 2 //This is the Char length of inputTextBox
+        });
+    });
+
+    GetDivisionByZone($("#drpZone").val());
+
+    function fnBindSite(divisionId) {
+        $.ajax({
+            url: '/Project/GetSiteByDivisionId',
+            type: 'Post',
+            data: '{divisionId:' + divisionId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#drpSite").empty();
+                if (data != null && data != undefined && data != '') {
+                   
+                    $.each(data, function (key, value) {
+                        $("#drpSite").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                }
+
+            },
+            error: function (response) {
+                $("#drpSite").empty();
+                $("#loader").hide();
+            }
+        });
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            $("#loader").show();
+            $.ajax({
+                url: '/StockOpration/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpDivision").empty();
+                    $("#drpDivision").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        $("#drpDivision").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+
+    }
+
+    function fnSave() {
+        var mStock = {};
+        mStock.Id = $('#hdnId').val();
+        mStock.TypeId = $('#drpTypeId').val();
+        mStock.DivisionId = $('#drpDivision').val();
+        mStock.Project = $('#txtProject').val();
+        mStock.StockSites = [];
+        mStock.StockWorksheetMaterials = [];
+        var siteIds = $('#drpSite').val();
+        if (siteIds != null && siteIds != undefined && siteIds.length > 0) {
+            $(siteIds).each(function (d, val) {
+                var mStockSite = {};
+                mStockSite.SiteId = val
+                mStock.StockSites.push(mStockSite);
+            });
+        }
+        var materialIds = $('#drpMaterial').val();
+        if (materialIds != null && materialIds != undefined && materialIds.length > 0) {
+            $(materialIds).each(function (d, val) {
+                var mStockWorksheetMaterials = {};
+                mStockWorksheetMaterials.MaterialId = val;
+                mStock.StockWorksheetMaterials.push(mStockWorksheetMaterials);
+            });
+        }
+        if (ValidateSiteBenefit(mStock)) {
+            $("#loader").show();
+            $.ajax({
+                url: '/StockOpration/Create',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mStock),
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data.Id > 0) {
+                        $('#hdnId').val(data.Id);
+                        if ($('#spnTokenNumber').text() == null || $('#spnTokenNumber').text() == undefined || $('#spnTokenNumber').text() == '') {
+                            $('#spnTokenNumber').text("Token Number : " + data.TokenNumber);
+                        }
+                        CommonNotification("SUCCESS", "Stock has been created.", "success");
+                        BindMaterial(materialIds);
+
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.", "Error");
+                    }
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function BindMaterial(selIds) {
+
+        if (selIds != null && selIds != undefined) {
+            $.ajax({
+                url: '/StockOpration/SearchMaterial',
+                type: 'Post',
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    var tbl = '';
+                    if (data != null && data != undefined) {
+                        tbl = '<tr><th>Material</th><th>Quantity</th></tr>';
+                        $(data).each(function (d, val) {
+                            if (selIds.includes("" + val.Id +"")) {
+                                tbl += '<tr>';
+                                tbl += '<td>' + val.Name + '</td>';
+                                tbl += '<td><input type="number" class="form-control txtMaterialQuantity" data-id="' + val.Id +'"/></td>';
+                                tbl += '</tr>';
+                            }
+                        });
+                        tbl += '<tr><td></td><td><button type="button" class="btn btn-info" onClick="fnUpdateMaterial()">Save</button></td></tr>';
+                    }
+
+                    $('#tblMaterialQuantity').empty().append(tbl);
+                },
+                error: function (response) {
+                    CommonNotification("error", "Something went wrong!");
+                }
+            });
+        }
+
+    }
+
+    function fnUpdateMaterial() {
+
+        var mStockWorksheetMaterials = [];
+        $(".txtMaterialQuantity").each(function () {
+            if ($('#hdnId').val() != null && $('#hdnId').val() != undefined && $('#hdnId').val() != '') {
+
+                if ($(this).val() != null && $(this).val() != undefined && $(this).val() != '' && parseInt($(this).val()) > 0) {
+                    var mStockWorksheetMaterial = {};
+                    mStockWorksheetMaterial.MaterialId = $(this).data('id');
+                    mStockWorksheetMaterial.StockId = $('#hdnId').val();
+                    mStockWorksheetMaterial.Quantity = $(this).val();
+                    mStockWorksheetMaterials.push(mStockWorksheetMaterial);
+                } else {
+                    mStockWorksheetMaterials = [];
+                }
+            }
+
+        });
+        if (mStockWorksheetMaterials != null && mStockWorksheetMaterials != undefined && mStockWorksheetMaterials.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/StockOpration/UpdateMaterial',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mStockWorksheetMaterials),
+                success: function (data) {
+                    $("#loader").hide();
+
+                    if (data != null) {
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                            setTimeout(function () {
+                                 window.location.href = "@Url.Action("Index")";
+                            }, 3000);
+                        } else {
+                            CommonNotification("ERROR", data.result, "Error");
+                        }
+                    }
+
+                    //if (data != null && data.Id > 0) {
+                    //    $('#hdnId').val(data.Id);
+                    //    CommonNotification("SUCCESS", "Quantity has been created.", "success");
+
+
+                    //} else {
+                    //    CommonNotification("ERROR", "Internal server error.", "Error");
+                    //}
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Quantity is required!", "Error");
+        }
+
+    }
+
+    function ValidateSiteBenefit(mStock) {
+        var result = true;
+        if (mStock.TypeId == null || mStock.TypeId == undefined || mStock.TypeId == "" || mStock.TypeId == "0") {
+            $("#drpTypeId").next("span").html("Type is required");
+            result = false;
+        }
+        else {
+            $("#drpTypeId").next("span").html("");
+        }
+
+        if ($("#drpZone").val() == null || $("#drpZone").val() == undefined || $("#drpZone").val() == "" || $("#drpZone").val() == "0") {
+            $("#drpZone").next("span").html("Zone is required");
+            result = false;
+        }
+        else {
+            $("#drpZone").next("span").html("");
+        }
+
+        if (mStock.DivisionId == null || mStock.DivisionId == undefined || mStock.DivisionId == "" || mStock.DivisionId == "0") {
+            $("#drpDivision").next("span").html("Division is required");
+            result = false;
+        }
+        else {
+            $("#drpDivision").next("span").html("");
+        }
+
+        if (mStock.Project == null || mStock.Project == undefined || mStock.Project == "") {
+            $("#txtProject").next("span").html("Project is required");
+            result = false;
+        }
+        else {
+            $("#txtProject").next("span").html("");
+        }
+
+        if (mStock.StockSites == null || mStock.StockSites == undefined || mStock.StockSites.length == 0) {
+            $("#spnSite").html("Site is required");
+            result = false;
+        }
+        else {
+            $("#spnSite").html("");
+        }
+
+        if (mStock.StockWorksheetMaterials == null || mStock.StockWorksheetMaterials == undefined || mStock.StockWorksheetMaterials.length == 0) {
+            $("#spnMaterial").html("Site is required");
+            result = false;
+        }
+        else {
+            $("#spnMaterial").html("");
+        }
+
+        return result;
+    }
+</script>

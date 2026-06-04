@@ -1,0 +1,411 @@
+﻿@model Domain.TrainRunningMomentLister
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+<input type="hidden" id="hdnTrmImageBase64" />
+@Html.HiddenFor(x => x.SearchCriteria.StartDate)
+@Html.HiddenFor(x => x.SearchCriteria.EndDate)
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row mt-3">
+                        <div class="col-sm-2 mb15">
+                            <label>Site</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select Site", new { @class = "form-control", id = "trmSiteId", tabindex = 1 })
+                        </div>
+                        <div class="col-sm-2 mb15">
+                            <label>Asset</label>
+                            @Html.DropDownListFor(m => m.SearchCriteria.AssetId, new SelectList(Model.Assets, "Id", "Name"), "Select", new { @class = "form-control", id = "trmAssetId", tabindex = 1 })
+
+                        </div>
+
+                        <div class="col-sm-2 mb15">
+                            <label>Search Date</label>
+                            @if (Model.SearchCriteria.StartDate != null && Model.SearchCriteria.StartDate != DateTime.MinValue && Model.SearchCriteria.EndDate != null && Model.SearchCriteria.EndDate != DateTime.MinValue)
+                            {
+                                <input class="form-control" type="text" id="txtTRMRange" name="daterange" value="@Model.SearchCriteria.StartDate - @Model.SearchCriteria.EndDate">
+                            }
+                            else
+                            {
+                                <input class="form-control" type="text" id="txtTRMRange" name="daterange">
+                            }
+                        </div>
+                        @if (Model.Blocks != null && Model.Blocks.Count > 1)
+                        {
+                            <div class="col-sm-2 mb15">
+                                <label>Block</label>
+                                @Html.DropDownListFor(m => m.SearchCriteria.BlockId, new SelectList(Model.Blocks), "Select", new { @class = "form-control", id = "trmBlockId", tabindex = 1 })
+                            </div>
+                        }
+                        @if (Model.TrainRunningMoments != null && Model.TrainRunningMoments.Count > 0)
+                        {
+                            <div class="col-sm-2 mb15">
+                                <label>Remark</label>
+                                @if (!string.IsNullOrEmpty(Model.Remark))
+                                {
+                                    <input type="text" id="trmRemark" class="form-control" value="@Model.Remark" disabled />
+                                }
+                                else
+                                {
+                                    <input type="text" id="trmRemark" class="form-control" value="@Model.Remark" />
+                                }
+                            </div>
+                            <div class="col-sm-2 mb15">
+                                <label>Upload Image</label>
+                                <input type="file" class="form-control" title="" accept="image/jpeg" onchange="fnEncodeImageFileTRM(this)" />
+                            </div>
+                            <div class="col-sm-2 mt-4">
+                                <button type="button" class="btn btn-primary" onclick="fnOnShowTRMRemark()">Edit</button>
+                                <button type="button" class="btn btn-primary" onclick="fnApplyTrainRunningMoment()">Apply</button>
+                            </div>
+                        }
+
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="chart" style="width:100%">
+                    </div>
+                    <div class="apache-cotainer" id="area-echart">
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var json = "";
+    var chart;
+    $(document).ready(function () {
+        $('#trmSiteId').change(function () {
+            $("#frmTrainRunningMoment").submit();
+        });
+
+        $('#trmAssetId').change(function () {
+            $("#frmTrainRunningMoment").submit();
+        });
+
+        $('#trmBlockId').change(function () {
+            $("#frmTrainRunningMoment").submit();
+        });
+
+        json = @Html.Raw(Json.Encode(Model));
+        DemoChart()
+
+        $('#txtTRMRange').daterangepicker();
+        $('#txtTRMRange').on('apply.daterangepicker', function (ev, picker) {
+            $(this).val(picker.startDate.format('MM/DD/YYYY') + ' - ' + picker.endDate.format('MM/DD/YYYY'));
+            $('#SearchCriteria_StartDate').val(picker.startDate._d.toLocaleDateString());
+            $('#SearchCriteria_EndDate').val(picker.endDate._d.toLocaleDateString());
+            $("#frmTrainRunningMoment").submit();
+            //fnCustomerLeakgeDateRangeValue(picker.startDate._d.toLocaleDateString(), picker.endDate._d.toLocaleDateString());
+        });
+
+        $('#txtTRMRange').on('cancel.daterangepicker', function (ev, picker) {
+            $(this).val('');
+            $("#sd").val('');
+            $("#ed").val('');
+        });
+    });
+
+    function fnEncodeImageFileTRM($this) {
+        var file = $this.files[0];
+        var fileType = file["type"];
+        var validImageTypes = ["image/jpeg"];
+        if ($.inArray(fileType, validImageTypes) < 0) {
+            $("#hdnTrmImageBase64").val("");
+            alert("Upload only jpeg file");
+        }
+        else {
+            $("#hdnTrmImageBase64").val("");
+            var formdata = new FormData(); var file = $($this).get(0).files; if (file.length > 0) {
+                formdata.append('file', file[0]);
+                var reader = new FileReader();
+                reader.readAsDataURL(file[0]);
+                reader.onload = function () {
+
+                    if (reader != null && reader != undefined && reader.result != null && reader.result != undefined) {
+                        var base64String = reader.result.replace("data:", "").replace(/^.+,/, "");
+                        $("#hdnTrmImageBase64").val(base64String);
+                    }
+                };
+            }
+        }
+
+      //  $('#hdnTrmImageBase64').val(imagebase64);
+    }
+
+    function getFile(filePath) {
+        return filePath.substr(filePath.lastIndexOf('\\') + 1).split('.')[0];
+    }
+
+    function fnOnShowTRMRemark() {
+        $('#trmRemark').prop('disabled', false)
+    }
+
+    function fnApplyTrainRunningMoment() {
+        if ($('#trmSiteId').val() == "0") {
+            CommonNotification("ERROR", "Please select site", "Error");
+        }
+        else if ($('#trmAssetId').val() == null || $('#trmAssetId').val() == undefined || $('#trmAssetId').val() == "") {
+            CommonNotification("ERROR", "Please select asset", "Error");
+        }
+        else {
+
+            if (confirm('Are you sure you want to apply')) {
+                var mMaintenanceInput = {};
+                mMaintenanceInput.SiteId = $('#trmSiteId').val();
+                mMaintenanceInput.AssetId = $('#trmAssetId').val();
+                mMaintenanceInput.IndexScore = 6;
+                mMaintenanceInput.MaintenenceInput = $('#trmRemark').val();
+                mMaintenanceInput.ImageBase64 = $('#hdnTrmImageBase64').val();
+                mMaintenanceInput.Type = $('#hdnTrmImageBase64').val();
+
+                $.ajax({
+                    url: '/SiteKeeping/ApplyMaintenanceInput',
+                    type: 'Post',
+                    data: JSON.stringify(mMaintenanceInput),
+                    contentType: 'application/json',
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != undefined && data != null && data.type != null && data.type != '') {
+                            if (data.type == 'success') {
+                                SaveTRMAppKey();
+                                UploadTRMImage();
+                                CommonNotification("SUCCESS", data.result, "success");
+                                $("#frmTrainRunningMoment").submit();
+                            }
+                            else {
+                                CommonNotification("ERROR", data.result, "Error");
+                            }
+                        } else {
+                            CommonNotification("ERROR", "Something went wrong!", "Error");
+                        }
+
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+    }
+
+    function SaveTRMAppKey() {
+        var mAppKey = {};
+        mAppKey.Number = '@E7FRSAdvance.Utility.Utility.AppKeyEnum.TrainRunningMomentRemark.GetHashCode()';
+        mAppKey.AppValue = $('#trmRemark').val();
+
+        $.ajax({
+            url: '/SiteKeeping/SaveAppKey',
+            type: 'Post',
+            data: JSON.stringify(mAppKey),
+            contentType: 'application/json',
+            success: function (data) {
+
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function UploadTRMImage() {
+        if ($('#trmSiteId').val() != null && $('#trmSiteId').val() != '0' && $('#trmAssetId').val() != null && $('#trmAssetId').val() != undefined && $('#trmAssetId').val() != "") {
+
+            var mSiteKeeping = {};
+            mSiteKeeping.SiteId = $('#trmSiteId').val();
+            mSiteKeeping.AssetId = $('#trmAssetId').val();
+            mSiteKeeping.Type = 'TrainMoment';
+            mSiteKeeping.ImageBase64 = $('#hdnTrmImageBase64').val();
+
+            $.ajax({
+                url: '/SiteKeeping/UploadImage',
+                type: 'Post',
+                data: JSON.stringify(mSiteKeeping),
+                contentType: 'application/json',
+                success: function (data) {
+
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                }
+            });
+        }
+        
+    }
+
+    function DemoChart() {
+
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        var colorB = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var color = ["rgba(75, 172, 198, 0.1)", "rgba(33, 89, 104, 0.1)", "rgba(64, 64, 64, 0.1)", "rgba(115, 102, 255, 0.1)", "rgba(247, 49, 100, 0.1)", "rgba(144, 212, 116, 0.1)", "rgba(252, 237, 162, 0.1)", "rgba(0, 227, 150, 0.1)", "rgba(0, 206, 186, 0.1)", "rgba(243, 121, 149, 0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)", "rgba(150, 188, 715,0.1)"];
+
+        var DataSeriaes = [];
+        var maxV = 0;
+        var legd = ["IfMa", "IrMa", "Leakage", "Vr", "Tpr"];
+        var macLeft = 0;
+        var yAxisArray = [];
+        var lary = [];
+        var rary = [];
+        var xValue = [];
+
+        if (json.TrainRunningMoments != null && json.TrainRunningMoments.length > 0) {
+
+            $.each(legd, function (data, val) {
+
+                var attr = {};
+                attr.name = val;
+                attr.type = 'line';
+                attr.notShowSymbol = true;
+                attr.sampling = sampling;
+                attr.hoverAnimation = false;
+                attr.clip = true;
+
+                if (val.indexOf('V') > -1) {
+                    var yaxis = {
+                        value: val,
+                    };
+                    rary.push(yaxis)
+                    attr.yAxisIndex = 1;
+                }
+                else {
+                    var yaxis = {
+                        value: val,
+                    };
+                    lary.push(yaxis)
+                    attr.yAxisIndex = 0;
+                }
+
+                attr.data = [];
+                var values = [];
+                $.each(json.TrainRunningMoments, function (ids, valTRM) {
+                    //const d = new Date(valTRM.TimeStamp);
+                    var d = parseDate(valTRM.TimeStamp);
+                    var strDate = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+                    if (xValue.indexOf(strDate) == -1) {
+                        xValue.push(strDate);
+                    }
+                    if (val == "IfMa") {
+                        values.push(valTRM.IfMa.toString());
+                    }
+                    if (val == "IrMa") {
+                        values.push(valTRM.IrMa.toString());
+                    }
+                    if (val == "Leakage") {
+                        values.push(valTRM.Leakage.toString());
+                    }
+                    if (val == "Vr") {
+                        values.push(valTRM.Vr.toString());
+                    }
+                    if (val == "Tpr") {
+                        values.push(valTRM.Tpr.toString());
+                    }
+                });
+                if (val != "TPR V" || val != "DG V" || val != "RG V" || val != "HG V" || val != "HHG V" || val != "Tx1 V" || val != "Tx2 V" || val != "Choke V" || val != "Vr" || val != "Voltage") {
+
+                    var yLeft = Math.max.apply(Math, values); // 3
+                    if (yLeft >= macLeft) {
+                        macLeft = yLeft;
+                    }
+                }
+
+                attr.connectNulls = true;
+                attr.data = values;
+                attr.datasetIndex = legd.indexOf(val);
+                DataSeriaes.push(attr);
+            });
+
+            //$.each(data.DateList, function (ids, val) {
+            //    xValue.push(val);
+            //});
+
+            chart = echarts.init(document.getElementById('area-echart'));
+
+            var sampling = 'none';
+
+            chart.setOption({
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross',
+                        label: {
+                            backgroundColor: '#6a7985'
+                        }
+                    }
+                },
+                legend: {
+                    data: legd,
+                    x: 'left'
+
+                },
+                toolbox: {
+                    show: true,
+                    feature: {
+                        mark: { show: true },
+                        dataView: { show: true, readOnly: false },
+                        magicType: { show: true, type: ['line', 'bar'] },
+                        restore: { show: true },
+                        saveAsImage: { show: true }
+                    }
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: [
+                    {
+                        type: 'category',
+                        boundaryGap: false,
+                        axisLine: { onZero: false },
+                        interval: 50,
+                        data: xValue,
+                    }
+                ],
+                yAxis: [
+                    {
+                        type: 'value',
+                        min: 0,
+                        max: macLeft,
+                        data: lary
+                    },
+                    {
+                        type: 'value',
+                        inverse: false,
+                        min: -1,
+                        max: maxV + 1,
+                        data: rary
+                    }
+                ],
+                color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"],
+
+                series: DataSeriaes
+            });
+
+            window.onresize = chart.resize;
+            //chart.on('legendselectchanged', function (params) {
+            //    legendSelection(chart, params);
+            //});
+        }
+
+
+
+       // window.onresize = chart.resize;
+    }
+
+    function parseDate(date) {
+        return new Date(parseInt(/-?\d+/.exec(date)[0]))
+    }
+
+
+</script>

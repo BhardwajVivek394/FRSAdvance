@@ -1,0 +1,254 @@
+﻿@model Domain.StockLister
+@{
+    ViewBag.Title = "Dispatch";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Dispatch</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">
+        <h6 class="pull-left">Dispatch</h6>
+        <a class="btn btn-primary pull-right" href="@Url.Action("Index")">Back</a>
+    </div>
+    <div class="card-body">
+        @using (Ajax.BeginForm("_DispatchList", "StockOpration", new AjaxOptions()
+        {
+            HttpMethod = "POST",
+            UpdateTargetId = "divDispatchList",
+            InsertionMode = InsertionMode.Replace,
+            LoadingElementId = "loader"
+        }, new { id = "frmDispatchList" }))
+        {
+            <div id="divDispatchList">
+                @Html.Action("_DispatchList", Model)
+            </div>
+        }
+    </div>
+</div>
+<div id="divMaterial"></div>
+<div id="divAddDispatch"></div>
+<script>
+    function fnShowMaterial(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/StockOpration/_DispatchMaterialList',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divMaterial").empty().append(data);
+                $("#modal-dispatch-material").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnShowAddDispatch(id) {
+        $("#loader").show();
+        $.ajax({
+            url: '/StockOpration/_AddDispatch',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divAddDispatch").empty().append(data);
+                $("#modal-add-dispatch").modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+
+    function fnUpdateDispatchMaterial() {
+        var mStockWorksheetMaterials = [];
+
+        $(".materialmaintrview").each(function (t, trData) {
+            var id = $(this).data('id');
+            var drpmatrialId = $(this).data('matrialid');
+            var txtDispatch = $(this).find("td").eq(4).children("input").val();
+            var txtDispatchRemark = $(this).find("td").eq(5).children("textarea").val();
+            if (txtDispatch != null && txtDispatch != undefined && txtDispatch != '' && parseInt(txtDispatch) > 0) {
+                var mStockWorksheetMaterial = {};
+                mStockWorksheetMaterial.MaterialId = drpmatrialId;
+                mStockWorksheetMaterial.StockId = $('#hdnStockId').val();
+                mStockWorksheetMaterial.DispatchQuantity = txtDispatch;
+                mStockWorksheetMaterial.DispatchRemark = txtDispatchRemark;
+                mStockWorksheetMaterials.push(mStockWorksheetMaterial);
+            }
+        });
+        if (mStockWorksheetMaterials != null && mStockWorksheetMaterials != undefined && mStockWorksheetMaterials.length > 0) {
+            $("#loader").show();
+            $.ajax({
+                url: '/StockOpration/UpdateDispatchMaterial',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mStockWorksheetMaterials),
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#modal-dispatch-material").modal('hide');
+                    $("#frmDispatchList").submit();
+                },
+                error: function (response) {
+                    $("#loader").hide();
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            alert("Please enter one dispatch quantity");
+        }
+
+    }
+
+    function fnSaveDispatch() {
+        debugger;
+        var mStock = {};
+        var matrialLocationValid = true;
+        mStock.Id = $('#hdnDispatchStockId').val();
+        mStock.OpratorName = $('#OpratorName').val();
+        mStock.OpratorPhoneNumber = $('#OpratorPhoneNumber').val();
+        mStock.DispatchType = $('#DispatchType').val();
+        mStock.DispatchTypeText = $('#DispatchTypeText').val();
+        mStock.AttendentName = $('#AttendentName').val();
+        mStock.mStockWorksheetMaterials = [];
+
+        var stockWorksheetMaterials = [];
+        $("#tbodyDispatch tr").each(function () {
+            debugger;
+
+            var locationFrom = $(this).find("td").eq(2).children("input").val();
+            var locationTo = $(this).find("td").eq(3).children("input").val();
+
+            if (locationFrom == null || locationFrom == undefined || locationFrom == '') {
+                matrialLocationValid = false;
+                $(this).find("td").eq(2).children("input").next("span").html("Location From is required");
+            }
+            else {
+                $(this).find("td").eq(2).children("input").next("span").html("");
+            }
+            if (locationTo == null || locationTo == undefined || locationTo == '') {
+                matrialLocationValid = false;
+                $(this).find("td").eq(3).children("input").next("span").html("Location To is required");
+            } else {
+                $(this).find("td").eq(3).children("input").next("span").html("");
+            }
+
+
+            var mStockWorksheetMaterial = {};
+            mStockWorksheetMaterial.MaterialId = $(this).data('materialid');
+            mStockWorksheetMaterial.StockId = $(this).data('stockid');
+            mStockWorksheetMaterial.DispatchLocationFrom = locationFrom;
+            mStockWorksheetMaterial.DispatchLocationTo = locationTo;
+
+            stockWorksheetMaterials.push(mStockWorksheetMaterial);
+
+        });
+        mStock.StockWorksheetMaterials = stockWorksheetMaterials;
+        debugger;
+        if (ValidateDispatch(mStock) && matrialLocationValid) {
+
+            if (mStock.StockWorksheetMaterials != null && mStock.StockWorksheetMaterials != undefined && mStock.StockWorksheetMaterials.length > 0) {
+                $("#loader").show();
+                $.ajax({
+                    url: '/StockOpration/SaveDispatch',
+                    type: 'Post',
+                    contentType: 'application/json',
+                    data: JSON.stringify(mStock),
+                    success: function (data) {
+                        $("#loader").hide();
+                        if (data != null) {
+                            if (data.type == "success") {
+                                CommonNotification("SUCCESS", data.result, "success");
+                            } else {
+                                CommonNotification("ERROR", data.result, "Error");
+                            }
+                            $("#modal-add-dispatch").modal('hide');
+                            $("#frmDispatchList").submit();
+                        }
+
+                    },
+                    error: function (response) {
+                        $("#loader").hide();
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            } else {
+                alert('Material not added.')
+            }
+         
+        }
+    }
+
+    function ValidateDispatch(mStock) {
+        var result = true;
+        debugger;
+
+        if (mStock.OpratorName == null || mStock.OpratorName == undefined || mStock.OpratorName == "") {
+            $("#OpratorName").next("span").html("Oprator name is required");
+            result = false;
+        }
+        else {
+            $("#OpratorName").next("span").html("");
+        }
+
+        if (mStock.OpratorPhoneNumber == null || mStock.OpratorPhoneNumber == undefined || mStock.OpratorPhoneNumber == "") {
+            $("#OpratorPhoneNumber").next("span").html("Oprator phone number is required");
+            result = false;
+        }
+        else {
+            $("#OpratorPhoneNumber").next("span").html("");
+        }
+
+        if (mStock.DispatchTypeText == null || mStock.DispatchTypeText == undefined || mStock.DispatchTypeText == "") {
+            var msg = $('#lblDispatchTypeText').text();
+
+            $("#DispatchTypeText").next("span").html(msg + " is required");
+            result = false;
+        }
+        else {
+            $("#DispatchTypeText").next("span").html("");
+        }
+
+        if (mStock.DispatchType == null || mStock.DispatchType == undefined || mStock.DispatchType == "") {
+            $("#DispatchType").next("span").html("Dispatch Type is required");
+            result = false;
+        }
+        else {
+            $("#DispatchType").next("span").html("");
+        }
+
+        if (mStock.AttendentName == null || mStock.AttendentName == undefined || mStock.AttendentName == "") {
+            $("#AttendentName").next("span").html("Attendent Name is required");
+            result = false;
+        }
+        else {
+            $("#AttendentName").next("span").html("");
+        }
+
+
+        return result;
+
+    }
+</script>
+

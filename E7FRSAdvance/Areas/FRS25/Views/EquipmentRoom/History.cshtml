@@ -1,0 +1,1499 @@
+﻿@{ ViewBag.Title = "Equipment Room History";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+
+<style>
+    @@keyframes progressShrink {
+        from {
+            width: 100%;
+        }
+
+        to {
+            width: 0%;
+        }
+    }
+
+    /* ===== FILTER & BUTTON STYLES ===== */
+    .btn-search {
+        background: var(--primary);
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background 0.2s;
+    }
+
+        .btn-search:hover {
+            background: #3c3ebf;
+        }
+
+    .dropdown-menu.dropdown-menu-right .dropdown-item {
+        padding: 10px 15px;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        background: transparent;
+    }
+
+        .dropdown-menu.dropdown-menu-right .dropdown-item:hover {
+            background: #f1f5f9;
+        }
+
+    #btnDownload + .dropdown-menu {
+        min-width: 130px;
+        padding: 8px 0;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+        border: 1px solid #e2e8f0;
+    }
+
+    /* ===== HISTORY TABLE ===== */
+    .history-table-wrapper {
+        max-height: 600px;
+        overflow: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+    }
+
+    .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+        .history-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: #1e3a5f;
+            color: #fff;
+            padding: 10px 12px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 12px;
+            border: 1px solid #163050;
+            white-space: nowrap;
+        }
+
+        .history-table thead tr:first-child th {
+            position: sticky;
+            top: 0;
+            z-index: 12;
+        }
+
+        .history-table thead tr:nth-child(2) th {
+            position: sticky;
+            top: 38px;
+            z-index: 11;
+        }
+
+        .history-table thead th:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 20;
+            background: #162d4a;
+            min-width: 160px;
+        }
+
+        .history-table tbody td {
+            padding: 8px 10px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+            .history-table tbody td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 5;
+                background: #f8fafc;
+                font-weight: 600;
+                color: #1e3a5f;
+                text-align: left;
+                min-width: 160px;
+            }
+
+        .history-table tbody tr:nth-child(even) td {
+            background: #f1f5f9;
+        }
+
+            .history-table tbody tr:nth-child(even) td:first-child {
+                background: #e8edf3;
+            }
+
+        .history-table tbody tr:hover td {
+            background: #dbeafe;
+        }
+
+            .history-table tbody tr:hover td:first-child {
+                background: #bfdbfe;
+            }
+
+    .datetime-input {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+    }
+
+        .datetime-input input {
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 13px;
+            height: 38px;
+        }
+
+            .datetime-input input:focus {
+                border-color: #3b82f6;
+                outline: none;
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            }
+
+    /* ===== MULTI-SELECT DROPDOWN STYLES ===== */
+    .select-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #333;
+        cursor: pointer;
+        min-width: 170px;
+        height: 40px;
+    }
+
+        .select-btn:hover {
+            border-color: #999;
+        }
+
+        .select-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        .select-btn .text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+        }
+
+        .select-btn i {
+            margin-left: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+    .filter-dropdown {
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        min-width: 260px;
+        max-width: 320px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .filter-dropdown.open {
+            display: block;
+        }
+
+    .ms-dropdown-search {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+        .ms-dropdown-search input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+            .ms-dropdown-search input:focus {
+                border-color: #3b82f6;
+            }
+
+            .ms-dropdown-search input::placeholder {
+                color: #aaa;
+            }
+
+    .ms-dropdown-header {
+        padding: 10px 14px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+        .ms-dropdown-header input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+
+        .ms-dropdown-header label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            margin: 0;
+        }
+
+    .ms-dropdown-list {
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    .ms-dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .ms-dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .ms-dropdown-item:hover {
+            background: #f5f7fa;
+        }
+
+        .ms-dropdown-item.checked {
+            background: #e8f2ff;
+        }
+
+        .ms-dropdown-item.hidden {
+            display: none;
+        }
+
+        .ms-dropdown-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+            flex-shrink: 0;
+        }
+
+        .ms-dropdown-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .ms-dropdown-item.checked span {
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+
+        .ms-dropdown-item span mark {
+            background: #fef08a;
+            color: #333;
+            padding: 0;
+            border-radius: 2px;
+        }
+
+    .ms-dropdown-empty {
+        padding: 25px;
+        text-align: center;
+        color: #888;
+        font-size: 14px;
+    }
+
+    .ms-dropdown-no-results {
+        padding: 20px;
+        text-align: center;
+        color: #999;
+        font-size: 13px;
+        display: none;
+    }
+
+        .ms-dropdown-no-results.show {
+            display: block;
+        }
+
+    .dropdown-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9998;
+        display: none;
+    }
+
+        .dropdown-backdrop.show {
+            display: block;
+        }
+
+    /* ===== CHART STYLES ===== */
+    .chart-container {
+        padding: 20px;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        margin: 15px 0;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .chart-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .chart-wrapper {
+        position: relative;
+        height: 450px;
+        width: 100%;
+    }
+
+    .no-data-box {
+        height: 400px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 16px;
+    }
+
+        .no-data-box i {
+            font-size: 50px;
+            margin-bottom: 15px;
+            color: #cbd5e1;
+        }
+
+    /* View Type single-select items */
+    .ms-dropdown-item-single {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .ms-dropdown-item-single:last-child {
+            border-bottom: none;
+        }
+
+        .ms-dropdown-item-single:hover {
+            background: #f5f7fa;
+        }
+
+        .ms-dropdown-item-single.checked {
+            background: #e8f2ff;
+        }
+
+            .ms-dropdown-item-single.checked span {
+                color: #1d4ed8;
+                font-weight: 500;
+            }
+
+        .ms-dropdown-item-single span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .ms-dropdown-item-single i {
+            width: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .ms-dropdown-item-single.checked i {
+            color: #1d4ed8;
+        }
+
+    /* ===== CHANGED VALUE HIGHLIGHT (green) ===== */
+    .history-table tbody td.val-changed {
+        color: #047857 !important;
+        background: #ecfdf5 !important;
+        font-weight: 600;
+    }
+
+    .history-table tbody tr:nth-child(even) td.val-changed {
+        background: #d1fae5 !important;
+    }
+
+    .history-table tbody tr:hover td.val-changed {
+        background: #a7f3d0 !important;
+    }
+
+    /* ===== UNCHANGED VALUE HIGHLIGHT (soft muted) ===== */
+    .history-table tbody td.val-unchanged {
+        color: #78716c !important;
+        background: #f5f5f4 !important;
+    }
+
+    .history-table tbody tr:nth-child(even) td.val-unchanged {
+        background: #eeeceb !important;
+    }
+
+    .history-table tbody tr:hover td.val-unchanged {
+        background: #e7e5e4 !important;
+    }
+
+    /* ===== DATALOGGER PICKUP / DROP ===== */
+    .dl-pickup {
+        color: #059669 !important;
+        font-weight: 700;
+    }
+
+    .dl-drop {
+        color: #dc2626 !important;
+        font-weight: 700;
+    }
+
+    .attr-sub {
+        display: block;
+        font-size: 9px;
+        font-weight: 400;
+        opacity: 0.75;
+        margin-top: 1px;
+        letter-spacing: 0.5px;
+    }
+
+    /* Subscript-style for alias names: ITC → I<sub>TC</sub> (small lowered text) */
+    .history-table thead th .alias-tc {
+        font-size: 65%;
+        vertical-align: sub;
+        font-weight: inherit;
+        letter-spacing: 0.2px;
+    }
+
+    /* ===== SINGLE-LINE FILTERS ===== */
+    #filterContainer {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        align-items: flex-end !important;
+        gap: 8px;
+        padding-bottom: 4px;
+    }
+
+        #filterContainer > div {
+            flex: 0 0 auto;
+            width: auto !important;
+            min-width: 0;
+            max-width: none;
+            margin-top: 0 !important;
+            padding: 0 2px;
+        }
+
+            #filterContainer > div > span {
+                font-size: 12px;
+                font-weight: 500;
+                color: #475569;
+                white-space: nowrap;
+                display: block;
+                margin-bottom: 4px;
+            }
+
+        #filterContainer .form-control,
+        #filterContainer .select-btn {
+            font-size: 13px;
+            padding: 5px 10px;
+            height: 36px;
+            min-width: 90px;
+        }
+
+        #filterContainer input[type="date"] {
+            min-width: 130px;
+        }
+
+        #filterContainer input[type="time"] {
+            min-width: 100px;
+        }
+
+        #filterContainer .select-btn {
+            min-width: 120px;
+        }
+
+        #filterContainer .btn-search {
+            height: 36px;
+            padding: 6px 14px;
+        }
+
+
+
+    /* ===== CHART STYLES ===== */
+    .chart-container {
+        padding: 20px;
+        background: #ffffff;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        margin: 15px 0;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .chart-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0;
+    }
+
+    .chart-wrapper {
+        position: relative;
+        height: 450px;
+        width: 100%;
+    }
+
+    .no-data-box {
+        height: 400px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 16px;
+    }
+
+        .no-data-box i {
+            font-size: 50px;
+            margin-bottom: 15px;
+            color: #cbd5e1;
+        }
+
+    /* ===== VIEW TYPE DROPDOWN ===== */
+    .er-view-selector {
+        position: relative;
+        display: inline-block;
+    }
+
+    .er-view-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        padding: 6px 12px;
+        font-size: 13px;
+        color: #333;
+        cursor: pointer;
+        min-width: 140px;
+        height: 36px;
+        gap: 8px;
+    }
+
+        .er-view-btn:hover {
+            border-color: #999;
+        }
+
+        .er-view-btn.active {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+    .er-view-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 4px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+        min-width: 180px;
+        z-index: 9999;
+        display: none;
+    }
+
+        .er-view-dropdown.open {
+            display: block;
+        }
+
+    .er-view-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        gap: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        transition: background 0.15s;
+    }
+
+        .er-view-item:last-child {
+            border-bottom: none;
+        }
+
+        .er-view-item:hover {
+            background: #f5f7fa;
+        }
+
+        .er-view-item.checked {
+            background: #e8f2ff;
+        }
+
+            .er-view-item.checked span {
+                color: #1d4ed8;
+                font-weight: 500;
+            }
+
+        .er-view-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .er-view-item i {
+            width: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .er-view-item.checked i {
+            color: #1d4ed8;
+        }
+</style>
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<!-- Backdrop for closing dropdowns -->
+<div class="dropdown-backdrop" id="backdrop"></div>
+
+<div class="row">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="row">
+                    <div class="col-12 col-sm-5">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item">EquipmentRoom</li>
+                                <li class="breadcrumb-item active" aria-current="page"><a href="#">EquipmentRoom History</a></li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                        <h2 class="page-name">EquipmentRoom History</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header mb-2">
+                <h4 class="m-0">Search</h4>
+            </div>
+            <div class="card-body">
+                <div class="mb-3" id="filterContainer">
+
+                    <!-- Zone -->
+                    <div class="filter-item">
+                        <span>Zone</span>
+                        @Html.DropDownList("ZoneId", (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", @id = "drpZones", tabindex = 1 })
+                    </div>
+
+                    <!-- Division -->
+                    <div class="filter-item">
+                        <span>Division</span>
+                        @Html.DropDownList("DivisionId", (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", @id = "drpDivisions", tabindex = 2 })
+                    </div>
+
+                    <!-- Station/Site — MULTI-SELECT -->
+                    <div class="filter-item" style="position:relative; z-index:100;">
+                        <span>Station</span>
+                        <div class="select-btn" id="btnSite" data-target="ddSite">
+                            <span class="text" id="txtSite">All</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+
+                    <div class="filter-item" style="position:relative; z-index:100;">
+                        <span>Equipment Room</span>
+                        <div class="select-btn" id="btnEquipmentRoom" data-target="ddEquipmentRoom">
+                            <span class="text" id="txtEquipmentRoom">All</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+
+                    <!-- From Date -->
+                    <div class="filter-item">
+                        <span>From Date</span>
+                        <input type="date" class="form-control" id="txtFromDate" />
+                    </div>
+
+                    <!-- From Time -->
+                    <div class="filter-item">
+                        <span>From Time</span>
+                        <input type="time" class="form-control" id="txtFromTime" />
+                    </div>
+
+                    <!-- To Date -->
+                    <div class="filter-item">
+                        <span>To Date</span>
+                        <input type="date" class="form-control" id="txtToDate" />
+                    </div>
+
+                    <!-- To Time -->
+                    <div class="filter-item">
+                        <span>To Time</span>
+                        <input type="time" class="form-control" id="txtToTime" />
+                    </div>
+
+                    <!-- View Type — SINGLE-SELECT -->
+                    <div class="filter-item" style="position:relative; z-index:100;">
+                        <!-- View Type Dropdown (Single Select) -->
+                        <div class="er-view-selector">
+                            <div class="er-view-btn" id="erViewBtn" onclick="toggleErViewDropdown()">
+                                <span><i class="fas fa-table mr-1"></i> Table</span>
+                                <i class="fas fa-chevron-down" style="font-size:11px; color:#999;"></i>
+                            </div>
+                            <div class="er-view-dropdown" id="erViewDropdown">
+                                <div class="er-view-item checked" data-value="Table" onclick="selectErView(this)">
+                                    <i class="fas fa-table"></i>
+                                    <span>Table</span>
+                                </div>
+                                <div class="er-view-item" data-value="Bar" onclick="selectErView(this)">
+                                    <i class="fas fa-chart-bar"></i>
+                                    <span>Bar Chart</span>
+                                </div>
+                                <div class="er-view-item" data-value="Pie" onclick="selectErView(this)">
+                                    <i class="fas fa-chart-pie"></i>
+                                    <span>Pie Chart</span>
+                                </div>
+                                <div class="er-view-item" data-value="Graph" onclick="selectErView(this)">
+                                    <i class="fas fa-chart-line"></i>
+                                    <span>Line Graph</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Button -->
+                    <div class="filter-item">
+                        <button type="button" class="btn-search" onclick="fnSearchHistory()">
+                            <img src="~/Areas/FRS25/assets/img/search.svg">
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ===== MULTI-SELECT DROPDOWNS ===== -->
+                <!-- Site Dropdown -->
+                <div class="filter-dropdown" id="ddSite">
+                    <div class="ms-dropdown-search">
+                        <input type="text" placeholder="Search station..." onkeyup="filterMsDropdown('site', this.value)">
+                    </div>
+                    <div class="ms-dropdown-header">
+                        <input type="checkbox" id="chkAllSite">
+                        <label for="chkAllSite">Select All</label>
+                    </div>
+                    <div class="ms-dropdown-list" id="listSite">
+                        @if (ViewBag.Sites != null)
+                        {
+                            foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
+                            {
+                                <div class="ms-dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                                    <input type="checkbox" class="cb-site" value="@site.Value">
+                                    <span>@site.Text</span>
+                                </div>}
+                        }
+                    </div>
+                    <div class="ms-dropdown-no-results">No results found</div>
+                </div>
+
+                <!-- Equipment Room Dropdown -->
+                <div class="filter-dropdown" id="ddEquipmentRoom">
+                    <div class="ms-dropdown-search">
+                        <input type="text" placeholder="Search equipment room..." onkeyup="filterMsDropdown('equipmentRoom', this.value)">
+                    </div>
+                    <div class="ms-dropdown-header">
+                        <input type="checkbox" id="chkAllEquipmentRoom">
+                        <label for="chkAllEquipmentRoom">Select All</label>
+                    </div>
+                    <div class="ms-dropdown-list" id="listEquipmentRoom">
+
+                    </div>
+                    <div class="ms-dropdown-no-results">No results found</div>
+                </div>
+
+                <div id="divEquipmentRoomHistory"></div>
+
+              
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+   
+    // ==========================================================================
+    // GLOBALS
+    // ==========================================================================
+    var openDropdown = null;
+    var debounceTimer = null;
+    var selectedViewType = 'Table';
+    var telemetryChart = null;
+    var lastAssetResults = null;
+    var chartColors = [
+        '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
+        '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
+        '#a855f7', '#d946ef', '#f59e0b', '#84cc16', '#0ea5e9',
+        '#e11d48', '#7c3aed', '#059669', '#dc2626', '#2563eb'
+    ];
+
+    // ==========================================================================
+    // ASSET ATTRIBUTE MAP: Id → Title (loaded from api/AssetAttribute/GetAll)
+    // ==========================================================================
+    var assetAttributeMap = {};       // { 1: "Vr", 2: "If mA", 3: "Ir mA", ... }
+    var assetAttributeLoaded = false;
+
+    // Fetch all asset attribute definitions and build Id → AliasName lookup
+    function loadAssetAttributes(callback) {
+        $.ajax({
+            url: '/FRS25/EquipmentRoomHistory/GetAssetAttributes',
+            type: 'GET',
+            dataType: 'json',
+            success: function (response) {
+                var data = response;
+                if (response && !Array.isArray(response)) {
+                    data = response.Data || response.data || response.Result || response.result || response;
+                }
+                if (data && Array.isArray(data) && data.length > 0) {
+                    data.forEach(function (item) {
+                        var id = item.Id || item.id || item.AttributeId || item.attributeId;
+                        // Prefer AliasName over Title
+                        var title = item.AliasName || item.aliasName || item.Alias || item.alias
+                            || item.Title || item.title || item.Name || item.name
+                            || item.AttributeName || item.attributeName;
+                        if (id !== undefined && id !== null && title) {
+                            assetAttributeMap[id] = title;
+                        }
+                    });
+                    assetAttributeLoaded = true;
+                    console.log('[AssetAttr] Loaded ' + Object.keys(assetAttributeMap).length + ' attribute AliasName(s)', assetAttributeMap);
+                }
+                if (callback) callback();
+            },
+            error: function (xhr, status, error) {
+                console.warn('[AssetAttr] Failed to load attribute names:', status, error, '. Will show Attr IDs as fallback.');
+                if (callback) callback();
+            }
+        });
+    }
+
+    // Get display title for an attribute ID — returns AliasName from API, falls back to "Attr {id}"
+    function getAttrTitle(attrId) {
+        if (assetAttributeMap[attrId]) return assetAttributeMap[attrId];
+        // Try string key (in case API returned string IDs)
+        if (assetAttributeMap[String(attrId)]) return assetAttributeMap[String(attrId)];
+        return 'Attr ' + attrId;
+    }
+
+    // Format alias name: first character normal, rest as subscript
+    // "VTC TFC I/P(V)" → "V<span class='alias-tc'>TC TFC I/P(V)</span>"
+    // "ITC RELAY END(mA)" → "I<span class='alias-tc'>TC RELAY END(mA)</span>"
+    function formatAliasName(name) {
+        if (!name || name.length < 2) return name;
+        return name.charAt(0) + '<span class="alias-tc">' + name.substring(1) + '</span>';
+    }
+
+    // ==========================================================================
+    // DOCUMENT READY
+    // ==========================================================================
+    $(document).ready(function () {
+        // Load asset attribute titles on page init (non-blocking)
+        loadAssetAttributes();
+
+        // Date / Time defaults — both From and To default to today
+        var today = new Date();
+
+        $('#txtFromDate').val(formatDateForInput(today));
+        $('#txtToDate').val(formatDateForInput(today));
+        $('#txtFromTime').val('00:00');
+        $('#txtToTime').val(formatTimeForInput(today));
+
+        // Default Asset Type to "Track" (value = 1)
+        //if ($('#drpAssetType option[value="1"]').length) {
+        //    $('#drpAssetType').val('1');
+        //}
+
+        // Cascading dropdowns
+        $('#drpZones').change(function () { GetDivisionByZone($(this).val()); });
+        $('#drpDivisions').change(function () { GetSitesByDivision($(this).val()); });
+        $('#drpAssetType').change(function () { debounceAssetNumbers(); });
+
+        // Multi-select button clicks
+        $('.select-btn').on('click', function (e) {
+            e.stopPropagation();
+            toggleDD($(this).data('target'), this);
+        });
+
+        // Backdrop click to close
+        $('#backdrop').on('click', closeDD);
+
+
+        // Select All handlers
+        //$('#chkAllSite').on('change', function () { msSelectAll('site', this.checked); });
+        //$('#chkAllEquipmentRoom').on('change', function () { msSelectAll('equipmentRoom', this.checked); });
+
+        //// Multi-select item click
+        //$(document).on('click', '#ddSite .ms-dropdown-item', function (e) {
+        //    e.stopPropagation();
+        //    var $cb = $(this).find('input[type="checkbox"]');
+        //    $cb.prop('checked', !$cb.prop('checked'));
+        //    $(this).toggleClass('checked', $cb.prop('checked'));
+        //    msUpdateSelectAllState('site');
+        //    msUpdateText('site');
+        //    debounceEquipmentRooms();
+        //});
+
+        //// Multi-select item click
+        //$(document).on('click', '#ddEquipmentRoom .ms-dropdown-item', function (e) {
+        //    e.stopPropagation();
+        //    var $cb = $(this).find('input[type="checkbox"]');
+        //    $cb.prop('checked', !$cb.prop('checked'));
+        //    $(this).toggleClass('checked', $cb.prop('checked'));
+        //    msUpdateSelectAllState('equipmentRoom');
+        //    msUpdateText('equipmentRoom');
+        //});
+
+        // ── Site: Select All header (checkbox, label, or row background) ──
+        $(document).on('click', '#ddSite .ms-dropdown-header', function (e) {
+            e.stopPropagation();
+            var $cb = $('#chkAllSite');
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                setTimeout(function () { msSelectAll('site', $cb.prop('checked')); }, 0);
+            } else {
+                var newState = !$cb.prop('checked');
+                $cb.prop('checked', newState);
+                msSelectAll('site', newState);
+            }
+        });
+        // ── Site: individual item click ──
+        $(document).on('click', '#ddSite .ms-dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $(this).toggleClass('checked', $cb.prop('checked'));
+            msUpdateSelectAllState('site');
+            msUpdateText('site');
+            debounceEquipmentRooms();
+        });
+
+        // ── Equipment Room: Select All header (checkbox, label, or row background) ──
+        $(document).on('click', '#ddEquipmentRoom .ms-dropdown-header', function (e) {
+            e.stopPropagation();
+            var $cb = $('#chkAllEquipmentRoom');
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
+                setTimeout(function () { msSelectAll('equipmentRoom', $cb.prop('checked')); }, 0);
+            } else {
+                var newState = !$cb.prop('checked');
+                $cb.prop('checked', newState);
+                msSelectAll('equipmentRoom', newState);
+            }
+        });
+        // ── Equipment Room: individual item click ──
+        $(document).on('click', '#ddEquipmentRoom .ms-dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+            if (!$(e.target).is('input[type="checkbox"]')) {
+                $cb.prop('checked', !$cb.prop('checked'));
+            }
+            $(this).toggleClass('checked', $cb.prop('checked'));
+            msUpdateSelectAllState('equipmentRoom');
+            msUpdateText('equipmentRoom');
+        });
+
+        // View Type — Single Select
+        $(document).on('click', '#ddViewType .ms-dropdown-item-single', function (e) {
+            e.stopPropagation();
+            $('#ddViewType .ms-dropdown-item-single').removeClass('checked');
+            $(this).addClass('checked');
+            selectedViewType = $(this).data('value');
+            $('#txtViewType').text($(this).find('span').text());
+            closeDD();
+
+            if (lastAssetResults && lastAssetResults.length > 0) {
+                renderByViewType(lastAssetResults);
+            }
+        });
+
+        $(document).on('click', '.ms-dropdown-search', function (e) { e.stopPropagation(); });
+    });
+
+    // ===== MULTI-SELECT HELPERS =====
+    function toggleDD(id, btn) {
+        if (openDropdown === id) {
+            closeDD();
+            startAutoRefresh();
+            _isDropdownOpen = false;
+            return;
+        }
+        closeDD();
+
+        _isDropdownOpen = true;
+
+        var $dd = $('#' + id);
+
+        // Move to body to escape all parent stacking contexts
+        $('body').append($dd);
+
+        var rect = btn.getBoundingClientRect();
+
+        // Temporarily show invisible to measure real height
+        $dd.css({
+            position: 'absolute',
+            visibility: 'hidden',
+            display: 'block',
+            top: '-9999px',
+            left: '-9999px'
+        });
+
+        var ddHeight = $dd.outerHeight();
+        var ddWidth = $dd.outerWidth();
+
+        var top = rect.bottom + 4;
+        var left = rect.left;
+
+        // Flip upward if overflows bottom of screen
+        if (top + ddHeight > window.innerHeight) {
+            top = rect.top - ddHeight - 4;
+        }
+
+        // Shift left if overflows right of screen
+        if (left + ddWidth > window.innerWidth) {
+            left = window.innerWidth - ddWidth - 8;
+        }
+
+        // Now position correctly and show
+        $dd.css({
+            visibility: '',
+            display: '',
+            top: top + 'px',
+            left: left + 'px'
+        });
+
+        $dd.addClass('open');
+        $(btn).addClass('active');
+        $('#backdrop').addClass('show');
+        openDropdown = id;
+
+        setTimeout(function () {
+            var $searchInput = $dd.find('.dropdown-search input');
+            if ($searchInput.length) $searchInput.focus();
+        }, 100);
+    }
+
+    function closeDD() {
+        if (openDropdown) {
+            var $dd = $('#' + openDropdown);
+            $dd.find('.ms-dropdown-search input').val('');
+            $dd.find('.ms-dropdown-item').removeClass('hidden');
+            $dd.find('.ms-dropdown-no-results').removeClass('show');
+            $dd.find('.ms-dropdown-item').each(function () {
+                var origText = $(this).data('text');
+                if (origText) $(this).find('span').text(origText);
+            });
+            $dd.removeClass('open');
+            $('.select-btn').removeClass('active');
+            $('#backdrop').removeClass('show');
+            openDropdown = null;
+        }
+    }
+
+    function msSelectAll(type, checked) {
+        $('.cb-' + type).each(function () {
+            var $item = $(this).closest('.ms-dropdown-item');
+            if (!$item.hasClass('hidden')) {
+                $(this).prop('checked', checked);
+                $item.toggleClass('checked', checked);
+            }
+        });
+        msUpdateText(type);
+        if (type === 'site') debounceEquipmentRooms();
+    }
+
+    function msUpdateSelectAllState(type) {
+        var listId = (type === 'site') ? 'listSite' : 'listEquipmentRoom';
+        var $visible = $('#' + listId + ' .ms-dropdown-item:not(.hidden)');
+        var total = $visible.length;
+        var checked = $visible.find('.cb-' + type + ':checked').length;
+        var chkAllId = (type === 'site') ? 'chkAllSite' : 'chkAllEquipmentRoom';
+        $('#' + chkAllId).prop('checked', total > 0 && total === checked);
+    }
+
+    function msUpdateText(type) {
+        var $checked = $('.cb-' + type + ':checked');
+        var count = $checked.length;
+        var text = 'All';
+        if (count === 1) {
+            text = $checked.first().closest('.ms-dropdown-item').data('text') ||
+                $checked.first().closest('.ms-dropdown-item').find('span').text();
+        } else if (count > 1) {
+            text = count + ' selected';
+        }
+        var txtId = (type === 'site') ? 'txtSite' : 'txtEquipmentRoom';
+        $('#' + txtId).text(text);
+    }
+
+    function msGetValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () { vals.push($(this).val()); });
+        return vals;
+    }
+
+    function filterMsDropdown(type, searchText) {
+        var ddId = (type === 'site') ? 'ddSite' : 'ddEquipmentRoom';
+        var $dropdown = $('#' + ddId);
+        var $items = $dropdown.find('.ms-dropdown-item');
+        var $noResults = $dropdown.find('.ms-dropdown-no-results');
+        var search = searchText.toLowerCase().trim();
+        var visibleCount = 0;
+
+        $items.each(function () {
+            var $item = $(this);
+            var text = ($item.data('text') || $item.find('span').text()).toLowerCase();
+
+            if (search === '' || text.indexOf(search) > -1) {
+                $item.removeClass('hidden');
+                visibleCount++;
+                if (search !== '') {
+                    var originalText = $item.data('text') || $item.find('span').text();
+                    var regex = new RegExp('(' + escapeRegex(searchText) + ')', 'gi');
+                    $item.find('span').html(originalText.replace(regex, '<mark>$1</mark>'));
+                } else {
+                    var origText = $item.data('text');
+                    if (origText) $item.find('span').text(origText);
+                }
+            } else {
+                $item.addClass('hidden');
+            }
+        });
+
+        $noResults.toggleClass('show', visibleCount === 0 && search !== '');
+    }
+
+    function escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // ==========================================================================
+    // DATE HELPERS
+    // ==========================================================================
+    function formatDateForInput(date) {
+        var y = date.getFullYear();
+        var m = ('0' + (date.getMonth() + 1)).slice(-2);
+        var d = ('0' + date.getDate()).slice(-2);
+        return y + '-' + m + '-' + d;
+    }
+
+    function formatTimeForInput(date) {
+        return ('0' + date.getHours()).slice(-2) + ':' + ('0' + date.getMinutes()).slice(-2);
+    }
+
+    function formatDateTimeForAPI(dateStr, timeStr) {
+        if (!dateStr) return '';
+        var parts = dateStr.split('-');
+        var timeParts = (timeStr || '00:00').split(':');
+        return parts[2] + parts[1] + parts[0] + '_' + ('0' + timeParts[0]).slice(-2) + ('0' + timeParts[1]).slice(-2) + ('0' + new Date().getSeconds()).slice(-2);
+    }
+
+    function formatTimestamp(date) {
+        var dd = ('0' + date.getDate()).slice(-2);
+        var mm = ('0' + (date.getMonth() + 1)).slice(-2);
+        var yyyy = date.getFullYear();
+        var hh = ('0' + date.getHours()).slice(-2);
+        var mi = ('0' + date.getMinutes()).slice(-2);
+        var ss = ('0' + date.getSeconds()).slice(-2);
+        return dd + '-' + mm + '-' + yyyy + ' ' + hh + ':' + mi + ':' + ss;
+    }
+
+    function formatTimestampShort(date) {
+        return ('0' + date.getDate()).slice(-2) + '/' + ('0' + (date.getMonth() + 1)).slice(-2) + ' ' + ('0' + date.getHours()).slice(-2) + ':' + ('0' + date.getMinutes()).slice(-2);
+    }
+
+    // ==========================================================================
+    // CASCADING DROPDOWNS
+    // ==========================================================================
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '' && zoneId != '0') {
+            $("#loader").show();
+            $.ajax({
+                url: '/FRS25/EquipmentRoom/GetDivisionByZoneId',
+                type: 'GET',
+                data: { zoneId: zoneId },
+                success: function (data) {
+                    $("#loader").hide();
+                    $("#drpDivisions").empty().append($("<option></option>").val('0').html('All'));
+                    $.each(data, function (key, value) {
+                        $("#drpDivisions").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function () { $("#loader").hide(); showError('Failed to load divisions.', 'Error'); }
+            });
+        }
+    }
+
+    function GetSitesByDivision(divisionId) {
+        $('#listSite').html('<div class="ms-dropdown-empty">Loading...</div>');
+        $('#chkAllSite').prop('checked', false);
+        $('#txtSite').text('All');
+        $('#listEquipmentRoom').html('<div class="ms-dropdown-empty">Select Station</div>');
+        $('#chkAllEquipmentRoom').prop('checked', false);
+        $('#txtEquipmentRoom').text('All');
+
+        if (!divisionId || divisionId === '0' || divisionId === '') {
+            $('#listSite').html('<div class="ms-dropdown-empty">Select Division first</div>');
+            return;
+        }
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/EquipmentRoom/GetSiteByDivisionId',
+            type: 'GET',
+            data: { divisionId: divisionId },
+            success: function (data) {
+                $("#loader").hide();
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        html += '<div class="ms-dropdown-item" data-value="' + value.Id + '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-site" value="' + value.Id + '">';
+                        html += '<span>' + value.Name + '</span></div>';
+                    });
+                    $('#listSite').html(html);
+                } else {
+                    $('#listSite').html('<div class="ms-dropdown-empty">No stations found</div>');
+                }
+            },
+            error: function () { $("#loader").hide(); showError('Failed to load sites.', 'Error'); }
+        });
+    }
+
+    function debounceEquipmentRooms() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(loadEquipmentRooms, 300);
+    }
+
+    function loadEquipmentRooms() {
+        var siteIds = msGetValues('site');
+
+        $('#listEquipmentRoom').html('<div class="ms-dropdown-empty">Select Station first</div>');
+        $('#chkAllEquipmentRoom').prop('checked', false);
+        $('#txtEquipmentRoom').text('All');
+
+        var validSiteIds = siteIds.filter(function (id) { return id && id !== '0'; });
+        if (validSiteIds.length === 0) return;
+
+        $('#listEquipmentRoom').html('<div class="ms-dropdown-empty">Loading...</div>');
+
+        var allAssets = [], seenIds = {}, completed = 0, total = validSiteIds.length;
+
+        for (var s = 0; s < validSiteIds.length; s++) {
+            (function (siteId) {
+                $.ajax({
+                    url: '/FRS25/EquipmentRoom/GetEquipmentRoom',
+                    type: 'GET',
+                    data: { siteId: siteId },
+                    success: function (data) {
+                        debugger;
+                        if (data && data.length > 0) {
+                            var html = '';
+                            $.each(data, function (key, value) {
+                                html += '<div class="ms-dropdown-item" data-value="' + value.Name + '" data-text="' + value.Name + '">';
+                                html += '<input type="checkbox" class="cb-equipmentRoom" value="' + value.Name + '">';
+                                html += '<span>' + value.Name + '</span></div>';
+                            });
+                            $('#listEquipmentRoom').html(html);
+                        } else {
+                            $('#listEquipmentRoom').html('<div class="ms-dropdown-empty">No equipment found</div>');
+                        }
+                    },
+                    error: function () { $("#loader").hide(); showError('Failed to load equipments.', 'Error'); }
+                });
+            })(validSiteIds[s]);
+        }
+    }
+
+    //function renderEquipmentRoom(allAssets) {
+    //    allAssets.sort(function (a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
+    //    if (allAssets.length > 0) {
+    //        var html = '';
+    //        for (var i = 0; i < allAssets.length; i++) {
+    //            html += '<div class="ms-dropdown-item" data-value="' + allAssets[i].Id + '" data-text="' + allAssets[i].Name + '">';
+    //            html += '<input type="checkbox" class="cb-equipmentRoom" value="' + allAssets[i].Id + '">';
+    //            html += '<span>' + allAssets[i].Name + '</span></div>';
+    //        }
+    //        $('#listEquipmentRoom').html(html);
+    //    } else {
+    //        $('#listEquipmentRoom').html('<div class="ms-dropdown-empty">No record found</div>');
+    //    }
+    //}
+
+    // ==========================================================================
+    // SEARCH HISTORY
+    // Ensures asset attribute titles are loaded before rendering
+    // ==========================================================================
+    function fnSearchHistory() {
+        var fromDate = $('#txtFromDate').val();
+        var fromTime = $('#txtFromTime').val();
+        var toDate = $('#txtToDate').val();
+        var toTime = $('#txtToTime').val();
+
+        if (!fromDate) { showWarning('Please select From Date.', 'Validation'); return; }
+        if (!toDate) { showWarning('Please select To Date.', 'Validation'); return; }
+
+        var startDate = formatDateTimeForAPI(fromDate, fromTime);
+        var endDate = formatDateTimeForAPI(toDate, toTime);
+
+        var assetNameMap = {};
+        $('.cb-equipmentRoom:checked').each(function () {
+            var id = $(this).val();
+            assetNameMap[id] = $(this).closest('.ms-dropdown-item').data('text') || ('Asset ' + id);
+        });
+
+        $("#loader").show();
+        $('#divEquipmentRoomHistory').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br/><small class="text-muted mt-2">Loading history data...</small></div>');
+
+
+        var m = { SearchCriteria: {}, Pager: {} };
+
+        m.SearchCriteria.ZoneIds = getValues('zone');
+        m.SearchCriteria.DivisionIds = getValues('division');
+        m.SearchCriteria.SiteIds = getValues('site');
+        m.SearchCriteria.AssetIds = getValues('assetNumber');
+        m.SearchCriteria.AlertInfoIds = getValues('cause');
+        m.SearchCriteria.AcknowledgemenStatusIds = getValues('feedback');
+        m.SearchCriteria.StartDate = $('#txtFromDate').val();
+        m.SearchCriteria.EndDate = $('#txtToDate').val();
+        m.SearchCriteria.StartTime = $('#txtFromTime').val();
+        m.SearchCriteria.EndTime = $('#txtToTime').val();
+        m.SearchCriteria.siteAttributeDatasList = getValues('equipmentRoom');
+
+        $.ajax({
+            url: '/FRS25/EquipmentRoom/_HistoryList',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(m),
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                $("#divEquipmentRoomHistory").empty().append(data);
+                updateRangeBar();
+            },
+            error: function () {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+
+    }
+
+    function onAllHistoryLoaded(assetResults, hasError) {
+        $("#loader").hide();
+
+        if (hasError && assetResults.length === 0) {
+            $('#divEquipmentRoomHistory').html('<div class="text-center text-danger p-5"><i class="fas fa-exclamation-triangle fa-3x mb-3"></i><br/>Failed to load data. Please try again.</div>');
+            $('#divChartContainer').hide();
+            showError('Failed to fetch history data.', 'API Error');
+            lastAssetResults = null;
+            return;
+        }
+
+        if (assetResults.length > 0) {
+            lastAssetResults = assetResults;
+            renderByViewType(assetResults);
+            $('#downloadContainer').show();
+            var totalAttrs = 0;
+            assetResults.forEach(function (a) { totalAttrs += a.attributes.length; });
+            showSuccess('History data loaded. ' + assetResults.length + ' asset(s), ' + totalAttrs + ' attribute(s).', 'Data Loaded');
+        } else {
+            lastAssetResults = null;
+            $('#divEquipmentRoomHistory').html('<div class="text-center text-muted p-5"><i class="fas fa-inbox fa-3x mb-3"></i><br/>No history data found for the selected criteria.</div>');
+            $('#divChartContainer').hide();
+            $('#downloadContainer').hide();
+            showWarning('No data found for the selected date range.', 'No Data');
+        }
+    }
+
+    function renderByViewType(assetResults) {
+        if (telemetryChart != null) { telemetryChart.destroy(); telemetryChart = null; }
+
+        if (selectedViewType === 'Table') {
+            $('#divEquipmentRoomHistory').show();
+            $('#divChartContainer').hide();
+            renderHistoryTable(assetResults);
+        } else {
+            $('#divEquipmentRoomHistory').hide();
+            $('#divChartContainer').show();
+            renderChart(assetResults, selectedViewType);
+        }
+    }
+
+    function getValues(type) {
+        var vals = [];
+        $('.cb-' + type + ':checked').each(function () {
+            vals.push($(this).val());
+        });
+        return vals;
+    }
+
+    // ==========================================================================
+    // VIEW TYPE DROPDOWN
+    // ==========================================================================
+    function toggleErViewDropdown() {
+        var $dd = $('#erViewDropdown');
+        var isOpen = $dd.hasClass('open');
+        $dd.toggleClass('open', !isOpen);
+        $('#erViewBtn').toggleClass('active', !isOpen);
+
+        if (!isOpen) {
+            // Close on outside click
+            setTimeout(function () {
+                $(document).one('click', function () {
+                    $dd.removeClass('open');
+                    $('#erViewBtn').removeClass('active');
+                });
+            }, 10);
+        }
+    }
+</script>

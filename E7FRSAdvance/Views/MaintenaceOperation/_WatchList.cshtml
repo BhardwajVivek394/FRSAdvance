@@ -1,0 +1,469 @@
+﻿@model Domain.WatchListLister
+@{
+    int counter = 0;
+}
+
+<div class="modal bounceIn animated" id="modal-view-WatchList" tabindex="-1" role="dialog" data-bs-backdrop="static">
+    <div class="modal-dialog modal-width modal-dialog-centered modal-xl ">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Watch List</span></h4>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-hidden="true"></button>
+            </div>
+            <div class="modal-body modal-fixed-height">
+                <input type="hidden" id="txtWatchlistFromDate" value="@Model.SearchCriteria.StartDate.ToShortDateString().Replace("/","-")" />
+                <input type="hidden" id="txtWatchlistToDate" value="@Model.SearchCriteria.EndDate.ToShortDateString().Replace("/","-")" />
+
+                <div class="row">
+                    <div class="col-2">
+                        <select class="form-control mb-3" id="drpWatchListType" onchange="fnChangeWatchListType(this)">
+                            <option value="List">List</option>
+                            <option value="Gropwise">Gropwise</option>
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        @if (Model.SearchCriteria.CreationType == (int)E7FRSAdvance.Utility.Utility.WatchListCreationType.User)
+                        {
+                            <a class="btn btn-primary" href="javascript:void(0)" onclick="fnDownloadUserWatchList('@Model.SearchCriteria.SiteId')">Download</a>
+                        }
+                        else if (Model.SearchCriteria.CreationType == (int)E7FRSAdvance.Utility.Utility.WatchListCreationType.System)
+                        {
+                            <a class="btn btn-primary" href="javascript:void(0)" onclick="fnDownloadWatchList('@Model.SearchCriteria.SiteId')">Download</a>
+                        }
+
+
+                    </div>
+                    <div class="col-8"></div>
+                    <div class="col-12">
+                        <div class="tablemodalFixHead" id="divWatchList_ListView">
+                            @if (Model != null && Model.WatchLists != null)
+                            {
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th style="background-color: #215968;color:white;">SR No.</th>
+                                            <th style="background-color: #215968;color:white;">Asset Type</th>
+                                            <th style="background-color: #215968;color:white;">Asset</th>
+                                            <th style="background-color: #215968;color:white;">Attribute</th>
+                                            <th style="background-color: #215968;color:white;">Cluster</th>
+                                            <th style="background-color: #215968;color:white;">Card</th>
+                                            <th style="background-color: #215968;color:white;">ADC</th>
+                                            <th style="background-color: #215968;color:white;">Pin</th>
+                                            <th style="background-color: #215968;color:white;">Value</th>
+                                            <th style="background-color: #215968;color:white;">Date</th>
+                                            <th style="background-color: #215968;color:white;">Status</th>
+                                            <th style="background-color: #215968;color:white;">Cause</th>
+                                            <th style="background-color: #215968;color:white;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+
+                                        @foreach (var item in Model.WatchLists)
+                                        {
+                                            counter++;
+                                            <tr class="cls-edit-watchlist" data-SiteId="@item.SiteId" data-AssetTypeId="@item.AssetTypeId" data-AttributeId="@item.AttributeId" data-AssetId="@item.AssetId" data-Created-Date="@item.CreatedDate">
+                                                <td>@counter</td>
+                                                <td>@item.AssetTypeName</td>
+                                                <td>@item.AssetName</td>
+                                                <td>@item.AttributeName</td>
+                                                <td>@item.ClusterName</td>
+                                                <td>@item.CardName</td>
+                                                <td>@item.ADCName</td>
+                                                <td>@item.Pin</td>
+                                                <td>@item.AttributeValue</td>
+                                                <td>@item.CreatedDate.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                <td>@item.Status</td>
+                                                <td>@item.Cause</td>
+                                                <td>
+
+                                                    <div>
+                                                        <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowWatchListInstance('@item.AssetId','@item.AttributeId'); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="/assets/images/Vector.png"></a>
+                                                    </div>
+                                                    @*@if (item.AlertInstanceCount > 0)
+                                                        {
+
+                                                        }
+                                                        <div>
+                                                            <span>@item.AlertInstanceCount</span>
+                                                        </div>*@
+                                                </td>
+
+                                            </tr>
+                                        }
+
+
+                                    </tbody>
+
+
+                                </table>
+
+                            }
+                        </div>
+
+                        <div class="tablemodalFixHead" id="divWatchList_GroupView" style="display:none">
+                            <div class="mail-body-wrapper">
+                                <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                    <li class="inbox-data" style="background-color: #0e5068; margin-top: 10px;">
+                                        <div class="inbox-message">
+
+                                            <div class="email-data">
+                                                <span style="float:left; color:white;">Link issue  &nbsp;</span>
+
+                                                @if (Model.WatchLists != null && Model.WatchLists.Count > 0)
+                                                {
+                                                    <span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@Model.WatchLists.Where(x => x.Cause != null && x.Cause.Trim().ToLower() == "linkissue").Count()</span>
+                                                }
+                                            </div>
+                                            <span class="pull-right">
+                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowWatchListGroup('WatchListGroupLinkissue',this); return false;"></i></a>
+                                            </span>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data WatchListGroupLinkissue" style="margin-top: 10px; display: none ">
+                                        <div class="mail-body-wrapper" style="width:100%;">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                <li class="inbox-data">
+                                                    <div class="inbox-message">
+
+                                                        @if (Model != null && Model.WatchLists != null)
+                                                        {
+                                                            <table class="table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th style="background-color: #215968;color:white;">Asset Type</th>
+                                                                        <th style="background-color: #215968;color:white;">Asset</th>
+                                                                        <th style="background-color: #215968;color:white;">Attribute</th>
+                                                                        <th style="background-color: #215968;color:white;">Cluster</th>
+                                                                        <th style="background-color: #215968;color:white;">Card</th>
+                                                                        <th style="background-color: #215968;color:white;">ADC</th>
+                                                                        <th style="background-color: #215968;color:white;">Pin</th>
+                                                                        <th style="background-color: #215968;color:white;">Value</th>
+                                                                        <th style="background-color: #215968;color:white;">Date</th>
+                                                                        <th style="background-color: #215968;color:white;">Status</th>
+                                                                        <th style="background-color: #215968;color:white;">Cause</th>
+                                                                        <th style="background-color: #215968;color:white;"></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+
+                                                                    @foreach (var item in Model.WatchLists.Where(x => x.Cause != null && x.Cause.Trim().ToLower() == "linkissue"))
+                                                                    {
+                                                                        counter++;
+                                                                        <tr class="cls-edit-watchlist" data-SiteId="@item.SiteId" data-AssetTypeId="@item.AssetTypeId" data-AttributeId="@item.AttributeId" data-AssetId="@item.AssetId" data-Created-Date="@item.CreatedDate">
+                                                                            <td>@item.AssetTypeName</td>
+                                                                            <td>@item.AssetName</td>
+                                                                            <td>@item.AttributeName</td>
+                                                                            <td>@item.ClusterName</td>
+                                                                            <td>@item.CardName</td>
+                                                                            <td>@item.ADCName</td>
+                                                                            <td>@item.Pin</td>
+                                                                            <td>@item.AttributeValue</td>
+                                                                            <td>@item.CreatedDate.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                                            <td>@item.Status</td>
+                                                                            <td>@item.Cause</td>
+                                                                            <td>
+                                                                                <div>
+                                                                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowWatchListInstance('@item.AssetId','@item.AttributeId'); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="/assets/images/Vector.png"></a>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+
+                                                                </tbody>
+
+
+                                                            </table>
+
+                                                        }
+                                                    </div>
+                                                </li>
+
+                                            </ul>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data" style="background-color: #0e5068; margin-top: 10px;">
+                                        <div class="inbox-message">
+
+                                            <div class="email-data">
+                                                <span style="float:left; color:white;">Hardware  &nbsp;</span>
+                                                @if (Model.WatchLists != null && Model.WatchLists.Count > 0)
+                                                {
+                                                    <span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@Model.WatchLists.Where(x => x.Cause == null || x.Cause == string.Empty || x.Cause.Trim().ToLower() == "point not set").Count()</span>
+
+                                                }
+                                            </div>
+                                            <span class="pull-right">
+                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowWatchListGroup('WatchListGroupHardware',this); return false;"></i></a>
+                                            </span>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data WatchListGroupHardware" style="margin-top: 10px; display: none ">
+                                        <div class="mail-body-wrapper" style="width:100%;">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                <li class="inbox-data">
+                                                    <div class="inbox-message">
+
+                                                        @if (Model != null && Model.WatchLists != null)
+                                                        {
+                                                            <table class="table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th style="background-color: #215968;color:white;">Asset Type</th>
+                                                                        <th style="background-color: #215968;color:white;">Asset</th>
+                                                                        <th style="background-color: #215968;color:white;">Attribute</th>
+                                                                        <th style="background-color: #215968;color:white;">Cluster</th>
+                                                                        <th style="background-color: #215968;color:white;">Card</th>
+                                                                        <th style="background-color: #215968;color:white;">ADC</th>
+                                                                        <th style="background-color: #215968;color:white;">Pin</th>
+                                                                        <th style="background-color: #215968;color:white;">Value</th>
+                                                                        <th style="background-color: #215968;color:white;">Date</th>
+                                                                        <th style="background-color: #215968;color:white;">Status</th>
+                                                                        <th style="background-color: #215968;color:white;">Cause</th>
+                                                                        <th style="background-color: #215968;color:white;"></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+
+                                                                    @foreach (var item in Model.WatchLists.Where(x => x.Cause == null || x.Cause == string.Empty || x.Cause.Trim().ToLower() == "point not set"))
+                                                                    {
+                                                                        counter++;
+                                                                        <tr class="cls-edit-watchlist" data-SiteId="@item.SiteId" data-AssetTypeId="@item.AssetTypeId" data-AttributeId="@item.AttributeId" data-AssetId="@item.AssetId" data-Created-Date="@item.CreatedDate">
+                                                                            <td>@item.AssetTypeName</td>
+                                                                            <td>@item.AssetName</td>
+                                                                            <td>@item.AttributeName</td>
+                                                                            <td>@item.ClusterName</td>
+                                                                            <td>@item.CardName</td>
+                                                                            <td>@item.ADCName</td>
+                                                                            <td>@item.Pin</td>
+                                                                            <td>@item.AttributeValue</td>
+                                                                            <td>@item.CreatedDate.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                                            <td>@item.Status</td>
+                                                                            <td>@item.Cause</td>
+                                                                            <td>
+                                                                                <div>
+                                                                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowWatchListInstance('@item.AssetId','@item.AttributeId'); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="/assets/images/Vector.png"></a>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+
+
+                                                                </tbody>
+
+
+                                                            </table>
+
+                                                        }
+                                                    </div>
+                                                </li>
+
+                                            </ul>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data" style="background-color: #0e5068; margin-top: 10px;">
+                                        <div class="inbox-message">
+
+                                            <div class="email-data">
+                                                <span style="float:left; color:white;">Thresould  &nbsp;</span>
+
+                                                @if (Model.WatchLists != null && Model.WatchLists.Count > 0)
+                                                {
+                                                    <span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@Model.WatchLists.Where(x => x.Cause != null && (x.Cause.Trim().ToLower() == "out of range" || x.Cause.Trim().ToLower() == "point instance")).Count()</span>
+
+                                                }
+                                            </div>
+                                            <span class="pull-right">
+                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowWatchListGroup('WatchListGroupThresould',this); return false;"></i></a>
+                                            </span>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data WatchListGroupThresould" style="margin-top: 10px; display: none ">
+                                        <div class="mail-body-wrapper" style="width:100%;">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                <li class="inbox-data">
+                                                    <div class="inbox-message">
+
+                                                        @if (Model != null && Model.WatchLists != null)
+                                                        {
+                                                            <table class="table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th style="background-color: #215968;color:white;">Asset Type</th>
+                                                                        <th style="background-color: #215968;color:white;">Asset</th>
+                                                                        <th style="background-color: #215968;color:white;">Attribute</th>
+                                                                        <th style="background-color: #215968;color:white;">Cluster</th>
+                                                                        <th style="background-color: #215968;color:white;">Card</th>
+                                                                        <th style="background-color: #215968;color:white;">ADC</th>
+                                                                        <th style="background-color: #215968;color:white;">Pin</th>
+                                                                        <th style="background-color: #215968;color:white;">Value</th>
+                                                                        <th style="background-color: #215968;color:white;">Date</th>
+                                                                        <th style="background-color: #215968;color:white;">Status</th>
+                                                                        <th style="background-color: #215968;color:white;">Cause</th>
+                                                                        <th style="background-color: #215968;color:white;"></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+
+                                                                    @foreach (var item in Model.WatchLists.Where(x => x.Cause != null && (x.Cause.Trim().ToLower() == "out of range" || x.Cause.Trim().ToLower() == "point instance")))
+                                                                    {
+                                                                        counter++;
+                                                                        <tr class="cls-edit-watchlist" data-SiteId="@item.SiteId" data-AssetTypeId="@item.AssetTypeId" data-AttributeId="@item.AttributeId" data-AssetId="@item.AssetId" data-Created-Date="@item.CreatedDate">
+                                                                            <td>@item.AssetTypeName</td>
+                                                                            <td>@item.AssetName</td>
+                                                                            <td>@item.AttributeName</td>
+                                                                            <td>@item.ClusterName</td>
+                                                                            <td>@item.CardName</td>
+                                                                            <td>@item.ADCName</td>
+                                                                            <td>@item.Pin</td>
+                                                                            <td>@item.AttributeValue</td>
+                                                                            <td>@item.CreatedDate.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                                            <td>@item.Status</td>
+                                                                            <td>@item.Cause</td>
+                                                                            <td>
+                                                                                <div>
+                                                                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowWatchListInstance('@item.AssetId','@item.AttributeId'); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="/assets/images/Vector.png"></a>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+
+
+                                                                </tbody>
+
+
+                                                            </table>
+
+                                                        }
+                                                    </div>
+                                                </li>
+
+                                            </ul>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data" style="background-color: #0e5068; margin-top: 10px;">
+                                        <div class="inbox-message">
+
+                                            <div class="email-data">
+                                                <span style="float:left; color:white;">In Active  &nbsp;</span>
+
+                                                @if (Model.WatchLists != null && Model.WatchLists.Count > 0)
+                                                {
+                                                    <span class="span badge rounded-pill1 pill-badge-primary1" style="color:black;">@Model.WatchLists.Where(x => x.Cause != null && x.Cause.Trim().ToLower() == "inactive").Count()</span>
+
+                                                }
+                                            </div>
+                                            <span class="pull-right">
+                                                <a href="#" data-bs-original-title="" title="" style="color:white"><i class="fa fa-angle-up fa-3x" onclick="fnShowWatchListGroup('WatchListGroupInActive',this); return false;"></i></a>
+                                            </span>
+                                        </div>
+                                    </li>
+
+                                    <li class="inbox-data WatchListGroupInActive" style="margin-top: 10px; display: none ">
+                                        <div class="mail-body-wrapper" style="width:100%;">
+                                            <ul id="paginated-list" data-current-page="1" aria-live="polite">
+                                                <li class="inbox-data">
+                                                    <div class="inbox-message">
+
+                                                        @if (Model != null && Model.WatchLists != null)
+                                                        {
+                                                            <table class="table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th style="background-color: #215968;color:white;">Asset Type</th>
+                                                                        <th style="background-color: #215968;color:white;">Asset</th>
+                                                                        <th style="background-color: #215968;color:white;">Attribute</th>
+                                                                        <th style="background-color: #215968;color:white;">Cluster</th>
+                                                                        <th style="background-color: #215968;color:white;">Card</th>
+                                                                        <th style="background-color: #215968;color:white;">ADC</th>
+                                                                        <th style="background-color: #215968;color:white;">Pin</th>
+                                                                        <th style="background-color: #215968;color:white;">Value</th>
+                                                                        <th style="background-color: #215968;color:white;">Date</th>
+                                                                        <th style="background-color: #215968;color:white;">Status</th>
+                                                                        <th style="background-color: #215968;color:white;">Cause</th>
+                                                                        <th style="background-color: #215968;color:white;"></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+
+                                                                    @foreach (var item in Model.WatchLists.Where(x => x.Cause != null && x.Cause.Trim().ToLower() == "inactive"))
+                                                                    {
+                                                                        counter++;
+                                                                        <tr class="cls-edit-watchlist" data-SiteId="@item.SiteId" data-AssetTypeId="@item.AssetTypeId" data-AttributeId="@item.AttributeId" data-AssetId="@item.AssetId" data-Created-Date="@item.CreatedDate">
+                                                                            <td>@item.AssetTypeName</td>
+                                                                            <td>@item.AssetName</td>
+                                                                            <td>@item.AttributeName</td>
+                                                                            <td>@item.ClusterName</td>
+                                                                            <td>@item.CardName</td>
+                                                                            <td>@item.ADCName</td>
+                                                                            <td>@item.Pin</td>
+                                                                            <td>@item.AttributeValue</td>
+                                                                            <td>@item.CreatedDate.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                                                            <td>@item.Status</td>
+                                                                            <td>@item.Cause</td>
+                                                                            <td>
+                                                                                <div>
+                                                                                    <a class="justify-content-center" href="javascript:void(0)" onclick="fnShowWatchListInstance('@item.AssetId','@item.AttributeId'); return false;" data-bs-original-title="" title="" style="color: black"><img style="width:25px;" src="/assets/images/Vector.png"></a>
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    }
+
+                                                                </tbody>
+
+
+                                                            </table>
+
+                                                        }
+                                                    </div>
+                                                </li>
+
+                                            </ul>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function fnShowWatchListGroup(AssetTypeId, $this) {
+        if (AssetTypeId != null && AssetTypeId != '' && AssetTypeId != undefined) {
+            if ($($this).hasClass("fa fa-angle-up")) {
+                $($this).removeClass("fa fa-angle-up").addClass("fa fa-angle-down");
+                $('.' + AssetTypeId).show();
+            } else {
+                $($this).removeClass("fa fa-angle-down").addClass("fa fa-angle-up");
+                $('.' + AssetTypeId).hide();
+            }
+        }
+    }
+    function fnChangeWatchListType($this) {
+
+        if ($($this).val() == 'List') {
+            $('#divWatchList_ListView').show();
+            $('#divWatchList_GroupView').hide();
+        }
+        else if ($($this).val() == 'Gropwise') {
+            $('#divWatchList_ListView').hide();
+            $('#divWatchList_GroupView').show();
+        }
+
+    }
+</script>

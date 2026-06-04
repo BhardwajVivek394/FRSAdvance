@@ -1,0 +1,111 @@
+﻿@model List<Domain.FRSAlertAudit>
+
+<style>
+    .tableFixHead {
+        overflow: auto;
+        height: 100vh;
+    }
+
+        .tableFixHead thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+</style>
+
+<div class="table-responsive tableFixHead">
+    <table class="table">
+        <thead>
+            <tr>
+                <th style="background-color: #215968;color:white;">Station</th>
+                <th style="background-color: #215968;color:white;">Asset Type</th>
+                <th style="background-color: #215968;color:white;">Asset</th>
+                <th style="background-color: #215968;color:white;">Cause code</th>
+                <th style="background-color: #215968;color:white;">Alert Message</th>
+                <th style="background-color: #215968;color:white;">Alert Timestamp</th>
+                <th style="background-color: #215968;color:white;">Audit By</th>
+                <th style="background-color: #215968;color:white;">Audit Date</th>
+                <th style="background-color: #215968;color:white;">Resolve By</th>
+                <th style="background-color: #215968;color:white;">Resolve Date</th>
+                <th style="background-color: #215968;color:white;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model != null && Model.Count > 0)
+            {
+                foreach (var groupdata in Model.GroupBy(x => new { x.AssetId, x.AlertInfoId }).Select(x => x.Key))
+                {
+                    foreach (var item in Model.Where(x => x.AssetId == groupdata.AssetId && x.AlertInfoId == groupdata.AlertInfoId).OrderByDescending(x => x.CreatedDate).Take(1))
+                    {
+
+                        <tr>
+                            <td>@item.Site</td>
+                            <td>@item.AssetType</td>
+                            <td>@item.Asset</td>
+                            <td>@item.CauseCode</td>
+                            <td>@item.AlertMessage</td>
+                            <td>
+                                @if (item.TimeStamp != null && item.TimeStamp.Value != DateTime.MinValue)
+                                {
+                                    <span>
+                                        @item.TimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                    </span>
+                                }
+
+                            </td>
+                            <td class="text-center">@item.CreatedName</td>
+                            <td>@item.CreatedDate</td>
+                            <td>
+                                @item.ResolvedName
+                            </td>
+                            <td>
+                                @if (item.ResolvedDate != null && item.ResolvedDate.Value != DateTime.MinValue)
+                                {
+                                    <span>@item.ResolvedDate.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                }
+
+                            </td>
+                            @if (Model.Where(x => x.AssetId == groupdata.AssetId && x.AlertInfoId == groupdata.AlertInfoId).Count() > 1)
+                            {
+
+                                <td>
+                                    <a class="m-r-10" href="javascript:void(0)" onclick="fnShowFRSAlertAuditView('@item.AssetId','@item.AlertInfoId'); return false;" data-bs-original-title="" title="" style="color: black"><img src="/assets/images/Vector.png"></a>
+                                </td>
+                            }
+                            else
+                            {
+                                <td></td>
+                            }
+                        </tr>
+                    }
+
+                }
+            }
+
+        </tbody>
+    </table>
+</div>
+
+<script>
+
+    function fnShowFRSAlertAuditView(assetId, alertInfoId) {
+        $("#loader").show();
+        $.ajax({
+            url: '/AlertAnalysis/GetFRSAlertAuditViewBy',
+            type: 'POST',
+            dataType: 'html',
+            data: '{assetId:' + assetId + ',alertInfoId:' + alertInfoId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $("#FRSAlertAuditView").empty().append(data);
+                $('#modalFRSAlertAuditView').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+</script>

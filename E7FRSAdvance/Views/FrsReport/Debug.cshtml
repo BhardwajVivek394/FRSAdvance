@@ -1,0 +1,156 @@
+﻿@model Domain.Site
+@{
+    ViewBag.Title = "Debug";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+<script src="~/assets/js/paho-mqtt.js"></script>
+<div class="container-fluid">
+    <div class="page-title">
+        <div class="row">
+            <div class="col-12">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="#"> <i data-feather="home"></i></a></li>
+                    <li class="breadcrumb-item active">Debug</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Sites</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="pull-left">
+                                <strong style="margin-top:10px;margin-right:10px;margin-left:10px;">Asset Type</strong>
+                            </div>
+                            <div class="pull-left">
+                                @Html.DropDownList("AssetTypeId", (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "Select", new { @class = "form-control", tabindex = 1 })
+                            </div>
+                            <div class="pull-left m-l-10">
+                                <button type="button" class="btn btn-success" onclick="fnSearch()">Search</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12" id="divRowDebug" style="height:600px;overflow-y:auto;">
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    var pmchart;
+    var json = "";
+    var client = null;
+    var mQQTPath = "";
+    var channels = [];
+    var mQTT = null;
+    var admin = '@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId';
+    $(document).ready(function () {
+
+        $('#searchDate').datepicker({
+            dateFormat: 'd/m/yy',
+            autoClose: true
+        }).datepicker("setDate", new Date());
+
+        $('#drpSiteId').change(function () {
+            if ($(this).val() != null && $(this).val() != undefined && $(this).val() != '' && $(this).val() != "0") {
+                window.location.href = "Index?siteId=" + $(this).val();
+            }
+        });
+
+        json = @Html.Raw(Json.Encode(Model));
+
+        mQTT =@Html.Raw(Json.Encode(ViewBag.MQTTDetail));
+
+        if (json.MQTTBasePath != null && json.MQTTBasePath != '')
+            mQQTPath = json.MQTTBasePath;
+
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnect,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+
+
+    });
+    function onConnect() {
+        // Once a connection has been made, make a subscription and send a message.
+        var typeId = '';
+        typeId = $('#AssetTypeId').val();
+        var dsd = mQQTPath + 'debug' + '/' + typeId;
+        client.subscribe(mQQTPath + 'debug' + '/' + typeId);
+    }
+
+    // called when the client loses its connection
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            console.log("onConnectionLost:" + responseObject.errorMessage);
+            location.reload();
+        }
+            client.connect({
+                onSuccess: onConnect,
+                userName: "wattmon",
+                password: "wattmon_2018",
+                cleanSession: true
+            });
+    }
+
+    // called when a message arrives
+    function onMessageArrived(message) {
+
+        BindData(message.payloadString);
+        var d = new Date();
+        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
+        $("#c0").html(time);
+
+    }
+
+    function BindData(payloadString) {
+        if (payloadString != null) {
+            var dds = payloadString + '<br>';
+
+            $('#divRowDebug').append(dds);
+
+            $('#divRowDebug').animate({ scrollTop: $('#divRowDebug').prop("scrollHeight") }, 500);
+        }
+
+    }
+
+    function fnSearch() {
+        if ($('#SiteId').val() != null && $('#SiteId').val() != undefined && $('#SiteId').val() != '' && $('#SiteId').val() != "0" && $('#SiteId').val() != null && $('#AssetTypeId').val() != undefined && $('#AssetTypeId').val() != '' && $('#AssetTypeId').val() != "0") {
+            window.location.href = "@Url.Action("Debug", "FRSReport")?siteId=" + $('#SiteId').val() + '&assetTypeId=' + $('#AssetTypeId').val();
+        }
+        else {
+            CommonNotification("ERROR", "Please select site and asset type", "Error");
+        }
+    }
+</script>

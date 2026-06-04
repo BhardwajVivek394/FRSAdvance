@@ -1,0 +1,117 @@
+﻿@model Domain.AppAccessLister
+@{
+    int totalDuration = 0;
+}
+
+<div class="row">
+    <div class="col-12">
+        @if (Model != null && Model.mUser != null && Model.mUser.Count > 0)
+        {
+            <div class="justify-content-around">
+                @foreach (var user in Model.mUser)
+                {
+                    totalDuration += user.Duration;
+                    <label class="clsDivIndexAlertLogs" onclick="fnShowUserHistory(@user.Id,'@user.Name')">@user.Name @user.Duration</label>
+                    @*<div class="clsDivIndexAlertLogs">
+                            <span>@user.Name</span>
+                            <span>@user.Duration</span>
+                        </div>*@
+                }
+            </div>
+
+        }
+    </div>
+</div>
+
+
+<div class="modal fade bd-example-modal-lg" id="modal-add-SingleUserHistory" tabindex="-1" role="dialog" aria-labelledby="modal-add-SingleUserHistory" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg modal-width modal-dialog-centered">
+        <div class="modal-content bradius4">
+            <div class="modal-header">
+                <h4 class="modal-title isEdit" id="myModalLabel"><span id="spSingleUserHistoryHeader"> </span></h4>
+                <h4 class="modal-title" id="myModalLabel">Total Duration: <span id="spTotalDuration"> </span> (min)</h4>
+                <a href="#" style="color:white;font-size:x-large" data-bs-dismiss="modal" aria-hidden="true"><i class="fa fa-close"></i> </a>
+            </div>
+            <div class="modal-body" style="max-height:800px; overflow-y:auto">
+                <div class="form-horizontal">
+                    <div class="rowTable">
+                        <div class="columnTable">
+                            <div>
+                                @if (Model != null && Model.mUser != null && Model.mUser.Count > 0 && Model.mAppAccess != null && Model.mAppAccess.Count > 0)
+                                {
+                                    foreach (var user in Model.mUser)
+                                    {
+                                        var mGroupsAppAccess = Model.mAppAccess.Where(x => x.UserId == user.Id).GroupBy(x => x.StartTime.Date).ToList();
+
+                                        <div class="table-responsive clsSingleUserHistory" id="divSingleUserHistory_@user.Id">
+                                            <div class="rowTable">
+                                                <div class="columnTable">
+                                                    <input type="hidden" value="@Model.mAppAccess.Where(x => x.UserId == user.Id).Select(x => x.Duration).Sum()" id="hdnUserDuration_@user.Id" />
+                                                    @foreach (var groupAppAccess in mGroupsAppAccess)
+                                                    {
+                                                        <div>
+                                                            <table class="table border mb-2">
+                                                                <thead style="background-color: #00A4E0;">
+                                                                    <tr>
+                                                                        <th class="text-white">@groupAppAccess.Key</th>
+                                                                        <th></th>
+                                                                        <th class="text-white">@groupAppAccess.Select(x => x.Duration).Sum() (mins)</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    @foreach (var gluedlog in groupAppAccess.ToList())
+                                                                    {
+                                                                        <tr>
+                                                                            <td>@gluedlog.StartTime.ToLongTimeString()</td>
+                                                                            <td>@gluedlog.EndTime.ToLongTimeString()</td>
+                                                                            <td>@gluedlog.Duration</td>
+                                                                        </tr>
+
+                                                                    }
+
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+
+                                                    }
+                                                </div>
+                                            </div>
+
+
+
+                                        </div>
+                                    }
+
+                                }
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a class="btn btn-default" data-bs-dismiss="modal" id="btnClose">Close</a>
+                @*<button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()" id="btnSave">Save</button>*@
+            </div>
+
+            <!-- Modal -->
+
+
+        </div>
+    </div>
+</div>
+
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('#spnTotalDuration').text('@totalDuration');
+    });
+
+    function fnShowUserHistory(userId, userName) {
+        $(".clsSingleUserHistory").hide();
+        $("#divSingleUserHistory_" + userId).show();
+        $("#spSingleUserHistoryHeader").text(userName);
+        $("#spTotalDuration").text($('#hdnUserDuration_'+userId).val());
+        $("#modal-add-SingleUserHistory").modal("show");
+    }
+</script>

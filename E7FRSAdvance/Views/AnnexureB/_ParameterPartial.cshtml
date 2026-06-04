@@ -1,0 +1,188 @@
+﻿
+<div class="row">
+
+    <div class="col-md-12">
+        <div class="gray-bg" id="divparametreList" style="height:100vh;overflow-y:scroll">
+
+            @*<div class="row justify-content-end mb-4">
+
+                <div class="col-auto">
+                    <div class="card card-bg-blue p-3 border-0 min-w">
+                        <h5>cmd/{vendor_cloud_code}/{stn_gw_id }</h5>
+                        <div class="card-body px-2">
+                            <div class="code-json">
+                                <code>
+                                    {<br />
+                                    "rqi": "01JMCGE4EK9N1481N8KQQHH3SJ",<br />
+                                    "stgwi": "456523AB",<br />
+                                    "vcc": "XYZ",<br />
+                                    "vgc" : "AB<br />
+                                    C",<br />
+                                    "stn_gw_ver": "1.0",<br />
+                                    "cmd": "TIME_SYNC",<br />
+                                    "clt": "20250215195600000"<br />
+                                    }
+                                </code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="row justify-content-start mb-4">
+
+                <div class="col-auto">
+                    <div class="card card-bg-gray p-3 border-0 min-w">
+                        <h5>cmd/{ stn_gw_id }/{vendor_cloud_code}</h5>
+                        <div class="card-body px-2">
+                            <div class="code-json">
+                                <code>
+                                    {<br />
+                                    "resi": "01JMCGE4EK9N1481N8KQQHH3SJ",<br />
+                                    "stgwi": "456523AB",<br />
+                                    "vcc": "XYZ",<br />
+                                    "vgc" : "ABC",<br />
+                                    "stn_gw_ver": "1.0", "cmd": "TIME_SYNC",<br />
+                                    "clt": "20250215195600000"<br />
+                                    }
+                                </code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>*@
+        </div>
+    </div>
+
+</div>
+
+
+<script>
+    var mqttjson = "";
+    $(document).ready(function () {
+        $('#divparametreList').empty();
+        mqttjson = @Html.Raw(Json.Encode(ViewBag.mMQTTDetail));
+
+        fnMQTTConnectionParameter(mqttjson);
+
+    });
+
+
+    function fnMQTTConnectionParameter(mQTT) {
+        debugger;
+        let isSecure = window.location.protocol === "https:";
+        client = new Paho.Client(mQTT.MQTTUri, mQTT.MQTTPort, "clientId" + Math.ceil(Math.random() * 10000));
+        // set callback handlers
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrivedParameter;
+
+        // connect the client
+        client.connect({
+            onSuccess: onConnectParameter,
+            useSSL: isSecure,
+            userName: mQTT.MQTTUsername,
+            password: mQTT.MQTTPassword,
+            cleanSession: true
+        });
+    }
+
+    function onConnectParameter() {
+        // Once a connection has been made, make a subscription and send a message.
+        var sgwId = $('#drpParameterSites option:selected').attr('data-station-gatewayid');
+        var parameterTypeId = $('#drpParameterTypeId option:selected').val();
+        if (sgwId != null && sgwId != undefined && sgwId != '') {
+            if (parameterTypeId != null && parameterTypeId != undefined && parameterTypeId != '') {
+
+                if (parameterTypeId == 'Point') {
+                    client.subscribe("parameter_e/" + sgwId + "/ENERG7");
+                } else if (parameterTypeId == 'Sensor') {
+                    client.subscribe("rdpms_health/" + sgwId + "/ENERG7");
+                } else if (parameterTypeId == 'Fixed') {
+                    client.subscribe("parameter_f/" + sgwId + "/ENERG7");
+                }
+            }
+     
+     
+          
+        }
+
+    }
+
+    var isValidType = false;
+    function onMessageArrivedParameter(message) {
+       
+
+        var topic = message.topic;
+        var parseJson = JSON.parse(message.payloadString);
+        if (!isValidType) {
+            isValidType = true;
+            $('#divparametreList').append(buildMqttCard('cmd', topic, parseJson));
+        } else {
+            isValidType = false;
+            $('#divparametreList').append(buildMqttCard('res', topic, parseJson));
+        }
+
+    }
+
+    function buildMqttCard(direction, topic, data) {
+        // direction: 'cmd' (right/blue) or 'res' (left/gray)
+        var isCmd = (direction === 'cmd');
+        var justify = isCmd ? 'justify-content-end' : 'justify-content-start';
+        var bgClass = isCmd ? 'card-bg-blue  text-white' : 'card-bg-gray';
+
+        debugger;
+
+        return $('<div class="row ' + justify + ' mb-4">')
+            .append(
+                $('<div class="col-auto">').append(
+                    $('<div class="card ' + bgClass + ' p-3 border-0 min-w">')
+                        .append($('<h5>').text(topic))
+                        .append(
+                            $('<div class="card-body px-2">').append(
+                                $('<div class="code-json">').append(
+                                    $('<pre>').html(JSON.stringify(data, null, 2))
+                                )
+                            )
+                        )
+                )
+            );
+    }
+
+    function flatten(obj, parentKey = '', result = {}) {
+        for (let key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+
+            let newKey = parentKey ? parentKey + "." + key : key;
+
+            if (typeof obj[key] === "object" && obj[key] !== null) {
+                flatten(obj[key], newKey, result);
+            } else {
+                result[newKey] = obj[key];
+            }
+        }
+        return result;
+    }
+
+   // let flat = flatten(data);
+
+   // $("#targetDiv").html("<pre>" + JSON.stringify(flat, null, 2) + "</pre>");
+
+    function copyJson(btn, id) {
+        debugger;
+        var preTag = btn.parentElement.querySelector("pre");
+        var textArea = document.createElement("textarea");
+        textArea.value = $('#' + id).text();
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+
+        btn.textContent = "Copied!";
+        setTimeout(function () {
+            btn.textContent = "Copy";
+        }, 2000);
+    }
+</script>
