@@ -81,7 +81,10 @@
     /* ── Asset type maps ─────────────────────────────────────────────────── */
     var COMPOSITE_SIGNAL = {
         'examples.Signal': 1,
-        'examples.SignalBackground': 1,
+        /* NOTE: examples.SignalBackground intentionally excluded — it is a
+           decorative container (grey pill) with no live signal state.
+           Including it caused phantom attrs.signal.lit writes on background
+           cells that the renderer ignores. */
         'examples.SignalShunt': 1
     };
     var LAMP_SIGNAL = {
@@ -102,6 +105,15 @@
     };
     var SHUNT_TYPES = {
         'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1
+    };
+    var BUSBAR_TYPES = {
+        'examples.BusBar': 1
+    };
+    var AXLE_TYPES = {
+        'examples.AxleCounter': 1
+    };
+    var GATE_TYPES = {
+        'examples.Gate': 1
     };
 
     /* ── Lamp type → colour ──────────────────────────────────────────────── */
@@ -526,7 +538,16 @@
             for (var id in wsLiveData) {
                 if (wsLiveData[id] && wsLiveData[id].AssetName === _popupAssetName && wsLiveData[id].attrs) {
                     var a = wsLiveData[id].attrs;
-                    for (var k in a) { if (a.hasOwnProperty(k)) vals[k] = (a[k] && typeof a[k] === 'object' && 'Value' in a[k]) ? a[k].Value : a[k]; }
+                    for (var k in a) {
+                        if (!a.hasOwnProperty(k)) continue;
+
+                        var obj = a[k];
+                        var val = (obj && typeof obj === 'object' && 'Value' in obj) ? obj.Value : obj;
+                        var attrId = obj ? (obj.AttrId || obj.AssetAttributeId || obj.AttributeId) : '';
+                        var label = resolveAttrName(k, attrId, id, obj && obj.DataType);
+
+                        vals[label] = val;
+                    }
                     break;
                 }
             }
@@ -694,6 +715,7 @@
                 state.viewBox = autoViewBox(cells);
                 buildIndex();
                 render();
+                startAlertFlash();
                 openSocket(siteId);
             },
             error: function () {
@@ -917,6 +939,7 @@
 
     function closeSockets() {
         removeBridge();
+        stopAlertFlash();
         if (state.wsReconnTimer) { clearTimeout(state.wsReconnTimer); state.wsReconnTimer = null; }
         stopHeartbeat();
         if (state.ws) {
@@ -984,8 +1007,7 @@
             if (isNaN(numVal)) continue;
 
             var bag = state.assetValues[assetName] || (state.assetValues[assetName] = {});
-            bag[attrName] = numVal;
-            if (attrName !== rawAttr) bag[rawAttr] = numVal;   // keep raw as fallback
+            setSnapshotValue(bag, attrName, rawAttr, numVal);
             touched[assetName] = true;
 
             if (d.ZeroOffsetValue != null && !isNaN(parseFloat(d.ZeroOffsetValue)))
@@ -1033,28 +1055,70 @@
             setStatus('RX ' + state.diag.recv + ' · 0 matched (check labels)', 'warn');
         }
     }
+    function setSnapshotValue(snapshot, aliasName, rawName, value) {
+        snapshot[aliasName] = value;
+
+        // Keep raw WebSocket name only as non-enumerable fallback for internal matching.
+        // This prevents popup/grid display from showing raw AssetAttributeName.
+        if (rawName && rawName !== aliasName) {
+            try {
+                Object.defineProperty(snapshot, rawName, {
+                    value: value,
+                    enumerable: false,
+                    configurable: true,
+                    writable: true
+                });
+            } catch (e) {
+                // Last fallback; normal UI Object.keys() should still mainly show AliasName.
+                snapshot[rawName] = value;
+            }
+        }
+    }
 
     /* ── Attribute name resolution ───────────────────────────────────────── */
     function resolveAttrName(rawName, attrId, assetId, dataType) {
-        /* 1. telemetrylive getAttrDisplayName (covers all maps + fallback table) */
-        if (typeof window.getAttrDisplayName === 'function' && attrId != null) {
-            var dn = window.getAttrDisplayName(rawName, attrId);
-            if (dn && dn !== rawName) return dn;
+        // For normal asset attributes, display AliasName from GetBulkAssetMetadata only.
+        if (String(dataType || '').toLowerCase() !== 'datalogger') {
+            if (typeof window.getBulkAliasName === 'function') {
+                var bulkAlias = window.getBulkAliasName(assetId, rawName, attrId);
+                if (bulkAlias) return bulkAlias;
+            }
+
+            if (typeof window.userAssetSimpleMap !== 'undefined') {
+                var rawNorm = String(rawName || '').trim().toUpperCase();
+
+                for (var k in window.userAssetSimpleMap) {
+                    if (!window.userAssetSimpleMap.hasOwnProperty(k)) continue;
+                    if (String(assetId || '') && k.indexOf(String(assetId) + '_') !== 0) continue;
+
+                    var e = window.userAssetSimpleMap[k];
+                    if (!e || !e.name) continue;
+
+                    var eRaw = String(e.attributeName || e.AttributeName || e.title || e.Title || '').trim().toUpperCase();
+                    var eAlias = String(e.name || e.AliasName || '').trim().toUpperCase();
+
+                    if (eRaw === rawNorm || eAlias === rawNorm) {
+                        return e.name; // AliasName from bulk
+                    }
+                }
+            }
+
+            if (typeof window.getAttrDisplayName === 'function') {
+                var dn = window.getAttrDisplayName(rawName, attrId, assetId);
+                if (dn) return dn;
+            }
+
+            return rawName;
         }
-        /* 2. userAssetSimpleMap: PointMachine & RDPMS  (assetId_attrId → name) */
-        if (attrId != null && typeof window.userAssetSimpleMap !== 'undefined') {
-            var e1 = window.userAssetSimpleMap[String(assetId) + '_' + String(attrId)];
-            if (e1 && e1.name) return e1.name;
-        }
-        /* 3. userAssetDataloggerMap: DataLogger relays */
-        if (attrId != null && typeof window.userAssetDataloggerMap !== 'undefined') {
+
+        // DataLogger uses mAssetInfoDataloggers.DataloggerAttribute from bulk.
+        if (typeof window.userAssetDataloggerMap !== 'undefined') {
             var e2 = window.userAssetDataloggerMap[String(assetId) + '_' + String(attrId)];
             if (e2 && e2.name) return e2.name;
         }
-        /* 4. Raw name (DataLogger already sends clean names: "HR", "RECR"…) */
+
         return rawName;
     }
-
     /* Merge wsLiveData attrs into our snapshot so full history is available */
     function enrichFromWsLiveData(assetName, snapshot) {
         if (!window.wsLiveData) return;
@@ -1065,8 +1129,15 @@
             if (wEntry.attrs) {
                 for (var ak in wEntry.attrs) {
                     if (!wEntry.attrs.hasOwnProperty(ak)) continue;
-                    var av = parseFloat(wEntry.attrs[ak] && wEntry.attrs[ak].Value);
-                    if (!isNaN(av)) snapshot[ak] = av;
+
+                    var aObj = wEntry.attrs[ak];
+                    var av = parseFloat(aObj && aObj.Value);
+                    if (isNaN(av)) continue;
+
+                    var attrId = aObj ? (aObj.AttrId || aObj.AssetAttributeId || aObj.AttributeId) : '';
+                    var aliasName = resolveAttrName(ak, attrId, wid, aObj && aObj.DataType);
+
+                    setSnapshotValue(snapshot, aliasName, ak, av);
                 }
             }
             if (wEntry.ZeroOffsetValue != null && !isNaN(parseFloat(wEntry.ZeroOffsetValue)))
@@ -1098,7 +1169,7 @@
         return null;
     }
     function valOfPrefix(s, prefixes) {
-        var keys = Object.keys(s);
+        var keys = Object.keys(s).sort();   // sort for deterministic matching
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i].toLowerCase().replace(/\s+/g, '');
             for (var j = 0; j < prefixes.length; j++)
@@ -1145,6 +1216,16 @@
         return false;
     }
 
+    /* Diagnostic: check whether the snapshot has any recognized track attrs */
+    var _TRACK_ATTR_RE = /^(tpr|tprv|tpr\s|vr|v\s?relay|choke)/i;
+    function hasTrackAttrs(s) {
+        var keys = Object.keys(s);
+        for (var i = 0; i < keys.length; i++) {
+            if (_TRACK_ATTR_RE.test(keys[i])) return true;
+        }
+        return false;
+    }
+
     /* Point Machine position — A End wins, mirrors old Sview.cshtml */
     function computePM(s) {
         var aEN = valOf(s, ['A End - NWKR', 'ANWKR', 'A_NWKR']);
@@ -1164,6 +1245,26 @@
     function computeShunt(s, thr) {
         if (relayPicked(s, ['HR'])) return true;
         for (var k in s) if (s.hasOwnProperty(k) && k.toUpperCase().indexOf('MA') !== -1 && s[k] > thr) return true;
+        return false;
+    }
+
+    /* Bus Bar — returns { dcV, acV, lowDC, lowAC } for label + colour update.
+     * Mirrors old Sview.cshtml BindBusBarSimulation logic. */
+    function computeBusBar(s) {
+        var dcV = valOf(s, ['24 V', '24V', 'DC V', 'DCV', 'DC Voltage']);
+        var acV = valOf(s, ['110V', '110 V', 'AC V', 'ACV', 'AC Voltage']);
+        return {
+            dcV: dcV,
+            acV: acV,
+            lowDC: (dcV != null && dcV > 0 && dcV < 20),
+            lowAC: (acV != null && acV > 0 && acV < 110)
+        };
+    }
+
+    /* Axle Counter — occupied when relay dropped or voltage anomaly */
+    function computeAxleOccupied(s) {
+        var v = valOf(s, ['Axle V', 'AXL V', 'Count']);
+        if (v != null && v > 0.1) return true;
         return false;
     }
 
@@ -1221,9 +1322,13 @@
             return false;
         }
 
-        /* ── Track (stroke-based: Track, Track1, Track2, Track5, Track6) ── */
+        /* ── Track (stroke-based: Track, Track1, Track2) ── */
         if (TRACK_STROKE[cell.type]) {
             var occ = computeOccupied(s);
+            if (!occ && Object.keys(s).length > 0 && !hasTrackAttrs(s)) {
+                pushSample(state.diag.unmatched,
+                    '⚠ Track ' + assetName + ': data received but no TPR/Vr/Choke attrs matched', 20);
+            }
             var ns = occ ? C_RED : OFF_GREY;
             cell.attrs.path = cell.attrs.path || {};
             if (cell.attrs.path.stroke !== ns) { cell.attrs.path.stroke = ns; return true; }
@@ -1233,6 +1338,10 @@
         /* ── Track (fill-based: Track3, Track4 — curved variants) ── */
         if (TRACK_FILL[cell.type]) {
             var occ2 = computeOccupied(s);
+            if (!occ2 && Object.keys(s).length > 0 && !hasTrackAttrs(s)) {
+                pushSample(state.diag.unmatched,
+                    '⚠ Track ' + assetName + ': data received but no TPR/Vr/Choke attrs matched', 20);
+            }
             var nf = occ2 ? C_RED : OFF_GREY;
             cell.attrs.path = cell.attrs.path || {};
             if (cell.attrs.path.fill !== nf) { cell.attrs.path.fill = nf; return true; }
@@ -1243,9 +1352,15 @@
         if (PM_TYPES[cell.type]) {
             var pos = computePM(s);
             var pf = pos === 'NORMAL' ? C_GREEN : pos === 'REVERSE' ? C_YELLOW : PM_OFF;
+            /* Also set body.stroke — old Sview.cshtml set body.stroke = #FFFF00 for reverse,
+               #3c4260 for normal. Mirrors that behaviour. */
+            var bs = pos === 'REVERSE' ? C_YELLOW : OFF_GREY;
             cell.attrs.circle1 = cell.attrs.circle1 || {};
-            if (cell.attrs.circle1.fill !== pf) { cell.attrs.circle1.fill = pf; return true; }
-            return false;
+            cell.attrs.body = cell.attrs.body || {};
+            var changed = false;
+            if (cell.attrs.circle1.fill !== pf) { cell.attrs.circle1.fill = pf; cell.attrs.circle1.stroke = pf; changed = true; }
+            if (cell.attrs.body.stroke !== bs) { cell.attrs.body.stroke = bs; changed = true; }
+            return changed;
         }
 
         /* ── Shunt signal ── */
@@ -1254,6 +1369,54 @@
             var sf = lit2 ? C_RED : OFF_GREY;
             cell.attrs.body = cell.attrs.body || {};
             if (cell.attrs.body.fill !== sf) { cell.attrs.body.fill = sf; return true; }
+            return false;
+        }
+
+        /* ── Bus Bar — show live voltage in label, red when low ── */
+        if (BUSBAR_TYPES[cell.type]) {
+            var bb = computeBusBar(s);
+            if (bb.dcV == null && bb.acV == null) return false;
+
+            /* Build label text: "dcV || Name || acVv"  (mirrors old BindBusBarSimulation) */
+            var baseName = ((cell.attrs.label && cell.attrs.label.text) || '').trim();
+            /* Strip previous dynamic values — keep only the core name */
+            var parts = baseName.split(' || ');
+            var coreName = parts.length >= 3 ? parts[1]
+                : parts.length === 2 ? (isNaN(parseFloat(parts[0])) ? parts[0] : parts[1])
+                    : baseName;
+            var newLabel = '';
+            if (bb.dcV != null && bb.dcV > 0 && bb.acV != null && bb.acV > 0) {
+                newLabel = parseFloat(bb.dcV).toFixed(1) + ' || ' + coreName + ' || ' + parseFloat(bb.acV).toFixed(1) + 'v';
+            } else if (bb.dcV != null && bb.dcV > 0) {
+                newLabel = parseFloat(bb.dcV).toFixed(1) + ' || ' + coreName;
+            } else if (bb.acV != null && bb.acV > 0) {
+                newLabel = coreName + ' || ' + parseFloat(bb.acV).toFixed(1) + 'v';
+            } else {
+                newLabel = coreName;
+            }
+
+            var newFill = (bb.lowDC || bb.lowAC) ? C_RED : '#ffffff';
+
+            cell.attrs.label = cell.attrs.label || {};
+            var changed = false;
+            if (cell.attrs.label.text !== newLabel) { cell.attrs.label.text = newLabel; changed = true; }
+            if (cell.attrs.label.fill !== newFill) { cell.attrs.label.fill = newFill; changed = true; }
+            return changed;
+        }
+
+        /* ── Axle Counter — colour path.stroke on occupancy ── */
+        if (AXLE_TYPES[cell.type]) {
+            var axOcc = computeAxleOccupied(s);
+            var axStroke = axOcc ? C_RED : OFF_GREY;
+            cell.attrs.path = cell.attrs.path || {};
+            if (cell.attrs.path.stroke !== axStroke) { cell.attrs.path.stroke = axStroke; return true; }
+            return false;
+        }
+
+        /* ── Gate — no live data binding in old system (was commented out),
+              stub here for future use ── */
+        if (GATE_TYPES[cell.type]) {
+            /* Gate telemetry not yet defined — leave unchanged */
             return false;
         }
 
@@ -1283,16 +1446,26 @@
         var breakerLayer = typeof SIP.renderBreakerLayer === 'function' ? SIP.renderBreakerLayer(state.cells) : '';
 
         var hl = state.highlight ? state.highlight.toLowerCase() : '';
+        var hasAlerts = alertFlashData.length > 0;
         var frags = '';
         for (var i = 0; i < state.cells.length; i++) {
             var c = state.cells[i];
             var inner = SIP.renderCell(c);
             var cls = 'sip-live-cell';
+            var cellLabel = (c.attrs && c.attrs.label && c.attrs.label.text) || '';
             if (hl) {
-                var lbl = ((c.attrs && c.attrs.label && c.attrs.label.text) || '').toLowerCase();
+                var lbl = cellLabel.toLowerCase();
                 cls += lbl.indexOf(hl) !== -1 ? ' sip-highlight' : ' sip-dim';
             }
-            frags += '<g class="' + cls + '" data-cell-id="' + escHtml(c.id) + '" data-cell-type="' + escHtml(c.type) + '" data-cell-label="' + escHtml((c.attrs && c.attrs.label && c.attrs.label.text) || '') + '" style="cursor:pointer;pointer-events:all;">' + inner + '</g>';
+            /* Active-alert flash overlay — mirrors old fnShowActiveAlertSimulation() */
+            var flashStyle = '';
+            if (hasAlerts) {
+                var flashCol = getAlertFlashColour(cellLabel.trim());
+                if (flashCol) {
+                    flashStyle = ' filter:drop-shadow(0 0 6px ' + flashCol + ');';
+                }
+            }
+            frags += '<g class="' + cls + '" data-cell-id="' + escHtml(c.id) + '" data-cell-type="' + escHtml(c.type) + '" data-cell-label="' + escHtml(cellLabel) + '" style="cursor:pointer;pointer-events:all;' + flashStyle + '">' + inner + '</g>';
         }
 
         canvasEl.innerHTML =
@@ -1380,22 +1553,98 @@
 
     /* Inject a fake telemetry message for testing.
      *
-     *   SipTelemetry.simulate('S13','RECR',1)          → S13 R lamp RED
-     *   SipTelemetry.simulate('S13','HECR',1)          → S13 Y lamp YELLOW
-     *   SipTelemetry.simulate('S13','DECR',1)          → S13 G lamp GREEN
-     *   SipTelemetry.simulate('C-18T','TPR V',0.5)     → track occupied (red)
-     *   SipTelemetry.simulate('60','A End - NWKR',23)  → PM normal (green)
-     *   SipTelemetry.simulate('60','A End - RWKR',23)  → PM reverse (yellow)
-     *   SipTelemetry.simulate('SH114','HR',1)          → shunt lit (red)
+     * IMPORTANT: Values ACCUMULATE in the asset snapshot (just like real WS).
+     * Pass reset=true (4th arg) to clear previous values for this asset first,
+     * so the new value is evaluated in isolation.
+     *
+     *   SipTelemetry.simulate('S13','RECR',1, true)       → S13 R lamp RED
+     *   SipTelemetry.simulate('S13','HECR',1, true)       → S13 Y lamp YELLOW
+     *   SipTelemetry.simulate('S13','DECR',1, true)       → S13 G lamp GREEN
+     *   SipTelemetry.simulate('C-18T','TPR V',0.5, true)  → track occupied (red)
+     *   SipTelemetry.simulate('60','A End - NWKR',23, true)  → PM normal (green)
+     *   SipTelemetry.simulate('60','A End - RWKR',23, true)  → PM reverse (yellow)
+     *   SipTelemetry.simulate('SH114','HR',1, true)       → shunt lit (red)
+     *
+     * Without reset, calling RECR=1 then HECR=1 keeps RECR=1 in the snapshot
+     * and Red wins (computeAspect checks Red first). This matches real WS
+     * behaviour where the server sends explicit 0 values for dropped relays.
      */
-    function simulate(assetName, attrName, value) {
+    function simulate(assetName, attrName, value, reset) {
         if (!state.cells.length) { console.warn('[sip-telemetry] No layout — select a site first.'); return; }
+        if (reset && state.assetValues[assetName]) {
+            delete state.assetValues[assetName];
+        }
         feedItems([{
             AssetName: assetName, AssetAttributeName: attrName,
             AssetAttributeId: null, AssetId: 0,
             Value: value, DataType: 'Simulated',
             TimestampDevice: new Date().toISOString()
         }]);
+    }
+
+    /* =========================================================================
+       SECTION 10 — ACTIVE ALERT FLASH
+       Mirrors old fnShowActiveAlertSimulation() from Sview.cshtml.
+       Fetches active alerts and flashes colours on matched SIP cells.
+       ========================================================================= */
+
+    var ALERT_FLASH_COLOURS = ['#7366ff', '#a927f9', '#4bacc6', '#215968', '#b75d32', '#31d0c6'];
+    var alertFlashTimer = null;
+    var alertFlashRenderTimer = null;
+    var alertFlashData = [];     // array of { AssetName, IsSmsLogActive }
+
+    function startAlertFlash() {
+        stopAlertFlash();
+        fetchActiveAlerts();
+        // Re-fetch every 30s
+        alertFlashTimer = setInterval(fetchActiveAlerts, 30000);
+    }
+
+    function stopAlertFlash() {
+        if (alertFlashTimer) { clearInterval(alertFlashTimer); alertFlashTimer = null; }
+        if (alertFlashRenderTimer) { clearInterval(alertFlashRenderTimer); alertFlashRenderTimer = null; }
+        alertFlashData = [];
+    }
+
+    function fetchActiveAlerts() {
+        if (!state.siteId) return;
+        $.ajax({
+            url: '/FRS25/Telemetry/GetListActiveAlerts',
+            type: 'Post',
+            data: JSON.stringify({ mSmsLog: { SiteId: state.siteId, AssetTypeId: 0 } }),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.mSMSLogs) {
+                    alertFlashData = data.mSMSLogs;
+                    /* Start a re-render tick so the flash blink is visible */
+                    if (alertFlashData.length > 0 && !alertFlashRenderTimer) {
+                        alertFlashRenderTimer = setInterval(function () {
+                            if (state.cells.length > 0) render();
+                        }, 600);
+                    } else if (alertFlashData.length === 0 && alertFlashRenderTimer) {
+                        clearInterval(alertFlashRenderTimer);
+                        alertFlashRenderTimer = null;
+                    }
+                }
+            },
+            error: function () { /* silent */ }
+        });
+    }
+
+    /* Called during render — returns flash colour or null.
+     * Uses a time-based toggle (every 600ms) so the flash is visible. */
+    function getAlertFlashColour(assetName) {
+        if (!alertFlashData.length) return null;
+        var now = Date.now();
+        // Only flash on the "on" phase of a 1.2s blink cycle
+        if (Math.floor(now / 600) % 2 !== 0) return null;
+        for (var i = 0; i < alertFlashData.length; i++) {
+            var al = alertFlashData[i];
+            if (al.IsSmsLogActive && String(al.AssetName || '').trim() === assetName) {
+                return ALERT_FLASH_COLOURS[Math.floor(Math.random() * ALERT_FLASH_COLOURS.length)];
+            }
+        }
+        return null;
     }
 
     /* =========================================================================
@@ -1427,6 +1676,8 @@
         simulate: simulate,
         installBridge: tryBridge,
         removeBridge: removeBridge,
+        startAlertFlash: startAlertFlash,
+        stopAlertFlash: stopAlertFlash,
         _state: state
     };
 

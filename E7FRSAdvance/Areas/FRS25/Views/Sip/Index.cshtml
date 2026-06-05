@@ -59,7 +59,7 @@
         --sap-radius-lg: 12px;
         position: fixed;
         inset: 0;
-        z-index: 5000;
+        z-index: 9999999 !important; /* Extremely high to be above any fullscreen content */
         display: none;
         align-items: center;
         justify-content: center;
@@ -959,6 +959,7 @@
                 gap: 10px;
             }
     }
+
     #canvas svg g.sip-asset,
     #canvas svg g.editable {
         cursor: pointer;
@@ -970,6 +971,12 @@
     #canvas svg .sip-breaker-layer,
     #canvas svg .grid {
         pointer-events: none;
+    }
+
+    .sip-card.fullscreen ~ #sipAssetPopupOverlay,
+    .sip-card.fullscreen + #sipAssetPopupOverlay,
+    body > #sipAssetPopupOverlay {
+        z-index: 9999999 !important;
     }
 </style>
 
@@ -1113,8 +1120,13 @@
                 '<thead><tr><th>Attribute</th><th>Live Value</th></tr></thead><tbody>';
 
             keys.forEach(function (key) {
+                var displayKey = key;
+                if (typeof window.getAttrDisplayName === 'function') {
+                    var alias = window.getAttrDisplayName(key, null);
+                    if (alias) displayKey = alias.replace(/<[^>]*>/g, '');
+                }
                 html += '<tr>' +
-                    '<td>' + esc(key) + '</td>' +
+                    '<td>' + esc(displayKey) + '</td>' +
                     '<td class="value">' + esc(values[key]) + '</td>' +
                     '</tr>';
             });
@@ -2086,6 +2098,15 @@
             return firstNonEmpty(value.text, value.Text, value.label, value.Label, value.name, value.Name, value.title, value.Title, value['text/value']);
         }
 
+        function closeAssetPopup() {
+            var overlay = document.getElementById('sipAssetPopupOverlay');
+            if (!overlay) return;
+            overlay.classList.remove('sap-show');
+            overlay.style.display = 'none';   // ensure hidden
+            overlay.setAttribute('aria-hidden', 'true');
+            document.getElementById('sipAssetMaintModal').classList.remove('sap-show');
+            clearRefreshTimer();
+        }
         function openAssetPopup(context) {
             var overlay = document.getElementById('sipAssetPopupOverlay');
             if (!overlay) return;
@@ -2111,6 +2132,19 @@
             activatePopupTab('live');
             overlay.classList.add('sap-show');
             overlay.setAttribute('aria-hidden', 'false');
+            void overlay.offsetHeight; // force reflow
+
+            // Ensure popup is visible even if fullscreen is active
+            overlay.style.display = 'flex';
+
+            requestAnimationFrame(function () {
+                var closeBtn = document.getElementById('sipAssetPopupClose');
+                if (closeBtn) {
+                    closeBtn.setAttribute('tabindex', '0');
+                    closeBtn.focus();
+                }
+            });
+
             renderTelemetryLoading(name);
             refreshAssetLiveValues(true);
 
@@ -2118,16 +2152,6 @@
                 refreshAssetLiveValues(false);
             }, 30000);
         }
-
-        function closeAssetPopup() {
-            var overlay = document.getElementById('sipAssetPopupOverlay');
-            if (!overlay) return;
-            overlay.classList.remove('sap-show');
-            overlay.setAttribute('aria-hidden', 'true');
-            document.getElementById('sipAssetMaintModal').classList.remove('sap-show');
-            clearRefreshTimer();
-        }
-
         function clearRefreshTimer() {
             if (state.refreshTimer) {
                 clearInterval(state.refreshTimer);
@@ -2296,7 +2320,12 @@
                         var nestedRow = rowFromAttributeObject(value, key);
                         if (nestedRow) rows.push(nestedRow);
                     } else if (!isMetaKey(key)) {
-                        rows.push({ label: key, value: value, unit: '' });
+                        var displayKey = key;
+                        if (typeof window.getAttrDisplayName === 'function') {
+                            var alias = window.getAttrDisplayName(key, null);
+                            if (alias) displayKey = alias.replace(/<[^>]*>/g, '');
+                        }
+                        rows.push({ label: displayKey, value: value, unit: '' });
                     }
                 });
             }
@@ -2309,7 +2338,17 @@
                 return fallbackLabel ? { label: fallbackLabel, value: item, unit: '' } : null;
             }
 
-            var label = firstNonEmpty(
+            /* ── Resolve the attribute ID so we can look up the bulk-metadata alias ── */
+            var attrId = firstNonEmpty(
+                item.AttrId, item.attrId,
+                item.AssetAttributeId, item.assetAttributeId,
+                item.AttributeId, item.attributeId,
+                item.Id, item.id
+            );
+
+            /* ── Raw / fallback label from the item fields ── */
+            var rawLabel = firstNonEmpty(
+                item.AliasName, item.aliasName,
                 item.Name, item.name,
                 item.AttributeName, item.attributeName,
                 item.DisplayName, item.displayName,
@@ -2337,27 +2376,43 @@
                 item.LastValue, item.lastValue
             );
 
-            if (!label) {
+            if (!rawLabel) {
                 var scalarKeys = Object.keys(item).filter(function (k) { return !isMetaKey(k) && isScalar(item[k]); });
                 if (scalarKeys.length === 1) {
-                    label = scalarKeys[0];
+                    rawLabel = scalarKeys[0];
                     value = item[scalarKeys[0]];
                 }
             }
 
-            if (!label) return null;
+            if (!rawLabel) return null;
+
+            /* ── Use getAttrDisplayName from bulk metadata (telemetrylive.js)
+                 to resolve the alias — this is the preferred display name.
+                 Falls back to the raw label if no alias is found. ── */
+            var label = rawLabel;
+            if (typeof window.getAttrDisplayName === 'function') {
+                var aliasResolved = window.getAttrDisplayName(rawLabel, attrId);
+                if (aliasResolved) {
+                    label = aliasResolved.replace(/<[^>]*>/g, '');
+                }
+            }
 
             var unit = firstNonEmpty(item.Unit, item.unit, item.UOM, item.uom, item.UnitName, item.unitName, item.MeasurementUnit, item.measurementUnit);
             var updatedAt = firstNonEmpty(item.UpdatedAt, item.updatedAt, item.LastUpdated, item.lastUpdated, item.Timestamp, item.timestamp, item.TimeStamp, item.timeStamp);
             return { label: cleanString(label), value: value, unit: cleanString(unit), updatedAt: updatedAt };
         }
-
         function rowsFromDirectScalarFields(source) {
             var rows = [];
             Object.keys(source).forEach(function (key) {
                 if (isMetaKey(key)) return;
                 var value = source[key];
-                if (isScalar(value)) rows.push({ label: key, value: value, unit: '' });
+                if (!isScalar(value)) return;
+                var displayKey = key;
+                if (typeof window.getAttrDisplayName === 'function') {
+                    var alias = window.getAttrDisplayName(key, null);
+                    if (alias) displayKey = alias.replace(/<[^>]*>/g, '');
+                }
+                rows.push({ label: displayKey, value: value, unit: '' });
             });
             return rows;
         }
@@ -2409,6 +2464,7 @@
         }
 
         function renderTelemetryRow(row) {
+            debugger;
             var displayValue = formatAttributeValue(row.value, row.unit);
             var cls = valueClass(row.label, row.value);
             return '<div class="sap-telem-row"><span class="sap-telem-label" title="' + escapeHtml(row.label) + '">' + escapeHtml(row.label) + '</span><span class="sap-telem-value ' + cls + '">' + escapeHtml(displayValue) + '</span></div>';
@@ -2682,157 +2738,19 @@
     })();
 
 
-    (function () {
-        'use strict';
-
-        function getSipCells() {
-            try {
-                if (window.SipEditor && typeof window.SipEditor.getLayout === 'function') {
-                    var editorLayout = window.SipEditor.getLayout();
-                    if (editorLayout && Array.isArray(editorLayout.cells)) {
-                        return editorLayout.cells;
-                    }
-                }
-
-                if (window.currentSipLayout && Array.isArray(window.currentSipLayout.cells)) {
-                    return window.currentSipLayout.cells;
-                }
-
-                if (window.sipLayout && Array.isArray(window.sipLayout.cells)) {
-                    return window.sipLayout.cells;
-                }
-
-                if (window.SipLayout && Array.isArray(window.SipLayout.cells)) {
-                    return window.SipLayout.cells;
-                }
-            } catch (e) {
-                console.warn('Unable to read SIP cells:', e);
-            }
-
-            return [];
-        }
-
-        function getTextFromAssetGroup(assetGroup) {
-            if (!assetGroup) return '';
-
-            var textNodes = assetGroup.querySelectorAll('text');
-            var parts = [];
-
-            textNodes.forEach(function (node) {
-                var text = (node.textContent || '').trim();
-                if (text) parts.push(text);
-            });
-
-            return parts.join(' ').trim();
-        }
-
-        function buildCellFromClickedAsset(assetGroup) {
-            var id =
-                assetGroup.getAttribute('data-eid') ||
-                assetGroup.getAttribute('data-id') ||
-                '';
-
-            var type =
-                assetGroup.getAttribute('data-type') ||
-                '';
-
-            var cells = getSipCells();
-
-            var matchedCell = cells.find(function (cell) {
-                return String(cell.id) === String(id);
-            });
-
-            if (matchedCell) {
-                return matchedCell;
-            }
-
-            // Fallback for SIP View where only SVG metadata is available
-            return {
-                id: id,
-                type: type,
-                attrs: {
-                    label: {
-                        text: getTextFromAssetGroup(assetGroup)
-                    }
-                }
-            };
-        }
-
-        function findClickedSipAsset(target) {
-            if (!target || typeof target.closest !== 'function') {
-                return null;
-            }
-
-            // Editor mode: .editable[data-eid]
-            // View mode:   .sip-asset[data-id]
-            return target.closest('g.editable[data-eid], g.sip-asset[data-id]');
-        }
-
-        var pointerDownInfo = null;
-
-        document.addEventListener('pointerdown', function (evt) {
-            var assetGroup = findClickedSipAsset(evt.target);
-
-            if (!assetGroup) {
-                pointerDownInfo = null;
-                return;
-            }
-
-            pointerDownInfo = {
-                x: evt.clientX,
-                y: evt.clientY,
-                id: assetGroup.getAttribute('data-eid') || assetGroup.getAttribute('data-id'),
-                group: assetGroup
-            };
-        }, true);
-
-        document.addEventListener('pointerup', function (evt) {
-            if (!pointerDownInfo) return;
-
-            var assetGroup = findClickedSipAsset(evt.target) || pointerDownInfo.group;
-
-            if (!assetGroup) {
-                pointerDownInfo = null;
-                return;
-            }
-
-            var upId =
-                assetGroup.getAttribute('data-eid') ||
-                assetGroup.getAttribute('data-id');
-
-            var moved =
-                Math.abs(evt.clientX - pointerDownInfo.x) > 5 ||
-                Math.abs(evt.clientY - pointerDownInfo.y) > 5;
-
-            var sameAsset = String(upId) === String(pointerDownInfo.id);
-
-            pointerDownInfo = null;
-
-            if (moved || !sameAsset) {
-                return;
-            }
-
-            evt.preventDefault();
-            evt.stopPropagation();
-
-            var cell = buildCellFromClickedAsset(assetGroup);
-
-            console.log('SIP asset clicked:', cell);
-
-            if (typeof window.OpenSipAssetPopupFromCell === 'function') {
-                window.OpenSipAssetPopupFromCell(cell, {
-                    event: evt,
-                    source: 'sip-view-click'
-                });
-            } else {
-                console.error('OpenSipAssetPopupFromCell is not defined.');
-            }
-        }, true);
-    })();
+    /* ─────────────────────────────────────────────────────────────────────
+       REMOVED: Asset-click → popup handler.
+       This IIFE used to attach document-level pointerdown/pointerup
+       listeners that opened the asset detail popup when any SIP asset was
+       clicked in the editor.  The popup is NOT needed during SIP creation;
+       it should only open when clicking an asset in the live SIP telemetry
+       view (handled by sip-telemetry.js → wireCanvasAssetPopupClick).
+       ───────────────────────────────────────────────────────────────────── */
 
     let previousFocus = null;
 
     function openAssetDetailPopup(asset) {
+        debugger;
         currentPopupAsset = asset;
         const overlay = document.getElementById('sipAssetPopupOverlay');
         const popup = document.getElementById('sipAssetPopup');
@@ -2869,20 +2787,17 @@
         if (!overlay) return;
 
         overlay.style.display = 'none';
-        overlay.setAttribute('aria-hidden', 'true');     // ✅ restore aria-hidden
+        overlay.setAttribute('aria-hidden', 'true');
 
-        // Restore accessibility for main content
         document.querySelector('.at-page-header')?.removeAttribute('aria-hidden');
         document.querySelector('.at-table-card')?.removeAttribute('aria-hidden');
         document.querySelector('#sipCardSection')?.removeAttribute('aria-hidden');
 
-        // Restore focus
         if (previousFocus && previousFocus.focus) {
             previousFocus.focus();
         }
         currentPopupAsset = null;
     }
-
 </script>
 
 

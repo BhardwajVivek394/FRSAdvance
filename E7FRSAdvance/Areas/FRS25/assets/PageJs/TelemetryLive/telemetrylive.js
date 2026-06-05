@@ -120,10 +120,10 @@ function atBuildTrackCard(aid) {
         else if (an === 'Charger mA' && num < 100) cls = 'warn';
         else if (an === 'Choke V' && num > 1.8) cls = 'danger';
         var attrId = ad ? (ad.AttrId || ad.AssetAttributeId) : null;
-        var lbl = (ad && attrId && typeof getAttrDisplayName === 'function') ? getAttrDisplayName(an, attrId) : an;
+        var lbl = (typeof getAttrDisplayName === 'function') ? getAttrDisplayName(an, attrId, aid) : an;
         var zone = i < 4 ? 'z1' : (i < 7 ? 'z2' : 'z3');
         grid += '<div class="' + zone + '">' +
-            '<span class="at-tdg-lbl" title="' + an + '">' + lbl + '</span>' +
+            '<span class="at-tdg-lbl" title="' + lbl + '">' + lbl + '</span>' +
             '<span class="at-tdg-val ' + cls + '">' + val + '</span>' +
             '</div>';
     }
@@ -694,128 +694,123 @@ var fallbackAliasById = {
 };
 
 
-function loadAssetAttributes(callback) {
-    // Use the unified GetUserAssetInfo API instead of GetAssetAttributes.
-    // GetUserAssetInfo provides both analog (RoleType='c') and DataLogger (RoleType='d')
-    // attributes in one call, scoped to the current site. Aliases are per-site,
-    // so the global GetAssetAttributes endpoint returns the wrong names.
-    var siteId = $('#drpSite').val();
+//function loadAssetAttributes(callback) {
+//    // Use the unified GetUserAssetInfo API instead of GetAssetAttributes.
+//    // GetUserAssetInfo provides both analog (RoleType='c') and DataLogger (RoleType='d')
+//    // attributes in one call, scoped to the current site. Aliases are per-site,
+//    // so the global GetAssetAttributes endpoint returns the wrong names.
+//    var siteId = $('#drpSite').val();
 
-    if (!siteId || siteId === '0') {
-        console.warn('[AssetAttr] No site selected — skipping attribute load');
+//    if (!siteId || siteId === '0') {
+//        console.warn('[AssetAttr] No site selected — skipping attribute load');
+//        if (callback) callback();
+//        return;
+//    }
+
+//    loadUserAssetInfo(siteId, function () {
+//        // Project the two site-scoped maps into the legacy assetAttributeMap /
+//        // assetAttributeByName so all downstream code (table headers, cards,
+//        // graph, circuit) keeps working unchanged.
+//        var currentAssetTypeId = parseInt(wsCurrentAssetTypeId || 0);
+//        var count = 0;
+
+//        // RoleType='c' — RDPMS + PointMachine indication
+//        // Key format in map: "assetId_assetAttributeId"  →  we want assetAttributeId as the map key
+//        for (var sk in userAssetSimpleMap) {
+//            var sEntry = userAssetSimpleMap[sk];
+//            if (!sEntry || !sEntry.name) continue;
+
+//            // Only keep attributes matching the current asset type so that
+//            // Signal / PM attribute names don't overwrite Track IDs (and vice versa).
+//            var sEntryAssetTypeId = parseInt(sEntry.assetTypeId || 0);
+//            if (sEntryAssetTypeId > 0 && currentAssetTypeId > 0 && sEntryAssetTypeId !== currentAssetTypeId) {
+//                continue;
+//            }
+
+//            var sParts = sk.split('_');
+//            if (sParts.length !== 2) continue;
+//            var aaId = sParts[1];
+
+//            assetAttributeMap[aaId] = sEntry.name;
+//            assetAttributeMap[String(aaId)] = sEntry.name;
+//            var numAaId = parseInt(aaId);
+//            if (!isNaN(numAaId)) assetAttributeMap[numAaId] = sEntry.name;
+
+//            assetAttributeByName[sEntry.name] = sEntry.name;
+//            count++;
+//        }
+
+//        // RoleType='d' — DataLogger
+//        // Key format in map: "assetId_role"  →  we want role as the map key
+//        for (var dk in userAssetDataloggerMap) {
+//            var dEntry = userAssetDataloggerMap[dk];
+//            if (!dEntry || !dEntry.name) continue;
+
+//            var dEntryAssetTypeId = parseInt(dEntry.assetTypeId || 0);
+//            if (dEntryAssetTypeId > 0 && currentAssetTypeId > 0 && dEntryAssetTypeId !== currentAssetTypeId) {
+//                continue;
+//            }
+
+//            var dParts = dk.split('_');
+//            if (dParts.length !== 2) continue;
+//            var role = dParts[1];
+
+//            assetAttributeMap[role] = dEntry.name;
+//            assetAttributeMap[String(role)] = dEntry.name;
+//            var numRole = parseInt(role);
+//            if (!isNaN(numRole)) assetAttributeMap[numRole] = dEntry.name;
+
+//            assetAttributeByName[dEntry.name] = dEntry.name;
+//            count++;
+//        }
+
+//        assetAttributeLoaded = true;
+//        console.log('[AssetAttr] Projected ' + count + ' attribute(s) from GetUserAssetInfo into legacy map');
+//        if (callback) callback();
+//    });
+//}
+
+
+function loadAssetAttributes(callback) {
+    var siteId = $('#drpSite').val();
+    var assetTypeId = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+
+    if (!siteId || siteId === '0' || !assetTypeId || assetTypeId === '0') {
+        console.warn('[AssetAttr] Missing site/asset type — using existing bulk cache only');
         if (callback) callback();
         return;
     }
 
-    loadUserAssetInfo(siteId, function () {
-        // Project the two site-scoped maps into the legacy assetAttributeMap /
-        // assetAttributeByName so all downstream code (table headers, cards,
-        // graph, circuit) keeps working unchanged.
-        var currentAssetTypeId = parseInt(wsCurrentAssetTypeId || 0);
-        var count = 0;
-
-        // RoleType='c' — RDPMS + PointMachine indication
-        // Key format in map: "assetId_assetAttributeId"  →  we want assetAttributeId as the map key
-        for (var sk in userAssetSimpleMap) {
-            var sEntry = userAssetSimpleMap[sk];
-            if (!sEntry || !sEntry.name) continue;
-
-            // Only keep attributes matching the current asset type so that
-            // Signal / PM attribute names don't overwrite Track IDs (and vice versa).
-            var sEntryAssetTypeId = parseInt(sEntry.assetTypeId || 0);
-            if (sEntryAssetTypeId > 0 && currentAssetTypeId > 0 && sEntryAssetTypeId !== currentAssetTypeId) {
-                continue;
-            }
-
-            var sParts = sk.split('_');
-            if (sParts.length !== 2) continue;
-            var aaId = sParts[1];
-
-            assetAttributeMap[aaId] = sEntry.name;
-            assetAttributeMap[String(aaId)] = sEntry.name;
-            var numAaId = parseInt(aaId);
-            if (!isNaN(numAaId)) assetAttributeMap[numAaId] = sEntry.name;
-
-            assetAttributeByName[sEntry.name] = sEntry.name;
-            count++;
-        }
-
-        // RoleType='d' — DataLogger
-        // Key format in map: "assetId_role"  →  we want role as the map key
-        for (var dk in userAssetDataloggerMap) {
-            var dEntry = userAssetDataloggerMap[dk];
-            if (!dEntry || !dEntry.name) continue;
-
-            var dEntryAssetTypeId = parseInt(dEntry.assetTypeId || 0);
-            if (dEntryAssetTypeId > 0 && currentAssetTypeId > 0 && dEntryAssetTypeId !== currentAssetTypeId) {
-                continue;
-            }
-
-            var dParts = dk.split('_');
-            if (dParts.length !== 2) continue;
-            var role = dParts[1];
-
-            assetAttributeMap[role] = dEntry.name;
-            assetAttributeMap[String(role)] = dEntry.name;
-            var numRole = parseInt(role);
-            if (!isNaN(numRole)) assetAttributeMap[numRole] = dEntry.name;
-
-            assetAttributeByName[dEntry.name] = dEntry.name;
-            count++;
-        }
-
-        assetAttributeLoaded = true;
-        console.log('[AssetAttr] Projected ' + count + ' attribute(s) from GetUserAssetInfo into legacy map');
-        if (callback) callback();
-    });
+    loadBulkAssetMetadata(siteId, assetTypeId, callback);
 }
+function getAttrDisplayName(attrName, attrId, assetId) {
+    // Only show AliasName returned by GetBulkAssetMetadata.assetAttributes.
+    // Do not show raw AssetAttributeName and do not use hardcoded fallbackAliasById.
+    var alias = '';
 
-function getAttrDisplayName(attrName, attrId) {
-    // PRIORITY 1: Try by ID from API (most reliable for Signal/Track/PM)
-    // The API returns AliasName keyed by attribute ID
-    if (attrId !== undefined && attrId !== null) {
-        // Try numeric ID
-        if (assetAttributeMap[attrId]) {
-            return assetAttributeMap[attrId];
-        }
-        // Try string ID
-        if (assetAttributeMap[String(attrId)]) {
-            return assetAttributeMap[String(attrId)];
-        }
-        // Try parseInt in case attrId is a string
-        var numId = parseInt(attrId);
-        if (!isNaN(numId) && assetAttributeMap[numId]) {
-            return assetAttributeMap[numId];
-        }
+    if (typeof getBulkAliasName === 'function') {
+        alias = getBulkAliasName(assetId, attrName, attrId);
+        if (alias) return alias;
     }
 
-    // PRIORITY 2: Try by name from API
     if (attrName && assetAttributeByName[attrName]) {
         return assetAttributeByName[attrName];
     }
 
-    // PRIORITY 3: Try fallback by ID
     if (attrId !== undefined && attrId !== null) {
-        if (fallbackAliasById[attrId]) {
-            return fallbackAliasById[attrId];
-        }
-        if (fallbackAliasById[String(attrId)]) {
-            return fallbackAliasById[String(attrId)];
-        }
-        var numId2 = parseInt(attrId);
-        if (!isNaN(numId2) && fallbackAliasById[numId2]) {
-            return fallbackAliasById[numId2];
-        }
+        if (assetAttributeMap[String(attrId)]) return assetAttributeMap[String(attrId)];
+
+        var numId = parseInt(attrId);
+        if (!isNaN(numId) && assetAttributeMap[numId]) return assetAttributeMap[numId];
     }
 
-    // Fallback to original name
-    return attrName;
+    return attrName || '';
 }
 
+window.getAttrDisplayName = getAttrDisplayName;
 // Get plain text display name (strips HTML tags) - for use in ECharts/graphs
-function getAttrDisplayNamePlain(attrName, attrId) {
-    var displayName = getAttrDisplayName(attrName, attrId);
-    // Strip HTML tags if any
+function getAttrDisplayNamePlain(attrName, attrId, assetId) {
+    var displayName = getAttrDisplayName(attrName, attrId, assetId);
     return displayName ? displayName.replace(/<[^>]*>/g, '') : attrName;
 }
 
@@ -1006,90 +1001,543 @@ function isPmOperationAttrId(attrId) {
     return PM_OPERATION_IDS_EXCLUDE.indexOf(n) > -1;
 }
 
-function loadUserAssetInfo(siteId, callback) {
-    if (!siteId || siteId === '0') { if (callback) callback(); return; }
+//function loadUserAssetInfo(siteId, callback) {
+//    if (!siteId || siteId === '0') { if (callback) callback(); return; }
 
-    // Skip re-fetch if already loaded for this site
-    if (userAssetInfoLoaded && userAssetInfoSiteId === String(siteId)) {
-        if (callback) callback();
+//    // Skip re-fetch if already loaded for this site
+//    if (userAssetInfoLoaded && userAssetInfoSiteId === String(siteId)) {
+//        if (callback) callback();
+//        return;
+//    }
+
+//    // Site changed -- reset maps
+//    userAssetSimpleMap = {};
+//    userAssetDataloggerMap = {};
+//    userAssetInfoLoaded = false;
+//    userAssetInfoSiteId = String(siteId);
+
+//    $.ajax({
+//        url: '/FRS25/Telemetry/GetUserAssetInfoDatalogger?siteId=' + siteId,
+//        type: 'GET',
+//        dataType: 'json',
+//        success: function (response) {
+//            var data = Array.isArray(response) ? response :
+//                (response && (response.Data || response.data || response.Result || []));
+
+//            if (data && data.length) {
+//                data.forEach(function (item) {
+//                    var assetId = String(item.AssetId || '');
+//                    var aaId = String(item.AssetAttributeId || '');
+//                    var role = String(item.Role || '');
+//                    var roleType = String(item.RoleType || '').toLowerCase();
+//                    var attrName = item.AliasName || item.AttributeName;
+//                    var assetName = item.AssetName || '';
+
+//                    if (!assetId || !attrName) return;
+
+//                    var entry = {
+//                        name: attrName,
+//                        attributeName: item.AttributeName || '',
+//                        assetName: assetName,
+//                        assetTypeId: item.AssetTypeId,
+//                        siteId: item.SiteId,
+//                        multiplication: item.Multiplication,
+//                        absolute: item.Absolute,
+//                        minValue: item.MinValue,
+//                        maxValue: item.MaxValue,
+//                        clusterId: item.ClusterId,
+//                        channelId: item.ChannelId
+//                    };
+
+//                    if (roleType === 'c' && aaId) {
+//                        // Simple attribute: RDPMS + PointMachine indication
+//                        userAssetSimpleMap[assetId + '_' + aaId] = entry;
+//                    } else if (roleType === 'd' && role) {
+//                        // DataLogger -- enrich the existing role maps too
+//                        userAssetDataloggerMap[assetId + '_' + role] = entry;
+//                        if (!dlRoleNameMap[role]) dlRoleNameMap[role] = attrName;
+//                        if (!dlAssetRoleMap[assetId + '_' + role]) dlAssetRoleMap[assetId + '_' + role] = attrName;
+//                    }
+//                });
+
+//                console.log('[UserAssetInfo] Site ' + siteId + ' loaded -- ' +
+//                    Object.keys(userAssetSimpleMap).length + ' simple (c), ' +
+//                    Object.keys(userAssetDataloggerMap).length + ' datalogger (d)');
+//            } else {
+//                console.warn('[UserAssetInfo] Empty response for site ' + siteId);
+//            }
+//            userAssetInfoLoaded = true;
+//            if (callback) callback();
+//        },
+//        error: function (xhr, status, err) {
+//            // Endpoint may not exist on this deployment -- non-fatal.
+//            console.warn('[UserAssetInfo] Not available for site ' + siteId + ' (' + status + '): graph will use fallback aliases');
+//            userAssetInfoLoaded = true;
+//            if (callback) callback();
+//        }
+//    });
+//}
+
+
+function loadUserAssetInfo(siteId, callback) {
+    var assetTypeId = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+
+    // No GetUserAssetInfoDatalogger call.
+    // Metadata source is only GetBulkAssetMetadata.
+    if (siteId && siteId !== '0' && assetTypeId && assetTypeId !== '0') {
+        loadBulkAssetMetadata(siteId, assetTypeId, callback);
         return;
     }
 
-    // Site changed -- reset maps
-    userAssetSimpleMap = {};
-    userAssetDataloggerMap = {};
-    userAssetInfoLoaded = false;
-    userAssetInfoSiteId = String(siteId);
-
-    $.ajax({
-        url: '/FRS25/Telemetry/GetUserAssetInfoDatalogger?siteId=' + siteId,
-        type: 'GET',
-        dataType: 'json',
-        success: function (response) {
-            var data = Array.isArray(response) ? response :
-                (response && (response.Data || response.data || response.Result || []));
-
-            if (data && data.length) {
-                data.forEach(function (item) {
-                    var assetId = String(item.AssetId || '');
-                    var aaId = String(item.AssetAttributeId || '');
-                    var role = String(item.Role || '');
-                    var roleType = String(item.RoleType || '').toLowerCase();
-                    var attrName = item.AliasName || item.AttributeName;
-                    var assetName = item.AssetName || '';
-
-                    if (!assetId || !attrName) return;
-
-                    var entry = {
-                        name: attrName,
-                        attributeName: item.AttributeName || '',
-                        assetName: assetName,
-                        assetTypeId: item.AssetTypeId,
-                        siteId: item.SiteId,
-                        multiplication: item.Multiplication,
-                        absolute: item.Absolute,
-                        minValue: item.MinValue,
-                        maxValue: item.MaxValue,
-                        clusterId: item.ClusterId,
-                        channelId: item.ChannelId
-                    };
-
-                    if (roleType === 'c' && aaId) {
-                        // Simple attribute: RDPMS + PointMachine indication
-                        userAssetSimpleMap[assetId + '_' + aaId] = entry;
-                    } else if (roleType === 'd' && role) {
-                        // DataLogger -- enrich the existing role maps too
-                        userAssetDataloggerMap[assetId + '_' + role] = entry;
-                        if (!dlRoleNameMap[role]) dlRoleNameMap[role] = attrName;
-                        if (!dlAssetRoleMap[assetId + '_' + role]) dlAssetRoleMap[assetId + '_' + role] = attrName;
-                    }
-                });
-
-                console.log('[UserAssetInfo] Site ' + siteId + ' loaded -- ' +
-                    Object.keys(userAssetSimpleMap).length + ' simple (c), ' +
-                    Object.keys(userAssetDataloggerMap).length + ' datalogger (d)');
-            } else {
-                console.warn('[UserAssetInfo] Empty response for site ' + siteId);
-            }
-            userAssetInfoLoaded = true;
-            if (callback) callback();
-        },
-        error: function (xhr, status, err) {
-            // Endpoint may not exist on this deployment -- non-fatal.
-            console.warn('[UserAssetInfo] Not available for site ' + siteId + ' (' + status + '): graph will use fallback aliases');
-            userAssetInfoLoaded = true;
-            if (callback) callback();
-        }
-    });
+    userAssetInfoLoaded = true;
+    userAssetInfoSiteId = String(siteId || '');
+    if (callback) callback();
 }
 
 
+
+//var bulkMetadataLoaded = false;
+//var bulkMetadataSiteId = null;
+//var bulkMetadataAssetTypeId = null;
+//var bulkAssetsList = [];  // Stores { Id, Name } for dropdown population
+
+//function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
+//    if (!siteId || siteId === '0' || !assetTypeId || assetTypeId === '0') {
+//        console.warn('[BulkMeta] Missing siteId or assetTypeId — skipping');
+//        if (callback) callback();
+//        return;
+//    }
+
+//    // Skip re-fetch if already loaded for this site + assetType
+//    if (bulkMetadataLoaded &&
+//        bulkMetadataSiteId === String(siteId) &&
+//        bulkMetadataAssetTypeId === String(assetTypeId)) {
+//        console.log('[BulkMeta] Cache hit — site=' + siteId + ' type=' + assetTypeId);
+//        if (callback) callback();
+//        return;
+//    }
+
+//    console.log('[BulkMeta] Fetching — site=' + siteId + ' type=' + assetTypeId);
+
+//    // Payload matches _Table / _GetAssetDetails format:
+//    // AssetLister { SearchCriteria: Asset { SiteId, AssetTypeId } }
+//    var payload = {
+//        SearchCriteria: {
+//            SiteId: parseInt(siteId),
+//            AssetTypeId: parseInt(assetTypeId)
+//        }
+//    };
+
+//    $.ajax({
+//        url: '/FRS25/Telemetry/GetBulkAssetMetadata',
+//        type: 'POST',
+//        contentType: 'application/json',
+//        data: JSON.stringify(payload),
+//        dataType: 'json',
+//        timeout: 30000,
+//        success: function (response) {
+//            if (!response || !response.success || !response.mAssets) {
+//                console.warn('[BulkMeta] Error: ' + (response && response.errorMessage));
+//                _fallbackToLegacyLoad(siteId, assetTypeId, callback);
+//                return;
+//            }
+
+//            var assets = response.mAssets;
+//            var zeroCount = 0, attrCount = 0, dlCount = 0, sigCacheCount = 0;
+
+//            // Store asset list for dropdown population (replaces GetAssestBy)
+//            bulkAssetsList = [];
+//            for (var bi = 0; bi < assets.length; bi++) {
+//                bulkAssetsList.push({ Id: assets[bi].Id, Name: assets[bi].Name });
+//            }
+
+//            // Reset maps for new site data
+//            userAssetSimpleMap = {};
+//            userAssetDataloggerMap = {};
+
+//            for (var i = 0; i < assets.length; i++) {
+//                var asset = assets[i];
+//                var aid = String(asset.Id);
+
+//                // ── 1. ZeroOffsetValue → zeroOffsetCache ────────────
+//                // Replaces: N × GetZeroOffsetValue
+//                var rawOffset = parseFloat(asset.ZeroOffsetValue);
+//                var offsetVal = (!isNaN(rawOffset) && rawOffset > 0)
+//                    ? rawOffset
+//                    : RDPMS_DEFAULT_THRESHOLD;
+
+//                zeroOffsetCache[aid] = {
+//                    value: offsetVal,
+//                    fetched: true,
+//                    fetching: false,
+//                    pendingCallbacks: []
+//                };
+
+//                if (wsLiveData[aid]) {
+//                    wsLiveData[aid].ZeroOffsetValue = offsetVal;
+//                }
+//                if (offsetVal !== RDPMS_DEFAULT_THRESHOLD) zeroCount++;
+
+//                // ── 2. assetAttributes[] → assetAttributeMap + userAssetSimpleMap
+//                // Replaces: GetUserAssetInfoDatalogger
+//                var attrs = asset.assetAttributes;
+//                var sigAttrNames = [];   // for _sigAssetInfoCache (step 4)
+
+//                if (attrs && attrs.length > 0) {
+//                    for (var j = 0; j < attrs.length; j++) {
+//                        var attr = attrs[j];
+//                        var attrId = String(attr.Id || '');
+//                        var attrTitle = attr.AliasName || attr.Title || '';
+
+//                        if (!attrId || !attrTitle) continue;
+
+//                        // Global attribute map
+//                        assetAttributeMap[attrId] = attrTitle;
+//                        assetAttributeMap[String(attrId)] = attrTitle;
+//                        var numAttrId = parseInt(attrId);
+//                        if (!isNaN(numAttrId)) assetAttributeMap[numAttrId] = attrTitle;
+//                        assetAttributeByName[attrTitle] = attrTitle;
+
+//                        // userAssetSimpleMap
+//                        var simpleKey = aid + '_' + attrId;
+//                        if (!userAssetSimpleMap[simpleKey]) {
+//                            userAssetSimpleMap[simpleKey] = {
+//                                name: attrTitle,
+//                                attributeName: attr.Title || '',
+//                                assetName: asset.Name || '',
+//                                assetTypeId: asset.AssetTypeId,
+//                                siteId: asset.SiteId,
+//                                multiplication: attr.Multiplication,
+//                                absolute: attr.Absolute,
+//                                minValue: attr.MinValue,
+//                                maxValue: attr.MaxValue
+//                            };
+//                        }
+//                        attrCount++;
+
+//                        // Collect attr name for signal group cache
+//                        var sigName = attr.AliasName || attr.Title;
+//                        if (sigName && sigAttrNames.indexOf(sigName) === -1) {
+//                            sigAttrNames.push(sigName);
+//                        }
+//                    }
+//                }
+
+//                // ── 3. mAssetInfoDataloggers[] → datalogger maps ────
+//                // Replaces: GetUserAssetInfoDatalogger (datalogger portion)
+//                var dls = asset.mAssetInfoDataloggers;
+//                if (dls && dls.length > 0) {
+//                    for (var k = 0; k < dls.length; k++) {
+//                        var dl = dls[k];
+//                        var dlRole = String(dl.DataloggerAttributeId || '');
+//                        var dlName = dl.DataloggerAssetName || dl.DataloggerAttribute || '';
+
+//                        if (!dlRole || !dlName) continue;
+
+//                        var dlKey = aid + '_' + dlRole;
+//                        userAssetDataloggerMap[dlKey] = {
+//                            name: dlName,
+//                            attributeName: dl.DataloggerAttribute || '',
+//                            assetName: asset.Name || '',
+//                            assetTypeId: asset.AssetTypeId,
+//                            siteId: asset.SiteId
+//                        };
+
+//                        if (typeof dlRoleNameMap !== 'undefined' && !dlRoleNameMap[dlRole])
+//                            dlRoleNameMap[dlRole] = dlName;
+//                        if (typeof dlAssetRoleMap !== 'undefined' && !dlAssetRoleMap[dlKey])
+//                            dlAssetRoleMap[dlKey] = dlName;
+//                        dlCount++;
+//                    }
+//                }
+
+//                // ── 4. _sigAssetInfoCache → signal grouped table ────
+//                // Replaces: N × GetAssetInfoListData
+//                // The signal table groups assets by their attribute
+//                // "signature" (sorted list of attr names joined by |).
+//                // Pre-populating this cache means fetchSignalAssetInfo()
+//                // hits the "already loaded" guard and never fires AJAX.
+//                if (sigAttrNames.length > 0) {
+//                    _sigAssetInfoCache[aid] = {
+//                        loaded: true,
+//                        loading: false,
+//                        attrs: sigAttrNames,
+//                        pending: []
+//                    };
+//                    sigCacheCount++;
+//                }
+//            }
+
+//            // Mark all caches as loaded
+//            assetAttributeLoaded = true;
+//            userAssetInfoLoaded = true;
+//            userAssetInfoSiteId = String(siteId);
+//            bulkMetadataLoaded = true;
+//            bulkMetadataSiteId = String(siteId);
+//            bulkMetadataAssetTypeId = String(assetTypeId);
+
+//            console.log('[BulkMeta] ✓ ' + assets.length + ' assets | ' +
+//                zeroCount + ' zero offsets | ' +
+//                attrCount + ' attributes | ' +
+//                dlCount + ' datalogger | ' +
+//                sigCacheCount + ' signal groups — 1 API call');
+
+//            if (callback) callback();
+//        },
+//        error: function (xhr, status, err) {
+//            console.error('[BulkMeta] AJAX error (' + status + '): ' + err);
+//            _fallbackToLegacyLoad(siteId, assetTypeId, callback);
+//        }
+//    });
+//}
+
+//function _fallbackToLegacyLoad(siteId, assetTypeId, callback) {
+//    console.log('[BulkMeta] Fallback → legacy per-asset calls');
+//    loadUserAssetInfo(siteId, function () {
+//        var currentAssetTypeId = parseInt(assetTypeId || 0);
+//        for (var sk in userAssetSimpleMap) {
+//            var sEntry = userAssetSimpleMap[sk];
+//            if (!sEntry || !sEntry.name) continue;
+//            var sEntryAssetTypeId = parseInt(sEntry.assetTypeId || 0);
+//            if (sEntryAssetTypeId > 0 && currentAssetTypeId > 0 && sEntryAssetTypeId !== currentAssetTypeId) continue;
+//            var sParts = sk.split('_');
+//            if (sParts.length !== 2) continue;
+//            var aaId = sParts[1];
+//            assetAttributeMap[aaId] = sEntry.name;
+//            assetAttributeMap[String(aaId)] = sEntry.name;
+//            var numAaId = parseInt(aaId);
+//            if (!isNaN(numAaId)) assetAttributeMap[numAaId] = sEntry.name;
+//            assetAttributeByName[sEntry.name] = sEntry.name;
+//        }
+//        assetAttributeLoaded = true;
+//        if (callback) callback();
+//    });
+//}
+
+//function invalidateBulkMetadataCache() {
+//    bulkMetadataLoaded = false;
+//    bulkMetadataSiteId = null;
+//    bulkMetadataAssetTypeId = null;
+//}
 
 
 var bulkMetadataLoaded = false;
 var bulkMetadataSiteId = null;
 var bulkMetadataAssetTypeId = null;
-var bulkAssetsList = [];  // Stores { Id, Name } for dropdown population
+var bulkAssetsList = [];
+
+// Bulk AliasName maps from GetBulkAssetMetadata.assetAttributes.
+// Display labels must come from AliasName only, not raw AssetAttributeName.
+var bulkAliasByAssetAttrName = {};
+var bulkAliasByAssetAttrId = {};
+var bulkAliasByAttrName = {};
+var bulkAliasByAttrId = {};
+
+function _tlNormAttrKey(v) {
+    return (v === null || v === undefined) ? '' : String(v).trim().toUpperCase();
+}
+
+function registerBulkAliasName(assetId, rawAttrName, attrId, aliasName) {
+    var aid = String(assetId || '');
+    var rawKey = _tlNormAttrKey(rawAttrName);
+    var idKey = String(attrId || '').trim();
+    var alias = String(aliasName || '').trim();
+
+    if (!alias) return;
+
+    if (aid && rawKey) bulkAliasByAssetAttrName[aid + '_' + rawKey] = alias;
+    if (aid && idKey) bulkAliasByAssetAttrId[aid + '_' + idKey] = alias;
+
+    if (rawKey) bulkAliasByAttrName[rawKey] = alias;
+    if (idKey) bulkAliasByAttrId[idKey] = alias;
+}
+
+function getBulkAliasName(assetId, attrName, attrId) {
+    var aid = String(assetId || '');
+    var rawKey = _tlNormAttrKey(attrName);
+    var idKey = String(attrId || '').trim();
+
+    // 1. Exact asset + raw attribute name from bulk metadata
+    if (aid && rawKey && bulkAliasByAssetAttrName[aid + '_' + rawKey]) {
+        return bulkAliasByAssetAttrName[aid + '_' + rawKey];
+    }
+
+    // 2. Exact asset + attribute id from bulk metadata
+    // This is only used to fetch AliasName from bulk map, never to display id.
+    if (aid && idKey && bulkAliasByAssetAttrId[aid + '_' + idKey]) {
+        return bulkAliasByAssetAttrId[aid + '_' + idKey];
+    }
+
+    // 3. Global raw attribute name from bulk metadata
+    if (rawKey && bulkAliasByAttrName[rawKey]) {
+        return bulkAliasByAttrName[rawKey];
+    }
+
+    // 4. Global attr id from bulk metadata
+    if (idKey && bulkAliasByAttrId[idKey]) {
+        return bulkAliasByAttrId[idKey];
+    }
+
+    // 5. Scan bulk userAssetSimpleMap by asset + raw name
+    if (typeof userAssetSimpleMap !== 'undefined' && userAssetSimpleMap) {
+        for (var k in userAssetSimpleMap) {
+            if (!userAssetSimpleMap.hasOwnProperty(k)) continue;
+            if (aid && k.indexOf(aid + '_') !== 0) continue;
+
+            var e = userAssetSimpleMap[k];
+            if (!e || !e.name) continue;
+
+            if (
+                _tlNormAttrKey(e.attributeName) === rawKey ||
+                _tlNormAttrKey(e.AttributeName) === rawKey ||
+                _tlNormAttrKey(e.title) === rawKey ||
+                _tlNormAttrKey(e.Title) === rawKey ||
+                _tlNormAttrKey(e.name) === rawKey
+            ) {
+                return e.name; // AliasName from bulk
+            }
+        }
+    }
+
+    return '';
+}
+
+window.getBulkAliasName = getBulkAliasName;
+
+var bulkAssetMap = {};
+var bulkAssetAttrMap = {};
+var bulkDataloggerMap = {};
+
+function _tlMetaStr(v) {
+    return (v === null || v === undefined) ? '' : String(v);
+}
+
+function _tlFirstNonEmpty() {
+    for (var i = 0; i < arguments.length; i++) {
+        var v = arguments[i];
+        if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+    }
+    return '';
+}
+
+function _tlEscHtml(v) {
+    return _tlMetaStr(v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getBulkAssetMeta(assetId) {
+    return bulkAssetMap[_tlMetaStr(assetId)] || null;
+}
+
+function getBulkAssetName(assetId, fallbackName) {
+    var meta = getBulkAssetMeta(assetId);
+    var nm = meta ? _tlFirstNonEmpty(meta.Name, meta.AssetName) : '';
+    return nm || fallbackName || ('Asset ' + assetId);
+}
+
+function getBulkAssetTypeId(assetId, fallbackTypeId) {
+    var meta = getBulkAssetMeta(assetId);
+    return (meta && meta.AssetTypeId !== undefined && meta.AssetTypeId !== null)
+        ? meta.AssetTypeId
+        : fallbackTypeId;
+}
+
+function getBulkSiteId(assetId, fallbackSiteId) {
+    var meta = getBulkAssetMeta(assetId);
+    return (meta && meta.SiteId !== undefined && meta.SiteId !== null)
+        ? meta.SiteId
+        : fallbackSiteId;
+}
+
+function _tlStripAssetPrefix(assetId, assetName, rawName) {
+    var displayName = _tlMetaStr(rawName).trim();
+    var aName = getBulkAssetName(assetId, assetName || '').trim();
+
+    if (aName && displayName.indexOf(aName) === 0) {
+        displayName = displayName.substring(aName.length).trim();
+        if (displayName.charAt(0) === '-' || displayName.charAt(0) === '_' || displayName.charAt(0) === ':') {
+            displayName = displayName.substring(1).trim();
+        }
+    }
+
+    return displayName || rawName || '';
+}
+
+function resolveBulkDataloggerName(assetId, roleOrAttrId, rawName) {
+    var aid = _tlMetaStr(assetId);
+    var role = _tlMetaStr(roleOrAttrId).trim();
+    var raw = _tlMetaStr(rawName).trim();
+    var key = aid + '_' + role;
+
+    var entry = (role && (userAssetDataloggerMap[key] || bulkDataloggerMap[key])) || null;
+    if (entry && entry.name) return entry.name;
+
+    if (role && typeof dlAssetRoleMap !== 'undefined' && dlAssetRoleMap[key]) return dlAssetRoleMap[key];
+    if (role && typeof dlRoleNameMap !== 'undefined' && dlRoleNameMap[role]) return dlRoleNameMap[role];
+
+    for (var k in bulkDataloggerMap) {
+        if (k.indexOf(aid + '_') !== 0) continue;
+
+        var e = bulkDataloggerMap[k];
+        if (!e) continue;
+
+        if (raw && (
+            e.attributeName === raw ||
+            e.dataloggerAttribute === raw ||
+            e.dataloggerAssetName === raw ||
+            e.name === raw
+        )) {
+            return e.name || raw;
+        }
+    }
+
+    return _tlStripAssetPrefix(assetId, null, raw);
+}
+
+function populateAssetDropdownsFromBulk(options) {
+    options = options || {};
+    var d = bulkAssetsList || [];
+
+    if ($('#drpAsset').length) {
+        $('#drpAsset').empty().append('<option value="">All</option>');
+
+        for (var i = 0; i < d.length; i++) {
+            $('#drpAsset').append(
+                '<option value="' + _tlEscHtml(d[i].Id) + '">' +
+                _tlEscHtml(d[i].Name) +
+                '</option>'
+            );
+        }
+    }
+
+    if ($('#listAssetNumber').length) {
+        if (d.length > 0) {
+            var h = '';
+
+            for (var j = 0; j < d.length; j++) {
+                var id = _tlEscHtml(d[j].Id);
+                var name = _tlEscHtml(d[j].Name);
+
+                h += '<div class="dropdown-item" data-value="' + id + '" data-text="' + name + '">' +
+                    '<input type="checkbox" value="' + id + '">' +
+                    '<span>' + name + '</span>' +
+                    '</div>';
+            }
+
+            $('#listAssetNumber').html(h);
+
+            if (options.autoLoad && typeof window._tlAutoLoad === 'function') {
+                window._tlAutoLoad({ selectAll: true });
+            }
+        } else {
+            $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>');
+        }
+    }
+}
 
 function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
     if (!siteId || siteId === '0' || !assetTypeId || assetTypeId === '0') {
@@ -1098,7 +1546,6 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
         return;
     }
 
-    // Skip re-fetch if already loaded for this site + assetType
     if (bulkMetadataLoaded &&
         bulkMetadataSiteId === String(siteId) &&
         bulkMetadataAssetTypeId === String(assetTypeId)) {
@@ -1109,8 +1556,6 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
 
     console.log('[BulkMeta] Fetching — site=' + siteId + ' type=' + assetTypeId);
 
-    // Payload matches _Table / _GetAssetDetails format:
-    // AssetLister { SearchCriteria: Asset { SiteId, AssetTypeId } }
     var payload = {
         SearchCriteria: {
             SiteId: parseInt(siteId),
@@ -1132,25 +1577,52 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                 return;
             }
 
-            var assets = response.mAssets;
-            var zeroCount = 0, attrCount = 0, dlCount = 0, sigCacheCount = 0;
+            var assets = response.mAssets || [];
+            var zeroCount = 0;
+            var attrCount = 0;
+            var dlCount = 0;
+            var sigCacheCount = 0;
 
-            // Store asset list for dropdown population (replaces GetAssestBy)
             bulkAssetsList = [];
-            for (var bi = 0; bi < assets.length; bi++) {
-                bulkAssetsList.push({ Id: assets[bi].Id, Name: assets[bi].Name });
-            }
+            bulkAssetMap = {};
+            bulkAssetAttrMap = {};
+            bulkDataloggerMap = {};
 
             // Reset maps for new site data
             userAssetSimpleMap = {};
             userAssetDataloggerMap = {};
 
-            for (var i = 0; i < assets.length; i++) {
-                var asset = assets[i];
-                var aid = String(asset.Id);
+            bulkAliasByAssetAttrName = {};
+            bulkAliasByAssetAttrId = {};
+            bulkAliasByAttrName = {};
+            bulkAliasByAttrId = {};
+            assetAttributeMap = {};
+            assetAttributeByName = {};
+            wsAttributeIds = {};
 
-                // ── 1. ZeroOffsetValue → zeroOffsetCache ────────────
-                // Replaces: N × GetZeroOffsetValue
+            dlRoleNameMap = {};
+            dlAssetRoleMap = {};
+
+            if (typeof _sigAssetInfoCache !== 'undefined') {
+                _sigAssetInfoCache = {};
+            }
+
+            for (var bi = 0; bi < assets.length; bi++) {
+                var asset = assets[bi];
+                if (!asset || !asset.Id) continue;
+
+                var aid = String(asset.Id);
+                var assetName = _tlFirstNonEmpty(asset.Name, asset.AssetName, 'Asset ' + aid);
+
+                bulkAssetMap[aid] = asset;
+
+                bulkAssetsList.push({
+                    Id: asset.Id,
+                    Name: assetName,
+                    SiteId: asset.SiteId,
+                    AssetTypeId: asset.AssetTypeId
+                });
+
                 var rawOffset = parseFloat(asset.ZeroOffsetValue);
                 var offsetVal = (!isNaN(rawOffset) && rawOffset > 0)
                     ? rawOffset
@@ -1164,109 +1636,163 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                 };
 
                 if (wsLiveData[aid]) {
+                    wsLiveData[aid].AssetName = assetName;
+                    wsLiveData[aid].AssetTypeId = asset.AssetTypeId || wsLiveData[aid].AssetTypeId;
+                    wsLiveData[aid].SiteId = asset.SiteId || wsLiveData[aid].SiteId;
                     wsLiveData[aid].ZeroOffsetValue = offsetVal;
                 }
+
                 if (offsetVal !== RDPMS_DEFAULT_THRESHOLD) zeroCount++;
 
-                // ── 2. assetAttributes[] → assetAttributeMap + userAssetSimpleMap
-                // Replaces: GetUserAssetInfoDatalogger
-                var attrs = asset.assetAttributes;
-                var sigAttrNames = [];   // for _sigAssetInfoCache (step 4)
+                var attrs = asset.assetAttributes || asset.AssetAttributes || [];
+                var sigAttrNames = [];
 
-                if (attrs && attrs.length > 0) {
-                    for (var j = 0; j < attrs.length; j++) {
-                        var attr = attrs[j];
-                        var attrId = String(attr.Id || '');
-                        var attrTitle = attr.AliasName || attr.Title || '';
+                for (var j = 0; j < attrs.length; j++) {
+                    var attr = attrs[j];
 
-                        if (!attrId || !attrTitle) continue;
+                    var attrId = String(attr.Id || attr.AssetAttributeId || attr.AttributeId || '').trim();
+                    var attrAlias = String(attr.AliasName || '').trim();
+                    var rawAttrName = String(attr.Title || attr.AttributeName || attr.Name || attrAlias || '').trim();
 
-                        // Global attribute map
-                        assetAttributeMap[attrId] = attrTitle;
-                        assetAttributeMap[String(attrId)] = attrTitle;
-                        var numAttrId = parseInt(attrId);
-                        if (!isNaN(numAttrId)) assetAttributeMap[numAttrId] = attrTitle;
-                        assetAttributeByName[attrTitle] = attrTitle;
+                    // Display label must be AliasName from GetBulkAssetMetadata.
+                    // If AliasName is empty, only then use raw name as a last fallback.
+                    var displayAlias = attrAlias || rawAttrName;
 
-                        // userAssetSimpleMap
-                        var simpleKey = aid + '_' + attrId;
-                        if (!userAssetSimpleMap[simpleKey]) {
-                            userAssetSimpleMap[simpleKey] = {
-                                name: attrTitle,
-                                attributeName: attr.Title || '',
-                                assetName: asset.Name || '',
-                                assetTypeId: asset.AssetTypeId,
-                                siteId: asset.SiteId,
-                                multiplication: attr.Multiplication,
-                                absolute: attr.Absolute,
-                                minValue: attr.MinValue,
-                                maxValue: attr.MaxValue
-                            };
-                        }
-                        attrCount++;
+                    if (!attrId || !displayAlias) continue;
 
-                        // Collect attr name for signal group cache
-                        var sigName = attr.AliasName || attr.Title;
-                        if (sigName && sigAttrNames.indexOf(sigName) === -1) {
-                            sigAttrNames.push(sigName);
-                        }
-                    }
-                }
+                    // Register strict bulk alias mapping
+                    registerBulkAliasName(aid, rawAttrName, attrId, displayAlias);
+                    registerBulkAliasName(aid, displayAlias, attrId, displayAlias);
 
-                // ── 3. mAssetInfoDataloggers[] → datalogger maps ────
-                // Replaces: GetUserAssetInfoDatalogger (datalogger portion)
-                var dls = asset.mAssetInfoDataloggers;
-                if (dls && dls.length > 0) {
-                    for (var k = 0; k < dls.length; k++) {
-                        var dl = dls[k];
-                        var dlRole = String(dl.DataloggerAttributeId || '');
-                        var dlName = dl.DataloggerAssetName || dl.DataloggerAttribute || '';
+                    // Global attribute map now stores AliasName only
+                    assetAttributeMap[attrId] = displayAlias;
+                    assetAttributeMap[String(attrId)] = displayAlias;
 
-                        if (!dlRole || !dlName) continue;
+                    var numAttrId = parseInt(attrId);
+                    if (!isNaN(numAttrId)) assetAttributeMap[numAttrId] = displayAlias;
 
-                        var dlKey = aid + '_' + dlRole;
-                        userAssetDataloggerMap[dlKey] = {
-                            name: dlName,
-                            attributeName: dl.DataloggerAttribute || '',
+                    // Name map: raw name -> AliasName, alias -> alias
+                    if (rawAttrName) assetAttributeByName[rawAttrName] = displayAlias;
+                    assetAttributeByName[displayAlias] = displayAlias;
+
+                    // userAssetSimpleMap: name must be AliasName, attributeName is raw key only for matching
+                    var simpleKey = aid + '_' + attrId;
+                    if (!userAssetSimpleMap[simpleKey]) {
+                        userAssetSimpleMap[simpleKey] = {
+                            name: displayAlias,              // AliasName only
+                            aliasName: displayAlias,
+                            AliasName: displayAlias,
+                            attributeName: rawAttrName,      // raw name only for lookup/matching
+                            AttributeName: rawAttrName,
                             assetName: asset.Name || '',
                             assetTypeId: asset.AssetTypeId,
-                            siteId: asset.SiteId
+                            siteId: asset.SiteId,
+                            multiplication: attr.Multiplication,
+                            absolute: attr.Absolute,
+                            minValue: attr.MinValue,
+                            maxValue: attr.MaxValue
                         };
+                    }
 
-                        if (typeof dlRoleNameMap !== 'undefined' && !dlRoleNameMap[dlRole])
-                            dlRoleNameMap[dlRole] = dlName;
-                        if (typeof dlAssetRoleMap !== 'undefined' && !dlAssetRoleMap[dlKey])
-                            dlAssetRoleMap[dlKey] = dlName;
-                        dlCount++;
+                    attrCount++;
+
+                    // Keep raw attribute key for value matching; UI will convert it to AliasName.
+                    var sigName = rawAttrName || displayAlias;
+                    if (sigName && sigAttrNames.indexOf(sigName) === -1) {
+                        sigAttrNames.push(sigName);
                     }
                 }
 
-                // ── 4. _sigAssetInfoCache → signal grouped table ────
-                // Replaces: N × GetAssetInfoListData
-                // The signal table groups assets by their attribute
-                // "signature" (sorted list of attr names joined by |).
-                // Pre-populating this cache means fetchSignalAssetInfo()
-                // hits the "already loaded" guard and never fires AJAX.
-                if (sigAttrNames.length > 0) {
+                var dls = asset.mAssetInfoDataloggers || asset.MAssetInfoDataloggers || [];
+
+                for (var k = 0; k < dls.length; k++) {
+                    var dl = dls[k];
+                    if (!dl) continue;
+
+                    var dlRole = String(_tlFirstNonEmpty(
+                        dl.DataloggerAttributeId,
+                        dl.Role,
+                        dl.AssetAttributeId,
+                        dl.Id,
+                        dl.SrNo,
+                        dl.DataloggerAttribute
+                    ));
+
+                    var dlName = _tlFirstNonEmpty(
+                        dl.DataloggerAttribute,
+                        dl.DataloggerAssetName,
+                        dl.AttributeName,
+                        dl.Name,
+                        dlRole
+                    );
+
+                    if (!dlRole || !dlName) continue;
+
+                    var dlEntry = {
+                        name: dlName,
+                        attributeName: dlName,
+                        dataloggerAttribute: dl.DataloggerAttribute || '',
+                        dataloggerAssetName: dl.DataloggerAssetName || '',
+                        assetName: assetName,
+                        assetTypeId: asset.AssetTypeId,
+                        siteId: asset.SiteId
+                    };
+
+                    var dlKey = aid + '_' + dlRole;
+
+                    userAssetDataloggerMap[dlKey] = dlEntry;
+                    bulkDataloggerMap[dlKey] = dlEntry;
+                    dlRoleNameMap[dlRole] = dlName;
+                    dlAssetRoleMap[dlKey] = dlName;
+
+                    if (dl.DataloggerAttribute) {
+                        bulkDataloggerMap[aid + '_' + dl.DataloggerAttribute] = dlEntry;
+                        userAssetDataloggerMap[aid + '_' + dl.DataloggerAttribute] = dlEntry;
+                        dlAssetRoleMap[aid + '_' + dl.DataloggerAttribute] = dlName;
+                    }
+
+                    if (dl.DataloggerAssetName) {
+                        bulkDataloggerMap[aid + '_' + dl.DataloggerAssetName] = dlEntry;
+                        userAssetDataloggerMap[aid + '_' + dl.DataloggerAssetName] = dlEntry;
+                        dlAssetRoleMap[aid + '_' + dl.DataloggerAssetName] = dlName;
+                    }
+
+                    dlCount++;
+                }
+
+                if (typeof _sigAssetInfoCache !== 'undefined' && sigAttrNames.length > 0) {
                     _sigAssetInfoCache[aid] = {
                         loaded: true,
                         loading: false,
                         attrs: sigAttrNames,
                         pending: []
                     };
+
                     sigCacheCount++;
                 }
             }
 
-            // Mark all caches as loaded
+            bulkAssetsList.sort(function (a, b) {
+                return (a.Name || '').localeCompare(b.Name || '', undefined, {
+                    numeric: true,
+                    sensitivity: 'base'
+                });
+            });
+
+            window.bulkAssetsList = bulkAssetsList;
+            window.bulkAssetMap = bulkAssetMap;
+            window.bulkAssetAttrMap = bulkAssetAttrMap;
+            window.bulkDataloggerMap = bulkDataloggerMap;
+
             assetAttributeLoaded = true;
             userAssetInfoLoaded = true;
             userAssetInfoSiteId = String(siteId);
+
             bulkMetadataLoaded = true;
             bulkMetadataSiteId = String(siteId);
             bulkMetadataAssetTypeId = String(assetTypeId);
 
-            console.log('[BulkMeta] ✓ ' + assets.length + ' assets | ' +
+            console.log('[BulkMeta] ✓ ' + bulkAssetsList.length + ' assets | ' +
                 zeroCount + ' zero offsets | ' +
                 attrCount + ' attributes | ' +
                 dlCount + ' datalogger | ' +
@@ -1282,26 +1808,13 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
 }
 
 function _fallbackToLegacyLoad(siteId, assetTypeId, callback) {
-    console.log('[BulkMeta] Fallback → legacy per-asset calls');
-    loadUserAssetInfo(siteId, function () {
-        var currentAssetTypeId = parseInt(assetTypeId || 0);
-        for (var sk in userAssetSimpleMap) {
-            var sEntry = userAssetSimpleMap[sk];
-            if (!sEntry || !sEntry.name) continue;
-            var sEntryAssetTypeId = parseInt(sEntry.assetTypeId || 0);
-            if (sEntryAssetTypeId > 0 && currentAssetTypeId > 0 && sEntryAssetTypeId !== currentAssetTypeId) continue;
-            var sParts = sk.split('_');
-            if (sParts.length !== 2) continue;
-            var aaId = sParts[1];
-            assetAttributeMap[aaId] = sEntry.name;
-            assetAttributeMap[String(aaId)] = sEntry.name;
-            var numAaId = parseInt(aaId);
-            if (!isNaN(numAaId)) assetAttributeMap[numAaId] = sEntry.name;
-            assetAttributeByName[sEntry.name] = sEntry.name;
-        }
-        assetAttributeLoaded = true;
-        if (callback) callback();
-    });
+    console.warn('[BulkMeta] Bulk metadata unavailable; no legacy metadata API fallback will be called.');
+
+    assetAttributeLoaded = true;
+    userAssetInfoLoaded = true;
+    userAssetInfoSiteId = String(siteId || '');
+
+    if (callback) callback();
 }
 
 function invalidateBulkMetadataCache() {
@@ -1310,8 +1823,11 @@ function invalidateBulkMetadataCache() {
     bulkMetadataAssetTypeId = null;
 }
 
-
-
+window.loadBulkAssetMetadata = loadBulkAssetMetadata;
+window.invalidateBulkMetadataCache = invalidateBulkMetadataCache;
+window.getBulkAssetMeta = getBulkAssetMeta;
+window.getBulkAssetName = getBulkAssetName;
+window.resolveBulkDataloggerName = resolveBulkDataloggerName;
 
 
 
@@ -1347,9 +1863,23 @@ function shouldIncludeInGraph(attributeId, dataType) {
 var dlRoleNameMap = {};       // key = Role (string), value = DataloggerAttribute name
 var dlAssetRoleMap = {};      // key = assetId+'_'+role, value = DataloggerAttribute name
 
+//function loadDataloggerAttributeMap(siteId, callback) {
+//    loadUserAssetInfo(siteId, callback);
+//}
+
+
 function loadDataloggerAttributeMap(siteId, callback) {
-    loadUserAssetInfo(siteId, callback);
+    var assetTypeId = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+
+    if (siteId && siteId !== '0' && assetTypeId && assetTypeId !== '0') {
+        loadBulkAssetMetadata(siteId, assetTypeId, callback);
+        return;
+    }
+
+    if (callback) callback();
 }
+
+
 
 // Load attributes on page init via bulk method (if site + assetType already selected)
 $(document).ready(function () {
@@ -2200,8 +2730,8 @@ function _renderSignalGroupedTablesCore() {
                 var aid0 = grp.ids[0];
                 var ad0 = (wsLiveData[aid0] && wsLiveData[aid0].attrs) ? wsLiveData[aid0].attrs[cn] : null;
                 var attrId0 = ad0 ? (ad0.AttrId || ad0.AssetAttributeId) : null;
-                var lbl = (typeof getAttrDisplayName === 'function') ? getAttrDisplayName(cn, attrId0) : cn;
-                html += '<th>' + lbl + '</th>';
+                var lbl = (typeof getAttrDisplayName === 'function') ? getAttrDisplayName(cn, attrId0, aid0) : cn;
+                html += '<th title="' + lbl + '">' + lbl + '</th>';
             }
             html += '<th>DL</th><th>Last Updated</th><th></th></tr></thead><tbody>';
 
@@ -2314,11 +2844,10 @@ function buildFullTable(assetIds, typeName, isTrack) {
                 }
             }
         }
-        var displayName = getAttrDisplayName(attrName, attrId);
+        var displayName = getAttrDisplayName(attrName, attrId, null);
         var formattedName = formatAliasName(displayName);
 
-        // Show original name as tooltip for reference
-        h += '<th data-col="' + attrName + '" title="' + attrName + ' (ID: ' + (attrId || 'N/A') + ')">' + formattedName + '</th>';
+        h += '<th data-col="' + attrName + '" title="' + displayName + '">' + formattedName + '</th>';
     }
 
     // Add derived value headers for Track assets
@@ -3117,9 +3646,9 @@ function processItemsInternal(items) {
             newAssetsAdded = true;
             wsLiveData[aid] = {
                 AssetId: aid,
-                AssetName: d.AssetName || ('Asset ' + aid),
-                AssetTypeId: d.AssetTypeId,
-                SiteId: d.SiteId,
+                AssetName: (typeof getBulkAssetName === 'function' ? getBulkAssetName(aid, d.AssetName) : (d.AssetName || ('Asset ' + aid))),
+                AssetTypeId: (typeof getBulkAssetTypeId === 'function' ? getBulkAssetTypeId(aid, d.AssetTypeId) : d.AssetTypeId),
+                SiteId: (typeof getBulkSiteId === 'function' ? getBulkSiteId(aid, d.SiteId) : d.SiteId),
                 attrs: {},
                 dlRelays: {},
                 lastUpdated: new Date(),
@@ -4782,8 +5311,19 @@ function fnBindTableFromAPI() {
 function renderApiTable(data, assetTypeId) {
     var map = {}, attrs = [], attrOrd = {}, attrIdMap = {};
     data.forEach(function (d) {
-        if (!map[d.AssetId]) map[d.AssetId] = { AssetId: d.AssetId, AssetName: d.AssetName, AssetTypeId: d.AssetTypeId, attrs: {} };
-        map[d.AssetId].attrs[d.AssetAttributeName] = { Value: d.Value, AttrId: d.AssetAttributeId };
+        //if (!map[d.AssetId]) map[d.AssetId] = { AssetId: d.AssetId, AssetName: d.AssetName, AssetTypeId: d.AssetTypeId, attrs: {} };
+
+        var aid = String(d.AssetId);
+        if (!map[aid]) {
+            map[aid] = {
+                AssetId: d.AssetId,
+                AssetName: (typeof getBulkAssetName === 'function' ? getBulkAssetName(aid, d.AssetName) : d.AssetName),
+                AssetTypeId: (typeof getBulkAssetTypeId === 'function' ? getBulkAssetTypeId(aid, d.AssetTypeId) : d.AssetTypeId),
+                attrs: {}
+            };
+        }
+        //map[d.AssetId].attrs[d.AssetAttributeName] = { Value: d.Value, AttrId: d.AssetAttributeId };
+        map[aid].attrs[d.AssetAttributeName] = { Value: d.Value, AttrId: d.AssetAttributeId };
         if (attrs.indexOf(d.AssetAttributeName) === -1) {
             attrs.push(d.AssetAttributeName);
             attrOrd[d.AssetAttributeName] = d.AssetAttributeId;
@@ -4797,9 +5337,9 @@ function renderApiTable(data, assetTypeId) {
     // Use assetAttributeMap to get proper alias names
     attrs.forEach(function (a) {
         var attrId = attrIdMap[a];
-        var displayName = getAttrDisplayName(a, attrId);
+        var displayName = getAttrDisplayName(a, attrId, null);
         var formattedName = formatAliasName(displayName);
-        h += '<th title="' + a + ' (ID: ' + (attrId || 'N/A') + ')">' + formattedName + '</th>';
+        h += '<th title="' + displayName + '">' + formattedName + '</th>';
     });
     // Add derived value headers for Track assets
     if (isTrack) {
@@ -5177,16 +5717,16 @@ function buildIpsCard(assetId) {
             var valCls = (disp === '--') ? 'ips-attr-val no-data' : 'ips-attr-val';
 
             // Display name: AliasName → AttrName → raw key
-            var label = aObj.AliasName || aObj.AttrName || an;
+            var label = an;
             if (typeof window.getAttrDisplayName === 'function') {
-                label = window.getAttrDisplayName(an, aObj.AttrId) || label;
+                label = window.getAttrDisplayName(an, (aObj.AttrId || aObj.AssetAttributeId), assetId) || label;
             }
             if (typeof window.formatAliasName === 'function') {
                 label = window.formatAliasName(label) || label;
             }
 
             h += '<div class="ips-attr-row">';
-            h += '<span class="ips-attr-name" title="' + an + '">' + label + '</span>';
+            h += '<span class="ips-attr-name" title="' + label + '">' + label + '</span>';
             h += '<span class="' + valCls + '" data-attr="' + an + '">' + disp + '</span>';
             h += '</div>';
         }
@@ -6511,7 +7051,7 @@ function updateCircuitTrack(attrs) {
                         // Insert \n before ( so the unit wraps inside the box
                         var newText = mappedLabels[mi] + ' : ' + displayValue;
                         val.attrs.label.text = newText.replace(/\(/g, '\n(');
-                        val.attrs.label.fill = '#222138';
+                        //val.attrs.label.fill = '#222138';
                         applyCircuitLabelColor(val, attrName, num);
                         matched = true;
                         break;
@@ -6525,7 +7065,7 @@ function updateCircuitTrack(attrs) {
             var cleanAttrName = attrName.replace(/\s*\([^)]*\)/g, '').trim();
             if (labelText.indexOf(cleanAttrName) === 0 || labelText.indexOf(attrName) === 0) {
                 val.attrs.label.text = cleanAttrName + ' : ' + displayValue;
-                val.attrs.label.fill = '#222138';
+                //val.attrs.label.fill = '#222138';
                 applyCircuitLabelColor(val, attrName, num);
                 break;
             }
@@ -6697,7 +7237,7 @@ function updateCircuitSignal(attrs, zeroOffset) {
 
                 if (labelText.startsWith(attrName) || labelText.startsWith(attrName.replace(/\s*\([^)]*\)/g, '').trim())) {
                     val.attrs.label.text = attrName + ' : ' + displayValue;
-                    val.attrs.label.fill = '#222138';
+                    //val.attrs.label.fill = '#222138';
                     break;
                 }
             }
@@ -6868,7 +7408,7 @@ function updateCircuitPointMachine(attrs) {
 
                     if (labelText.startsWith(cleanAttrName) && cleanAttrName.length > 2) {
                         val.attrs.label.text = cleanAttrName + ' : ' + displayValue;
-                        val.attrs.label.fill = '#222138';
+                        //val.attrs.label.fill = '#222138';
                         break;
                     }
                 }
@@ -6883,34 +7423,34 @@ function updateCircuitPointMachine(attrs) {
                     val.attrs.label.fill = '#222138';
                 } else if (aRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(A)RW V : ' + parseFloat(pointMachineDataJsonR.A_V_AVERAGE || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(A)NW C') || labelText.startsWith('(A)RW C')) {
                 if (aNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
                     val.attrs.label.text = '(A)NW C : ' + parseFloat(pointMachineDataJsonN.A_C_MAX || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 } else if (aRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(A)RW C : ' + parseFloat(pointMachineDataJsonR.A_C_MAX || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(B)NW V') || labelText.startsWith('(B)RW V')) {
                 if (bNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
                     val.attrs.label.text = '(B)NW V : ' + parseFloat(pointMachineDataJsonN.B_V_AVERAGE || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 } else if (bRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(B)RW V : ' + parseFloat(pointMachineDataJsonR.B_V_AVERAGE || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(B)NW C') || labelText.startsWith('(B)RW C')) {
                 if (bNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
                     val.attrs.label.text = '(B)NW C : ' + parseFloat(pointMachineDataJsonN.B_C_MAX || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 } else if (bRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(B)RW C : ' + parseFloat(pointMachineDataJsonR.B_C_MAX || 0).toFixed(2);
-                    val.attrs.label.fill = '#222138';
+                //    val.attrs.label.fill = '#222138';
                 }
             }
         }
@@ -8567,11 +9107,34 @@ function updateAssetText() {
     // IMPORTANT: Trigger view type restriction check whenever asset selection changes
     updateViewTypeRestrictions();
 }
-function loadAssetNumbersMulti(siteId, assetTypeId) { $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#chkAllAssetNumber').prop('checked', false); $('#txtAssetNumber').text('All'); if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return; $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>'); loadBulkAssetMetadata(siteId, assetTypeId, function () { var d = bulkAssetsList; if (d && d.length > 0) { var h = ''; $.each(d, function (k, v) { h += '<div class="dropdown-item" data-value="' + v.Id + '" data-text="' + v.Name + '"><input type="checkbox" value="' + v.Id + '"><span>' + v.Name + '</span></div>'; }); $('#listAssetNumber').html(h); if (typeof window._tlAutoLoad === 'function') window._tlAutoLoad({ selectAll: true }); } else { $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>'); } }); }
+//function loadAssetNumbersMulti(siteId, assetTypeId) { $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#chkAllAssetNumber').prop('checked', false); $('#txtAssetNumber').text('All'); if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return; $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>'); loadBulkAssetMetadata(siteId, assetTypeId, function () { var d = bulkAssetsList; if (d && d.length > 0) { var h = ''; $.each(d, function (k, v) { h += '<div class="dropdown-item" data-value="' + v.Id + '" data-text="' + v.Name + '"><input type="checkbox" value="' + v.Id + '"><span>' + v.Name + '</span></div>'; }); $('#listAssetNumber').html(h); if (typeof window._tlAutoLoad === 'function') window._tlAutoLoad({ selectAll: true }); } else { $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>'); } }); }
+function loadAssetNumbersMulti(siteId, assetTypeId) {
+    $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>');
+    $('#chkAllAssetNumber').prop('checked', false);
+    $('#txtAssetNumber').text('All');
+
+    if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
+
+    $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>');
+
+    loadBulkAssetMetadata(siteId, assetTypeId, function () {
+        populateAssetDropdownsFromBulk({ autoLoad: true });
+    });
+}
+
 function GetDivisionByZone(zoneId) { if (!zoneId || zoneId === '' || zoneId === '0') { return; } $("#loader").show(); $.ajax({ url: '/FRS25/Telemetry/GetDivisionByZoneId', type: 'POST', data: JSON.stringify({ zoneId: zoneId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $("#drpDivisions").empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpDivisions").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $("#drpSite").empty().append('<option value="">All</option>'); $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); } }); }
 function GetByDivisionId(divId) { if (!divId || divId === '0' || divId === '') return; $("#loader").show(); $.ajax({ url: '/FRS25/Telemetry/GetSiteByDivisionId', type: 'POST', data: JSON.stringify({ divisionId: divId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $("#drpSite").empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpSite").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); console.log('[Site] Error loading sites for division: ' + divId); } }); }
-function GetByAssest(siteId, assetTypeId) { if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return; $("#loader").show(); loadBulkAssetMetadata(siteId, assetTypeId, function () { $("#loader").hide(); $("#drpAsset").empty().append('<option value="">All</option>'); var d = bulkAssetsList; if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpAsset").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } }); }
+//function GetByAssest(siteId, assetTypeId) { if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return; $("#loader").show(); loadBulkAssetMetadata(siteId, assetTypeId, function () { $("#loader").hide(); $("#drpAsset").empty().append('<option value="">All</option>'); var d = bulkAssetsList; if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpAsset").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } }); }
+function GetByAssest(siteId, assetTypeId) {
+    if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
 
+    $('#loader').show();
+
+    loadBulkAssetMetadata(siteId, assetTypeId, function () {
+        $('#loader').hide();
+        populateAssetDropdownsFromBulk({ autoLoad: false });
+    });
+}
 // ================================================================
 // GET ASSET TYPES BY SITE ID
 // Fetches available asset types for the selected site
@@ -13207,9 +13770,9 @@ function processSingleLiveUpdateFixed(d) {
     if (isNewAsset) {
         wsLiveData[aid] = {
             AssetId: aid,
-            AssetName: d.AssetName || ('Asset ' + aid),
-            AssetTypeId: d.AssetTypeId,
-            SiteId: d.SiteId,
+            AssetName: (typeof getBulkAssetName === 'function' ? getBulkAssetName(aid, d.AssetName) : (d.AssetName || ('Asset ' + aid))),
+            AssetTypeId: (typeof getBulkAssetTypeId === 'function' ? getBulkAssetTypeId(aid, d.AssetTypeId) : d.AssetTypeId),
+            SiteId: (typeof getBulkSiteId === 'function' ? getBulkSiteId(aid, d.SiteId) : d.SiteId),
             attrs: {},
             dlRelays: {},
             lastUpdated: new Date()
@@ -13232,7 +13795,14 @@ function processSingleLiveUpdateFixed(d) {
         }
 
         if (typeof processWsDataloggerAttr === 'function') {
-            processWsDataloggerAttr(aid, d.AssetName, attrName, d.Value, timestamp);
+            processWsDataloggerAttr(
+                aid,
+                (typeof getBulkAssetName === 'function' ? getBulkAssetName(aid, d.AssetName) : d.AssetName),
+                attrName,
+                d.Value,
+                timestamp,
+                attrId || d.AssetAttributeId || d.AttrId || d.DataloggerAttributeId || attrName
+            );
         }
 
         // FIX: Mark asset as updated for DataLogger messages
@@ -14042,9 +14612,9 @@ function renderWsTableFixed() {
                 }
             }
         }
-        var displayName = getAttrDisplayName(attrName, attrId);
+        var displayName = getAttrDisplayName(attrName, attrId, null);
         var formattedName = formatAliasName(displayName);
-        h += '<th data-col="' + attrName + '" title="' + attrName + ' (ID: ' + (attrId || 'N/A') + ')">' + formattedName + '</th>';
+        h += '<th data-col="' + attrName + '" title="' + displayName + '">' + formattedName + '</th>';
     }
     // Add derived value headers for Track assets
     if (isTrack && typeof getDerivedHeaders === 'function') {
@@ -14174,9 +14744,9 @@ function processItemsFixed(items) {
             newAssetsAdded = true;
             wsLiveData[aid] = {
                 AssetId: aid,
-                AssetName: d.AssetName || ('Asset ' + aid),
-                AssetTypeId: d.AssetTypeId,
-                SiteId: d.SiteId,
+                AssetName: (typeof getBulkAssetName === 'function' ? getBulkAssetName(aid, d.AssetName) : (d.AssetName || ('Asset ' + aid))),
+                AssetTypeId: (typeof getBulkAssetTypeId === 'function' ? getBulkAssetTypeId(aid, d.AssetTypeId) : d.AssetTypeId),
+                SiteId: (typeof getBulkSiteId === 'function' ? getBulkSiteId(aid, d.SiteId) : d.SiteId),
                 attrs: {},
                 dlRelays: {},
                 lastUpdated: new Date()
@@ -15093,103 +15663,210 @@ console.log('[DataLogger-Fix] Initializing DataLogger Pickup/Drop fix...');
 // ================================================================
 // FIX 1: Enhanced processWsDataloggerAttr function
 // ================================================================
-window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, timestamp) {
-    // Ensure asset exists
+//window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, timestamp) {
+//    // Ensure asset exists
+//    if (!window.wsLiveData[assetId]) {
+//        console.log('[DataLogger-Fix] Asset not found, creating:', assetId);
+//        window.wsLiveData[assetId] = {
+//            AssetId: assetId,
+//            AssetName: assetName || ('Asset ' + assetId),
+//            attrs: {},
+//            dlRelays: {},
+//            lastUpdated: new Date()
+//        };
+//    }
+
+//    // Parse value - handle string, number, float
+//    var numVal = parseFloat(value);
+//    if (isNaN(numVal)) numVal = 0;
+
+//    // Determine Pickup (1) or Drop (0)
+//    var isPickup = (numVal === 1 || numVal === 1.0);
+
+//    // Create display name - remove asset name prefix if present
+//    var displayName = attrName;
+//    if (assetName && displayName.indexOf(assetName) === 0) {
+//        displayName = displayName.substring(assetName.length).trim();
+//        // Remove leading dash or underscore if present
+//        if (displayName.charAt(0) === '-' || displayName.charAt(0) === '_') {
+//            displayName = displayName.substring(1).trim();
+//        }
+//    }
+//    if (!displayName) displayName = attrName;
+
+//    // Initialize dlRelays object if not exists
+//    if (!window.wsLiveData[assetId].dlRelays) {
+//        window.wsLiveData[assetId].dlRelays = {};
+//    }
+
+//    // Store relay data
+//    window.wsLiveData[assetId].dlRelays[attrName] = {
+//        value: numVal,
+//        isPickup: isPickup,
+//        displayName: displayName,
+//        timestamp: timestamp || new Date().toISOString(),
+//        rawAttrName: attrName
+//    };
+
+//    window.wsLiveData[assetId].lastUpdated = new Date();
+
+//    console.log('[DataLogger-Fix] Processed:', {
+//        assetId: assetId,
+//        attrName: attrName,
+//        displayName: displayName,
+//        value: numVal,
+//        isPickup: isPickup
+//    });
+
+//    // FIX: Immediately update ALL views when DataLogger changes
+//    var viewType = $('#drpView').val();
+
+//    // Update Table view DataLogger column
+//    if (viewType === 'Table') {
+//        if (typeof window.updateDataLoggerColumnInTable === 'function') {
+//            window.updateDataLoggerColumnInTable(assetId);
+//        }
+//    }
+
+//    // Update RDPMS view badges IMMEDIATELY
+//    if (viewType === 'RDPMS') {
+//        if (typeof window.renderDataloggerBadgesForAsset === 'function') {
+//            window.renderDataloggerBadgesForAsset(assetId);
+//        }
+//        // Also update signal lights as they may depend on relay states
+//        if (typeof window.updateMainSignalLights === 'function') {
+//            window.updateMainSignalLights(assetId);
+//        }
+//        // Trigger debounced reorder of RDPMS cards by aspect
+//        if (typeof window.reorderRdpmsCardsByAspect === 'function') {
+//            window.reorderRdpmsCardsByAspect();
+//        }
+//    }
+
+//    // Update PointMachine view badges
+//    if (viewType === 'PointMachine') {
+//        if (typeof window.renderPmBadges === 'function' && window.wsLiveData[assetId]) {
+//            window.renderPmBadges(assetId, window.wsLiveData[assetId].dlRelays || {});
+//        }
+//    }
+
+//    // FIX: Update Circuit view DataLogger -- was never called for Track/Signal circuit
+//    if (viewType === 'Circuit') {
+//        if (typeof updateCircuitDataLoggerFromWebSocket === 'function') {
+//            updateCircuitDataLoggerFromWebSocket(assetId);
+//        }
+//    }
+
+//    return true;
+//};
+window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, timestamp, roleOrAttrId) {
+    var resolvedAssetName = (typeof getBulkAssetName === 'function')
+        ? getBulkAssetName(assetId, assetName)
+        : (assetName || ('Asset ' + assetId));
+
     if (!window.wsLiveData[assetId]) {
-        console.log('[DataLogger-Fix] Asset not found, creating:', assetId);
         window.wsLiveData[assetId] = {
             AssetId: assetId,
-            AssetName: assetName || ('Asset ' + assetId),
+            AssetName: resolvedAssetName,
+            AssetTypeId: (typeof getBulkAssetTypeId === 'function') ? getBulkAssetTypeId(assetId, null) : null,
+            SiteId: (typeof getBulkSiteId === 'function') ? getBulkSiteId(assetId, null) : null,
             attrs: {},
             dlRelays: {},
             lastUpdated: new Date()
         };
+    } else {
+        window.wsLiveData[assetId].AssetName = resolvedAssetName;
+
+        if (!window.wsLiveData[assetId].AssetTypeId && typeof getBulkAssetTypeId === 'function') {
+            window.wsLiveData[assetId].AssetTypeId = getBulkAssetTypeId(assetId, window.wsLiveData[assetId].AssetTypeId);
+        }
+
+        if (!window.wsLiveData[assetId].SiteId && typeof getBulkSiteId === 'function') {
+            window.wsLiveData[assetId].SiteId = getBulkSiteId(assetId, window.wsLiveData[assetId].SiteId);
+        }
     }
 
-    // Parse value - handle string, number, float
     var numVal = parseFloat(value);
     if (isNaN(numVal)) numVal = 0;
 
-    // Determine Pickup (1) or Drop (0)
     var isPickup = (numVal === 1 || numVal === 1.0);
 
-    // Create display name - remove asset name prefix if present
-    var displayName = attrName;
-    if (assetName && displayName.indexOf(assetName) === 0) {
-        displayName = displayName.substring(assetName.length).trim();
-        // Remove leading dash or underscore if present
-        if (displayName.charAt(0) === '-' || displayName.charAt(0) === '_') {
-            displayName = displayName.substring(1).trim();
-        }
+    var displayName = (typeof resolveBulkDataloggerName === 'function')
+        ? resolveBulkDataloggerName(assetId, roleOrAttrId || attrName, attrName)
+        : attrName;
+
+    if (!displayName && typeof _tlStripAssetPrefix === 'function') {
+        displayName = _tlStripAssetPrefix(assetId, resolvedAssetName, attrName);
     }
+
     if (!displayName) displayName = attrName;
 
-    // Initialize dlRelays object if not exists
     if (!window.wsLiveData[assetId].dlRelays) {
         window.wsLiveData[assetId].dlRelays = {};
     }
 
-    // Store relay data
-    window.wsLiveData[assetId].dlRelays[attrName] = {
+    var storeKey = displayName || attrName;
+
+    var relayObj = {
         value: numVal,
         isPickup: isPickup,
         displayName: displayName,
         timestamp: timestamp || new Date().toISOString(),
-        rawAttrName: attrName
+        rawAttrName: attrName,
+        attrName: attrName,
+        role: roleOrAttrId ? String(roleOrAttrId) : ''
     };
+
+    window.wsLiveData[assetId].dlRelays[storeKey] = relayObj;
+
+    function addAliasKey(aliasKey) {
+        aliasKey = _tlMetaStr(aliasKey);
+
+        if (!aliasKey || aliasKey === storeKey) return;
+
+        try {
+            delete window.wsLiveData[assetId].dlRelays[aliasKey];
+
+            Object.defineProperty(window.wsLiveData[assetId].dlRelays, aliasKey, {
+                value: relayObj,
+                enumerable: false,
+                configurable: true,
+                writable: true
+            });
+        } catch (e) {
+            window.wsLiveData[assetId].dlRelays[aliasKey] = relayObj;
+        }
+    }
+
+    addAliasKey(attrName);
+    addAliasKey(roleOrAttrId);
 
     window.wsLiveData[assetId].lastUpdated = new Date();
 
-    console.log('[DataLogger-Fix] Processed:', {
-        assetId: assetId,
-        attrName: attrName,
-        displayName: displayName,
-        value: numVal,
-        isPickup: isPickup
-    });
-
-    // FIX: Immediately update ALL views when DataLogger changes
     var viewType = $('#drpView').val();
 
-    // Update Table view DataLogger column
-    if (viewType === 'Table') {
-        if (typeof window.updateDataLoggerColumnInTable === 'function') {
-            window.updateDataLoggerColumnInTable(assetId);
-        }
+    if (viewType === 'Table' && typeof window.updateDataLoggerColumnInTable === 'function') {
+        window.updateDataLoggerColumnInTable(assetId);
     }
 
-    // Update RDPMS view badges IMMEDIATELY
     if (viewType === 'RDPMS') {
-        if (typeof window.renderDataloggerBadgesForAsset === 'function') {
-            window.renderDataloggerBadgesForAsset(assetId);
-        }
-        // Also update signal lights as they may depend on relay states
-        if (typeof window.updateMainSignalLights === 'function') {
-            window.updateMainSignalLights(assetId);
-        }
-        // Trigger debounced reorder of RDPMS cards by aspect
-        if (typeof window.reorderRdpmsCardsByAspect === 'function') {
-            window.reorderRdpmsCardsByAspect();
-        }
+        if (typeof window.renderDataloggerBadgesForAsset === 'function') window.renderDataloggerBadgesForAsset(assetId);
+        if (typeof window.updateMainSignalLights === 'function') window.updateMainSignalLights(assetId);
+        if (typeof window.reorderRdpmsCardsByAspect === 'function') window.reorderRdpmsCardsByAspect();
     }
 
-    // Update PointMachine view badges
     if (viewType === 'PointMachine') {
         if (typeof window.renderPmBadges === 'function' && window.wsLiveData[assetId]) {
             window.renderPmBadges(assetId, window.wsLiveData[assetId].dlRelays || {});
         }
     }
 
-    // FIX: Update Circuit view DataLogger -- was never called for Track/Signal circuit
-    if (viewType === 'Circuit') {
-        if (typeof updateCircuitDataLoggerFromWebSocket === 'function') {
-            updateCircuitDataLoggerFromWebSocket(assetId);
-        }
+    if (viewType === 'Circuit' && typeof updateCircuitDataLoggerFromWebSocket === 'function') {
+        updateCircuitDataLoggerFromWebSocket(assetId);
     }
 
     return true;
 };
-
 // ================================================================
 // FIX 2: Function to update DataLogger column in Table view
 // Made global so it can be called from earlier processSingleLiveUpdate
@@ -15384,8 +16061,14 @@ function processDataLoggerItems(items) {
         }
 
         // Process the DataLogger attribute
-        window.processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp);
-
+        window.processWsDataloggerAttr(
+            assetId,
+            assetName,
+            attrName,
+            value,
+            timestamp,
+            d.AssetAttributeId || d.AttrId || d.DataloggerAttributeId || attrName
+        );
         // Mark asset as updated
         if (!window.wsUpdatedAssets) window.wsUpdatedAssets = {};
         window.wsUpdatedAssets[assetId] = true;
@@ -16935,11 +17618,23 @@ $(document).on('click', '.at-card-name', function () {
     function renderLiveValues(values) {
         var keys = Object.keys(values || {});
         if (!keys.length) return '<div class="sip-empty">No live attribute values received for this asset yet.</div>';
+
         keys.sort();
+
         var html = '<table class="sip-attr-table"><thead><tr><th>Attribute</th><th>Live Value</th></tr></thead><tbody>';
+
         keys.forEach(function (key) {
-            html += '<tr><td>' + esc(key) + '</td><td class="value">' + esc(values[key]) + '</td></tr>';
+            var label = key;
+
+            if (typeof window.getBulkAliasName === 'function') {
+                label = window.getBulkAliasName('', key, '') || label;
+            } else if (typeof window.getAttrDisplayName === 'function') {
+                label = window.getAttrDisplayName(key, null, null) || label;
+            }
+
+            html += '<tr><td>' + esc(label) + '</td><td class="value">' + esc(values[key]) + '</td></tr>';
         });
+
         return html + '</tbody></table>';
     }
 
@@ -16996,4 +17691,612 @@ $(document).on('click', '.at-card-name', function () {
     } else {
         console.log('[sip-popup] window.OpenSipAssetPopupFromCell already exists (sip-asset-popup.js) — skipping fallback.');
     }
+})();
+
+
+// ================================================================
+// BULK METADATA PLACEHOLDER ATTRIBUTE FIX
+// Shows every configured assetAttributes entry even when WebSocket
+// never sends a value for that attribute. Missing value renders as '-'.
+// Put this block at the VERY END of telemetrylive.js, after all overrides.
+// ================================================================
+var bulkExpectedAttrMap = typeof bulkExpectedAttrMap !== 'undefined' ? bulkExpectedAttrMap : {};
+var bulkAttrKeyByAssetAttrId = typeof bulkAttrKeyByAssetAttrId !== 'undefined' ? bulkAttrKeyByAssetAttrId : {};
+var bulkAttributeUnion = typeof bulkAttributeUnion !== 'undefined' ? bulkAttributeUnion : [];
+var bulkAssetNameById = typeof bulkAssetNameById !== 'undefined' ? bulkAssetNameById : {};
+var bulkExpectedSchemaReady = false;
+var bulkPlaceholderRenderTimer = null;
+
+function tlBulkStr(v) {
+    return (v === null || v === undefined) ? '' : String(v);
+}
+
+function tlBulkFirstNonEmpty() {
+    for (var i = 0; i < arguments.length; i++) {
+        var v = arguments[i];
+        if (v !== null && v !== undefined && String(v).trim() !== '') return v;
+    }
+    return '';
+}
+
+function tlBulkGetAssetName(assetId, fallbackName) {
+    var aid = tlBulkStr(assetId);
+
+    return tlBulkFirstNonEmpty(
+        bulkAssetNameById[aid],
+        (typeof bulkAssetMap !== 'undefined' && bulkAssetMap && bulkAssetMap[aid])
+            ? (bulkAssetMap[aid].Name || bulkAssetMap[aid].AssetName)
+            : '',
+        fallbackName,
+        'Asset ' + aid
+    );
+}
+
+function tlBulkRegisterExpectedAttr(assetId, attrId, attrKey, attrLabel, sequence) {
+    var aid = tlBulkStr(assetId);
+    var key = tlBulkStr(attrKey).trim();
+    var label = tlBulkStr(attrLabel || attrKey).trim();
+    var id = tlBulkStr(attrId).trim();
+
+    if (!aid || !key) return;
+
+    if (!bulkExpectedAttrMap[aid]) bulkExpectedAttrMap[aid] = [];
+
+    var exists = false;
+
+    for (var i = 0; i < bulkExpectedAttrMap[aid].length; i++) {
+        if (bulkExpectedAttrMap[aid][i].key === key) {
+            exists = true;
+            break;
+        }
+    }
+
+    if (!exists) {
+        bulkExpectedAttrMap[aid].push({
+            key: key,
+            label: label || key,
+            attrId: id,
+            sequence: sequence
+        });
+    }
+
+    if (id) {
+        bulkAttrKeyByAssetAttrId[aid + '_' + id] = key;
+        if (!bulkAttrKeyByAssetAttrId['*_' + id]) bulkAttrKeyByAssetAttrId['*_' + id] = key;
+
+        if (typeof wsAttributeIds !== 'undefined') wsAttributeIds[key] = id;
+
+        if (typeof assetAttributeMap !== 'undefined') {
+            assetAttributeMap[id] = label || key;
+            var nId = parseInt(id);
+            if (!isNaN(nId)) assetAttributeMap[nId] = label || key;
+        }
+    }
+
+    if (typeof assetAttributeByName !== 'undefined') {
+        assetAttributeByName[key] = label || key;
+        if (label) assetAttributeByName[label] = label;
+    }
+
+    if (typeof wsAttributeOrder !== 'undefined') {
+        var seq = parseInt(sequence);
+        var idSeq = parseInt(id);
+        wsAttributeOrder[key] = !isNaN(seq) ? seq : (!isNaN(idSeq) ? idSeq : 9999);
+    }
+
+    if (bulkAttributeUnion.indexOf(key) === -1) bulkAttributeUnion.push(key);
+}
+
+function tlBulkSortAttributeUnion() {
+    bulkAttributeUnion.sort(function (a, b) {
+        if (parseInt(wsCurrentAssetTypeId) === 1 && typeof getTrackSortOrder === 'function') {
+            var ta = getTrackSortOrder(a), tb = getTrackSortOrder(b);
+            if (ta !== tb) return ta - tb;
+        }
+
+        var oa = (typeof wsAttributeOrder !== 'undefined' && wsAttributeOrder[a]) ? wsAttributeOrder[a] : 9999;
+        var ob = (typeof wsAttributeOrder !== 'undefined' && wsAttributeOrder[b]) ? wsAttributeOrder[b] : 9999;
+
+        if (oa !== ob) return oa - ob;
+
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    });
+}
+
+function tlBulkRebuildExpectedSchemaFromLoadedMaps() {
+    bulkExpectedAttrMap = {};
+    bulkAttrKeyByAssetAttrId = {};
+    bulkAttributeUnion = [];
+    bulkAssetNameById = {};
+
+    var currentAssetTypeId = parseInt(wsCurrentAssetTypeId || $('#drpAssetType').val() || 0);
+
+    if (typeof bulkAssetsList !== 'undefined' && bulkAssetsList && bulkAssetsList.length) {
+        for (var i = 0; i < bulkAssetsList.length; i++) {
+            var ba = bulkAssetsList[i];
+            if (!ba || ba.Id === undefined || ba.Id === null) continue;
+
+            bulkAssetNameById[tlBulkStr(ba.Id)] = tlBulkFirstNonEmpty(
+                ba.Name,
+                ba.AssetName,
+                'Asset ' + ba.Id
+            );
+        }
+    }
+
+    // Main source: this map is already filled from GetBulkAssetMetadata asset.assetAttributes.
+    if (typeof userAssetSimpleMap !== 'undefined' && userAssetSimpleMap) {
+        for (var sk in userAssetSimpleMap) {
+            if (!userAssetSimpleMap.hasOwnProperty(sk)) continue;
+
+            var entry = userAssetSimpleMap[sk];
+            if (!entry) continue;
+
+            var parts = sk.split('_');
+            if (parts.length < 2) continue;
+
+            var aid = parts[0];
+            var attrId = parts.slice(1).join('_');
+
+            var entryAssetTypeId = parseInt(entry.assetTypeId || entry.AssetTypeId || 0);
+            if (currentAssetTypeId > 0 && entryAssetTypeId > 0 && entryAssetTypeId !== currentAssetTypeId) continue;
+
+            var attrKey = tlBulkFirstNonEmpty(
+                entry.attributeName,
+                entry.AttributeName,
+                entry.title,
+                entry.Title,
+                entry.name,
+                entry.AliasName
+            );
+
+            var attrLabel = tlBulkFirstNonEmpty(
+                entry.name,
+                entry.AliasName,
+                entry.aliasName,
+                attrKey
+            );
+
+            var sequence = tlBulkFirstNonEmpty(entry.sequence, entry.Sequence, attrId);
+
+            if (entry.assetName || entry.AssetName) {
+                bulkAssetNameById[aid] = tlBulkFirstNonEmpty(
+                    entry.assetName,
+                    entry.AssetName,
+                    bulkAssetNameById[aid]
+                );
+            }
+
+            tlBulkRegisterExpectedAttr(aid, attrId, attrKey, attrLabel, sequence);
+        }
+    }
+
+    // Fallback for signal grouped table cache.
+    if (typeof _sigAssetInfoCache !== 'undefined' && _sigAssetInfoCache) {
+        for (var aid2 in _sigAssetInfoCache) {
+            if (!_sigAssetInfoCache.hasOwnProperty(aid2)) continue;
+
+            var ce = _sigAssetInfoCache[aid2];
+            if (!ce || !ce.attrs || !ce.attrs.length) continue;
+
+            for (var c = 0; c < ce.attrs.length; c++) {
+                tlBulkRegisterExpectedAttr(aid2, '', ce.attrs[c], ce.attrs[c], c + 1);
+            }
+        }
+    }
+
+    tlBulkSortAttributeUnion();
+
+    if (bulkAttributeUnion.length > 0) {
+        wsAttributeNames = bulkAttributeUnion.slice();
+
+        if (typeof wsCurrentColumns !== 'undefined') wsCurrentColumns = [];
+        if (typeof wsCurrentTableColumns !== 'undefined') wsCurrentTableColumns = [];
+        if (typeof wsTableInitialized !== 'undefined') wsTableInitialized = false;
+        if (typeof wsTableStructureBuilt !== 'undefined') wsTableStructureBuilt = false;
+        if (typeof wsAssetOrderInitialized !== 'undefined') wsAssetOrderInitialized = false;
+    }
+
+    bulkExpectedSchemaReady = true;
+
+    window.bulkExpectedAttrMap = bulkExpectedAttrMap;
+    window.bulkAttrKeyByAssetAttrId = bulkAttrKeyByAssetAttrId;
+    window.bulkAttributeUnion = bulkAttributeUnion;
+
+    return bulkAttributeUnion.length;
+}
+
+function tlBulkGetCurrentAssetIdsForPlaceholders() {
+    var selected = [];
+    var filter = wsCurrentFilterAssetIds || [];
+
+    for (var i = 0; i < filter.length; i++) {
+        var fid = tlBulkStr(filter[i]);
+        if (fid && fid !== '0') selected.push(fid);
+    }
+
+    if (selected.length > 0) return selected;
+
+    if (typeof bulkAssetsList !== 'undefined' && bulkAssetsList && bulkAssetsList.length) {
+        for (var j = 0; j < bulkAssetsList.length; j++) {
+            if (bulkAssetsList[j] && bulkAssetsList[j].Id !== undefined && bulkAssetsList[j].Id !== null) {
+                selected.push(tlBulkStr(bulkAssetsList[j].Id));
+            }
+        }
+    }
+
+    return selected;
+}
+
+function tlBulkEnsureAssetShell(assetId) {
+    var aid = tlBulkStr(assetId);
+    if (!aid) return null;
+
+    var assetName = tlBulkGetAssetName(aid, wsLiveData[aid] ? wsLiveData[aid].AssetName : '');
+
+    var assetTypeId = (typeof bulkAssetMap !== 'undefined' && bulkAssetMap && bulkAssetMap[aid] && bulkAssetMap[aid].AssetTypeId)
+        ? bulkAssetMap[aid].AssetTypeId
+        : (wsLiveData[aid] ? wsLiveData[aid].AssetTypeId : (wsCurrentAssetTypeId || $('#drpAssetType').val()));
+
+    var siteId = (typeof bulkAssetMap !== 'undefined' && bulkAssetMap && bulkAssetMap[aid] && bulkAssetMap[aid].SiteId)
+        ? bulkAssetMap[aid].SiteId
+        : (wsLiveData[aid] ? wsLiveData[aid].SiteId : $('#drpSite').val());
+
+    if (!wsLiveData[aid]) {
+        wsLiveData[aid] = {
+            AssetId: aid,
+            AssetName: assetName,
+            AssetTypeId: assetTypeId,
+            SiteId: siteId,
+            attrs: {},
+            dlRelays: {},
+            lastUpdated: null,
+            ZeroOffsetValue: (typeof getZeroOffsetForAsset === 'function') ? getZeroOffsetForAsset(aid) : undefined,
+            _fromBulkMetadataOnly: true
+        };
+    } else {
+        wsLiveData[aid].AssetName = assetName || wsLiveData[aid].AssetName;
+        wsLiveData[aid].AssetTypeId = wsLiveData[aid].AssetTypeId || assetTypeId;
+        wsLiveData[aid].SiteId = wsLiveData[aid].SiteId || siteId;
+        wsLiveData[aid].attrs = wsLiveData[aid].attrs || {};
+        wsLiveData[aid].dlRelays = wsLiveData[aid].dlRelays || {};
+    }
+
+    return wsLiveData[aid];
+}
+
+function tlBulkSeedMissingAttributesForAsset(assetId) {
+    var aid = tlBulkStr(assetId);
+    var expected = bulkExpectedAttrMap[aid];
+
+    if (!expected || !expected.length) return 0;
+
+    var asset = tlBulkEnsureAssetShell(aid);
+    if (!asset) return 0;
+
+    var added = 0;
+    var sigAttrs = [];
+
+    for (var i = 0; i < expected.length; i++) {
+        var e = expected[i];
+        if (!e || !e.key) continue;
+
+        sigAttrs.push(e.key);
+
+        // If older code stored value under AliasName, link it to real schema key.
+        if (e.label && e.label !== e.key && asset.attrs[e.label] && !asset.attrs[e.key]) {
+            asset.attrs[e.key] = asset.attrs[e.label];
+        }
+
+        if (!asset.attrs[e.key]) {
+            asset.attrs[e.key] = {
+                Value: null,
+                AttrId: e.attrId || null,
+                AssetAttributeId: e.attrId || null,
+                Timestamp: null,
+                TimestampDevice: null,
+                TimestampLocal: null,
+                TimestampEdgeX: null,
+                Source: 'BulkMeta',
+                changed: false,
+                prevValue: undefined,
+                missingFromWebSocket: true
+            };
+
+            added++;
+        } else {
+            if (!asset.attrs[e.key].AttrId && e.attrId) asset.attrs[e.key].AttrId = e.attrId;
+            if (!asset.attrs[e.key].AssetAttributeId && e.attrId) asset.attrs[e.key].AssetAttributeId = e.attrId;
+        }
+    }
+
+    if (typeof _sigAssetInfoCache !== 'undefined' && sigAttrs.length > 0) {
+        _sigAssetInfoCache[aid] = {
+            loaded: true,
+            loading: false,
+            attrs: sigAttrs.slice(),
+            pending: []
+        };
+    }
+
+    return added;
+}
+
+function tlBulkEnsurePlaceholdersForCurrentFilter() {
+    if (!bulkExpectedSchemaReady) tlBulkRebuildExpectedSchemaFromLoadedMaps();
+
+    var ids = tlBulkGetCurrentAssetIdsForPlaceholders();
+    var added = 0;
+
+    for (var i = 0; i < ids.length; i++) {
+        added += tlBulkSeedMissingAttributesForAsset(ids[i]);
+    }
+
+    // Also seed any asset that already came from WebSocket.
+    for (var aid in wsLiveData) {
+        if (wsLiveData.hasOwnProperty(aid)) {
+            added += tlBulkSeedMissingAttributesForAsset(aid);
+        }
+    }
+
+    if (bulkAttributeUnion.length > 0) {
+        wsAttributeNames = bulkAttributeUnion.slice();
+    }
+
+    return added;
+}
+
+function tlBulkResolveWsAttributeKey(assetId, attrName, attrId, dataType) {
+    if (String(dataType || '').toLowerCase() === 'datalogger') return attrName;
+
+    var aid = tlBulkStr(assetId);
+    var id = tlBulkStr(attrId);
+    var raw = tlBulkStr(attrName);
+
+    if (id) {
+        var exact = bulkAttrKeyByAssetAttrId[aid + '_' + id];
+        if (exact) return exact;
+
+        var globalKey = bulkAttrKeyByAssetAttrId['*_' + id];
+        if (globalKey) return globalKey;
+    }
+
+    var expected = bulkExpectedAttrMap[aid] || [];
+
+    for (var i = 0; i < expected.length; i++) {
+        if (expected[i].key === raw || expected[i].label === raw) return expected[i].key;
+    }
+
+    return raw;
+}
+
+function tlBulkNormalizeIncomingItem(d) {
+    if (!d || d.AssetId === undefined || !d.AssetAttributeName) return d;
+
+    var normalizedKey = tlBulkResolveWsAttributeKey(
+        d.AssetId,
+        d.AssetAttributeName,
+        d.AssetAttributeId,
+        d.DataType
+    );
+
+    var assetName = tlBulkGetAssetName(d.AssetId, d.AssetName);
+
+    if (normalizedKey === d.AssetAttributeName && assetName === d.AssetName) return d;
+
+    var copy = {};
+
+    for (var k in d) {
+        if (d.hasOwnProperty(k)) copy[k] = d[k];
+    }
+
+    copy.RawAssetAttributeName = d.AssetAttributeName;
+    copy.AssetAttributeName = normalizedKey;
+    copy.AssetName = assetName;
+
+    return copy;
+}
+
+function tlBulkNormalizeIncomingItems(items) {
+    if (!items || !items.length) return items;
+
+    var out = new Array(items.length);
+
+    for (var i = 0; i < items.length; i++) {
+        out[i] = tlBulkNormalizeIncomingItem(items[i]);
+    }
+
+    return out;
+}
+
+function tlBulkRenderCurrentViewFromPlaceholders() {
+    if (!bulkExpectedSchemaReady && !bulkMetadataLoaded) return;
+    if (window._wsSipOnlyMode) return;
+
+    tlBulkEnsurePlaceholdersForCurrentFilter();
+
+    if (Object.keys(wsLiveData).length === 0) return;
+
+    var viewType = $('#drpView').val();
+
+    if (viewType === 'Graph' || viewType === 'Circuit' || viewType === 'Yard') return;
+
+    try {
+        if (viewType === 'Table') {
+            if (typeof renderWsTable === 'function') renderWsTable();
+        } else if (viewType === 'RDPMS') {
+            if (typeof renderRDPMSView === 'function') renderRDPMSView();
+        } else if (viewType === 'PointMachine') {
+            if (typeof renderPointMachineView === 'function') renderPointMachineView();
+        } else if (viewType === 'Cards') {
+            if (typeof fnBindTrackCards === 'function') fnBindTrackCards();
+        }
+    } catch (e) {
+        console.warn('[BulkMetaMissingAttr] placeholder render skipped:', e);
+    }
+}
+
+function tlBulkSchedulePlaceholderRender(delayMs) {
+    if (bulkPlaceholderRenderTimer) clearTimeout(bulkPlaceholderRenderTimer);
+
+    bulkPlaceholderRenderTimer = setTimeout(function () {
+        bulkPlaceholderRenderTimer = null;
+        tlBulkRenderCurrentViewFromPlaceholders();
+    }, delayMs || 700);
+}
+
+(function applyBulkMetadataMissingAttributeFix() {
+    if (window.__bulkMetadataMissingAttributeFixApplied) return;
+    window.__bulkMetadataMissingAttributeFixApplied = true;
+
+    // Wrap bulk loader: after GetBulkAssetMetadata fills userAssetSimpleMap,
+    // build expected schema and seed blank placeholders.
+    if (typeof loadBulkAssetMetadata === 'function') {
+        var _origLoadBulkAssetMetadata = loadBulkAssetMetadata;
+
+        loadBulkAssetMetadata = function (siteId, assetTypeId, callback) {
+            return _origLoadBulkAssetMetadata.call(this, siteId, assetTypeId, function () {
+                tlBulkRebuildExpectedSchemaFromLoadedMaps();
+                tlBulkEnsurePlaceholdersForCurrentFilter();
+
+                if (callback) callback();
+            });
+        };
+
+        window.loadBulkAssetMetadata = loadBulkAssetMetadata;
+    }
+
+    if (typeof invalidateBulkMetadataCache === 'function') {
+        var _origInvalidateBulkMetadataCache = invalidateBulkMetadataCache;
+
+        invalidateBulkMetadataCache = function () {
+            bulkExpectedAttrMap = {};
+            bulkAttrKeyByAssetAttrId = {};
+            bulkAttributeUnion = [];
+            bulkAssetNameById = {};
+            bulkExpectedSchemaReady = false;
+
+            return _origInvalidateBulkMetadataCache.apply(this, arguments);
+        };
+
+        window.invalidateBulkMetadataCache = invalidateBulkMetadataCache;
+    }
+
+    // After connectWebSocket resets wsLiveData, restore metadata placeholders.
+    if (typeof connectWebSocket === 'function') {
+        var _origConnectWebSocketBulkMissing = connectWebSocket;
+
+        connectWebSocket = function (siteId, assetTypeId, assetIds) {
+            var result = _origConnectWebSocketBulkMissing.apply(this, arguments);
+
+            if (assetTypeId && assetTypeId !== '0') {
+                if (typeof loadBulkAssetMetadata === 'function') {
+                    loadBulkAssetMetadata(siteId, assetTypeId, function () {
+                        tlBulkEnsurePlaceholdersForCurrentFilter();
+                        tlBulkSchedulePlaceholderRender(900);
+                    });
+                } else {
+                    tlBulkEnsurePlaceholdersForCurrentFilter();
+                    tlBulkSchedulePlaceholderRender(900);
+                }
+            }
+
+            return result;
+        };
+
+        window.connectWebSocket = connectWebSocket;
+    }
+
+    // Make syncAttributeNames use bulk schema, not only first WS asset.
+    if (typeof syncAttributeNamesFromLiveData === 'function') {
+        var _origSyncAttributeNamesFromLiveData = syncAttributeNamesFromLiveData;
+
+        syncAttributeNamesFromLiveData = function () {
+            if (!bulkExpectedSchemaReady) tlBulkRebuildExpectedSchemaFromLoadedMaps();
+
+            if (bulkAttributeUnion.length > 0) {
+                var changed = JSON.stringify(wsAttributeNames) !== JSON.stringify(bulkAttributeUnion);
+
+                wsAttributeNames = bulkAttributeUnion.slice();
+
+                if (changed) {
+                    if (typeof wsCurrentColumns !== 'undefined') wsCurrentColumns = [];
+                    if (typeof wsCurrentTableColumns !== 'undefined') wsCurrentTableColumns = [];
+                    if (typeof wsTableInitialized !== 'undefined') wsTableInitialized = false;
+                    if (typeof wsTableStructureBuilt !== 'undefined') wsTableStructureBuilt = false;
+                }
+
+                return changed;
+            }
+
+            return _origSyncAttributeNamesFromLiveData.apply(this, arguments);
+        };
+
+        window.syncAttributeNamesFromLiveData = syncAttributeNamesFromLiveData;
+    }
+
+    // Wrap inbound processors so WS values update the seeded schema key by AssetAttributeId.
+    if (typeof window.processItemsInternal === 'function') {
+        var _origProcessItemsInternalBulkMissing = window.processItemsInternal;
+
+        window.processItemsInternal = function (items) {
+            tlBulkEnsurePlaceholdersForCurrentFilter();
+            return _origProcessItemsInternalBulkMissing.call(this, tlBulkNormalizeIncomingItems(items));
+        };
+
+        if (typeof processItemsInternal !== 'undefined') processItemsInternal = window.processItemsInternal;
+    }
+
+    if (typeof processItems === 'function') {
+        var _origProcessItemsBulkMissing = processItems;
+
+        processItems = function (items) {
+            tlBulkEnsurePlaceholdersForCurrentFilter();
+            return _origProcessItemsBulkMissing.call(this, tlBulkNormalizeIncomingItems(items));
+        };
+
+        window.processItems = processItems;
+    }
+
+    if (typeof processSingleLiveUpdate === 'function') {
+        var _origProcessSingleLiveUpdateBulkMissing = processSingleLiveUpdate;
+
+        processSingleLiveUpdate = function (d) {
+            tlBulkEnsurePlaceholdersForCurrentFilter();
+            return _origProcessSingleLiveUpdateBulkMissing.call(this, tlBulkNormalizeIncomingItem(d));
+        };
+
+        window.processSingleLiveUpdate = processSingleLiveUpdate;
+    }
+
+    // Renderers: always seed before table/card/list builds.
+    function wrapRenderer(name) {
+        if (typeof window[name] !== 'function') return;
+
+        var original = window[name];
+
+        window[name] = function () {
+            tlBulkEnsurePlaceholdersForCurrentFilter();
+            return original.apply(this, arguments);
+        };
+    }
+
+    wrapRenderer('renderWsTable');
+    wrapRenderer('renderWsTableFixed');
+    wrapRenderer('renderPmTableView');
+    wrapRenderer('renderRDPMSView');
+    wrapRenderer('renderPointMachineView');
+    wrapRenderer('fnBindTrackCards');
+    wrapRenderer('renderSignalGroupedTables');
+
+    // Also update identifier bindings where existing code calls direct names.
+    if (typeof window.renderWsTable === 'function') renderWsTable = window.renderWsTable;
+    if (typeof window.renderWsTableFixed === 'function') renderWsTableFixed = window.renderWsTableFixed;
+    if (typeof window.renderPmTableView === 'function') renderPmTableView = window.renderPmTableView;
+    if (typeof window.renderRDPMSView === 'function') renderRDPMSView = window.renderRDPMSView;
+    if (typeof window.renderPointMachineView === 'function') renderPointMachineView = window.renderPointMachineView;
+    if (typeof window.fnBindTrackCards === 'function') fnBindTrackCards = window.fnBindTrackCards;
+    if (typeof window.renderSignalGroupedTables === 'function') renderSignalGroupedTables = window.renderSignalGroupedTables;
+
+    console.log('[BulkMetaMissingAttr] Applied — configured attributes now render as - when WS value is missing.');
 })();

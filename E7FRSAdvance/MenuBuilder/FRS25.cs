@@ -125,6 +125,14 @@ namespace E7FRSAdvance.MenuBuilder
             asset.Childs.Add(asset.SetMenuAttribute("Asset Utilization", ControllerName.AssetDetail, ActionName.Utilization, IconName.Dashboard, "FRS25"));
             menus.Add(asset);
 
+            //Asset Type
+            if (isVendor)
+            {
+                Menu assetType = new Menu();
+                assetType.Main = assetType.SetMenuAttribute("Asset Types", ControllerName.AdvanceAssetType, ActionName.Index, FRSIconName.AdvanceAssetType, "FRS25");
+                menus.Add(assetType);
+            }
+
             // Performance
             Menu performance = new Menu();
             performance.Main = performance.SetMenuAttribute("Performance", ControllerName.Performance, ActionName.Index, FRSIconName.Performance, "FRS25");

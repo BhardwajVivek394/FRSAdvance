@@ -2468,7 +2468,7 @@
             .tl-circuit-frame .joint-paper > svg,
             .tl-circuit-frame .joint-paper-scroller,
             .tl-circuit-frame .joint-paper-scroller.joint-theme-modern {
-                background-color: #fbfaf8 !important;
+                /*background-color: #fbfaf8 !important;*/
             }
 
         .tl-circuit-frame #pmLastOpPanel {
@@ -2482,7 +2482,7 @@
         }
 
         .tl-circuit-frame::-webkit-scrollbar-track {
-            background: rgba(15,23,42,0.04);
+            /*background: rgba(15,23,42,0.04);*/
             border-radius: 4px;
         }
 
@@ -10379,45 +10379,94 @@
             // Some change listeners (SIP bridge etc.) can throw and
             // silently kill the binding. We call the loader directly
             // with our own error handling.
+            //(function (sid, atid) {
+            //    $.ajax({
+            //        url: '/FRS25/Telemetry/GetAssestBy',
+            //        type: 'POST',
+            //        data: JSON.stringify({ siteId: sid, assetTypeId: atid }),
+            //        contentType: 'application/json',
+            //        success: function (d) {
+            //            if (d && d.length > 0) {
+            //                var h = '';
+            //                $.each(d, function (k, v) {
+            //                    var nm = (v.Name || '').toString().replace(/"/g, '&quot;');
+            //                    h += '<div class="dropdown-item" data-value="' + v.Id +
+            //                         '" data-text="' + nm +
+            //                         '"><input type="checkbox" value="' + v.Id +
+            //                         '"><span>' + nm + '</span></div>';
+            //                });
+            //                $('#listAssetNumber').html(h);
+            //                console.log('[ATP] ✓ Loaded ' + d.length + ' asset numbers');
+
+            //                // Auto-select ALL asset numbers and load the data
+            //                // immediately — no Search button / manual tick needed.
+            //                if (typeof window._tlAutoLoad === 'function') {
+            //                    window._tlAutoLoad({ selectAll: true });
+            //                }
+            //            } else {
+            //                $('#listAssetNumber').html('<div class="dropdown-empty">No assets found for this type</div>');
+            //                console.warn('[ATP] No assets returned for site=' + sid + ' type=' + atid);
+            //            }
+            //        },
+            //        error: function (xhr) {
+            //            $('#listAssetNumber').html(
+            //                '<div class="dropdown-empty" style="color:#ef4444;">Server error (' +
+            //                (xhr.status || '?') + ') — check console</div>'
+            //            );
+            //            console.error('[ATP] GetAssestBy failed:', xhr.status, xhr.statusText);
+            //        }
+            //    });
+            //})(siteId, clickedVal);
+
+
             (function (sid, atid) {
-                $.ajax({
-                    url: '/FRS25/Telemetry/GetAssestBy',
-                    type: 'POST',
-                    data: JSON.stringify({ siteId: sid, assetTypeId: atid }),
-                    contentType: 'application/json',
-                    success: function (d) {
-                        if (d && d.length > 0) {
-                            var h = '';
-                            $.each(d, function (k, v) {
-                                var nm = (v.Name || '').toString().replace(/"/g, '&quot;');
-                                h += '<div class="dropdown-item" data-value="' + v.Id +
-                                     '" data-text="' + nm +
-                                     '"><input type="checkbox" value="' + v.Id +
-                                     '"><span>' + nm + '</span></div>';
-                            });
-                            $('#listAssetNumber').html(h);
-                            console.log('[ATP] ✓ Loaded ' + d.length + ' asset numbers');
+                function esc(v) {
+                    return String(v == null ? '' : v)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
 
-                            // Auto-select ALL asset numbers and load the data
-                            // immediately — no Search button / manual tick needed.
-                            if (typeof window._tlAutoLoad === 'function') {
-                                window._tlAutoLoad({ selectAll: true });
-                            }
-                        } else {
-                            $('#listAssetNumber').html('<div class="dropdown-empty">No assets found for this type</div>');
-                            console.warn('[ATP] No assets returned for site=' + sid + ' type=' + atid);
+                function bindFromBulkList() {
+                    var d = window.bulkAssetsList || [];
+
+                    if (d && d.length > 0) {
+                        var h = '';
+
+                        $.each(d, function (k, v) {
+                            var nm = esc(v.Name || ('Asset ' + v.Id));
+                            var id = esc(v.Id);
+
+                            h += '<div class="dropdown-item" data-value="' + id +
+                                '" data-text="' + nm +
+                                '"><input type="checkbox" value="' + id +
+                                '"><span>' + nm + '</span></div>';
+                        });
+
+                        $('#listAssetNumber').html(h);
+                        console.log('[ATP] ✓ Loaded ' + d.length + ' asset numbers from bulk metadata');
+
+                        if (typeof window._tlAutoLoad === 'function') {
+                            window._tlAutoLoad({ selectAll: true });
                         }
-                    },
-                    error: function (xhr) {
-                        $('#listAssetNumber').html(
-                            '<div class="dropdown-empty" style="color:#ef4444;">Server error (' +
-                            (xhr.status || '?') + ') — check console</div>'
-                        );
-                        console.error('[ATP] GetAssestBy failed:', xhr.status, xhr.statusText);
+                    } else {
+                        $('#listAssetNumber').html('<div class="dropdown-empty">No assets found for this type</div>');
+                        console.warn('[ATP] No bulk assets for site=' + sid + ' type=' + atid);
                     }
-                });
-            })(siteId, clickedVal);
+                }
 
+                if (typeof window.loadBulkAssetMetadata === 'function') {
+                    window.loadBulkAssetMetadata(sid, atid, bindFromBulkList);
+                } else {
+                    $('#listAssetNumber').html(
+                        '<div class="dropdown-empty" style="color:#ef4444;">Bulk metadata loader not found — check telemetrylive.js load order</div>'
+                    );
+
+                    console.error('[ATP] loadBulkAssetMetadata is not available; GetAssestBy fallback intentionally disabled');
+                }
+            })(siteId, clickedVal);
             // Fire change so siblings (SIP, visibility sync, view tabs)
             // still run — wrapped to prevent any throw from killing us.
             try { $drp.trigger('change'); } catch (e) {

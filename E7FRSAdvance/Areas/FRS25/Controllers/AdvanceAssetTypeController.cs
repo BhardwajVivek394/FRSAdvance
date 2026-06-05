@@ -10,10 +10,10 @@ using System.Text;
 using System.Web.Mvc;
 using System.Linq;
 
-namespace E7FRSAdvance.Controllers
+namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
-    [Authenticate]
-    public class AssetTypeController : Controller
+    [E7FRSAdvance.Areas.FRS25.Filter.Authenticate]
+    public class AdvanceAssetTypeController : Controller
     {
         // GET: AssetType
         public ActionResult Index()
@@ -309,7 +309,7 @@ namespace E7FRSAdvance.Controllers
             return View();
         }
 
-        public ActionResult SaveCircuitDiagramCreator(Domain.AssetTypeCircuitDiagram mAssetTypeCircuitDiagram)
+        public ActionResult SaveCircuitDiagramCreator(Domain.AdvanceAssetTypeCircuitDiagram mAssetTypeCircuitDiagram)
         {
             dynamic data = new ExpandoObject();
             try
@@ -319,11 +319,11 @@ namespace E7FRSAdvance.Controllers
                     mAssetTypeCircuitDiagram.CreatedBy = ClsHttpContent.LoginUser.Id;
                     var jsonStr = JsonConvert.SerializeObject(mAssetTypeCircuitDiagram);
                     StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                    var response = hcf.client.PostAsync(String.Format("AssetType/CreateAssetTypeCircuitDiagram"), str).Result;
+                    var response = hcf.client.PostAsync(String.Format("AssetType/CreateAdvanceAssetTypeCircuitDiagram"), str).Result;
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
                         string jsonString = response.Content.ReadAsStringAsync().Result;
-                        mAssetTypeCircuitDiagram = JsonConvert.DeserializeObject<Domain.AssetTypeCircuitDiagram>(jsonString);
+                        mAssetTypeCircuitDiagram = JsonConvert.DeserializeObject<Domain.AdvanceAssetTypeCircuitDiagram>(jsonString);
                         if (mAssetTypeCircuitDiagram != null && mAssetTypeCircuitDiagram.Id > 0)
                         {
                             data = new { type = "success", result = "Circuit Diagram has been Created." };
@@ -348,16 +348,16 @@ namespace E7FRSAdvance.Controllers
 
         public ActionResult GetAssetTypeCircuitDiagram(int assetTypeId)
         {
-            Domain.AssetTypeCircuitDiagram mAssetTypeCircuitDiagram = new Domain.AssetTypeCircuitDiagram();
+            Domain.AdvanceAssetTypeCircuitDiagram mAssetTypeCircuitDiagram = new Domain.AdvanceAssetTypeCircuitDiagram();
             try
             {
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
-                    var response = hcf.client.GetAsync(String.Format("AssetType/GetAssetTypeCircuitDiagram/{0}", assetTypeId)).Result;
+                    var response = hcf.client.GetAsync(String.Format("AssetType/GetAdvanceAssetTypeCircuitDiagram/{0}", assetTypeId)).Result;
                     string jsonString = response.Content.ReadAsStringAsync().Result;
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
-                        mAssetTypeCircuitDiagram = JsonConvert.DeserializeObject<AssetTypeCircuitDiagram>(jsonString);
+                        mAssetTypeCircuitDiagram = JsonConvert.DeserializeObject<AdvanceAssetTypeCircuitDiagram>(jsonString);
                     }
                 }
             }

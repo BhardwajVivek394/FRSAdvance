@@ -1043,7 +1043,195 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Json(data, JsonRequestBehavior.AllowGet);
         }
 
-        
+        private List<AlertAudit> GetAlertAudit(DateTime FromDate, DateTime ToDate)
+        {
+            List<AlertAudit> mAlertAudits = new List<AlertAudit>();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var fromDate = FromDate.ToShortDateString().Replace("/", "-");
+                    var toDate = ToDate.ToShortDateString().Replace("/", "-");
+
+                    var response = hcf.client.GetAsync($"AlertAudit/GetByAlertDate/StartDate/{fromDate}/EndDate/{toDate}").Result;
+                    string jsonStr = response.Content.ReadAsStringAsync().Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mAlertAudits = JsonConvert.DeserializeObject<List<AlertAudit>>(jsonStr);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+
+            }
+            return mAlertAudits;
+        }
+
+
+        [HttpPost]
+        public JsonResult GetSipAssetAlertAnalytics(
+    int siteId,
+    int assetId,
+    string assetName,
+    DateTime? fromDate,
+    DateTime? toDate,
+    string alertIds)
+        {
+            try
+            {
+                var from = fromDate.HasValue
+                    ? fromDate.Value.Date
+                    : DateTime.Today;
+
+                var to = toDate.HasValue
+                    ? toDate.Value.Date.AddDays(1).AddSeconds(-1)
+                    : DateTime.Today.AddDays(1).AddSeconds(-1);
+
+                var fRSAlertLister = new Domain.FRSAlertLister();
+
+                fRSAlertLister.SearchCriteria.SiteId = siteId;
+                fRSAlertLister.SearchCriteria.FromDate = from;
+                fRSAlertLister.SearchCriteria.ToDate = to;
+
+                if (assetId > 0)
+                    fRSAlertLister.SearchCriteria.AssetId = assetId;
+
+                if (!string.IsNullOrWhiteSpace(assetName))
+                    fRSAlertLister.SearchCriteria.AssetName = assetName.Trim();
+
+                fRSAlertLister = _frsAlertService.GetAcknowledgementAllAlert(fRSAlertLister);
+
+                var alerts = fRSAlertLister != null && fRSAlertLister.mFRSAlerts != null
+                    ? fRSAlertLister.mFRSAlerts
+                    : new List<Domain.FRSAlert>();
+
+                var selectedAlertIds = new List<int>();
+
+                if (!string.IsNullOrWhiteSpace(alertIds))
+                {
+                    selectedAlertIds = alertIds
+                        .Split(',')
+                        .Select(x =>
+                        {
+                            int id;
+                            return int.TryParse(x, out id) ? id : 0;
+                        })
+                        .Where(x => x > 0)
+                        .Distinct()
+                        .ToList();
+                }
+
+                if (siteId > 0)
+                    alerts = alerts.Where(x => x.SiteId == siteId).ToList();
+
+                if (selectedAlertIds.Count > 0)
+                {
+                    alerts = alerts.Where(x => selectedAlertIds.Contains(x.Id)).ToList();
+                }
+                else
+                {
+                    if (assetId > 0)
+                    {
+                        alerts = alerts.Where(x => x.AssetId == assetId).ToList();
+                    }
+                    else if (!string.IsNullOrWhiteSpace(assetName))
+                    {
+                        alerts = alerts
+                            .Where(x => (x.AssetName ?? "")
+                            .Trim()
+                            .Equals(assetName.Trim(), StringComparison.OrdinalIgnoreCase))
+                            .ToList();
+                    }
+                }
+
+                alerts = alerts
+                    .Where(x => x.SetTimeStamp >= from && x.SetTimeStamp <= to)
+                    .ToList();
+
+                var ids = alerts.Select(x => x.Id).Distinct().ToList();
+
+                var mAlertAudits = GetAlertAudit(from, to);
+
+                if (mAlertAudits != null && mAlertAudits.Count > 0 && ids.Count > 0)
+                {
+                    mAlertAudits = mAlertAudits
+                        .Where(x => ids.Contains(x.AlertId))
+                        .ToList();
+
+                    foreach (var frsAlert in alerts)
+                    {
+                        var alertAudit = mAlertAudits.FirstOrDefault(x => x.AlertId == frsAlert.Id);
+
+                        if (alertAudit != null && alertAudit.Id > 0)
+                        {
+                            frsAlert.mAlertAudit = alertAudit;
+                            frsAlert.IsAlert = alertAudit.IsAlert;
+                        }
+                    }
+                }
+
+                int predictiveId = (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive;
+                int failureId = (int)E7FRSAdvance.Utility.Utility.AlertType.Failure;
+
+                var predictiveAlerts = alerts
+                    .Where(x => x.AlertTypeId == predictiveId)
+                    .ToList();
+
+                var failureAlerts = alerts
+                    .Where(x => x.AlertTypeId == failureId)
+                    .ToList();
+
+                var predictiveCauses = predictiveAlerts
+                    .GroupBy(x => string.IsNullOrWhiteSpace(x.CauseCode) ? "-" : x.CauseCode)
+                    .Select(g => new
+                    {
+                        code = g.Key,
+                        count = g.Count(),
+                        alertIds = g.Select(x => x.Id).Distinct().ToList()
+                    })
+                    .OrderByDescending(x => x.count)
+                    .ToList();
+
+                var failureCauses = failureAlerts
+                    .GroupBy(x => string.IsNullOrWhiteSpace(x.CauseCode) ? "-" : x.CauseCode)
+                    .Select(g => new
+                    {
+                        code = g.Key,
+                        count = g.Count(),
+                        alertIds = g.Select(x => x.Id).Distinct().ToList()
+                    })
+                    .OrderByDescending(x => x.count)
+                    .ToList();
+
+                return Json(new
+                {
+                    success = true,
+
+                    total = alerts.Count,
+                    pred = predictiveAlerts.Count,
+                    fail = failureAlerts.Count,
+
+                    alertIds = ids,
+
+                    predictiveCauses = predictiveCauses,
+                    failureCauses = failureCauses
+                }, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception ex)
+            {
+                Response.StatusCode = 500;
+
+                return Json(new
+                {
+                    success = false,
+                    message = ex.Message
+                }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+
         #region Private Helper Methods for Event Log
 
         private List<Domain.PointMachineEvent> GetPointMachineEvent(int assetId, string searchDate)
@@ -1555,10 +1743,310 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
 
+        // ═══════════════════════════════════════════════════════════════════════
+        // ADD TO YOUR EXISTING TelemetryController.cs
+        // ═══════════════════════════════════════════════════════════════════════
+
+        #region SIP Event Log & Active Alarms
+
+        /// <summary>
+        /// Event Log tab: alert history + maintenance mode records for a date range.
+        /// POST /FRS25/Telemetry/GetSipEventLog
+        /// </summary>
+        [HttpPost]
+        public ActionResult GetSipEventLog(SipEventLogRequest request)
+        {
+            var result = new SipEventLogResponse();
+
+            try
+            {
+                if (request == null || request.AssetId <= 0)
+                    return Json(new { Success = false, Message = "AssetId is required." });
+
+                DateTime fromDate = DateTime.Today;
+                DateTime toDate = DateTime.Today.AddDays(1).AddSeconds(-1);
+
+                if (!string.IsNullOrEmpty(request.FromDate))
+                    DateTime.TryParse(request.FromDate, out fromDate);
+                if (!string.IsNullOrEmpty(request.ToDate))
+                    DateTime.TryParse(request.ToDate, out toDate);
+
+                // ── 1. ALERT HISTORY ──────────────────────────────────────────
+                var alertLister = new Domain.FRSAlertLister
+                {
+                    SearchCriteria = new Domain.FRSAlert
+                    {
+                        IsAcknowledgement = true,
+                        AssetIds = new List<int> { request.AssetId },
+                        SiteIds = request.SiteId > 0
+                            ? new List<int> { request.SiteId }
+                            : null,
+                        AssetTypeIds = request.AssetTypeId > 0
+                            ? new List<int> { request.AssetTypeId }
+                            : null,
+                        FromDate = fromDate,
+                        ToDate = toDate
+                    },
+                    Pager = new Domain.Pager
+                    {
+                        PageSize = request.Take > 0 ? request.Take : 200,
+                        Take = request.Take > 0 ? request.Take : 200
+                    }
+                };
+
+                alertLister = _frsAlertService.GetListerWithPagination(alertLister);
+
+                if (alertLister?.mFRSAlerts != null)
+                {
+                    result.Alerts = alertLister.mFRSAlerts.Select(a => new SipAlertItem
+                    {
+                        IncidentDateTime = a.SetTimeStamp,
+                        CauseCode = a.CauseCode ?? "",
+                        AlertStatus = a.AlertStatus,
+                        AssetName = a.AssetName ?? "",
+                        AlertType = a.AlertType ?? "",
+                        Description = a.Description ?? ""
+                    }).ToList();
+                }
+
+                // ── 2. MAINTENANCE MODE HISTORY ───────────────────────────────
+                //    Fetch ALL records for the asset, then filter by date in C#
+                //    because the API may not filter by FromDate/ToDate reliably.
+                var maintLister = new MaintenanceModeLister
+                {
+                    SearchCriteria = new MaintenanceMode
+                    {
+                        AssetIds = new List<int> { request.AssetId },
+                        SiteIds = request.SiteId > 0
+                            ? new List<int> { request.SiteId }
+                            : null,
+                        IsCheckMaintenceModeStatus = true,
+                        RoleId = ClsHttpContent.LoginUser.RoleId,
+                        UserId = ClsHttpContent.LoginUser.Id
+                    },
+                    Pager = new Domain.Pager { Take = -1 }
+                };
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(maintLister);
+                    var content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("MaintenanceMode/GetLister", content).Result;
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        var parsed = JsonConvert.DeserializeObject<MaintenanceModeLister>(jsonString);
+
+                        if (parsed?.mMaintenanceModes != null)
+                        {
+                            // Filter: keep records where ActiveTime OR InActiveTime
+                            // falls within the requested date range
+                            result.MaintenanceModes = parsed.mMaintenanceModes
+                                .Where(m => m.AssetId == request.AssetId)
+                                .Where(m =>
+                                {
+                                    var active = m.ActiveTime;
+                                    var inactive = m.InActiveTime ?? DateTime.MinValue;
+                                    // Record overlaps the range if:
+                                    // - activated during range, OR
+                                    // - deactivated during range, OR
+                                    // - was active spanning the range (activated before, deactivated after or still active)
+                                    bool activatedInRange = active >= fromDate && active <= toDate;
+                                    bool deactivatedInRange = inactive >= fromDate && inactive <= toDate;
+                                    bool spansRange = active <= fromDate && (m.IsMaintenceMode || inactive >= toDate);
+                                    return activatedInRange || deactivatedInRange || spansRange;
+                                })
+                                .Select(m => new SipMaintenanceItem
+                                {
+                                    Id = m.Id,
+                                    IsMaintenceMode = m.IsMaintenceMode,
+                                    ActiveTime = m.ActiveTime,
+                                    InActiveTime = m.InActiveTime,
+                                    Asset = m.Asset ?? "",
+                                    Site = m.Site ?? "",
+                                }).ToList();
+                        }
+                    }
+                }
+
+                result.Success = true;
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.Message = "Error loading event log: " + ex.Message;
+            }
+
+            var jsonResult = Json(result, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
+        }
 
 
+        /// <summary>
+        /// Alarm tab: all ACTIVE alerts for a specific asset.
+        /// POST /FRS25/Telemetry/GetSipActiveAlarms
+        /// Uses GetListerWithPagination with AlertStatus = 1 (Active).
+        /// </summary>
+        [HttpPost]
+        public ActionResult GetSipActiveAlarms(SipActiveAlarmsRequest request)
+        {
+            var result = new SipActiveAlarmsResponse();
+
+            try
+            {
+                if (request == null || request.AssetId <= 0)
+                    return Json(new { Success = false, Message = "AssetId is required." });
+
+                var alertLister = new Domain.FRSAlertLister
+                {
+                    SearchCriteria = new Domain.FRSAlert
+                    {
+                        IsAcknowledgement = true,
+                        AlertStatus = 1,   // Active only
+                        AssetIds = new List<int> { request.AssetId },
+                        SiteIds = request.SiteId > 0
+                            ? new List<int> { request.SiteId }
+                            : null,
+                        AssetTypeIds = request.AssetTypeId > 0
+                            ? new List<int> { request.AssetTypeId }
+                            : null
+                    },
+                    Pager = new Domain.Pager
+                    {
+                        PageSize = 100,
+                        Take = 100
+                    }
+                };
+
+                alertLister = _frsAlertService.GetListerWithPagination(alertLister);
+
+                if (alertLister?.mFRSAlerts != null)
+                {
+                    var now = DateTime.Now;
+
+                    result.Alarms = alertLister.mFRSAlerts
+                        .Where(a => a.AlertStatus == 1)   // double-check active
+                        .Select(a =>
+                        {
+                            // Calculate duration from IncidentDateTime to now
+                            var raised = a.SetTimeStamp;
+                            var duration = raised > DateTime.MinValue
+                                ? (now - raised)
+                                : TimeSpan.Zero;
+
+                            return new SipActiveAlarmItem
+                            {
+                                CauseCode = a.CauseCode ?? "",
+                                RaisedAt = a.SetTimeStamp,
+                                DurationMinutes = (int)duration.TotalMinutes,
+                                DurationDisplay = raised > DateTime.MinValue
+                                    ? string.Format("{0:D2}:{1:D2}:{2:D2}",
+                                        (int)duration.TotalHours, duration.Minutes, duration.Seconds)
+                                    : "--",
+                                AlertType = a.AlertType ?? "",
+                                Description = a.Description ?? "",
+                                AssetName = a.AssetName ?? ""
+                            };
+                        }).ToList();
+
+                    result.ActiveCount = result.Alarms.Count;
+                }
+
+                result.Success = true;
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.Message = "Error loading alarms: " + ex.Message;
+            }
+
+            return Json(result, JsonRequestBehavior.AllowGet);
+        }
 
         #endregion
 
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // MODELS
+        // ═══════════════════════════════════════════════════════════════════════
+
+        #region SIP Models
+
+        // ── Event Log ────────────────────────────────────────────────────────
+
+        public class SipEventLogRequest
+        {
+            public int AssetId { get; set; }
+            public int SiteId { get; set; }
+            public int AssetTypeId { get; set; }
+            public string FromDate { get; set; }
+            public string ToDate { get; set; }
+            public int Take { get; set; }
+        }
+
+        public class SipEventLogResponse
+        {
+            public bool Success { get; set; }
+            public string Message { get; set; }
+            public List<SipAlertItem> Alerts { get; set; } = new List<SipAlertItem>();
+            public List<SipMaintenanceItem> MaintenanceModes { get; set; } = new List<SipMaintenanceItem>();
+        }
+
+        public class SipAlertItem
+        {
+            public DateTime? IncidentDateTime { get; set; }
+            public string CauseCode { get; set; }
+            public int AlertStatus { get; set; }
+            public string Severity { get; set; }
+            public string AssetName { get; set; }
+            public string AlertType { get; set; }
+            public string Description { get; set; }
+        }
+
+        public class SipMaintenanceItem
+        {
+            public int Id { get; set; }
+            public bool IsMaintenceMode { get; set; }
+            public DateTime? ActiveTime { get; set; }
+            public DateTime? InActiveTime { get; set; }
+            public string Asset { get; set; }
+            public string Site { get; set; }
+            public DateTime? CreatedDate { get; set; }
+        }
+
+        // ── Active Alarms ────────────────────────────────────────────────────
+
+        public class SipActiveAlarmsRequest
+        {
+            public int AssetId { get; set; }
+            public int SiteId { get; set; }
+            public int AssetTypeId { get; set; }
+        }
+
+        public class SipActiveAlarmsResponse
+        {
+            public bool Success { get; set; }
+            public string Message { get; set; }
+            public int ActiveCount { get; set; }
+            public List<SipActiveAlarmItem> Alarms { get; set; } = new List<SipActiveAlarmItem>();
+        }
+
+        public class SipActiveAlarmItem
+        {
+            public string CauseCode { get; set; }
+            public DateTime? RaisedAt { get; set; }
+            public int DurationMinutes { get; set; }
+            public string DurationDisplay { get; set; }
+            public string Severity { get; set; }
+            public string AlertType { get; set; }
+            public string Description { get; set; }
+            public string AssetName { get; set; }
+        }
+        #endregion
+
+
     }
 }
+#endregion

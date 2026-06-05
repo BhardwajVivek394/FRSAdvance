@@ -86,6 +86,7 @@
             public static string About = "About";
             public static string Alerts = "Alerts";
             public static string Sip = "Sip";
+            public static string AdvanceAssetType = "AdvanceAssetType";
         }
 
         public static class ActionName
@@ -163,6 +164,8 @@
             public static string Certificate = "fa fa-certificate";
             public static string Alerts = "fa fa-exclamation-triangle";
             public static string Sip = "fa fa-exclamation-triangle";
+            public static string AdvanceAssetType = "fa fa-cog";
+
 
         }
 
@@ -180,6 +183,8 @@
             public static string Admin = "fa-solid fa-layer-group";
             public static string Configuration = "fa-solid fa-gears";
             public static string UserMgmt = "fa-solid fa-users-gear";
+            public static string AssetType = "fa-solid fa-users-gear";
+            public static string AdvanceAssetType = "fa-solid fa-users-gear";
         }
     }
 }
