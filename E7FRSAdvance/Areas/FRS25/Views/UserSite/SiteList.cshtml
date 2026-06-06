@@ -9,7 +9,7 @@
 <input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
 
 <!-- ============================
-     HIDDEN SITE DATA (used by JS)
+     HIDDEN SITE DATA (JS reads this)
      ============================ -->
 @if (Model.mSites != null && Model.mSites.Count > 0)
 {
@@ -27,20 +27,21 @@
 }
 
 <!-- ============ SIREN STAGE ============ -->
-<div class="sc-siren-stage sc-state-clear" id="divSirenStage">
+<div class="sc-siren-stage sc-bg-safe" id="divSirenStage">
 
-    <!-- Nav arrows (hidden until multiple alert sites) -->
-    <button class="sc-nav-arrow sc-left" id="btnPrevSite" onclick="fnSliderNav(-1)" style="display:none;" aria-label="Previous site">
+    <!-- Nav arrows -->
+    <button class="sc-nav-arrow sc-left" id="btnPrevSite" onclick="fnSliderNav(-1)" style="display:none;">
         <i class="fa fa-chevron-left"></i>
     </button>
-    <button class="sc-nav-arrow sc-right" id="btnNextSite" onclick="fnSliderNav(1)" style="display:none;" aria-label="Next site">
+    <button class="sc-nav-arrow sc-right" id="btnNextSite" onclick="fnSliderNav(1)" style="display:none;">
         <i class="fa fa-chevron-right"></i>
     </button>
 
-    <!-- SINGLE SIREN DISPLAY -->
-    <div id="divSirenContent">
-        <!-- JS will populate this: either the "all clear" state or the active siren -->
-    </div>
+    <!-- SIREN + SITE INFO (JS renders here) -->
+    <div id="divSirenContent"></div>
+
+    <!-- SLIDE COUNTER  e.g. 2 / 6 -->
+    <div class="sc-slide-counter" id="divSlideCounter" style="display:none;"></div>
 
     <!-- DOT INDICATORS -->
     <div class="sc-dots" id="divDotIndicators" style="display:none;"></div>
@@ -49,7 +50,7 @@
     <div class="sc-site-strip" id="divSiteStrip" style="display:none;"></div>
 </div>
 
-<!-- ============ ALERT DETAIL PANEL ============ -->
+<!-- ============ ALERT DETAIL PANEL (only visible when current site has alerts) ============ -->
 <div class="sc-alert-panel" id="divAlertPanel" style="display:none;">
     <div class="sc-alert-panel-head">
         <h3 class="sc-alert-panel-title">
@@ -62,12 +63,19 @@
         </h3>
         <span class="sc-alert-count-badge" id="spnAlertPanelCount">0 alerts</span>
     </div>
-    <div class="sc-alert-list" id="divAlertList">
-        <p class="sc-no-alerts">No alerts for this site.</p>
+    <div class="sc-alert-list" id="divAlertList"></div>
+</div>
+
+<!-- ============ NO-ALERT INFO PANEL (visible when current site is clear) ============ -->
+<div class="sc-alert-panel" id="divNoAlertPanel" style="display:none;">
+    <div class="sc-no-alerts-panel">
+        <i class="fa fa-check-circle"></i>
+        <div><strong id="spnNoAlertSiteName"></strong> — No active alerts</div>
+        <div style="margin-top:4px; color:#475569;">This site is operating normally. Alerts will appear here when detected.</div>
     </div>
 </div>
 
-<!-- ============ SMS LOG MODAL (kept from original) ============ -->
+<!-- ============ SMS LOG MODAL ============ -->
 <div class="modal fade bd-example-modal-lg" id="modal-add-smslogs" tabindex="-1" role="dialog"
      aria-labelledby="modal-add-smslogs" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-xl modal-width modal-dialog-centered">
@@ -145,31 +153,33 @@
 
 <script>
     /* ===================================================
-       SIREN COMMAND — SLIDER + LIVE ALERT ENGINE
+       SIREN COMMAND — ALL-SITE SLIDER + LIVE ALERTS
        =================================================== */
 
-    // ── Site registry (from server model) ──
-    var siteRegistry = {};
+    // ── Build site registry from server-rendered hidden inputs ──
+    var allSiteIds = [];      // ordered list of ALL site IDs
+    var siteRegistry = {};    // { siteId: { Id, Name, TrackCount, ... } }
+
     $('.hdnSiteData').each(function () {
         var $el = $(this);
         var id = parseInt($el.data('id'));
+        allSiteIds.push(id);
         siteRegistry[id] = {
-            Id: id,
-            Name: $el.data('name'),
-            TrackCount: parseInt($el.data('track')) || 0,
+            Id:                id,
+            Name:              $el.data('name'),
+            TrackCount:        parseInt($el.data('track')) || 0,
             PointMachineCount: parseInt($el.data('pm')) || 0,
-            SignalCount: parseInt($el.data('signal')) || 0,
-            IsDatalogger: $el.data('datalogger') === 'true',
-            IsSipView: $el.data('sipview') === 'true'
+            SignalCount:       parseInt($el.data('signal')) || 0,
+            IsDatalogger:      $el.data('datalogger') === 'true',
+            IsSipView:         $el.data('sipview') === 'true'
         };
     });
 
-    // ── Active alerts state ──
-    var activeAlerts = {};   // { siteId: [ alertObj, ... ] }
-    var alertSiteIds = [];   // ordered list of site IDs that have alerts
-    var currentSliderIndex = 0;
+    // ── Alert state ──
+    var activeAlerts = {};        // { siteId: [ alertObj, ... ] }
+    var currentSliderIndex = 0;   // index into allSiteIds[]
 
-    // ── Startup ──
+    // ── Init ──
     $(document).ready(function () {
         if ($('#hdnCatListType').val() == 'Success') {
             CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
@@ -184,7 +194,7 @@
         fnRenderView();
         fnConnectAlertSocket();
 
-        // Touch / swipe support
+        // Swipe support
         var touchStartX = null;
         $('#divSirenStage').on('touchstart', function (e) {
             touchStartX = e.originalEvent.touches[0].clientX;
@@ -195,16 +205,16 @@
             touchStartX = null;
         });
 
-        // Keyboard navigation
+        // Keyboard arrows
         $(document).on('keydown', function (e) {
-            if (e.key === 'ArrowLeft') fnSliderNav(-1);
+            if (e.key === 'ArrowLeft')  fnSliderNav(-1);
             if (e.key === 'ArrowRight') fnSliderNav(1);
         });
     });
 
 
     // ══════════════════════════════════
-    //  WEBSOCKET — IDENTICAL LOGIC
+    //  WEBSOCKET
     // ══════════════════════════════════
     var alertSocket = null;
 
@@ -279,8 +289,6 @@
             alert._ts = new Date().toLocaleString();
             activeAlerts[siteId].push(alert);
         }
-
-        fnRebuildAlertSiteList();
         fnRenderView();
     }
 
@@ -295,24 +303,28 @@
         if (activeAlerts[siteId].length === 0) {
             delete activeAlerts[siteId];
         }
-
-        fnRebuildAlertSiteList();
         fnRenderView();
     }
 
-    function fnRebuildAlertSiteList() {
-        alertSiteIds = [];
+    // Helper: count how many sites currently have alerts
+    function fnAlertSiteCount() {
+        var count = 0;
         for (var sid in activeAlerts) {
-            if (activeAlerts[sid] && activeAlerts[sid].length > 0) {
-                alertSiteIds.push(parseInt(sid));
-            }
+            if (activeAlerts[sid] && activeAlerts[sid].length > 0) count++;
         }
-        // Clamp index
-        if (alertSiteIds.length === 0) {
-            currentSliderIndex = 0;
-        } else if (currentSliderIndex >= alertSiteIds.length) {
-            currentSliderIndex = alertSiteIds.length - 1;
-        }
+        return count;
+    }
+
+    // Helper: total alert count
+    function fnTotalAlertCount() {
+        var count = 0;
+        for (var sid in activeAlerts) { count += activeAlerts[sid].length; }
+        return count;
+    }
+
+    // Helper: does this site have alerts?
+    function fnSiteHasAlert(siteId) {
+        return activeAlerts[siteId] && activeAlerts[siteId].length > 0;
     }
 
 
@@ -320,14 +332,14 @@
     //  SLIDER NAVIGATION
     // ══════════════════════════════════
     function fnSliderNav(dir) {
-        if (alertSiteIds.length <= 1) return;
+        if (allSiteIds.length <= 1) return;
 
         var newIdx = currentSliderIndex + dir;
-        if (newIdx < 0) newIdx = alertSiteIds.length - 1;
-        if (newIdx >= alertSiteIds.length) newIdx = 0;
+        // Wrap around
+        if (newIdx < 0) newIdx = allSiteIds.length - 1;
+        if (newIdx >= allSiteIds.length) newIdx = 0;
 
-        // Animate out → update → animate in
-        var animClass = dir > 0 ? 'sc-slide-left' : 'sc-slide-right';
+        // Fade out → switch → fade in
         var $content = $('#divSirenContent');
         $content.css({ opacity: 0, transition: 'opacity 0.15s' });
 
@@ -335,20 +347,15 @@
             currentSliderIndex = newIdx;
             fnRenderView();
             $content.css({ opacity: 1 });
-            // Trigger animation on alert panel
-            $('.sc-alert-card').each(function (i) {
-                $(this).css({ 'animation-delay': (i * 0.06) + 's' });
-            });
         }, 160);
     }
 
     function fnJumpToSite(idx) {
         if (idx === currentSliderIndex) return;
-        var dir = idx > currentSliderIndex ? 1 : -1;
-        currentSliderIndex = idx;
         var $content = $('#divSirenContent');
         $content.css({ opacity: 0, transition: 'opacity 0.15s' });
         setTimeout(function () {
+            currentSliderIndex = idx;
             fnRenderView();
             $content.css({ opacity: 1 });
         }, 160);
@@ -356,118 +363,160 @@
 
 
     // ══════════════════════════════════
-    //  RENDER — THE CORE VIEW BUILDER
+    //  RENDER — MAIN VIEW BUILDER
     // ══════════════════════════════════
     function fnRenderView() {
-        var $stage = $('#divSirenStage');
+        var $stage   = $('#divSirenStage');
         var $content = $('#divSirenContent');
-        var $dots = $('#divDotIndicators');
-        var $strip = $('#divSiteStrip');
-        var $panel = $('#divAlertPanel');
-        var $alertList = $('#divAlertList');
+        var $dots    = $('#divDotIndicators');
+        var $strip   = $('#divSiteStrip');
+        var $counter = $('#divSlideCounter');
+        var $alertPanel   = $('#divAlertPanel');
+        var $noAlertPanel = $('#divNoAlertPanel');
+        var $alertList    = $('#divAlertList');
 
-        var totalAlertSites = alertSiteIds.length;
-        var totalAlerts = 0;
-        for (var k in activeAlerts) { totalAlerts += activeAlerts[k].length; }
+        var totalSites     = allSiteIds.length;
+        var alertingSites  = fnAlertSiteCount();
+        var totalAlerts    = fnTotalAlertCount();
 
-        // Update header counters
-        $('#spnAlertSiteCount').text(totalAlertSites + ' Active Site' + (totalAlertSites !== 1 ? 's' : ''));
-        $('#spnTotalAlertCount').text(totalAlerts + ' Alerts');
+        // ── Update header stats ──
+        $('#spnAlertSiteCount').text(alertingSites + ' Active Site' + (alertingSites !== 1 ? 's' : ''));
+        $('#spnTotalAlertCount').text(totalAlerts + ' Alert' + (totalAlerts !== 1 ? 's' : ''));
+        $('#spnTotalSiteCount').text(totalSites + ' Total Site' + (totalSites !== 1 ? 's' : ''));
 
-        // Header dot color
-        if (totalAlertSites > 0) {
+        if (alertingSites > 0) {
             $('#spnHeaderDot').removeClass('sc-dot-safe').addClass('sc-dot-live');
         } else {
             $('#spnHeaderDot').removeClass('sc-dot-live').addClass('sc-dot-safe');
         }
 
-        // ── ALL CLEAR STATE ──
-        if (totalAlertSites === 0) {
-            $stage.addClass('sc-state-clear').removeClass('');
+        // ── No sites at all ──
+        if (totalSites === 0) {
+            $content.html('<div class="sc-no-alerts-panel"><i class="fa fa-database"></i><div>No sites found. Adjust your Zone / Division filter.</div></div>');
             $('#btnPrevSite, #btnNextSite').hide();
-            $dots.hide();
-            $strip.hide();
-            $panel.hide();
-
-            var clearHtml = '<div style="display:flex;flex-direction:column;align-items:center;">';
-            clearHtml += '<img src="/assets/images/imgGreen.png" height="120" width="120" style="opacity:0.85;" />';
-            clearHtml += '<h2 class="sc-clear-title">All Clear</h2>';
-            clearHtml += '<p class="sc-clear-text">No active alerts across any site. System operating normally.</p>';
-            clearHtml += '<div class="sc-safe-list">';
-            for (var sid in siteRegistry) {
-                var s = siteRegistry[sid];
-                clearHtml += '<div class="sc-safe-chip"><span class="sc-dot-safe"></span> ' + s.Name + '</div>';
-            }
-            clearHtml += '</div></div>';
-
-            $content.html(clearHtml);
+            $dots.hide(); $strip.hide(); $counter.hide();
+            $alertPanel.hide(); $noAlertPanel.hide();
             return;
         }
 
-        // ── ACTIVE ALERT STATE ──
-        $stage.removeClass('sc-state-clear');
-        var safeIdx = Math.min(currentSliderIndex, totalAlertSites - 1);
-        var siteId = alertSiteIds[safeIdx];
-        var site = siteRegistry[siteId];
-        var siteAlerts = activeAlerts[siteId] || [];
+        // ── Current site ──
+        var safeIdx = Math.min(currentSliderIndex, totalSites - 1);
+        if (safeIdx < 0) safeIdx = 0;
+        currentSliderIndex = safeIdx;
+
+        var siteId    = allSiteIds[safeIdx];
+        var site      = siteRegistry[siteId];
+        var hasAlert  = fnSiteHasAlert(siteId);
+        var siteAlerts = hasAlert ? activeAlerts[siteId] : [];
 
         if (!site) return;
 
-        // Show/hide arrows
-        if (totalAlertSites > 1) {
+        // Stage background
+        $stage.toggleClass('sc-bg-alert', hasAlert).toggleClass('sc-bg-safe', !hasAlert);
+
+        // ── Show/hide arrows ──
+        if (totalSites > 1) {
             $('#btnPrevSite, #btnNextSite').show();
         } else {
             $('#btnPrevSite, #btnNextSite').hide();
         }
 
-        // ── Siren display ──
-        var sirenHtml = '<div class="sc-siren-display sc-alert" onclick="fnShowSMSLog(' + siteId + ')">';
-        sirenHtml += '<img src="/assets/images/gifDangerAlarm.gif" height="130" width="130" />';
-        sirenHtml += '</div>';
-        sirenHtml += '<h2 class="sc-site-name sc-alert-name">' + site.Name + '</h2>';
+        // ══════════════════════
+        //  SIREN CONTENT
+        // ══════════════════════
+        var html = '';
+
+        // Siren image
+        if (hasAlert) {
+            html += '<div class="sc-siren-display sc-alert-glow" onclick="fnShowSMSLog(' + siteId + ')">';
+            html += '<img src="/assets/images/gifDangerAlarm.gif" height="130" width="130" />';
+            html += '</div>';
+        } else {
+            html += '<div class="sc-siren-display sc-safe-glow">';
+            html += '<img src="/assets/images/imgGreen.png" height="130" width="130" />';
+            html += '</div>';
+        }
+
+        // Site name
+        var nameClass = hasAlert ? 'sc-name-alert' : 'sc-name-safe';
+        html += '<h2 class="sc-site-name ' + nameClass + '">' + site.Name + '</h2>';
+
+        // Status tag
+        if (hasAlert) {
+            html += '<span class="sc-status-tag sc-tag-alert"><span class="sc-dot-live"></span> ' + siteAlerts.length + ' Alert' + (siteAlerts.length !== 1 ? 's' : '') + ' Active</span>';
+        } else {
+            html += '<span class="sc-status-tag sc-tag-safe"><span class="sc-dot-safe"></span> System Normal</span>';
+        }
 
         // Asset badges
-        sirenHtml += '<div class="sc-asset-badges">';
+        var badgeClass = hasAlert ? 'sc-badge-red' : 'sc-badge-green';
+        html += '<div class="sc-asset-badges">';
         if (site.TrackCount > 0) {
-            sirenHtml += '<span class="sc-asset-badge" onclick="fnGetSiteSummaryView(\'' + site.Name + '\',\'' + @E7FRSAdvance.Utility.Utility.AssetType.TRACK.GetHashCode() + '\')">T: ' + site.TrackCount + '</span>';
+            html += '<span class="sc-asset-badge ' + badgeClass + '" onclick="fnGetSiteSummaryView(\'' + site.Name + '\',\'' + @E7FRSAdvance.Utility.Utility.AssetType.TRACK.GetHashCode() + '\')">T: ' + site.TrackCount + '</span>';
         }
         if (site.PointMachineCount > 0) {
-            sirenHtml += '<span class="sc-asset-badge" onclick="fnGetSiteSummaryView(\'' + site.Name + '\',\'' + @E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode() + '\')">P: ' + site.PointMachineCount + '</span>';
+            html += '<span class="sc-asset-badge ' + badgeClass + '" onclick="fnGetSiteSummaryView(\'' + site.Name + '\',\'' + @E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode() + '\')">P: ' + site.PointMachineCount + '</span>';
         }
         if (site.SignalCount > 0) {
-            sirenHtml += '<span class="sc-asset-badge" onclick="fnGetSiteSummaryView(\'' + site.Name + '\',\'' + @E7FRSAdvance.Utility.Utility.AssetType.SIGNAL.GetHashCode() + '\')">S: ' + site.SignalCount + '</span>';
+            html += '<span class="sc-asset-badge ' + badgeClass + '" onclick="fnGetSiteSummaryView(\'' + site.Name + '\',\'' + @E7FRSAdvance.Utility.Utility.AssetType.SIGNAL.GetHashCode() + '\')">S: ' + site.SignalCount + '</span>';
         }
-        sirenHtml += '</div>';
+        html += '</div>';
 
         // Site action buttons
-        sirenHtml += '<div class="sc-site-actions">';
-        sirenHtml += '<a class="btn" href="/FRS25/Alerts/Index">View Alerts</a>';
-        sirenHtml += '<a class="btn" href="/FRS25/UserSite/Summary?siteId=' + siteId + '">Probability</a>';
-        sirenHtml += '<a class="btn" href="/FRS25/UserSite/UserHistory?siteId=' + siteId + '">User History</a>';
-        sirenHtml += '<button class="btn" onclick="fnShowPerformance(' + siteId + ')">Performance</button>';
+        html += '<div class="sc-site-actions">';
+        html += '<a class="btn" href="/FRS25/Alerts/Index">View Alerts</a>';
+        html += '<a class="btn" href="/FRS25/UserSite/Summary?siteId=' + siteId + '">Probability</a>';
+        html += '<a class="btn" href="/FRS25/UserSite/UserHistory?siteId=' + siteId + '">User History</a>';
+        html += '<button class="btn" onclick="fnShowPerformance(' + siteId + ')">Performance</button>';
         if (site.IsDatalogger) {
-            sirenHtml += '<a class="btn" href="/UserSite/DataLogger?siteId=' + siteId + '">Data Logger</a>';
+            html += '<a class="btn" href="/UserSite/DataLogger?siteId=' + siteId + '">Data Logger</a>';
         }
         if (!site.IsSipView) {
-            sirenHtml += '<a class="btn" href="/Site/Sview?siteId=' + siteId + '">Sip View</a>';
+            html += '<a class="btn" href="/Site/Sview?siteId=' + siteId + '">Sip View</a>';
         }
-        sirenHtml += '</div>';
+        html += '</div>';
 
-        $content.html(sirenHtml);
+        $content.html(html);
 
-        // ── Dot indicators ──
-        if (totalAlertSites > 1) {
+        // ── Slide counter: 2 / 6 ──
+        if (totalSites > 1) {
+            $counter.html('<span class="sc-current-num">' + (safeIdx + 1) + '</span> / ' + totalSites).show();
+        } else {
+            $counter.hide();
+        }
+
+        // ══════════════════════
+        //  DOT INDICATORS
+        // ══════════════════════
+        if (totalSites > 1) {
             var dotHtml = '';
-            for (var di = 0; di < totalAlertSites; di++) {
-                dotHtml += '<button class="sc-dot-ind' + (di === safeIdx ? ' active' : '') + '" onclick="fnJumpToSite(' + di + ')"></button>';
+            for (var di = 0; di < totalSites; di++) {
+                var dotSiteId = allSiteIds[di];
+                var dotHasAlert = fnSiteHasAlert(dotSiteId);
+                var dotCls = '';
+
+                if (di === safeIdx) {
+                    dotCls = dotHasAlert ? 'active-red' : 'active-green';
+                } else if (dotHasAlert) {
+                    dotCls = 'has-alert';
+                }
+
+                dotHtml += '<button class="sc-dot-ind ' + dotCls + '" onclick="fnJumpToSite(' + di + ')" title="' + siteRegistry[dotSiteId].Name + '"></button>';
             }
             $dots.html(dotHtml).show();
 
             // Site name strip
             var stripHtml = '';
-            for (var si = 0; si < totalAlertSites; si++) {
-                var sn = siteRegistry[alertSiteIds[si]];
-                stripHtml += '<button class="sc-strip-item' + (si === safeIdx ? ' active' : '') + '" onclick="fnJumpToSite(' + si + ')">' + (sn ? sn.Name : '') + '</button>';
+            for (var si = 0; si < totalSites; si++) {
+                var stripSiteId = allSiteIds[si];
+                var stripAlert = fnSiteHasAlert(stripSiteId);
+                var stripCls = '';
+
+                if (si === safeIdx) {
+                    stripCls = 'active ' + (stripAlert ? 'active-red' : 'active-green');
+                }
+
+                stripHtml += '<button class="sc-strip-item ' + stripCls + '" onclick="fnJumpToSite(' + si + ')">' + siteRegistry[stripSiteId].Name + '</button>';
             }
             $strip.html(stripHtml).show();
         } else {
@@ -475,25 +524,25 @@
             $strip.hide();
         }
 
-        // ── Alert detail panel ──
-        $panel.show();
-        $('#spnAlertPanelSiteName').text(site.Name);
-        $('#spnAlertPanelCount').text(siteAlerts.length + ' alert' + (siteAlerts.length !== 1 ? 's' : ''));
+        // ══════════════════════
+        //  ALERT DETAIL PANEL
+        // ══════════════════════
+        if (hasAlert) {
+            $noAlertPanel.hide();
+            $alertPanel.show();
+            $('#spnAlertPanelSiteName').text(site.Name);
+            $('#spnAlertPanelCount').text(siteAlerts.length + ' alert' + (siteAlerts.length !== 1 ? 's' : ''));
 
-        if (siteAlerts.length === 0) {
-            $alertList.html('<p class="sc-no-alerts">No alerts for this site.</p>');
-        } else {
             var listHtml = '';
             for (var ai = 0; ai < siteAlerts.length; ai++) {
                 var a = siteAlerts[ai];
-                var alertTypeId = (a.AlertTypeId || 0);
-                var isFailure = (a.AlertType === 'Failure' || alertTypeId === @((int)E7FRSAdvance.Utility.Utility.AlertType.Failure));
-                var typeCls = isFailure ? 'failure' : 'predictive';
+                var isFailure = (a.AlertType === 'Failure' || a.AlertTypeId === @((int)E7FRSAdvance.Utility.Utility.AlertType.Failure));
+                var typeCls   = isFailure ? 'failure' : 'predictive';
                 var typeLabel = isFailure ? 'Failure' : 'Predictive';
 
                 listHtml += '<div class="sc-alert-card" style="animation-delay:' + (ai * 0.06) + 's;">';
 
-                // Top row: badges + time
+                // Top: badges + time
                 listHtml += '<div class="sc-alert-card-top">';
                 listHtml += '<span class="sc-badge-type ' + typeCls + '">' + typeLabel + '</span>';
                 listHtml += '<span class="sc-badge-cause">' + (a.CauseCode || 'N/A') + '</span>';
@@ -516,12 +565,17 @@
                 listHtml += '</div>';
             }
             $alertList.html(listHtml);
+        } else {
+            // No alerts for this site → show "all clear" panel
+            $alertPanel.hide();
+            $noAlertPanel.show();
+            $('#spnNoAlertSiteName').text(site.Name);
         }
     }
 
 
     // ══════════════════════════════════
-    //  HELPERS — FROM ORIGINAL
+    //  HELPER FUNCTIONS
     // ══════════════════════════════════
     function fnGetSiteName(siteId) {
         var s = siteRegistry[siteId];
@@ -556,7 +610,7 @@
 
         $("#loader").show();
         $.ajax({
-            url: '/UserSite/_PerformanceLister',
+            url: '/FRS25/UserSite/_PerformanceLister',
             type: 'Post',
             data: JSON.stringify(mPerformanceLister),
             dataType: 'html',
@@ -579,7 +633,7 @@
         assetGroup.AssetTypeId = assetTypeId;
         $("#loader").show();
         $.ajax({
-            url: "/UserSite/_SummaryView",
+            url: "/FRS25/PerformanceLister/UserSite/_SummaryView",
             type: "POST",
             data: '{assetGroup:' + JSON.stringify(assetGroup) + '}',
             contentType: 'application/json',
@@ -596,12 +650,12 @@
         });
     }
 
-    // ── Audio (from original) ──
+    // ── Audio ──
     function fnPlaySound(target, RepeatCount) {
         var fnSoundRepeat = function () {
             RepeatCount--;
             target.currentTime = 0;
-            if (RepeatCount > 0 && alertSiteIds.length > 0)
+            if (RepeatCount > 0 && fnAlertSiteCount() > 0)
                 target.play();
             else
                 target.removeEventListener('ended', fnSoundRepeat);
@@ -611,12 +665,14 @@
     }
 
     function fnLoadAudio(audio, numberOfTimes, delay) {
-        if (alertSiteIds.length > 0) {
-            fnPlaySound(audio, numberOfTimes * alertSiteIds.length);
+        var alertCount = fnAlertSiteCount();
+        if (alertCount > 0) {
+            fnPlaySound(audio, numberOfTimes * alertCount);
         }
         var interval = setInterval(function () {
-            if (alertSiteIds.length > 0) {
-                fnPlaySound(audio, numberOfTimes * alertSiteIds.length);
+            var ac = fnAlertSiteCount();
+            if (ac > 0) {
+                fnPlaySound(audio, numberOfTimes * ac);
             } else {
                 audio.pause();
                 clearInterval(interval);
@@ -624,7 +680,7 @@
         }, delay);
     }
 
-    // ── Paging (if still needed) ──
+    // ── Paging ──
     function GetPagerButtonClick(btn) {
         if (btn == "Next") {
             if (@Model.Pager.TotalPage != @Model.Pager.CurrentPage) {

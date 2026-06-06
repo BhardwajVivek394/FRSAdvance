@@ -453,6 +453,20 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             return PartialView(mAppAccessLister);
         }
+        public ActionResult _PerformanceLister(PerformanceLister mPerformanceLister)
+        {
+            try
+            {
+                mPerformanceLister = siteKeepingService.PerformanceLister(mPerformanceLister);
+
+            }
+            catch (Exception)
+            {
+                ViewBag.Type = "Error";
+                ViewBag.Message = "Something went wrong!";
+            }
+            return PartialView(mPerformanceLister);
+        }
 
 
 
