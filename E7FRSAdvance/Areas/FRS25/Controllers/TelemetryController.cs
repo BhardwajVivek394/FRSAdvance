@@ -1680,52 +1680,196 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
 
+        //[HttpPost]
+        //public JsonResult GetBulkAssetMetadata(AssetLister mAssetLister)
+        //{
+        //    mAssetLister.Pager.Take = -1;
+
+        //    try
+        //    {
+        //        using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+        //        {
+        //            mAssetLister.SearchCriteria.CreatedBy = ClsHttpContent.LoginUser.Id;
+        //            mAssetLister.SearchCriteria.IsMobileView = true;
+
+        //            if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.StartDate))
+        //                mAssetLister.SearchCriteria.StartDate = DateTime.Now.ToShortDateString();
+
+        //            if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.EndDate))
+        //                mAssetLister.SearchCriteria.EndDate = DateTime.Now.ToShortDateString();
+
+        //            var jsonStr = JsonConvert.SerializeObject(mAssetLister);
+        //            StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+        //            var response = hcf.client.PostAsync(String.Format("Asset/GetAllSiteDetailsBySiteId"), str).Result;
+
+        //            if (response.StatusCode == HttpStatusCode.OK)
+        //            {
+        //                string jsonString = response.Content.ReadAsStringAsync().Result;
+        //                mAssetLister = JsonConvert.DeserializeObject<AssetLister>(jsonString);
+
+        //                if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssets.Count > 0)
+        //                {
+        //                    mAssetLister.mAssets = mAssetLister.mAssets.OrderBy(x => x.Sequence).ToList();
+        //                }
+
+        //                mAssetLister.Pager.PageSize = -1;
+
+        //                return Json(new
+        //                {
+        //                    success = true,
+        //                    mAssets = mAssetLister.mAssets ?? new List<Asset>()
+        //                }, JsonRequestBehavior.AllowGet);
+        //            }
+        //            else
+        //            {
+        //                return Json(new
+        //                {
+        //                    success = false,
+        //                    mAssets = new List<Asset>(),
+        //                    errorMessage = "API returned status: " + response.StatusCode
+        //                }, JsonRequestBehavior.AllowGet);
+        //            }
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        return Json(new
+        //        {
+        //            success = false,
+        //            mAssets = new List<Asset>(),
+        //            errorMessage = ex.Message
+        //        }, JsonRequestBehavior.AllowGet);
+        //    }
+        //}
         [HttpPost]
         public JsonResult GetBulkAssetMetadata(AssetLister mAssetLister)
         {
             mAssetLister.Pager.Take = -1;
-
             try
             {
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
                     mAssetLister.SearchCriteria.CreatedBy = ClsHttpContent.LoginUser.Id;
                     mAssetLister.SearchCriteria.IsMobileView = true;
-
                     if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.StartDate))
                         mAssetLister.SearchCriteria.StartDate = DateTime.Now.ToShortDateString();
-
                     if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.EndDate))
                         mAssetLister.SearchCriteria.EndDate = DateTime.Now.ToShortDateString();
 
                     var jsonStr = JsonConvert.SerializeObject(mAssetLister);
                     StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                    var response = hcf.client.PostAsync(String.Format("Asset/GetAllSiteDetailsBySiteId"), str).Result;
+                    var response = hcf.client.PostAsync("Asset/GetAllSiteDetailsBySiteId", str).Result;
 
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
                         string jsonString = response.Content.ReadAsStringAsync().Result;
                         mAssetLister = JsonConvert.DeserializeObject<AssetLister>(jsonString);
 
-                        if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssets.Count > 0)
+                        if (mAssetLister?.mAssets != null && mAssetLister.mAssets.Count > 0)
                         {
                             mAssetLister.mAssets = mAssetLister.mAssets.OrderBy(x => x.Sequence).ToList();
                         }
 
+                        var assets = mAssetLister.mAssets ?? new List<Asset>();
+
+                        // ─────────────────────────────────────────────────────────
+                        // FIX: Project ONLY the fields the front-end JS needs.
+                        //
+                        // WHY THIS MATTERS:
+                        //   AssetAttribute carries Data (List<string>),
+                        //   DataArray (List<string>), Datas (List<decimal>),
+                        //   Dates (List<string>), AttributeData, etc.
+                        //   AssetInfoDatalogger carries mDataloggers (List<Datalogger>).
+                        //
+                        //   For Point Machine with ~180K rows, serializing ALL of
+                        //   these nested lists produces 5-10+ MB of JSON, which
+                        //   exceeds JavaScriptSerializer's 2 MB maxJsonLength.
+                        //
+                        //   The JS client (telemetrylive.js) only reads:
+                        //     AssetAttribute  → Id, Title, AliasName,
+                        //                       Multiplication, Absolute,
+                        //                       MinValue, MaxValue
+                        //     Datalogger      → Id, DataloggerAttributeId,
+                        //                       DataloggerAttribute,
+                        //                       DataloggerAssetName, Role
+                        //
+                        //   Projecting these fields shrinks the payload from
+                        //   ~5-10 MB down to ~100-300 KB.
+                        // ─────────────────────────────────────────────────────────
+
+                        var slimAssets = assets.Select(a => new
+                        {
+                            a.Id,
+                            a.Name,
+                            a.AssetName,
+                            a.SiteId,
+                            a.AssetTypeId,
+                            a.Sequence,
+                            a.ZeroOffsetValue,
+
+                            // AssetAttribute → keep only what JS reads
+                            // JS key lookups:
+                            //   attrId    = attr.Id
+                            //   display   = attr.Title  (Point Machine)
+                            //             = attr.AliasName (Track/Signal)
+                            //   transform = attr.Multiplication, attr.Absolute
+                            //   range     = attr.MinValue, attr.MaxValue
+                            assetAttributes = (a.assetAttributes ?? new List<AssetAttribute>())
+                                .Select(attr => new
+                                {
+                                    attr.Id,
+                                    attr.AssetTypeId,
+                                    attr.Title,
+                                    attr.AliasName,
+                                    attr.Multiplication,
+                                    attr.Absolute,
+                                    attr.MinValue,
+                                    attr.MaxValue
+                                }).ToList(),
+
+                            // AssetInfoDatalogger → keep only what JS reads
+                            // JS key lookups:
+                            //   dlRole = dl.DataloggerAttributeId || dl.Role || dl.Id
+                            //   dlName = dl.DataloggerAttribute || dl.DataloggerAssetName
+                            mAssetInfoDataloggers = (a.mAssetInfoDataloggers ?? new List<AssetInfoDatalogger>())
+                                .Select(dl => new
+                                {
+                                    dl.Id,
+                                    dl.DataloggerAttributeId,
+                                    dl.DataloggerAttribute,
+                                    dl.DataloggerAssetName,
+                                    dl.Role
+                                }).ToList()
+
+                        }).ToList();
+
                         mAssetLister.Pager.PageSize = -1;
 
-                        return Json(new
+                        // ─────────────────────────────────────────────────────────
+                        // FIX: Return JsonResult with MaxJsonLength = int.MaxValue
+                        //
+                        // The default Json() helper uses JavaScriptSerializer
+                        // with a hard 2 MB cap. Even after projection, some
+                        // large sites may still exceed it. Setting MaxJsonLength
+                        // removes the cap as a safety net.
+                        // ─────────────────────────────────────────────────────────
+                        return new JsonResult
                         {
-                            success = true,
-                            mAssets = mAssetLister.mAssets ?? new List<Asset>()
-                        }, JsonRequestBehavior.AllowGet);
+                            Data = new
+                            {
+                                success = true,
+                                mAssets = slimAssets
+                            },
+                            JsonRequestBehavior = JsonRequestBehavior.AllowGet,
+                            MaxJsonLength = int.MaxValue
+                        };
                     }
                     else
                     {
                         return Json(new
                         {
                             success = false,
-                            mAssets = new List<Asset>(),
+                            mAssets = new List<object>(),
                             errorMessage = "API returned status: " + response.StatusCode
                         }, JsonRequestBehavior.AllowGet);
                     }
@@ -1736,12 +1880,50 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 return Json(new
                 {
                     success = false,
-                    mAssets = new List<Asset>(),
+                    mAssets = new List<object>(),
                     errorMessage = ex.Message
                 }, JsonRequestBehavior.AllowGet);
             }
         }
 
+
+        public ActionResult GetListActiveAlerts(Domain.SMSLog mSmsLog)
+        {
+            string token = string.Empty;
+            SMSLogLister mSMSLogLister = new SMSLogLister();
+            mSMSLogLister.Pager.Take = -1;
+            if (ClsHttpContent.LoginUser != null)
+            {
+                mSMSLogLister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
+                mSMSLogLister.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
+                token = ClsHttpContent.LoginUser.Token;
+            }
+            mSMSLogLister.SearchCriteria = mSmsLog;
+            mSMSLogLister.SearchCriteria.IsSmsLogActive = true;
+            var fromDate = new DateTime(mSMSLogLister.SearchCriteria.TimeStamp.Year, mSMSLogLister.SearchCriteria.TimeStamp.Month, 1);
+            mSMSLogLister.SearchCriteria.FromDate = fromDate;
+            mSMSLogLister.SearchCriteria.ToDate = DateTime.Now;
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mSMSLogLister);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync(String.Format("SMSLog/GetAll"), str).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        mSMSLogLister = JsonConvert.DeserializeObject<SMSLogLister>(jsonString);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+
+            }
+            // return PartialView("~/Views/Reporting/_GetAlertSMSLogs.cshtml", mSMSLogLister.mSMSLogs);
+            return Json(mSMSLogLister, JsonRequestBehavior.AllowGet);
+        }
 
         // ═══════════════════════════════════════════════════════════════════════
         // ADD TO YOUR EXISTING TelemetryController.cs

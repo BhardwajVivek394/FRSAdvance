@@ -3386,7 +3386,7 @@ function executeUIUpdate() {
         } else if (viewType === 'RDPMS') {
             updateRDPMSViewIncremental(updatedAssetIds);
         }
-        else if (viewType === 'Cards') {
+       else if (viewType === 'Cards') {
             // Use the same dispatcher logic as _tlApplyViewMode
             if (isSignalAssetType()) {
                 if (typeof renderRDPMSView === 'function') renderRDPMSView();
@@ -3399,10 +3399,24 @@ function executeUIUpdate() {
                 if (typeof fnBindTrackCards === 'function') fnBindTrackCards();
             }
         }
+        // PointMachine view = Card view for PM assets
+        else if (viewType === 'PointMachine') {
+            updatePMViewIncremental(updatedAssetIds);
+        }
 
-        // Point Machine is now rendered through Cards / Table — its live updates
-        // ride on the same paths handled above (the PM branch in the Table block
-        // and PM-aware buildPmCard in Cards). No dedicated PointMachine branch.
+        // Circuit overlay live-update: only when the per-asset Circuit overlay is
+        // ── FIX: PointMachine view was MISSING from this dispatch ──
+        // When drpView = 'PointMachine', none of the branches above
+        // matched, so WS data arrived but was never rendered.
+        // Card mode → incremental PM card update (build new / update existing).
+        // Table mode (pmTableMode) → full PM table re-render.
+        else if (viewType === 'PointMachine') {
+            if (window.pmTableMode) {
+                renderPmTableView();
+            } else {
+                updatePMViewIncremental(updatedAssetIds);
+            }
+        }
 
         // Circuit overlay live-update: only when the per-asset Circuit overlay is
         // active (set by tlOpenAssetView). The old viewType==='Circuit' trigger
@@ -5584,10 +5598,12 @@ function fnBindPointMachineTable() {
     // Reset PM state
     pmCardsBuilt = {};
     pmEventHistory = {};
-    window.pmTableMode = true; // Flag to indicate table mode
 
     disconnectWebSocket();
     connectWebSocket(siteId, atId, assetIds);
+
+    // Set AFTER connectWebSocket — connectWebSocket resets pmTableMode to false
+    window.pmTableMode = true;
 
     // Override render behavior for table mode
     console.log('[PM Table] Binding started. Will render in table format.');
@@ -7423,34 +7439,34 @@ function updateCircuitPointMachine(attrs) {
                     val.attrs.label.fill = '#222138';
                 } else if (aRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(A)RW V : ' + parseFloat(pointMachineDataJsonR.A_V_AVERAGE || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(A)NW C') || labelText.startsWith('(A)RW C')) {
                 if (aNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
                     val.attrs.label.text = '(A)NW C : ' + parseFloat(pointMachineDataJsonN.A_C_MAX || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 } else if (aRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(A)RW C : ' + parseFloat(pointMachineDataJsonR.A_C_MAX || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(B)NW V') || labelText.startsWith('(B)RW V')) {
                 if (bNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
                     val.attrs.label.text = '(B)NW V : ' + parseFloat(pointMachineDataJsonN.B_V_AVERAGE || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 } else if (bRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(B)RW V : ' + parseFloat(pointMachineDataJsonR.B_V_AVERAGE || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(B)NW C') || labelText.startsWith('(B)RW C')) {
                 if (bNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
                     val.attrs.label.text = '(B)NW C : ' + parseFloat(pointMachineDataJsonN.B_C_MAX || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 } else if (bRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
                     val.attrs.label.text = '(B)RW C : ' + parseFloat(pointMachineDataJsonR.B_C_MAX || 0).toFixed(2);
-                //    val.attrs.label.fill = '#222138';
+                    //    val.attrs.label.fill = '#222138';
                 }
             }
         }
@@ -9022,6 +9038,7 @@ function updateViewMode() {
     $('#wsLiveTable').remove();              // Table view container
     $('#rdpmsMainContainer').remove();       // RDPMS view container
     $('#pointMachineContainer').remove();    // Point Machine view container
+    $('#pmMainContainer').remove();          // PM card container (created by renderPointMachineView)
 
     // Clear main telemetry div
     $('#divTelemetryLive').empty();
@@ -9030,6 +9047,10 @@ function updateViewMode() {
     if (typeof wsUpdatedAssets !== 'undefined') {
         wsUpdatedAssets = {};
     }
+
+    // Reset PM card build cache so cards are rebuilt fresh
+    if (typeof pmCardsBuilt !== 'undefined') pmCardsBuilt = {};
+    if (typeof pmCardsBuilding !== 'undefined') pmCardsBuilding = {};
 
     // [LAUNCH] Render selected view fresh
     if (viewType === 'Table') {
@@ -10930,9 +10951,24 @@ function getPmStructuredData(assetId) {
     var r = { Normal: { AC: {}, AV: {}, BC: {}, BV: {} }, Reverse: { AC: {}, AV: {}, BC: {}, BV: {} }, RDPMS: {}, DataLogger: {} };
     for (var an in asset.attrs) {
         if (!asset.attrs.hasOwnProperty(an)) continue;
-        var ad = asset.attrs[an], p = parsePmAttrName(an);
-        if (p) { var d = decodePmAttribute(p.attrId); if (d) r[d.direction][d.type][d.metric] = { value: ad.Value, timestamp: ad.Timestamp, changed: ad.changed, attrName: an }; }
-        else { r.RDPMS[an] = { value: ad.Value, timestamp: ad.Timestamp, changed: ad.changed }; }
+        var ad = asset.attrs[an];
+
+        // PRIMARY: decode from the numeric code the WS actually delivers.
+        // The display name is usually a friendly alias and won't match the
+        // "X-PM-code-metric" pattern, which is why name-only parsing leaves
+        // every metric unclassified -> blank cells in card AND list views.
+        var numId = parseInt(ad.AssetAttributeId || ad.AttrId || 0);
+        var d = numId ? decodePmAttribute(numId) : null;
+
+        // FALLBACK: legacy encoded names like "12-PM-1004-Max"
+        if (!d) { var p = parsePmAttrName(an); if (p) d = decodePmAttribute(p.attrId); }
+
+        if (d) {
+            r[d.direction][d.type][d.metric] = { value: ad.Value, timestamp: ad.Timestamp, changed: ad.changed, attrName: an };
+        } else {
+            // Carry AttrId/AssetAttributeId so NWKR/RWKR direction detection works
+            r.RDPMS[an] = { value: ad.Value, timestamp: ad.Timestamp, changed: ad.changed, AttrId: ad.AttrId, AssetAttributeId: ad.AssetAttributeId };
+        }
     }
     if (asset.dlRelays) { for (var rk in asset.dlRelays) { if (asset.dlRelays.hasOwnProperty(rk)) r.DataLogger[rk] = asset.dlRelays[rk]; } }
     return r;
@@ -10994,14 +11030,21 @@ function renderPointMachineView() {
     for (var i = 0; i < ids.length; i++) {
         var aid = ids[i];
 
-        if (!pmCardsBuilt[aid]) {
-            console.log('[PM View] Building card for:', aid, wsLiveData[aid].AssetName);
-            buildPmCard(aid);
-            pmCardsBuilt[aid] = true;
-        }
+        // Build/update cards
+        for (var i = 0; i < ids.length; i++) {
+            var aid = ids[i];
 
-        // Always update card on render
-        updatePmCard(aid);
+            // Rebuild if flagged-but-missing — a prior build may have failed,
+            // leaving pmCardsBuilt[aid] = true with no card in the DOM.
+            if (!pmCardsBuilt[aid] || $('#pmCard_' + aid).length === 0) {
+                console.log('[PM View] Building card for:', aid, wsLiveData[aid].AssetName);
+                pmCardsBuilt[aid] = false;      // clear stale flag before rebuild
+                buildPmCard(aid);
+                pmCardsBuilt[aid] = true;
+            }
+
+            updatePmCard(aid);
+        }
     }
 
     // Clear updated flags
@@ -11103,29 +11146,13 @@ function fetchAssetSeriesOperation(assetId, callback) {
         return;
     }
 
-    $.ajax({
-        url: '/FRS25/Telemetry/GetAssetSeriesOperation/' + assetId,
-        type: 'GET',
-        dataType: 'json',
-        timeout: 10000,
-        success: function (response) {
-            // Check for IsSeriesOperation = 1 (handle both spellings)
-            var isSeriesOp = false;
-            if (response && response.IsSuccess) {
-                isSeriesOp = (response.IsSeriesOperation === 1) || (response.IsSeriesOpration === 1);
-            }
-            pmSeriesOperationStatus[assetId] = isSeriesOp;
-            console.log('[PM] Asset', assetId, 'IsSeriesOperation:', isSeriesOp);
-            if (callback) callback(isSeriesOp);
-        },
-        error: function (xhr, status, error) {
-            console.warn('[PM] Failed to fetch asset series operation for', assetId, error);
-            pmSeriesOperationStatus[assetId] = false;
-            if (callback) callback(false);
-        }
-    });
+    // AJAX lookup is disabled — but we MUST still fire the callback, otherwise
+    // buildPmCardWithSeriesInfo() never runs and the card (header + tbody) is
+    // never created, leaving #pmMainContainer empty. Default to false
+    // (no "New Combine" column) and call back synchronously.
+    pmSeriesOperationStatus[assetId] = false;
+    if (callback) callback(false);
 }
-
 // BUILD PM CARD -- DYNAMIC BASED ON AVAILABLE DATA
 // Shows only ends (A/B) that have data
 // ================================================================
@@ -11408,7 +11435,7 @@ function updatePmCard(assetId) {
         var rv = parseFloat(attrData.value);
         if (isNaN(rv)) continue;
         var rkLow = rk.toLowerCase();
-        var attrId = parseInt(attrData.AttrId) || 0;
+        var attrId = parseInt(attrData.AssetAttributeId || attrData.AttrId) || 0;
 
         // Collect values by AttrId for accurate direction detection
         // A End - NWKR (AttrId: 25)
@@ -11949,11 +11976,14 @@ function buildPmDataRow(assetId, pm) {
         hist[bdIdx].bBcCount = bBcCount; hist[bdIdx].bBcOT = bBcOTVal;
         hist[bdIdx].bBvAvg = bBvAvg; hist[bdIdx].totalOT = totalOT;
     } else if (hasRealData && tsBdMs > 0) {
-        // New unique timestamp → add new row
+        // Real data arrived — drop any placeholder seed rows added before it
+        for (var si = hist.length - 1; si >= 0; si--) {
+            if (!hist[si].hasRealData) hist.splice(si, 1);
+        }
         hist.push(currentRow);
         if (hist.length > PM_MAX_HISTORY) hist.shift();
-    } else if (hist.length === 0) {
-        // First-load seed only -- before any WS op event arrives
+    } else if (hist.length === 0 && hasRealData) {
+        // Only seed a row when it actually carries data
         hist.push(currentRow);
     }
 
