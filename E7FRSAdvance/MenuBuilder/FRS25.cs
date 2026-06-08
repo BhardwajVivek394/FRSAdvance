@@ -89,6 +89,10 @@ namespace E7FRSAdvance.MenuBuilder
             alerts.Main = alerts.SetMenuAttribute("Alerts", ControllerName.Alerts, ActionName.Index, FRSIconName.Alerts, "FRS25");
             menus.Add(alerts);
 
+            Menu health = new Menu();
+            health.Main = health.SetMenuAttribute("Health", ControllerName.Health, ActionName.Index, FRSIconName.Health);
+            menus.Add(health);
+
             Menu usersite = new Menu();
             usersite.Main = usersite.SetMenuAttribute("User Sites", ControllerName.Usersite, ActionName.Index, IconName.Usersite);
             menus.Add(usersite);

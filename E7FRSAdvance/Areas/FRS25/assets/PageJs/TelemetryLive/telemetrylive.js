@@ -270,6 +270,7 @@ function getTrackSortOrder(rawName) {
     return 500;
 }
 var wsCurrentAssetTypeId = null;
+var wsValidAssetIds = [];   // whitelist from GetAssestBy / bulk asset list
 var wsCurrentFilterAssetIds = [];
 var wsIsConnected = false;
 var wsMessageCount = 0;
@@ -986,6 +987,7 @@ var userAssetSimpleMap = {};            // RDPMS + PointMachine indication metad
 var userAssetDataloggerMap = {};        // DataLogger metadata (richer than dlRoleNameMap)
 var userAssetInfoLoaded = false;
 var userAssetInfoSiteId = null;
+var userAssetInfoAssetTypeId = null;
 
 // PointMachine OPERATION attribute IDs (these are events, NOT plottable values)
 var PM_OPERATION_IDS_EXCLUDE = [
@@ -1079,19 +1081,234 @@ function isPmOperationAttrId(attrId) {
 //}
 
 
-function loadUserAssetInfo(siteId, callback) {
-    var assetTypeId = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+// ================================================================
+// POINT MACHINE METADATA / BULK-SKIP COMPATIBILITY
+// Ported from the old working telemetrylive.js.
+// Point Machine must use GetAssestBy + GetPMAssetMeta and must not call
+// GetBulkAssetMetadata / getbulkassetdata.
+// ================================================================
+function normalizeAssetTypeForBulkSkip(value) {
+    if (value === undefined || value === null) return '';
+    value = $.trim(String(value));
+    if (value === '' || value === '0') return '';
+    return value;
+}
 
-    // No GetUserAssetInfoDatalogger call.
-    // Metadata source is only GetBulkAssetMetadata.
-    if (siteId && siteId !== '0' && assetTypeId && assetTypeId !== '0') {
-        loadBulkAssetMetadata(siteId, assetTypeId, callback);
+function isPointMachineAssetTypeForBulkSkip(assetTypeId) {
+    assetTypeId = normalizeAssetTypeForBulkSkip(assetTypeId) ||
+        normalizeAssetTypeForBulkSkip($('#drpAssetType').val()) ||
+        normalizeAssetTypeForBulkSkip(wsCurrentAssetTypeId);
+
+    return assetTypeId === '3';
+}
+
+function seedPointMachineAttributeFallbacks() {
+    var pmFallbacks = {
+        25: 'A End - NWKR',
+        26: 'A End - RWKR',
+        27: 'B End - NWKR',
+        28: 'B End - RWKR',
+
+        212: 'B End - NW-V',
+        213: 'B End - NW-C',
+        214: 'B End - RW-V',
+        215: 'B End - RW-C',
+        216: 'A End - NW-V',
+        217: 'A End - NW-C',
+        218: 'A End - RW-V',
+        219: 'A End - RW-C',
+
+        576: 'A End - NWKR (Loc)',
+        577: 'A End - RWKR (Loc)',
+        578: 'B End - NWKR (Loc)',
+        579: 'B End - RWKR (Loc)'
+    };
+
+    if (typeof fallbackAliasById === 'undefined') return;
+
+    for (var id in pmFallbacks) {
+        if (!pmFallbacks.hasOwnProperty(id)) continue;
+
+        fallbackAliasById[id] = fallbackAliasById[id] || pmFallbacks[id];
+        fallbackAliasById[String(id)] = fallbackAliasById[String(id)] || pmFallbacks[id];
+
+        if (typeof assetAttributeMap !== 'undefined') {
+            assetAttributeMap[id] = assetAttributeMap[id] || pmFallbacks[id];
+            assetAttributeMap[String(id)] = assetAttributeMap[String(id)] || pmFallbacks[id];
+        }
+
+        if (typeof assetAttributeByName !== 'undefined') {
+            assetAttributeByName[pmFallbacks[id]] = pmFallbacks[id];
+        }
+    }
+
+    assetAttributeLoaded = true;
+}
+
+function markUserAssetInfoLoadedForAssetType(siteId, assetTypeId) {
+    userAssetInfoLoaded = true;
+    userAssetInfoSiteId = String(siteId || '');
+    userAssetInfoAssetTypeId = String(assetTypeId || '');
+}
+
+var pmAssetMetaCache = {};       // assetId → metadata object
+var pmMetaLoaded = false;        // whether fetch has completed
+var pmMetaLoadPromise = null;    // in-flight deferred promise
+var PM_TWS_TYPE = { A: 1, B: 2, BOTH: 3 };
+
+function resetPmAssetMeta() {
+    pmAssetMetaCache = {};
+    pmMetaLoaded = false;
+    pmMetaLoadPromise = null;
+}
+
+function loadPmAssetMeta(siteId, assetTypeId) {
+    if (!siteId || siteId === '0' || String(assetTypeId) !== '3') {
+        return $.Deferred().resolve().promise();
+    }
+
+    if (pmMetaLoaded) return $.Deferred().resolve().promise();
+    if (pmMetaLoadPromise) return pmMetaLoadPromise;
+
+    var deferred = $.Deferred();
+    pmMetaLoadPromise = deferred.promise();
+
+    var payload = {
+        SearchCriteria: {
+            SiteId: parseInt(siteId),
+            AssetTypeId: parseInt(assetTypeId),
+            AssetTypeName: $('#drpAssetType option:selected').text().trim()
+        },
+        Pager: {
+            Take: -1,
+            Skip: 0,
+            PageSize: -1,
+            CurrentPage: 1,
+            TotalRecord: 0,
+            TotalPage: 0
+        }
+    };
+
+    $.ajax({
+        url: '/FRS25/Telemetry/GetPMAssetMeta',
+        type: 'POST',
+        data: JSON.stringify(payload),
+        contentType: 'application/json',
+        success: function (data) {
+            if (data && data.error) {
+                console.error('[PM-Meta] Server error:', data.error, data.inner);
+                pmMetaLoaded = true;
+                pmMetaLoadPromise = null;
+                deferred.resolve();
+                return;
+            }
+
+            if (data && data.length) {
+                data.forEach(function (item) {
+                    pmAssetMetaCache[String(item.Id)] = {
+                        isThickWave: !!(item.IsThickWave),
+                        thickWaveTypeId: (item.ThickWaveTypeId !== null && item.ThickWaveTypeId !== undefined)
+                            ? parseInt(item.ThickWaveTypeId)
+                            : null,
+                        aliasA: item.AliasDirectionA || '',
+                        aliasB: item.AliasDirectionB || '',
+                        isHalf: !!(item.IsHalfPointMachine)
+                    };
+                });
+                console.log('[PM-Meta] Loaded', Object.keys(pmAssetMetaCache).length, 'assets:', pmAssetMetaCache);
+            } else {
+                console.warn('[PM-Meta] Empty response — all IRS');
+            }
+
+            pmMetaLoaded = true;
+            pmMetaLoadPromise = null;
+            deferred.resolve();
+        },
+        error: function (xhr, status, err) {
+            console.error('[PM-Meta] HTTP error:', status, err);
+            console.error('[PM-Meta] Response:', xhr.responseText);
+            pmMetaLoaded = true;
+            pmMetaLoadPromise = null;
+            deferred.resolve(); // still resolve so cards build
+        }
+    });
+
+    return deferred.promise();
+}
+
+function getPmEndMeta(assetId, end, assetName) {
+    var meta = pmAssetMetaCache[String(assetId)];
+
+    var cleanName = (assetName || ('Asset ' + assetId))
+        .replace(/^(PT-)+/i, '');
+
+    var isTws = false;
+    var alias = '';
+
+    if (meta) {
+        alias = (end === 'A') ? (meta.aliasA || '') : (meta.aliasB || '');
+
+        if (meta.isThickWave) {
+            var tid = meta.thickWaveTypeId;
+            isTws = (end === 'A')
+                ? (tid === PM_TWS_TYPE.A || tid === PM_TWS_TYPE.BOTH)
+                : (tid === PM_TWS_TYPE.B || tid === PM_TWS_TYPE.BOTH);
+        }
+    }
+
+    var suffix = isTws ? 'TWS' : 'IRS';
+    var label = alias
+        ? ('PT-' + alias + ' ' + suffix)
+        : ('PT-' + cleanName + end + ' ' + suffix);
+
+    return {
+        label: label,
+        isTws: isTws,
+        dotColor: isTws ? '#00A4E0' : '#dc8b33',
+        dotClass: isTws ? 'point-dot-two' : 'point-dot-one'
+    };
+}
+
+function loadUserAssetInfo(siteId, callback) {
+    if (!siteId || siteId === '0') {
+        if (callback) callback();
         return;
     }
 
-    userAssetInfoLoaded = true;
-    userAssetInfoSiteId = String(siteId || '');
-    if (callback) callback();
+    var assetTypeId = $('#drpAssetType').val() || wsCurrentAssetTypeId || '0';
+
+    if (!assetTypeId || assetTypeId === '0') {
+        console.warn('[UserAssetInfo] No assetType available — maps will remain empty');
+        markUserAssetInfoLoadedForAssetType(siteId, '0');
+        if (callback) callback();
+        return;
+    }
+
+    // Cache hit must include assetTypeId also.
+    // Otherwise Point Machine skip can make Track/Signal think metadata is loaded.
+    if (userAssetInfoLoaded &&
+        userAssetInfoSiteId === String(siteId) &&
+        userAssetInfoAssetTypeId === String(assetTypeId)) {
+        if (callback) callback();
+        return;
+    }
+
+    // IMPORTANT: Point Machine uses old working flow and must not call GetBulkAssetMetadata/getbulkassetdata.
+    if (isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
+        seedPointMachineAttributeFallbacks();
+        markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
+        console.log('[UserAssetInfo] Skipped GetBulkAssetMetadata for Point Machine');
+        if (callback) callback();
+        return;
+    }
+
+    loadBulkAssetMetadata(siteId, assetTypeId, function () {
+        markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
+        console.log('[UserAssetInfo] Loaded via GetBulkAssetMetadata (site=' + siteId + ', type=' + assetTypeId + ') — ' +
+            Object.keys(userAssetSimpleMap).length + ' simple (c), ' +
+            Object.keys(userAssetDataloggerMap).length + ' datalogger (d)');
+        if (callback) callback();
+    });
 }
 
 
@@ -1546,6 +1763,16 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
         return;
     }
 
+
+    // Hard guard: Point Machine must never call /FRS25/Telemetry/GetBulkAssetMetadata.
+    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
+        if (typeof seedPointMachineAttributeFallbacks === 'function') seedPointMachineAttributeFallbacks();
+        if (typeof markUserAssetInfoLoadedForAssetType === 'function') markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
+        console.log('[BulkMeta] Skipped GetBulkAssetMetadata for Point Machine');
+        if (callback) callback();
+        return;
+    }
+
     if (bulkMetadataLoaded &&
         bulkMetadataSiteId === String(siteId) &&
         bulkMetadataAssetTypeId === String(assetTypeId)) {
@@ -1709,56 +1936,113 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                     var dl = dls[k];
                     if (!dl) continue;
 
-                    var dlRole = String(_tlFirstNonEmpty(
-                        dl.DataloggerAttributeId,
-                        dl.Role,
-                        dl.AssetAttributeId,
-                        dl.Id,
-                        dl.SrNo,
-                        dl.DataloggerAttribute
-                    ));
-
-                    var dlName = _tlFirstNonEmpty(
-                        dl.DataloggerAttribute,
-                        dl.DataloggerAssetName,
-                        dl.AttributeName,
-                        dl.Name,
-                        dlRole
-                    );
-
-                    if (!dlRole || !dlName) continue;
+                    // For DL display, always show DataloggerAttribute, e.g. TPR.
+                    // History/graph can receive AttributeId as DataloggerAttributeId, Value, Id, or raw name.
+                    var dlName = $.trim(String(dl.DataloggerAttribute || ''));
+                    if (!dlName) dlName = $.trim(String(dl.DataloggerAssetName || ''));
+                    if (!dlName) dlName = $.trim(String(dl.AttributeName || dl.Name || ''));
+                    if (!dlName) continue;
 
                     var dlEntry = {
-                        name: dlName,
-                        attributeName: dlName,
+                        name: dlName,                                // final display name: TPR
+                        attributeName: dl.DataloggerAttribute || dlName,
                         dataloggerAttribute: dl.DataloggerAttribute || '',
                         dataloggerAssetName: dl.DataloggerAssetName || '',
+                        dataloggerAttributeId: dl.DataloggerAttributeId || null,
+                        dataloggerValueId: dl.Value || null,
+                        contactType: dl.ContactType || '',
                         assetName: assetName,
                         assetTypeId: asset.AssetTypeId,
                         siteId: asset.SiteId
                     };
 
-                    var dlKey = aid + '_' + dlRole;
+                    function addDlMapKey(mapId) {
+                        mapId = $.trim(String(mapId || ''));
+                        if (!mapId || mapId === '0' || mapId.toLowerCase() === 'null') return;
 
-                    userAssetDataloggerMap[dlKey] = dlEntry;
-                    bulkDataloggerMap[dlKey] = dlEntry;
-                    dlRoleNameMap[dlRole] = dlName;
-                    dlAssetRoleMap[dlKey] = dlName;
+                        var dlKey = aid + '_' + mapId;
 
-                    if (dl.DataloggerAttribute) {
-                        bulkDataloggerMap[aid + '_' + dl.DataloggerAttribute] = dlEntry;
-                        userAssetDataloggerMap[aid + '_' + dl.DataloggerAttribute] = dlEntry;
-                        dlAssetRoleMap[aid + '_' + dl.DataloggerAttribute] = dlName;
+                        userAssetDataloggerMap[dlKey] = dlEntry;
+                        bulkDataloggerMap[dlKey] = dlEntry;
+                        dlRoleNameMap[mapId] = dlName;
+                        dlAssetRoleMap[dlKey] = dlName;
                     }
 
-                    if (dl.DataloggerAssetName) {
-                        bulkDataloggerMap[aid + '_' + dl.DataloggerAssetName] = dlEntry;
-                        userAssetDataloggerMap[aid + '_' + dl.DataloggerAssetName] = dlEntry;
-                        dlAssetRoleMap[aid + '_' + dl.DataloggerAssetName] = dlName;
-                    }
+                    // Main DL mappings
+                    addDlMapKey(dl.DataloggerAttributeId);
+
+                    // Required for graph/history where AttributeId can come as the DL Value id, e.g. 3392 / 3428
+                    addDlMapKey(dl.Value);
+
+                    // Optional safety mappings
+                    addDlMapKey(dl.Id);
+                    addDlMapKey(dl.Role);
+                    addDlMapKey(dl.AssetAttributeId);
+                    addDlMapKey(dl.SrNo);
+                    addDlMapKey(dl.DataloggerAttribute);
+                    addDlMapKey(dl.DataloggerAssetName);
 
                     dlCount++;
                 }
+
+
+
+                //var dls = asset.mAssetInfoDataloggers || asset.MAssetInfoDataloggers || [];
+
+                //for (var k = 0; k < dls.length; k++) {
+                //    var dl = dls[k];
+                //    if (!dl) continue;
+
+                //    var dlRole = String(_tlFirstNonEmpty(
+                //        dl.DataloggerAttributeId,
+                //        dl.Role,
+                //        dl.AssetAttributeId,
+                //        dl.Id,
+                //        dl.SrNo,
+                //        dl.DataloggerAttribute
+                //    ));
+
+                //    var dlName = _tlFirstNonEmpty(
+                //        dl.DataloggerAttribute,
+                //        dl.DataloggerAssetName,
+                //        dl.AttributeName,
+                //        dl.Name,
+                //        dlRole
+                //    );
+
+                //    if (!dlRole || !dlName) continue;
+
+                //    var dlEntry = {
+                //        name: dlName,
+                //        attributeName: dlName,
+                //        dataloggerAttribute: dl.DataloggerAttribute || '',
+                //        dataloggerAssetName: dl.DataloggerAssetName || '',
+                //        assetName: assetName,
+                //        assetTypeId: asset.AssetTypeId,
+                //        siteId: asset.SiteId
+                //    };
+
+                //    var dlKey = aid + '_' + dlRole;
+
+                //    userAssetDataloggerMap[dlKey] = dlEntry;
+                //    bulkDataloggerMap[dlKey] = dlEntry;
+                //    dlRoleNameMap[dlRole] = dlName;
+                //    dlAssetRoleMap[dlKey] = dlName;
+
+                //    if (dl.DataloggerAttribute) {
+                //        bulkDataloggerMap[aid + '_' + dl.DataloggerAttribute] = dlEntry;
+                //        userAssetDataloggerMap[aid + '_' + dl.DataloggerAttribute] = dlEntry;
+                //        dlAssetRoleMap[aid + '_' + dl.DataloggerAttribute] = dlName;
+                //    }
+
+                //    if (dl.DataloggerAssetName) {
+                //        bulkDataloggerMap[aid + '_' + dl.DataloggerAssetName] = dlEntry;
+                //        userAssetDataloggerMap[aid + '_' + dl.DataloggerAssetName] = dlEntry;
+                //        dlAssetRoleMap[aid + '_' + dl.DataloggerAssetName] = dlName;
+                //    }
+
+                //    dlCount++;
+                //}
 
                 if (typeof _sigAssetInfoCache !== 'undefined' && sigAttrNames.length > 0) {
                     _sigAssetInfoCache[aid] = {
@@ -1787,6 +2071,7 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
             assetAttributeLoaded = true;
             userAssetInfoLoaded = true;
             userAssetInfoSiteId = String(siteId);
+            userAssetInfoAssetTypeId = String(assetTypeId);
 
             bulkMetadataLoaded = true;
             bulkMetadataSiteId = String(siteId);
@@ -1813,6 +2098,7 @@ function _fallbackToLegacyLoad(siteId, assetTypeId, callback) {
     assetAttributeLoaded = true;
     userAssetInfoLoaded = true;
     userAssetInfoSiteId = String(siteId || '');
+    userAssetInfoAssetTypeId = String(assetTypeId || '0');
 
     if (callback) callback();
 }
@@ -1829,7 +2115,101 @@ window.getBulkAssetMeta = getBulkAssetMeta;
 window.getBulkAssetName = getBulkAssetName;
 window.resolveBulkDataloggerName = resolveBulkDataloggerName;
 
+function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
+    var aid = String(assetId || '');
 
+    function clean(v) {
+        if (v === undefined || v === null) return '';
+        return $.trim(String(v));
+    }
+
+    function fromMap(id) {
+        id = clean(id);
+        if (!id || id === '0') return '';
+
+        var key = aid + '_' + id;
+
+        if (typeof userAssetDataloggerMap !== 'undefined') {
+            var entry = userAssetDataloggerMap[key];
+            if (entry && entry.name) return entry.name;
+        }
+
+        if (typeof bulkDataloggerMap !== 'undefined') {
+            var bulkEntry = bulkDataloggerMap[key];
+            if (bulkEntry && bulkEntry.name) return bulkEntry.name;
+        }
+
+        if (typeof dlAssetRoleMap !== 'undefined' && dlAssetRoleMap[key]) {
+            return dlAssetRoleMap[key];
+        }
+
+        if (typeof dlRoleNameMap !== 'undefined' && dlRoleNameMap[id]) {
+            return dlRoleNameMap[id];
+        }
+
+        return '';
+    }
+
+    if (rawD && clean(rawD.DataloggerAttribute)) {
+        return clean(rawD.DataloggerAttribute);
+    }
+
+    var candidates = [];
+
+    if (rawD) {
+        candidates.push(rawD.DataloggerAttributeId);
+        candidates.push(rawD.AssetAttributeId);
+        candidates.push(rawD.AttributeId);
+        candidates.push(rawD.Role);
+        candidates.push(rawD.Value);
+        candidates.push(rawD.Id);
+    }
+
+    candidates.push(attrNameOrId);
+
+    var rawText = clean(attrNameOrId);
+    var nums = rawText.match(/\d+/g);
+    if (nums && nums.length) {
+        for (var ni = 0; ni < nums.length; ni++) {
+            candidates.push(nums[ni]);
+        }
+    }
+
+    for (var i = 0; i < candidates.length; i++) {
+        var found = fromMap(candidates[i]);
+        if (found) return found;
+    }
+
+    // Match by DataloggerAssetName or DataloggerAttribute if live/history sends text like 4_AXCPR
+    if (typeof userAssetDataloggerMap !== 'undefined' && rawText) {
+        var prefix = aid + '_';
+        var rawLc = rawText.toLowerCase();
+
+        for (var dk in userAssetDataloggerMap) {
+            if (dk.indexOf(prefix) !== 0) continue;
+
+            var e = userAssetDataloggerMap[dk];
+            if (!e || !e.name) continue;
+
+            var dlAssetName = clean(e.dataloggerAssetName).toLowerCase();
+            var dlAttrName = clean(e.dataloggerAttribute || e.attributeName).toLowerCase();
+
+            if (dlAssetName && dlAssetName === rawLc) return e.name;
+            if (dlAttrName && dlAttrName === rawLc) return e.name;
+        }
+    }
+
+    if (typeof resolveBulkDataloggerName === 'function') {
+        var bulkName = resolveBulkDataloggerName(assetId, attrNameOrId, rawText);
+        if (bulkName && !/^attr\s+\d+$/i.test(bulkName)) return bulkName;
+    }
+
+    if (rawText && !/^attr\s+\d+$/i.test(rawText)) return rawText;
+
+    return rawText || '';
+}
+
+window.resolveDataloggerDisplayName = resolveDataloggerDisplayName;
 
 
 
@@ -2404,11 +2784,15 @@ function fetchSignalAssetInfo(assetId, cb) {
     var live = (wsLiveData[aid] && wsLiveData[aid].attrs)
         ? Object.keys(wsLiveData[aid].attrs) : [];
 
+    // FIX-9b: Preserve _retryCount from any existing entry so the
+    // infinite-loop guard in _renderSignalGroupedTablesCore works.
+    var prevRetry = (_sigAssetInfoCache[aid] && _sigAssetInfoCache[aid]._retryCount) || 0;
     _sigAssetInfoCache[aid] = {
         loaded: true,
         loading: false,
         attrs: live,
-        pending: []
+        pending: [],
+        _retryCount: prevRetry
     };
 
     if (live.length > 0) {
@@ -2597,8 +2981,18 @@ function _renderSignalGroupedTablesCore() {
                 needFetch.push(ids[i]);
             }
             else if (e.loaded && (!e.attrs || e.attrs.length === 0)) {
-                // Previous call returned empty — retry
-                needFetch.push(ids[i]);
+                // FIX-9: Previous call returned empty. Allow ONE retry (WS data
+                // may have arrived since the first attempt), but cap at 1 to
+                // prevent the infinite loop: fetchSignalAssetInfo reads from
+                // wsLiveData (no AJAX), so if it's still empty after 1 retry
+                // it will stay empty until the next WS batch, which will
+                // trigger its own incremental update.
+                var retries = e._retryCount || 0;
+                if (retries < 1) {
+                    e._retryCount = retries + 1;
+                    needFetch.push(ids[i]);
+                }
+                // else: already retried once — skip, render with what we have
             }
             else if (e.loading) pending++;
         }
@@ -2911,7 +3305,7 @@ function buildTableRow(assetId, isTrack, isNew) {
                 //else if (an === 'Choke V' && num > 1.8) cls = 'val-danger';
 
                 var attrId = ad ? (ad.AssetAttributeId || ad.AttrId) : null;
-                var cls = getValueColorClass(attrId, num);
+                cls = getValueColorClass(attrId, num);
             }
             if (ad && ad.changed && isNew) {
                 cls += ' ws-cell-flash val-changed-flash';
@@ -2981,8 +3375,9 @@ function updateRowCells($row, asset, isTrack) {
         var an = wsAttributeNames[ai];
         var ad = asset.attrs[an];
         var $cell = $row.find('td[data-attr="' + an + '"]');
-        // Positional fallback: col 0 = asset name, col 1 = actions, attrs start at col 2.
-        if (!$cell.length) $cell = $row.find('td').eq(ai + 2);
+        // Positional fallback: col 0 = asset name, attrs start at col 1.
+        // FIX-3: was ai + 2 (off-by-one — actions are at the END, not col 1).
+        if (!$cell.length) $cell = $row.find('td').eq(ai + 1);
         if (!$cell.length) continue;
 
         var raw = ad ? ad.Value : null;
@@ -3003,12 +3398,11 @@ function updateRowCells($row, asset, isTrack) {
                 else if (an === 'TPR V') tprV = num;
 
                 var attrId = ad ? (ad.AssetAttributeId || ad.AttrId) : null;
-                var cls = getValueColorClass(attrId, num);
-
-                if (an === 'Vr' && ((num > 0.1 && num < 2.5) || num > 4.2)) cls = 'val-danger';
-                else if ((an === 'TPR V' || an === 'TPR V (Loc)') && num > 0.1 && num < 20) cls = 'val-danger';
-                else if (an === 'Charger mA' && num < 100) cls = 'val-danger';
-                else if (an === 'Choke V' && num > 1.8) cls = 'val-danger';
+                cls = getValueColorClass(attrId, num);
+                // FIX-5: Hardcoded danger overrides removed — they are already
+                // commented out in buildTableRow, so keeping them here created
+                // a visual mismatch between initial render and incremental
+                // updates. getValueColorClass is now the single source of truth.
             }
         }
 
@@ -3386,7 +3780,7 @@ function executeUIUpdate() {
         } else if (viewType === 'RDPMS') {
             updateRDPMSViewIncremental(updatedAssetIds);
         }
-       else if (viewType === 'Cards') {
+        else if (viewType === 'Cards') {
             // Use the same dispatcher logic as _tlApplyViewMode
             if (isSignalAssetType()) {
                 if (typeof renderRDPMSView === 'function') renderRDPMSView();
@@ -3402,20 +3796,6 @@ function executeUIUpdate() {
         // PointMachine view = Card view for PM assets
         else if (viewType === 'PointMachine') {
             updatePMViewIncremental(updatedAssetIds);
-        }
-
-        // Circuit overlay live-update: only when the per-asset Circuit overlay is
-        // ── FIX: PointMachine view was MISSING from this dispatch ──
-        // When drpView = 'PointMachine', none of the branches above
-        // matched, so WS data arrived but was never rendered.
-        // Card mode → incremental PM card update (build new / update existing).
-        // Table mode (pmTableMode) → full PM table re-render.
-        else if (viewType === 'PointMachine') {
-            if (window.pmTableMode) {
-                renderPmTableView();
-            } else {
-                updatePMViewIncremental(updatedAssetIds);
-            }
         }
 
         // Circuit overlay live-update: only when the per-asset Circuit overlay is
@@ -3643,9 +4023,16 @@ function processItemsInternal(items) {
             }
         }
 
-        // Asset ID filter - only apply if multiple specific assets selected
         if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
-            if (aidFilter.indexOf(String(aid)) === -1) {
+            var incomingAid = String(aid);
+
+            if (aidFilter.map(String).indexOf(incomingAid) === -1) {
+                console.warn('[Asset Filter Skip]', {
+                    incomingAssetId: incomingAid,
+                    incomingAssetName: d.AssetName,
+                    selectedAssetIds: aidFilter
+                });
+
                 skippedByAsset++;
                 continue;
             }
@@ -5303,11 +5690,21 @@ function fnBindRDPMS() {
 
 // ── Get checked asset IDs from the multi-select dropdown ─────────────────
 function getSelectedAssetIds() {
-    var v = [];
-    $('#listAssetNumber input:checked').each(function () { v.push($(this).val()); });
-    return v;
-}
+    var ids = [];
 
+    $('#listAssetNumber input:checked').each(function () {
+        ids.push(String($(this).val()));
+    });
+
+    var total = $('#listAssetNumber input').length;
+
+    // If all assets are selected, return [] so frontend does not reject valid WS assets.
+    if (total > 0 && ids.length === total) {
+        return [];
+    }
+
+    return ids;
+}
 function fnBindTableFromWebSocket() { var siteId = $('#drpSite').val(), atId = $('#drpAssetType').val(), assetIds = getSelectedAssetIds(); if (!siteId || siteId === '0' || siteId === '') { showWarning('Please select a site', 'Validation'); return; } disconnectWebSocket(); connectWebSocket(siteId, atId, assetIds); $('#downloadContainer').show(); }
 function fnBindTableFromAPI() {
     var siteId = $('#drpSite').val(), assetTypeId = $('#drpAssetType').val(), assetIds = getSelectedAssetIds();
@@ -5405,34 +5802,57 @@ function fnBindTable() {
 }
 
 function fnSearchView() {
-    // Mark that user has explicitly searched — unlocks rendering in updateViewMode
+    var siteId = $('#drpSite').val();
+    var assetTypeId = $('#drpAssetType').val();
+    var selectedAssetIds = (typeof getSelectedAssetIds === 'function') ? getSelectedAssetIds() : [];
+
+    if (!siteId || siteId === '0' || siteId === '') {
+        showWarning('Please select a site', 'Validation');
+        return;
+    }
+
+    if (!assetTypeId || assetTypeId === '0' || assetTypeId === '') {
+        showWarning('Please select an asset type', 'Validation');
+        return;
+    }
+
+    if (!selectedAssetIds || selectedAssetIds.length === 0) {
+        // FIX: getSelectedAssetIds() returns [] when ALL assets are checked
+        // (to signal "don't filter"). That is a valid selection, not an empty one.
+        // Only warn if genuinely no checkboxes are checked.
+        var _totalAssets = $('#listAssetNumber input').length;
+        var _checkedAssets = $('#listAssetNumber input:checked').length;
+        if (_checkedAssets === 0 || _totalAssets === 0) {
+            showWarning('Please select at least one asset number', 'Validation');
+            return;
+        }
+    }
+
+    // Mark that user has explicitly searched — unlocks rendering in updateViewMode.
     window._tlSearchInitiated = true;
 
     var viewType = $('#drpView').val();
+    var isSignal = isSignalAssetType();
+    var isPoint = isPointAssetType();
+    var isIps = isIpsAssetType();
+
     // Hide Cards container ONLY when we're not currently displaying Cards.
-    // If user is on the Cards tab and presses Search, leave Cards visible --
-    // the underlying binder (per drpView) will populate wsLiveData via WebSocket
-    // and the updateWsStats hook re-renders atRenderCards() while Cards stays on top.
+    // If user is on the Cards tab and presses Search, leave Cards visible.
     var _onCards = $('#atCardView').hasClass('at-force-shown');
     if (!_onCards) {
         $('#atCardView').hide().removeClass('at-force-shown').addClass('at-force-hidden');
         $('.at-table-scroll').show().removeClass('at-force-hidden').addClass('at-force-shown');
     }
     $('#trackCardContainer').hide();
-    var siteId = $('#drpSite').val();
 
-    // ── Gate: make sure bulk metadata is loaded before any view binds ──
-    var assetTypeId = $('#drpAssetType').val();
-    if (!bulkMetadataLoaded || bulkMetadataSiteId !== String(siteId) || bulkMetadataAssetTypeId !== String(assetTypeId)) {
+    // Gate: Track/Signal/IPS use bulk metadata. Point Machine must stay on old GetAssestBy/GetPMAssetMeta flow.
+    if (!isPoint &&
+        (!bulkMetadataLoaded || bulkMetadataSiteId !== String(siteId) || bulkMetadataAssetTypeId !== String(assetTypeId))) {
         loadBulkAssetMetadata(siteId, assetTypeId, function () { fnSearchView(); });
         return;
     }
 
-    var isSignal = isSignalAssetType();
-    var isPoint = isPointAssetType();
-    var isIps = isIpsAssetType();
-
-    // Force WebSocket for Signal, Point Machine and IPS
+    // Force WebSocket for Signal, Point Machine and IPS.
     if (isSignal || isPoint || isIps) {
         useApiDataSource = false;
         $('#chkDataSource').prop('checked', false);
@@ -5448,14 +5868,13 @@ function fnSearchView() {
         $('#trackCardContainer').show();
         fnBindTrackCards();
     } else if (viewType === 'Table') {
-        // Restore scroll constraint for table
         var _tsT = document.querySelector('.at-table-scroll');
         if (_tsT) { _tsT.style.overflow = ''; _tsT.style.maxHeight = ''; _tsT.classList.add('scroll-table-mode'); }
+
         if (isWebSocketSite(siteId)) {
             if (isSignal) {
                 fnBindTableFromWebSocket();
             } else if (isPoint) {
-                // Point Machine + Table view = PM Table format
                 fnBindPointMachineTable();
             } else if (useApiDataSource) {
                 disconnectWebSocket();
@@ -5468,7 +5887,6 @@ function fnSearchView() {
             if (useApiDataSource && !isSignal && !isPoint) {
                 fnBindTableFromAPI();
             } else if (isPoint) {
-                // Point Machine + Table view for non-WS sites
                 fnBindPointMachineTable();
             } else {
                 fnBindTable();
@@ -7590,6 +8008,8 @@ if ($('#circuit-ws-styles').length === 0) {
 
 // ===== GRAPH MODAL - Using HistoryValue API =====
 var rdpmsGraphChart = null;
+var rdpmsGraphRequestSeq = 0;
+var rdpmsGraphXhr = null;
 // Use server-side proxy to avoid mixed content (HTTPS page calling HTTP API)
 var HISTORY_API_BASE = '/FRS25/Telemetry/GetHistoryData';
 
@@ -7624,7 +8044,76 @@ function formatTimeForTooltip(timestamp) {
             String(d.getSeconds()).padStart(2, '0');
     } catch (e) { return ''; }
 }
+function formatDateTimeForGraphDisplay(timestamp) {
+    try {
+        var d = new Date(timestamp);
+        if (isNaN(d.getTime())) return '';
 
+        return String(d.getDate()).padStart(2, '0') + '/' +
+            String(d.getMonth() + 1).padStart(2, '0') + ' ' +
+            String(d.getHours()).padStart(2, '0') + ':' +
+            String(d.getMinutes()).padStart(2, '0');
+    } catch (e) {
+        return '';
+    }
+}
+
+function _graphMonthName(idx) {
+    return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][idx] || '';
+}
+
+function _graphXAxisLabel(value, spanMs) {
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+
+    var hh = String(d.getHours()).padStart(2, '0');
+    var mm = String(d.getMinutes()).padStart(2, '0');
+    var ss = String(d.getSeconds()).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    var mon = _graphMonthName(d.getMonth());
+
+    if (spanMs <= 2 * 60 * 60 * 1000) {
+        return hh + ':' + mm + ':' + ss;
+    }
+
+    // For 24H, show date also; otherwise 15:57 - 15:57 looks confusing.
+    return dd + ' ' + mon + '\n' + hh + ':' + mm;
+}
+
+function _graphIsVoltageSeries(name) {
+    name = String(name || '').toLowerCase();
+
+    return (
+        name.indexOf('(v)') > -1 ||
+        name.indexOf(' v') > -1 ||
+        name.indexOf('voltage') > -1 ||
+        name.indexOf('vtc') > -1 ||
+        name.indexOf('vac') > -1 ||
+        name.indexOf('vdc') > -1
+    );
+}
+
+function _graphGetEntryTimeMs(entry, axisMin, axisMax) {
+    if (!entry) return null;
+
+    var t = entry.Timestamp || {};
+
+    // STRICT: Graph must use TimestampDevice only.
+    // Do not fallback to TimestampLocal / TimestampEdgeX / TimestampChange.
+    var ts = t.TimestampDevice || entry.TimestampDevice || null;
+
+    if (!ts) return null;
+
+    ts = String(ts);
+
+    if (ts.indexOf('0001') >= 0) return null;
+
+    var ms = new Date(ts).getTime();
+
+    if (isNaN(ms) || ms <= 0) return null;
+
+    return ms;
+}
 function fnGetAssetGraph(siteId, assetId) {
     if (!siteId || !assetId) { showWarning('Missing site or asset info', 'Graph'); return; }
 
@@ -7649,11 +8138,11 @@ function fnGetAssetGraph(siteId, assetId) {
         '</div>' +
         '<div class="tl-modal-toolbar">' +
         '<div class="tl-time-pills">' +
-        '<button class="tl-time-pill active" data-hours="1">1H</button>' +
-        '<button class="tl-time-pill" data-hours="3">3H</button>' +
-        '<button class="tl-time-pill" data-hours="6">6H</button>' +
-        '<button class="tl-time-pill" data-hours="12">12H</button>' +
-        '<button class="tl-time-pill" data-hours="24">24H</button>' +
+        '<button type="button" class="tl-time-pill" data-hours="1">1H</button>' +
+        '<button type="button" class="tl-time-pill" data-hours="3">3H</button>' +
+        '<button type="button" class="tl-time-pill" data-hours="6">6H</button>' +
+        '<button type="button" class="tl-time-pill" data-hours="12">12H</button>' +
+        '<button type="button" class="tl-time-pill active" data-hours="24">24H</button>' +
         '</div>' +
         '<span class="tl-time-range" id="graphTimeRange"></span>' +
         '</div>' +
@@ -7671,12 +8160,24 @@ function fnGetAssetGraph(siteId, assetId) {
 
     $('#rdpmsGraphOverlay').data({ assetId: assetId, siteId: siteId, assetTypeId: assetTypeId, assetName: assetName });
 
-    $('#rdpmsGraphOverlay').on('click', '.tl-time-pill', function () {
-        $(this).addClass('active').siblings().removeClass('active');
-        loadHistoryGraphData(assetId, parseInt($(this).data('hours')));
-    });
+    $('#rdpmsGraphOverlay')
+        .off('click.rdpmsGraphTime', '.tl-time-pill')
+        .on('click.rdpmsGraphTime', '.tl-time-pill', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
 
-    loadHistoryGraphData(assetId, 1);
+            var $btn = $(this);
+            var hours = parseInt($btn.attr('data-hours'), 10);
+
+            if (isNaN(hours) || hours <= 0) return;
+
+            $btn.addClass('active').siblings().removeClass('active');
+
+            loadHistoryGraphData(assetId, hours);
+        });
+
+    // Default: show last 24 hours
+    loadHistoryGraphData(assetId, 24);
 }
 
 // PM Direction Graph - filters by Normal/Reverse indication IDs
@@ -8474,46 +8975,138 @@ function loadHistoryGraphData(assetId, hours) {
     var $error = $('#rdpmsGraphError');
     var $timeRange = $('#graphTimeRange');
 
+    hours = parseInt(hours, 10);
+    if (isNaN(hours) || hours <= 0) hours = 24;
+
+    var requestId = ++rdpmsGraphRequestSeq;
+
+    if (rdpmsGraphXhr && rdpmsGraphXhr.readyState !== 4) {
+        try { rdpmsGraphXhr.abort(); } catch (e) { }
+    }
+
     $loading.show();
     $chartDiv.hide();
     $error.hide();
 
-    // Calculate time range
+    if (rdpmsGraphChart) {
+        try { rdpmsGraphChart.clear(); } catch (e) { }
+    }
+
     var endDate = new Date();
     var startDate = new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
 
     var startStr = formatDateForHistoryApi(startDate);
     var endStr = formatDateForHistoryApi(endDate);
 
-    // Update time range display
-    $timeRange.text(formatTimeForDisplay(startDate) + ' - ' + formatTimeForDisplay(endDate));
+    // Show date + time, not only HH:mm.
+    $timeRange.text(formatDateTimeForGraphDisplay(startDate) + ' - ' + formatDateTimeForGraphDisplay(endDate));
+
+    $('#rdpmsGraphOverlay').data({
+        graphStartDate: startDate,
+        graphEndDate: endDate,
+        graphHours: hours
+    });
 
     var apiUrl = HISTORY_API_BASE + '?assetId=' + assetId + '&startDate=' + startStr + '&endDate=' + endStr;
 
-    console.log('[Graph Modal] Fetching history from:', apiUrl);
+    console.log('[Graph Modal] Fetching history:', {
+        assetId: assetId,
+        hours: hours,
+        startDate: startStr,
+        endDate: endStr,
+        url: apiUrl
+    });
 
-    $.ajax({
+    rdpmsGraphXhr = $.ajax({
         url: apiUrl,
         type: 'GET',
         dataType: 'json',
-        timeout: 30000,
+        timeout: 60000,
         success: function (response) {
+            if (requestId !== rdpmsGraphRequestSeq) return;
+
             $loading.hide();
 
             if (response && response.Data && response.Data.length > 0) {
                 $chartDiv.show();
-                renderHistoryChart(response.Data, assetId, hours);
+
+                renderHistoryChart(response.Data, assetId, hours, startDate, endDate);
+
+                setTimeout(function () {
+                    if (rdpmsGraphChart) rdpmsGraphChart.resize();
+                }, 100);
             } else {
-                $error.html('<i class="fas fa-info-circle"></i> No historical data available for the selected time range.<br/><small class="text-muted">Try selecting a different time range.</small>').show();
+                $chartDiv.hide();
+                $error.html(
+                    '<i class="fas fa-info-circle"></i> No historical data available for selected ' +
+                    hours + ' hour range.<br/><small class="text-muted">Range: ' +
+                    formatDateTimeForGraphDisplay(startDate) + ' - ' +
+                    formatDateTimeForGraphDisplay(endDate) + '</small>'
+                ).show();
             }
         },
         error: function (xhr, status, error) {
+            if (status === 'abort') return;
+            if (requestId !== rdpmsGraphRequestSeq) return;
+
             console.error('[Graph Modal] API Error:', status, error);
+
             $loading.hide();
-            $error.html('<i class="fas fa-exclamation-circle"></i> Failed to load graph data.<br/><small class="text-muted">Error: ' + (error || status) + '</small>').show();
+            $chartDiv.hide();
+            $error.html(
+                '<i class="fas fa-exclamation-circle"></i> Failed to load graph data.' +
+                '<br/><small class="text-muted">Error: ' + (error || status) + '</small>'
+            ).show();
         }
     });
 }
+
+//function loadHistoryGraphData(assetId, hours) {
+//    var $loading = $('#rdpmsGraphLoading');
+//    var $chartDiv = $('#rdpmsGraphChartDiv');
+//    var $error = $('#rdpmsGraphError');
+//    var $timeRange = $('#graphTimeRange');
+
+//    $loading.show();
+//    $chartDiv.hide();
+//    $error.hide();
+
+//    // Calculate time range
+//    var endDate = new Date();
+//    var startDate = new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
+
+//    var startStr = formatDateForHistoryApi(startDate);
+//    var endStr = formatDateForHistoryApi(endDate);
+
+//    // Update time range display
+//    $timeRange.text(formatTimeForDisplay(startDate) + ' - ' + formatTimeForDisplay(endDate));
+
+//    var apiUrl = HISTORY_API_BASE + '?assetId=' + assetId + '&startDate=' + startStr + '&endDate=' + endStr;
+
+//    console.log('[Graph Modal] Fetching history from:', apiUrl);
+
+//    $.ajax({
+//        url: apiUrl,
+//        type: 'GET',
+//        dataType: 'json',
+//        timeout: 30000,
+//        success: function (response) {
+//            $loading.hide();
+
+//            if (response && response.Data && response.Data.length > 0) {
+//                $chartDiv.show();
+//                renderHistoryChart(response.Data, assetId, hours);
+//            } else {
+//                $error.html('<i class="fas fa-info-circle"></i> No historical data available for the selected time range.<br/><small class="text-muted">Try selecting a different time range.</small>').show();
+//            }
+//        },
+//        error: function (xhr, status, error) {
+//            console.error('[Graph Modal] API Error:', status, error);
+//            $loading.hide();
+//            $error.html('<i class="fas fa-exclamation-circle"></i> Failed to load graph data.<br/><small class="text-muted">Error: ' + (error || status) + '</small>').show();
+//        }
+//    });
+//}
 
 // Get attribute name from wsLiveData or default
 function getAttributeName(assetId, attributeId) {
@@ -8567,8 +9160,7 @@ function getAttributeName(assetId, attributeId) {
 
     return fallbackMap[attributeId] || ('Attr ' + attributeId);
 }
-
-function renderHistoryChart(data, assetId, hours) {
+function renderHistoryChart(data, assetId, hours, startDate, endDate) {
     var $chartDiv = $('#rdpmsGraphChartDiv');
     $chartDiv.show();
 
@@ -8578,131 +9170,276 @@ function renderHistoryChart(data, assetId, hours) {
         return;
     }
 
-    var series = [];
-    var legends = [];
-    var allValues = [];
+    hours = parseInt(hours, 10);
+    if (isNaN(hours) || hours <= 0) hours = 24;
 
-    // Color palette
-    var colors = ['#259dab', '#dc3545', '#0d6efd', '#198754', '#ffc107', '#6f42c1', '#fd7e14', '#20c997', '#e83e8c', '#17a2b8'];
+    var axisEndDate = endDate ? new Date(endDate) : new Date();
+    var axisStartDate = startDate ? new Date(startDate) : new Date(axisEndDate.getTime() - (hours * 60 * 60 * 1000));
+
+    var axisMin = axisStartDate.getTime();
+    var axisMax = axisEndDate.getTime();
+    var spanMs = Math.max(axisMax - axisMin, 1);
+
+    var pendingSeries = [];
+    var legends = [];
+
+    var hasVoltageSeries = false;
+    var hasOtherSeries = false;
+
+    var colors = ['#22d3ee', '#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#2dd4bf', '#f472b6', '#38bdf8'];
     var colorIdx = 0;
 
-    // Attributes to show for Point Machine (RDPMS indicators only)
-    var pmAllowedIds = [25, 26, 27, 28, 576, 577, 578, 579, 212, 213, 214, 215, 216, 217, 218, 219];
-    var pmAllowedNames = ['nwkr', 'rwkr', 'nw-v', 'nw-c', 'rw-v', 'rw-c'];
-
-    // Check if this is Point Machine asset type
     var assetTypeId = $('#rdpmsGraphOverlay').data('assetTypeId') || $('#drpAssetType').val();
     var isPointMachine = (assetTypeId == 3 || assetTypeId === '3');
 
-    // Build AttrId->name from wsLiveData[assetId].attrs -- same source as checkboxes (_gPop).
-    // This gives the EXACT attribute name the user sees in the checkbox panel.
-    // We do NOT use dlRoleNameMap (no AssetId scope -- gives wrong cross-asset names).
+    window._gColorMap = window._gColorMap || {};
+
+    function getTimestampDeviceMs(entry) {
+        if (!entry) return null;
+
+        var ts = null;
+
+        if (entry.Timestamp && entry.Timestamp.TimestampDevice) {
+            ts = entry.Timestamp.TimestampDevice;
+        } else if (entry.TimestampDevice) {
+            ts = entry.TimestampDevice;
+        }
+
+        if (!ts) return null;
+
+        ts = String(ts);
+
+        if (ts.indexOf('0001') >= 0) return null;
+
+        var ms = new Date(ts).getTime();
+
+        if (isNaN(ms) || ms <= 0) return null;
+
+        return ms;
+    }
+
     var liveAttrIdToName = {};
     var liveAsset = wsLiveData[assetId];
+
     if (liveAsset && liveAsset.attrs) {
-        for (var _k in liveAsset.attrs) {
-            var _a = liveAsset.attrs[_k];
-            var _id = parseInt(_a.AttrId || _a.AssetAttributeId || 0);
-            if (_id) liveAttrIdToName[_id] = _k;
+        for (var attrKey in liveAsset.attrs) {
+            var liveAttr = liveAsset.attrs[attrKey];
+            if (!liveAttr) continue;
+
+            var liveAttrId = parseInt(liveAttr.AttrId || liveAttr.AssetAttributeId || liveAttr.AttributeId || 0);
+            if (!liveAttrId) continue;
+
+            var displayName = (typeof getAttrDisplayNamePlain === 'function')
+                ? getAttrDisplayNamePlain(attrKey, liveAttrId, assetId)
+                : attrKey;
+
+            liveAttrIdToName[liveAttrId] = displayName || attrKey;
         }
     }
-    // Also add DataLogger relay names from dlAssetRoleMap (asset-scoped)
-    for (var _dlKey in dlAssetRoleMap) {
-        if (_dlKey.indexOf(String(assetId) + '_') === 0) {
-            var _dlAttrId = parseInt(_dlKey.split('_')[1]);
-            if (_dlAttrId && !liveAttrIdToName[_dlAttrId]) {
-                liveAttrIdToName[_dlAttrId] = dlAssetRoleMap[_dlKey];
+
+    if (typeof dlAssetRoleMap !== 'undefined') {
+        for (var dlKey in dlAssetRoleMap) {
+            if (dlKey.indexOf(String(assetId) + '_') !== 0) continue;
+
+            var dlAttrId = parseInt(dlKey.split('_')[1], 10);
+            if (dlAttrId && !liveAttrIdToName[dlAttrId]) {
+                liveAttrIdToName[dlAttrId] = dlAssetRoleMap[dlKey];
             }
         }
     }
 
     data.forEach(function (attrData) {
-        var attrId = attrData.AttributeId;
+        if (!attrData || !attrData.Values) return;
 
-        // Skip if ALL values are DataLogger (relay) -- we don't plot relays in this graph
-        if (attrData.Values) {
-            var allKeys = Object.keys(attrData.Values);
-            var isDataLogger = allKeys.length > 0 && allKeys.every(function (k) {
-                return attrData.Values[k] && attrData.Values[k].DataType === 'DataLogger';
-            });
-            if (isDataLogger) return;
+        var attrId = parseInt(attrData.AttributeId, 10);
+        if (!attrId) return;
+
+        if (isPointMachine && typeof isPmOperationAttrId === 'function' && isPmOperationAttrId(attrId)) return;
+
+        var valueKeys = Object.keys(attrData.Values);
+        if (!valueKeys.length) return;
+
+        var firstEntry = attrData.Values['1'] || attrData.Values[valueKeys[0]] || {};
+        var attrDataType = firstEntry.DataType || attrData.DataType || '';
+
+        if (typeof shouldIncludeInGraph === 'function' && !shouldIncludeInGraph(attrId, attrDataType)) return;
+
+        var isDataLoggerType = String(attrDataType || '').toLowerCase() === 'datalogger';
+
+        var displayName = '';
+
+        if (isDataLoggerType) {
+            if (typeof resolveDataloggerDisplayName === 'function') {
+                displayName = resolveDataloggerDisplayName(assetId, attrId, {
+                    DataType: attrDataType,
+                    AttributeId: attrId,
+                    AssetAttributeId: attrId,
+                    DataloggerAttributeId: attrId,
+                    Value: firstEntry.Value,
+                    DataloggerAttribute: firstEntry.DataloggerAttribute
+                });
+            }
+
+            displayName = displayName || liveAttrIdToName[attrId] || ('Attr ' + attrId);
+        } else {
+            displayName = liveAttrIdToName[attrId];
+
+            if (!displayName && typeof resolveUserAssetName === 'function') {
+                var resolved = resolveUserAssetName(assetId, attrId, attrDataType);
+                if (resolved && resolved.name) displayName = resolved.name;
+            }
+
+            if (!displayName && typeof getAttributeName === 'function') {
+                var rawName = getAttributeName(assetId, attrId);
+                displayName = (typeof getAttrDisplayNamePlain === 'function')
+                    ? getAttrDisplayNamePlain(rawName, attrId, assetId)
+                    : rawName;
+            }
+
+            displayName = displayName || ('Attr ' + attrId);
         }
 
-        // Skip if this attrId is not in the checkbox panel for this asset
-        if (!liveAttrIdToName[attrId]) return;
-
-        // Get name -- same key used in _gChecked
-        var attrName = liveAttrIdToName[attrId];
-
-        // Skip if user has unchecked this attribute
-        if (_gChecked[attrName] === false) return;
+        if (typeof _gChecked !== 'undefined') {
+            if (_gChecked[displayName] === false) return;
+        }
 
         var points = [];
+
         for (var key in attrData.Values) {
             var entry = attrData.Values[key];
-            if (!entry || !entry.Timestamp || entry.Value === undefined) continue;
+            if (!entry) continue;
 
-            var ts = entry.Timestamp.TimestampDevice || entry.Timestamp.TimestampLocal;
-            if (!ts || ts.indexOf('0001') >= 0) continue;
+            var rawVal = entry.Value;
+            if (rawVal === undefined || rawVal === null || rawVal === '') continue;
 
-            var time = new Date(ts).getTime();
-            var val = parseFloat(entry.Value);
+            var val = parseFloat(rawVal);
+            if (isNaN(val)) continue;
 
-            if (!isNaN(time) && !isNaN(val) && time > 0) {
-                points.push([time, val]);
-                allValues.push(val);
+            // STRICT: graph X-axis must use TimestampDevice only.
+            var time = getTimestampDeviceMs(entry);
+            if (time === null || time === undefined) continue;
+
+            // Keep only selected hour range.
+            if (time < axisMin || time > axisMax) continue;
+
+            points.push([time, val]);
+        }
+
+        if (!points.length) return;
+
+        points.sort(function (a, b) { return a[0] - b[0]; });
+
+        // Remove duplicate TimestampDevice points.
+        // Duplicate timestamp with different value causes vertical spikes.
+        var collapsed = [];
+        for (var pi = 0; pi < points.length; pi++) {
+            var p = points[pi];
+
+            if (collapsed.length && collapsed[collapsed.length - 1][0] === p[0]) {
+                collapsed[collapsed.length - 1] = p;
+            } else {
+                collapsed.push(p);
             }
         }
 
-        if (points.length === 0) return;
-        points.sort(function (a, b) { return a[0] - b[0]; });
+        points = collapsed;
 
-        var displayName = attrName;
-        var color = _gColorMap[attrName] || colors[colorIdx % colors.length];
-        _gColorMap[attrName] = color;
+        var actualCount = points.length;
+
+        var chartPoints = points.map(function (p) {
+            return {
+                value: p,
+                symbol: actualCount < 80 ? 'circle' : 'none',
+                symbolSize: actualCount < 80 ? 4 : 0
+            };
+        });
+
+        var isVoltage = _graphIsVoltageSeries(displayName);
+        if (isVoltage) hasVoltageSeries = true;
+        else hasOtherSeries = true;
+
+        var color = window._gColorMap[displayName] || colors[colorIdx % colors.length];
+        window._gColorMap[displayName] = color;
         colorIdx++;
 
         legends.push(displayName);
-        series.push({
-            name: displayName,   // ← exact same name shown in checkbox panel
+
+        pendingSeries.push({
+            name: displayName,
             type: 'line',
-            smooth: true,
+            smooth: false,
+            connectNulls: false,
+            showSymbol: actualCount < 80,
             symbol: 'circle',
-            symbolSize: 6,
-            showSymbol: points.length < 50,
-            lineStyle: { width: 2.5, color: color },
+            symbolSize: 4,
+            lineStyle: { width: 2.2, color: color },
             itemStyle: { color: color },
-            emphasis: { lineStyle: { width: 4 } },
-            data: points
+            emphasis: { lineStyle: { width: 3.5 } },
+            data: chartPoints,
+            __isVoltage: isVoltage
         });
     });
-    if (series.length === 0) {
+
+    if (!pendingSeries.length) {
         $chartDiv.hide();
-        $('#rdpmsGraphError').html('<i class="fas fa-info-circle" style="font-size:24px;display:block;margin-bottom:10px;"></i>No data available for the selected time range').show();
+        $('#rdpmsGraphError')
+            .html('<i class="fas fa-info-circle" style="font-size:24px;display:block;margin-bottom:10px;"></i>No TimestampDevice data available for selected ' + hours + ' hour range')
+            .show();
         return;
     }
 
-    // Dispose existing chart
+    var useDualAxis = hasVoltageSeries && hasOtherSeries;
+    var finalSeries = [];
+
+    pendingSeries.forEach(function (s) {
+        if (useDualAxis && s.__isVoltage) s.yAxisIndex = 1;
+        else s.yAxisIndex = 0;
+
+        delete s.__isVoltage;
+        finalSeries.push(s);
+    });
+
     if (rdpmsGraphChart) {
         rdpmsGraphChart.dispose();
         rdpmsGraphChart = null;
     }
 
-    // Force visibility and reflow before ECharts init (fixes "Chart div not found")
     $chartDiv.css({ display: 'block', visibility: 'visible' });
     el.offsetHeight;
-    rdpmsGraphChart = echarts.init(el, 'dark');
 
-    // Calculate Y axis range
-    var minVal = Math.min.apply(null, allValues);
-    var maxVal = Math.max.apply(null, allValues);
-    var range = maxVal - minVal;
-    var padding = range * 0.15 || 5;
+    rdpmsGraphChart = echarts.init(el);
+
+    var leftAxisName = useDualAxis ? 'mA / Value' : (hasVoltageSeries ? 'V' : 'mA / Value');
+
+    var yAxisConfig = [
+        {
+            type: 'value',
+            name: leftAxisName,
+            nameTextStyle: { fontSize: 12, color: '#64748b' },
+            axisLabel: { fontSize: 11, color: '#64748b' },
+            axisLine: { show: true, lineStyle: { color: '#22d3ee', width: 2 } },
+            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+        }
+    ];
+
+    if (useDualAxis) {
+        yAxisConfig.push({
+            type: 'value',
+            name: 'V',
+            position: 'right',
+            nameTextStyle: { fontSize: 12, color: '#a78bfa' },
+            axisLabel: { fontSize: 11, color: '#a78bfa' },
+            axisLine: { show: true, lineStyle: { color: '#a78bfa', width: 2 } },
+            splitLine: { show: false }
+        });
+    }
 
     rdpmsGraphChart.setOption({
         backgroundColor: 'transparent',
+        animation: false,
         tooltip: {
             trigger: 'axis',
+            confine: true,
             backgroundColor: 'rgba(10,26,46,0.96)',
             borderColor: 'rgba(37,157,171,0.4)',
             borderWidth: 1,
@@ -8710,18 +9447,28 @@ function renderHistoryChart(data, assetId, hours) {
             textStyle: { color: '#e2e8f0', fontSize: 13 },
             formatter: function (params) {
                 if (!params || !params.length) return '';
+
                 var t = new Date(params[0].value[0]);
-                var timeStr = String(t.getHours()).padStart(2, '0') + ':' +
+                var timeStr = String(t.getDate()).padStart(2, '0') + '/' +
+                    String(t.getMonth() + 1).padStart(2, '0') + ' ' +
+                    String(t.getHours()).padStart(2, '0') + ':' +
                     String(t.getMinutes()).padStart(2, '0') + ':' +
                     String(t.getSeconds()).padStart(2, '0');
+
                 var html = '<div style="font-weight:600;margin-bottom:8px;color:#22d3ee;">' + timeStr + '</div>';
+
                 params.forEach(function (p) {
+                    var suffix = _graphIsVoltageSeries(p.seriesName) ? ' V' : '';
+
                     html += '<div style="display:flex;align-items:center;margin:4px 0;">' +
                         '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
                         p.color + ';margin-right:10px;"></span>' +
                         '<span style="flex:1;color:#cbd5e1;">' + p.seriesName + '</span>' +
-                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' + p.value[1].toFixed(2) + '</span></div>';
+                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' +
+                        Number(p.value[1]).toFixed(2) + suffix +
+                        '</span></div>';
                 });
+
                 return html;
             }
         },
@@ -8743,8 +9490,8 @@ function renderHistoryChart(data, assetId, hours) {
         grid: {
             top: legends.length <= 3 ? 45 : legends.length <= 6 ? 70 : legends.length <= 9 ? 95 : 120,
             left: 65,
-            right: 30,
-            bottom: 70
+            right: useDualAxis ? 65 : 30,
+            bottom: 78
         },
         toolbox: {
             right: 15,
@@ -8753,32 +9500,26 @@ function renderHistoryChart(data, assetId, hours) {
             emphasis: { iconStyle: { borderColor: '#22d3ee' } },
             feature: {
                 dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
-                saveAsImage: { title: 'Save' }
+                restore: { title: 'Reset' },
+                saveAsImage: { title: 'Save', pixelRatio: 2 }
             }
         },
         xAxis: {
             type: 'time',
+            min: axisMin,
+            max: axisMax,
+            boundaryGap: false,
             axisLabel: {
                 fontSize: 11,
                 color: '#64748b',
                 formatter: function (v) {
-                    var d = new Date(v);
-                    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+                    return _graphXAxisLabel(v, spanMs);
                 }
             },
             axisLine: { lineStyle: { color: '#1e293b' } },
             splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
         },
-        yAxis: {
-            type: 'value',
-            name: 'Value',
-            nameTextStyle: { fontSize: 12, color: '#64748b' },
-            min: function (value) { return Math.floor(value.min - padding); },
-            max: function (value) { return Math.ceil(value.max + padding); },
-            axisLabel: { fontSize: 11, color: '#64748b' },
-            axisLine: { show: true, lineStyle: { color: '#259dab', width: 2 } },
-            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
-        },
+        yAxis: yAxisConfig,
         dataZoom: [
             {
                 type: 'slider',
@@ -8786,24 +9527,591 @@ function renderHistoryChart(data, assetId, hours) {
                 bottom: 8,
                 start: 0,
                 end: 100,
+                filterMode: 'none',
                 borderColor: '#1e293b',
                 backgroundColor: 'rgba(15,23,42,0.6)',
                 fillerColor: 'rgba(37,157,171,0.25)',
                 handleStyle: { color: '#259dab', borderColor: '#259dab' },
                 textStyle: { color: '#64748b' },
-                dataBackground: { lineStyle: { color: '#334155' }, areaStyle: { color: 'rgba(37,157,171,0.08)' } }
+                dataBackground: {
+                    lineStyle: { color: '#334155' },
+                    areaStyle: { color: 'rgba(37,157,171,0.08)' }
+                }
             },
-            { type: 'inside' }
+            {
+                type: 'inside',
+                filterMode: 'none'
+            }
         ],
-        series: series
-    });
+        series: finalSeries
+    }, true);
 
     $(window).off('resize.rdpmsGraph').on('resize.rdpmsGraph', function () {
         if (rdpmsGraphChart) rdpmsGraphChart.resize();
     });
 
-    console.log('[Graph] Rendered', series.length, 'series for asset type', assetTypeId);
-}
+    setTimeout(function () {
+        if (rdpmsGraphChart) rdpmsGraphChart.resize();
+    }, 150);
+
+    console.log('[Graph] Rendered', finalSeries.length, 'series | hours:', hours, '| timestamp: TimestampDevice only | dualAxis:', useDualAxis);
+}//function renderHistoryChart(data, assetId, hours) {
+//    var $chartDiv = $('#rdpmsGraphChartDiv');
+//    $chartDiv.show();
+
+//    var el = document.getElementById('rdpmsGraphChartDiv');
+//    if (!el) {
+//        console.error('[Graph] Chart div not found');
+//        return;
+//    }
+
+//    var series = [];
+//    var legends = [];
+//    var allValues = [];
+
+//    var colors = ['#22d3ee', '#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#fb923c', '#2dd4bf', '#f472b6', '#38bdf8'];
+//    var colorIdx = 0;
+
+//    var assetTypeId = $('#rdpmsGraphOverlay').data('assetTypeId') || $('#drpAssetType').val();
+//    var isPointMachine = (assetTypeId == 3 || assetTypeId === '3');
+
+//    var liveAttrIdToName = {};
+//    var liveAsset = wsLiveData[assetId];
+
+//    if (liveAsset && liveAsset.attrs) {
+//        for (var attrKey in liveAsset.attrs) {
+//            var liveAttr = liveAsset.attrs[attrKey];
+//            if (!liveAttr) continue;
+
+//            var liveAttrId = parseInt(liveAttr.AttrId || liveAttr.AssetAttributeId || liveAttr.AttributeId || 0);
+//            if (!liveAttrId) continue;
+
+//            var displayName = (typeof getAttrDisplayNamePlain === 'function')
+//                ? getAttrDisplayNamePlain(attrKey, liveAttrId, assetId)
+//                : attrKey;
+
+//            liveAttrIdToName[liveAttrId] = displayName || attrKey;
+//        }
+//    }
+
+//    // Add DataLogger mapping from asset-scoped map.
+//    // This fixes cases where graph receives AttributeId like 3428/3392 and was showing "Attr 3428".
+//    if (typeof dlAssetRoleMap !== 'undefined') {
+//        for (var dlKey in dlAssetRoleMap) {
+//            if (dlKey.indexOf(String(assetId) + '_') !== 0) continue;
+
+//            var dlId = parseInt(dlKey.split('_')[1]);
+//            if (dlId && !liveAttrIdToName[dlId]) {
+//                liveAttrIdToName[dlId] = dlAssetRoleMap[dlKey];
+//            }
+//        }
+//    }
+
+//    data.forEach(function (attrData) {
+//        if (!attrData) return;
+
+//        var attrId = attrData.AttributeId;
+//        if (!attrData.Values) return;
+
+//        var valueKeys = Object.keys(attrData.Values);
+//        if (!valueKeys.length) return;
+
+//        var firstEntry = attrData.Values['1'] || attrData.Values[valueKeys[0]] || {};
+//        var attrDataType = firstEntry.DataType || attrData.DataType || '';
+
+//        if (!shouldIncludeInGraph(attrId, attrDataType)) return;
+
+//        var isDataLoggerType = String(attrDataType || '').toLowerCase() === 'datalogger';
+
+//        var attrName = '';
+//        var displayName = '';
+
+//        if (isDataLoggerType) {
+//            displayName = resolveDataloggerDisplayName(assetId, attrId, {
+//                DataType: attrDataType,
+//                AttributeId: attrId,
+//                AssetAttributeId: attrId,
+//                DataloggerAttributeId: attrId,
+//                Value: firstEntry.Value,
+//                DataloggerAttribute: firstEntry.DataloggerAttribute
+//            });
+
+//            if (!displayName) {
+//                displayName = liveAttrIdToName[attrId] || ('Attr ' + attrId);
+//            }
+
+//            attrName = displayName;
+//        } else {
+//            attrName = liveAttrIdToName[attrId];
+
+//            if (!attrName) {
+//                var resolved = resolveUserAssetName(assetId, attrId, attrDataType);
+//                if (resolved && resolved.name) {
+//                    attrName = resolved.name;
+//                }
+//            }
+
+//            if (!attrName) {
+//                var rawName = getAttributeName(assetId, attrId);
+//                attrName = (typeof getAttrDisplayNamePlain === 'function')
+//                    ? getAttrDisplayNamePlain(rawName, attrId, assetId)
+//                    : rawName;
+//            }
+
+//            displayName = attrName;
+//        }
+
+//        // Respect graph checkbox state if available.
+//        if (typeof _gChecked !== 'undefined') {
+//            if (_gChecked[attrName] === false || _gChecked[displayName] === false) return;
+//        }
+
+//        // For Point Machine, avoid operation/event IDs. Keep only numeric indication/history data.
+//        if (isPointMachine && isPmOperationAttrId(attrId)) return;
+
+//        var points = [];
+
+//        for (var key in attrData.Values) {
+//            var entry = attrData.Values[key];
+//            if (!entry) continue;
+
+//            var rawVal = entry.Value;
+//            if (rawVal === undefined || rawVal === null || rawVal === '') continue;
+
+//            var val = parseFloat(rawVal);
+//            if (isNaN(val)) continue;
+
+//            var ts = null;
+
+//            if (entry.Timestamp) {
+//                ts = entry.Timestamp.TimestampDevice ||
+//                    entry.Timestamp.TimestampLocal ||
+//                    entry.Timestamp.TimestampEdgeX ||
+//                    entry.Timestamp.TimestampChannel ||
+//                    entry.Timestamp.TimestampPeriodic ||
+//                    entry.Timestamp.TimestampChange;
+//            }
+
+//            ts = ts || entry.TimestampDevice || entry.TimestampLocal || entry.timestamp || entry.TimestampLocal;
+
+//            if (!ts || String(ts).indexOf('0001') >= 0) continue;
+
+//            var time = new Date(ts).getTime();
+//            if (isNaN(time) || time <= 0) continue;
+
+//            points.push([time, val]);
+//            allValues.push(val);
+//        }
+
+//        if (!points.length) return;
+
+//        points.sort(function (a, b) { return a[0] - b[0]; });
+
+//        var color = _gColorMap && _gColorMap[displayName]
+//            ? _gColorMap[displayName]
+//            : colors[colorIdx % colors.length];
+
+//        if (typeof _gColorMap !== 'undefined') {
+//            _gColorMap[displayName] = color;
+//        }
+
+//        colorIdx++;
+
+//        legends.push(displayName);
+
+//        series.push({
+//            name: displayName,
+//            type: 'line',
+//            smooth: true,
+//            symbol: 'circle',
+//            symbolSize: 5,
+//            showSymbol: points.length < 50,
+//            connectNulls: true,
+//            lineStyle: { width: 2.5, color: color },
+//            itemStyle: { color: color },
+//            emphasis: { lineStyle: { width: 4 } },
+//            data: points
+//        });
+//    });
+
+//    if (!series.length) {
+//        $chartDiv.hide();
+//        $('#rdpmsGraphError')
+//            .html('<i class="fas fa-info-circle" style="font-size:24px;display:block;margin-bottom:10px;"></i>No data available for the selected time range')
+//            .show();
+//        return;
+//    }
+
+//    if (rdpmsGraphChart) {
+//        rdpmsGraphChart.dispose();
+//        rdpmsGraphChart = null;
+//    }
+
+//    $chartDiv.css({ display: 'block', visibility: 'visible' });
+//    el.offsetHeight;
+
+//    rdpmsGraphChart = echarts.init(el, 'dark');
+
+//    var minVal = Math.min.apply(null, allValues);
+//    var maxVal = Math.max.apply(null, allValues);
+//    var range = maxVal - minVal;
+//    var padding = range * 0.15 || 5;
+
+//    rdpmsGraphChart.setOption({
+//        backgroundColor: 'transparent',
+//        tooltip: {
+//            trigger: 'axis',
+//            backgroundColor: 'rgba(10,26,46,0.96)',
+//            borderColor: 'rgba(37,157,171,0.4)',
+//            borderWidth: 1,
+//            padding: [12, 16],
+//            textStyle: { color: '#e2e8f0', fontSize: 13 },
+//            formatter: function (params) {
+//                if (!params || !params.length) return '';
+
+//                var t = new Date(params[0].value[0]);
+//                var timeStr = String(t.getHours()).padStart(2, '0') + ':' +
+//                    String(t.getMinutes()).padStart(2, '0') + ':' +
+//                    String(t.getSeconds()).padStart(2, '0');
+
+//                var html = '<div style="font-weight:600;margin-bottom:8px;color:#22d3ee;">' + timeStr + '</div>';
+
+//                params.forEach(function (p) {
+//                    html += '<div style="display:flex;align-items:center;margin:4px 0;">' +
+//                        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
+//                        p.color + ';margin-right:10px;"></span>' +
+//                        '<span style="flex:1;color:#cbd5e1;">' + p.seriesName + '</span>' +
+//                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' +
+//                        Number(p.value[1]).toFixed(2) +
+//                        '</span></div>';
+//                });
+
+//                return html;
+//            }
+//        },
+//        legend: {
+//            data: legends,
+//            type: 'scroll',
+//            orient: 'horizontal',
+//            top: 8,
+//            left: 'center',
+//            width: '86%',
+//            textStyle: { fontSize: 12, color: '#cbd5e1' },
+//            pageTextStyle: { color: '#94a3b8' },
+//            pageIconColor: '#22d3ee',
+//            pageIconInactiveColor: '#475569',
+//            itemGap: 16,
+//            itemWidth: 24,
+//            itemHeight: 10
+//        },
+//        grid: {
+//            top: legends.length <= 4 ? 54 : 82,
+//            left: 65,
+//            right: 30,
+//            bottom: 78
+//        },
+//        toolbox: {
+//            right: 14,
+//            top: 8,
+//            feature: {
+//                dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
+//                restore: { title: 'Reset' },
+//                saveAsImage: { title: 'Save', pixelRatio: 2 }
+//            },
+//            iconStyle: { borderColor: '#94a3b8' },
+//            emphasis: { iconStyle: { borderColor: '#22d3ee' } }
+//        },
+//        xAxis: {
+//            type: 'time',
+//            boundaryGap: false,
+//            axisLabel: {
+//                fontSize: 11,
+//                color: '#94a3b8',
+//                formatter: function (v) {
+//                    var d = new Date(v);
+//                    return String(d.getHours()).padStart(2, '0') + ':' +
+//                        String(d.getMinutes()).padStart(2, '0');
+//                }
+//            },
+//            axisLine: { lineStyle: { color: '#1e293b' } },
+//            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+//        },
+//        yAxis: {
+//            type: 'value',
+//            name: 'Value',
+//            nameTextStyle: { fontSize: 12, color: '#64748b' },
+//            min: function (value) { return Math.floor(value.min - padding); },
+//            max: function (value) { return Math.ceil(value.max + padding); },
+//            axisLabel: { fontSize: 11, color: '#64748b' },
+//            axisLine: { show: true, lineStyle: { color: '#259dab', width: 2 } },
+//            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+//        },
+//        dataZoom: [
+//            {
+//                type: 'slider',
+//                height: 28,
+//                bottom: 8,
+//                start: 0,
+//                end: 100,
+//                borderColor: '#1e293b',
+//                backgroundColor: 'rgba(15,23,42,0.6)',
+//                fillerColor: 'rgba(37,157,171,0.25)',
+//                handleStyle: { color: '#259dab', borderColor: '#259dab' },
+//                textStyle: { color: '#64748b' },
+//                dataBackground: {
+//                    lineStyle: { color: '#334155' },
+//                    areaStyle: { color: 'rgba(37,157,171,0.08)' }
+//                }
+//            },
+//            { type: 'inside' }
+//        ],
+//        color: colors,
+//        series: series
+//    });
+
+//    $(window).off('resize.rdpmsGraph').on('resize.rdpmsGraph', function () {
+//        if (rdpmsGraphChart) rdpmsGraphChart.resize();
+//    });
+
+//    console.log('[Graph] Rendered', series.length, 'series for asset type', assetTypeId);
+//}
+
+//function renderHistoryChart(data, assetId, hours) {
+//    var $chartDiv = $('#rdpmsGraphChartDiv');
+//    $chartDiv.show();
+
+//    var el = document.getElementById('rdpmsGraphChartDiv');
+//    if (!el) {
+//        console.error('[Graph] Chart div not found');
+//        return;
+//    }
+
+//    var series = [];
+//    var legends = [];
+//    var allValues = [];
+
+//    // Color palette
+//    var colors = ['#259dab', '#dc3545', '#0d6efd', '#198754', '#ffc107', '#6f42c1', '#fd7e14', '#20c997', '#e83e8c', '#17a2b8'];
+//    var colorIdx = 0;
+
+//    // Attributes to show for Point Machine (RDPMS indicators only)
+//    var pmAllowedIds = [25, 26, 27, 28, 576, 577, 578, 579, 212, 213, 214, 215, 216, 217, 218, 219];
+//    var pmAllowedNames = ['nwkr', 'rwkr', 'nw-v', 'nw-c', 'rw-v', 'rw-c'];
+
+//    // Check if this is Point Machine asset type
+//    var assetTypeId = $('#rdpmsGraphOverlay').data('assetTypeId') || $('#drpAssetType').val();
+//    var isPointMachine = (assetTypeId == 3 || assetTypeId === '3');
+
+//    // Build AttrId->name from wsLiveData[assetId].attrs -- same source as checkboxes (_gPop).
+//    // This gives the EXACT attribute name the user sees in the checkbox panel.
+//    // We do NOT use dlRoleNameMap (no AssetId scope -- gives wrong cross-asset names).
+//    var liveAttrIdToName = {};
+//    var liveAsset = wsLiveData[assetId];
+//    if (liveAsset && liveAsset.attrs) {
+//        for (var _k in liveAsset.attrs) {
+//            var _a = liveAsset.attrs[_k];
+//            var _id = parseInt(_a.AttrId || _a.AssetAttributeId || 0);
+//            if (_id) liveAttrIdToName[_id] = _k;
+//        }
+//    }
+//    // Also add DataLogger relay names from dlAssetRoleMap (asset-scoped)
+//    for (var _dlKey in dlAssetRoleMap) {
+//        if (_dlKey.indexOf(String(assetId) + '_') === 0) {
+//            var _dlAttrId = parseInt(_dlKey.split('_')[1]);
+//            if (_dlAttrId && !liveAttrIdToName[_dlAttrId]) {
+//                liveAttrIdToName[_dlAttrId] = dlAssetRoleMap[_dlKey];
+//            }
+//        }
+//    }
+
+//    data.forEach(function (attrData) {
+//        var attrId = attrData.AttributeId;
+
+//        // Skip if ALL values are DataLogger (relay) -- we don't plot relays in this graph
+//        if (attrData.Values) {
+//            var allKeys = Object.keys(attrData.Values);
+//            var isDataLogger = allKeys.length > 0 && allKeys.every(function (k) {
+//                return attrData.Values[k] && attrData.Values[k].DataType === 'DataLogger';
+//            });
+//            if (isDataLogger) return;
+//        }
+
+//        // Skip if this attrId is not in the checkbox panel for this asset
+//        if (!liveAttrIdToName[attrId]) return;
+
+//        // Get name -- same key used in _gChecked
+//        var attrName = liveAttrIdToName[attrId];
+
+//        // Skip if user has unchecked this attribute
+//        if (_gChecked[attrName] === false) return;
+
+//        var points = [];
+//        for (var key in attrData.Values) {
+//            var entry = attrData.Values[key];
+//            if (!entry || !entry.Timestamp || entry.Value === undefined) continue;
+
+//            var ts = entry.Timestamp.TimestampDevice || entry.Timestamp.TimestampLocal;
+//            if (!ts || ts.indexOf('0001') >= 0) continue;
+
+//            var time = new Date(ts).getTime();
+//            var val = parseFloat(entry.Value);
+
+//            if (!isNaN(time) && !isNaN(val) && time > 0) {
+//                points.push([time, val]);
+//                allValues.push(val);
+//            }
+//        }
+
+//        if (points.length === 0) return;
+//        points.sort(function (a, b) { return a[0] - b[0]; });
+
+//        var displayName = attrName;
+//        var color = _gColorMap[attrName] || colors[colorIdx % colors.length];
+//        _gColorMap[attrName] = color;
+//        colorIdx++;
+
+//        legends.push(displayName);
+//        series.push({
+//            name: displayName,   // ← exact same name shown in checkbox panel
+//            type: 'line',
+//            smooth: true,
+//            symbol: 'circle',
+//            symbolSize: 6,
+//            showSymbol: points.length < 50,
+//            lineStyle: { width: 2.5, color: color },
+//            itemStyle: { color: color },
+//            emphasis: { lineStyle: { width: 4 } },
+//            data: points
+//        });
+//    });
+//    if (series.length === 0) {
+//        $chartDiv.hide();
+//        $('#rdpmsGraphError').html('<i class="fas fa-info-circle" style="font-size:24px;display:block;margin-bottom:10px;"></i>No data available for the selected time range').show();
+//        return;
+//    }
+
+//    // Dispose existing chart
+//    if (rdpmsGraphChart) {
+//        rdpmsGraphChart.dispose();
+//        rdpmsGraphChart = null;
+//    }
+
+//    // Force visibility and reflow before ECharts init (fixes "Chart div not found")
+//    $chartDiv.css({ display: 'block', visibility: 'visible' });
+//    el.offsetHeight;
+//    rdpmsGraphChart = echarts.init(el, 'dark');
+
+//    // Calculate Y axis range
+//    var minVal = Math.min.apply(null, allValues);
+//    var maxVal = Math.max.apply(null, allValues);
+//    var range = maxVal - minVal;
+//    var padding = range * 0.15 || 5;
+
+//    rdpmsGraphChart.setOption({
+//        backgroundColor: 'transparent',
+//        tooltip: {
+//            trigger: 'axis',
+//            backgroundColor: 'rgba(10,26,46,0.96)',
+//            borderColor: 'rgba(37,157,171,0.4)',
+//            borderWidth: 1,
+//            padding: [12, 16],
+//            textStyle: { color: '#e2e8f0', fontSize: 13 },
+//            formatter: function (params) {
+//                if (!params || !params.length) return '';
+//                var t = new Date(params[0].value[0]);
+//                var timeStr = String(t.getHours()).padStart(2, '0') + ':' +
+//                    String(t.getMinutes()).padStart(2, '0') + ':' +
+//                    String(t.getSeconds()).padStart(2, '0');
+//                var html = '<div style="font-weight:600;margin-bottom:8px;color:#22d3ee;">' + timeStr + '</div>';
+//                params.forEach(function (p) {
+//                    html += '<div style="display:flex;align-items:center;margin:4px 0;">' +
+//                        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
+//                        p.color + ';margin-right:10px;"></span>' +
+//                        '<span style="flex:1;color:#cbd5e1;">' + p.seriesName + '</span>' +
+//                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' + p.value[1].toFixed(2) + '</span></div>';
+//                });
+//                return html;
+//            }
+//        },
+//        legend: {
+//            data: legends,
+//            type: 'scroll',
+//            orient: 'horizontal',
+//            top: 10,
+//            left: 'center',
+//            width: '85%',
+//            textStyle: { fontSize: 12, color: '#94a3b8' },
+//            pageTextStyle: { color: '#94a3b8' },
+//            pageIconColor: '#259dab',
+//            pageIconInactiveColor: '#334155',
+//            itemGap: 16,
+//            itemWidth: 25,
+//            itemHeight: 12
+//        },
+//        grid: {
+//            top: legends.length <= 3 ? 45 : legends.length <= 6 ? 70 : legends.length <= 9 ? 95 : 120,
+//            left: 65,
+//            right: 30,
+//            bottom: 70
+//        },
+//        toolbox: {
+//            right: 15,
+//            top: 8,
+//            iconStyle: { borderColor: '#64748b' },
+//            emphasis: { iconStyle: { borderColor: '#22d3ee' } },
+//            feature: {
+//                dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
+//                saveAsImage: { title: 'Save' }
+//            }
+//        },
+//        xAxis: {
+//            type: 'time',
+//            axisLabel: {
+//                fontSize: 11,
+//                color: '#64748b',
+//                formatter: function (v) {
+//                    var d = new Date(v);
+//                    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+//                }
+//            },
+//            axisLine: { lineStyle: { color: '#1e293b' } },
+//            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+//        },
+//        yAxis: {
+//            type: 'value',
+//            name: 'Value',
+//            nameTextStyle: { fontSize: 12, color: '#64748b' },
+//            min: function (value) { return Math.floor(value.min - padding); },
+//            max: function (value) { return Math.ceil(value.max + padding); },
+//            axisLabel: { fontSize: 11, color: '#64748b' },
+//            axisLine: { show: true, lineStyle: { color: '#259dab', width: 2 } },
+//            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+//        },
+//        dataZoom: [
+//            {
+//                type: 'slider',
+//                height: 28,
+//                bottom: 8,
+//                start: 0,
+//                end: 100,
+//                borderColor: '#1e293b',
+//                backgroundColor: 'rgba(15,23,42,0.6)',
+//                fillerColor: 'rgba(37,157,171,0.25)',
+//                handleStyle: { color: '#259dab', borderColor: '#259dab' },
+//                textStyle: { color: '#64748b' },
+//                dataBackground: { lineStyle: { color: '#334155' }, areaStyle: { color: 'rgba(37,157,171,0.08)' } }
+//            },
+//            { type: 'inside' }
+//        ],
+//        series: series
+//    });
+
+//    $(window).off('resize.rdpmsGraph').on('resize.rdpmsGraph', function () {
+//        if (rdpmsGraphChart) rdpmsGraphChart.resize();
+//    });
+
+//    console.log('[Graph] Rendered', series.length, 'series for asset type', assetTypeId);
+//}
 
 function closeGraphModal(e) {
     if (e && e.target && !$(e.target).hasClass('tl-modal-overlay') && !$(e.target).hasClass('rdpms-graph-overlay')) return;
@@ -8825,7 +10133,7 @@ $(document).on('keydown', function (e) { if (e.key === 'Escape' && $('#rdpmsGrap
 
 // ── Fullscreen toggle for Graph and Circuit modals ──
 function toggleModalFullscreen(overlayId) {
-    var $overlay = $('#' + overlayId); W
+    var $overlay = $('#' + overlayId);
     var $shell = $overlay.find('.tl-modal-shell');
     var $btn = $overlay.find('.tl-modal-fullscreen-btn i');
 
@@ -9130,15 +10438,87 @@ function updateAssetText() {
 }
 //function loadAssetNumbersMulti(siteId, assetTypeId) { $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#chkAllAssetNumber').prop('checked', false); $('#txtAssetNumber').text('All'); if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return; $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>'); loadBulkAssetMetadata(siteId, assetTypeId, function () { var d = bulkAssetsList; if (d && d.length > 0) { var h = ''; $.each(d, function (k, v) { h += '<div class="dropdown-item" data-value="' + v.Id + '" data-text="' + v.Name + '"><input type="checkbox" value="' + v.Id + '"><span>' + v.Name + '</span></div>'; }); $('#listAssetNumber').html(h); if (typeof window._tlAutoLoad === 'function') window._tlAutoLoad({ selectAll: true }); } else { $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>'); } }); }
 function loadAssetNumbersMulti(siteId, assetTypeId) {
+    if (typeof resetPmAssetMeta === 'function') resetPmAssetMeta();
+
     $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>');
     $('#chkAllAssetNumber').prop('checked', false);
     $('#txtAssetNumber').text('All');
+    wsValidAssetIds = [];
 
-    if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
+    if (!siteId || siteId === '' || siteId === '0' ||
+        !assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
 
     $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>');
 
+    // Point Machine compatibility: use old working GetAssestBy + GetPMAssetMeta path.
+    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
+        $.ajax({
+            url: '/FRS25/Telemetry/GetAssestBy',
+            type: 'POST',
+            data: JSON.stringify({ siteId: siteId, assetTypeId: assetTypeId }),
+            contentType: 'application/json',
+            success: function (d) {
+                var list = Array.isArray(d) ? d : (d && (d.Data || d.data || d.Result || []));
+                if (list && list.length > 0) {
+                    var h = '';
+                    wsValidAssetIds = [];
+                    bulkAssetsList = [];
+
+                    $.each(list, function (k, v) {
+                        wsValidAssetIds.push(String(v.Id));
+                        bulkAssetsList.push({ Id: v.Id, Name: v.Name, SiteId: siteId, AssetTypeId: assetTypeId });
+                        h += '<div class="dropdown-item" data-value="' + _tlEscHtml(v.Id) + '" data-text="' + _tlEscHtml(v.Name) + '">' +
+                            '<input type="checkbox" value="' + _tlEscHtml(v.Id) + '"><span>' + _tlEscHtml(v.Name) + '</span>' +
+                            '</div>';
+                    });
+
+                    window.bulkAssetsList = bulkAssetsList;
+                    $('#listAssetNumber').html(h);
+
+                    if (typeof window._tlAutoLoad === 'function') {
+                        window._tlAutoLoad({ selectAll: true });
+                    } else {
+                        $('#listAssetNumber .dropdown-item').each(function () {
+                            $(this).find('input').prop('checked', true);
+                            $(this).addClass('checked');
+                        });
+                        $('#chkAllAssetNumber').prop('checked', true);
+                        updateAssetText();
+                    }
+
+                    if (typeof loadPmAssetMeta === 'function') loadPmAssetMeta(siteId, assetTypeId);
+
+                    Object.keys(wsLiveData || {}).forEach(function (id) {
+                        if (wsValidAssetIds.indexOf(String(id)) === -1) {
+                            console.log('[Assets] Pruning invalid asset from live data:', id);
+                            delete wsLiveData[id];
+                            $('#wsLiveTable tbody tr[data-id="' + id + '"]').remove();
+                        }
+                    });
+
+                    console.log('[Assets] PM whitelist populated:', wsValidAssetIds.length, 'assets for site=' + siteId + ', type=' + assetTypeId);
+                } else {
+                    wsValidAssetIds = [];
+                    bulkAssetsList = [];
+                    window.bulkAssetsList = bulkAssetsList;
+                    $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>');
+                }
+            },
+            error: function () {
+                wsValidAssetIds = [];
+                $('#listAssetNumber').html('<div class="dropdown-empty">Error loading</div>');
+            }
+        });
+        return;
+    }
+
     loadBulkAssetMetadata(siteId, assetTypeId, function () {
+        if (typeof bulkAssetsList !== 'undefined') {
+            wsValidAssetIds = [];
+            for (var i = 0; i < bulkAssetsList.length; i++) {
+                wsValidAssetIds.push(String(bulkAssetsList[i].Id));
+            }
+        }
         populateAssetDropdownsFromBulk({ autoLoad: true });
     });
 }
@@ -9150,6 +10530,37 @@ function GetByAssest(siteId, assetTypeId) {
     if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
 
     $('#loader').show();
+
+    // Point Machine compatibility: keep old GetAssestBy dropdown source.
+    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
+        $.ajax({
+            url: '/FRS25/Telemetry/GetAssestBy',
+            type: 'POST',
+            data: JSON.stringify({ siteId: siteId, assetTypeId: assetTypeId }),
+            contentType: 'application/json',
+            success: function (d) {
+                $('#loader').hide();
+
+                var list = Array.isArray(d) ? d : (d && (d.Data || d.data || d.Result || []));
+                $('#drpAsset').empty().append('<option value="">All</option>');
+                bulkAssetsList = [];
+
+                if (list && list.length > 0) {
+                    $.each(list, function (k, v) {
+                        $('#drpAsset').append('<option value="' + _tlEscHtml(v.Id) + '">' + _tlEscHtml(v.Name) + '</option>');
+                        bulkAssetsList.push({ Id: v.Id, Name: v.Name, SiteId: siteId, AssetTypeId: assetTypeId });
+                    });
+                }
+
+                window.bulkAssetsList = bulkAssetsList;
+                if (typeof loadPmAssetMeta === 'function') loadPmAssetMeta(siteId, assetTypeId);
+            },
+            error: function () {
+                $('#loader').hide();
+            }
+        });
+        return;
+    }
 
     loadBulkAssetMetadata(siteId, assetTypeId, function () {
         $('#loader').hide();
@@ -9807,13 +11218,30 @@ if (typeof fnUnderMaintenance !== 'function') { function fnUnderMaintenance(asse
 
 // ===== DATALOGGER PROCESSING =====
 function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp) {
-    // FIX: Store under displayName key (not raw attrName) so graph panel dlKey
-    // and knownRelayDisplayNames lookup both use the same consistent name.
-    // Also keep attrName as alias if different, so old lookups still work.
+    // FIX-2: Variables must be declared BEFORE use. The original code had
+    // storeKey/numVal/isPickup/displayName referenced on lines above their
+    // declaration — JS hoisting made them 'undefined', so dlRelays entries
+    // were stored with value:undefined on the first write, then silently
+    // overwritten by the second (minified) block. If wsLiveData[assetId]
+    // didn't exist, the first write would also throw a TypeError.
+    if (!wsLiveData[assetId]) return;
+    var numVal = parseFloat(value);
+    var isPickup = (numVal === 1);
+    var displayName = attrName;
+    if (assetName && displayName.indexOf(assetName) === 0) {
+        displayName = displayName.substring(assetName.length).trim();
+    }
+    if (!displayName) displayName = attrName;
+    if (!wsLiveData[assetId].dlRelays) wsLiveData[assetId].dlRelays = {};
+
+    // Store under displayName key so graph panel dlKey and
+    // knownRelayDisplayNames lookup use the same consistent name.
     var storeKey = displayName || attrName;
-    wsLiveData[assetId].dlRelays[storeKey] = { value: numVal, isPickup: isPickup, displayName: displayName, attrName: attrName, timestamp: timestamp || new Date().toISOString() };
-    if (storeKey !== attrName) { wsLiveData[assetId].dlRelays[attrName] = wsLiveData[assetId].dlRelays[storeKey]; }
-    if (!wsLiveData[assetId]) return; var numVal = parseFloat(value); var isPickup = (numVal === 1); var displayName = attrName; if (assetName && displayName.indexOf(assetName) === 0) { displayName = displayName.substring(assetName.length).trim(); } if (!displayName) displayName = attrName; if (!wsLiveData[assetId].dlRelays) wsLiveData[assetId].dlRelays = {}; wsLiveData[assetId].dlRelays[attrName] = { value: numVal, isPickup: isPickup, displayName: displayName, timestamp: timestamp || new Date().toISOString() }; wsLiveData[assetId].lastUpdated = new Date();
+    var relayObj = { value: numVal, isPickup: isPickup, displayName: displayName, attrName: attrName, timestamp: timestamp || new Date().toISOString() };
+    wsLiveData[assetId].dlRelays[storeKey] = relayObj;
+    // Keep attrName as alias if different, so old lookups still work.
+    if (storeKey !== attrName) { wsLiveData[assetId].dlRelays[attrName] = relayObj; }
+    wsLiveData[assetId].lastUpdated = new Date();
     // Update Track table DataLogger column if visible
     var $row = $('#wsLiveTable tbody tr[data-id="' + assetId + '"]');
     if ($row.length) { var $dlCell = $row.find('td.dl-cell'); if ($dlCell.length) { var dlRelays = wsLiveData[assetId].dlRelays || {}; var dlHtml = ''; var dlKeys = Object.keys(dlRelays); dlKeys.sort(function (a, b) { var ra = dlRelays[a], rb = dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return 0; }); if (dlKeys.length > 0) { for (var di = 0; di < dlKeys.length; di++) { var relay = dlRelays[dlKeys[di]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> '; } } else { dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>'; } $dlCell.html(dlHtml); } }
@@ -10104,11 +11532,11 @@ $(document).ready(function () {
                 return;
             }
             assetIds.sort(function (a, b) { return (wsLiveData[a].AssetName || '').localeCompare(wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }); });
+            assetIds = blankDataLast(assetIds); // FIX-1: moved OUTSIDE loop (was inside, re-sorting every iteration)
             var atId = parseInt(wsCurrentAssetTypeId || 0);
             var html = '<div class="at-cards-grid">';
             for (var i = 0; i < assetIds.length; i++) {
                 var aid = assetIds[i];
-                assetIds = blankDataLast(assetIds);
                 if (atId === 2) html += atBuildSignalCard(aid);
                 else if (atId === 3) html += atBuildPmCard(aid);
                 else html += atBuildTrackCard(aid);
@@ -10983,9 +12411,7 @@ function pmPad2(n) { return n < 10 ? '0' + n : '' + n; }
 // RENDER POINT MACHINE VIEW
 // ================================================================
 function renderPointMachineView() {
-    // Guard: only render if Point Machine is actually selected. Prevents
-    // wrong-asset-type cards from appearing during an asset-type switch
-    // race (e.g., a stale data batch from before the switch).
+    // Guard: only render if Point Machine is actually selected.
     if (typeof isPointAssetType === 'function' && !isPointAssetType()) {
         console.warn('[PM View] Not a Point Machine asset type – skipping render');
         return;
@@ -10996,14 +12422,11 @@ function renderPointMachineView() {
 
     if (ids.length === 0) {
         console.log('[PM View] No assets to render yet');
-        // Don't clear the waiting message if no data
         return;
     }
 
-    // Remove waiting message
     $('#wsWaiting').remove();
 
-    // Sort assets naturally
     ids.sort(function (a, b) {
         return (wsLiveData[a].AssetName || '').localeCompare(
             wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }
@@ -11012,45 +12435,31 @@ function renderPointMachineView() {
 
     var $c = $('#divTelemetryLive');
 
-    // Create container if it doesn't exist
     if ($c.find('#pmMainContainer').length === 0) {
         console.log('[PM View] Creating container');
-        // ── CRITICAL: When the container is being recreated, the DOM cards
-        // are GONE. Reset pmCardsBuilt so the upcoming buildPmCard() calls
-        // actually rebuild them (instead of skipping with "already built"
-        // and producing an empty container). This is what makes the List→Card
-        // toggle work without needing a fresh Search.
+
+        // DOM was recreated, so force card rebuild.
         pmCardsBuilt = {};
         if (typeof pmCardsBuilding !== 'undefined') pmCardsBuilding = {};
 
         $c.html('<div id="pmMainContainer" class="col-12 p-0 p-md-2"></div>');
     }
 
-    // Build/update cards
+    // Build/update cards once. The previous newer file had a nested duplicate loop here.
     for (var i = 0; i < ids.length; i++) {
         var aid = ids[i];
 
-        // Build/update cards
-        for (var i = 0; i < ids.length; i++) {
-            var aid = ids[i];
-
-            // Rebuild if flagged-but-missing — a prior build may have failed,
-            // leaving pmCardsBuilt[aid] = true with no card in the DOM.
-            if (!pmCardsBuilt[aid] || $('#pmCard_' + aid).length === 0) {
-                console.log('[PM View] Building card for:', aid, wsLiveData[aid].AssetName);
-                pmCardsBuilt[aid] = false;      // clear stale flag before rebuild
-                buildPmCard(aid);
-                pmCardsBuilt[aid] = true;
-            }
-
-            updatePmCard(aid);
+        if (!pmCardsBuilt[aid] || $('#pmCard_' + aid).length === 0) {
+            console.log('[PM View] Building card for:', aid, wsLiveData[aid].AssetName);
+            pmCardsBuilt[aid] = false;
+            buildPmCard(aid);
+            pmCardsBuilt[aid] = true;
         }
+
+        updatePmCard(aid);
     }
 
-    // Clear updated flags
     wsUpdatedAssets = {};
-
-    // Show download button
     $('#downloadContainer').show();
 }
 
@@ -11227,9 +12636,34 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     h += '</div>';
     h += '</div>';
 
-    // ── BADGES ROW (DataLogger Pickup/Drop + IRS indicators) ──
+    // ── IRS / TWS dots — built from PM metadata immediately ──
+    var _pmMetaA = (typeof getPmEndMeta === 'function') ? getPmEndMeta(assetId, 'A', baseName) : { label: 'PT-' + baseName + 'A IRS', dotColor: '#dc8b33' };
+    var _pmMetaB = (typeof getPmEndMeta === 'function') ? getPmEndMeta(assetId, 'B', baseName) : { label: 'PT-' + baseName + 'B IRS', dotColor: '#dc8b33' };
+    var _pmMetaObj = (typeof pmAssetMetaCache !== 'undefined') ? pmAssetMetaCache[String(assetId)] : null;
+    var _pmIsHalf = _pmMetaObj ? _pmMetaObj.isHalf : false;
+
     h += '<div class="pm-badges-row" id="pmBadges_' + assetId + '">';
-    h += '<span class="pm-waiting-text">Waiting for relay data...</span>';
+
+    h += '<span class="pm-irs-badge" style="display:inline-flex;align-items:center;' +
+        'gap:5px;margin-right:10px;padding:3px 8px;background:rgba(255,255,255,0.06);' +
+        'border:1px solid rgba(255,255,255,0.12);border-radius:14px;">' +
+        '<span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;display:inline-block;' +
+        'background:' + _pmMetaA.dotColor + ';box-shadow:0 0 6px ' + _pmMetaA.dotColor + '80;"></span>' +
+        '<span class="pm-irs-badge">' + pmEsc(_pmMetaA.label) + '</span></span>';
+
+    if (!_pmIsHalf) {
+        h += '<span class="pm-irs-badge" style="display:inline-flex;align-items:center;' +
+            'gap:5px;margin-right:10px;padding:3px 8px;background:rgba(255,255,255,0.06);' +
+            'border:1px solid rgba(255,255,255,0.12);border-radius:14px;">' +
+            '<span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;display:inline-block;' +
+            'background:' + _pmMetaB.dotColor + ';box-shadow:0 0 6px ' + _pmMetaB.dotColor + '80;"></span>' +
+            '<span class="pm-irs-badge">' + pmEsc(_pmMetaB.label) + '</span></span>';
+    }
+
+    // Relay badges injected here by renderPmBadges.
+    h += '<span id="pmRelayBadges_' + assetId + '" ' +
+        'style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;"></span>';
+
     h += '</div>';
 
     // ── ACTIONS ROW (Download / See More) ──
@@ -12430,32 +13864,53 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
 // DATALOGGER BADGES -- Pickup/Drop badges in header
 // ================================================================
 function renderPmBadges(assetId, dlData) {
-    var $b = $('#pmBadges_' + assetId);
-    if (!$b.length) return;
-    var keys = Object.keys(dlData);
-    if (keys.length === 0) { $b.html('<span class="pm-waiting-text">Waiting for relay data...</span>'); return; }
+    // IRS/TWS dots are static — only update the relay-badges span.
+    var $relaySpan = $('#pmRelayBadges_' + assetId);
 
-    // Also show IRS indicators if available
-    var asset = wsLiveData[assetId];
-    var name = asset ? (asset.AssetName || '') : '';
+    // Fallback: if an older card structure exists without relay span.
+    if (!$relaySpan.length) {
+        var $row = $('#pmBadges_' + assetId);
+        if ($row.length) {
+            $row.append(
+                '<span id="pmRelayBadges_' + assetId + '" ' +
+                'style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;"></span>'
+            );
+            $relaySpan = $('#pmRelayBadges_' + assetId);
+        }
+    }
+
+    if (!$relaySpan.length) return;
+
+    var keys = Object.keys(dlData || {});
+    if (keys.length === 0) {
+        $relaySpan.html('');
+        return;
+    }
+
+    keys.sort(function (a, b) {
+        var ra = dlData[a], rb = dlData[b];
+        if (ra.isPickup && !rb.isPickup) return -1;
+        if (!ra.isPickup && rb.isPickup) return 1;
+        return (ra.displayName || a).localeCompare(rb.displayName || b);
+    });
+
     var h = '';
-
-    // IRS badges (PT-xxA IRS, PT-xxB IRS)
-    h += '<span class="pm-irs-badge"><span class="pm-irs-dot orange"></span> PT-' + pmEsc(name) + 'A IRS</span>';
-    h += '<span class="pm-irs-badge"><span class="pm-irs-dot green"></span> PT-' + pmEsc(name) + 'B IRS</span>';
-
-    // Relay badges
     for (var i = 0; i < keys.length; i++) {
         var relay = dlData[keys[i]];
         var dn = relay.displayName || keys[i];
-        var statusCls = relay.isPickup ? 'pickup' : 'drop';
-        var statusTxt = relay.isPickup ? 'Pickup' : 'Drop';
-        h += '<span class="pm-relay-badge"><span class="relay-name">' + pmEsc(dn) + '</span> <span class="relay-status ' + statusCls + ' shine">' + statusTxt + '</span></span>';
+        var badgeCls = relay.isPickup ? 'pickup' : 'drop';
+        var badgeTxt = relay.isPickup ? 'Pickup' : 'Drop';
+
+        h += '<span class="pm-relay-badge">' +
+            '<span class="relay-name">' + pmEsc(dn) + '</span>' +
+            '<span class="rdpms-dl-badge ' + badgeCls + ' shine-button" ' +
+            'style="padding:1px 6px;font-size:10px;">' + badgeTxt + '</span>' +
+            '</span>';
     }
 
-    // Detail badge
     h += '<span class="pm-detail-badge" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Detail</span>';
-    $b.html(h);
+
+    $relaySpan.html(h);
 }
 
 // ================================================================
@@ -14922,6 +16377,16 @@ function processItemsFixed(items) {
     if (viewType === 'Table') {
         // ── Signal → grouped tables
         if (typeof isSignalAssetType === 'function' && isSignalAssetType()) {
+            // FIX-10: If no assets were updated in this batch AND the grouped
+            // table already exists, skip the render — nothing changed.
+            // A full render is only needed when:
+            //  (a) there are actual updates, or
+            //  (b) the table hasn't been built yet (.sig-group-wrap missing)
+            var _hasUpdates = Object.keys(wsUpdatedAssets).length > 0;
+            var _tableExists = $('#divTelemetryLive .sig-group-wrap').length > 0;
+            if (!_hasUpdates && _tableExists) {
+                return; // nothing to do
+            }
             console.log('[SigGroup:processItemsFixed] Signal+Table detected, scheduling grouped render');
             if (!wsRenderTimer) {
                 wsRenderTimer = setTimeout(function () {
@@ -15102,8 +16567,9 @@ function updateExistingRowCells(assetId, $row) {
         var an = wsAttributeNames[ai];
         var ad = asset.attrs[an];
         var $cell = $row.find('td[data-attr="' + an + '"]');
-        // Positional fallback: col 0 = asset name, col 1 = actions, attrs start at col 2.
-        if (!$cell.length) $cell = $row.find('td').eq(ai + 2);
+        // Positional fallback: col 0 = asset name, attrs start at col 1.
+        // FIX-3: was ai + 2 (off-by-one — actions are at the END, not col 1).
+        if (!$cell.length) $cell = $row.find('td').eq(ai + 1);
         if (!$cell.length) continue;
 
         var raw = ad ? ad.Value : null;
@@ -15123,10 +16589,11 @@ function updateExistingRowCells(assetId, $row) {
                 else if (an === 'Ir mA') irMa = num;
                 else if (an === 'TPR V') tprV = num;
 
-                if (an === 'Vr' && ((num > 0.1 && num < 2.5) || num > 4.2)) cls = 'val-danger';
-                else if ((an === 'TPR V' || an === 'TPR V (Loc)') && num > 0.1 && num < 20) cls = 'val-danger';
-                else if (an === 'Charger mA' && num < 100) cls = 'val-danger';
-                else if (an === 'Choke V' && num > 1.8) cls = 'val-danger';
+                // FIX-5b: Use getValueColorClass for consistency with buildTableRow
+                var attrId = ad ? (ad.AssetAttributeId || ad.AttrId) : null;
+                if (typeof getValueColorClass === 'function') {
+                    cls = getValueColorClass(attrId, num);
+                }
             }
         }
 
@@ -17081,8 +18548,13 @@ window.tlBuildAssetActions = tlBuildAssetActions;
             return;
         }
         if (!assetIds || assetIds.length === 0) {
-            if (typeof showWarning === 'function') showWarning('Please select at least one Asset Number.', 'Validation');
-            return;
+            // FIX: getSelectedAssetIds() returns [] when ALL are checked.
+            var _totalAA = $('#listAssetNumber input').length;
+            var _checkedAA = $('#listAssetNumber input:checked').length;
+            if (_checkedAA === 0 || _totalAA === 0) {
+                if (typeof showWarning === 'function') showWarning('Please select at least one Asset Number.', 'Validation');
+                return;
+            }
         }
 
         // Keep global filter state in sync so processItemsInternal etc.
@@ -17531,7 +19003,12 @@ $(document).on('keydown', function (e) { if (e.key === 'Escape' && $('#rdpmsCirc
             var ids = (typeof getSelectedAssetIds === 'function') ? getSelectedAssetIds() : [];
             if (!siteId || siteId === '0' || siteId === '') return;
             if (!atId || atId === '0' || atId === '') return;
-            if (!ids || ids.length === 0) return;
+            if (!ids || ids.length === 0) {
+                // FIX: getSelectedAssetIds() returns [] when ALL are checked.
+                var _tAL = $('#listAssetNumber input').length;
+                var _cAL = $('#listAssetNumber input:checked').length;
+                if (_cAL === 0 || _tAL === 0) return;
+            }
             window.wsCurrentFilterAssetIds = ids;
             if (typeof window.fnAdvSearch === 'function') window.fnAdvSearch();
         }, 300);
@@ -18053,6 +19530,8 @@ function tlBulkSeedMissingAttributesForAsset(assetId) {
 }
 
 function tlBulkEnsurePlaceholdersForCurrentFilter() {
+    // Point Machine uses its own schema; do not seed PM from bulk placeholders.
+    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip($('#drpAssetType').val() || wsCurrentAssetTypeId)) return 0;
     if (!bulkExpectedSchemaReady) tlBulkRebuildExpectedSchemaFromLoadedMaps();
 
     var ids = tlBulkGetCurrentAssetIdsForPlaceholders();
@@ -18140,6 +19619,8 @@ function tlBulkNormalizeIncomingItems(items) {
 }
 
 function tlBulkRenderCurrentViewFromPlaceholders() {
+    // Point Machine view is rendered by dedicated PM renderer, not bulk placeholders.
+    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip($('#drpAssetType').val() || wsCurrentAssetTypeId)) return;
     if (!bulkExpectedSchemaReady && !bulkMetadataLoaded) return;
     if (window._wsSipOnlyMode) return;
 
@@ -18219,7 +19700,8 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
         connectWebSocket = function (siteId, assetTypeId, assetIds) {
             var result = _origConnectWebSocketBulkMissing.apply(this, arguments);
 
-            if (assetTypeId && assetTypeId !== '0') {
+            if (assetTypeId && assetTypeId !== '0' &&
+                !(typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId))) {
                 if (typeof loadBulkAssetMetadata === 'function') {
                     loadBulkAssetMetadata(siteId, assetTypeId, function () {
                         tlBulkEnsurePlaceholdersForCurrentFilter();
@@ -18329,4 +19811,504 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
     if (typeof window.renderSignalGroupedTables === 'function') renderSignalGroupedTables = window.renderSignalGroupedTables;
 
     console.log('[BulkMetaMissingAttr] Applied — configured attributes now render as - when WS value is missing.');
+})();
+// ================================================================
+// TELEMETRY-LIVE BINDING FIXES v4 — Clean patch
+// Applied at file-end so all base functions are defined first.
+//
+// ROOT CAUSE of "data not binding":
+//   Attributes MUST stay keyed by their raw WS name (e.g. "If mA")
+//   in wsLiveData and wsAttributeNames. Alias resolution to
+//   "ITC FEED END(mA)" must happen ONLY at display time via
+//   getAttrDisplayName(). Previous patches that renamed keys at
+//   storage time broke the streaming pipeline because the next WS
+//   batch writes data under the raw name while the table reads
+//   the (now stale) alias key.
+//
+// FIXES APPLIED:
+//   A — Numeric-id registration in assetAttributeMap
+//   B — resolveBulkDataloggerName matches DataloggerAssetName
+//   C — processItemsInternal forwards roleOrAttrId for DL items
+//   D — scheduleUIUpdate after DL-only batches
+//   E — Deduplicate DL relay keys (raw vs display)
+//   F — getAttrDisplayName per-asset alias priority
+//   G — aria-hidden popup fix (inert attribute)
+// ================================================================
+
+(function applyTelemetryBindingFixesV4() {
+    'use strict';
+
+    if (window.__telemetryBindingFixesV4Applied) return;
+    window.__telemetryBindingFixesV4Applied = true;
+
+    function _s(v) { return (v === null || v === undefined) ? '' : String(v).trim(); }
+    function _n(v) { var n = parseInt(v, 10); return isNaN(n) ? null : n; }
+
+    // ================================================================
+    // FIX-A  Ensure assetAttributeMap has numeric keys too.
+    //        GetBulkAssetMetadata stores assetAttributeMap["1"] = alias
+    //        but WS sends AssetAttributeId as number 1.
+    //        getAttrDisplayName → getBulkAliasName → bulkAliasByAttrId
+    //        only checks string keys.  assetAttributeMap however is
+    //        also checked directly with numeric keys.
+    // ================================================================
+    function reindexBulkAliasByNumericId() {
+        if (typeof assetAttributeMap === 'undefined') return;
+
+        // From bulkAliasByAttrId (string keys → aliases)
+        if (typeof bulkAliasByAttrId !== 'undefined') {
+            for (var idKey in bulkAliasByAttrId) {
+                if (!bulkAliasByAttrId.hasOwnProperty(idKey)) continue;
+                var alias = bulkAliasByAttrId[idKey];
+                if (!alias) continue;
+                var n = _n(idKey);
+                if (n !== null && !assetAttributeMap[n]) {
+                    assetAttributeMap[n] = alias;
+                }
+            }
+        }
+
+        // Also from assetAttributeMap's own string keys
+        for (var k in assetAttributeMap) {
+            if (!assetAttributeMap.hasOwnProperty(k)) continue;
+            var numK = _n(k);
+            if (numK !== null && !assetAttributeMap[numK]) {
+                assetAttributeMap[numK] = assetAttributeMap[k];
+            }
+        }
+    }
+
+    try { reindexBulkAliasByNumericId(); } catch (e) { }
+
+    // Hook loadBulkAssetMetadata to re-index after each load
+    var _origLBM = window.loadBulkAssetMetadata;
+    if (typeof _origLBM === 'function') {
+        window.loadBulkAssetMetadata = function (siteId, assetTypeId, callback) {
+            return _origLBM.call(this, siteId, assetTypeId, function () {
+                try { reindexBulkAliasByNumericId(); } catch (e) { }
+                if (callback) callback();
+            });
+        };
+        if (typeof loadBulkAssetMetadata !== 'undefined') {
+            loadBulkAssetMetadata = window.loadBulkAssetMetadata;
+        }
+    }
+
+    // ================================================================
+    // FIX-B  resolveBulkDataloggerName: scan by DataloggerAssetName
+    //
+    //        mAssetInfoDataloggers example:
+    //          { Id: 282, DataloggerAttributeId: 6,
+    //            DataloggerAttribute: "TPR",
+    //            DataloggerAssetName: "1_2TPR" }
+    //
+    //        WS sends: AssetAttributeName = "1_2TPR"
+    //        Existing resolver only matched by role id, not by the
+    //        DataloggerAssetName text. This fix scans entries for
+    //        a text match against dataloggerAssetName AND
+    //        dataloggerAttribute fields.
+    // ================================================================
+    var _origResolveBDN = window.resolveBulkDataloggerName;
+    window.resolveBulkDataloggerName = function (assetId, roleOrAttrId, rawName) {
+        // Try existing logic first
+        var existing = '';
+        if (_origResolveBDN && typeof _origResolveBDN === 'function') {
+            try { existing = _origResolveBDN.call(this, assetId, roleOrAttrId, rawName); } catch (e) { }
+        }
+        if (existing && existing !== rawName && !/^attr\s+\d+$/i.test(existing)) {
+            return existing;
+        }
+
+        var aid = _s(assetId);
+        var prefix = aid + '_';
+        var rawLc = _s(rawName).toLowerCase();
+        var roleLc = _s(roleOrAttrId).toLowerCase();
+
+        // Scan bulkDataloggerMap
+        if (typeof bulkDataloggerMap !== 'undefined') {
+            for (var k in bulkDataloggerMap) {
+                if (!bulkDataloggerMap.hasOwnProperty(k)) continue;
+                if (aid && k.indexOf(prefix) !== 0) continue;
+                var e = bulkDataloggerMap[k];
+                if (!e || !e.name) continue;
+
+                var dlAsset = _s(e.dataloggerAssetName).toLowerCase();
+                var dlAttr = _s(e.dataloggerAttribute || e.attributeName).toLowerCase();
+
+                if (rawLc && dlAsset && dlAsset === rawLc) return e.name;
+                if (rawLc && dlAttr && dlAttr === rawLc) return e.name;
+                if (roleLc && dlAsset && dlAsset === roleLc) return e.name;
+                if (roleLc && dlAttr && dlAttr === roleLc) return e.name;
+            }
+        }
+
+        // Scan userAssetDataloggerMap
+        if (typeof userAssetDataloggerMap !== 'undefined') {
+            for (var uk in userAssetDataloggerMap) {
+                if (!userAssetDataloggerMap.hasOwnProperty(uk)) continue;
+                if (aid && uk.indexOf(prefix) !== 0) continue;
+                var ue = userAssetDataloggerMap[uk];
+                if (!ue || !ue.name) continue;
+
+                var udlAsset = _s(ue.dataloggerAssetName).toLowerCase();
+                var udlAttr = _s(ue.dataloggerAttribute || ue.attributeName).toLowerCase();
+
+                if (rawLc && udlAsset && udlAsset === rawLc) return ue.name;
+                if (rawLc && udlAttr && udlAttr === rawLc) return ue.name;
+                if (roleLc && udlAsset && udlAsset === roleLc) return ue.name;
+                if (roleLc && udlAttr && udlAttr === roleLc) return ue.name;
+            }
+        }
+
+        return existing || rawName || '';
+    };
+    if (typeof resolveBulkDataloggerName !== 'undefined') {
+        resolveBulkDataloggerName = window.resolveBulkDataloggerName;
+    }
+
+    // ================================================================
+    // FIX-C  processItemsInternal: intercept DataLogger items to
+    //        pass AssetAttributeId as roleOrAttrId (6th arg) and
+    //        seed runtime DL maps for instant future lookups.
+    //
+    //        CRITICAL: Non-DataLogger items pass through UNCHANGED
+    //        to the original processItemsInternal. NO renaming of
+    //        wsAttributeNames or wsLiveData keys.
+    // ================================================================
+    var _origPII = window.processItemsInternal;
+    window.processItemsInternal = function (items) {
+        if (!items || !Array.isArray(items)) {
+            return _origPII.call(this, items);
+        }
+
+        var nonDL = [];
+        var dlItems = [];
+
+        for (var i = 0; i < items.length; i++) {
+            var d = items[i];
+            if (d && d.DataType === 'DataLogger') {
+                dlItems.push(d);
+            } else {
+                nonDL.push(d);
+            }
+        }
+
+        // Process DataLogger items with roleOrAttrId context
+        for (var j = 0; j < dlItems.length; j++) {
+            var dl = dlItems[j];
+            if (!dl.AssetId || !dl.AssetAttributeName) continue;
+
+            // Apply same filters as original processItemsInternal
+            var atFilter = window.wsCurrentAssetTypeId;
+            var aidFilter = window.wsCurrentFilterAssetIds;
+
+            if (atFilter && atFilter !== '0' && atFilter !== '' && dl.AssetTypeId) {
+                if (_s(dl.AssetTypeId) !== _s(atFilter)) continue;
+            }
+            if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
+                if (aidFilter.map(_s).indexOf(_s(dl.AssetId)) === -1) continue;
+            }
+
+            var ts = dl.TimestampDevice || dl.TimestampLocal || dl.TimestampChange || new Date().toISOString();
+            var roleId = dl.AssetAttributeId || dl.DataloggerAttributeId || dl.AttrId || dl.AssetAttributeName;
+
+            // Seed bulkDataloggerMap at runtime so next message resolves instantly
+            var resolvedName = '';
+            try {
+                resolvedName = window.resolveBulkDataloggerName(dl.AssetId, roleId, dl.AssetAttributeName) || '';
+            } catch (e) { }
+
+            if (resolvedName && resolvedName !== dl.AssetAttributeName) {
+                var dlAid = _s(dl.AssetId);
+                var rawKey = _s(dl.AssetAttributeName);
+                var seedEntry = {
+                    name: resolvedName,
+                    attributeName: resolvedName,
+                    dataloggerAttribute: resolvedName,
+                    dataloggerAssetName: rawKey,
+                    assetName: dl.AssetName || ''
+                };
+                if (typeof bulkDataloggerMap !== 'undefined') {
+                    bulkDataloggerMap[dlAid + '_' + rawKey] = seedEntry;
+                }
+                if (typeof userAssetDataloggerMap !== 'undefined') {
+                    userAssetDataloggerMap[dlAid + '_' + rawKey] = seedEntry;
+                }
+                if (typeof dlAssetRoleMap !== 'undefined') {
+                    dlAssetRoleMap[dlAid + '_' + rawKey] = resolvedName;
+                }
+                if (typeof dlRoleNameMap !== 'undefined') {
+                    dlRoleNameMap[rawKey] = resolvedName;
+                }
+            }
+
+            // Call processWsDataloggerAttr with roleOrAttrId
+            if (typeof window.processWsDataloggerAttr === 'function') {
+                window.processWsDataloggerAttr(
+                    dl.AssetId,
+                    dl.AssetName,
+                    dl.AssetAttributeName,
+                    dl.Value,
+                    ts,
+                    roleId
+                );
+            }
+
+            // FIX-E  Deduplicate DL relay keys
+            if (resolvedName && resolvedName !== dl.AssetAttributeName) {
+                try {
+                    var liveAsset = window.wsLiveData[dl.AssetId];
+                    if (liveAsset && liveAsset.dlRelays) {
+                        var rawAttr = dl.AssetAttributeName;
+                        // If the raw key exists and points to same data as display key, remove raw
+                        if (liveAsset.dlRelays.hasOwnProperty(rawAttr) &&
+                            liveAsset.dlRelays.hasOwnProperty(resolvedName)) {
+                            // Make raw key non-enumerable so it doesn't show as duplicate pill
+                            try {
+                                var relayRef = liveAsset.dlRelays[resolvedName];
+                                delete liveAsset.dlRelays[rawAttr];
+                                Object.defineProperty(liveAsset.dlRelays, rawAttr, {
+                                    value: relayRef,
+                                    enumerable: false,
+                                    configurable: true,
+                                    writable: true
+                                });
+                            } catch (e2) {
+                                delete liveAsset.dlRelays[rawAttr];
+                            }
+                        }
+                    }
+                } catch (e) { }
+            }
+
+            if (!window.wsUpdatedAssets) window.wsUpdatedAssets = {};
+            window.wsUpdatedAssets[dl.AssetId] = true;
+        }
+
+        // Pass non-DataLogger items to original — UNTOUCHED
+        if (nonDL.length > 0) {
+            _origPII.call(this, nonDL);
+        }
+
+        // FIX-D  If DL items were processed, schedule UI update
+        if (dlItems.length > 0) {
+            try {
+                window.wsPendingUIUpdate = true;
+                if (typeof scheduleUIUpdate === 'function') {
+                    scheduleUIUpdate(false);
+                } else if (typeof triggerUIUpdate === 'function') {
+                    triggerUIUpdate();
+                }
+            } catch (e) { }
+        }
+    };
+    if (typeof processItemsInternal !== 'undefined') {
+        processItemsInternal = window.processItemsInternal;
+    }
+
+    // ================================================================
+    // FIX-D (continued)  Patch processDataLoggerItems to schedule
+    //        UI update after processing DL items so cards/table
+    //        refresh with updated relay badges.
+    // ================================================================
+    var _origProcDLI = window.processDataLoggerItems;
+    if (typeof _origProcDLI === 'function') {
+        window.processDataLoggerItems = function (items) {
+            _origProcDLI.call(this, items);
+            try {
+                window.wsPendingUIUpdate = true;
+                if (typeof scheduleUIUpdate === 'function') {
+                    scheduleUIUpdate(false);
+                } else if (typeof triggerUIUpdate === 'function') {
+                    triggerUIUpdate();
+                }
+            } catch (e) { }
+        };
+    }
+
+    // ================================================================
+    // FIX-F  getAttrDisplayName: per-asset + attrId lookup takes
+    //        priority over global map to avoid cross-asset alias
+    //        pollution.
+    // ================================================================
+    var _origGADN = window.getAttrDisplayName;
+    window.getAttrDisplayName = function (attrName, attrId, assetId) {
+        var aid = _s(assetId);
+        var idKey = _s(attrId);
+
+        // 1. Per-asset + attrId from bulk (most specific)
+        if (aid && idKey && typeof bulkAliasByAssetAttrId !== 'undefined') {
+            var perAsset = bulkAliasByAssetAttrId[aid + '_' + idKey];
+            if (perAsset) return perAsset;
+        }
+
+        // 2. Per-asset + attrName from bulk
+        if (aid && attrName && typeof bulkAliasByAssetAttrName !== 'undefined') {
+            var nk = String(attrName).trim().toUpperCase();
+            var perAssetName = bulkAliasByAssetAttrName[aid + '_' + nk];
+            if (perAssetName) return perAssetName;
+        }
+
+        // 3. Global attrId from assetAttributeMap (covers numeric keys from FIX-A)
+        if (idKey && typeof assetAttributeMap !== 'undefined') {
+            var byStrId = assetAttributeMap[idKey];
+            if (byStrId) return byStrId;
+            var numId = _n(idKey);
+            if (numId !== null && assetAttributeMap[numId]) return assetAttributeMap[numId];
+        }
+
+        // 4. Delegate to original for remaining fallbacks
+        if (_origGADN && typeof _origGADN === 'function') {
+            return _origGADN.call(this, attrName, attrId, assetId);
+        }
+
+        return attrName || '';
+    };
+    if (typeof getAttrDisplayName !== 'undefined') {
+        getAttrDisplayName = window.getAttrDisplayName;
+    }
+
+    // ================================================================
+    // FIX-G  SIP Asset Popup: aria-hidden / inert fix
+    //
+    //        Browser warning:
+    //          "Blocked aria-hidden on a focused element because its
+    //           descendant retained focus."
+    //        The overlay uses display:none to hide, but something
+    //        also sets aria-hidden="true". When shown, the close
+    //        button can receive focus while aria-hidden is still on
+    //        the ancestor.
+    //
+    //        Fix: use the `inert` attribute when hidden, remove it
+    //        when shown. Never set aria-hidden on a focusable ancestor.
+    // ================================================================
+    function fixSipPopupAccessibility() {
+        var overlay = document.getElementById('sipAssetPopupOverlay');
+        if (!overlay) return;
+
+        // Remove any existing aria-hidden
+        overlay.removeAttribute('aria-hidden');
+
+        // Set inert when hidden (display:none)
+        if (overlay.style.display === 'none' || overlay.style.display === '') {
+            overlay.setAttribute('inert', '');
+        }
+
+        // Observe style changes (display toggling)
+        var observer = new MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                var m = mutations[i];
+                if (m.type === 'attributes') {
+                    if (m.attributeName === 'style') {
+                        var isVisible = overlay.style.display === 'flex' || overlay.style.display === 'block';
+                        if (isVisible) {
+                            overlay.removeAttribute('inert');
+                            overlay.removeAttribute('aria-hidden');
+                        } else {
+                            overlay.setAttribute('inert', '');
+                            overlay.removeAttribute('aria-hidden');
+                        }
+                    }
+                    // Prevent external code from setting aria-hidden
+                    if (m.attributeName === 'aria-hidden') {
+                        overlay.removeAttribute('aria-hidden');
+                    }
+                }
+            }
+        });
+
+        observer.observe(overlay, {
+            attributes: true,
+            attributeFilter: ['style', 'aria-hidden']
+        });
+
+        console.log('[TL-Fix-G] SIP popup aria-hidden fix applied (using inert)');
+    }
+
+    // Run after DOM is ready and after any popup creation
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(fixSipPopupAccessibility, 500);
+    } else {
+        document.addEventListener('DOMContentLoaded', function () {
+            setTimeout(fixSipPopupAccessibility, 500);
+        });
+    }
+
+    // Also observe body for the overlay being created dynamically
+    var bodyObserver = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].addedNodes) {
+                for (var j = 0; j < mutations[i].addedNodes.length; j++) {
+                    var node = mutations[i].addedNodes[j];
+                    if (node.id === 'sipAssetPopupOverlay' ||
+                        (node.querySelector && node.querySelector('#sipAssetPopupOverlay'))) {
+                        setTimeout(fixSipPopupAccessibility, 50);
+                        bodyObserver.disconnect();
+                        return;
+                    }
+                }
+            }
+        }
+    });
+
+    if (document.body) {
+        bodyObserver.observe(document.body, { childList: true, subtree: false });
+    }
+
+    // ================================================================
+    // DIAGNOSTIC: Console verification helper
+    // Usage: window.tlVerifyBinding(assetId)
+    // ================================================================
+    window.tlVerifyBinding = function (assetId) {
+        console.group('[TL-Verify] Binding check for asset', assetId);
+        var aid = _s(assetId);
+
+        // Bulk loaded?
+        console.log('bulkMetadataLoaded:', typeof bulkMetadataLoaded !== 'undefined' ? bulkMetadataLoaded : '?');
+
+        // assetAttributeMap numeric keys
+        var sampleIds = [1, 2, 3, 4, 5, 6];
+        sampleIds.forEach(function (id) {
+            var str = typeof assetAttributeMap !== 'undefined' ? (assetAttributeMap[id] || assetAttributeMap[String(id)] || 'NOT FOUND') : 'N/A';
+            console.log('assetAttributeMap[' + id + ']:', str);
+        });
+
+        // wsLiveData attrs (raw keys)
+        if (typeof wsLiveData !== 'undefined' && wsLiveData[assetId]) {
+            var attrKeys = Object.keys(wsLiveData[assetId].attrs || {});
+            console.log('wsLiveData[' + assetId + '].attrs keys:', attrKeys);
+            console.log('wsLiveData[' + assetId + '].dlRelays:', wsLiveData[assetId].dlRelays);
+        } else {
+            console.warn('wsLiveData[' + assetId + '] not found');
+        }
+
+        // wsAttributeNames
+        console.log('wsAttributeNames:', typeof wsAttributeNames !== 'undefined' ? wsAttributeNames : 'N/A');
+
+        // Datalogger map entries
+        if (typeof bulkDataloggerMap !== 'undefined') {
+            var dlEntries = [];
+            for (var k in bulkDataloggerMap) {
+                if (k.indexOf(aid + '_') === 0) dlEntries.push({ key: k, name: bulkDataloggerMap[k].name });
+            }
+            console.log('bulkDataloggerMap for asset:', dlEntries);
+        }
+
+        // Test display name resolution
+        if (typeof wsAttributeNames !== 'undefined') {
+            wsAttributeNames.forEach(function (rawN) {
+                var attrId = typeof wsAttributeIds !== 'undefined' ? wsAttributeIds[rawN] : null;
+                var display = (typeof getAttrDisplayName === 'function')
+                    ? getAttrDisplayName(rawN, attrId, assetId)
+                    : rawN;
+                if (display !== rawN) {
+                    console.log('  "' + rawN + '" (id=' + attrId + ') → "' + display + '"');
+                }
+            });
+        }
+
+        console.groupEnd();
+    };
+
+    console.log('[TL-Fix-v4] Applied: A(NumericId) B(DLAssetName) C(roleOrAttrId) D(UIUpdate) E(DedupKeys) F(PerAssetAlias) G(AriaHidden)');
 })();

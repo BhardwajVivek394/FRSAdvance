@@ -104,39 +104,68 @@
         return obj.AttrId || obj.AssetAttributeId || obj.AttributeId || '';
     }
 
+    //function sapAliasName(rawKey, attrObj) {
+    //    var aid = String(_assetId || '');
+    //    var attrId = sapAttrIdOf(attrObj);
+
+    //    // Use only AliasName from GetBulkAssetMetadata cache.
+    //    if (typeof window.getBulkAliasName === 'function') {
+    //        var a1 = window.getBulkAliasName(aid, rawKey, attrId);
+    //        if (a1) return a1;
+    //    }
+
+    //    // Fallback scan: userAssetSimpleMap entries are loaded from bulk assetAttributes.
+    //    var map = window.userAssetSimpleMap || {};
+    //    var prefix = aid + '_';
+    //    var rawNorm = String(rawKey || '').trim().toUpperCase();
+
+    //    for (var k in map) {
+    //        if (!map.hasOwnProperty(k)) continue;
+    //        if (aid && k.indexOf(prefix) !== 0) continue;
+
+    //        var e = map[k];
+    //        if (!e || !e.name) continue;
+
+    //        var eRaw = String(e.attributeName || e.AttributeName || e.title || e.Title || '').trim().toUpperCase();
+    //        var eAlias = String(e.name || e.AliasName || '').trim().toUpperCase();
+
+    //        if (eRaw === rawNorm || eAlias === rawNorm) {
+    //            return e.name; // AliasName
+    //        }
+    //    }
+
+    //    if (typeof window.getAttrDisplayName === 'function') {
+    //        var a2 = window.getAttrDisplayName(rawKey, attrId, aid);
+    //        if (a2) return a2;
+    //    }
+
+    //    return rawKey;
+    //}
     function sapAliasName(rawKey, attrObj) {
         var aid = String(_assetId || '');
-        var attrId = sapAttrIdOf(attrObj);
+        var attrId = String(sapAttrIdOf(attrObj) || '').trim();
 
-        // Use only AliasName from GetBulkAssetMetadata cache.
-        if (typeof window.getBulkAliasName === 'function') {
-            var a1 = window.getBulkAliasName(aid, rawKey, attrId);
-            if (a1) return a1;
+        // Asset attribute: Id -> AliasName
+        var map = window.userAssetSimpleMap || {};
+        var exactKey = aid + '_' + attrId;
+
+        if (attrId && map[exactKey]) {
+            return map[exactKey].AliasName || map[exactKey].name || rawKey;
         }
 
-        // Fallback scan: userAssetSimpleMap entries are loaded from bulk assetAttributes.
-        var map = window.userAssetSimpleMap || {};
-        var prefix = aid + '_';
         var rawNorm = String(rawKey || '').trim().toUpperCase();
 
         for (var k in map) {
             if (!map.hasOwnProperty(k)) continue;
-            if (aid && k.indexOf(prefix) !== 0) continue;
+            if (aid && k.indexOf(aid + '_') !== 0) continue;
 
-            var e = map[k];
-            if (!e || !e.name) continue;
+            var e = map[k] || {};
+            var title = String(e.title || e.Title || e.attributeName || e.AttributeName || '').trim().toUpperCase();
+            var alias = String(e.AliasName || e.name || '').trim();
 
-            var eRaw = String(e.attributeName || e.AttributeName || e.title || e.Title || '').trim().toUpperCase();
-            var eAlias = String(e.name || e.AliasName || '').trim().toUpperCase();
-
-            if (eRaw === rawNorm || eAlias === rawNorm) {
-                return e.name; // AliasName
+            if (title && title === rawNorm) {
+                return alias || rawKey;
             }
-        }
-
-        if (typeof window.getAttrDisplayName === 'function') {
-            var a2 = window.getAttrDisplayName(rawKey, attrId, aid);
-            if (a2) return a2;
         }
 
         return rawKey;
@@ -563,19 +592,110 @@
         return null;
     }
 
+    //function renderTelemRow(item) {
+    //    debugger;
+    //    var label = item && item.label ? item.label : '';
+    //    var rawKey = item && item.rawKey ? item.rawKey : label;
+    //    var raw = item ? item.value : null;
+
+    //    var display = (raw !== null && raw !== undefined && raw !== '') ? String(raw) : '--';
+
+    //    if (display === 'Ok' || display === 'ok' || display === 'true') {
+    //        return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) + '</span><span class="sap-value-ok">Ok</span></div>';
+    //    }
+
+    //    var num = parseFloat(display);
+    //    if (!isNaN(num)) display = num % 1 === 0 ? String(num) : num.toFixed(2);
+
+    //    var cls = 'sap-telem-value';
+    //    var stale = (window.wsStaleAttrs && window.wsStaleAttrs[_assetId] &&
+    //        (window.wsStaleAttrs[_assetId][rawKey] || window.wsStaleAttrs[_assetId][label]));
+
+    //    if (stale) cls += ' sap-value-stale';
+
+    //    return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) + '</span><span class="' + cls + '">' + esc(display) + '</span></div>';
+    //}
+
+    //function renderTelemRow(item) {
+
+    //    var label = item && item.label ? item.label : '';
+    //    var rawKey = item && item.rawKey ? item.rawKey : label;
+    //    var raw = item ? item.value : null;
+    //    var attrId = item && item.attrId ? String(item.attrId).trim() : '';
+
+    //    var display = (raw !== null && raw !== undefined && raw !== '') ? String(raw).trim() : '--';
+
+    //    var stale = (window.wsStaleAttrs && window.wsStaleAttrs[_assetId] &&
+    //        (window.wsStaleAttrs[_assetId][rawKey] || window.wsStaleAttrs[_assetId][label]));
+
+    //    var cls = 'sap-telem-value';
+    //    if (stale) cls += ' sap-value-stale';
+
+    //    // Check only attributes bound from DataLogger map
+    //    var isDataLoggerAttr = false;
+    //    var dlMap = window.userAssetDataloggerMap || {};
+    //    var aid = String(_assetId || '');
+    //    var prefix = aid + '_';
+
+    //    var labelNorm = String(label || '').trim().toUpperCase();
+    //    var rawKeyNorm = String(rawKey || '').trim().toUpperCase();
+    //    var attrIdNorm = String(attrId || '').trim().toUpperCase();
+
+    //    for (var dk in dlMap) {
+    //        if (!dlMap.hasOwnProperty(dk)) continue;
+    //        if (aid && dk.indexOf(prefix) !== 0) continue;
+
+    //        var dlEntry = dlMap[dk] || {};
+    //        var dlRoleId = String(dk).substring(String(dk).lastIndexOf('_') + 1).trim().toUpperCase();
+
+    //        var dlName = String(dlEntry.name || dlEntry.Name || '').trim().toUpperCase();
+    //        var dlAttrName = String(dlEntry.attributeName || dlEntry.AttributeName || '').trim().toUpperCase();
+    //        var dlAlias = String(dlEntry.aliasName || dlEntry.AliasName || '').trim().toUpperCase();
+
+    //        if (
+    //            (attrIdNorm && attrIdNorm === dlRoleId) ||
+    //            (rawKeyNorm && (rawKeyNorm === dlRoleId || rawKeyNorm === dlName || rawKeyNorm === dlAttrName || rawKeyNorm === dlAlias)) ||
+    //            (labelNorm && (labelNorm === dlRoleId || labelNorm === dlName || labelNorm === dlAttrName || labelNorm === dlAlias))
+    //        ) {
+    //            isDataLoggerAttr = true;
+    //            break;
+    //        }
+    //    }
+
+    //    // Apply Drop/Pickup only for DataLogger-bound binary attributes
+    //    if (isDataLoggerAttr && display === '0') {
+    //        return '<div class="sap-telem-row">' +
+    //            '<span class="sap-telem-label">' + esc(label) + '</span>' +
+    //            '<span class="' + cls + '" style="color:var(--sap-accent-yellow);font-weight:700;">↓ Drop</span>' +
+    //            '</div>';
+    //    }
+
+    //    if (isDataLoggerAttr && display === '1') {
+    //        return '<div class="sap-telem-row">' +
+    //            '<span class="sap-telem-label">' + esc(label) + '</span>' +
+    //            '<span class="' + cls + '" style="color:var(--sap-accent-green);font-weight:700;">↑ Pickup</span>' +
+    //            '</div>';
+    //    }
+
+    //    if (display === 'Ok' || display === 'ok' || display === 'true') {
+    //        return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) + '</span><span class="sap-value-ok">Ok</span></div>';
+    //    }
+
+    //    var num = parseFloat(display);
+    //    if (!isNaN(num)) display = num % 1 === 0 ? String(num) : num.toFixed(2);
+
+    //    return '<div class="sap-telem-row">' +
+    //        '<span class="sap-telem-label">' + esc(label) + '</span>' +
+    //        '<span class="' + cls + '">' + esc(display) + '</span>' +
+    //        '</div>';
+    //}
     function renderTelemRow(item) {
         var label = item && item.label ? item.label : '';
         var rawKey = item && item.rawKey ? item.rawKey : label;
         var raw = item ? item.value : null;
+        var isDL = !!(item && item.isDatalogger);
 
-        var display = (raw !== null && raw !== undefined && raw !== '') ? String(raw) : '--';
-
-        if (display === 'Ok' || display === 'ok' || display === 'true') {
-            return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) + '</span><span class="sap-value-ok">Ok</span></div>';
-        }
-
-        var num = parseFloat(display);
-        if (!isNaN(num)) display = num % 1 === 0 ? String(num) : num.toFixed(2);
+        var display = (raw !== null && raw !== undefined && raw !== '') ? String(raw).trim() : '--';
 
         var cls = 'sap-telem-value';
         var stale = (window.wsStaleAttrs && window.wsStaleAttrs[_assetId] &&
@@ -583,32 +703,283 @@
 
         if (stale) cls += ' sap-value-stale';
 
-        return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) + '</span><span class="' + cls + '">' + esc(display) + '</span></div>';
-    }
+        var n = parseFloat(display);
+        var isBinary = !isNaN(n) && (n === 0 || n === 1);
 
+        if (isDL && isBinary && n === 0) {
+            return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) +
+                '</span><span class="' + cls + '" style="color:var(--sap-accent-yellow);font-weight:700;">&#8595; Drop</span></div>';
+        }
+
+        if (isDL && isBinary && n === 1) {
+            return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) +
+                '</span><span class="' + cls + '" style="color:var(--sap-accent-green);font-weight:700;">&#8593; Pickup</span></div>';
+        }
+
+        if (display === 'Ok' || display === 'ok' || display === 'true') {
+            return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) +
+                '</span><span class="sap-value-ok">Ok</span></div>';
+        }
+
+        if (!isNaN(n)) display = n % 1 === 0 ? String(n) : n.toFixed(2);
+
+        return '<div class="sap-telem-row"><span class="sap-telem-label">' + esc(label) +
+            '</span><span class="' + cls + '">' + esc(display) + '</span></div>';
+    }
     function refreshLive() {
         var f = findLiveAsset();
         var attrs = {};
+        var ra = null;
 
         if (f && f.d) {
             _assetId = f.id || _assetId;
+            ra = f.d.attrs || f.d;
+        }
 
-            var ra = f.d.attrs || f.d;
+        var aid = String(_assetId || '');
+        var prefix = aid + '_';
 
+        var dlMap = window.userAssetDataloggerMap || {};
+        var dlMeta = {};
+        var dlLookup = {};
+
+        function norm(v) {
+            return String(v == null ? '' : v).trim().toUpperCase();
+        }
+
+        function addDlLookup(v, dlId) {
+            var n = norm(v);
+            if (n) dlLookup[n] = String(dlId);
+        }
+
+        function getValue(x) {
+            if (x && typeof x === 'object') {
+                if (x.Value !== undefined) return x.Value;
+                if (x.value !== undefined) return x.value;
+                if (x.CurrentValue !== undefined) return x.CurrentValue;
+                if (x.currentValue !== undefined) return x.currentValue;
+                if (x.Status !== undefined) return x.Status;
+                if (x.status !== undefined) return x.status;
+            }
+
+            return x;
+        }
+
+        // Build DL metadata from GetBulkAssetData map:
+        // key = assetId_DataloggerAttributeId
+        for (var dk in dlMap) {
+            if (!dlMap.hasOwnProperty(dk)) continue;
+            if (aid && dk.indexOf(prefix) !== 0) continue;
+
+            var dlEntry = dlMap[dk] || {};
+
+            var dlId = String(
+                dlEntry.DataloggerAttributeId ||
+                dlEntry.dataloggerAttributeId ||
+                dk.substring(prefix.length)
+            ).trim();
+
+            dlId = dlId.replace(/^dl_/i, '');
+            if (!dlId || dlMeta[dlId]) continue;
+
+            var dlName = dlEntry.DataloggerAttribute ||
+                dlEntry.dataloggerAttribute ||
+                dlEntry.attributeName ||
+                dlEntry.name ||
+                ('DL ' + dlId);
+
+            var dlAssetName = dlEntry.DataloggerAssetName || dlEntry.dataloggerAssetName || '';
+
+            dlMeta[dlId] = {
+                id: dlId,
+                name: dlName,
+                assetName: dlAssetName
+            };
+
+            addDlLookup('DL_' + dlId, dlId);
+            addDlLookup('dl_' + dlId, dlId);
+            addDlLookup(dlId, dlId);
+            addDlLookup(dlName, dlId);
+            addDlLookup(dlAssetName, dlId);
+        }
+
+        function getDlIdFromLiveKeyOrObject(key, obj) {
+            var keyNorm = norm(key);
+            if (dlLookup[keyNorm]) return dlLookup[keyNorm];
+
+            if (obj && typeof obj === 'object') {
+                var objDlId = String(
+                    obj.DataloggerAttributeId ||
+                    obj.dataloggerAttributeId ||
+                    obj.DlAttributeId ||
+                    obj.dlAttributeId ||
+                    ''
+                ).trim();
+
+                objDlId = objDlId.replace(/^dl_/i, '');
+                if (objDlId && dlMeta[objDlId]) return objDlId;
+
+                var names = [
+                    obj.DataloggerAttribute,
+                    obj.dataloggerAttribute,
+                    obj.DataloggerAssetName,
+                    obj.dataloggerAssetName,
+                    obj.name,
+                    obj.Name,
+                    obj.attributeName,
+                    obj.AttributeName
+                ];
+
+                for (var i = 0; i < names.length; i++) {
+                    var n = norm(names[i]);
+                    if (n && dlLookup[n]) return dlLookup[n];
+                }
+
+                var marker = String(
+                    obj.DataType ||
+                    obj.dataType ||
+                    obj.DataSource ||
+                    obj.dataSource ||
+                    obj.Source ||
+                    obj.source ||
+                    ''
+                );
+
+                if (/DATALOGGER|\bDL\b/i.test(marker) && dlLookup[keyNorm]) {
+                    return dlLookup[keyNorm];
+                }
+            }
+
+            return '';
+        }
+
+        function findDlValue(meta) {
+            var candidates = [
+                'DL_' + meta.id,
+                'dl_' + meta.id,
+                meta.name,
+                meta.assetName,
+                meta.id
+            ];
+
+            var dlRelays = ra ? (ra.dlRelays || ra.DlRelays || ra.DLRelays || null) : null;
+            var sources = [dlRelays, ra];
+
+            function matchesCandidate(v) {
+                var vn = norm(v);
+                if (!vn) return false;
+
+                for (var i = 0; i < candidates.length; i++) {
+                    if (vn === norm(candidates[i])) return true;
+                }
+
+                return false;
+            }
+
+            function scanSource(src) {
+                if (!src || typeof src !== 'object') return { found: false };
+
+                if (Array.isArray(src)) {
+                    for (var a = 0; a < src.length; a++) {
+                        var ar = scanSource(src[a]);
+                        if (ar.found) return ar;
+                    }
+                    return { found: false };
+                }
+
+                // Direct key match: TPR / 1_2TPR / DL_6 / dl_6 / 6
+                for (var i = 0; i < candidates.length; i++) {
+                    var c = candidates[i];
+                    if (c && src.hasOwnProperty(c)) {
+                        return { found: true, value: getValue(src[c]) };
+                    }
+                }
+
+                // Object field match
+                for (var k in src) {
+                    if (!src.hasOwnProperty(k)) continue;
+
+                    var child = src[k];
+
+                    if (matchesCandidate(k)) {
+                        return { found: true, value: getValue(child) };
+                    }
+
+                    if (child && typeof child === 'object') {
+                        var childDlId = String(
+                            child.DataloggerAttributeId ||
+                            child.dataloggerAttributeId ||
+                            child.DlAttributeId ||
+                            child.dlAttributeId ||
+                            ''
+                        ).trim();
+
+                        childDlId = childDlId.replace(/^dl_/i, '');
+
+                        if (childDlId && childDlId === String(meta.id)) {
+                            return { found: true, value: getValue(child) };
+                        }
+
+                        if (
+                            matchesCandidate(child.DataloggerAttribute) ||
+                            matchesCandidate(child.dataloggerAttribute) ||
+                            matchesCandidate(child.DataloggerAssetName) ||
+                            matchesCandidate(child.dataloggerAssetName) ||
+                            matchesCandidate(child.name) ||
+                            matchesCandidate(child.Name) ||
+                            matchesCandidate(child.attributeName) ||
+                            matchesCandidate(child.AttributeName)
+                        ) {
+                            return { found: true, value: getValue(child) };
+                        }
+                    }
+                }
+
+                return { found: false };
+            }
+
+            for (var s = 0; s < sources.length; s++) {
+                var res = scanSource(sources[s]);
+                if (res.found) return res.value;
+            }
+
+            return '--';
+        }
+
+        // Add normal asset attributes, but skip DataLogger live keys.
+        if (ra && typeof ra === 'object') {
             for (var k in ra) {
                 if (!ra.hasOwnProperty(k)) continue;
-                if (/^(AssetName|AssetTypeId|SiteId|lastUpdated|dlRelays|__type)$/.test(k)) continue;
+                if (/^(AssetName|AssetTypeId|SiteId|lastUpdated|dlRelays|__type)$/i.test(k)) continue;
 
                 var obj = ra[k];
-                var val = (obj && typeof obj === 'object' && 'Value' in obj) ? obj.Value : obj;
+
+                // If this key/object belongs to DataLogger, skip here.
+                // It will be added once below as DL_<DataloggerAttributeId>.
+                var dlIdFromLive = getDlIdFromLiveKeyOrObject(k, obj);
+                if (dlIdFromLive) continue;
 
                 attrs[k] = {
                     rawKey: k,
                     label: sapAliasName(k, obj),
-                    value: val,
-                    attrId: sapAttrIdOf(obj)
+                    value: getValue(obj),
+                    attrId: sapAttrIdOf(obj),
+                    isDatalogger: false
                 };
             }
+        }
+
+        // Add DataLogger rows once only.
+        for (var id in dlMeta) {
+            if (!dlMeta.hasOwnProperty(id)) continue;
+
+            attrs['DL_' + id] = {
+                rawKey: 'DL_' + id,
+                label: dlMeta[id].name,
+                value: findDlValue(dlMeta[id]),
+                attrId: id,
+                isDatalogger: true
+            };
         }
 
         var keys = Object.keys(attrs);
@@ -664,86 +1035,162 @@
          data-title     = Title / wsLiveData key  ("Vr", "TPR")
          text (visible) = AliasName  ("VTC RELAY END(V)", "TPR")
        ═══════════════════════════════════════════════════════════════ */
+    //function populateGraphDropdown() {
+    //    var sel = el('sipAssetParamSelect');
+    //    if (!sel) return;
+    //    var oldValue = sel.value;
+    //    var aid = String(_assetId || '');
+
+    //    var opts = [];   // { id, title, alias, seq }
+
+    //    /* ── 1. assetAttributes from userAssetSimpleMap ── */
+    //    var uMap = window.userAssetSimpleMap || {};
+    //    var prefix = aid + '_';
+    //    for (var key in uMap) {
+    //        if (!uMap.hasOwnProperty(key)) continue;
+    //        if (key.indexOf(prefix) !== 0) continue;
+    //        var entry = uMap[key];
+    //        var attrId = key.substring(prefix.length);
+    //        opts.push({
+    //            id: attrId,
+    //            title: entry.attributeName || entry.AttributeName || entry.name || '',
+    //            alias: entry.name || entry.AliasName || ('Attr ' + attrId),
+    //            seq: 0
+    //        });
+    //    }
+
+    //    /* ── 2. mAssetInfoDataloggers from userAssetDataloggerMap ── */
+    //    var dlMap = window.userAssetDataloggerMap || {};
+    //    for (var dlKey in dlMap) {
+    //        if (!dlMap.hasOwnProperty(dlKey)) continue;
+    //        if (dlKey.indexOf(prefix) !== 0) continue;
+    //        var dlEntry = dlMap[dlKey];
+    //        var dlRoleId = dlKey.substring(prefix.length);
+    //        opts.push({
+    //            id: 'dl_' + dlRoleId,
+    //            title: dlEntry.attributeName || dlEntry.name || '',
+    //            alias: dlEntry.name || dlEntry.attributeName || ('DL ' + dlRoleId),
+    //            seq: 9000 + parseInt(dlRoleId) || 9999
+    //        });
+    //    }
+
+    //    /* ── 3. Fallback: wsLiveData keys if metadata not loaded yet ── */
+    //    if (opts.length === 0) {
+    //        var f = findLiveAsset();
+    //        if (f && f.d) {
+    //            var ra = f.d.attrs || f.d;
+    //            for (var k in ra) {
+    //                if (!ra.hasOwnProperty(k)) continue;
+    //                if (/^(AssetName|AssetTypeId|SiteId|lastUpdated|dlRelays|__type)$/.test(k)) continue;
+    //                var aObj = ra[k];
+    //                var aId = (aObj && (aObj.AttrId || aObj.AssetAttributeId)) || '';
+    //                opts.push({
+    //                    id: String(aId || k),
+    //                    title: k,
+    //                    alias: sapAliasName(k, aObj),
+    //                    seq: 0
+    //                });
+    //            }
+    //        }
+    //    }
+
+    //    /* Deduplicate by id */
+    //    var seen = {};
+    //    opts = opts.filter(function (o) {
+    //        if (seen[o.id]) return false;
+    //        seen[o.id] = true;
+    //        return true;
+    //    });
+
+    //    /* Sort: sensor attributes first (by seq/alias), then DataLogger */
+    //    opts.sort(function (a, b) {
+    //        if (a.seq !== b.seq) return a.seq - b.seq;
+    //        return a.alias.localeCompare(b.alias);
+    //    });
+
+    //    /* Build signature to avoid unnecessary DOM thrashing */
+    //    var sig = opts.map(function (o) { return o.id; }).join('|');
+    //    if (sel.getAttribute('data-key-signature') === sig) return;
+
+    //    sel.innerHTML = opts.map(function (o) {
+    //        return '<option value="' + esc(o.id) + '" data-title="' + esc(o.title) + '">' + esc(o.alias) + '</option>';
+    //    }).join('');
+    //    sel.setAttribute('data-key-signature', sig);
+
+    //    if (oldValue && opts.some(function (o) { return o.id === oldValue; })) {
+    //        sel.value = oldValue;
+    //    }
+    //}
+
     function populateGraphDropdown() {
         var sel = el('sipAssetParamSelect');
         if (!sel) return;
+
         var oldValue = sel.value;
         var aid = String(_assetId || '');
-
-        var opts = [];   // { id, title, alias, seq }
-
-        /* ── 1. assetAttributes from userAssetSimpleMap ── */
-        var uMap = window.userAssetSimpleMap || {};
         var prefix = aid + '_';
+        var opts = [];
+
+        // 1. Asset attributes: Id -> AliasName
+        var uMap = window.userAssetSimpleMap || {};
+
         for (var key in uMap) {
             if (!uMap.hasOwnProperty(key)) continue;
             if (key.indexOf(prefix) !== 0) continue;
-            var entry = uMap[key];
-            var attrId = key.substring(prefix.length);
+
+            var entry = uMap[key] || {};
+            var attrId = String(entry.id || entry.attrId || key.substring(prefix.length)).trim();
+
             opts.push({
                 id: attrId,
-                title: entry.attributeName || entry.AttributeName || entry.name || '',
-                alias: entry.name || entry.AliasName || ('Attr ' + attrId),
-                seq: 0
+                title: entry.title || entry.Title || entry.attributeName || entry.AttributeName || '',
+                alias: entry.AliasName || entry.name || ('Attr ' + attrId),
+                seq: parseInt(attrId, 10) || 0
             });
         }
 
-        /* ── 2. mAssetInfoDataloggers from userAssetDataloggerMap ── */
+        // 2. DataLogger attributes: DataloggerAttributeId -> DataloggerAttribute
         var dlMap = window.userAssetDataloggerMap || {};
+
         for (var dlKey in dlMap) {
             if (!dlMap.hasOwnProperty(dlKey)) continue;
             if (dlKey.indexOf(prefix) !== 0) continue;
-            var dlEntry = dlMap[dlKey];
-            var dlRoleId = dlKey.substring(prefix.length);
+
+            var dlEntry = dlMap[dlKey] || {};
+            var dlId = String(
+                dlEntry.DataloggerAttributeId ||
+                dlEntry.dataloggerAttributeId ||
+                dlKey.substring(prefix.length)
+            ).trim();
+            dlId = dlId.replace(/^dl_/i, '');
+
             opts.push({
-                id: 'dl_' + dlRoleId,
-                title: dlEntry.attributeName || dlEntry.name || '',
-                alias: dlEntry.name || dlEntry.attributeName || ('DL ' + dlRoleId),
-                seq: 9000 + parseInt(dlRoleId) || 9999
+                id: 'dl_' + dlId,
+                title: dlEntry.DataloggerAttribute || dlEntry.dataloggerAttribute || dlEntry.attributeName || dlEntry.name || '',
+                alias: dlEntry.DataloggerAttribute || dlEntry.dataloggerAttribute || dlEntry.attributeName || dlEntry.name || ('DL ' + dlId),
+                seq: 9000 + (parseInt(dlId, 10) || 999)
             });
         }
 
-        /* ── 3. Fallback: wsLiveData keys if metadata not loaded yet ── */
-        if (opts.length === 0) {
-            var f = findLiveAsset();
-            if (f && f.d) {
-                var ra = f.d.attrs || f.d;
-                for (var k in ra) {
-                    if (!ra.hasOwnProperty(k)) continue;
-                    if (/^(AssetName|AssetTypeId|SiteId|lastUpdated|dlRelays|__type)$/.test(k)) continue;
-                    var aObj = ra[k];
-                    var aId = (aObj && (aObj.AttrId || aObj.AssetAttributeId)) || '';
-                    opts.push({
-                        id: String(aId || k),
-                        title: k,
-                        alias: sapAliasName(k, aObj),
-                        seq: 0
-                    });
-                }
-            }
-        }
-
-        /* Deduplicate by id */
         var seen = {};
         opts = opts.filter(function (o) {
-            if (seen[o.id]) return false;
+            if (!o.id || seen[o.id]) return false;
             seen[o.id] = true;
             return true;
         });
 
-        /* Sort: sensor attributes first (by seq/alias), then DataLogger */
         opts.sort(function (a, b) {
             if (a.seq !== b.seq) return a.seq - b.seq;
-            return a.alias.localeCompare(b.alias);
+            return String(a.alias).localeCompare(String(b.alias));
         });
 
-        /* Build signature to avoid unnecessary DOM thrashing */
-        var sig = opts.map(function (o) { return o.id; }).join('|');
+        var sig = opts.map(function (o) { return o.id + ':' + o.alias; }).join('|');
         if (sel.getAttribute('data-key-signature') === sig) return;
 
         sel.innerHTML = opts.map(function (o) {
             return '<option value="' + esc(o.id) + '" data-title="' + esc(o.title) + '">' + esc(o.alias) + '</option>';
         }).join('');
+
         sel.setAttribute('data-key-signature', sig);
 
         if (oldValue && opts.some(function (o) { return o.id === oldValue; })) {

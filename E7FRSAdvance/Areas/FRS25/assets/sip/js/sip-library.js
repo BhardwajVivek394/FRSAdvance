@@ -600,6 +600,113 @@
         R: '#FF2E2E', G: '#22D142', Y: '#FFD400', X: '#FFD400'
     };
 
+    /* ------------------------------------------------------------------------ *
+     *  resolveStandPos  — backward-compat mapper
+     *  -------------------------------------------------------------------------
+     *  Old format:  stand:'top'|'bottom', standSide:'left'|'center'|'right'
+     *  New format:  standPos: 'none'|'T'|'B'|'L'|'R'|'TL'|'TR'|'BL'|'BR'
+     *
+     *  If the new `standPos` is already set we use it directly.
+     *  Otherwise we derive it from the legacy properties so old layouts
+     *  render correctly without any data migration.
+     * ----------------------------------------------------------------------- */
+    function resolveStandPos(sigProps) {
+        if (sigProps.standPos) return sigProps.standPos;
+        const m = sigProps.stand || 'bottom';
+        if (m === 'none') return 'none';
+        const s = sigProps.standSide || 'center';
+        if (m === 'top') return s === 'left' ? 'TL' : s === 'right' ? 'TR' : 'T';
+        if (m === 'bottom') return s === 'left' ? 'BL' : s === 'right' ? 'BR' : 'B';
+        return 'B';
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  renderStand8  — draw an L-shaped stand at any of 8 anchor positions
+     *  -------------------------------------------------------------------------
+     *  box   = { x, y, w, h }   bounding box of the signal / shunt body
+     *  pos   = 'T'|'B'|'L'|'R'|'TL'|'TR'|'BL'|'BR'
+     *  len   = total reach (px)
+     *  bendR = corner rounding radius (default 4)
+     *
+     *  Side positions (T/B/L/R) produce a STRAIGHT line from the centre of
+     *  that edge outward.
+     *  Corner positions (TL/TR/BL/BR) produce an L-shaped path: a short
+     *  segment along the near edge, then a 90° bend outward — the classic
+     *  signal-stand bracket. The bend ratio splits the total length 40:60
+     *  (first leg shorter) for a visually pleasing elbow.
+     * ----------------------------------------------------------------------- */
+    function renderStand8(box, pos, len, bendR) {
+        if (!pos || pos === 'none') return '';
+        len = Math.max(8, len || 30);
+        bendR = bendR != null ? bendR : 4;
+        const bx = box.x, by = box.y, bw = box.w, bh = box.h;
+        const mx = bx + bw / 2, my = by + bh / 2;
+
+        let pts;  // array of [x,y] waypoints
+        switch (pos) {
+            /* ---- Side centres: straight line ---- */
+            case 'T': pts = [[mx, by], [mx, by - len]]; break;
+            case 'B': pts = [[mx, by + bh], [mx, by + bh + len]]; break;
+            case 'L': pts = [[bx, my], [bx - len, my]]; break;
+            case 'R': pts = [[bx + bw, my], [bx + bw + len, my]]; break;
+
+            /* ---- Corners: L-shaped bracket ---- */
+            case 'TL': pts = [[bx, by], [bx - len * 0.4, by], [bx - len * 0.4, by - len * 0.6]]; break;
+            case 'TR': pts = [[bx + bw, by], [bx + bw + len * 0.4, by], [bx + bw + len * 0.4, by - len * 0.6]]; break;
+            case 'BL': pts = [[bx, by + bh], [bx - len * 0.4, by + bh], [bx - len * 0.4, by + bh + len * 0.6]]; break;
+            case 'BR': pts = [[bx + bw, by + bh], [bx + bw + len * 0.4, by + bh], [bx + bw + len * 0.4, by + bh + len * 0.6]]; break;
+            default: return '';
+        }
+
+        /* Build SVG path — for 3-point paths add a rounded corner at the bend */
+        let d;
+        if (pts.length === 2) {
+            d = `M ${pts[0][0]} ${pts[0][1]} L ${pts[1][0]} ${pts[1][1]}`;
+        } else {
+            /* L-bend with rounded corner */
+            const A = pts[0], B = pts[1], C = pts[2];
+            const r = Math.min(bendR, Math.hypot(B[0] - A[0], B[1] - A[1]) * 0.45,
+                Math.hypot(C[0] - B[0], C[1] - B[1]) * 0.45);
+            /* Unit vectors along each leg */
+            const d1 = [B[0] - A[0], B[1] - A[1]];
+            const l1 = Math.hypot(d1[0], d1[1]) || 1;
+            const u1 = [d1[0] / l1, d1[1] / l1];
+            const d2 = [C[0] - B[0], C[1] - B[1]];
+            const l2 = Math.hypot(d2[0], d2[1]) || 1;
+            const u2 = [d2[0] / l2, d2[1] / l2];
+            const arcStart = [B[0] - u1[0] * r, B[1] - u1[1] * r];
+            const arcEnd = [B[0] + u2[0] * r, B[1] + u2[1] * r];
+            d = `M ${A[0]} ${A[1]} L ${arcStart[0]} ${arcStart[1]} ` +
+                `Q ${B[0]} ${B[1]} ${arcEnd[0]} ${arcEnd[1]} ` +
+                `L ${C[0]} ${C[1]}`;
+        }
+
+        const endPt = pts[pts.length - 1];
+        return `<path d="${d}" stroke="#b8b8b8" stroke-width="1.5" ` +
+            `fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
+            `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="2" fill="#b8b8b8"/>`;
+    }
+
+    /* ------------------------------------------------------------------------ *
+     *  labelSideFromStand  — choose the best label anchor opposite the stand
+     *  Returns { lx, ly, anchor } for the <text> element.
+     * ----------------------------------------------------------------------- */
+    function labelSideFromStand(standPos, x, y, w, h, lblSize) {
+        const pad = 6;
+        switch (standPos) {
+            case 'B': case 'BL': case 'BR':
+                return { lx: x + w + pad, ly: y + h / 2, anchor: 'start' };
+            case 'T': case 'TL': case 'TR':
+                return { lx: x - pad, ly: y + h / 2, anchor: 'end' };
+            case 'L':
+                return { lx: x + w + pad, ly: y + h / 2, anchor: 'start' };
+            case 'R':
+                return { lx: x - pad, ly: y + h / 2, anchor: 'end' };
+            default:
+                return { lx: x + w + pad, ly: y + h / 2, anchor: 'start' };
+        }
+    }
+
     function renderSignalComposite(cell) {
         const x = cell.position.x;
         const y = cell.position.y;
@@ -609,12 +716,10 @@
         /* props with safe defaults */
         const sigProps = (cell.attrs && cell.attrs.signal) || {};
         const lampsStr = typeof sigProps.lamps === 'string' && sigProps.lamps.length ? sigProps.lamps : 'BBB';
-        const standMode = sigProps.stand || 'bottom';
+        const standPos = resolveStandPos(sigProps);
         const standLen = Math.max(8, +sigProps.standLength || 30);
 
-        /* lit-state map — same as old per-lamp model, but keyed by index.
-           cell.attrs.lit could be 'R' (only red on) or 'RG' (red+green) or
-           omitted (all off). */
+        /* lit-state map */
         const litStr = typeof sigProps.lit === 'string' ? sigProps.lit.toUpperCase() : '';
         const litSet = {};
         for (let i = 0; i < litStr.length; i++) litSet[litStr[i]] = 1;
@@ -624,44 +729,15 @@
 
         let svg = `<g class="sip-asset sip-signal-composite" data-id="${cell.id}" data-type="${cell.type}">`;
 
-        /* 1. Stand — drawn FIRST so it sits behind the pill at the junction.
-              Geometry follows the reference HTML's polyline connector style:
-                 - Start at the signal centre on the chosen edge (top/bottom)
-                 - Drop vertically by `standLength`
-                 - If `standArm` is non-zero, then step horizontally by that
-                   amount (positive = right, negative = left).  Final shape is
-                   a clean L; matches the thin-stroke wireframe look of the
-                   reference layouts. */
-        if (standMode === 'top' || standMode === 'bottom') {
-            const dir = standMode === 'bottom' ? 1 : -1;
-            /* standSide: 'left' | 'center' | 'right' — where the vertical drop
-               starts horizontally on the signal pill. */
-            const side = sigProps.standSide || 'center';
-            const standX = side === 'left' ? x : side === 'right' ? x + w : x + w / 2;
-            const startY = dir > 0 ? y + h : y;
-            const armBefore = +sigProps.standArmBefore || 0;
-            const armBeforeX = standX + armBefore;
-            const v1Y = startY + dir * standLen;
-            const arm = +sigProps.standArm || 0;
-            /* Path shape: start → horizontal arm-before → vertical drop → horizontal arm-after */
-            let pts = [[standX, startY]];
-            if (armBefore !== 0) pts.push([armBeforeX, startY]);
-            pts.push([armBeforeX, v1Y]);
-            if (arm !== 0) pts.push([armBeforeX + arm, v1Y]);
-            const path = pts.map((p, i) => (i === 0 ? 'M ' : 'L ') + p[0] + ' ' + p[1]).join(' ');
-            svg += `<path d="${path}" stroke="#b8b8b8" stroke-width="1.5" ` +
-                `fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-            /* Small endpoint circle — visual anchor showing where the stand terminates */
-            const endPt = pts[pts.length - 1];
-            svg += `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="2" fill="#b8b8b8"/>`;
-        }
+        /* 1. Stand — drawn FIRST so it sits behind the pill */
+        svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen);
 
         /* 2. Background pill */
         const rx = Math.min(h / 2 - 1, 6);
         svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="#606060"/>`;
 
         /* 3. Lamps with equal padding (n+1 gaps total) */
-        const lampD = Math.max(6, h - 6);                  // diameter (3px top/bottom pad)
+        const lampD = Math.max(6, h - 6);
         const totalLamps = n * lampD;
         const totalGap = Math.max(0, w - totalLamps);
         const gap = totalGap / (n + 1);
@@ -680,7 +756,6 @@
                 svg += `<circle cx="${cx}" cy="${cy}" r="${r}"       fill="${litColour}"/>`;
                 svg += `<ellipse cx="${cx - r * 0.35}" cy="${cy - r * 0.4}" rx="${r * 0.35}" ry="${r * 0.22}" fill="white" opacity="0.45"/>`;
             } else {
-                /* unlit / blank */
                 svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1.2"/>`;
                 if (kind === 'R') {
                     svg += `<line x1="${cx - r + 1}" y1="${cy - 1.2}" x2="${cx + r - 1}" y2="${cy - 1.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
@@ -695,26 +770,29 @@
                     svg += `<line x1="${cx - d}" y1="${cy - d + 2.2}" x2="${cx + d}" y2="${cy + d + 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
                     svg += `<line x1="${cx - d}" y1="${cy - d - 2.2}" x2="${cx + d}" y2="${cy + d - 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
                 }
-                /* 'B' or anything else = plain blank circle */
             }
         }
 
-        /* 4. Label — positioned based on signalSide:
-              'up' (above track)  → label to the RIGHT of the pill
-              'down' (below track) → label to the LEFT of the pill
-              Legacy 'left'/'right' values still work for backward compat */
+        /* 4. Optional Route / Calling attachment — disabled by default.
+           When enabled on a main signal, route and calling indicators are
+           physically attached to the selected edge of the main signal body,
+           not drawn as a loose/overlapping module. This keeps 2/3/4/5-aspect
+           heads compact while allowing route/calling on any side. */
+        const routeProps = (cell.attrs && cell.attrs.route) || null;
+        if (routeProps && boolRouteProp(routeProps.enabled, false)) {
+            svg += renderAttachedRouteCallingToSignal({ x: x, y: y, w: w, h: h }, normaliseRouteCallingConfig(cell, true));
+        }
+
+        /* 5. Label — auto-positioned opposite the stand */
         const lblAttr = (cell.attrs && cell.attrs.label) || {};
         const lblText = lblAttr.text != null ? String(lblAttr.text) : '';
         if (lblText && lblAttr.fill !== 'transparent') {
             const lblFill = lblAttr.fill || '#dcd7d7';
             const lblSize = +lblAttr.fontSize || 12;
-            const side = sigProps.signalSide || 'up';
-            const isRight = (side === 'up' || side === 'right');
-            const lx = isRight ? x + w + 6 : x - 6;
-            const anchor = isRight ? 'start' : 'end';
-            svg += `<text x="${lx}" y="${y + h / 2}" fill="${lblFill}" ` +
+            const lp = labelSideFromStand(standPos, x, y, w, h, lblSize);
+            svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${lblFill}" ` +
                 `font-family="${T.labelFont}" font-size="${lblSize}" font-weight="700" ` +
-                `text-anchor="${anchor}" dominant-baseline="central">${escapeXml(lblText)}</text>`;
+                `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(lblText)}</text>`;
         }
 
         svg += `</g>`;
@@ -842,27 +920,11 @@
         // Falls back to the old auto-stick only when no signal props are set
         // (preserves legacy behaviour for data saved before this change).
         const sigProps = (cell.attrs && cell.attrs.signal) || null;
-        if (sigProps && sigProps.stand && sigProps.stand !== 'none') {
-            const standMode = sigProps.stand;
-            const standLen = Math.max(8, +sigProps.standLength || 20);
-            const arm = +sigProps.standArm || 0;
-            const dir = standMode === 'bottom' ? 1 : -1;
-            const side = sigProps.standSide || 'center';
-            const sx0 = side === 'left' ? bx : side === 'right' ? bx + bw : bx + bw / 2;
-            const sy0 = dir > 0 ? by + bh : by;
-            const armBefore = +sigProps.standArmBefore || 0;
-            const abX = sx0 + armBefore;
-            const v1Y = sy0 + dir * standLen;
-            let pts = [[sx0, sy0]];
-            if (armBefore !== 0) pts.push([abX, sy0]);
-            pts.push([abX, v1Y]);
-            if (arm !== 0) pts.push([abX + arm, v1Y]);
-            const path = pts.map((p, i) => (i === 0 ? 'M ' : 'L ') + p[0] + ' ' + p[1]).join(' ');
-            svg += `<path d="${path}" stroke="#b8b8b8" stroke-width="1.5" ` +
-                `fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-            const endPt = pts[pts.length - 1];
-            svg += `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="2" fill="#b8b8b8"/>`;
-        } else if (!sigProps) {
+        if (sigProps) {
+            const sPos = resolveStandPos(sigProps);
+            const sLen = Math.max(8, +sigProps.standLength || 20);
+            svg += renderStand8({ x: bx, y: by, w: bw, h: bh }, sPos, sLen);
+        } else {
             // Legacy path: rail-snapping auto-stick for old saved shunts.
             svg += renderStick({ x: bx, y: by, w: bw, h: bh }, 'right');
         }
@@ -978,36 +1040,14 @@
         }
 
         // ── L-stick to nearest rail ──
-        // Use a bounding box that covers BOTH the signal head and the shunt
         // ── Stand ──
-        // Drawn from cell.attrs.signal — same model as the Signal composite
-        // and the three shunts, so the user adjusts stand mode / length /
-        // arm in the inspector the same way for all stand-bearing types.
-        // Legacy data without `attrs.signal` keeps the old rail-snapping
-        // auto-stick so existing layouts don't regress.
         const sigStandProps = (cell.attrs && cell.attrs.signal) || null;
         const standHeadBox = { x: sigX, y: Math.min(sigY, shY), w: totalW, h: Math.max(sigH, shH) };
-        if (sigStandProps && sigStandProps.stand && sigStandProps.stand !== 'none') {
-            const standMode = sigStandProps.stand;
-            const standLen = Math.max(8, +sigStandProps.standLength || 30);
-            const arm = +sigStandProps.standArm || 0;
-            const dir = standMode === 'bottom' ? 1 : -1;
-            const side = sigStandProps.standSide || 'center';
-            const sx0 = side === 'left' ? standHeadBox.x : side === 'right' ? standHeadBox.x + standHeadBox.w : standHeadBox.x + standHeadBox.w / 2;
-            const sy0 = dir > 0 ? standHeadBox.y + standHeadBox.h : standHeadBox.y;
-            const armBefore = +sigStandProps.standArmBefore || 0;
-            const abX = sx0 + armBefore;
-            const v1Y = sy0 + dir * standLen;
-            let pts = [[sx0, sy0]];
-            if (armBefore !== 0) pts.push([abX, sy0]);
-            pts.push([abX, v1Y]);
-            if (arm !== 0) pts.push([abX + arm, v1Y]);
-            const pathD = pts.map((p, i) => (i === 0 ? 'M ' : 'L ') + p[0] + ' ' + p[1]).join(' ');
-            svg += `<path d="${pathD}" stroke="#b8b8b8" stroke-width="1.5" ` +
-                `fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
-            const endPt = pts[pts.length - 1];
-            svg += `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="2" fill="#b8b8b8"/>`;
-        } else if (!sigStandProps) {
+        if (sigStandProps) {
+            const sPos = resolveStandPos(sigStandProps);
+            const sLen = Math.max(8, +sigStandProps.standLength || 30);
+            svg += renderStand8(standHeadBox, sPos, sLen);
+        } else {
             svg += renderStick(standHeadBox, 'right');
         }
 
@@ -1023,6 +1063,274 @@
                 `text-anchor="end">${escapeXml(labelTxt)}</text>`;
         }
 
+        svg += `</g>`;
+        return svg;
+    }
+
+
+    /* --- Route / Calling signal module -------------------------------------- *
+     *  Compact SIP route indicator model based on the telemetry live signal
+     *  structure: route arms are named AUG/BUG/CUG/DUG/EUG and calling is the
+     *  independent Co_Hg/C lamp.  This renderer is deliberately self-contained
+     *  so it can be dropped as a standalone asset, or enabled inside the main
+     *  composite signal without changing the saved legacy JSON shape.
+     * ------------------------------------------------------------------------ */
+    const ROUTE_LABEL_POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG'];
+
+    function parseRouteLabels(value) {
+        if (Array.isArray(value)) value = value.join(',');
+        value = String(value == null ? '' : value).trim();
+        if (!value) value = 'AUG,BUG,CUG,DUG';
+        const seen = {};
+        return value.split(/[\s,|/]+/).map(function (x) {
+            return String(x || '').trim().toUpperCase();
+        }).filter(function (x) {
+            if (!x || seen[x]) return false;
+            seen[x] = true;
+            return true;
+        });
+    }
+
+    function clampRouteNumber(v, fallback, min, max) {
+        const n = parseFloat(v);
+        if (isNaN(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+    }
+
+    function boolRouteProp(v, fallback) {
+        if (v === undefined || v === null || v === '') return fallback;
+        if (typeof v === 'boolean') return v;
+        const s = String(v).toLowerCase().trim();
+        return !(s === 'false' || s === '0' || s === 'no' || s === 'off');
+    }
+
+    function parseRouteActiveSet(value) {
+        const out = {};
+        String(value == null ? '' : value).toUpperCase().split(/[\s,|/]+/).forEach(function (x) {
+            x = x.trim();
+            if (x) out[x] = true;
+        });
+        return out;
+    }
+
+    function routeOppositeSide(side) {
+        switch (side) {
+            case 'top': return 'bottom';
+            case 'bottom': return 'top';
+            case 'left': return 'right';
+            case 'right': return 'left';
+            default: return 'bottom';
+        }
+    }
+
+    function routeSideUnit(side) {
+        switch (side) {
+            case 'bottom': return { ax: 0, ay: 1, px: 1, py: 0, labelDx: 0, labelDy: 14, anchor: 'middle' };
+            case 'left': return { ax: -1, ay: 0, px: 0, py: 1, labelDx: -10, labelDy: 4, anchor: 'end' };
+            case 'right': return { ax: 1, ay: 0, px: 0, py: 1, labelDx: 10, labelDy: 4, anchor: 'start' };
+            case 'top':
+            default: return { ax: 0, ay: -1, px: 1, py: 0, labelDx: 0, labelDy: -9, anchor: 'middle' };
+        }
+    }
+
+    function renderTinyRouteLamp(cx, cy, r, lit, colour) {
+        colour = colour || '#ffffff';
+        if (lit) {
+            return `<circle cx="${cx}" cy="${cy}" r="${r + 2.2}" fill="${colour}" opacity="0.18"/>` +
+                `<circle cx="${cx}" cy="${cy}" r="${r + 1}" fill="${colour}" opacity="0.35"/>` +
+                `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}"/>` +
+                `<ellipse cx="${cx - r * 0.35}" cy="${cy - r * 0.35}" rx="${r * 0.34}" ry="${r * 0.20}" fill="white" opacity="0.55"/>`;
+        }
+        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="white" fill-opacity="0.10" ` +
+            `stroke="white" stroke-opacity="0.36" stroke-width="0.7"/>`;
+    }
+
+    function normaliseRouteCallingConfig(cell, forceEnabled) {
+        const route = (cell.attrs && cell.attrs.route) || {};
+        const labels = parseRouteLabels(route.labels || route.routes || route.routeLabels);
+        const side = String(route.routeSide || 'top').toLowerCase();
+        const safeSide = /^(top|bottom|left|right)$/.test(side) ? side : 'top';
+        let callingSide = String(route.callingSide || 'opposite').toLowerCase();
+        if (callingSide === 'opposite' || !/^(top|bottom|left|right)$/.test(callingSide)) {
+            callingSide = routeOppositeSide(safeSide);
+        }
+        return {
+            enabled: forceEnabled || boolRouteProp(route.enabled, false),
+            labels: labels,
+            routeSide: safeSide,
+            callingSide: callingSide,
+            calling: boolRouteProp(route.calling, true),
+            callingLabel: String(route.callingLabel || 'C'),
+            active: String(route.active || route.activeRoutes || ''),
+            dotCount: Math.round(clampRouteNumber(route.dotCount, 4, 1, 6)),
+            dotSize: clampRouteNumber(route.dotSize, 3.8, 2.2, 8),
+            armSpacing: clampRouteNumber(route.armSpacing, 27, 14, 80),
+            armLength: clampRouteNumber(route.armLength, 34, 16, 100),
+            attachGap: clampRouteNumber(route.attachGap, 14, 0, 80),
+            callingGap: clampRouteNumber(route.callingGap, 14, 0, 80),
+            compact: boolRouteProp(route.compact, true)
+        };
+    }
+
+    function renderRouteCallingGraphic(cx, cy, cfg, opts) {
+        opts = opts || {};
+        const labels = cfg.labels.length ? cfg.labels : ['AUG'];
+        const n = labels.length;
+        const activeSet = parseRouteActiveSet(cfg.active);
+        const allRoutesActive = !!(activeSet.ALL || activeSet.ROUTE || activeSet['*']);
+        const side = routeSideUnit(cfg.routeSide);
+        const mid = (n - 1) / 2;
+        const routeLen = cfg.armLength;
+        const spacing = cfg.armSpacing;
+        const dotStep = cfg.dotSize * 2.35;
+        const dotR = cfg.dotSize;
+        const lineCol = '#9aa8c4';
+        let anyRouteLit = false;
+        let svg = `<g class="sip-route-call-module">`;
+
+        // Root route lamp — same conceptual role as rdpmsRootMiddle in telemetry live.
+        for (let i = 0; i < n; i++) {
+            const lbl = labels[i];
+            if (allRoutesActive || activeSet[lbl]) anyRouteLit = true;
+        }
+        const rootLit = anyRouteLit || !!(activeSet.ROOT || activeSet.CENTER);
+        svg += `<circle cx="${cx}" cy="${cy}" r="${cfg.dotSize + 2.4}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.1"/>`;
+        svg += renderTinyRouteLamp(cx, cy, cfg.dotSize, rootLit, '#ffffff');
+
+        // Route arms — compact fan on any side. Each route has four white lamps by default.
+        for (let i = 0; i < n; i++) {
+            const lbl = labels[i];
+            const lit = allRoutesActive || !!activeSet[lbl];
+            const lateral = (i - mid) * spacing;
+            const baseX = cx + side.px * lateral;
+            const baseY = cy + side.py * lateral;
+            const endX = baseX + side.ax * routeLen;
+            const endY = baseY + side.ay * routeLen;
+            const bendX = cx + side.px * lateral * 0.35 + side.ax * routeLen * 0.42;
+            const bendY = cy + side.py * lateral * 0.35 + side.ay * routeLen * 0.42;
+            svg += `<path d="M ${cx} ${cy} Q ${bendX} ${bendY} ${endX} ${endY}" ` +
+                `stroke="${lit ? '#ffffff' : lineCol}" stroke-width="1.4" fill="none" ` +
+                `stroke-linecap="round" opacity="${lit ? '0.95' : '0.55'}"/>`;
+
+            const horizontal = cfg.routeSide === 'top' || cfg.routeSide === 'bottom';
+            const clusterCx = endX;
+            const clusterCy = endY;
+            for (let d = 0; d < cfg.dotCount; d++) {
+                const off = (d - (cfg.dotCount - 1) / 2) * dotStep;
+                const dx = horizontal ? off : 0;
+                const dy = horizontal ? 0 : off;
+                svg += renderTinyRouteLamp(clusterCx + dx, clusterCy + dy, dotR, lit, '#ffffff');
+            }
+            const labelX = clusterCx + side.labelDx;
+            const labelY = clusterCy + side.labelDy;
+            svg += `<text x="${labelX}" y="${labelY}" fill="${lit ? '#ffffff' : '#d7d7d7'}" ` +
+                `font-family="${T.labelFont}" font-size="9.5" font-weight="800" ` +
+                `text-anchor="${side.anchor}" dominant-baseline="central">${escapeXml(lbl)}</text>`;
+        }
+
+        // Independent calling signal (Co_Hg/C) — can sit on any side.
+        if (cfg.calling) {
+            const cside = routeSideUnit(cfg.callingSide);
+            const callLit = !!(activeSet.C || activeSet.CALL || activeSet.CALLING || activeSet.COHG || activeSet.CO_HG);
+            const cReach = Math.max(22, routeLen * 0.82);
+            const callX = cx + cside.ax * cReach;
+            const callY = cy + cside.ay * cReach;
+            svg += `<line x1="${cx}" y1="${cy}" x2="${callX}" y2="${callY}" stroke="#9aa8c4" ` +
+                `stroke-width="1.2" stroke-linecap="round" opacity="0.55"/>`;
+            svg += `<circle cx="${callX}" cy="${callY}" r="${dotR + 3.8}" fill="#0a0f1e" stroke="#FFD400" stroke-width="1.1"/>`;
+            svg += renderTinyRouteLamp(callX, callY, dotR + 1.4, callLit, '#FFD400');
+            const labelX = callX + cside.labelDx;
+            const labelY = callY + cside.labelDy;
+            svg += `<text x="${labelX}" y="${labelY}" fill="#FFD400" ` +
+                `font-family="${T.labelFont}" font-size="11" font-weight="900" ` +
+                `text-anchor="${cside.anchor}" dominant-baseline="central">${escapeXml(cfg.callingLabel || 'C')}</text>`;
+        }
+
+        svg += `</g>`;
+        return svg;
+    }
+
+    function routeBoxAnchor(box, side, gap) {
+        gap = gap == null ? 14 : gap;
+        const x = box.x, y = box.y, w = box.w, h = box.h;
+        switch (side) {
+            case 'bottom': return { sx: x + w / 2, sy: y + h, cx: x + w / 2, cy: y + h + gap };
+            case 'left': return { sx: x, sy: y + h / 2, cx: x - gap, cy: y + h / 2 };
+            case 'right': return { sx: x + w, sy: y + h / 2, cx: x + w + gap, cy: y + h / 2 };
+            case 'top':
+            default: return { sx: x + w / 2, sy: y, cx: x + w / 2, cy: y - gap };
+        }
+    }
+
+    function renderCallingAttachment(cx, cy, cfg, sideName) {
+        const side = routeSideUnit(sideName);
+        const activeSet = parseRouteActiveSet(cfg.active);
+        const callLit = !!(activeSet.C || activeSet.CALL || activeSet.CALLING || activeSet.COHG || activeSet.CO_HG);
+        const dotR = Math.max(2.8, cfg.dotSize + 1.3);
+        let svg = '';
+        svg += `<circle cx="${cx}" cy="${cy}" r="${dotR + 3.8}" fill="#0a0f1e" stroke="#FFD400" stroke-width="1.1"/>`;
+        svg += renderTinyRouteLamp(cx, cy, dotR, callLit, '#FFD400');
+        const labelX = cx + side.labelDx;
+        const labelY = cy + side.labelDy;
+        svg += `<text x="${labelX}" y="${labelY}" fill="#FFD400" ` +
+            `font-family="${T.labelFont}" font-size="11" font-weight="900" ` +
+            `text-anchor="${side.anchor}" dominant-baseline="central">${escapeXml(cfg.callingLabel || 'C')}</text>`;
+        return svg;
+    }
+
+    function renderAttachedRouteCallingToSignal(box, cfg) {
+        const routeSideName = /^(top|bottom|left|right)$/.test(cfg.routeSide) ? cfg.routeSide : 'top';
+        const callingSideName = /^(top|bottom|left|right)$/.test(cfg.callingSide) ? cfg.callingSide : routeOppositeSide(routeSideName);
+        const gap = Math.max(6, cfg.attachGap || 14);
+        const callGap = Math.max(6, cfg.callingGap || gap);
+        const routeAnchor = routeBoxAnchor(box, routeSideName, gap);
+        let svg = `<g class="sip-route-call-attached">`;
+
+        // Route indicator: root sits just outside the main signal body and fans outward.
+        svg += `<line x1="${routeAnchor.sx}" y1="${routeAnchor.sy}" x2="${routeAnchor.cx}" y2="${routeAnchor.cy}" ` +
+            `stroke="#9aa8c4" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/>`;
+        const routeOnlyCfg = Object.assign({}, cfg, { calling: false, routeSide: routeSideName });
+        svg += renderRouteCallingGraphic(routeAnchor.cx, routeAnchor.cy, routeOnlyCfg);
+
+        // Calling indicator: independently attached to its own selected edge.
+        if (cfg.calling) {
+            const callAnchor = routeBoxAnchor(box, callingSideName, callGap);
+            svg += `<line x1="${callAnchor.sx}" y1="${callAnchor.sy}" x2="${callAnchor.cx}" y2="${callAnchor.cy}" ` +
+                `stroke="#9aa8c4" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/>`;
+            svg += renderCallingAttachment(callAnchor.cx, callAnchor.cy, cfg, callingSideName);
+        }
+
+        svg += `</g>`;
+        return svg;
+    }
+
+    function renderRouteCallingSignal(cell) {
+        const x = cell.position.x;
+        const y = cell.position.y;
+        const w = cell.size.width || 160;
+        const h = cell.size.height || 110;
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const cfg = normaliseRouteCallingConfig(cell, true);
+        const sigProps = (cell.attrs && cell.attrs.signal) || {};
+        const standPos = resolveStandPos(sigProps);
+        const standLen = Math.max(8, +sigProps.standLength || 24);
+        const labelAttrs = (cell.attrs && cell.attrs.label) || {};
+        const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
+
+        let svg = `<g class="sip-asset sip-route-calling" data-id="${cell.id}" data-type="${cell.type}">`;
+        svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen);
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="rgba(15,23,42,0.10)" ` +
+            `stroke="rgba(34,211,238,0.18)" stroke-width="1" stroke-dasharray="4,4"/>`;
+        svg += renderRouteCallingGraphic(cx, cy, cfg);
+
+        if (labelTxt && labelAttrs.fill !== 'transparent') {
+            const fill = labelAttrs.fill || T.labelDefault;
+            const size = +labelAttrs.fontSize || 12;
+            svg += `<text x="${x + w / 2}" y="${y + h + size + 4}" fill="${fill}" ` +
+                `font-family="${T.labelFont}" font-size="${size}" font-weight="800" ` +
+                `text-anchor="middle">${escapeXml(labelTxt)}</text>`;
+        }
         svg += `</g>`;
         return svg;
     }
@@ -1308,11 +1616,64 @@
                     `</svg>`;
             }
         },
+        'examples.RouteCallingSignal': {
+            label: 'Route / Calling Signal', group: 'signal',
+            size: { width: 160, height: 110 },
+            attrs: {
+                signal: { standPos: 'B', standLength: 24 },
+                route: {
+                    enabled: true,
+                    labels: 'AUG,BUG,CUG,DUG',
+                    active: '',
+                    routeSide: 'top',
+                    calling: true,
+                    callingSide: 'bottom',
+                    callingLabel: 'C',
+                    dotCount: 4,
+                    dotSize: 3.8,
+                    armSpacing: 27,
+                    armLength: 34,
+                    compact: true
+                },
+                label: { text: '', fill: T.labelDefault, fontSize: 12, fontWeight: 'bold' }
+            },
+            render: renderRouteCallingSignal,
+            icon: function () {
+                return `<svg viewBox="0 0 80 54" xmlns="http://www.w3.org/2000/svg">` +
+                    `<line x1="40" y1="28" x2="40" y2="50" stroke="#b8b8b8" stroke-width="1.2"/>` +
+                    `<circle cx="40" cy="28" r="4" fill="#f4f4f4" stroke="#22d3ee" stroke-width="0.8"/>` +
+                    `<path d="M40 28 Q28 18 18 12 M40 28 Q40 16 40 9 M40 28 Q52 18 62 12" stroke="#9aa8c4" stroke-width="1.2" fill="none"/>` +
+                    `<text x="18" y="7" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">AUG</text>` +
+                    `<text x="40" y="5" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">BUG</text>` +
+                    `<text x="62" y="7" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">CUG</text>` +
+                    `<circle cx="15" cy="13" r="1.6" fill="#fff"/><circle cx="19" cy="13" r="1.6" fill="#fff"/><circle cx="23" cy="13" r="1.6" fill="#fff"/>` +
+                    `<circle cx="36" cy="9" r="1.6" fill="#fff"/><circle cx="40" cy="9" r="1.6" fill="#fff"/><circle cx="44" cy="9" r="1.6" fill="#fff"/>` +
+                    `<circle cx="57" cy="13" r="1.6" fill="#fff"/><circle cx="61" cy="13" r="1.6" fill="#fff"/><circle cx="65" cy="13" r="1.6" fill="#fff"/>` +
+                    `<circle cx="40" cy="45" r="4" fill="#FFD400"/><text x="49" y="47" font-family="${T.labelFont}" font-size="8" fill="#FFD400" font-weight="900">C</text>` +
+                    `</svg>`;
+            }
+        },
         'examples.Signal': {
             label: 'Signal', group: 'signal',
             size: { width: 90, height: 24 },
             attrs: {
-                signal: { lamps: 'BBB', stand: 'bottom', standLength: 30, standSide: 'center', signalSide: 'up', lit: '' },
+                signal: { lamps: 'BBB', standPos: 'B', standLength: 30, lit: '' },
+                route: {
+                    enabled: false,
+                    labels: 'AUG,BUG,CUG,DUG',
+                    active: '',
+                    routeSide: 'top',
+                    calling: true,
+                    callingSide: 'bottom',
+                    callingLabel: 'C',
+                    dotCount: 4,
+                    dotSize: 3.8,
+                    armSpacing: 27,
+                    armLength: 34,
+                    attachGap: 14,
+                    callingGap: 14,
+                    compact: true
+                },
                 label: { text: '', fill: 'transparent', fontSize: 12, fontWeight: 'bold' }
             },
             render: renderSignalComposite,
@@ -1714,9 +2075,14 @@
                 `</defs>` +
                 `<rect width="100%" height="100%" fill="url(#sipBg)"/>`;
         }
+        prepareRailContext(cells);
+        const railLayer = renderRailLayer(cells);
+        const pmConnLayer = renderPMConnectorLayer(cells);
+        const standLayer = renderStandLayer(cells);
+        const breakerLayer = renderBreakerLayer(cells);
         const body = cells.map(renderCell).join('\n');
         return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" class="${className}" preserveAspectRatio="xMidYMid meet">` +
-            bg + body +
+            bg + railLayer + pmConnLayer + standLayer + breakerLayer + body +
             `</svg>`;
     }
 
@@ -2072,12 +2438,241 @@
     }
 
     /* ------------------------------------------------------------------------ *
+     *  POINT-MACHINE CONNECTOR LAYER
+     *  ------------------------------------------------------------------------
+     *  Auto-draws rail-stub extensions at each endpoint of every PointMachine
+     *  diagonal so the diverging track visually attaches to the horizontal
+     *  rail band it branches from / merges into.
+     *
+     *  For each PM cell we:
+     *    1. Compute the two endpoints of the diagonal (p1, p2).
+     *    2. Find the nearest horizontal rail-band for each endpoint.
+     *    3. If the endpoint is close-ish vertically (within PM_ATTACH_TOL),
+     *       draw a short horizontal rail stub from the endpoint to the
+     *       rail band's centreline Y, extending outward from the PM.
+     *
+     *  The stub is styled identically to the rail layer (grey body, white
+     *  edge lines, sleeper cross-marks) so it reads as a seamless continuation
+     *  of the track bed.
+     *
+     *  Like the stand/breaker layers this is purely render-time decoration —
+     *  nothing is written to the saved layout.
+     * ------------------------------------------------------------------------ */
+    const PM_TYPES = {
+        'examples.PointMachine': 'normal',
+        'examples.PointMachine1': 'mirror'
+    };
+
+    function renderPMConnectorLayer(cells) {
+        if (!Array.isArray(cells) || cells.length === 0) return '';
+
+        /* ---- 1. Build rail bands (same logic as renderRailLayer) ---------- */
+        const Y_TOL = 40;
+        const trackYs = [];
+        for (const c of cells) {
+            if (!c || !TRACK_TYPES[c.type]) continue;
+            const cy = (c.position.y || 0) + ((c.size && c.size.height) || 60) / 2;
+            trackYs.push(cy);
+        }
+        if (!trackYs.length) return '';
+        trackYs.sort(function (a, b) { return a - b; });
+
+        const bands = [];
+        var cur = [trackYs[0]];
+        for (var i = 1; i < trackYs.length; i++) {
+            if (trackYs[i] - cur[cur.length - 1] > Y_TOL) {
+                bands.push({ cy: Math.round(cur[Math.floor(cur.length / 2)]) });
+                cur = [trackYs[i]];
+            } else {
+                cur.push(trackYs[i]);
+            }
+        }
+        bands.push({ cy: Math.round(cur[Math.floor(cur.length / 2)]) });
+
+        /* Also collect per-band horizontal extents so stubs don't overshoot
+           the rail. We store minX / maxX for each band. */
+        const bandExtents = bands.map(function () { return { minX: Infinity, maxX: -Infinity }; });
+        for (const c of cells) {
+            if (!c || !TRACK_TYPES[c.type]) continue;
+            var cx = (c.position.x || 0);
+            var cw = (c.size && c.size.width) || 60;
+            var cy = cx;  // reuse var
+            cy = (c.position.y || 0) + ((c.size && c.size.height) || 60) / 2;
+            // Find which band
+            var bestIdx = 0, bestD = Math.abs(bands[0].cy - cy);
+            for (var bi = 1; bi < bands.length; bi++) {
+                var d = Math.abs(bands[bi].cy - cy);
+                if (d < bestD) { bestIdx = bi; bestD = d; }
+            }
+            if (cx < bandExtents[bestIdx].minX) bandExtents[bestIdx].minX = cx;
+            if (cx + cw > bandExtents[bestIdx].maxX) bandExtents[bestIdx].maxX = cx + cw;
+        }
+
+        function findNearestBand(py) {
+            var best = 0, bd = Math.abs(bands[0].cy - py);
+            for (var j = 1; j < bands.length; j++) {
+                var d = Math.abs(bands[j].cy - py);
+                if (d < bd) { bd = d; best = j; }
+            }
+            return { idx: best, cy: bands[best].cy, dist: bd };
+        }
+
+        /* ---- 2. For each PM, compute endpoints and draw stubs ------------ */
+        var PM_ATTACH_TOL = 120;   // max vertical distance to attempt attachment
+        var STUB_OVERSHOOT = 12;   // extra px past the rail edge for overlap
+        var BED_H = 18;            // must match renderRailLayer's BED_H
+
+        var svg = '<g class="sip-pm-connector-layer" pointer-events="none">';
+        var drewAnything = false;
+
+        for (const c of cells) {
+            if (!c || !PM_TYPES[c.type]) continue;
+            var x = (c.position && c.position.x) || 0;
+            var y = (c.position && c.position.y) || 0;
+            var w = (c.size && c.size.width) || 100;
+            var h = (c.size && c.size.height) || 60;
+            var mirror = PM_TYPES[c.type] === 'mirror';
+
+            /* Diagonal endpoint coordinates (same logic as renderPointMachine) */
+            var x1, y1, x2, y2;
+            if (mirror) {
+                x1 = x; y1 = y;            // top-left
+                x2 = x + w; y2 = y + h;    // bottom-right
+            } else {
+                x1 = x; y1 = y + h;        // bottom-left
+                x2 = x + w; y2 = y;        // top-right
+            }
+
+            /* Process each endpoint */
+            var endpoints = [
+                { px: x1, py: y1, side: 'start' },
+                { px: x2, py: y2, side: 'end' }
+            ];
+
+            for (var ei = 0; ei < endpoints.length; ei++) {
+                var ep = endpoints[ei];
+                var nb = findNearestBand(ep.py);
+                if (nb.dist > PM_ATTACH_TOL) continue;
+                if (nb.dist < 3) continue;   // already touching — no stub needed
+
+                var railCy = nb.cy;
+                var ext = bandExtents[nb.idx];
+
+                /* Direction the stub extends horizontally: outward from the PM
+                   bounding box, toward the rail. */
+                var stubDir;   // +1 = rightward,  -1 = leftward
+                if (ep.side === 'start') {
+                    // Start endpoint is at x1. Stub goes LEFT (away from x2).
+                    stubDir = (x2 > x1) ? -1 : 1;
+                } else {
+                    // End endpoint is at x2. Stub goes RIGHT (away from x1).
+                    stubDir = (x2 > x1) ? 1 : -1;
+                }
+
+                /* Stub geometry:
+                   We draw a short diagonal segment from the PM endpoint down/up
+                   to the rail band centreline, continuing the angle briefly,
+                   then a small horizontal cap on the rail band. */
+                var epX = ep.px;
+                var epY = ep.py;
+                var railY = railCy;
+                var deltaY = railY - epY;
+
+                /* Compute how much horizontal travel is needed at the PM's
+                   angle to cover the vertical delta. */
+                var diagDx = x2 - x1;
+                var diagDy = y2 - y1;
+                var diagLen = Math.hypot(diagDx, diagDy);
+                if (diagLen < 1) continue;
+
+                /* Unit vector along the PM diagonal direction.
+                   Pick the direction away from the PM centre. */
+                var ux = diagDx / diagLen;
+                var uy = diagDy / diagLen;
+                if (ep.side === 'start') { ux = -ux; uy = -uy; }
+
+                /* Parametric: we need uy * t = deltaY  →  t = deltaY / uy
+                   If uy is near zero the endpoint is already at rail level. */
+                var stubEndX, stubEndY;
+                if (Math.abs(uy) > 0.05) {
+                    var t = deltaY / uy;
+                    if (t < 0) continue;  // rail is behind us — wrong direction
+                    stubEndX = epX + ux * t;
+                    stubEndY = railY;
+                } else {
+                    /* Diagonal is nearly horizontal — just run a short horizontal
+                       stub to the rail. */
+                    stubEndX = epX + stubDir * Math.abs(deltaY);
+                    stubEndY = railY;
+                }
+
+                /* Rail strip width along the stub (matches PM's railW calc) */
+                var railW = Math.max(7, Math.min(12, h * 0.12));
+                var ang = Math.atan2(stubEndY - epY, stubEndX - epX);
+                var segLen = Math.hypot(stubEndX - epX, stubEndY - epY);
+                if (segLen < 2) continue;
+
+                /* Perpendicular offsets for the rail body polygon */
+                var pnx = -Math.sin(ang) * railW / 2;
+                var pny = Math.cos(ang) * railW / 2;
+
+                /* === Draw the stub === */
+                drewAnything = true;
+
+                /* Body polygon */
+                var poly = [
+                    [epX + pnx, epY + pny],
+                    [stubEndX + pnx, stubEndY + pny],
+                    [stubEndX - pnx, stubEndY - pny],
+                    [epX - pnx, epY - pny]
+                ].map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
+                svg += '<polygon points="' + poly + '" fill="#7E7E7E"/>';
+
+                /* White edge lines */
+                svg += '<line x1="' + (epX + pnx) + '" y1="' + (epY + pny) +
+                    '" x2="' + (stubEndX + pnx) + '" y2="' + (stubEndY + pny) +
+                    '" stroke="white" stroke-width="1" opacity="0.7"/>';
+                svg += '<line x1="' + (epX - pnx) + '" y1="' + (epY - pny) +
+                    '" x2="' + (stubEndX - pnx) + '" y2="' + (stubEndY - pny) +
+                    '" stroke="white" stroke-width="1" opacity="0.7"/>';
+
+                /* Yellow centreline (matches PM's merge line) */
+                svg += '<line x1="' + epX + '" y1="' + epY +
+                    '" x2="' + stubEndX + '" y2="' + stubEndY +
+                    '" stroke="#FFC919" stroke-width="1.5" opacity="0.8" stroke-linecap="round"/>';
+
+                /* Sleeper cross-marks */
+                var sleeperGap = Math.max(3, segLen / 12);
+                var sleeperHalf = railW * 0.55;
+                var sux = Math.cos(ang);
+                var suy = Math.sin(ang);
+                var spx = -suy;
+                var spy = sux;
+                for (var st = sleeperGap; st < segLen - sleeperGap * 0.5; st += sleeperGap) {
+                    var scx = epX + sux * st;
+                    var scy = epY + suy * st;
+                    svg += '<line x1="' + (scx - spx * sleeperHalf) + '" y1="' + (scy - spy * sleeperHalf) +
+                        '" x2="' + (scx + spx * sleeperHalf) + '" y2="' + (scy + spy * sleeperHalf) +
+                        '" stroke="#515151" stroke-width="1"/>';
+                }
+
+                /* Junction dot — a small circle at the rail-band end to
+                   visually "anchor" the connection point on the rail. */
+                svg += '<circle cx="' + stubEndX + '" cy="' + stubEndY +
+                    '" r="' + (railW / 2 + 1) + '" fill="#7E7E7E" stroke="white" stroke-width="0.8"/>';
+            }
+        }
+        svg += '</g>';
+        return drewAnything ? svg : '';
+    }
+
+    /* ------------------------------------------------------------------------ *
      *  Export
      * ------------------------------------------------------------------------ */
     const SIP = {
         GROUPS, PALETTE: Object.keys(ASSETS), ASSETS,
         spec, makeCell, renderCell, renderIcon, renderYard,
-        renderRailLayer, prepareRailContext, renderStandLayer, renderBreakerLayer,
+        renderRailLayer, prepareRailContext, renderStandLayer, renderBreakerLayer, renderPMConnectorLayer,
         _uid: uid, _theme: T
     };
 

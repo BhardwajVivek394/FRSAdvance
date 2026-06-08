@@ -16,9 +16,9 @@
  *
  *  ASSET TYPE SUPPORT
  *  ──────────────────
- *  examples.Signal          → attrs.signal.lit  = 'R'|'Y'|'G'|'X'|''
+ *  examples.Signal          → attrs.signal.lit + attrs.route.active for main/route/calling lights
  *  examples.Signald90/45/90 → attrs.circle1.fill = lit-colour | OFF_GREY
- *  examples.Track (1-6)     → attrs.path.stroke  = #ff0000 | OFF_GREY
+ *  examples.Track (1-6)     → attrs.path.stroke  = #ff0000 | OFF_GREY; TPR DataLogger 0 = occupied
  *  examples.Track3/4        → attrs.path.fill    = #ff0000 | OFF_GREY
  *  examples.PointMachine(1) → attrs.circle1.fill = NORMAL|REVERSE|PM_OFF
  *  examples.Shaunt(2/3)     → attrs.body.fill    = lit | OFF_GREY
@@ -106,6 +106,9 @@
     var SHUNT_TYPES = {
         'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1
     };
+    var ROUTE_CALLING_TYPES = {
+        'examples.RouteCallingSignal': 1
+    };
     var BUSBAR_TYPES = {
         'examples.BusBar': 1
     };
@@ -153,7 +156,8 @@
             noMatch: 0,
             recent: [],     // ring-30
             unmatched: []      // ring-20
-        }
+        },
+        simNoEnrich: {}     // assetName -> true; simulation reset skips wsLiveData merge once
     };
 
     /* ── DOM refs (resolved in init()) ───────────────────────────────────── */
@@ -672,6 +676,7 @@
 
         state.siteId = siteId;
         state.assetValues = {};
+        state.simNoEnrich = {};
         state.msgCount = 0;
         state.diag.recv = state.diag.items = state.diag.hits = state.diag.noMatch = 0;
         setStatus('Loading layout…', 'loading');
@@ -1023,8 +1028,14 @@
             var snapshot = state.assetValues[assetName];
 
             /* Enrich snapshot from wsLiveData (bridge mode) — wsLiveData has
-             * the full merged history; our snapshot may only have this batch   */
-            enrichFromWsLiveData(assetName, snapshot);
+             * the full merged history; our snapshot may only have this batch.
+             * Simulation with reset=true skips this once so test values render
+             * in isolation instead of being overwritten by old wsLiveData. */
+            if (state.simNoEnrich && state.simNoEnrich[assetName]) {
+                delete state.simNoEnrich[assetName];
+            } else {
+                enrichFromWsLiveData(assetName, snapshot);
+            }
 
             var cells = findCells(assetName);
             if (!cells.length) {
@@ -1140,6 +1151,21 @@
                     setSnapshotValue(snapshot, aliasName, ak, av);
                 }
             }
+            /* DataLogger relay states are stored in wsLiveData.dlRelays, not attrs.
+               Add them to the SIP snapshot so TPR=0 can occupy the track and
+               signal relay/calling aliases can participate in matching. */
+            if (wEntry.dlRelays) {
+                for (var dk in wEntry.dlRelays) {
+                    if (!wEntry.dlRelays.hasOwnProperty(dk)) continue;
+                    var rObj = wEntry.dlRelays[dk];
+                    if (!rObj) continue;
+                    var rv = parseFloat(rObj.value);
+                    if (isNaN(rv)) continue;
+                    var rDisplay = rObj.displayName || dk;
+                    setSnapshotValue(snapshot, rDisplay, rObj.rawAttrName || rObj.attrName || dk, rv);
+                    if (rObj.role) setSnapshotValue(snapshot, rDisplay, rObj.role, rv);
+                }
+            }
             if (wEntry.ZeroOffsetValue != null && !isNaN(parseFloat(wEntry.ZeroOffsetValue)))
                 state.zeroOffset[assetName] = parseFloat(wEntry.ZeroOffsetValue);
             break;
@@ -1160,55 +1186,135 @@
        SECTION 5 — SIGNAL / TRACK / PM LOGIC
        ========================================================================= */
 
+    function _sipNormName(v) {
+        return String(v == null ? '' : v).toUpperCase().replace(/<[^>]*>/g, '')
+            .replace(/[^A-Z0-9]+/g, '');
+    }
+
     function relayPicked(s, names) {
         for (var i = 0; i < names.length; i++) { var v = s[names[i]]; if (v != null && v >= 0.5) return true; }
+        var wanted = {};
+        for (var w = 0; w < names.length; w++) wanted[_sipNormName(names[w])] = true;
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            if (wanted[_sipNormName(k)] && s[k] != null && s[k] >= 0.5) return true;
+        }
         return false;
     }
     function valOf(s, names) {
         for (var i = 0; i < names.length; i++) { var v = s[names[i]]; if (v != null && !isNaN(v)) return v; }
+        var wanted = {};
+        for (var w = 0; w < names.length; w++) wanted[_sipNormName(names[w])] = true;
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            if (wanted[_sipNormName(k)] && s[k] != null && !isNaN(s[k])) return s[k];
+        }
         return null;
     }
     function valOfPrefix(s, prefixes) {
         var keys = Object.keys(s).sort();   // sort for deterministic matching
         for (var i = 0; i < keys.length; i++) {
-            var k = keys[i].toLowerCase().replace(/\s+/g, '');
+            var k = _sipNormName(keys[i]);
             for (var j = 0; j < prefixes.length; j++)
-                if (k.indexOf(prefixes[j].toLowerCase().replace(/\s+/g, '')) !== -1) return s[keys[i]];
+                if (k.indexOf(_sipNormName(prefixes[j])) !== -1) return s[keys[i]];
         }
         return null;
     }
 
-    /* Signal aspect — relay relays take priority over mA readings */
+    function valueByBaseAndUnit(s, baseName, unitName) {
+        var base = _sipNormName(baseName);
+        var unit = _sipNormName(unitName || '');
+        var best = null;
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            var nk = _sipNormName(k);
+            if (nk.indexOf(base) === -1) continue;
+            if (unit && nk.indexOf(unit) === -1) continue;
+            var v = parseFloat(s[k]);
+            if (!isNaN(v)) {
+                best = v;
+                if (nk === base + unit || nk === base) break;
+            }
+        }
+        return best;
+    }
+
+    /* Signal aspect — same priority used by telemetrylive.js updateMainSignalLights():
+       analog mA values first, then relay fallback when mA values are absent. */
     function computeAspect(s, thr) {
+        var rgMa = valOf(s, ['RG mA', 'R mA']);
+        var dgMa = valOf(s, ['DG mA', 'G mA']);
+        var hgMa = valOf(s, ['HG mA', 'H mA']);
+        var hhgMa = valOf(s, ['HHG mA']);
+
+        var rgActive = rgMa != null && rgMa > thr;
+        var hhgActive = hhgMa != null && hhgMa > thr;
+        var hgActive = hgMa != null && hgMa > thr;
+        var dgActive = dgMa != null && dgMa > thr;
+
+        if (rgActive || hhgActive || hgActive || dgActive) {
+            var maxActiveMa = Math.max(
+                rgActive ? rgMa : 0,
+                hhgActive ? hhgMa : 0,
+                hgActive ? hgMa : 0,
+                dgActive ? dgMa : 0
+            );
+            if (rgActive && maxActiveMa === rgMa) return 'RG';
+            if (hhgActive) return 'HHG';
+            if (hgActive) return 'HG';
+            if (dgActive) return 'DG';
+        }
+
         if (relayPicked(s, ['RECR', 'RED CR', 'R E CR'])) return 'RG';
-        if (valOf(s, ['RG mA', 'R mA']) > thr) return 'RG';
         if (relayPicked(s, ['HECR', 'HE CR']) && relayPicked(s, ['HHECR', 'HHE CR'])) return 'HHG';
-        if (valOf(s, ['HHG mA']) > thr) return 'HHG';
         if (relayPicked(s, ['HECR', 'HE CR'])) return 'HG';
-        if (valOf(s, ['HG mA', 'H mA']) > thr) return 'HG';
         if (relayPicked(s, ['DECR', 'DE CR'])) return 'DG';
-        if (valOf(s, ['DG mA', 'G mA']) > thr) return 'DG';
         return 'OFF';
     }
 
-    /* Convert aspect → lit string for composite signal (attrs.signal.lit) */
+    /* Convert aspect → lit string for composite signal (attrs.signal.lit).
+       The renderer accepts multiple chars, so HHG can light Y + X together. */
     function aspectToLit(aspect, lampsStr) {
         if (!aspect || aspect === 'OFF') return '';
         var lamps = String(lampsStr || '').toUpperCase();
         if (aspect === 'RG') return lamps.indexOf('R') !== -1 ? 'R' : '';
         if (aspect === 'HG') return lamps.indexOf('Y') !== -1 ? 'Y' : '';
         if (aspect === 'DG') return lamps.indexOf('G') !== -1 ? 'G' : '';
-        if (aspect === 'HHG') return lamps.indexOf('X') !== -1 ? 'X'
-            : lamps.indexOf('Y') !== -1 ? 'Y' : '';
+        if (aspect === 'HHG') {
+            var lit = '';
+            if (lamps.indexOf('Y') !== -1) lit += 'Y';
+            if (lamps.indexOf('X') !== -1) lit += 'X';
+            return lit || (lamps.indexOf('Y') !== -1 ? 'Y' : '');
+        }
         return '';
     }
 
-    /* Track occupancy — mirrors Sview.cshtml / telemetrylive.js rules */
+    function getTprRelayDropValue(s) {
+        var exact = valOf(s, ['TPR', 'TPR Relay', 'TPR DL', 'TPR-DL']);
+        if (exact != null && (exact === 0 || exact === 1)) return exact;
+
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            var nk = _sipNormName(k);
+            if (nk.indexOf('TPR') === -1) continue;
+            // Do not treat analog voltage/current names as a relay unless the name is clearly a relay/pickup/drop item.
+            var analogLike = (nk.indexOf('V') !== -1 || nk.indexOf('MA') !== -1 || nk.indexOf('CURRENT') !== -1 || nk.indexOf('VOLT') !== -1);
+            var relayLike = (nk === 'TPR' || nk.indexOf('RELAY') !== -1 || nk.indexOf('PICKUP') !== -1 || nk.indexOf('DROP') !== -1 || nk.indexOf('DL') !== -1);
+            var v = parseFloat(s[k]);
+            if (!isNaN(v) && (v === 0 || v === 1) && (!analogLike || relayLike)) return v;
+        }
+        return null;
+    }
+
+    /* Track occupancy — TPR datalogger value 0 means occupied. */
     function computeOccupied(s) {
-        var tpr = valOf(s, ['TPR', 'TPR Relay']);
-        if (tpr != null) return tpr < 0.5;
-        var tprV = valOf(s, ['TPR V', 'TPR V (Loc)', 'TPRV', 'TPR Voltage']);
+        var tprRelay = getTprRelayDropValue(s);
+        if (tprRelay != null) return tprRelay < 0.5;
+
+        var tprV = valOf(s, ['TPR V', 'TPR V (Loc)', 'TPRV', 'TPR Voltage', 'VTC 24 DC TPR I/P(V)', 'VTC 24 DC TPR I/P']);
+        if (tprV == null) tprV = valueByBaseAndUnit(s, 'TPR', 'V');
         if (tprV != null) return tprV < TRACK_OCC_THR;
+
         var vr = valOf(s, ['Vr', 'VR', 'V Relay']);
         if (vr != null && ((vr > 0.1 && vr < 2.5) || vr > 4.2)) return true;
         var ck = valOf(s, ['Choke V', 'ChokeV']);
@@ -1217,13 +1323,61 @@
     }
 
     /* Diagnostic: check whether the snapshot has any recognized track attrs */
-    var _TRACK_ATTR_RE = /^(tpr|tprv|tpr\s|vr|v\s?relay|choke)/i;
+    var _TRACK_ATTR_RE = /(tpr|tprv|vr|v\s?relay|choke)/i;
     function hasTrackAttrs(s) {
         var keys = Object.keys(s);
         for (var i = 0; i < keys.length; i++) {
             if (_TRACK_ATTR_RE.test(keys[i])) return true;
         }
         return false;
+    }
+
+    function routeLabelsForCell(cell) {
+        var route = (cell.attrs && cell.attrs.route) || {};
+        var raw = route.labels || route.routes || route.routeLabels || 'AUG,BUG,CUG,DUG,EUG';
+        if (Array.isArray(raw)) raw = raw.join(',');
+        var seen = {}, out = [];
+        String(raw || '').toUpperCase().split(/[\s,|/]+/).forEach(function (x) {
+            x = String(x || '').trim();
+            if (x && !seen[x]) { seen[x] = true; out.push(x); }
+        });
+        return out.length ? out : ['AUG', 'BUG', 'CUG', 'DUG'];
+    }
+
+    function routeMaValue(s, routeName) {
+        var rn = String(routeName || '').toUpperCase();
+        var v = valOf(s, [rn + ' mA', rn + ' MA', rn + '_mA', rn + '-mA']);
+        if (v != null) return v;
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            var nk = _sipNormName(k);
+            if (nk.indexOf(rn) !== -1 && nk.indexOf('MA') !== -1) {
+                var nv = parseFloat(s[k]);
+                if (!isNaN(nv)) return nv;
+            }
+        }
+        return null;
+    }
+
+    function computeRouteCallingActive(s, thr, cell) {
+        var labels = routeLabelsForCell(cell);
+        var active = [];
+        for (var i = 0; i < labels.length; i++) {
+            var rn = labels[i];
+            var rMa = routeMaValue(s, rn);
+            var rRelay = valOf(s, [rn]);
+            if ((rMa != null && rMa > thr) || (rRelay != null && rRelay >= 0.5)) {
+                active.push(rn);
+            }
+        }
+
+        var coHgMa = valOf(s, ['Co_Hg mA', 'Co_HG mA', 'CoHg mA', 'CO HG mA', 'Calling mA', 'CALLING mA', 'C mA']);
+        if (coHgMa == null) coHgMa = valueByBaseAndUnit(s, 'COHG', 'MA');
+        var coRelay = valOf(s, ['Co_Hg', 'Co_HG', 'CoHg', 'CALLING', 'CALL', 'C']);
+        if ((coHgMa != null && coHgMa > thr) || (coRelay != null && coRelay >= 0.5)) {
+            active.push('C');
+        }
+        return active.join(',');
     }
 
     /* Point Machine position — A End wins, mirrors old Sview.cshtml */
@@ -1279,13 +1433,14 @@
         /* ── Composite signal (examples.Signal / SignalShunt) ── */
         if (COMPOSITE_SIGNAL[cell.type]) {
             var aspect = computeAspect(s, thr);
+            var changedSig = false;
 
             if (cell.type === 'examples.SignalShunt') {
                 /* SignalShunt uses attrs.lit directly (same char as composite) */
                 var litChar = aspectToLit(aspect, 'RYG');   // always has R,Y,G
                 var cur = String((cell.attrs && cell.attrs.lit) || '');
-                if (cur !== litChar) { cell.attrs.lit = litChar; return true; }
-                return false;
+                if (cur !== litChar) { cell.attrs.lit = litChar; changedSig = true; }
+                return changedSig;
             }
 
             /* examples.Signal — write to attrs.signal.lit */
@@ -1296,8 +1451,28 @@
             if (curLit !== newLit) {
                 cell.attrs.signal = cell.attrs.signal || {};
                 cell.attrs.signal.lit = newLit;
-                return true;
+                changedSig = true;
             }
+
+            /* Attached Route / Calling on main signal — mirrors telemetrylive.js:
+               route mA > ZeroOffset lights that route; Co_Hg mA > ZeroOffset lights C. */
+            if (cell.attrs.route && (cell.attrs.route.enabled === true || String(cell.attrs.route.enabled).toLowerCase() === 'true')) {
+                var newActive = computeRouteCallingActive(s, thr, cell);
+                var curActive = String(cell.attrs.route.active || cell.attrs.route.activeRoutes || '');
+                if (curActive !== newActive) {
+                    cell.attrs.route.active = newActive;
+                    changedSig = true;
+                }
+            }
+            return changedSig;
+        }
+
+        /* ── Standalone Route / Calling Signal ── */
+        if (ROUTE_CALLING_TYPES[cell.type]) {
+            cell.attrs.route = cell.attrs.route || {};
+            var rcActive = computeRouteCallingActive(s, thr, cell);
+            var rcCur = String(cell.attrs.route.active || cell.attrs.route.activeRoutes || '');
+            if (rcCur !== rcActive) { cell.attrs.route.active = rcActive; return true; }
             return false;
         }
 
@@ -1314,7 +1489,7 @@
             /* Also read tag from label ("S18 RG" → "RG") */
             var lbl = ((cell.attrs.label && cell.attrs.label.text) || '').trim().split(/\s+/);
             var cellTag = lbl.length >= 2 ? lbl[1].toUpperCase() : tagMap[cell.type];
-            var shouldLit = (aspect2 === cellTag);
+            var shouldLit = (aspect2 === cellTag) || (aspect2 === 'HHG' && (cellTag === 'HG' || cellTag === 'HHG'));
             var litCol = LAMP_COLOUR[cell.type] || C_RED;
             var newFill = shouldLit ? litCol : OFF_GREY;
             cell.attrs.circle1 = cell.attrs.circle1 || {};
@@ -1560,7 +1735,10 @@
      *   SipTelemetry.simulate('S13','RECR',1, true)       → S13 R lamp RED
      *   SipTelemetry.simulate('S13','HECR',1, true)       → S13 Y lamp YELLOW
      *   SipTelemetry.simulate('S13','DECR',1, true)       → S13 G lamp GREEN
-     *   SipTelemetry.simulate('C-18T','TPR V',0.5, true)  → track occupied (red)
+     *   SipTelemetry.simulate('C-18T','TPR',0, true)      → TPR drop; track occupied (red)
+     *   SipTelemetry.simulate('C-18T','TPR',1, true)      → TPR pickup; track clear
+     *   SipTelemetry.simulate('S13','AUG mA',12, true)    → AUG route lights on
+     *   SipTelemetry.simulate('S13','Co_Hg mA',12, true)  → calling C lights on
      *   SipTelemetry.simulate('60','A End - NWKR',23, true)  → PM normal (green)
      *   SipTelemetry.simulate('60','A End - RWKR',23, true)  → PM reverse (yellow)
      *   SipTelemetry.simulate('SH114','HR',1, true)       → shunt lit (red)
@@ -1571,8 +1749,9 @@
      */
     function simulate(assetName, attrName, value, reset) {
         if (!state.cells.length) { console.warn('[sip-telemetry] No layout — select a site first.'); return; }
-        if (reset && state.assetValues[assetName]) {
-            delete state.assetValues[assetName];
+        if (reset) {
+            if (state.assetValues[assetName]) delete state.assetValues[assetName];
+            state.simNoEnrich[assetName] = true;
         }
         feedItems([{
             AssetName: assetName, AssetAttributeName: attrName,

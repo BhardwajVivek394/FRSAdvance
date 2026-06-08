@@ -1,0 +1,2725 @@
+﻿@using Newtonsoft.Json
+@using System.Linq
+@using System.Web.Mvc
+@{
+    ViewBag.Title = "Health";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+
+    var mqttJson = JsonConvert.SerializeObject(
+        ViewBag.MQTTDetail ?? new { },
+        new JsonSerializerSettings { StringEscapeHandling = StringEscapeHandling.EscapeHtml }
+    );
+
+    var zoneItems = ((IEnumerable<SelectListItem>)(ViewBag.Zones ?? Enumerable.Empty<SelectListItem>()))
+        .Select(x => new { Id = x.Value, Name = x.Text });
+
+    var divisionItems = ((IEnumerable<SelectListItem>)(ViewBag.Divisions ?? Enumerable.Empty<SelectListItem>()))
+        .Select(x => new { Id = x.Value, Name = x.Text });
+
+    var siteItems = ((IEnumerable<SelectListItem>)(ViewBag.Sites ?? Enumerable.Empty<SelectListItem>()))
+        .Select(x => new { Id = x.Value, Name = x.Text });
+
+    var zonesJson = JsonConvert.SerializeObject(zoneItems, new JsonSerializerSettings { StringEscapeHandling = StringEscapeHandling.EscapeHtml });
+    var divisionsJson = JsonConvert.SerializeObject(divisionItems, new JsonSerializerSettings { StringEscapeHandling = StringEscapeHandling.EscapeHtml });
+    var sitesJson = JsonConvert.SerializeObject(siteItems, new JsonSerializerSettings { StringEscapeHandling = StringEscapeHandling.EscapeHtml });
+}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+    *, *::before, *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0
+    }
+
+    :root {
+        --bg: #04080f;
+        --bg2: #0b1120;
+        --bg3: #0f1729;
+        --bg4: #131d33;
+        --bg5: #182440;
+        --bdr: #1a2540;
+        --bdr2: #243352;
+        --tx: #e2e8f0;
+        --tx2: #8b9dc3;
+        --tx3: #4a5e80;
+        --tx4: #334563;
+        --grn: #34d399;
+        --amb: #fbbf24;
+        --red: #f87171;
+        --blu: #60a5fa;
+        --pur: #a78bfa;
+        --cyan: #22d3ee;
+        --grn-s: rgba(52,211,153,.08);
+        --amb-s: rgba(251,191,36,.08);
+        --red-s: rgba(248,113,113,.08);
+        --blu-s: rgba(96,165,250,.08);
+        --pur-s: rgba(167,139,250,.06);
+        --mono: 'JetBrains Mono',monospace;
+        --sans: 'DM Sans',-apple-system,sans-serif;
+    }
+
+    body {
+        font-family: var(--sans);
+        background: var(--bg);
+        color: var(--tx);
+        min-height: 100vh
+    }
+
+    .shell {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px 20px
+    }
+
+    /* ===== HEADER ===== */
+    .hdr {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 20px
+    }
+
+        .hdr h1 {
+            font-size: 22px;
+            font-weight: 800;
+            color: #f1f5f9;
+            letter-spacing: -.02em
+        }
+
+            .hdr h1 span {
+                font-weight: 400;
+                color: var(--tx3);
+                font-size: 13px;
+                margin-left: 8px
+            }
+
+    .hdr-pills {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center
+    }
+
+    .pill {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 20px;
+        letter-spacing: .06em;
+        border: 1px solid transparent
+    }
+
+        .pill.ok {
+            color: var(--grn);
+            background: var(--grn-s);
+            border-color: rgba(52,211,153,.2)
+        }
+
+        .pill.warn {
+            color: var(--amb);
+            background: var(--amb-s);
+            border-color: rgba(251,191,36,.2)
+        }
+
+        .pill.bad {
+            color: var(--red);
+            background: var(--red-s);
+            border-color: rgba(248,113,113,.2)
+        }
+
+    .refresh {
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--tx3)
+    }
+
+        .refresh b {
+            color: var(--tx2)
+        }
+
+    .paste-btn {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: var(--bg2);
+        color: var(--tx2);
+        border: 1px solid var(--bdr);
+        cursor: pointer;
+        transition: all .15s
+    }
+
+        .paste-btn:hover {
+            background: var(--bg3);
+            color: var(--tx)
+        }
+
+    /* ===== FILTERS ===== */
+    .filters {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+        align-items: center
+    }
+
+        .filters label {
+            font-size: 11px;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-weight: 600
+        }
+
+    .sel {
+        background: var(--bg2);
+        color: var(--tx);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-family: var(--sans);
+        cursor: pointer;
+        min-width: 140px;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%234a5e80'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 28px
+    }
+
+        .sel:focus {
+            outline: none;
+            border-color: var(--blu)
+        }
+
+    .search-box {
+        background: var(--bg2);
+        color: var(--tx);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 12px;
+        font-family: var(--sans);
+        width: 200px
+    }
+
+        .search-box:focus {
+            outline: none;
+            border-color: var(--blu)
+        }
+
+        .search-box::placeholder {
+            color: var(--tx4)
+        }
+
+    /* ===== SUMMARY CARDS ===== */
+    .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 14px;
+        margin-bottom: 20px
+    }
+
+    .sum-card {
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        padding: 14px 18px;
+        position: relative;
+        overflow: hidden;
+        transition: all .2s
+    }
+
+        .sum-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 3px;
+            border-radius: 12px 0 0 12px
+        }
+
+        .sum-card.c-blu::before {
+            background: var(--blu)
+        }
+
+        .sum-card.c-grn::before {
+            background: var(--grn)
+        }
+
+        .sum-card.c-amb::before {
+            background: var(--amb)
+        }
+
+        .sum-card.c-red::before {
+            background: var(--red)
+        }
+
+        .sum-card.c-pur::before {
+            background: var(--pur)
+        }
+
+        .sum-card .sc-icon {
+            font-size: 15px;
+            margin-bottom: 8px
+        }
+
+        .sum-card .sc-label {
+            font-size: 10px;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            margin-bottom: 4px
+        }
+
+        .sum-card .sc-val {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: var(--mono);
+            line-height: 1
+        }
+
+    .sc-val.grn {
+        color: var(--grn)
+    }
+
+    .sc-val.amb {
+        color: var(--amb)
+    }
+
+    .sc-val.red {
+        color: var(--red)
+    }
+
+    .sc-val.blu {
+        color: var(--blu)
+    }
+
+    .sc-val.pur {
+        color: var(--pur)
+    }
+
+    /* ===== TABLE ===== */
+    .tbl-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        background: var(--bg2)
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 1080px
+    }
+
+    thead tr.group-row th {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--bdr)
+    }
+
+    .group-row .g-station {
+        background: transparent;
+        color: var(--tx3);
+        text-align: left
+    }
+
+    .group-row .g-services {
+        background: rgba(96,165,250,.04);
+        color: var(--blu);
+        border-left: 2px solid rgba(96,165,250,.25);
+        border-right: 2px solid rgba(96,165,250,.25)
+    }
+
+    .group-row .g-hardware {
+        background: rgba(167,139,250,.04);
+        color: var(--pur);
+        border-left: 2px solid rgba(167,139,250,.25);
+        border-right: 2px solid rgba(167,139,250,.25)
+    }
+
+    .group-row .g-action {
+        background: transparent
+    }
+
+    thead tr.sub-row th {
+        font-size: 9.5px;
+        font-weight: 600;
+        color: var(--tx3);
+        text-transform: uppercase;
+        letter-spacing: .1em;
+        padding: 7px 8px;
+        text-align: left;
+        border-bottom: 1px solid var(--bdr);
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        background: var(--bg2);
+        z-index: 2
+    }
+
+    .sub-row .sh-svc {
+        border-left: 2px solid rgba(96,165,250,.15)
+    }
+
+    .sub-row .sh-svc-last {
+        border-right: 2px solid rgba(96,165,250,.15)
+    }
+
+    .sub-row .sh-hw {
+        border-left: 2px solid rgba(167,139,250,.15)
+    }
+
+    .sub-row .sh-hw-last {
+        border-right: 2px solid rgba(167,139,250,.15)
+    }
+
+    tbody tr {
+        transition: background .12s
+    }
+
+        tbody tr:hover {
+            background: var(--bg4)
+        }
+
+    tbody td {
+        padding: 10px 8px;
+        border-bottom: 1px solid rgba(26,37,64,.5);
+        vertical-align: middle;
+        font-size: 13px
+    }
+
+    tbody tr:last-child td {
+        border-bottom: none
+    }
+
+    tbody .bd-svc-l {
+        border-left: 2px solid rgba(96,165,250,.08)
+    }
+
+    tbody .bd-svc-r {
+        border-right: 2px solid rgba(96,165,250,.08)
+    }
+
+    tbody .bd-hw-l {
+        border-left: 2px solid rgba(167,139,250,.08)
+    }
+
+    tbody .bd-hw-r {
+        border-right: 2px solid rgba(167,139,250,.08)
+    }
+
+    .stn-col .zone {
+        font-size: 10px;
+        color: var(--tx3);
+        text-transform: uppercase;
+        letter-spacing: .06em
+    }
+
+    .stn-col .stn {
+        font-weight: 600;
+        color: var(--tx);
+        white-space: nowrap
+    }
+
+    .stn-col .sid {
+        font-size: 11px;
+        color: var(--tx3)
+    }
+
+    /* ===== SERVICE CHIP ===== */
+    .svc-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: .02em;
+        transition: all .15s;
+        border: 1px solid transparent;
+        white-space: nowrap
+    }
+
+        .svc-chip:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,.3)
+        }
+
+        .svc-chip .sd {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0
+        }
+
+        .svc-chip.g {
+            color: var(--grn);
+            background: rgba(52,211,153,.07);
+            border-color: rgba(52,211,153,.12)
+        }
+
+            .svc-chip.g .sd {
+                background: var(--grn);
+                box-shadow: 0 0 6px rgba(52,211,153,.5)
+            }
+
+        .svc-chip.a {
+            color: var(--amb);
+            background: rgba(251,191,36,.07);
+            border-color: rgba(251,191,36,.15)
+        }
+
+            .svc-chip.a .sd {
+                background: var(--amb);
+                box-shadow: 0 0 6px rgba(251,191,36,.5)
+            }
+
+        .svc-chip.r {
+            color: var(--red);
+            background: rgba(248,113,113,.08);
+            border-color: rgba(248,113,113,.18)
+        }
+
+            .svc-chip.r .sd {
+                background: var(--red);
+                box-shadow: 0 0 6px rgba(248,113,113,.5);
+                animation: pulse 1.5s ease-in-out infinite
+            }
+
+    @@keyframes pulse {
+        0%, 100% {
+            opacity: 1
+        }
+
+        50% {
+            opacity: .4
+        }
+    }
+
+    /* ===== HARDWARE CHIP ===== */
+    .hw-val {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: var(--mono);
+        padding: 5px 10px;
+        border-radius: 6px;
+        cursor: default;
+        transition: all .15s
+    }
+
+        .hw-val.ok {
+            color: var(--tx3);
+            background: transparent
+        }
+
+        .hw-val.issue {
+            color: var(--red);
+            background: var(--red-s);
+            border: 1px solid rgba(248,113,113,.15);
+            cursor: pointer
+        }
+
+            .hw-val.issue:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 10px rgba(0,0,0,.3)
+            }
+
+        .hw-val svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round
+        }
+
+        .hw-val .hw-count {
+            font-size: 13px;
+            font-weight: 700
+        }
+
+    /* ===== WRENCH ===== */
+    .wrench-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: 1px solid var(--bdr);
+        background: var(--bg3);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all .15s;
+        color: var(--tx3)
+    }
+
+        .wrench-btn:hover {
+            background: var(--bg5);
+            color: var(--blu);
+            border-color: var(--blu)
+        }
+
+        .wrench-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round
+        }
+
+        .wrench-btn.has-act {
+            color: var(--amb);
+            border-color: rgba(251,191,36,.3);
+            background: rgba(251,191,36,.05)
+        }
+
+    /* ===== MODAL ===== */
+    .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.55);
+        z-index: 500;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s
+    }
+
+        .overlay.open {
+            opacity: 1;
+            pointer-events: auto
+        }
+
+    .modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%) scale(.95);
+        z-index: 501;
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 14px;
+        width: 640px;
+        max-width: 94vw;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: all .25s
+    }
+
+        .modal.open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translate(-50%,-50%) scale(1)
+        }
+
+    .modal-hdr {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--bdr);
+        flex-shrink: 0
+    }
+
+        .modal-hdr h3 {
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap
+        }
+
+    .sbadge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        text-transform: uppercase;
+        letter-spacing: .08em
+    }
+
+        .sbadge.g {
+            color: var(--grn);
+            background: var(--grn-s)
+        }
+
+        .sbadge.a {
+            color: var(--amb);
+            background: var(--amb-s)
+        }
+
+        .sbadge.r {
+            color: var(--red);
+            background: var(--red-s)
+        }
+
+    .modal-close {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        border: 1px solid var(--bdr);
+        background: transparent;
+        cursor: pointer;
+        color: var(--tx2);
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0
+    }
+
+        .modal-close:hover {
+            background: var(--bg3);
+            color: var(--tx)
+        }
+
+    .modal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px 20px
+    }
+
+    .m-sec {
+        margin-bottom: 16px
+    }
+
+    .m-sec-t {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--tx3);
+        text-transform: uppercase;
+        letter-spacing: .1em;
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid var(--bdr)
+    }
+
+    .m-conns {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap
+    }
+
+    .m-conn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        padding: 5px 10px;
+        border-radius: 6px;
+        background: rgba(255,255,255,.02);
+        border: 1px solid var(--bdr)
+    }
+
+        .m-conn .cd {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%
+        }
+
+            .m-conn .cd.on {
+                background: var(--grn);
+                box-shadow: 0 0 6px rgba(52,211,153,.4)
+            }
+
+            .m-conn .cd.off {
+                background: var(--red);
+                box-shadow: 0 0 6px rgba(248,113,113,.4)
+            }
+
+        .m-conn span {
+            color: var(--tx2)
+        }
+
+        .m-conn .conn-detail {
+            font-size: 10px;
+            color: var(--tx3);
+            margin-left: 4px
+        }
+
+    .m-metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fill,minmax(120px,1fr));
+        gap: 8px
+    }
+
+    .m-met {
+        background: rgba(255,255,255,.02);
+        border: 1px solid var(--bdr);
+        border-radius: 6px;
+        padding: 8px 10px
+    }
+
+        .m-met .ml {
+            font-size: 10px;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 2px
+        }
+
+        .m-met .mv {
+            font-size: 16px;
+            font-weight: 700;
+            font-family: var(--mono);
+            color: var(--tx2)
+        }
+
+            .m-met .mv.bad {
+                color: var(--red)
+            }
+
+            .m-met .mv.warn {
+                color: var(--amb)
+            }
+
+    .m-issues {
+        display: flex;
+        flex-direction: column;
+        gap: 4px
+    }
+
+    .m-issue {
+        font-size: 12px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        border-left: 3px solid;
+        background: rgba(255,255,255,.02)
+    }
+
+        .m-issue.sev-critical {
+            border-color: var(--red);
+            color: #fca5a5
+        }
+
+        .m-issue.sev-warning {
+            border-color: var(--amb);
+            color: #fde68a
+        }
+
+        .m-issue.sev-info {
+            border-color: var(--blu);
+            color: #93c5fd
+        }
+
+    /* ===== CONNECTION DETAIL TABLE in modal ===== */
+    .conn-tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        margin-top: 6px
+    }
+
+        .conn-tbl th {
+            text-align: left;
+            font-size: 9px;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            padding: 4px 8px;
+            border-bottom: 1px solid var(--bdr);
+            font-weight: 600
+        }
+
+        .conn-tbl td {
+            padding: 5px 8px;
+            border-bottom: 1px solid rgba(26,37,64,.4);
+            color: var(--tx2);
+            font-family: var(--mono);
+            font-size: 11px
+        }
+
+        .conn-tbl tr:last-child td {
+            border-bottom: none
+        }
+
+        .conn-tbl .conn-ok {
+            color: var(--grn)
+        }
+
+        .conn-tbl .conn-bad {
+            color: var(--red)
+        }
+
+    /* ===== RUNTIME DETAIL in modal ===== */
+    .runtime-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 6px
+    }
+
+    .rt-item {
+        background: rgba(255,255,255,.02);
+        border: 1px solid var(--bdr);
+        border-radius: 4px;
+        padding: 6px 8px
+    }
+
+        .rt-item .rt-label {
+            font-size: 9px;
+            color: var(--tx4);
+            text-transform: uppercase;
+            letter-spacing: .06em
+        }
+
+        .rt-item .rt-val {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--mono);
+            color: var(--tx2)
+        }
+
+    .fix-item {
+        padding: 12px;
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        margin-bottom: 8px;
+        background: rgba(255,255,255,.02)
+    }
+
+        .fix-item .fi-svc {
+            font-size: 10px;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 4px
+        }
+
+        .fix-item .fi-problem {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--red);
+            margin-bottom: 4px
+        }
+
+        .fix-item .fi-action {
+            font-size: 12px;
+            color: var(--grn);
+            padding-left: 12px;
+            border-left: 2px solid var(--grn);
+            margin-top: 6px;
+            line-height: 1.5
+        }
+
+    .paste-box textarea {
+        width: 100%;
+        min-height: 120px;
+        background: var(--bg);
+        color: var(--tx);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 12px;
+        font-family: var(--mono);
+        resize: vertical
+    }
+
+    .paste-box p {
+        font-size: 12px;
+        color: var(--tx3);
+        margin-bottom: 12px
+    }
+
+    .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 12px
+    }
+
+        .actions button {
+            padding: 7px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--bdr);
+            transition: all .15s
+        }
+
+    .btn-cancel {
+        background: transparent;
+        color: var(--tx2)
+    }
+
+        .btn-cancel:hover {
+            background: var(--bg3)
+        }
+
+    .btn-go {
+        background: var(--grn-s);
+        color: var(--grn);
+        border-color: rgba(52,211,153,.3)
+    }
+
+        .btn-go:hover {
+            background: rgba(52,211,153,.15)
+        }
+
+    .ftr {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 10px;
+        color: var(--tx4);
+        letter-spacing: .05em
+    }
+
+    .mqtt-ind {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 16px;
+        border: 1px solid var(--bdr);
+        color: var(--tx3);
+        background: var(--bg2);
+        letter-spacing: .06em
+    }
+
+        .mqtt-ind .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--tx4)
+        }
+
+        .mqtt-ind.on {
+            color: var(--grn);
+            border-color: rgba(52,211,153,.25);
+            background: var(--grn-s)
+        }
+
+            .mqtt-ind.on .dot {
+                background: var(--grn);
+                box-shadow: 0 0 8px rgba(52,211,153,.6)
+            }
+
+        .mqtt-ind.err {
+            color: var(--red);
+            border-color: rgba(248,113,113,.25);
+            background: var(--red-s)
+        }
+
+            .mqtt-ind.err .dot {
+                background: var(--red)
+            }
+
+    .ws-ind {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 16px;
+        border: 1px solid var(--bdr);
+        color: var(--tx3);
+        background: var(--bg2);
+        letter-spacing: .06em
+    }
+
+        .ws-ind .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--tx4)
+        }
+
+        .ws-ind.on {
+            color: var(--cyan);
+            border-color: rgba(34,211,238,.25);
+            background: rgba(34,211,238,.06)
+        }
+
+            .ws-ind.on .dot {
+                background: var(--cyan);
+                box-shadow: 0 0 8px rgba(34,211,238,.6)
+            }
+
+    .empty-row td {
+        text-align: center;
+        color: var(--tx3);
+        padding: 40px 10px !important;
+        font-size: 13px
+    }
+
+    /* ===== ALERT HEALTH SECTION ===== */
+    .alert-health-section {
+        margin-bottom: 22px
+    }
+
+    .ah-card {
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        overflow: hidden
+    }
+
+    .ah-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--bdr)
+    }
+
+        .ah-top h2 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--tx);
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+            .ah-top h2 svg {
+                width: 18px;
+                height: 18px;
+                fill: none;
+                stroke: var(--amb);
+                stroke-width: 2
+            }
+
+    .ah-pills {
+        display: flex;
+        gap: 8px;
+        align-items: center
+    }
+
+    .ah-pill {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 16px;
+        font-family: var(--mono);
+        border: 1px solid transparent
+    }
+
+        .ah-pill.grn {
+            color: var(--grn);
+            background: var(--grn-s);
+            border-color: rgba(52,211,153,.18)
+        }
+
+        .ah-pill.amb {
+            color: var(--amb);
+            background: var(--amb-s);
+            border-color: rgba(251,191,36,.18)
+        }
+
+        .ah-pill.red {
+            color: var(--red);
+            background: var(--red-s);
+            border-color: rgba(248,113,113,.18)
+        }
+
+    .ah-ts {
+        font-size: 10px;
+        color: var(--tx4);
+        font-family: var(--mono)
+    }
+
+    /* Per-site alert table */
+    .ah-tbl {
+        width: 100%;
+        border-collapse: collapse
+    }
+
+        .ah-tbl thead th {
+            font-size: 9.5px;
+            font-weight: 600;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            padding: 8px 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--bdr);
+            background: var(--bg3);
+            white-space: nowrap
+        }
+
+            .ah-tbl thead th.th-svc {
+                text-align: center;
+                min-width: 100px
+            }
+
+        .ah-tbl tbody tr {
+            transition: background .12s
+        }
+
+            .ah-tbl tbody tr:hover {
+                background: var(--bg4)
+            }
+
+        .ah-tbl tbody td {
+            padding: 10px 10px;
+            border-bottom: 1px solid rgba(26,37,64,.4);
+            vertical-align: middle;
+            font-size: 13px
+        }
+
+        .ah-tbl tbody tr:last-child td {
+            border-bottom: none
+        }
+
+    .ah-site-cell .ah-sname {
+        font-weight: 600;
+        color: var(--tx);
+        white-space: nowrap
+    }
+
+    .ah-site-cell .ah-sid {
+        font-size: 10px;
+        color: var(--tx3);
+        font-family: var(--mono)
+    }
+
+    /* Service status badge in alert table */
+    .ah-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all .15s;
+        border: 1px solid transparent;
+        white-space: nowrap
+    }
+
+        .ah-badge:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0,0,0,.25)
+        }
+
+        .ah-badge .ab-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0
+        }
+
+        .ah-badge.g {
+            color: var(--grn);
+            background: rgba(52,211,153,.06);
+            border-color: rgba(52,211,153,.12)
+        }
+
+            .ah-badge.g .ab-dot {
+                background: var(--grn);
+                box-shadow: 0 0 5px rgba(52,211,153,.5)
+            }
+
+        .ah-badge.a {
+            color: var(--amb);
+            background: rgba(251,191,36,.06);
+            border-color: rgba(251,191,36,.15)
+        }
+
+            .ah-badge.a .ab-dot {
+                background: var(--amb);
+                box-shadow: 0 0 5px rgba(251,191,36,.5)
+            }
+
+        .ah-badge.r {
+            color: var(--red);
+            background: rgba(248,113,113,.07);
+            border-color: rgba(248,113,113,.18)
+        }
+
+            .ah-badge.r .ab-dot {
+                background: var(--red);
+                box-shadow: 0 0 5px rgba(248,113,113,.5);
+                animation: pulse 1.5s ease-in-out infinite
+            }
+
+        .ah-badge.u {
+            color: var(--tx3);
+            background: transparent
+        }
+
+            .ah-badge.u .ab-dot {
+                background: var(--tx4)
+            }
+
+    .ah-count {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 8px;
+        margin-left: 2px
+    }
+
+        .ah-count.red {
+            background: var(--red-s);
+            color: var(--red)
+        }
+
+        .ah-count.amb {
+            background: var(--amb-s);
+            color: var(--amb)
+        }
+
+    /* Alert detail rows (expandable per-site) */
+    .ah-detail-row td {
+        padding: 0 !important;
+        border-bottom: 1px solid rgba(26,37,64,.3)
+    }
+
+    .ah-detail-wrap {
+        padding: 8px 14px 10px;
+        background: var(--bg3)
+    }
+
+        .ah-detail-wrap.collapsed {
+            display: none
+        }
+
+    .ah-alert-item {
+        display: flex;
+        gap: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin-bottom: 4px;
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        cursor: pointer;
+        transition: all .12s
+    }
+
+        .ah-alert-item:hover {
+            border-color: var(--bdr2);
+            background: var(--bg4)
+        }
+
+        .ah-alert-item:last-child {
+            margin-bottom: 0
+        }
+
+    .aai-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-top: 4px;
+        flex-shrink: 0
+    }
+
+        .aai-dot.red {
+            background: var(--red)
+        }
+
+        .aai-dot.amb {
+            background: var(--amb)
+        }
+
+    .aai-body {
+        flex: 1;
+        min-width: 0
+    }
+
+    .aai-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--tx);
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap
+    }
+
+    .aai-kind {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 8px;
+        text-transform: uppercase
+    }
+
+        .aai-kind.red {
+            color: var(--red);
+            background: var(--red-s)
+        }
+
+        .aai-kind.amb {
+            color: var(--amb);
+            background: var(--amb-s)
+        }
+
+    .aai-desc {
+        font-size: 11px;
+        color: var(--tx2);
+        margin-top: 2px;
+        line-height: 1.4
+    }
+
+    .aai-meta {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 3px
+    }
+
+        .aai-meta span {
+            font-size: 9.5px;
+            color: var(--tx4);
+            font-family: var(--mono)
+        }
+
+    .ah-no-alerts {
+        text-align: center;
+        padding: 24px;
+        font-size: 12px;
+        color: var(--tx3)
+    }
+
+    .ah-expand-btn {
+        background: none;
+        border: none;
+        color: var(--tx3);
+        cursor: pointer;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        transition: all .15s
+    }
+
+        .ah-expand-btn:hover {
+            color: var(--tx);
+            background: var(--bg5)
+        }
+
+    /* ===== VIEW TABS ===== */
+    .view-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 18px;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid var(--bdr);
+        background: var(--bg2);
+        width: fit-content
+    }
+
+    .view-tab {
+        padding: 9px 22px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--tx3);
+        cursor: pointer;
+        transition: all .15s;
+        border: none;
+        background: transparent;
+        font-family: var(--sans);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        white-space: nowrap;
+        position: relative
+    }
+
+        .view-tab:not(:last-child) {
+            border-right: 1px solid var(--bdr)
+        }
+
+        .view-tab:hover {
+            color: var(--tx2);
+            background: var(--bg3)
+        }
+
+        .view-tab.active {
+            color: var(--tx);
+            background: var(--bg4);
+            font-weight: 700
+        }
+
+            .view-tab.active::after {
+                content: "";
+                position: absolute;
+                bottom: 0;
+                left: 12px;
+                right: 12px;
+                height: 2px;
+                border-radius: 2px
+            }
+
+            .view-tab.active.tab-alerts::after {
+                background: var(--amb)
+            }
+
+            .view-tab.active.tab-live::after {
+                background: var(--blu)
+            }
+
+        .view-tab svg {
+            width: 15px;
+            height: 15px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round
+        }
+
+        .view-tab .tab-count {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-family: var(--mono)
+        }
+
+    .tab-count.red {
+        background: var(--red-s);
+        color: var(--red)
+    }
+
+    .tab-count.grn {
+        background: var(--grn-s);
+        color: var(--grn)
+    }
+
+    .tab-count.amb {
+        background: var(--amb-s);
+        color: var(--amb)
+    }
+
+    .tab-count.blu {
+        background: var(--blu-s);
+        color: var(--blu)
+    }
+
+    @@media(max-width:700px) {
+        .summary {
+            grid-template-columns: 1fr 1fr
+        }
+
+        .filters {
+            flex-direction: column;
+            align-items: stretch
+        }
+
+        .sel, .search-box {
+            width: 100%
+        }
+
+        .modal {
+            width: 100vw;
+            max-width: 100vw;
+            height: 100vh;
+            max-height: 100vh;
+            border-radius: 0;
+            top: 0;
+            left: 0;
+            transform: none
+        }
+
+            .modal.open {
+                transform: none
+            }
+    }
+</style>
+
+<div class="shell" id="app"></div>
+
+<script>
+(function () {
+    "use strict";
+
+    var CONFIG = { API_URL: null, POLL_INTERVAL_MS: 15000 };
+    var DEBOUNCER_WS_URL = "ws://proxy.energy7.org:8081/subscribe/debouncerHealth";
+
+    var SVC_ORDER = [
+        { key: "DataRecv", label: "Data Receiver", icon: "\uD83D\uDCE5" },
+        { key: "Datalogger", label: "Datalogger", icon: "\uD83D\uDCE1" },
+        { key: "Alert", label: "Alert", icon: "\u26A1" },
+        { key: "Debouncer", label: "Debouncer", icon: "\uD83D\uDD00" },
+        { key: "Point", label: "Point Machine", icon: "\uD83D\uDD27" }
+    ];
+
+    var HW_ORDER = [
+        { key: "sensors", label: "Sensors", icon: '<svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 014 4v4a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M6 10v1a6 6 0 0012 0v-1"/><path d="M12 17v5"/><path d="M8 22h8"/></svg>' },
+        { key: "iot", label: "IoT", icon: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01"/><path d="M12 9v6M9 12h6"/></svg>' },
+        { key: "network", label: "Network", icon: '<svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-2a2 2 0 012-2h10a2 2 0 012 2v2"/></svg>' }
+    ];
+
+    var mQTTSource = @Html.Raw(mqttJson);
+    var mQTT = Array.isArray(mQTTSource) ? (mQTTSource[0] || {}) : (mQTTSource || {});
+
+    var DIVISION_URL = '@Url.Action("GetDivisionByZoneId", "Health", new { area = "FRS25" })';
+    var SITE_URL = '@Url.Action("GetSiteByDivisionId", "Health", new { area = "FRS25" })';
+    var HEALTH_TOPICS_URL = '@Url.Action("GetHealthMqttTopics", "Health", new { area = "FRS25" })';
+    var ALERT_LIVE_URL = '@Url.Action("GetAlertLive", "Health", new { area = "FRS25" })';
+
+    var masterZones = normalizeSelectItems(@Html.Raw(zonesJson));
+    var masterDivisions = normalizeSelectItems(@Html.Raw(divisionsJson));
+    var masterSites = normalizeSelectItems(@Html.Raw(sitesJson));
+
+    var divisionOptions = masterDivisions.slice();
+    var siteOptions = masterSites.slice();
+
+    var stations = [];
+    var lastRefresh = Date.now();
+    var filterZoneId = "", filterDivisionId = "", filterSiteId = "", filterSearch = "";
+    var mqttClient = null, mqttConnected = false, mqttSubscribed = false;
+    var mqttTopic = "";
+    var mqttTopics = [];
+    var currentSubscribedTopics = [];
+    var healthTopicMeta = {};
+
+    // ===== Debouncer WebSocket =====
+    var debouncerWs = null, debouncerWsConnected = false, debouncerWsReconnectTimer = null;
+
+    // ===== AlertLive API =====
+    var ALERT_LIVE_POLL_MS = 30000;
+    var SERVICE_HEALTH_IDS = ["DataReceiverHealth", "DebouncerHealth", "PointMachineHealth", "AlertHealth", "DataloggerHealth"];
+    var alertLiveRaw = [];          // Full AlertLive response
+    var serviceHealthAlerts = {};   // { siteId: { DataReceiverHealth: {status,alert}, ... } }
+    var alertLiveLastFetch = null;
+    var activeView = "alerts";      // "alerts" | "live"
+
+    // ===== Utility helpers =====
+    function safeObj(x) { return x && typeof x === "object" ? x : {}; }
+    function firstDefined() { for (var i = 0; i < arguments.length; i++) if (arguments[i] !== undefined && arguments[i] !== null && arguments[i] !== "") return arguments[i]; return null; }
+    function num(v, d) { var n = Number(v); return isFinite(n) ? n : (d || 0); }
+    function str(v, d) { return v === undefined || v === null || v === "" ? (d || "\u2014") : String(v); }
+    function boolFrom(v) {
+        if (typeof v === "boolean") return v;
+        if (typeof v === "number") return v === 1;
+        var s = String(v || "").toLowerCase();
+        return s === "1" || s === "true" || s === "connected" || s === "up" || s.indexOf("1 (") === 0 || s.indexOf("healthy") >= 0;
+    }
+    function fmtUp(s) { s = num(s, 0); if (!s) return "\u2014"; var d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d + "d " + h + "h " + m + "m"; }
+    function esc(v) { return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+    function normalizeSelectItems(list) { if (!Array.isArray(list)) return []; return list.map(function (x) { return { Id: String(firstDefined(x.Id, x.id, x.Value, x.value, "")), Name: String(firstDefined(x.Name, x.name, x.Text, x.text, "")) }; }).filter(function (x) { return x.Id !== "" || x.Name !== ""; }); }
+    function optionName(list, id) { var f = (list || []).find(function (x) { return String(x.Id) === String(id); }); return f ? f.Name : ""; }
+    function mapApiSelectItems(data) { return normalizeSelectItems(Array.isArray(data) ? data.map(function (x) { return { Id: firstDefined(x.Id, x.id, x.Value, x.value), Name: firstDefined(x.Name, x.name, x.Text, x.text) }; }) : []); }
+
+    // ===== Default station skeleton =====
+    function defaultStation(siteId) {
+        return {
+            zoneId: "", divisionId: "", zone: "Unknown", division: "Unknown",
+            stationName: siteId ? ("Site " + siteId) : "Unknown Site",
+            siteId: siteId || 0,
+            services: {},
+            hardware: { sensors: { total: 0, unhealthy: 0, issues: [] }, iot: { total: 0, unhealthy: 0, issues: [] }, network: { total: 0, unhealthy: 0, issues: [] } },
+            _topic: "", _updatedAt: null, _rawPayloads: {}
+        };
+    }
+    function normalizeHardware(hw) {
+        hw = safeObj(hw); var out = {};
+        HW_ORDER.forEach(function (h) { var x = safeObj(hw[h.key]); out[h.key] = { total: num(firstDefined(x.total, x.Total), 0), unhealthy: num(firstDefined(x.unhealthy, x.Unhealthy, x.issue, x.Issue), 0), issues: Array.isArray(x.issues) ? x.issues : (Array.isArray(x.Issues) ? x.Issues : []) }; });
+        return out;
+    }
+
+    // ===== Site / Topic resolution =====
+    function selectedHealthSiteId() { return filterSiteId ? parseInt(filterSiteId, 10) || 0 : 0; }
+
+    async function refreshHealthMqttTopics(autoResubscribe) {
+        var siteId = selectedHealthSiteId();
+        try {
+            var r = await fetch(HEALTH_TOPICS_URL + "?siteId=" + encodeURIComponent(siteId), { credentials: "same-origin" });
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            var json = await r.json();
+            var rows = json && json.data ? json.data : [];
+            var topics = [];
+            healthTopicMeta = {};
+
+            rows.forEach(function (row) {
+                var siteIdValue = firstDefined(row.SiteId, row.siteId, "");
+                var siteNameValue = firstDefined(row.SiteName, row.siteName, "");
+                var basePathValue = firstDefined(row.BasePath, row.basePath, "");
+                var zoneIdValue = firstDefined(row.ZoneId, row.zoneId, "");
+                var zoneNameValue = firstDefined(row.ZoneName, row.zoneName, "");
+                var divisionIdValue = firstDefined(row.DivisionId, row.divisionId, "");
+                var divisionNameValue = firstDefined(row.DivisionName, row.divisionName, "");
+                var rowTopics = Array.isArray(row.Topics) ? row.Topics : (Array.isArray(row.topics) ? row.topics : []);
+
+                // Also add pointServices topic
+                var parsedSid = parseInt(siteIdValue, 10) || 0;
+                if (parsedSid > 0) {
+                    var ptTopic = "pointServices/" + parsedSid + "/healthpointServices";
+                    if (rowTopics.indexOf(ptTopic) < 0) rowTopics.push(ptTopic);
+                }
+
+                rowTopics.forEach(function (topic) {
+                    if (!topic) return;
+                    topic = String(topic).replace(/^\/+|\/+$/g, "");
+                    if (topics.indexOf(topic) < 0) topics.push(topic);
+                    healthTopicMeta[topic] = {
+                        siteId: siteIdValue, siteName: siteNameValue, basePath: basePathValue,
+                        zoneId: zoneIdValue, zoneName: zoneNameValue,
+                        divisionId: divisionIdValue, divisionName: divisionNameValue
+                    };
+                });
+
+                if (parsedSid > 0 && !stations.find(function (s) { return String(s.siteId) === String(parsedSid); })) {
+                    var placeholder = defaultStation(parsedSid);
+                    placeholder.stationName = siteNameValue || placeholder.stationName;
+                    placeholder.zoneId = zoneIdValue || "";
+                    placeholder.zone = zoneNameValue || optionName(masterZones, zoneIdValue) || "Unknown";
+                    placeholder.divisionId = divisionIdValue || "";
+                    placeholder.division = divisionNameValue || optionName(masterDivisions.length ? masterDivisions : divisionOptions, divisionIdValue) || "Unknown";
+                    stations.push(placeholder);
+                }
+            });
+
+            mqttTopics = topics;
+            mqttTopic = mqttTopics.join(", ");
+            log((siteId ? "Selected site" : "All sites") + " health topics loaded: " + mqttTopics.length + ", stations: " + stations.length, "sys");
+
+            if (autoResubscribe && mqttConnected && mqttClient) { subscribeMqtt(); }
+            else { render(); }
+        } catch (e) {
+            mqttTopics = []; mqttTopic = ""; healthTopicMeta = {};
+            log("Health topic bind failed: " + e.message, "err");
+            render();
+        }
+    }
+
+    function getManualTopicList() {
+        var inp = document.getElementById("mqttTopic");
+        var raw = inp && inp.value ? inp.value : mqttTopic;
+        return String(raw || "").split(/[\n,]+/).map(function (x) { return x.trim().replace(/^\/+|\/+$/g, ""); }).filter(function (x, i, arr) { return x && arr.indexOf(x) === i; });
+    }
+
+    // ===== Filter cascading =====
+    async function bindHealthDivisions(zoneId) {
+        filterDivisionId = ""; filterSiteId = ""; siteOptions = [];
+        if (!zoneId) { divisionOptions = masterDivisions.slice(); siteOptions = masterSites.slice(); await refreshHealthMqttTopics(true); render(); return; }
+        divisionOptions = []; render();
+        try { var r = await fetch(DIVISION_URL + "?zoneId=" + encodeURIComponent(zoneId), { credentials: "same-origin" }); if (!r.ok) throw new Error("HTTP " + r.status); divisionOptions = mapApiSelectItems(await r.json()); }
+        catch (e) { log("Division bind failed: " + e.message, "err"); divisionOptions = []; }
+        await refreshHealthMqttTopics(true); render();
+    }
+    async function bindHealthSites(divisionId) {
+        filterSiteId = "";
+        if (!divisionId) { siteOptions = masterSites.slice(); await refreshHealthMqttTopics(true); render(); return; }
+        siteOptions = []; render();
+        try { var r = await fetch(SITE_URL + "?divisionId=" + encodeURIComponent(divisionId), { credentials: "same-origin" }); if (!r.ok) throw new Error("HTTP " + r.status); siteOptions = mapApiSelectItems(await r.json()); }
+        catch (e) { log("Site bind failed: " + e.message, "err"); siteOptions = []; }
+        await refreshHealthMqttTopics(true); render();
+    }
+
+    // ===== Topic-to-service mapping =====
+    function getSiteId(payload, topic) {
+        var p = safeObj(payload);
+        var direct = firstDefined(p.siteId, p.SiteId, p.siteID, p.AssetSiteId);
+        if (direct) return parseInt(direct, 10) || 0;
+        var meta = healthTopicMeta[String(topic || "").replace(/^\/+|\/+$/g, "")];
+        if (meta && meta.siteId) return parseInt(meta.siteId, 10) || 0;
+        var match = String(topic || "").match(/(?:site|rdpms|health|datareceiver|pointServices)[\/\-_]?(\d+)/i) || String(topic || "").match(/\/(\d+)\//);
+        return match ? (parseInt(match[1], 10) || 0) : 0;
+    }
+
+    function serviceKeyFromTopic(topic, payload) {
+        var t = String(topic || "").toLowerCase();
+        var p = safeObj(payload);
+        var mt = String(firstDefined(p.Topic, p.topic, p.MessageType, "") || "").toLowerCase();
+        var all = t + " " + mt;
+        if (all.indexOf("datareceiver") >= 0 || all.indexOf("data-receiver") >= 0 || all.indexOf("datarecv") >= 0) return "dataReceiverHealth";
+        if (all.indexOf("dataloggerdiagnostic") >= 0 || all.indexOf("diagnostic") >= 0) return "dataloggerDiagnostic";
+        if (all.indexOf("dataloggerheartbeat") >= 0 || all.indexOf("heartbeat") >= 0 || all.indexOf("mqtt/dl/heartbeat") >= 0) return "dataloggerHeartbeat";
+        if (all.indexOf("alerthealth") >= 0 || all.indexOf("alert") >= 0) return "alertHealth";
+        if (all.indexOf("debouncerhealth") >= 0 || all.indexOf("debouncer") >= 0) return "debouncerHealth";
+        if (all.indexOf("pointservices") >= 0 || all.indexOf("pointhealth") >= 0 || all.indexOf("point") >= 0) return "pointHealth";
+        return null;
+    }
+
+    // ===== Merge incoming health payload =====
+    function mergeHealthPayload(payload, topic) {
+        if (!payload) return;
+        if (Array.isArray(payload)) { payload.forEach(function (x) { mergeHealthPayload(x, topic); }); return; }
+        if (Array.isArray(payload.Messages)) {
+            payload.Messages.forEach(function (m) {
+                try { mergeHealthPayload(typeof m === "string" ? JSON.parse(m) : m, payload.Topic || topic); }
+                catch (e) { log("Invalid nested message: " + e.message, "err"); }
+            });
+            return;
+        }
+
+        var siteId = getSiteId(payload, topic) || Date.now();
+        var current = stations.find(function (s) { return String(s.siteId) === String(siteId); });
+        if (!current) { current = defaultStation(siteId); stations.push(current); }
+
+        current.zoneId = String(firstDefined(payload.zoneId, payload.ZoneId, payload.zoneID, current.zoneId, ""));
+        current.divisionId = String(firstDefined(payload.divisionId, payload.DivisionId, payload.divisionID, current.divisionId, ""));
+        var topicMeta = healthTopicMeta[String(topic || "").replace(/^\/+|\/+$/g, "")] || {};
+        current.zone = str(firstDefined(payload.zone, payload.Zone, (current.zone !== "Unknown" ? current.zone : null), topicMeta.zoneName), "Unknown");
+        current.division = str(firstDefined(payload.division, payload.Division, (current.division !== "Unknown" ? current.division : null), topicMeta.divisionName), "Unknown");
+        if (!current.zoneId && topicMeta.zoneId) current.zoneId = String(topicMeta.zoneId);
+        if (!current.divisionId && topicMeta.divisionId) current.divisionId = String(topicMeta.divisionId);
+        current.stationName = str(firstDefined(payload.stationName, payload.SiteName, payload.siteName, payload.StationName, payload.Name, topicMeta.siteName, current.stationName), current.stationName);
+        current.siteId = siteId;
+        current._topic = topic || current._topic || "";
+        current._updatedAt = new Date().toISOString();
+        if (!current._rawPayloads) current._rawPayloads = {};
+
+        if (payload.services) current.services = Object.assign({}, current.services, safeObj(payload.services));
+        if (payload.hardware) current.hardware = normalizeHardware(Object.assign({}, current.hardware, safeObj(payload.hardware)));
+
+        var directServices = ["dataReceiverHealth", "dataloggerHeartbeat", "dataloggerDiagnostic", "alertHealth", "debouncerHealth", "pointHealth"];
+        directServices.forEach(function (k) { if (payload[k]) current.services[k] = payload[k]; });
+
+        var mappedKey = serviceKeyFromTopic(topic, payload);
+        if (mappedKey && !payload.services && !payload[mappedKey]) {
+            current.services[mappedKey] = payload;
+        }
+
+        // Store raw payload per service key for detailed modal view
+        if (mappedKey) current._rawPayloads[mappedKey] = payload;
+
+        lastRefresh = Date.now();
+        render();
+    }
+
+    // ====================================================
+    //   SERVICE EVALUATORS
+    //   Handle both legacy format AND new connections[] format
+    // ====================================================
+
+    // --- Helper: parse new connections[] format ---
+    function parseConnectionsFormat(d) {
+        if (!Array.isArray(d.connections)) return null;
+        var conns = [], issues = [], allOk = true;
+        d.connections.forEach(function (c) {
+            var ok = boolFrom(c.connected);
+            conns.push({ l: c.name || "unknown", ok: ok, transport: c.transport || "", role: c.role || "", lastActivityAgeSec: num(c.lastActivityAgeSec), reconnectAttempts: num(c.reconnectAttempts), disconnectCount: num(c.disconnectCount) });
+            if (!ok) { allOk = false; issues.push({ sev: "critical", msg: (c.name || "Connection") + " (" + (c.transport || "") + ") disconnected" }); }
+            if (num(c.reconnectAttempts) > 5) issues.push({ sev: "warning", msg: (c.name || "") + " " + c.reconnectAttempts + " reconnect attempts" });
+            if (num(c.disconnectCount) > 0) issues.push({ sev: "warning", msg: (c.name || "") + " " + c.disconnectCount + " disconnect(s)" });
+            if (c.errorRatePct && num(c.errorRatePct) > 50) issues.push({ sev: "warning", msg: (c.name || "api") + " error rate " + num(c.errorRatePct).toFixed(1) + "%" });
+        });
+        var exc = safeObj(d.exceptions);
+        if (num(exc.total) > 5000) issues.push({ sev: "warning", msg: num(exc.total).toLocaleString() + " total exceptions" });
+        if (num(exc.ratePerMin) > 100) issues.push({ sev: "warning", msg: "Exception rate: " + num(exc.ratePerMin) + "/min" });
+
+        var statusField = String(firstDefined(d.status, d.Status, "")).toUpperCase();
+        var status = "healthy";
+        if (!allOk || statusField === "DOWN" || statusField === "ERROR") status = "critical";
+        else if (issues.some(function (i) { return i.sev === "warning"; }) || statusField === "DEGRADED" || statusField === "WARNING") status = "warning";
+
+        var metrics = { Status: str(d.status), Uptime: fmtUp(d.uptimeSec || d.UptimeSec) };
+        if (exc.total !== undefined) metrics.Exceptions = num(exc.total).toLocaleString();
+        if (exc.ratePerMin !== undefined) metrics.Exc_Rate = exc.ratePerMin + "/min";
+        var apiConn = d.connections.find(function (c) { return c.name === "api"; });
+        if (apiConn) { metrics.API_Calls = num(apiConn.calls); metrics.API_Errors = num(apiConn.errors); metrics.API_ErrRate = num(apiConn.errorRatePct).toFixed(1) + "%"; }
+
+        var rt = safeObj(d.runtime);
+        if (rt.process) { var p = safeObj(rt.process); if (p.cpuPct) metrics.CPU = p.cpuPct + "%"; if (p.workingSetMb) metrics.RAM = p.workingSetMb + "MB"; if (p.threadCount) metrics.Threads = p.threadCount; }
+
+        return { status: status, conns: conns, issues: issues, metrics: metrics };
+    }
+
+    function evalDataReceiver(d) {
+        d = safeObj(d);
+        if (!Object.keys(d).length) return unknownSvc("Data Receiver");
+        // New format check
+        var nf = parseConnectionsFormat(d);
+        if (nf) return nf;
+        // Legacy format
+        var ex = safeObj(d.exceptionCount), funnel = safeObj(d.funnel), bl = safeObj(d.broadcastLogger), il = safeObj(d.incomingLogger);
+        var mOk = boolFrom(d.mqttConnectionStatus || d.mqttConnected || d.MqttConnected);
+        var wOk = boolFrom(d.webSocketConnectionStatus || d.wsConnected || d.WebSocketConnected);
+        var issues = [], conns = [{ l: "MQTT", ok: mOk }, { l: "WS", ok: wOk }];
+        if (!mOk) issues.push({ sev: "critical", msg: "MQTT disconnected" });
+        if (!wOk) issues.push({ sev: "critical", msg: "WebSocket disconnected" });
+        if (num(ex.broadcastError) > 100) issues.push({ sev: "warning", msg: num(ex.broadcastError) + " broadcast errors" });
+        if (num(ex.mqttConnectionError) > 500) issues.push({ sev: "warning", msg: num(ex.mqttConnectionError) + " MQTT errors" });
+        if (num(bl.writeFailed) > 0 || num(il.writeFailed) > 0) issues.push({ sev: "warning", msg: "Logger write failures" });
+        return { status: (!mOk || !wOk) ? "critical" : issues.some(function (i) { return i.sev === "warning"; }) ? "warning" : "healthy", conns: conns, issues: issues, metrics: { MQTT_RX: num(funnel.mqttRx).toLocaleString(), Broadcast: num(funnel.changeBroadcast).toLocaleString(), BC_Errors: num(ex.broadcastError), MQTT_Errors: num(ex.mqttConnectionError) } };
+    }
+
+    function evalDatalogger(svc) {
+        svc = safeObj(svc);
+        var hb = safeObj(svc.dataloggerHeartbeat || svc.hb || svc), dg = safeObj(svc.dataloggerDiagnostic || svc.dg || svc);
+        if (!Object.keys(hb).length && !Object.keys(dg).length) return unknownSvc("Datalogger");
+        // New format check on either sub-payload
+        var nfHb = parseConnectionsFormat(hb), nfDg = parseConnectionsFormat(dg);
+        if (nfHb) return nfHb;
+        if (nfDg) return nfDg;
+        // Legacy
+        var serial = safeObj(hb.SerialPort), rx = safeObj(serial.RxPort), tx = safeObj(serial.TxPort), conn = safeObj(safeObj(hb.Connection).RemoteBroker);
+        var remote = safeObj(dg.remote_mqtt), ingress = safeObj(dg.ingress), sys = safeObj(dg.system), loss = safeObj(dg.loss), ack = safeObj(dg.ack_pipeline), stats = safeObj(hb.Stats);
+        var sOk = boolFrom(firstDefined(rx.IsOpen, true)) && boolFrom(firstDefined(tx.IsOpen, true));
+        var mOk = boolFrom(firstDefined(conn.Connected, remote.connected, safeObj(safeObj(dg.mqtt).remote).connected, true));
+        var ingressOk = String(firstDefined(ingress.datalogger_status, "UP")).toUpperCase() !== "DOWN";
+        var mqttState = String(firstDefined(remote.state, mOk ? "HEALTHY" : "DOWN")).toUpperCase();
+        var mqttH = mqttState === "HEALTHY" || mqttState === "OK" || mqttState === "UP";
+        var issues = [], conns = [{ l: "Serial", ok: sOk }, { l: "MQTT", ok: mOk }, { l: "Ingress", ok: ingressOk }];
+        if (!sOk) issues.push({ sev: "critical", msg: "Serial port closed" });
+        if (!mOk) issues.push({ sev: "critical", msg: "MQTT disconnected" });
+        if (!ingressOk) issues.push({ sev: "critical", msg: "Datalogger ingress down" });
+        if (!mqttH) issues.push({ sev: "critical", msg: "MQTT: " + mqttState });
+        if (num(remote.failures_last_60s) > 0) issues.push({ sev: "warning", msg: num(remote.failures_last_60s) + " MQTT failures/60s" });
+        if (num(remote.unhealthy_episodes_24h) > 3) issues.push({ sev: "warning", msg: num(remote.unhealthy_episodes_24h) + " unhealthy episodes 24h" });
+        if (num(loss.buffer_clear_loss_lifetime) > 0) issues.push({ sev: "warning", msg: num(loss.buffer_clear_loss_lifetime) + " buffer loss" });
+        if (num(ack.timeouts_since_start) > 50) issues.push({ sev: "warning", msg: num(ack.timeouts_since_start) + " ACK timeouts" });
+        if (Array.isArray(dg.recent_errors)) dg.recent_errors.slice(0, 5).forEach(function (e) { issues.push({ sev: "warning", msg: str(e.category, "ERROR") + ": " + str(e.message, "") }); });
+        return { status: (!sOk || !mOk || !ingressOk || !mqttH) ? "critical" : issues.some(function (i) { return i.sev === "warning"; }) ? "warning" : "healthy", conns: conns, issues: issues, metrics: { Received: num(stats.Received).toLocaleString(), Processed: num(stats.Processed).toLocaleString(), Dup_Rate: str(stats.DuplicateRate, 0) + "%", Latency: str(remote.average_puback_latency_ms, 0) + "ms", P95: str(remote.p95_puback_latency_ms, 0) + "ms", CPU: str(sys.cpu_percent, 0) + "%", RAM: str(sys.working_set_mb, 0) + "MB", Uptime: str(hb.UptimeFormatted, fmtUp(firstDefined(hb.UptimeSeconds, dg.uptime_seconds))) } };
+    }
+
+    function evalAlert(d) {
+        d = safeObj(d);
+        if (!Object.keys(d).length) return unknownSvc("Alert");
+        var nf = parseConnectionsFormat(d); if (nf) return nf;
+        var ws = safeObj(d.websocket), ccs = safeObj(ws.causeCodeScan), dl = safeObj(ws.causeCodeScanDL), pr = safeObj(d.processing), api = safeObj(d.api), live = safeObj(api.liveApi), db = safeObj(api.database);
+        var cOk = boolFrom(firstDefined(ccs.connected, true)), dlOk = boolFrom(firstDefined(dl.connected, true)), dbOk = boolFrom(firstDefined(db.connected, true)), apiOk = num(firstDefined(live.successRate, 100), 100) >= 95;
+        var issues = [], conns = [{ l: "WS CCS", ok: cOk }, { l: "WS DL", ok: dlOk }, { l: "DB", ok: dbOk }, { l: "API", ok: apiOk }];
+        if (!cOk) issues.push({ sev: "critical", msg: "WS CauseCode disconnected" });
+        if (!dlOk) issues.push({ sev: "critical", msg: "WS DL disconnected" });
+        if (!dbOk) issues.push({ sev: "critical", msg: "Database disconnected" });
+        if (num(pr.processingErrors) > 0) issues.push({ sev: "warning", msg: num(pr.processingErrors) + " processing errors" });
+        if (num(pr.avgProcessingMs) > 200) issues.push({ sev: "warning", msg: "Latency: " + num(pr.avgProcessingMs).toFixed(0) + "ms" });
+        return { status: (!cOk || !dlOk || !dbOk) ? "critical" : issues.length ? "warning" : "healthy", conns: conns, issues: issues, metrics: { Processed_min: num(pr.messagesProcessedLastMinute), Avg_Latency: num(pr.avgProcessingMs).toFixed(1) + "ms", Errors: num(pr.processingErrors), API_OK: num(firstDefined(live.successRate, 100), 100) + "%", WS_CCS: num(ccs.totalMessages), WS_DL: num(dl.totalMessages), Uptime: fmtUp(d.uptimeSeconds) } };
+    }
+
+    function evalDebouncer(d) {
+        d = safeObj(d);
+        if (!Object.keys(d).length) return unknownSvc("Debouncer");
+        var nf = parseConnectionsFormat(d); if (nf) return nf;
+        var dl = safeObj(d.mqttDl), pm = safeObj(d.wsPmOp), blocked = safeObj(d.blocked);
+        var wsOk = boolFrom(firstDefined(d.wsConnected, true)), mqttOk = boolFrom(firstDefined(d.mqttConnected, true)), dlOk = boolFrom(firstDefined(dl.connected, true)), pmOk = boolFrom(firstDefined(pm.connected, true));
+        var issues = [], conns = [{ l: "WS Live", ok: wsOk }, { l: "MQTT", ok: mqttOk }, { l: "MQTT DL", ok: dlOk }, { l: "WS PM", ok: pmOk }];
+        if (!wsOk) issues.push({ sev: "critical", msg: "WebSocket disconnected" + (d.wsLastReceived ? " (last: " + new Date(d.wsLastReceived).toLocaleTimeString() + ")" : "") });
+        if (!mqttOk) issues.push({ sev: "critical", msg: "MQTT disconnected" });
+        if (!dlOk) issues.push({ sev: "critical", msg: "MQTT DL disconnected" });
+        if (!pmOk) issues.push({ sev: "critical", msg: "WS PM disconnected" });
+        var er = num(d.apiCalls) > 0 ? (num(d.apiErrors) / num(d.apiCalls) * 100) : 0;
+        if (er > 50) issues.push({ sev: "warning", msg: "API error: " + er.toFixed(0) + "%" });
+        if (num(d.exceptions) > 5000) issues.push({ sev: "warning", msg: num(d.exceptions).toLocaleString() + " exceptions" });
+        if (num(blocked.trm) > 20) issues.push({ sev: "warning", msg: num(blocked.trm) + " TRM blocked" });
+        if (num(blocked.l3) > 20) issues.push({ sev: "warning", msg: num(blocked.l3) + " L3 blocked" });
+        if (num(pm.cacheStaleSkipped) > 5000) issues.push({ sev: "info", msg: num(pm.cacheStaleSkipped).toLocaleString() + " PM cache stale skipped" });
+        var allC = wsOk && mqttOk && dlOk && pmOk;
+        var metrics = {
+            WS_Received: num(d.wsReceived).toLocaleString(),
+            CCS_Scan: num(d.causeCodeScan).toLocaleString(),
+            CCS_DL: num(d.causeCodeScanDL).toLocaleString(),
+            API_Calls: num(d.apiCalls).toLocaleString(),
+            API_Errors: num(d.apiErrors),
+            Exceptions: num(d.exceptions),
+            DL_Messages: num(dl.messagesReceived).toLocaleString(),
+            DL_Events: num(dl.eventsProcessed).toLocaleString(),
+            PM_Batches: num(pm.batchesReceived),
+            PM_Processed: num(pm.messagesProcessed),
+            Blocked_TRM: num(blocked.trm),
+            Blocked_L3: num(blocked.l3),
+            Uptime: str(d.uptime, "\u2014")
+        };
+        return { status: !allC ? "critical" : issues.some(function (i) { return i.sev === "warning"; }) ? "warning" : "healthy", conns: conns, issues: issues, metrics: metrics };
+    }
+
+    function evalPoint(d) {
+        d = safeObj(d);
+        if (!Object.keys(d).length) return unknownSvc("Point Machine");
+        var nf = parseConnectionsFormat(d); if (nf) return nf;
+        var mqttOk = boolFrom(firstDefined(d.mqttConnected, true));
+        var issues = [], conns = [{ l: "MQTT", ok: mqttOk }];
+        if (!mqttOk) issues.push({ sev: "critical", msg: "MQTT disconnected" });
+        var ir = num(d.totalEventReceive) > 0 ? (num(d.totalInvalidEvent) / num(d.totalEventReceive) * 100) : 0;
+        if (ir > 20) issues.push({ sev: "warning", msg: "Invalid: " + ir.toFixed(0) + "%" });
+        if (num(d.rxCorrupted) > 5) issues.push({ sev: "warning", msg: num(d.rxCorrupted) + " corrupted" });
+        if (num(d.mqttSilence) > 60) issues.push({ sev: "warning", msg: "Silent " + num(d.mqttSilence) + "s" });
+        return { status: !mqttOk ? "critical" : issues.some(function (i) { return i.sev === "warning"; }) ? "warning" : "healthy", conns: conns, issues: issues, metrics: { Received: num(d.totalEventReceive), Saved: num(d.totalEventSave), Broadcast: num(d.totalEventBroadcast), Invalid: num(d.totalInvalidEvent), RX_Cluster: num(d.rxCluster), RX_FTP: num(d.rxFtp), RX_MQTT: num(d.rxMqtt) } };
+    }
+
+    function unknownSvc() { return { status: "unknown", conns: [], issues: [{ sev: "info", msg: "No health packet received yet" }], metrics: { Status: "Waiting" } }; }
+
+    function getSvcData(services, key) {
+        services = safeObj(services);
+        if (key === "DataRecv") return services.dataReceiverHealth;
+        if (key === "Datalogger") return { dataloggerHeartbeat: services.dataloggerHeartbeat, dataloggerDiagnostic: services.dataloggerDiagnostic };
+        if (key === "Alert") return services.alertHealth;
+        if (key === "Debouncer") return services.debouncerHealth;
+        if (key === "Point") return services.pointHealth;
+        return {};
+    }
+
+    var EV = { DataRecv: evalDataReceiver, Datalogger: evalDatalogger, Alert: evalAlert, Debouncer: evalDebouncer, Point: evalPoint };
+    function evalStation(st) { return SVC_ORDER.map(function (s) { return Object.assign(EV[s.key](getSvcData(st.services, s.key)), { key: s.key, label: s.label, icon: s.icon }); }); }
+
+    function getFixActions(st, svcs) {
+        var fixes = [];
+        svcs.forEach(function (svc) {
+            svc.issues.filter(function (i) { return i.sev !== "info"; }).forEach(function (issue) {
+                var a = "Investigate service logs and check latest packet timestamp.";
+                if (/disconnected/i.test(issue.msg)) {
+                    if (/mqtt/i.test(issue.msg)) a = "Check MQTT broker reachability, credentials, topic, and reconnect the MQTT client.";
+                    else if (/database/i.test(issue.msg)) a = "Check DB server, credentials, network route, and DB service logs.";
+                    else if (/ws|websocket/i.test(issue.msg)) a = "Check WebSocket endpoint, upstream service, and proxy/firewall rules.";
+                    else if (/serial/i.test(issue.msg)) a = "Check COM port, driver, cable, and restart datalogger service.";
+                } else if (/error|exception/i.test(issue.msg)) a = "Review application logs and exception count trend.";
+                else if (/buffer|timeout/i.test(issue.msg)) a = "Check disk I/O, queue depth, service CPU/RAM, and outbox backlog.";
+                else if (/reconnect/i.test(issue.msg)) a = "Network instability likely. Check upstream service health and firewall rules.";
+                fixes.push({ svc: svc.label + " " + svc.icon, problem: issue.msg, action: a, sev: issue.sev });
+            });
+        });
+        HW_ORDER.forEach(function (h) {
+            var hw = safeObj(st.hardware[h.key]);
+            if (num(hw.unhealthy) > 0) (hw.issues || []).forEach(function (i) { fixes.push({ svc: h.label, problem: i, action: "Check field device, power, wiring, and last communication timestamp.", sev: "warning" }); });
+        });
+        return fixes;
+    }
+
+    // ===== Filtering =====
+    function getFilteredStations() {
+        var zoneName = optionName(masterZones, filterZoneId);
+        var divisionName = optionName(divisionOptions.length ? divisionOptions : masterDivisions, filterDivisionId);
+        var siteName = optionName(siteOptions.length ? siteOptions : masterSites, filterSiteId);
+        return stations.filter(function (s) {
+            var ok = true;
+            if (filterZoneId) ok = ok && (String(firstDefined(s.zoneId, s.ZoneId, "")) === String(filterZoneId) || (zoneName && String(s.zone || "").toLowerCase() === zoneName.toLowerCase()));
+            if (filterDivisionId) ok = ok && (String(firstDefined(s.divisionId, s.DivisionId, "")) === String(filterDivisionId) || (divisionName && String(s.division || "").toLowerCase() === divisionName.toLowerCase()));
+            if (filterSiteId) ok = ok && (String(firstDefined(s.siteId, s.SiteId, "")) === String(filterSiteId) || (siteName && String(s.stationName || "").toLowerCase() === siteName.toLowerCase()));
+            if (filterSearch) { var q = filterSearch.toLowerCase(); ok = ok && [s.stationName, s.siteId, s.zone, s.division, s._topic].some(function (x) { return String(x || "").toLowerCase().indexOf(q) >= 0; }); }
+            return ok;
+        });
+    }
+
+    // ===== RENDER =====
+    function render() {
+        var app = document.getElementById("app");
+        if (!app) return;
+        var zoneOptions = masterZones.length ? masterZones : normalizeSelectItems([].concat(new Set(stations.map(function (s) { return s.zone; }).filter(Boolean))).sort().map(function (z) { return { Id: z, Name: z }; }));
+        var f = getFilteredStations();
+        var ev = f.map(function (st) { return { st: st, svcs: evalStation(st) }; });
+        var tot = ev.length;
+        var crit = ev.filter(function (e) { return e.svcs.some(function (s) { return s.status === "critical"; }); }).length;
+        var warn = ev.filter(function (e) { return e.svcs.some(function (s) { return s.status === "warning"; }) && !e.svcs.some(function (s) { return s.status === "critical"; }); }).length;
+        var ok = ev.filter(function (e) { return e.svcs.length && e.svcs.every(function (s) { return s.status === "healthy" || s.status === "unknown"; }) && !e.svcs.some(function (s) { return s.status === "unknown"; }); }).length;
+        var hwT = f.reduce(function (a, s) { return a + HW_ORDER.reduce(function (b, h) { return b + num(safeObj(s.hardware[h.key]).unhealthy); }, 0); }, 0);
+        var oCls = crit ? "bad" : warn ? "warn" : mqttConnected ? "ok" : "warn";
+        var oLbl = crit ? "DEGRADED" : warn ? "WARNING" : mqttConnected ? "OPERATIONAL" : "WAITING";
+        var connCls = mqttConnected ? "on" : "err";
+        var connText = mqttConnected ? (mqttSubscribed ? "MQTT SUBSCRIBED" : "MQTT CONNECTED") : "MQTT OFFLINE";
+        var wsCls = debouncerWsConnected ? "on" : "";
+        var wsText = debouncerWsConnected ? "WS DEBOUNCER" : "WS OFF";
+
+        app.innerHTML =
+            '<div class="hdr">' +
+                '<div><h1>RDPMS <span>Health Monitor</span></h1></div>' +
+                '<div class="hdr-pills">' +
+                    '<span class="pill ' + oCls + '">' + oLbl + '</span>' +
+                    '<span class="mqtt-ind ' + connCls + '"><span class="dot"></span>' + connText + '</span>' +
+                    '<span class="ws-ind ' + wsCls + '"><span class="dot"></span>' + wsText + '</span>' +
+                    '<span class="refresh"><b id="timer">' + Math.floor((Date.now() - lastRefresh) / 1000) + 's</b> ago</span>' +
+                    '<button class="paste-btn" onclick="HealthDash.openPaste()">UPDATE JSON</button>' +
+                '</div>' +
+            '</div>' +
+
+            '<div class="filters">' +
+                '<label>Zone</label>' +
+                '<select class="sel" id="fZ"><option value="">All Zones</option>' +
+                zoneOptions.map(function (z) { return '<option value="' + esc(z.Id) + '" ' + (String(z.Id) === String(filterZoneId) ? "selected" : "") + '>' + esc(z.Name) + '</option>'; }).join("") +
+                '</select>' +
+                '<label>Division</label>' +
+                '<select class="sel" id="fD"><option value="">All Divisions</option>' +
+                divisionOptions.map(function (d) { return '<option value="' + esc(d.Id) + '" ' + (String(d.Id) === String(filterDivisionId) ? "selected" : "") + '>' + esc(d.Name) + '</option>'; }).join("") +
+                '</select>' +
+                '<label>Site</label>' +
+                '<select class="sel" id="fSite"><option value="">All Sites</option>' +
+                siteOptions.map(function (site) { return '<option value="' + esc(site.Id) + '" ' + (String(site.Id) === String(filterSiteId) ? "selected" : "") + '>' + esc(site.Name) + '</option>'; }).join("") +
+                '</select>' +
+                '<input class="search-box" id="fS" placeholder="Search station\u2026" value="' + esc(filterSearch) + '" />' +
+            '</div>' +
+
+            '<div class="summary">' +
+                '<div class="sum-card c-blu"><div class="sc-icon">\uD83D\uDCCA</div><div class="sc-label">Stations</div><div class="sc-val blu">' + tot + '</div></div>' +
+                '<div class="sum-card c-grn"><div class="sc-icon">\u2705</div><div class="sc-label">Healthy</div><div class="sc-val grn">' + ok + '</div></div>' +
+                '<div class="sum-card c-amb"><div class="sc-icon">\u26A0\uFE0F</div><div class="sc-label">Warning</div><div class="sc-val amb">' + warn + '</div></div>' +
+                '<div class="sum-card c-red"><div class="sc-icon">\uD83D\uDD34</div><div class="sc-label">Critical</div><div class="sc-val red">' + crit + '</div></div>' +
+                '<div class="sum-card c-pur"><div class="sc-icon">\uD83D\uDD27</div><div class="sc-label">HW Issues</div><div class="sc-val ' + (hwT ? "red" : "grn") + '">' + hwT + '</div></div>' +
+            '</div>' +
+
+            // ---- TAB SWITCHER ----
+            (function () {
+                var ah = getAlertHealthSummary();
+                var alertBadge = ah.unhealthy > 0 ? '<span class="tab-count red">' + ah.unhealthy + '</span>' : (ah.warning > 0 ? '<span class="tab-count amb">' + ah.warning + '</span>' : '<span class="tab-count grn">' + ah.healthy + '</span>');
+                var liveBadge = crit > 0 ? '<span class="tab-count red">' + crit + '</span>' : (warn > 0 ? '<span class="tab-count amb">' + warn + '</span>' : '<span class="tab-count blu">' + tot + '</span>');
+                return '<div class="view-tabs">' +
+                    '<button class="view-tab tab-alerts' + (activeView === "alerts" ? " active" : "") + '" onclick="HealthDash.switchView(\'alerts\')">' +
+                        '<svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>' +
+                        'Alert Health ' + alertBadge +
+                    '</button>' +
+                    '<button class="view-tab tab-live' + (activeView === "live" ? " active" : "") + '" onclick="HealthDash.switchView(\'live\')">' +
+                        '<svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' +
+                        'Live Services ' + liveBadge +
+                    '</button>' +
+                '</div>';
+            })() +
+
+            // ---- ALERT VIEW ----
+            (activeView === "alerts" ? (function () {
+                var ah = getAlertHealthSummary();
+                var siteAlertMap = buildSiteAlertMap();
+                var siteIds = Object.keys(siteAlertMap).sort(function (a, b) { return siteAlertMap[b].alertCount - siteAlertMap[a].alertCount; });
+                var svcLabels = { DataReceiverHealth: "Data Recv", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine" };
+
+                var html = '<div class="ah-card">' +
+                    '<div class="ah-top"><h2><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>Service Alert Health</h2>' +
+                    '<div class="ah-pills">' +
+                        '<span class="ah-pill grn">\u2713 ' + ah.healthy + '</span>' +
+                        '<span class="ah-pill amb">\u26A0 ' + ah.warning + '</span>' +
+                        '<span class="ah-pill red">\u2716 ' + ah.unhealthy + '</span>' +
+                        '<span class="ah-ts">' + (alertLiveLastFetch ? alertLiveLastFetch.toLocaleTimeString() : "...") + '</span>' +
+                    '</div></div>';
+
+                if (!siteIds.length) {
+                    html += '<div class="ah-no-alerts">\u23F3 Waiting for AlertLive data\u2026</div>';
+                } else {
+                    html += '<div style="overflow-x:auto"><table class="ah-tbl"><thead><tr>' +
+                        '<th style="width:180px">Station</th>';
+                    SERVICE_HEALTH_IDS.forEach(function (sid) { html += '<th class="th-svc">' + esc(svcLabels[sid] || sid) + '</th>'; });
+                    html += '<th style="width:50px;text-align:center">Alerts</th></tr></thead><tbody>';
+
+                    siteIds.forEach(function (siteId) {
+                        var site = siteAlertMap[siteId];
+                        var rowId = 'ahrow_' + siteId;
+                        html += '<tr>';
+                        html += '<td><div class="ah-site-cell"><div class="ah-sname">' + esc(site.siteName) + '</div><div class="ah-sid">ID: ' + esc(siteId) + '</div></div></td>';
+                        SERVICE_HEALTH_IDS.forEach(function (svcId) {
+                            var entry = site.services[svcId] || { status: "healthy", alerts: [] };
+                            var cls = entry.status === "unhealthy" ? "r" : entry.status === "warning" ? "a" : "g";
+                            var label = entry.status === "unhealthy" ? "Dead" : entry.status === "warning" ? "Warn" : "OK";
+                            html += '<td style="text-align:center"><div class="ah-badge ' + cls + '"' +
+                                (entry.alerts.length ? ' onclick="HealthDash.openAlertDetail(' + entry.alerts[0].alertId + ')"' : '') + '>' +
+                                '<span class="ab-dot"></span>' + label;
+                            if (entry.alerts.length > 0) html += '<span class="ah-count ' + (entry.status === "unhealthy" ? "red" : "amb") + '">' + entry.alerts.length + '</span>';
+                            html += '</div></td>';
+                        });
+                        html += '<td style="text-align:center">';
+                        if (site.alertCount > 0) {
+                            html += '<button class="ah-expand-btn" onclick="HealthDash.toggleSiteAlerts(\'' + esc(siteId) + '\')">' + site.alertCount + ' \u25BC</button>';
+                        } else {
+                            html += '<span style="color:var(--tx4);font-size:11px">\u2014</span>';
+                        }
+                        html += '</td></tr>';
+
+                        if (site.alertCount > 0) {
+                            html += '<tr class="ah-detail-row"><td colspan="' + (SERVICE_HEALTH_IDS.length + 2) + '"><div class="ah-detail-wrap collapsed" id="' + rowId + '">';
+                            site.allAlerts.forEach(function (alert) {
+                                var parsed = parseAlertIdentifier(alert.alertIdentifier);
+                                var kind = String(parsed.kind || "").toLowerCase();
+                                var kCls = kind === "dead" ? "red" : "amb";
+                                html += '<div class="ah-alert-item" onclick="HealthDash.openAlertDetail(' + num(alert.alertId) + ')">' +
+                                    '<div class="aai-dot ' + kCls + '"></div>' +
+                                    '<div class="aai-body">' +
+                                        '<div class="aai-title">' + esc(alert.sourceId) + ' <span class="aai-kind ' + kCls + '">' + esc(kind || "alert") + '</span></div>' +
+                                        '<div class="aai-desc">' + esc(alert.alertDescription || "") + '</div>' +
+                                        '<div class="aai-meta">';
+                                if (parsed.rule) html += '<span>' + esc(parsed.rule) + '</span>';
+                                if (alert.priority) html += '<span>' + esc(alert.priority) + '</span>';
+                                if (alert.timestampSet) html += '<span>' + new Date(alert.timestampSet).toLocaleString() + '</span>';
+                                html += '</div></div></div>';
+                            });
+                            html += '</div></td></tr>';
+                        }
+                    });
+                    html += '</tbody></table></div>';
+                }
+                html += '</div>';
+                return html;
+            })() : "") +
+
+            // ---- LIVE SERVICES VIEW ----
+            (activeView === "live" ?
+            '<div class="tbl-wrap"><table>' +
+                '<thead>' +
+                    '<tr class="group-row">' +
+                        '<th class="g-station" rowspan="2" style="width:180px;text-align:left">Station</th>' +
+                        '<th class="g-services" colspan="' + SVC_ORDER.length + '">Services</th>' +
+                        '<th class="g-hardware" colspan="' + HW_ORDER.length + '">Hardware</th>' +
+                        '<th class="g-action" rowspan="2" style="width:44px"></th>' +
+                    '</tr>' +
+                    '<tr class="sub-row">' +
+                        SVC_ORDER.map(function (s, i) { return '<th class="' + (i === 0 ? "sh-svc" : "") + (i === SVC_ORDER.length - 1 ? " sh-svc-last" : "") + '">' + esc(s.label) + '</th>'; }).join("") +
+                        HW_ORDER.map(function (h, i) { return '<th class="' + (i === 0 ? "sh-hw" : "") + (i === HW_ORDER.length - 1 ? " sh-hw-last" : "") + '">' + esc(h.label) + '</th>'; }).join("") +
+                    '</tr>' +
+                '</thead>' +
+                '<tbody id="tb"></tbody>' +
+            '</table></div>' : "") +
+            '<div class="ftr">RDPMS Health Dashboard &middot; ENERGY7</div>' +
+            '<div class="overlay" id="ov" onclick="HealthDash.closeModal()"></div><div class="modal" id="mo"></div>';
+
+        document.getElementById("fZ").onchange = function (e) { filterZoneId = e.target.value || ""; bindHealthDivisions(filterZoneId); };
+        document.getElementById("fD").onchange = function (e) { filterDivisionId = e.target.value || ""; bindHealthSites(filterDivisionId); };
+        document.getElementById("fSite").onchange = async function (e) { filterSiteId = e.target.value || ""; await refreshHealthMqttTopics(true); fetchAlertLive(); render(); };
+        var stimer;
+        document.getElementById("fS").oninput = function (e) { clearTimeout(stimer); stimer = setTimeout(function () { filterSearch = e.target.value; render(); }, 250); };
+
+        var tb = document.getElementById("tb");
+        if (activeView === "live" && tb) {
+        if (!ev.length) {
+            tb.innerHTML = '<tr class="empty-row"><td colspan="' + (1 + SVC_ORDER.length + HW_ORDER.length + 1) + '">No health data yet. Connect MQTT or paste JSON.</td></tr>';
+        } else {
+            ev.forEach(function (item) {
+                var stn = item.st, svcs = item.svcs;
+                var tr = document.createElement("tr");
+                var fixes = getFixActions(stn, svcs);
+                var escapedSid = esc(String(stn.siteId));
+                var svcCells = svcs.map(function (svc, i) {
+                    var c = svc.status === "healthy" ? "g" : svc.status === "warning" || svc.status === "unknown" ? "a" : "r";
+                    var cls = [];
+                    if (i === 0) cls.push("bd-svc-l");
+                    if (i === SVC_ORDER.length - 1) cls.push("bd-svc-r");
+                    return '<td class="' + cls.join(" ") + '"><div class="svc-chip ' + c + '" onclick="HealthDash.openSvc(\'' + escapedSid + '\',' + i + ')"><span class="sd"></span>' + esc(svc.label) + '</div></td>';
+                }).join("");
+                var hwCells = HW_ORDER.map(function (h, i) {
+                    var hw = safeObj(stn.hardware[h.key]);
+                    var cls = [];
+                    if (i === 0) cls.push("bd-hw-l");
+                    if (i === HW_ORDER.length - 1) cls.push("bd-hw-r");
+                    if (num(hw.unhealthy) > 0) return '<td class="' + cls.join(" ") + '"><div class="hw-val issue" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon + '<span class="hw-count">' + num(hw.unhealthy) + '</span></div></td>';
+                    return '<td class="' + cls.join(" ") + '"><div class="hw-val ok">\u2014</div></td>';
+                }).join("");
+                tr.innerHTML = '<td><div class="stn-col"><div class="zone">' + esc(stn.zone) + ' \u203A ' + esc(stn.division) + '</div><div class="stn">' + esc(stn.stationName) + '</div><div class="sid">ID: ' + esc(stn.siteId) + (stn._updatedAt ? " \u00B7 " + new Date(stn._updatedAt).toLocaleTimeString() : "") + '</div></div></td>' + svcCells + hwCells + '<td><button class="wrench-btn ' + (fixes.length ? "has-act" : "") + '" onclick="HealthDash.openWrench(\'' + escapedSid + '\')" title="Fix Actions"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></button></td>';
+                tb.appendChild(tr);
+            });
+        }
+        } // end activeView === "live"
+        window._healthEv = ev;
+        restoreLog();
+    }
+
+    // ===== SERVICE DETAIL MODAL =====
+    function buildConnectionDetailHtml(rawPayload) {
+        if (!rawPayload || !Array.isArray(rawPayload.connections)) return "";
+        var html = '<div class="m-sec"><div class="m-sec-t">Connection Details</div>';
+        html += '<table class="conn-tbl"><thead><tr><th>Name</th><th>Transport</th><th>Role</th><th>Connected</th><th>Last Activity</th><th>Reconnects</th><th>Disconnects</th></tr></thead><tbody>';
+        rawPayload.connections.forEach(function (c) {
+            html += '<tr>';
+            html += '<td>' + esc(c.name || "") + '</td>';
+            html += '<td>' + esc(c.transport || "") + '</td>';
+            html += '<td>' + esc(c.role || "") + '</td>';
+            html += '<td class="' + (c.connected ? "conn-ok" : "conn-bad") + '">' + (c.connected ? "Yes" : "No") + '</td>';
+            html += '<td>' + (c.lastActivityAgeSec !== undefined ? num(c.lastActivityAgeSec) + "s" : "\u2014") + '</td>';
+            html += '<td>' + num(c.reconnectAttempts) + '</td>';
+            html += '<td>' + num(c.disconnectCount) + '</td>';
+            html += '</tr>';
+        });
+        html += '</tbody></table></div>';
+
+        // Exceptions section
+        var exc = safeObj(rawPayload.exceptions);
+        if (exc.total !== undefined) {
+            html += '<div class="m-sec"><div class="m-sec-t">Exceptions</div><div class="m-metrics">';
+            html += '<div class="m-met"><div class="ml">Total</div><div class="mv' + (num(exc.total) > 5000 ? " bad" : "") + '">' + num(exc.total).toLocaleString() + '</div></div>';
+            html += '<div class="m-met"><div class="ml">Rate/min</div><div class="mv' + (num(exc.ratePerMin) > 100 ? " warn" : "") + '">' + num(exc.ratePerMin) + '</div></div>';
+            ["api", "ws", "mqtt", "broadcast", "processing", "snapshot"].forEach(function (k) {
+                if (exc[k] !== undefined) html += '<div class="m-met"><div class="ml">' + k.toUpperCase() + '</div><div class="mv">' + num(exc[k]) + '</div></div>';
+            });
+            html += '</div></div>';
+        }
+
+        // Runtime section
+        var rt = safeObj(rawPayload.runtime);
+        var proc = safeObj(rt.process);
+        var caches = safeObj(rt.caches);
+        if (Object.keys(proc).length > 0) {
+            html += '<div class="m-sec"><div class="m-sec-t">Runtime \u2014 Process</div><div class="runtime-grid">';
+            var procFields = [
+                { k: "workingSetMb", l: "Working Set" }, { k: "privateBytesMb", l: "Private Bytes" },
+                { k: "gcHeapMb", l: "GC Heap" }, { k: "cpuPct", l: "CPU %" },
+                { k: "threadCount", l: "Threads" }, { k: "handleCount", l: "Handles" },
+                { k: "threadPoolWorkerBusy", l: "TP Busy" }, { k: "threadPoolWorkerQueued", l: "TP Queued" }
+            ];
+            procFields.forEach(function (pf) {
+                if (proc[pf.k] !== undefined) {
+                    var unit = pf.k.indexOf("Mb") >= 0 ? " MB" : pf.k === "cpuPct" ? "%" : "";
+                    html += '<div class="rt-item"><div class="rt-label">' + pf.l + '</div><div class="rt-val">' + num(proc[pf.k]) + unit + '</div></div>';
+                }
+            });
+            html += '</div></div>';
+        }
+        if (Object.keys(caches).length > 0 && num(caches.totalEntries) > 0) {
+            html += '<div class="m-sec"><div class="m-sec-t">Runtime \u2014 Caches (' + num(caches.totalEntries) + ' entries)</div><div class="runtime-grid">';
+            Object.keys(caches).forEach(function (ck) {
+                if (ck !== "totalEntries" && num(caches[ck]) > 0) html += '<div class="rt-item"><div class="rt-label">' + esc(ck) + '</div><div class="rt-val">' + num(caches[ck]) + '</div></div>';
+            });
+            html += '</div></div>';
+        }
+        return html;
+    }
+
+    function openSvc(sid, idx) {
+        var e = window._healthEv.find(function (d) { return String(d.st.siteId) === String(sid); }); if (!e) return;
+        var svc = e.svcs[idx], sc = svc.status === "healthy" ? "g" : svc.status === "warning" || svc.status === "unknown" ? "a" : "r";
+        var m = document.getElementById("mo"), o = document.getElementById("ov");
+
+        // Find the raw payload for detailed view
+        var rawKey = null;
+        if (svc.key === "DataRecv") rawKey = "dataReceiverHealth";
+        else if (svc.key === "Datalogger") rawKey = "dataloggerHeartbeat";
+        else if (svc.key === "Alert") rawKey = "alertHealth";
+        else if (svc.key === "Debouncer") rawKey = "debouncerHealth";
+        else if (svc.key === "Point") rawKey = "pointHealth";
+        var rawPayload = (e.st._rawPayloads || {})[rawKey] || null;
+
+        var html = '<div class="modal-hdr"><h3>' + svc.icon + ' ' + esc(svc.label) + ' \u2014 ' + esc(e.st.stationName) + ' <span class="sbadge ' + sc + '">' + esc(svc.status) + '</span></h3>';
+        html += '<button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
+        html += '<div class="modal-body">';
+
+        // Connections summary
+        html += '<div class="m-sec"><div class="m-sec-t">Connections</div><div class="m-conns">';
+        if (svc.conns.length) {
+            svc.conns.forEach(function (c) {
+                html += '<div class="m-conn"><span class="cd ' + (c.ok ? "on" : "off") + '"></span><span>' + esc(c.l) + '</span>';
+                if (c.transport) html += '<span class="conn-detail">' + esc(c.transport) + '</span>';
+                html += '</div>';
+            });
+        } else {
+            html += '<div class="m-conn"><span>No packet received</span></div>';
+        }
+        html += '</div></div>';
+
+        // Metrics
+        html += '<div class="m-sec"><div class="m-sec-t">Metrics</div><div class="m-metrics">';
+        Object.keys(svc.metrics || {}).forEach(function (k) { html += '<div class="m-met"><div class="ml">' + esc(k).replace(/_/g, " ") + '</div><div class="mv">' + esc(svc.metrics[k]) + '</div></div>'; });
+        html += '</div></div>';
+
+        // Detailed connection table + exceptions + runtime (if new format payload exists)
+        if (rawPayload) html += buildConnectionDetailHtml(rawPayload);
+
+        // Issues
+        if (svc.issues.length) {
+            html += '<div class="m-sec"><div class="m-sec-t">Issues (' + svc.issues.length + ')</div><div class="m-issues">';
+            svc.issues.forEach(function (i) { html += '<div class="m-issue sev-' + esc(i.sev) + '">' + esc(i.msg) + '</div>'; });
+            html += '</div></div>';
+        } else {
+            html += '<div style="text-align:center;color:var(--tx3);padding:20px">\u2705 No issues</div>';
+        }
+        html += '</div>';
+        m.innerHTML = html;
+        m.classList.add("open"); o.classList.add("open");
+    }
+
+    function openHW(sid, type) {
+        var stn = stations.find(function (s) { return String(s.siteId) === String(sid); }); if (!stn) return;
+        var hw = safeObj(stn.hardware[type]); var info = HW_ORDER.find(function (h) { return h.key === type; });
+        var m = document.getElementById("mo"), o = document.getElementById("ov");
+        var html = '<div class="modal-hdr"><h3>' + esc(info.label) + ' \u2014 ' + esc(stn.stationName) + '</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
+        html += '<div class="modal-body"><div class="m-sec"><div class="m-sec-t">Summary</div><div class="m-metrics">';
+        html += '<div class="m-met"><div class="ml">Total</div><div class="mv">' + num(hw.total) + '</div></div>';
+        html += '<div class="m-met"><div class="ml">Unhealthy</div><div class="mv bad">' + num(hw.unhealthy) + '</div></div>';
+        html += '<div class="m-met"><div class="ml">Healthy</div><div class="mv" style="color:var(--grn)">' + (num(hw.total) - num(hw.unhealthy)) + '</div></div>';
+        html += '</div></div>';
+        if ((hw.issues || []).length) {
+            html += '<div class="m-sec"><div class="m-sec-t">Issues</div><div class="m-issues">';
+            (hw.issues || []).forEach(function (i) { html += '<div class="m-issue sev-warning">' + esc(i) + '</div>'; });
+            html += '</div></div>';
+        }
+        html += '</div>';
+        m.innerHTML = html;
+        m.classList.add("open"); o.classList.add("open");
+    }
+
+    function openWrench(sid) {
+        var e = window._healthEv.find(function (d) { return String(d.st.siteId) === String(sid); }); if (!e) return;
+        var fixes = getFixActions(e.st, e.svcs);
+        var m = document.getElementById("mo"), o = document.getElementById("ov");
+        var html = '<div class="modal-hdr"><h3>\uD83D\uDD27 Fix Actions \u2014 ' + esc(e.st.stationName) + '</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
+        html += '<div class="modal-body">';
+        if (fixes.length) {
+            fixes.forEach(function (f) { html += '<div class="fix-item"><div class="fi-svc">' + esc(f.svc) + '</div><div class="fi-problem">' + esc(f.problem) + '</div><div class="fi-action">' + esc(f.action) + '</div></div>'; });
+        } else {
+            html += '<div style="text-align:center;color:var(--tx3);padding:30px">\u2705 No actions needed</div>';
+        }
+        html += '</div>';
+        m.innerHTML = html;
+        m.classList.add("open"); o.classList.add("open");
+    }
+
+    function openPaste() {
+        var m = document.getElementById("mo"), o = document.getElementById("ov");
+        var html = '<div class="modal-hdr"><h3>Update Health Data</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
+        html += '<div class="modal-body"><div class="paste-box"><p>Paste full stations array, single station object, or single service health JSON.</p>';
+        html += '<textarea id="pta" placeholder=\'[{"zone":"...","stationName":"...","siteId":14,"services":{...},"hardware":{...}}]\'></textarea>';
+        html += '<div class="actions"><button class="btn-cancel" onclick="HealthDash.closeModal()">Cancel</button><button class="btn-go" onclick="HealthDash.doPaste()">Update</button></div></div></div>';
+        m.innerHTML = html;
+        m.classList.add("open"); o.classList.add("open");
+    }
+
+    function doPaste() {
+        var v = document.getElementById("pta").value.trim(); if (!v) return;
+        try { mergeHealthPayload(JSON.parse(v), "manual/paste"); closeModal(); }
+        catch (e) { alert("Invalid JSON: " + e.message); }
+    }
+    function closeModal() { var m = document.getElementById("mo"), o = document.getElementById("ov"); if (m) m.classList.remove("open"); if (o) o.classList.remove("open"); }
+
+    // ===== ALERT LIVE API =====
+    function parseAlertIdentifier(alertId) {
+        var parts = {}; if (!alertId) return parts;
+        String(alertId).split("|").forEach(function (seg) {
+            var idx = seg.indexOf(":"); if (idx > 0) parts[seg.substring(0, idx).trim()] = seg.substring(idx + 1).trim();
+        });
+        return parts;
+    }
+
+    function getAlertHealthStatus(alertIdentifier) {
+        var parsed = parseAlertIdentifier(alertIdentifier);
+        var kind = String(parsed.kind || "").toLowerCase();
+        if (kind === "dead") return "unhealthy";
+        if (kind) return "warning";
+        return "warning"; // alert exists but no kind → warning
+    }
+
+    function processAlertLiveData(alerts) {
+        alertLiveRaw = Array.isArray(alerts) ? alerts : [];
+        serviceHealthAlerts = {};
+
+        alertLiveRaw.forEach(function (alert) {
+            var sid = alert.siteId || 0;
+            var srcId = String(alert.sourceId || "");
+            if (SERVICE_HEALTH_IDS.indexOf(srcId) < 0) return; // skip non-service-health alerts
+
+            if (!serviceHealthAlerts[sid]) {
+                serviceHealthAlerts[sid] = {};
+                SERVICE_HEALTH_IDS.forEach(function (s) { serviceHealthAlerts[sid][s] = { status: "healthy", alerts: [] }; });
+            }
+
+            var status = getAlertHealthStatus(alert.alertIdentifier);
+            var entry = serviceHealthAlerts[sid][srcId];
+            if (!entry) { entry = { status: "healthy", alerts: [] }; serviceHealthAlerts[sid][srcId] = entry; }
+            entry.alerts.push(alert);
+            // Escalate: unhealthy > warning > healthy
+            if (status === "unhealthy") entry.status = "unhealthy";
+            else if (status === "warning" && entry.status !== "unhealthy") entry.status = "warning";
+        });
+
+        alertLiveLastFetch = new Date();
+    }
+
+    function getAlertHealthSummary() {
+        var total = { healthy: 0, warning: 0, unhealthy: 0 };
+        var siteIds = Object.keys(serviceHealthAlerts);
+        // If a site has an entry, check its services; services with no alert entry are healthy
+        var allSiteIds = stations.map(function (s) { return String(s.siteId); });
+        // Merge: include sites from stations that have no alert entry (all healthy for them)
+        allSiteIds.forEach(function (sid) { if (siteIds.indexOf(sid) < 0) siteIds.push(sid); });
+
+        siteIds.forEach(function (sid) {
+            var siteAlerts = serviceHealthAlerts[sid] || {};
+            SERVICE_HEALTH_IDS.forEach(function (svcId) {
+                var entry = siteAlerts[svcId];
+                var st = entry ? entry.status : "healthy";
+                if (st === "unhealthy") total.unhealthy++;
+                else if (st === "warning") total.warning++;
+                else total.healthy++;
+            });
+        });
+        return total;
+    }
+
+    function getServiceHealthAlertsList() {
+        // Return flat list of all service health alerts with parsed details
+        var list = [];
+        alertLiveRaw.forEach(function (alert) {
+            var srcId = String(alert.sourceId || "");
+            if (SERVICE_HEALTH_IDS.indexOf(srcId) < 0) return;
+            var parsed = parseAlertIdentifier(alert.alertIdentifier);
+            list.push({
+                siteId: alert.siteId,
+                siteName: alert.alertDescription ? alert.alertDescription.split("/")[1] : ("Site " + alert.siteId),
+                service: srcId,
+                kind: parsed.kind || "unknown",
+                rule: parsed.rule || "",
+                desc: parsed.desc || alert.alertDescription || "",
+                priority: alert.priority || "",
+                category: alert.category || "",
+                state: alert.alertState || "",
+                timestampSet: alert.timestampSet || "",
+                timestampUpdated: alert.timestampUpdated || "",
+                alertId: alert.alertId,
+                status: getAlertHealthStatus(alert.alertIdentifier),
+                raw: alert
+            });
+        });
+        return list;
+    }
+
+    async function fetchAlertLive() {
+        var siteId = selectedHealthSiteId();
+        try {
+            var url = ALERT_LIVE_URL + "?siteId=" + encodeURIComponent(siteId || 0);
+            var r = await fetch(url, { credentials: "same-origin" });
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            var data = await r.json();
+            processAlertLiveData(data);
+            log("AlertLive fetched: " + alertLiveRaw.length + " alerts, " + getServiceHealthAlertsList().length + " service health", "sys");
+            render();
+        } catch (e) {
+            log("AlertLive fetch failed: " + e.message, "err");
+        }
+    }
+
+    function buildSiteAlertMap() {
+        // Build map: { siteId: { siteName, services: {svcId: {status, alerts[]}}, allAlerts[], alertCount } }
+        var map = {};
+
+        // Seed from stations so sites appear even if they have no alerts
+        stations.forEach(function (st) {
+            var sid = String(st.siteId);
+            if (!map[sid]) {
+                map[sid] = { siteName: st.stationName || ("Site " + sid), services: {}, allAlerts: [], alertCount: 0 };
+                SERVICE_HEALTH_IDS.forEach(function (s) { map[sid].services[s] = { status: "healthy", alerts: [] }; });
+            }
+        });
+
+        // Process AlertLive data
+        alertLiveRaw.forEach(function (alert) {
+            var srcId = String(alert.sourceId || "");
+            if (SERVICE_HEALTH_IDS.indexOf(srcId) < 0) return;
+
+            var sid = String(alert.siteId || 0);
+            if (!map[sid]) {
+                map[sid] = { siteName: "Site " + sid, services: {}, allAlerts: [], alertCount: 0 };
+                SERVICE_HEALTH_IDS.forEach(function (s) { map[sid].services[s] = { status: "healthy", alerts: [] }; });
+            }
+
+            // Try to get site name from alert description (format: "ServiceName/SiteName ...")
+            if (alert.alertDescription && map[sid].siteName === "Site " + sid) {
+                var descParts = alert.alertDescription.split("/");
+                if (descParts.length > 1) {
+                    var nameCandidate = descParts[1].split(" ")[0];
+                    if (nameCandidate) map[sid].siteName = nameCandidate;
+                }
+            }
+
+            var entry = map[sid].services[srcId];
+            if (!entry) { entry = { status: "healthy", alerts: [] }; map[sid].services[srcId] = entry; }
+
+            var status = getAlertHealthStatus(alert.alertIdentifier);
+            entry.alerts.push(alert);
+            if (status === "unhealthy") entry.status = "unhealthy";
+            else if (status === "warning" && entry.status !== "unhealthy") entry.status = "warning";
+
+            map[sid].allAlerts.push(alert);
+            map[sid].alertCount++;
+        });
+
+        return map;
+    }
+
+    // ===== MQTT =====
+    function getPahoClientConstructor() {
+        if (typeof Paho === "undefined") return null;
+        if (Paho.MQTT && typeof Paho.MQTT.Client === "function") return Paho.MQTT.Client;
+        if (typeof Paho.Client === "function") return Paho.Client;
+        return null;
+    }
+    function getBrokerHost() { return firstDefined(mQTT.MQTTUri, mQTT.Host, mQTT.host, ""); }
+    function getBrokerPort() { return parseInt(firstDefined(mQTT.MQTTPort, mQTT.Port, mQTT.port, window.location.protocol === "https:" ? 8084 : 8083), 10); }
+    function getBrokerUser() { return firstDefined(mQTT.MQTTUsername, mQTT.Username, mQTT.username, ""); }
+    function getBrokerPassword() { return firstDefined(mQTT.MQTTPassword, mQTT.Password, mQTT.password, ""); }
+
+    function connectMqtt() {
+        if (mqttConnected && mqttClient) return;
+        var Ctor = getPahoClientConstructor();
+        if (!Ctor) { log("Paho MQTT library not loaded", "err"); return; }
+        var host = getBrokerHost(), port = getBrokerPort();
+        if (!host || !port) { log("MQTT detail missing. Check ViewBag.MQTTDetail.", "err"); return; }
+        var clientId = "FRS25_HEALTH_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+        mqttClient = new Ctor(host, port, clientId);
+        mqttClient.onConnectionLost = function (res) {
+            mqttConnected = false; mqttSubscribed = false;
+            log("Connection lost: " + (res && res.errorMessage ? res.errorMessage : "Disconnected"), "err");
+            render();
+        };
+        mqttClient.onMessageArrived = function (message) {
+            var topic = message.destinationName || "";
+            var body = message.payloadString || "";
+            log(topic + " => " + body.substring(0, 300), "in");
+            try { mergeHealthPayload(JSON.parse(body), topic); }
+            catch (e) { log("Invalid health JSON on " + topic + ": " + e.message, "err"); }
+        };
+        var opts = {
+            timeout: 10,
+            useSSL: window.location.protocol === "https:",
+            cleanSession: true,
+            onSuccess: function () { mqttConnected = true; log("Connected to " + host + ":" + port, "sys"); render(); subscribeMqtt(); },
+            onFailure: function (err) { mqttConnected = false; log("Connect failed: " + (err && err.errorMessage ? err.errorMessage : JSON.stringify(err)), "err"); render(); }
+        };
+        var user = getBrokerUser(), pass = getBrokerPassword();
+        if (user) opts.userName = user;
+        if (pass) opts.password = pass;
+        log("Connecting to " + host + ":" + port + "...", "sys");
+        mqttClient.connect(opts);
+    }
+
+    function disconnectMqtt() {
+        try { if (mqttClient && mqttConnected) mqttClient.disconnect(); } catch (e) { }
+        mqttConnected = false; mqttSubscribed = false; mqttClient = null; currentSubscribedTopics = [];
+        log("Disconnected", "sys"); render();
+    }
+
+    async function subscribeMqtt() {
+        if (!mqttTopics.length) await refreshHealthMqttTopics(false);
+        var topics = mqttTopics.length ? mqttTopics.slice() : getManualTopicList();
+        mqttTopic = topics.join(", ");
+        if (!mqttConnected || !mqttClient) { log("Connect MQTT first", "err"); return; }
+        if (!topics.length) { log("No health topics found. Check Site base path configuration.", "err"); return; }
+        try {
+            currentSubscribedTopics.forEach(function (topic) { try { mqttClient.unsubscribe(topic); } catch (ignore) { } });
+            topics.forEach(function (topic) { mqttClient.subscribe(topic, { qos: 0 }); });
+            currentSubscribedTopics = topics.slice();
+            mqttSubscribed = true;
+            log("Subscribed " + topics.length + " topic(s)", "sys");
+            topics.slice(0, 10).forEach(function (topic) { log("SUB " + topic, "sys"); });
+            if (topics.length > 10) log("... plus " + (topics.length - 10) + " more topic(s)", "sys");
+            render();
+        } catch (e) { log("Subscribe failed: " + e.message, "err"); }
+    }
+
+    // ===== DEBOUNCER WEBSOCKET =====
+    function connectDebouncerWs() {
+        if (debouncerWs) return;
+        try {
+            debouncerWs = new WebSocket(DEBOUNCER_WS_URL);
+            debouncerWs.onopen = function () {
+                debouncerWsConnected = true;
+                log("Debouncer WS connected: " + DEBOUNCER_WS_URL, "sys");
+                render();
+            };
+            debouncerWs.onmessage = function (event) {
+                var body = event.data || "";
+                log("WS Debouncer => " + body.substring(0, 300), "in");
+                try {
+                    var payload = JSON.parse(body);
+                    // Route through mergeHealthPayload which handles:
+                    //   1. Batch wrapper: { MessageType:"Batch", Topic:"debouncerHealth", Messages:["{...}"] }
+                    //   2. Direct payload: { siteId:25, siteName:"...", wsConnected:... }
+                    // The Topic field inside Batch is used as the topic for inner messages,
+                    // and serviceKeyFromTopic maps "debouncerHealth" → services.debouncerHealth
+                    mergeHealthPayload(payload, "debouncerHealth");
+                } catch (e) { log("Invalid Debouncer WS JSON: " + e.message, "err"); }
+            };
+            debouncerWs.onclose = function () {
+                debouncerWsConnected = false; debouncerWs = null;
+                log("Debouncer WS closed. Reconnecting in 5s...", "err");
+                render();
+                debouncerWsReconnectTimer = setTimeout(connectDebouncerWs, 5000);
+            };
+            debouncerWs.onerror = function () {
+                log("Debouncer WS error", "err");
+            };
+        } catch (e) {
+            log("Debouncer WS connect failed: " + e.message, "err");
+            debouncerWsReconnectTimer = setTimeout(connectDebouncerWs, 5000);
+        }
+    }
+
+    // ===== LOG (debug only) =====
+    var logBuffer = [];
+    function log(msg, type) {
+        var prefix = type === "err" ? "ERR" : type === "in" ? "IN " : type === "out" ? "OUT" : "SYS";
+        logBuffer.push(new Date().toLocaleTimeString("en-GB") + " [" + prefix + "] " + msg);
+        if (logBuffer.length > 100) logBuffer.shift();
+        restoreLog();
+    }
+    function restoreLog() {
+        if (window && window.console && logBuffer.length) window.HealthLastMqttLog = logBuffer.slice();
+    }
+
+    // ===== View Switching =====
+    function switchView(view) {
+        activeView = view;
+        render();
+    }
+
+    // ===== Alert List Toggle =====
+    function toggleSiteAlerts(siteId) {
+        var el = document.getElementById("ahrow_" + siteId);
+        if (el) el.classList.toggle("collapsed");
+    }
+
+    function openAlertDetail(alertId) {
+        var alert = alertLiveRaw.find(function (a) { return a.alertId === alertId; });
+        if (!alert) return;
+        var m = document.getElementById("mo"), o = document.getElementById("ov");
+        var parsed = parseAlertIdentifier(alert.alertIdentifier);
+        var html = '<div class="modal-hdr"><h3>\u26A0\uFE0F Alert Detail \u2014 ' + esc(alert.sourceId) + '</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
+        html += '<div class="modal-body">';
+        html += '<div class="m-sec"><div class="m-sec-t">Alert Info</div><div class="m-metrics">';
+        var fields = [
+            ["Alert ID", alert.alertId], ["Site ID", alert.siteId], ["Source", alert.sourceId],
+            ["State", alert.alertState], ["Priority", alert.priority], ["Category", alert.category],
+            ["Kind", parsed.kind], ["Rule", parsed.rule]
+        ];
+        fields.forEach(function (f) { if (f[1]) html += '<div class="m-met"><div class="ml">' + esc(f[0]) + '</div><div class="mv">' + esc(f[1]) + '</div></div>'; });
+        html += '</div></div>';
+        html += '<div class="m-sec"><div class="m-sec-t">Description</div><div style="font-size:12px;color:var(--tx2);line-height:1.5">' + esc(alert.alertDescription) + '</div></div>';
+        html += '<div class="m-sec"><div class="m-sec-t">Timestamps</div><div class="m-metrics">';
+        ["timestampSet", "timestampAck", "timestampReset", "timestampCompleted", "timestampUpdated"].forEach(function (ts) {
+            if (alert[ts]) html += '<div class="m-met"><div class="ml">' + esc(ts.replace("timestamp", "")) + '</div><div class="mv" style="font-size:11px">' + new Date(alert[ts]).toLocaleString() + '</div></div>';
+        });
+        html += '</div></div>';
+        // Show all non-null fields
+        html += '<div class="m-sec"><div class="m-sec-t">All Fields</div><div class="m-metrics">';
+        Object.keys(alert).forEach(function (k) {
+            if (alert[k] !== null && alert[k] !== undefined && alert[k] !== "") {
+                html += '<div class="m-met"><div class="ml">' + esc(k) + '</div><div class="mv" style="font-size:11px;word-break:break-all">' + esc(alert[k]) + '</div></div>';
+            }
+        });
+        html += '</div></div>';
+        html += '</div>';
+        m.innerHTML = html;
+        m.classList.add("open"); o.classList.add("open");
+    }
+
+    // ===== PUBLIC API =====
+    window.HealthDash = {
+        openSvc: openSvc, openHW: openHW, openWrench: openWrench,
+        openPaste: openPaste, doPaste: doPaste, closeModal: closeModal,
+        toggleMqtt: function () { mqttConnected ? disconnectMqtt() : connectMqtt(); },
+        subscribeMqtt: subscribeMqtt,
+        switchView: switchView,
+        toggleSiteAlerts: toggleSiteAlerts,
+        openAlertDetail: openAlertDetail
+    };
+
+    // ===== INIT =====
+    refreshHealthMqttTopics(false).then(function () {
+        connectMqtt();
+        connectDebouncerWs();
+    });
+    fetchAlertLive();
+    setInterval(fetchAlertLive, ALERT_LIVE_POLL_MS);
+    render();
+    setInterval(function () { var t = document.getElementById("timer"); if (t) t.textContent = Math.floor((Date.now() - lastRefresh) / 1000) + "s"; }, 1000);
+
+    if (CONFIG.API_URL) {
+        var poll = async function () {
+            try { var r = await fetch(CONFIG.API_URL); if (r.ok) { mergeHealthPayload(await r.json(), "api"); } }
+            catch (e) { log("API poll failed: " + e.message, "err"); }
+        };
+        poll(); setInterval(poll, CONFIG.POLL_INTERVAL_MS);
+    }
+})();
+</script>

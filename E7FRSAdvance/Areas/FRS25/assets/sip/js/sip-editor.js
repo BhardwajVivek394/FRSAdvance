@@ -217,6 +217,9 @@
         const breakerLayer = (typeof SIP.renderBreakerLayer === 'function')
             ? SIP.renderBreakerLayer(state.cells)
             : '';
+        const pmConnLayer = (typeof SIP.renderPMConnectorLayer === 'function')
+            ? SIP.renderPMConnectorLayer(state.cells)
+            : '';
         const sel = state.selectedId ? renderSelectionBox(cellById(state.selectedId)) : '';
 
         canvasEl.innerHTML =
@@ -232,6 +235,7 @@
             `<rect width="100%" height="100%" fill="url(#sipBg)"/>` +
             grid +
             railLayer +
+            pmConnLayer +
             standLayer +
             breakerLayer +
             fragments.join('') +
@@ -516,45 +520,41 @@
         const SIG_STAND_TYPES = {
             'examples.Signal': 1,
             'examples.SignalShunt': 1,
+            'examples.RouteCallingSignal': 1,
             'examples.Shaunt': 1,
             'examples.Shaunt2': 1,
             'examples.Shaunt3': 1
         };
         if (SIG_STAND_TYPES[c.type]) {
             const sigProps = (c.attrs && c.attrs.signal) || {};
-            const standMode = sigProps.stand || 'bottom';
             const standLen = +sigProps.standLength || 30;
-            const standArm = +sigProps.standArm || 0;
             html += `<div class="tb-group-h" style="margin-top:14px">` +
-                (c.type === 'examples.Signal' ? 'Signal Composite' :
-                    c.type === 'examples.SignalShunt' ? 'Signal + Shunt (combined)' :
-                        c.type === 'examples.Shaunt' ? 'Shunt · 3-Aspect · Proceed' :
-                            c.type === 'examples.Shaunt2' ? 'Shunt · 3-Aspect · Diverge' :
-                                c.type === 'examples.Shaunt3' ? 'Shunt · 3-Aspect · Off' :
+                (c.type === 'examples.Signal' ? 'Signal' :
+                    c.type === 'examples.SignalShunt' ? 'Signal + Shunt' :
+                        c.type === 'examples.RouteCallingSignal' ? 'Route / Calling Signal' :
+                            c.type === 'examples.Shaunt' ? 'Shunt · Proceed' :
+                            c.type === 'examples.Shaunt2' ? 'Shunt · Diverge' :
+                                c.type === 'examples.Shaunt3' ? 'Shunt · Off' :
                                     'Shunt') +
                 `</div>`;
-
-            /* Signal position: above or below the track.
-               'up'   = signal body sits ABOVE the track, stand drops DOWN
-               'down' = signal body sits BELOW the track, stand rises UP */
-            const signalSide = sigProps.signalSide || 'up';
-            html += `<div class="field"><label>Signal position (relative to track)</label>` +
-                `<select id="insp-sig-side">` +
-                `<option value="up"   ${signalSide === 'up' || signalSide === 'left' ? 'selected' : ''}>Above track (Up direction)</option>` +
-                `<option value="down" ${signalSide === 'down' || signalSide === 'right' ? 'selected' : ''}>Below track (Down direction)</option>` +
-                `</select></div>`;
 
             /* Lamp/lit controls only apply to the composite signal */
             if (c.type === 'examples.Signal') {
                 const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps) || 'BBB';
                 const litStr = (typeof sigProps.lit === 'string' && sigProps.lit) || '';
 
-                /* ---- Visual lamp editor: clickable coloured circles ---- */
                 const LAMP_COLORS = { B: '#aaaaaa', R: '#FF2E2E', Y: '#FFD400', G: '#22D142', X: '#c8a800' };
                 const LAMP_NAMES = { B: 'Blank', R: 'Red', Y: 'Yellow', G: 'Green', X: 'Dbl Yellow' };
                 const LAMP_ORDER = ['B', 'R', 'Y', 'G', 'X'];
 
-                html += `<div class="field"><label>Lamps (click to change colour, + to add, − to remove)</label>`;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>No. of main aspects</label>` +
+                    `<input type="number" id="insp-sig-aspect-count" value="${Math.max(1, lampsStr.length)}" min="1" max="8" step="1"/></div>` +
+                    `<div class="field"><label>Aspect code</label>` +
+                    `<input type="text" id="insp-sig-lamps" value="${escAttr(lampsStr)}" placeholder="BRYG"/></div>` +
+                    `</div>`;
+
+                html += `<div class="field"><label>Lamps (click to cycle, + add, − remove)</label>`;
                 html += `<div id="insp-lamp-row" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;">`;
                 for (let li = 0; li < lampsStr.length; li++) {
                     const ch = lampsStr.charAt(li).toUpperCase();
@@ -579,37 +579,147 @@
                 }
                 html += `</div></div>`;
 
-                html += `<div class="field"><label>Lit aspects (letters from the lamps string that are ON)</label>` +
-                    `<input type="text" id="insp-sig-lit" value="${escAttr(litStr)}" placeholder="(none)"/></div>`;
+                html += `<div class="field"><label>Lit aspects</label>` +
+                    `<input type="text" id="insp-sig-lit" value="${escAttr(litStr)}" placeholder="(none — e.g. R, RG, Y)"/></div>`;
             }
 
-            html += `<div class="field"><label>Stand</label>` +
-                `<select id="insp-sig-stand">` +
-                `<option value="none"   ${standMode === 'none' ? 'selected' : ''}>None</option>` +
-                `<option value="top"    ${standMode === 'top' ? 'selected' : ''}>Top (rises up)</option>` +
-                `<option value="bottom" ${standMode === 'bottom' ? 'selected' : ''}>Bottom (drops down)</option>` +
-                `</select></div>`;
+            /* ---- Rotation (quick buttons + number input) ---- */
+            const curAngle = c.angle || 0;
+            html += `<div class="field"><label>Rotate</label>`;
+            html += `<div style="display:flex;gap:4px;align-items:center;margin-top:2px;">`;
+            const rotBtns = [0, 45, 90, 135, 180, 225, 270, 315];
+            for (const deg of rotBtns) {
+                const active = Math.round(curAngle) === deg;
+                html += `<button class="sip-rot-btn" data-deg="${deg}" ` +
+                    `style="padding:3px 6px;border-radius:4px;border:1px solid ${active ? '#22d3ee' : 'rgba(255,255,255,0.15)'};` +
+                    `background:${active ? 'rgba(34,211,238,0.18)' : 'rgba(255,255,255,0.05)'};` +
+                    `color:${active ? '#22d3ee' : '#ccc'};cursor:pointer;font-size:11px;font-weight:600;">${deg}°</button>`;
+            }
+            html += `<input type="number" id="insp-angle" value="${curAngle}" min="0" max="359" step="1" ` +
+                `style="width:52px;margin-left:4px;" title="Free rotation"/>`;
+            html += `</div></div>`;
 
-            /* Stand side: left / center / right — where the vertical drop
-               starts horizontally on the signal/shunt body */
-            const standSide = sigProps.standSide || 'center';
-            html += `<div class="field"><label>Stand side</label>` +
-                `<select id="insp-sig-stand-side">` +
-                `<option value="left"   ${standSide === 'left' ? 'selected' : ''}>Left</option>` +
-                `<option value="center" ${standSide === 'center' ? 'selected' : ''}>Centre</option>` +
-                `<option value="right"  ${standSide === 'right' ? 'selected' : ''}>Right</option>` +
-                `</select></div>`;
+            /* ---- Stand position: visual compass grid (3×3) ---- *
+             *  The 3×3 grid represents 8 attachment positions around the
+             *  signal body + centre = none.
+             *
+             *   TL  T  TR
+             *    L  ×  R
+             *   BL  B  BR
+             *
+             *  Clicking a cell sets `standPos`. Centre (×) removes the stand.
+             */
+            const curStandPos = sigProps.standPos ||
+                (function () {
+                    /* backward compat: derive from old properties */
+                    var m = sigProps.stand || 'bottom';
+                    if (m === 'none') return 'none';
+                    var s = sigProps.standSide || 'center';
+                    if (m === 'top') return s === 'left' ? 'TL' : s === 'right' ? 'TR' : 'T';
+                    if (m === 'bottom') return s === 'left' ? 'BL' : s === 'right' ? 'BR' : 'B';
+                    return 'B';
+                })();
+            const COMPASS = [
+                ['TL', 'T', 'TR'],
+                ['L', 'none', 'R'],
+                ['BL', 'B', 'BR']
+            ];
+            const COMPASS_LABEL = {
+                TL: '↖', T: '↑', TR: '↗',
+                L: '←', none: '×', R: '→',
+                BL: '↙', B: '↓', BR: '↘'
+            };
+            html += `<div class="field"><label>Stand attach</label>`;
+            html += `<div id="insp-compass" style="display:inline-grid;grid-template-columns:repeat(3,30px);` +
+                `gap:2px;margin-top:4px;">`;
+            for (const row of COMPASS) {
+                for (const pos of row) {
+                    const active = pos === curStandPos;
+                    html += `<div class="sip-compass-cell" data-pos="${pos}" ` +
+                        `style="width:30px;height:30px;border-radius:4px;` +
+                        `display:flex;align-items:center;justify-content:center;` +
+                        `cursor:pointer;font-size:14px;font-weight:700;` +
+                        `border:1.5px solid ${active ? '#22d3ee' : 'rgba(255,255,255,0.12)'};` +
+                        `background:${active ? 'rgba(34,211,238,0.18)' : 'rgba(255,255,255,0.04)'};` +
+                        `color:${active ? '#22d3ee' : '#888'};" ` +
+                        `title="${pos === 'none' ? 'No stand' : 'Stand at ' + pos}">${COMPASS_LABEL[pos]}</div>`;
+                }
+            }
+            html += `</div></div>`;
 
-            const standArmBefore = +sigProps.standArmBefore || 0;
-            html += `<div class="insp-grid">`;
-            html += `<div class="field"><label>Stand length (vertical)</label><input type="number" id="insp-sig-stand-len" value="${standLen}" min="0" max="400" step="2"/></div>`;
-            html += `<div class="field"><label>Arm before drop (+ R / − L)</label><input type="number" id="insp-sig-stand-arm-before" value="${standArmBefore}" min="-300" max="300" step="2"/></div>`;
-            html += `</div>`;
-            html += `<div class="field"><label>Arm after drop (+ right / − left)</label><input type="number" id="insp-sig-stand-arm" value="${standArm}" min="-300" max="300" step="2"/></div>`;
+            /* Stand length */
+            html += `<div class="field"><label>Stand length</label>` +
+                `<input type="number" id="insp-sig-stand-len" value="${standLen}" min="0" max="400" step="2"/></div>`;
 
-            /* Visual hint about stand shape */
-            html += `<div style="font-size:10px;color:var(--muted);line-height:1.5;padding:4px 0;">` +
-                `Shape: signal → arm-before → vertical drop → arm-after → endpoint</div>`;
+            /* Route / Calling editor.  For examples.Signal this is optional;
+               for examples.RouteCallingSignal it is always enabled. */
+            if (c.type === 'examples.RouteCallingSignal' || c.type === 'examples.Signal') {
+                const routeProps = (c.attrs && c.attrs.route) || {};
+                const isRouteCell = c.type === 'examples.RouteCallingSignal';
+                const routeEnabled = isRouteCell || routeProps.enabled === true || routeProps.enabled === 'true';
+                const labelsVal = routeProps.labels || routeProps.routes || routeProps.routeLabels || 'AUG,BUG,CUG,DUG';
+                const activeVal = routeProps.active || routeProps.activeRoutes || '';
+                const routeSideVal = routeProps.routeSide || 'top';
+                const callingSideVal = routeProps.callingSide || 'bottom';
+                const callingOn = routeProps.calling !== false && routeProps.calling !== 'false';
+                const callingLabel = routeProps.callingLabel || 'C';
+                const dotCountVal = routeProps.dotCount || 4;
+                const armSpacingVal = routeProps.armSpacing || 27;
+                const armLengthVal = routeProps.armLength || 34;
+                function _sideOpts(cur) {
+                    const opts = [
+                        ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']
+                    ];
+                    return opts.map(function (o) {
+                        return '<option value="' + o[0] + '" ' + (String(cur) === o[0] ? 'selected' : '') + '>' + o[1] + '</option>';
+                    }).join('');
+                }
+                function _callSideOpts(cur) {
+                    const opts = [
+                        ['opposite', 'Opposite route'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']
+                    ];
+                    return opts.map(function (o) {
+                        return '<option value="' + o[0] + '" ' + (String(cur) === o[0] ? 'selected' : '') + '>' + o[1] + '</option>';
+                    }).join('');
+                }
+                html += `<div class="tb-group-h" style="margin-top:14px">Route / Calling</div>`;
+                if (!isRouteCell) {
+                    html += `<div class="field" style="display:flex;align-items:center;gap:8px;">` +
+                        `<input type="checkbox" id="insp-route-enabled" ${routeEnabled ? 'checked' : ''} style="width:auto;">` +
+                        `<label for="insp-route-enabled" style="margin:0;">Show route/calling on this main signal</label></div>`;
+                }
+                html += `<div class="field"><label>Route arms</label>` +
+                    `<div style="display:flex;gap:6px;align-items:center;">` +
+                    `<input type="text" id="insp-route-labels" value="${escAttr(labelsVal)}" placeholder="AUG,BUG,CUG,DUG" style="flex:1;"/>` +
+                    `<button type="button" id="insp-route-add" class="tb" style="padding:4px 9px;">+</button>` +
+                    `<button type="button" id="insp-route-remove" class="tb" style="padding:4px 9px;">−</button>` +
+                    `</div></div>`;
+                html += `<div class="field"><label>Active route/call for preview</label>` +
+                    `<input type="text" id="insp-route-active" value="${escAttr(activeVal)}" placeholder="AUG or CALL or AUG,CALL"/></div>`;
+                const routeSideLabel = isRouteCell ? 'Route side' : 'Route attach side';
+                const callingSideLabel = isRouteCell ? 'Calling side' : 'Calling attach side';
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>${routeSideLabel}</label><select id="insp-route-side">${_sideOpts(routeSideVal)}</select></div>` +
+                    `<div class="field"><label>${callingSideLabel}</label><select id="insp-calling-side">${_callSideOpts(callingSideVal)}</select></div>` +
+                    `</div>`;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Calling label</label><input type="text" id="insp-calling-label" value="${escAttr(callingLabel)}" maxlength="6"/></div>` +
+                    `<div class="field" style="display:flex;align-items:center;gap:8px;margin-top:20px;">` +
+                    `<input type="checkbox" id="insp-calling-enabled" ${callingOn ? 'checked' : ''} style="width:auto;">` +
+                    `<label for="insp-calling-enabled" style="margin:0;">Calling</label></div>` +
+                    `</div>`;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Route dots</label><input type="number" id="insp-route-dot-count" value="${dotCountVal}" min="1" max="6" step="1"/></div>` +
+                    `<div class="field"><label>Arm length</label><input type="number" id="insp-route-arm-length" value="${armLengthVal}" min="16" max="100" step="2"/></div>` +
+                    `</div>`;
+                const attachGapVal = routeProps.attachGap || 14;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Compact spacing</label>` +
+                    `<input type="number" id="insp-route-arm-spacing" value="${armSpacingVal}" min="14" max="80" step="1"/></div>` +
+                    `<div class="field"><label>Attach gap</label>` +
+                    `<input type="number" id="insp-route-attach-gap" value="${attachGapVal}" min="0" max="80" step="1"/></div>` +
+                    `</div>`;
+            }
         }
 
         html += `<div class="insp-actions">`;
@@ -637,10 +747,11 @@
         bindInspectorInputNum('insp-w', v => { c.size.width = v; });
         bindInspectorInputNum('insp-h', v => { c.size.height = v; });
 
-        /* ---- Composite-signal inspector bindings (Signal composite + Shunts) ---- */
+        /* ---- Signal / Shunt inspector bindings ---- */
         const SIG_STAND_BIND_TYPES = {
             'examples.Signal': 1,
             'examples.SignalShunt': 1,
+            'examples.RouteCallingSignal': 1,
             'examples.Shaunt': 1,
             'examples.Shaunt2': 1,
             'examples.Shaunt3': 1
@@ -653,11 +764,39 @@
             };
             /* Lamp/lit only exist for the composite signal */
             if (c.type === 'examples.Signal') {
+                function cleanLampCode(v) {
+                    var out = String(v || '').toUpperCase().replace(/[^BRYGX]/g, '');
+                    return out || 'B';
+                }
+                function fitSignalWidthForAspects(count) {
+                    count = Math.max(1, Math.min(8, parseInt(count, 10) || 1));
+                    var lampD = Math.max(10, ((c.size && c.size.height) || 24) - 6);
+                    var minW = Math.ceil((count * lampD + (count + 1) * 8) / 10) * 10;
+                    if (!c.size) c.size = { width: minW, height: 24 };
+                    if (c.size.width < minW) c.size.width = minW;
+                }
+                function resizeLampCode(code, count) {
+                    code = cleanLampCode(code);
+                    count = Math.max(1, Math.min(8, parseInt(count, 10) || code.length || 1));
+                    if (code.length > count) return code.substring(0, count);
+                    while (code.length < count) code += 'B';
+                    return code;
+                }
+                bindInspectorInputNum('insp-sig-aspect-count', v => {
+                    const sp = ensureSig();
+                    sp.lamps = resizeLampCode(sp.lamps || 'BBB', v);
+                    fitSignalWidthForAspects(sp.lamps.length);
+                });
+                bindInspectorInput('insp-sig-lamps', v => {
+                    const sp = ensureSig();
+                    sp.lamps = cleanLampCode(v);
+                    fitSignalWidthForAspects(sp.lamps.length);
+                });
+
                 /* ---- Visual lamp editor: wire click handlers ---- */
                 const LAMP_CYCLE = ['B', 'R', 'Y', 'G', 'X'];
                 const lampRow = $('#insp-lamp-row');
                 if (lampRow) {
-                    // Click a lamp circle → cycle to next colour
                     lampRow.querySelectorAll('.sip-lamp-dot').forEach(dot => {
                         dot.addEventListener('click', () => {
                             const sp = ensureSig();
@@ -671,17 +810,16 @@
                             pushHistory();
                         });
                     });
-                    // "+" button → add a blank lamp
                     const addBtn = $('#insp-lamp-add');
                     if (addBtn) {
                         addBtn.addEventListener('click', () => {
                             const sp = ensureSig();
                             sp.lamps = (sp.lamps || 'BBB') + 'B';
+                            fitSignalWidthForAspects(sp.lamps.length);
                             render();
                             pushHistory();
                         });
                     }
-                    // "−" button → remove last lamp
                     const removeBtn = $('#insp-lamp-remove');
                     if (removeBtn) {
                         removeBtn.addEventListener('click', () => {
@@ -700,91 +838,149 @@
                     sp.lit = String(v || '').toUpperCase().replace(/[^BRYGX]/g, '');
                 });
             }
-            bindInspectorInput('insp-sig-stand', v => {
-                const sp = ensureSig();
-                sp.stand = (v === 'top' || v === 'bottom') ? v : 'none';
+
+            /* ---- Rotation buttons + free-angle input ---- */
+            $$('.sip-rot-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    c.angle = parseInt(btn.getAttribute('data-deg'), 10);
+                    render();
+                    pushHistory();
+                });
             });
-            bindInspectorInput('insp-sig-side', v => {
-                const sp = ensureSig();
-                sp.signalSide = (v === 'up' || v === 'down') ? v : 'up';
-                // Auto-set stand direction to match:
-                sp.stand = (v === 'down') ? 'top' : 'bottom';
-
-                /* ---- Auto-snap: move signal to the nearest track ---- *
-                 *  Find the closest track cell and position the signal
-                 *  directly above or below it, with stand auto-connected.
-                 * ----------------------------------------------------- */
-                const sigCell = cellById(state.selectedId);
-                if (!sigCell) return;
-
-                // Find all track cells
-                const TRACK_TYPES = {
-                    'examples.Track': 1, 'examples.Track1': 1, 'examples.Track2': 1
-                };
-                const tracks = state.cells.filter(cc => TRACK_TYPES[cc.type]);
-                if (!tracks.length) return;
-
-                // Find nearest track by vertical distance from signal centre
-                const sigCy = sigCell.position.y + (sigCell.size.height || 24) / 2;
-                const sigCx = sigCell.position.x + (sigCell.size.width || 90) / 2;
-                let bestTrack = null;
-                let bestDist = Infinity;
-                for (const tr of tracks) {
-                    const trCy = tr.position.y + (tr.size.height || 100) / 2;
-                    const trLeft = tr.position.x;
-                    const trRight = tr.position.x + (tr.size.width || 300);
-                    // Only consider tracks that the signal overlaps horizontally
-                    if (sigCx >= trLeft - 50 && sigCx <= trRight + 50) {
-                        const dist = Math.abs(sigCy - trCy);
-                        if (dist < bestDist) {
-                            bestDist = dist;
-                            bestTrack = tr;
-                        }
-                    }
-                }
-                // Fallback: if no horizontal overlap, just pick closest by Y
-                if (!bestTrack) {
-                    for (const tr of tracks) {
-                        const trCy = tr.position.y + (tr.size.height || 100) / 2;
-                        const dist = Math.abs(sigCy - trCy);
-                        if (dist < bestDist) { bestDist = dist; bestTrack = tr; }
-                    }
-                }
-                if (!bestTrack) return;
-
-                const trY = bestTrack.position.y;
-                const trH = bestTrack.size.height || 100;
-                const sigH = sigCell.size.height || 24;
-                const gap = 8;  // px gap between signal and track edge
-
-                if (v === 'up') {
-                    // Position ABOVE the track
-                    sigCell.position.y = snap(trY - sigH - gap);
-                    sp.stand = 'bottom';
-                    sp.standLength = Math.round(gap + 2);
-                } else {
-                    // Position BELOW the track
-                    sigCell.position.y = snap(trY + trH + gap);
-                    sp.stand = 'top';
-                    sp.standLength = Math.round(gap + 2);
-                }
+            bindInspectorInputNum('insp-angle', v => {
+                c.angle = ((v % 360) + 360) % 360;
             });
-            bindInspectorInput('insp-sig-stand-side', v => {
-                const sp = ensureSig();
-                sp.standSide = (v === 'left' || v === 'right') ? v : 'center';
-            });
+
+            /* ---- Compass grid: stand position ---- */
+            const compassEl = $('#insp-compass');
+            if (compassEl) {
+                compassEl.querySelectorAll('.sip-compass-cell').forEach(cell2 => {
+                    cell2.addEventListener('click', () => {
+                        const sp = ensureSig();
+                        sp.standPos = cell2.getAttribute('data-pos');
+                        /* Clear legacy properties so resolveStandPos uses standPos */
+                        delete sp.stand;
+                        delete sp.standSide;
+                        delete sp.standArm;
+                        delete sp.standArmBefore;
+                        delete sp.signalSide;
+                        render();
+                        pushHistory();
+                    });
+                });
+            }
+
+            /* Stand length */
             bindInspectorInputNum('insp-sig-stand-len', v => {
                 const sp = ensureSig();
                 sp.standLength = v;
             });
-            bindInspectorInputNum('insp-sig-stand-arm-before', v => {
-                const sp = ensureSig();
-                sp.standArmBefore = v;
-            });
-            bindInspectorInputNum('insp-sig-stand-arm', v => {
-                const sp = ensureSig();
-                sp.standArm = v;
-            });
+
+            /* Route / Calling bindings */
+            if (c.type === 'examples.RouteCallingSignal' || c.type === 'examples.Signal') {
+                const ensureRoute = () => {
+                    c.attrs = c.attrs || {};
+                    c.attrs.route = c.attrs.route || {};
+                    return c.attrs.route;
+                };
+                const ROUTE_POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG'];
+                function getRouteLabels() {
+                    const rp = ensureRoute();
+                    return String(rp.labels || 'AUG,BUG,CUG,DUG').split(/[\s,|/]+/)
+                        .map(x => String(x || '').trim().toUpperCase())
+                        .filter((x, i, a) => x && a.indexOf(x) === i);
+                }
+                const routeEnabledEl = $('#insp-route-enabled');
+                if (routeEnabledEl) {
+                    routeEnabledEl.addEventListener('change', () => {
+                        const rp = ensureRoute();
+                        rp.enabled = routeEnabledEl.checked;
+                        render();
+                        pushHistory();
+                    });
+                }
+                bindInspectorInput('insp-route-labels', v => {
+                    const rp = ensureRoute();
+                    rp.labels = String(v || '').toUpperCase();
+                    if (c.type === 'examples.RouteCallingSignal') rp.enabled = true;
+                });
+                const routeAdd = $('#insp-route-add');
+                if (routeAdd) {
+                    routeAdd.addEventListener('click', () => {
+                        const rp = ensureRoute();
+                        const labels = getRouteLabels();
+                        let next = ROUTE_POOL.find(x => labels.indexOf(x) === -1) || ('R' + (labels.length + 1));
+                        labels.push(next);
+                        rp.labels = labels.join(',');
+                        if (c.type === 'examples.RouteCallingSignal') rp.enabled = true;
+                        render();
+                        pushHistory();
+                    });
+                }
+                const routeRemove = $('#insp-route-remove');
+                if (routeRemove) {
+                    routeRemove.addEventListener('click', () => {
+                        const rp = ensureRoute();
+                        const labels = getRouteLabels();
+                        if (labels.length > 1) labels.pop();
+                        rp.labels = labels.join(',');
+                        render();
+                        pushHistory();
+                    });
+                }
+                bindInspectorInput('insp-route-active', v => {
+                    const rp = ensureRoute();
+                    rp.active = String(v || '').toUpperCase();
+                });
+                const routeSide = $('#insp-route-side');
+                if (routeSide) {
+                    routeSide.addEventListener('change', () => {
+                        const rp = ensureRoute();
+                        rp.routeSide = routeSide.value;
+                        render();
+                        pushHistory();
+                    });
+                }
+                const callingSide = $('#insp-calling-side');
+                if (callingSide) {
+                    callingSide.addEventListener('change', () => {
+                        const rp = ensureRoute();
+                        rp.callingSide = callingSide.value;
+                        render();
+                        pushHistory();
+                    });
+                }
+                const callingEnabled = $('#insp-calling-enabled');
+                if (callingEnabled) {
+                    callingEnabled.addEventListener('change', () => {
+                        const rp = ensureRoute();
+                        rp.calling = callingEnabled.checked;
+                        render();
+                        pushHistory();
+                    });
+                }
+                bindInspectorInput('insp-calling-label', v => {
+                    const rp = ensureRoute();
+                    rp.callingLabel = String(v || 'C').toUpperCase();
+                });
+                bindInspectorInputNum('insp-route-dot-count', v => {
+                    const rp = ensureRoute();
+                    rp.dotCount = Math.max(1, Math.min(6, Math.round(v)));
+                });
+                bindInspectorInputNum('insp-route-arm-length', v => {
+                    const rp = ensureRoute();
+                    rp.armLength = v;
+                });
+                bindInspectorInputNum('insp-route-arm-spacing', v => {
+                    const rp = ensureRoute();
+                    rp.armSpacing = v;
+                });
+                bindInspectorInputNum('insp-route-attach-gap', v => {
+                    const rp = ensureRoute();
+                    rp.attachGap = v;
+                    rp.callingGap = v;
+                });
+            }
         }
 
         // Asset dropdown — pull from registry (server) or harvest from current yard.

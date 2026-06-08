@@ -87,6 +87,7 @@
             public static string Alerts = "Alerts";
             public static string Sip = "Sip";
             public static string AdvanceAssetType = "AdvanceAssetType";
+            public static string Health = "Health";
         }
 
         public static class ActionName
@@ -185,6 +186,8 @@
             public static string UserMgmt = "fa-solid fa-users-gear";
             public static string AssetType = "fa-solid fa-users-gear";
             public static string AdvanceAssetType = "fa-solid fa-users-gear";
+            public static string Health = "fa fa-heartbeat";
+
         }
     }
 }
