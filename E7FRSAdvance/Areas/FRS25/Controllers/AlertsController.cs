@@ -491,7 +491,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     // 3. Actual Failure Detection
                     int rdpms = alerts.Count(x => x.AlertTypeId == tFail && x.isManual == 0 && (x.AcknowledgemenStatusId == sTrue || x.AcknowledgemenStatusId == sPT));
                     int totAct = alerts.Count(x => x.AlertTypeId == tFail && x.isManual == 1 && (x.AcknowledgemenStatusId == sTrue || x.AcknowledgemenStatusId == sPT || x.AcknowledgemenStatusId == sFalse));
-                    actualDetection = totAct > 0 ? Math.Round((double)rdpms / totAct * 100, 2) : 0.0;
+                    actualDetection = (double?)(totAct > 0 ? Math.Round((decimal)rdpms / totAct * 100, 2) : 0.0m);
                 }
             }
             catch (Exception ex)
