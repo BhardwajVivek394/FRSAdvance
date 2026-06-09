@@ -32,6 +32,10 @@
     var _assetType = '';
     var _siteId = '';
     var _alertIds = [];
+    var _lastLiveSignature = '';
+    var _activeTab = 'live';
+    var _isPopupOpen = false;
+    var _refreshInProgress = false;
     var _historyUrl =
         (window.SipAssetPopupConfig && window.SipAssetPopupConfig.historyUrl)
             ? window.SipAssetPopupConfig.historyUrl
@@ -98,6 +102,46 @@
     /* ── tiny helpers ─────────────────────────────────────────────── */
     function el(id) { return document.getElementById(id); }
     function esc(v) { var d = document.createElement('div'); d.textContent = (v == null ? '' : v); return d.innerHTML; }
+
+    function sapNodeExists(node) {
+        return !!(node && document.documentElement && document.documentElement.contains(node));
+    }
+
+    function sapIsOverlayVisible() {
+        var ov = el('sipAssetPopupOverlay');
+        return !!(ov && sapNodeExists(ov) && ov.classList.contains('sap-show'));
+    }
+
+    function sapSafeCall(label, fn) {
+        try {
+            if (typeof fn === 'function') return fn();
+        } catch (ex) {
+            if (window.console && console.warn) {
+                console.warn('[sip-popup-live] ' + label + ' failed:', ex);
+            }
+        }
+        return null;
+    }
+
+    function sapSafeRefreshLive(reason) {
+        if (_refreshInProgress) return;
+        var grid = el('sipAssetTelemetryGrid');
+        if (!grid || !sapNodeExists(grid)) {
+            _ready = false;
+            return;
+        }
+
+        _refreshInProgress = true;
+        try {
+            refreshLive();
+        } catch (ex) {
+            if (window.console && console.warn) {
+                console.warn('[sip-popup-live] refreshLive failed' + (reason ? ' (' + reason + ')' : '') + ':', ex);
+            }
+        } finally {
+            _refreshInProgress = false;
+        }
+    }
     function first() { for (var i = 0; i < arguments.length; i++) { var v = arguments[i]; if (v !== undefined && v !== null && v !== '') return v; } return ''; }
     function sapAttrIdOf(obj) {
         if (!obj || typeof obj !== 'object') return '';
@@ -344,8 +388,32 @@
        HTML INJECTION — exact copy of Index.cshtml lines 1326–1460
        Only injected if #sipAssetPopupOverlay doesn't exist yet.
        ═══════════════════════════════════════════════════════════════ */
+    function isValidSapPopupOverlay(overlay) {
+        return !!(
+            overlay &&
+            overlay.querySelector('.sap-popup') &&
+            overlay.querySelector('.sap-tab') &&
+            overlay.querySelector('.sap-tab-content') &&
+            overlay.querySelector('#sipAssetTelemetryGrid')
+        );
+    }
+
     function injectHTMLIfNeeded() {
-        if (el('sipAssetPopupOverlay')) return;
+        var existing = el('sipAssetPopupOverlay');
+
+        // Remove old telemetry fallback popup / wrong HTML using same ID.
+        if (existing) {
+            if (isValidSapPopupOverlay(existing)) return;
+
+            try {
+                existing.parentNode.removeChild(existing);
+            } catch (e) { }
+
+            var oldStyle = el('sipAssetPopupStyle');
+            if (oldStyle && oldStyle.parentNode) {
+                oldStyle.parentNode.removeChild(oldStyle);
+            }
+        }
 
         var WRENCH = '<svg class="sap-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>';
         var CLOSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
@@ -412,12 +480,16 @@
             }
         });
 
-        // ── Main popup tabs: Live / Alert Analytics / Graph / Event Log / Alarm ──
-        overlay.querySelectorAll('.sap-tab').forEach(function (tab) {
-            tab.addEventListener('click', function () {
-                var tabName = tab.getAttribute('data-sap-tab');
-                activateTab(tabName);
-            });
+        overlay.addEventListener('click', function (e) {
+            var tab = e.target && e.target.closest ? e.target.closest('.sap-tab') : null;
+
+            if (!tab || !overlay.contains(tab)) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            var tabName = tab.getAttribute('data-sap-tab');
+            activateTab(tabName);
         });
 
         // ── Graph parameter dropdown ────────────────────────
@@ -525,70 +597,208 @@
        INIT — ensure everything is ready (idempotent)
        ═══════════════════════════════════════════════════════════════ */
     function ensureReady() {
-        if (_ready) return;
+        var overlayNow = el('sipAssetPopupOverlay');
+
+        // If the page/tab switch removed or replaced the popup DOM, rebuild/re-wire it.
+        if (_ready) {
+            if (overlayNow && sapNodeExists(overlayNow) && overlayNow.querySelector('.sap-tab') && overlayNow.querySelector('.sap-tab-content')) {
+                if (!overlayNow._sapEventsBound) wireEvents();
+                return;
+            }
+            _ready = false;
+        }
+
         if (!document.querySelector('link[href*="IBM+Plex+Sans"]')) {
             var lk = document.createElement('link'); lk.rel = 'stylesheet';
             lk.href = 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap';
             document.head.appendChild(lk);
         }
+
         injectCSSIfNeeded();
         injectHTMLIfNeeded();
         wireEvents();
-        _ready = true;
+
+        overlayNow = el('sipAssetPopupOverlay');
+        _ready = !!(overlayNow && sapNodeExists(overlayNow));
     }
 
     /* ── tabs ─────────────────────────────────────────────────── */
     function activateTab(name) {
+        ensureReady();
+
+        name = String(name || 'live').toLowerCase();
+
         var ov = el('sipAssetPopupOverlay');
+        if (!ov || !sapNodeExists(ov)) {
+            _ready = false;
+            return false;
+        }
 
-        ov.querySelectorAll('.sap-tab').forEach(function (t) {
+        var targetContent = el('sap-tab-' + name);
+        if (!targetContent || !sapNodeExists(targetContent)) {
+            // Bad / missing tab node should not break the popup.
+            name = 'live';
+            targetContent = el('sap-tab-live');
+            if (!targetContent || !sapNodeExists(targetContent)) return false;
+        }
+
+        _activeTab = name;
+
+        var tabs = ov.querySelectorAll('.sap-tab');
+        for (var ti = 0; ti < tabs.length; ti++) {
+            var t = tabs[ti];
+            if (!sapNodeExists(t)) continue;
             t.classList.toggle('sap-active', t.getAttribute('data-sap-tab') === name);
-        });
+        }
 
-        ov.querySelectorAll('.sap-tab-content').forEach(function (c) {
+        var contents = ov.querySelectorAll('.sap-tab-content');
+        for (var ci = 0; ci < contents.length; ci++) {
+            var c = contents[ci];
+            if (!sapNodeExists(c)) continue;
             c.classList.toggle('sap-active', c.id === 'sap-tab-' + name);
-        });
+        }
 
-        /* Stop graph auto-refresh when leaving graph tab */
+        // Stop graph work and cancel pending graph responses when leaving Graph.
         if (name !== 'graph') {
-            clearInterval(_graphRefreshTimer); _graphRefreshTimer = null;
+            clearInterval(_graphRefreshTimer);
+            _graphRefreshTimer = null;
+            _graphRequestNo++;
+            _chartGeo = null;
+        }
+
+        if (name === 'live') {
+            // Force rebuild on return to Live tab so hidden-tab DOM never appears frozen.
+            _lastLiveSignature = '';
+            sapSafeRefreshLive('tab-live');
+            return true;
         }
 
         if (name === 'analytics') {
-            loadSipAssetAlertAnalytics();
+            setTimeout(function () {
+                if (_activeTab === 'analytics' && sapIsOverlayVisible()) sapSafeCall('load analytics', loadSipAssetAlertAnalytics);
+            }, 30);
+            return true;
         }
 
         if (name === 'graph') {
-            _graphPoints = [];  // reset cache on tab entry
-            setTimeout(loadGraphHistory, 80);
-            /* Start live-append every 3s while graph tab is active */
+            _graphPoints = [];
             clearInterval(_graphRefreshTimer);
-            _graphRefreshTimer = setInterval(appendLiveToGraph, 3000);
+            setTimeout(function () {
+                if (_activeTab === 'graph' && sapIsOverlayVisible()) {
+                    wireChartHover();
+                    sapSafeCall('load graph history', loadGraphHistory);
+                    _graphRefreshTimer = setInterval(function () {
+                        if (_activeTab === 'graph' && sapIsOverlayVisible()) sapSafeCall('append live graph', appendLiveToGraph);
+                    }, 3000);
+                }
+            }, 120);
+            return true;
         }
 
         if (name === 'eventlog') {
-            setTimeout(loadEventLog, 80);
+            setTimeout(function () {
+                if (_activeTab === 'eventlog' && sapIsOverlayVisible()) sapSafeCall('load event log', loadEventLog);
+            }, 30);
+            return true;
         }
 
         if (name === 'alarm') {
-            setTimeout(loadActiveAlarms, 80);
+            setTimeout(function () {
+                if (_activeTab === 'alarm' && sapIsOverlayVisible()) sapSafeCall('load active alarms', loadActiveAlarms);
+            }, 30);
+            return true;
         }
+
+        return true;
     }
 
     /* ═══════════════════════════════════════════════════════════════
        LIVE TELEMETRY — read from wsLiveData (WebSocket)
        ═══════════════════════════════════════════════════════════════ */
     function findLiveAsset() {
-        var ld = window.wsLiveData;
-        if (!ld) return null;
-        if (_assetId && ld[_assetId]) return { id: _assetId, d: ld[_assetId] };
-        for (var id in ld) {
-            if (ld.hasOwnProperty(id) && ld[id].AssetName === _assetName) return { id: id, d: ld[id] };
+        var ld = window.wsLiveData || {};
+        var aid = String(_assetId || '').trim();
+        var targetName = normAssetName(_assetName);
+
+        function normAssetName(v) {
+            return String(v == null ? '' : v).trim().toUpperCase();
         }
-        if (window.SipTelemetry && window.SipTelemetry._state && window.SipTelemetry._state.assetValues) {
-            var sv = window.SipTelemetry._state.assetValues[_assetName];
-            if (sv) return { id: '', d: { attrs: sv, AssetName: _assetName } };
+
+        function wrapSipState(id, value) {
+            if (!value) return null;
+            if (value.attrs || value.AssetName || value.assetName) {
+                return { id: id || '', d: value };
+            }
+            return {
+                id: id || '',
+                d: {
+                    attrs: value,
+                    AssetName: _assetName,
+                    SiteId: _siteId
+                }
+            };
         }
+
+        // 1. Exact AssetId from SIP metadata / sourceInfo.
+        if (aid && ld[aid]) return { id: aid, d: ld[aid] };
+
+        // 2. Exact AssetName match from wsLiveData.
+        if (targetName) {
+            for (var id in ld) {
+                if (!ld.hasOwnProperty(id)) continue;
+                var row = ld[id] || {};
+                var nm = normAssetName(row.AssetName || row.assetName || row.Name || row.name);
+                if (nm && nm === targetName) return { id: id, d: row };
+            }
+        }
+
+        // 3. SIP bridge state by AssetId or AssetName.
+        var svMap = window.SipTelemetry &&
+            window.SipTelemetry._state &&
+            window.SipTelemetry._state.assetValues
+            ? window.SipTelemetry._state.assetValues
+            : null;
+
+        if (svMap) {
+            if (aid && svMap[aid]) {
+                var byId = wrapSipState(aid, svMap[aid]);
+                if (byId) return byId;
+            }
+
+            if (_assetName && svMap[_assetName]) {
+                var byName = wrapSipState('', svMap[_assetName]);
+                if (byName) return byName;
+            }
+
+            if (targetName) {
+                for (var sid in svMap) {
+                    if (!svMap.hasOwnProperty(sid)) continue;
+                    var sv = svMap[sid];
+                    var svName = normAssetName(
+                        (sv && (sv.AssetName || sv.assetName || sv.Name || sv.name)) || sid
+                    );
+                    if (svName && svName === targetName) {
+                        var byScan = wrapSipState(sid, sv);
+                        if (byScan) return byScan;
+                    }
+                }
+            }
+        }
+
+        // 4. Metadata fallback: lets popup open with configured rows as '-' even before WS arrives.
+        if (aid && window.bulkAssetMap && window.bulkAssetMap[aid]) {
+            var meta = window.bulkAssetMap[aid] || {};
+            return {
+                id: aid,
+                d: {
+                    attrs: {},
+                    AssetName: meta.Name || meta.AssetName || _assetName,
+                    AssetTypeId: meta.AssetTypeId || _assetType,
+                    SiteId: meta.SiteId || _siteId
+                }
+            };
+        }
+
         return null;
     }
 
@@ -730,26 +940,52 @@
         var f = findLiveAsset();
         var attrs = {};
         var ra = null;
+        var liveAsset = null;
 
         if (f && f.d) {
             _assetId = f.id || _assetId;
+            liveAsset = f.d;
             ra = f.d.attrs || f.d;
+
+            if (!_assetName && (f.d.AssetName || f.d.assetName || f.d.Name)) {
+                _assetName = f.d.AssetName || f.d.assetName || f.d.Name;
+            }
+            if (!_siteId && (f.d.SiteId || f.d.siteId)) {
+                _siteId = f.d.SiteId || f.d.siteId;
+            }
         }
 
-        var aid = String(_assetId || '');
+        var aid = String(_assetId || '').trim();
         var prefix = aid + '_';
 
         var dlMap = window.userAssetDataloggerMap || {};
+        var simpleMap = window.userAssetSimpleMap || {};
         var dlMeta = {};
+        var dlNameIndex = {};
         var dlLookup = {};
 
         function norm(v) {
             return String(v == null ? '' : v).trim().toUpperCase();
         }
 
+        function cleanId(v) {
+            var s = String(v == null ? '' : v).trim();
+            if (!s || s === '0' || /^null$/i.test(s) || /^undefined$/i.test(s)) return '';
+            return s.replace(/^dl_/i, '');
+        }
+
         function addDlLookup(v, dlId) {
             var n = norm(v);
             if (n) dlLookup[n] = String(dlId);
+        }
+
+        function addMetaCandidate(meta, v) {
+            var id = cleanId(v);
+            if (!id) return;
+            meta.candidates[id] = true;
+            addDlLookup(id, meta.id);
+            addDlLookup('DL_' + id, meta.id);
+            addDlLookup('dl_' + id, meta.id);
         }
 
         function getValue(x) {
@@ -760,47 +996,109 @@
                 if (x.currentValue !== undefined) return x.currentValue;
                 if (x.Status !== undefined) return x.Status;
                 if (x.status !== undefined) return x.status;
+                if (x.isPickup !== undefined) return x.isPickup ? 1 : 0;
+                if (x.IsPickup !== undefined) return x.IsPickup ? 1 : 0;
             }
 
             return x;
         }
 
-        // Build DL metadata from GetBulkAssetData map:
-        // key = assetId_DataloggerAttributeId
+        function getEntryField(entry) {
+            for (var i = 1; i < arguments.length; i++) {
+                var key = arguments[i];
+                if (entry && entry[key] !== undefined && entry[key] !== null && String(entry[key]).trim() !== '') {
+                    return entry[key];
+                }
+            }
+            return '';
+        }
+
+        // Build canonical DL metadata once per real DataloggerAttribute.
+        // userAssetDataloggerMap may contain many lookup keys for the same relay
+        // (DataloggerAttributeId, Value id, DB Id, name, DataloggerAssetName).
+        // This block collapses those aliases into one visible row.
         for (var dk in dlMap) {
             if (!dlMap.hasOwnProperty(dk)) continue;
             if (aid && dk.indexOf(prefix) !== 0) continue;
 
             var dlEntry = dlMap[dk] || {};
+            var keySuffix = cleanId(dk.substring(prefix.length));
 
-            var dlId = String(
-                dlEntry.DataloggerAttributeId ||
-                dlEntry.dataloggerAttributeId ||
-                dk.substring(prefix.length)
-            ).trim();
+            var canonicalId = cleanId(getEntryField(
+                dlEntry,
+                'DataloggerAttributeId',
+                'dataloggerAttributeId',
+                'DlAttributeId',
+                'dlAttributeId'
+            ));
 
-            dlId = dlId.replace(/^dl_/i, '');
-            if (!dlId || dlMeta[dlId]) continue;
+            var dlName = getEntryField(
+                dlEntry,
+                'DataloggerAttribute',
+                'dataloggerAttribute',
+                'attributeName',
+                'AttributeName',
+                'name',
+                'Name',
+                'aliasName',
+                'AliasName'
+            );
 
-            var dlName = dlEntry.DataloggerAttribute ||
-                dlEntry.dataloggerAttribute ||
-                dlEntry.attributeName ||
-                dlEntry.name ||
-                ('DL ' + dlId);
+            var dlAssetName = getEntryField(
+                dlEntry,
+                'DataloggerAssetName',
+                'dataloggerAssetName',
+                'assetName',
+                'AssetName'
+            );
 
-            var dlAssetName = dlEntry.DataloggerAssetName || dlEntry.dataloggerAssetName || '';
+            var nameKey = norm(dlName) + '|' + norm(dlAssetName);
 
-            dlMeta[dlId] = {
-                id: dlId,
-                name: dlName,
-                assetName: dlAssetName
-            };
+            if (!canonicalId && nameKey !== '|') canonicalId = dlNameIndex[nameKey] || '';
+            if (!canonicalId) canonicalId = keySuffix || norm(dlName).replace(/\s+/g, '_');
+            if (!canonicalId) continue;
 
-            addDlLookup('DL_' + dlId, dlId);
-            addDlLookup('dl_' + dlId, dlId);
-            addDlLookup(dlId, dlId);
-            addDlLookup(dlName, dlId);
-            addDlLookup(dlAssetName, dlId);
+            if (nameKey !== '|' && dlNameIndex[nameKey] && dlNameIndex[nameKey] !== canonicalId) {
+                canonicalId = dlNameIndex[nameKey];
+            }
+
+            if (!dlMeta[canonicalId]) {
+                dlMeta[canonicalId] = {
+                    id: canonicalId,
+                    name: dlName || ('DL ' + canonicalId),
+                    assetName: dlAssetName || '',
+                    candidates: {}
+                };
+            }
+
+            if (nameKey !== '|') dlNameIndex[nameKey] = canonicalId;
+
+            var meta = dlMeta[canonicalId];
+
+            if (!meta.name && dlName) meta.name = dlName;
+            if (!meta.assetName && dlAssetName) meta.assetName = dlAssetName;
+
+            addMetaCandidate(meta, canonicalId);
+            addMetaCandidate(meta, keySuffix);
+
+            [
+                'DataloggerAttributeId', 'dataloggerAttributeId',
+                'DlAttributeId', 'dlAttributeId',
+                'dataloggerValueId', 'DataloggerValueId',
+                'Value', 'value', 'Id', 'id', 'Role', 'role',
+                'AssetAttributeId', 'assetAttributeId',
+                'AttributeId', 'attributeId',
+                'SrNo', 'srNo'
+            ].forEach(function (field) {
+                addMetaCandidate(meta, dlEntry[field]);
+            });
+
+            addDlLookup(meta.name, meta.id);
+            addDlLookup(meta.assetName, meta.id);
+            addDlLookup(dlEntry.DataloggerAttribute, meta.id);
+            addDlLookup(dlEntry.dataloggerAttribute, meta.id);
+            addDlLookup(dlEntry.DataloggerAssetName, meta.id);
+            addDlLookup(dlEntry.dataloggerAssetName, meta.id);
         }
 
         function getDlIdFromLiveKeyOrObject(key, obj) {
@@ -808,16 +1106,25 @@
             if (dlLookup[keyNorm]) return dlLookup[keyNorm];
 
             if (obj && typeof obj === 'object') {
-                var objDlId = String(
-                    obj.DataloggerAttributeId ||
-                    obj.dataloggerAttributeId ||
-                    obj.DlAttributeId ||
-                    obj.dlAttributeId ||
-                    ''
-                ).trim();
+                var directIds = [
+                    obj.DataloggerAttributeId,
+                    obj.dataloggerAttributeId,
+                    obj.DlAttributeId,
+                    obj.dlAttributeId,
+                    obj.dataloggerValueId,
+                    obj.DataloggerValueId,
+                    obj.Role,
+                    obj.role,
+                    obj.SrNo,
+                    obj.srNo,
+                    obj.Id,
+                    obj.id
+                ];
 
-                objDlId = objDlId.replace(/^dl_/i, '');
-                if (objDlId && dlMeta[objDlId]) return objDlId;
+                for (var di = 0; di < directIds.length; di++) {
+                    var directNorm = norm(directIds[di]);
+                    if (directNorm && dlLookup[directNorm]) return dlLookup[directNorm];
+                }
 
                 var names = [
                     obj.DataloggerAttribute,
@@ -835,6 +1142,9 @@
                     if (n && dlLookup[n]) return dlLookup[n];
                 }
 
+                // Only use generic AttributeId/AttrId collision-prone fields when the
+                // message explicitly says DataLogger. This prevents analog AssetAttributeId=6
+                // from being mistaken as TPR DataLogger role 6.
                 var marker = String(
                     obj.DataType ||
                     obj.dataType ||
@@ -845,8 +1155,15 @@
                     ''
                 );
 
-                if (/DATALOGGER|\bDL\b/i.test(marker) && dlLookup[keyNorm]) {
-                    return dlLookup[keyNorm];
+                if (/DATALOGGER|\bDL\b/i.test(marker)) {
+                    var markerIds = [obj.AttrId, obj.AssetAttributeId, obj.AttributeId, obj.attrId, obj.assetAttributeId, obj.attributeId];
+
+                    for (var mi = 0; mi < markerIds.length; mi++) {
+                        var markerNorm = norm(markerIds[mi]);
+                        if (markerNorm && dlLookup[markerNorm]) return dlLookup[markerNorm];
+                    }
+
+                    if (dlLookup[keyNorm]) return dlLookup[keyNorm];
                 }
             }
 
@@ -854,13 +1171,15 @@
         }
 
         function findDlValue(meta) {
-            var candidates = [
-                'DL_' + meta.id,
-                'dl_' + meta.id,
-                meta.name,
-                meta.assetName,
-                meta.id
-            ];
+            var candidates = ['DL_' + meta.id, 'dl_' + meta.id, meta.id, meta.name, meta.assetName];
+
+            for (var cid in meta.candidates) {
+                if (meta.candidates.hasOwnProperty(cid)) {
+                    candidates.push(cid);
+                    candidates.push('DL_' + cid);
+                    candidates.push('dl_' + cid);
+                }
+            }
 
             var dlRelays = ra ? (ra.dlRelays || ra.DlRelays || ra.DLRelays || null) : null;
             var sources = [dlRelays, ra];
@@ -887,7 +1206,6 @@
                     return { found: false };
                 }
 
-                // Direct key match: TPR / 1_2TPR / DL_6 / dl_6 / 6
                 for (var i = 0; i < candidates.length; i++) {
                     var c = candidates[i];
                     if (c && src.hasOwnProperty(c)) {
@@ -895,7 +1213,6 @@
                     }
                 }
 
-                // Object field match
                 for (var k in src) {
                     if (!src.hasOwnProperty(k)) continue;
 
@@ -906,21 +1223,17 @@
                     }
 
                     if (child && typeof child === 'object') {
-                        var childDlId = String(
-                            child.DataloggerAttributeId ||
-                            child.dataloggerAttributeId ||
-                            child.DlAttributeId ||
-                            child.dlAttributeId ||
-                            ''
-                        ).trim();
-
-                        childDlId = childDlId.replace(/^dl_/i, '');
-
-                        if (childDlId && childDlId === String(meta.id)) {
-                            return { found: true, value: getValue(child) };
-                        }
-
                         if (
+                            matchesCandidate(child.DataloggerAttributeId) ||
+                            matchesCandidate(child.dataloggerAttributeId) ||
+                            matchesCandidate(child.DlAttributeId) ||
+                            matchesCandidate(child.dlAttributeId) ||
+                            matchesCandidate(child.dataloggerValueId) ||
+                            matchesCandidate(child.DataloggerValueId) ||
+                            matchesCandidate(child.Role) ||
+                            matchesCandidate(child.role) ||
+                            matchesCandidate(child.Id) ||
+                            matchesCandidate(child.id) ||
                             matchesCandidate(child.DataloggerAttribute) ||
                             matchesCandidate(child.dataloggerAttribute) ||
                             matchesCandidate(child.DataloggerAssetName) ||
@@ -930,6 +1243,14 @@
                             matchesCandidate(child.attributeName) ||
                             matchesCandidate(child.AttributeName)
                         ) {
+                            return { found: true, value: getValue(child) };
+                        }
+
+                        var marker = String(child.DataType || child.dataType || child.Source || child.source || '');
+                        if (/DATALOGGER|\bDL\b/i.test(marker) &&
+                            (matchesCandidate(child.AttrId) ||
+                                matchesCandidate(child.AssetAttributeId) ||
+                                matchesCandidate(child.AttributeId))) {
                             return { found: true, value: getValue(child) };
                         }
                     }
@@ -946,7 +1267,54 @@
             return '--';
         }
 
-        // Add normal asset attributes, but skip DataLogger live keys.
+        function hasExistingAttr(attrId, label) {
+            var id = String(attrId || '').trim();
+            var lbl = norm(label);
+
+            for (var k in attrs) {
+                if (!attrs.hasOwnProperty(k)) continue;
+                var row = attrs[k] || {};
+                if (id && !row.isDatalogger && String(row.attrId || '').trim() === id) return true;
+                if (lbl && !row.isDatalogger && norm(row.label) === lbl) return true;
+            }
+
+            return false;
+        }
+
+        function findAssetAttrValue(meta) {
+            if (!ra || typeof ra !== 'object') return { found: false, value: '--', rawKey: meta.title || meta.alias || '' };
+
+            var candidates = [
+                meta.title,
+                meta.alias,
+                meta.attributeName,
+                meta.name,
+                meta.id
+            ];
+
+            for (var i = 0; i < candidates.length; i++) {
+                var c = candidates[i];
+                if (c && ra.hasOwnProperty(c)) {
+                    return { found: true, value: getValue(ra[c]), rawKey: c };
+                }
+            }
+
+            var id = String(meta.id || '').trim();
+
+            if (id) {
+                for (var k in ra) {
+                    if (!ra.hasOwnProperty(k)) continue;
+                    var obj = ra[k];
+                    if (String(sapAttrIdOf(obj) || '').trim() === id) {
+                        return { found: true, value: getValue(obj), rawKey: k };
+                    }
+                }
+            }
+
+            return { found: false, value: '--', rawKey: meta.title || meta.alias || '' };
+        }
+
+        // Add normal live attributes, but skip DataLogger live keys.
         if (ra && typeof ra === 'object') {
             for (var k in ra) {
                 if (!ra.hasOwnProperty(k)) continue;
@@ -954,8 +1322,6 @@
 
                 var obj = ra[k];
 
-                // If this key/object belongs to DataLogger, skip here.
-                // It will be added once below as DL_<DataloggerAttributeId>.
                 var dlIdFromLive = getDlIdFromLiveKeyOrObject(k, obj);
                 if (dlIdFromLive) continue;
 
@@ -967,6 +1333,43 @@
                     isDatalogger: false
                 };
             }
+        }
+
+        // Add configured asset attributes as placeholders when WebSocket has not sent them.
+        for (var sk in simpleMap) {
+            if (!simpleMap.hasOwnProperty(sk)) continue;
+            if (aid && sk.indexOf(prefix) !== 0) continue;
+
+            var sEntry = simpleMap[sk] || {};
+            var sAttrId = String(
+                sEntry.Id ||
+                sEntry.id ||
+                sEntry.AttrId ||
+                sEntry.attrId ||
+                sk.substring(prefix.length)
+            ).trim();
+
+            var sAlias = sEntry.AliasName || sEntry.aliasName || sEntry.name || sEntry.Name || ('Attr ' + sAttrId);
+            var sTitle = sEntry.Title || sEntry.title || sEntry.attributeName || sEntry.AttributeName || sAlias;
+
+            if (!sAttrId && !sAlias) continue;
+            if (hasExistingAttr(sAttrId, sAlias)) continue;
+
+            var found = findAssetAttrValue({
+                id: sAttrId,
+                title: sTitle,
+                alias: sAlias,
+                attributeName: sEntry.attributeName || sEntry.AttributeName || '',
+                name: sEntry.name || sEntry.Name || ''
+            });
+
+            attrs['AA_' + (sAttrId || norm(sAlias))] = {
+                rawKey: found.rawKey || sTitle,
+                label: sAlias,
+                value: found.value,
+                attrId: sAttrId,
+                isDatalogger: false
+            };
         }
 
         // Add DataLogger rows once only.
@@ -984,11 +1387,51 @@
 
         var keys = Object.keys(attrs);
 
+        // Final visible-row dedupe. Prefer a row with a real value over a placeholder.
+        var chosenByKey = {};
+        var dedupedKeys = [];
+
+        function hasRealValue(row) {
+            var v = row ? row.value : null;
+            return !(v === null || v === undefined || v === '' || v === '--' || v === '-');
+        }
+
+        function rowKey(row) {
+            if (!row) return '';
+            if (row.isDatalogger) return 'D:' + norm(row.label);
+            var id = String(row.attrId || '').trim();
+            if (id) return 'A:' + id;
+            return 'L:' + norm(row.label || row.rawKey);
+        }
+
+        keys.forEach(function (k) {
+            var row = attrs[k];
+            var rk = rowKey(row);
+            if (!rk) return;
+
+            if (!chosenByKey[rk]) {
+                chosenByKey[rk] = k;
+                dedupedKeys.push(k);
+                return;
+            }
+
+            var oldKey = chosenByKey[rk];
+            var oldRow = attrs[oldKey];
+
+            if (!hasRealValue(oldRow) && hasRealValue(row)) {
+                chosenByKey[rk] = k;
+                var idx = dedupedKeys.indexOf(oldKey);
+                if (idx >= 0) dedupedKeys[idx] = k;
+            }
+        });
+
+        keys = dedupedKeys;
+
         if (window.wsAttributeNames && window.wsAttributeNames.length) {
             var ord = [];
 
             window.wsAttributeNames.forEach(function (n) {
-                if (n in attrs) ord.push(n);
+                if (keys.indexOf(n) >= 0) ord.push(n);
             });
 
             keys.forEach(function (k) {
@@ -996,15 +1439,55 @@
             });
 
             keys = ord;
+        } else {
+            keys.sort(function (a, b) {
+                var ar = attrs[a] || {};
+                var br = attrs[b] || {};
+
+                if (!!ar.isDatalogger !== !!br.isDatalogger) {
+                    return ar.isDatalogger ? 1 : -1;
+                }
+
+                var ai = parseInt(ar.attrId, 10);
+                var bi = parseInt(br.attrId, 10);
+
+                if (!isNaN(ai) && !isNaN(bi) && ai !== bi) return ai - bi;
+                return String(ar.label || a).localeCompare(String(br.label || b), undefined, {
+                    numeric: true,
+                    sensitivity: 'base'
+                });
+            });
         }
 
         var grid = el('sipAssetTelemetryGrid');
         if (!grid) return;
 
         if (!keys.length) {
-            grid.innerHTML = '<div class="sap-empty-state">Waiting for WebSocket data\u2026</div>';
+            var emptyHtml = '<div class="sap-empty-state">Waiting for WebSocket data\u2026</div>';
+            if (grid.innerHTML !== emptyHtml) grid.innerHTML = emptyHtml;
             return;
         }
+
+        var signature = keys.map(function (k) {
+            var r = attrs[k] || {};
+            return [
+                r.isDatalogger ? 'D' : 'A',
+                r.attrId || '',
+                r.label || '',
+                r.value === undefined || r.value === null ? '' : String(r.value)
+            ].join(':');
+        }).join('|');
+
+        if (_lastLiveSignature === signature) {
+            populateGraphDropdown();
+
+            var tsSame = el('sipAssetLastSync');
+            if (tsSame) tsSame.textContent = 'Last sync: ' + fmtNow();
+
+            return;
+        }
+
+        _lastLiveSignature = signature;
 
         var half = Math.ceil(keys.length / 2);
 
@@ -1127,64 +1610,138 @@
         if (!sel) return;
 
         var oldValue = sel.value;
-        var aid = String(_assetId || '');
+        var aid = String(_assetId || '').trim();
         var prefix = aid + '_';
         var opts = [];
+        var seen = {};
 
-        // 1. Asset attributes: Id -> AliasName
+        function cleanId(v) {
+            var s = String(v == null ? '' : v).trim();
+            if (!s || s === '0' || /^null$/i.test(s) || /^undefined$/i.test(s)) return '';
+            return s.replace(/^dl_/i, '');
+        }
+
+        function addOption(o) {
+            if (!o || !o.id) return;
+            var key = String(o.id).trim().toUpperCase();
+
+            // Deduplicate by canonical dropdown value.
+            if (seen[key]) {
+                // Prefer a better title/alias if the first entry was weak.
+                if ((!seen[key].title && o.title) || /^Attr\s/i.test(seen[key].alias || '')) {
+                    seen[key].title = o.title || seen[key].title;
+                    seen[key].alias = o.alias || seen[key].alias;
+                }
+                return;
+            }
+
+            seen[key] = o;
+            opts.push(o);
+        }
+
+        // 1. Asset attributes: AssetAttributeId -> AliasName
         var uMap = window.userAssetSimpleMap || {};
 
         for (var key in uMap) {
             if (!uMap.hasOwnProperty(key)) continue;
-            if (key.indexOf(prefix) !== 0) continue;
+            if (aid && key.indexOf(prefix) !== 0) continue;
 
             var entry = uMap[key] || {};
-            var attrId = String(entry.id || entry.attrId || key.substring(prefix.length)).trim();
+            var attrId = cleanId(entry.Id || entry.id || entry.AttrId || entry.attrId || key.substring(prefix.length));
 
-            opts.push({
+            if (!attrId) continue;
+
+            addOption({
                 id: attrId,
                 title: entry.title || entry.Title || entry.attributeName || entry.AttributeName || '',
-                alias: entry.AliasName || entry.name || ('Attr ' + attrId),
+                alias: entry.AliasName || entry.aliasName || entry.name || entry.Name || ('Attr ' + attrId),
                 seq: parseInt(attrId, 10) || 0
             });
         }
 
-        // 2. DataLogger attributes: DataloggerAttributeId -> DataloggerAttribute
+        // 2. DataLogger attributes: DataloggerAttributeId -> DataloggerAttribute.
+        // userAssetDataloggerMap may have many lookup keys for one relay; collapse them.
         var dlMap = window.userAssetDataloggerMap || {};
+        var dlNameIndex = {};
+
+        function norm(v) {
+            return String(v == null ? '' : v).trim().toUpperCase();
+        }
 
         for (var dlKey in dlMap) {
             if (!dlMap.hasOwnProperty(dlKey)) continue;
-            if (dlKey.indexOf(prefix) !== 0) continue;
+            if (aid && dlKey.indexOf(prefix) !== 0) continue;
 
             var dlEntry = dlMap[dlKey] || {};
-            var dlId = String(
+
+            var dlId = cleanId(
                 dlEntry.DataloggerAttributeId ||
                 dlEntry.dataloggerAttributeId ||
-                dlKey.substring(prefix.length)
-            ).trim();
-            dlId = dlId.replace(/^dl_/i, '');
+                dlEntry.DlAttributeId ||
+                dlEntry.dlAttributeId
+            );
 
-            opts.push({
+            var dlName = dlEntry.DataloggerAttribute ||
+                dlEntry.dataloggerAttribute ||
+                dlEntry.attributeName ||
+                dlEntry.AttributeName ||
+                dlEntry.name ||
+                dlEntry.Name ||
+                '';
+
+            var dlAssetName = dlEntry.DataloggerAssetName || dlEntry.dataloggerAssetName || '';
+            var nameKey = norm(dlName) + '|' + norm(dlAssetName);
+
+            if (!dlId && nameKey !== '|') dlId = dlNameIndex[nameKey] || '';
+            if (!dlId) dlId = cleanId(dlKey.substring(prefix.length));
+            if (!dlId) continue;
+
+            if (nameKey !== '|' && dlNameIndex[nameKey] && dlNameIndex[nameKey] !== dlId) {
+                dlId = dlNameIndex[nameKey];
+            }
+
+            if (nameKey !== '|') dlNameIndex[nameKey] = dlId;
+
+            addOption({
                 id: 'dl_' + dlId,
-                title: dlEntry.DataloggerAttribute || dlEntry.dataloggerAttribute || dlEntry.attributeName || dlEntry.name || '',
-                alias: dlEntry.DataloggerAttribute || dlEntry.dataloggerAttribute || dlEntry.attributeName || dlEntry.name || ('DL ' + dlId),
+                title: dlName || dlAssetName || ('DL ' + dlId),
+                alias: dlName || dlAssetName || ('DL ' + dlId),
                 seq: 9000 + (parseInt(dlId, 10) || 999)
             });
         }
 
-        var seen = {};
-        opts = opts.filter(function (o) {
-            if (!o.id || seen[o.id]) return false;
-            seen[o.id] = true;
-            return true;
-        });
+        // 3. Fallback: wsLiveData keys if metadata has not arrived yet.
+        if (opts.length === 0) {
+            var f = findLiveAsset();
+            if (f && f.d) {
+                var ra = f.d.attrs || f.d;
+
+                for (var k in ra) {
+                    if (!ra.hasOwnProperty(k)) continue;
+                    if (/^(AssetName|AssetTypeId|SiteId|lastUpdated|dlRelays|__type)$/i.test(k)) continue;
+
+                    var aObj = ra[k];
+                    var aId = cleanId(aObj && (aObj.AttrId || aObj.AssetAttributeId || aObj.AttributeId));
+
+                    addOption({
+                        id: aId || k,
+                        title: k,
+                        alias: sapAliasName(k, aObj),
+                        seq: parseInt(aId, 10) || 0
+                    });
+                }
+            }
+        }
 
         opts.sort(function (a, b) {
             if (a.seq !== b.seq) return a.seq - b.seq;
-            return String(a.alias).localeCompare(String(b.alias));
+            return String(a.alias).localeCompare(String(b.alias), undefined, {
+                numeric: true,
+                sensitivity: 'base'
+            });
         });
 
-        var sig = opts.map(function (o) { return o.id + ':' + o.alias; }).join('|');
+        var sig = opts.map(function (o) { return o.id + ':' + o.alias + ':' + o.title; }).join('|');
         if (sel.getAttribute('data-key-signature') === sig) return;
 
         sel.innerHTML = opts.map(function (o) {
@@ -1663,6 +2220,11 @@
     }
 
     function loadGraphHistory() {
+        if (_activeTab !== 'graph' || !sapIsOverlayVisible()) return;
+
+        var canvas = el('sipAssetChartCanvas');
+        if (!canvas || !sapNodeExists(canvas)) return;
+
         var selected = getSelectedGraphAttribute();
 
         if (!selected.attrId) {
@@ -1715,7 +2277,7 @@
                 endDate: endStr
             },
             success: function (res) {
-                if (reqNo !== _graphRequestNo) return;
+                if (reqNo !== _graphRequestNo || _activeTab !== 'graph' || !sapIsOverlayVisible()) return;
 
                 var points = extractAttributePoints(res, selected.attrId, selected.title, selected.alias);
 
@@ -1729,7 +2291,7 @@
                 drawHistoryChart(points, selected.alias);
             },
             error: function (xhr) {
-                if (reqNo !== _graphRequestNo) return;
+                if (reqNo !== _graphRequestNo || _activeTab !== 'graph' || !sapIsOverlayVisible()) return;
                 drawGraphMessage('Failed to load graph data. HTTP ' + xhr.status);
             }
         });
@@ -1737,6 +2299,7 @@
 
     /* ── LIVE APPEND: read current WS value and add to cached graph ── */
     function appendLiveToGraph() {
+        if (_activeTab !== 'graph' || !sapIsOverlayVisible()) return;
         if (!_graphAttrKey || !_graphPoints.length) return;
 
         /* Only live-append if viewing today */
@@ -2070,11 +2633,12 @@
     function drawGraphMessage(message) {
         _chartGeo = null;  // disable hover tooltip
         var canvas = el('sipAssetChartCanvas');
-        if (!canvas) return;
+        if (!canvas || !sapNodeExists(canvas) || !canvas.parentElement) return;
 
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
         var rect = canvas.parentElement.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
@@ -2093,11 +2657,12 @@
 
     function drawHistoryChart(points, aliasName) {
         var canvas = el('sipAssetChartCanvas');
-        if (!canvas) return;
+        if (!canvas || !sapNodeExists(canvas) || !canvas.parentElement || _activeTab !== 'graph') return;
 
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
         var rect = canvas.parentElement.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
@@ -2245,38 +2810,39 @@
        HOVER TOOLTIP — crosshair + value/time bubble on mousemove
        ═══════════════════════════════════════════════════════════════ */
     function wireChartHover() {
-        if (_chartHoverBound) return;
-        /* Bind will fire once; canvas is reused across redraws */
         var tryBind = function () {
             var canvas = el('sipAssetChartCanvas');
-            if (!canvas) return;
+            if (!canvas || !sapNodeExists(canvas)) return;
+            if (canvas._sapHoverBound) return;
+
+            canvas._sapHoverBound = true;
             _chartHoverBound = true;
 
             canvas.addEventListener('mousemove', function (e) {
-                if (!_chartGeo || !_chartGeo.points.length) return;
+                if (!_chartGeo || !_chartGeo.points.length || _activeTab !== 'graph') return;
+                if (!sapNodeExists(canvas)) return;
                 var rect = canvas.getBoundingClientRect();
                 var mx = e.clientX - rect.left;
                 drawTooltipOverlay(canvas, mx);
             });
 
             canvas.addEventListener('mouseleave', function () {
-                if (!_chartGeo || !_chartGeo.baseImage) return;
+                if (!_chartGeo || !_chartGeo.baseImage || _activeTab !== 'graph') return;
                 var canvas2 = el('sipAssetChartCanvas');
-                if (!canvas2) return;
+                if (!canvas2 || !sapNodeExists(canvas2)) return;
                 var ctx = canvas2.getContext('2d');
                 ctx.putImageData(_chartGeo.baseImage, 0, 0);
             });
         };
 
-        /* Canvas may not exist yet (tab not opened); retry once */
         var c = el('sipAssetChartCanvas');
-        if (c) tryBind();
+        if (c && sapNodeExists(c)) tryBind();
         else setTimeout(tryBind, 500);
     }
 
     function drawTooltipOverlay(canvas, mouseX) {
         var g = _chartGeo;
-        if (!g) return;
+        if (!g || _activeTab !== 'graph' || !canvas || !sapNodeExists(canvas)) return;
 
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
@@ -2403,45 +2969,175 @@
 
     function openPopup(cellOrCtx, sourceInfo) {
         ensureReady();
-        var c = cellOrCtx || {}, s = sourceInfo || {};
-        _assetName = first(c.assetName, c.AssetName, s.assetName, s.AssetName, c.attrs && c.attrs.label && c.attrs.label.text, c.id, 'Selected Asset');
-        _assetType = first(c.stencilType, c.StencilType, c.type, c.Type, s.stencilType, s.type, '');
-        _assetId = first(c.assetId, c.AssetId, s.assetId, s.AssetId, '');
-        _siteId = first(c.siteId, c.SiteId, s.siteId, s.SiteId, '');
-        _alertIds = normalizeAlertIds(first(c.alertIds, c.AlertIds, s.alertIds, s.AlertIds, ''));
+
+        var c = cellOrCtx || {};
+        var s = sourceInfo || {};
+
+        function readPath(obj, path) {
+            if (!obj || !path) return '';
+            var parts = String(path).split('.');
+            var cur = obj;
+
+            for (var i = 0; i < parts.length; i++) {
+                if (cur == null) return '';
+                cur = cur[parts[i]];
+            }
+
+            return cur == null ? '' : cur;
+        }
+
+        function readCtx(obj, names) {
+            if (!obj) return '';
+
+            for (var i = 0; i < names.length; i++) {
+                var n = names[i];
+
+                var direct = readPath(obj, n);
+                if (direct !== '') return direct;
+
+                try {
+                    if (typeof obj.get === 'function') {
+                        var gv = obj.get(n);
+                        if (gv !== undefined && gv !== null && gv !== '') return gv;
+                    }
+                } catch (e1) { }
+
+                try {
+                    if (typeof obj.prop === 'function') {
+                        var pv = obj.prop(n);
+                        if (pv !== undefined && pv !== null && pv !== '') return pv;
+                    }
+                } catch (e2) { }
+
+                try {
+                    if (typeof obj.attr === 'function') {
+                        var av = obj.attr(n);
+                        if (av !== undefined && av !== null && av !== '') return av;
+                    }
+                } catch (e3) { }
+            }
+
+            return '';
+        }
+
+        var pickedAssetId = first(
+            readCtx(s, ['assetId', 'AssetId', 'id', 'Id']),
+            readCtx(c, ['assetId', 'AssetId', 'attrs.assetId', 'attrs.AssetId', 'attributes.assetId', 'attributes.AssetId', 'data.assetId', 'data.AssetId'])
+        );
+
+        var pickedAssetName = first(
+            readCtx(s, ['assetName', 'AssetName', 'name', 'Name']),
+            readCtx(c, [
+                'assetName', 'AssetName', 'name', 'Name',
+                'attrs.label.text',
+                'attributes.attrs.label.text',
+                'label',
+                'Label'
+            ])
+        );
+
+        var pickedType = first(
+            readCtx(s, ['stencilType', 'StencilType', 'assetType', 'AssetType', 'type', 'Type']),
+            readCtx(c, ['stencilType', 'StencilType', 'assetType', 'AssetType', 'type', 'Type'])
+        );
+
+        var pickedSiteId = first(
+            readCtx(s, ['siteId', 'SiteId']),
+            readCtx(c, ['siteId', 'SiteId', 'attrs.siteId', 'attrs.SiteId', 'attributes.siteId', 'attributes.SiteId'])
+        );
+
+        _assetId = pickedAssetId || '';
+        _assetName = pickedAssetName || '';
+        _assetType = pickedType || '';
+        _siteId = pickedSiteId || '';
+        _alertIds = normalizeAlertIds(first(readCtx(c, ['alertIds', 'AlertIds']), readCtx(s, ['alertIds', 'AlertIds']), ''));
+
+        var bulkMeta = (_assetId && window.bulkAssetMap) ? window.bulkAssetMap[String(_assetId)] : null;
+
+        if (bulkMeta) {
+            if (!_assetName || _assetName === readCtx(c, ['id']) || _assetName === readCtx(c, ['attributes.id'])) {
+                _assetName = bulkMeta.Name || bulkMeta.AssetName || _assetName;
+            }
+
+            if (!_siteId && bulkMeta.SiteId) _siteId = bulkMeta.SiteId;
+            if (!_assetType && bulkMeta.AssetTypeName) _assetType = bulkMeta.AssetTypeName;
+            if (!_assetType && bulkMeta.AssetTypeId) _assetType = 'Asset Type ' + bulkMeta.AssetTypeId;
+        }
+
+        if (!_assetName) _assetName = first(readCtx(c, ['id', 'attributes.id']), 'Selected Asset');
+
         setHtml('sipAssetAnalyticsBody', '<div class="sap-empty-state">Click Apply or open this tab to view alert analytics.</div>');
-        if (!_siteId) { var h = el('hdnSiteId') || el('drpSite'); if (h) _siteId = h.value || ''; }
-        if (!_assetId) { var fnd = findLiveAsset(); if (fnd) _assetId = fnd.id; }
+
+        if (!_siteId) {
+            var h = el('hdnSiteId') || el('drpSite');
+            if (h) _siteId = h.value || '';
+        }
+
+        var fnd = findLiveAsset();
+        if (fnd) {
+            _assetId = fnd.id || _assetId;
+
+            if (fnd.d) {
+                if (!_assetName || _assetName === 'Selected Asset') {
+                    _assetName = fnd.d.AssetName || fnd.d.assetName || fnd.d.Name || _assetName;
+                }
+                if (!_siteId) _siteId = fnd.d.SiteId || fnd.d.siteId || _siteId;
+                if (!_assetType) _assetType = fnd.d.AssetTypeName || fnd.d.assetTypeName || _assetType;
+            }
+        }
+
+        _lastLiveSignature = '';
 
         var iconEl = el('sipAssetIcon'); if (iconEl) iconEl.innerHTML = iconFor(_assetType);
         setText('sipAssetPopupAssetName', _assetName);
-        var loc = ''; var ds = document.getElementById('drpSite');
+
+        var loc = '';
+        var ds = document.getElementById('drpSite');
         if (ds && ds.selectedIndex >= 0) loc = ds.options[ds.selectedIndex].text;
+
         setText('sipAssetPopupAssetLocation', loc || ('Site ' + (_siteId || '\u2014')));
         setText('sipAssetTelemetryTitle', 'Live Telemetry \u2014 ' + _assetName);
         setText('sipAssetFooterType', 'Type: ' + (_assetType || '\u2014'));
         setText('sipAssetMaintSub', 'Put ' + _assetName + ' into maintenance mode to suppress alerts during scheduled work.');
         setHtml('sipAssetAlarmBannerText', esc(_assetName) + ' alarm summary<span>Live alarm binding can be connected to your alarm endpoint.</span>');
 
-        refreshLive();
-        activateTab('live');
-        el('sipAssetPopupOverlay').classList.add('sap-show');
-        el('sipAssetPopupOverlay').setAttribute('aria-hidden', 'false');
+        var overlay = el('sipAssetPopupOverlay');
+        if (!overlay || !sapNodeExists(overlay)) {
+            _ready = false;
+            ensureReady();
+            overlay = el('sipAssetPopupOverlay');
+        }
 
-        /* Server endpoints (events, alarms, analytics) not wired yet.
-           Will be added one-by-one once the API is ready. */
+        if (!overlay) return;
+
+        _isPopupOpen = true;
+        overlay.classList.add('sap-show');
+        overlay.removeAttribute('inert');
+        overlay.setAttribute('aria-hidden', 'false');
+
+        activateTab('live');
 
         clearInterval(_refreshTimer);
-        _refreshTimer = setInterval(refreshLive, 3000);
+        _refreshTimer = setInterval(function () {
+            if (_isPopupOpen && sapIsOverlayVisible()) sapSafeRefreshLive('interval');
+        }, 3000);
     }
 
     function closePopup() {
+        _isPopupOpen = false;
+        _activeTab = 'live';
+        _graphRequestNo++;
+        _eventReqNo++;
+        _alarmReqNo++;
+
         var ov = el('sipAssetPopupOverlay');
-        if (ov) { ov.classList.remove('sap-show'); ov.setAttribute('aria-hidden', 'true'); }
+        if (ov) { ov.classList.remove('sap-show'); ov.setAttribute('inert', ''); ov.setAttribute('aria-hidden', 'true'); }
         var mm = el('sipAssetMaintModal'); if (mm) mm.classList.remove('sap-show');
         clearInterval(_refreshTimer);
         clearInterval(_graphRefreshTimer); _graphRefreshTimer = null;
+        _chartGeo = null;
         _graphPoints = []; _graphAttrKey = ''; _graphAlias = ''; _graphAttrId = '';
+        _lastLiveSignature = '';
         _assetId = null; _assetName = '';
     }
 
@@ -2452,6 +3148,6 @@
         openPopup(cellOrCtx, sourceInfo);
         return true;
     };
-    window.SipAssetPopupLive = { open: openPopup, close: closePopup, refresh: refreshLive };
+    window.SipAssetPopupLive = { open: openPopup, close: closePopup, refresh: function () { sapSafeRefreshLive('manual'); } };
     console.log('[sip-popup-live] window.OpenSipAssetPopupFromCell registered (v2).');
 })();

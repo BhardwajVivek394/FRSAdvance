@@ -253,6 +253,274 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return string.Empty;
         }
 
+        /// <summary>
+        /// Proxies Asset/GetAllSiteDetailsBySiteId to retrieve all assets and their
+        /// attributes (sensors) for a given site.  The response is slim-projected so
+        /// only the fields the Health dashboard JS actually needs are serialised.
+        /// </summary>
+        [HttpPost]
+        public JsonResult GetSiteAssets(int siteId)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var payload = new
+                    {
+                        SearchCriteria = new
+                        {
+                            SiteId = siteId,
+                            CreatedBy = ClsHttpContent.LoginUser.Id,
+                            IsMobileView = true,
+                            StartDate = DateTime.Now.ToShortDateString(),
+                            EndDate = DateTime.Now.ToShortDateString()
+                        },
+                        Pager = new { Take = -1 }
+                    };
+
+                    var jsonStr = JsonConvert.SerializeObject(payload);
+                    var content = new StringContent(jsonStr, System.Text.Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("Asset/GetAllSiteDetailsBySiteId", content).Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+
+                        // Deserialise into a dynamic so we can project slim fields
+                        var raw = JsonConvert.DeserializeObject<dynamic>(jsonString);
+                        var mAssets = raw?.mAssets as Newtonsoft.Json.Linq.JArray;
+
+                        if (mAssets == null || mAssets.Count == 0)
+                        {
+                            return Json(new { success = true, mAssets = new List<object>() },
+                                JsonRequestBehavior.AllowGet);
+                        }
+
+                        // Project only the fields the dashboard needs
+                        var slim = mAssets.Select(a => new
+                        {
+                            Id = (int?)a["Id"] ?? 0,
+                            Name = (string)a["Name"] ?? "",
+                            AssetName = (string)a["AssetName"] ?? "",
+                            SiteId = (int?)a["SiteId"] ?? siteId,
+                            AssetTypeId = (int?)a["AssetTypeId"] ?? 0,
+                            Sequence = (int?)a["Sequence"] ?? 0,
+                            assetAttributes = (a["assetAttributes"] as Newtonsoft.Json.Linq.JArray ?? new Newtonsoft.Json.Linq.JArray())
+                                .Select(attr => new
+                                {
+                                    Id = (int?)attr["Id"] ?? 0,
+                                    AssetTypeId = (int?)attr["AssetTypeId"] ?? 0,
+                                    Title = (string)attr["Title"] ?? "",
+                                    AliasName = (string)attr["AliasName"] ?? "",
+                                    MinValue = (decimal?)attr["MinValue"],
+                                    MaxValue = (decimal?)attr["MaxValue"]
+                                }).ToList(),
+                            mAssetInfoDataloggers = (a["mAssetInfoDataloggers"] as Newtonsoft.Json.Linq.JArray ?? new Newtonsoft.Json.Linq.JArray())
+                                .Select(dl => new
+                                {
+                                    Id = (int?)dl["Id"] ?? 0,
+                                    DataloggerAttributeId = (int?)dl["DataloggerAttributeId"] ?? 0,
+                                    DataloggerAttribute = (string)dl["DataloggerAttribute"] ?? "",
+                                    DataloggerAssetName = (string)dl["DataloggerAssetName"] ?? "",
+                                    Role = (string)dl["Role"] ?? ""
+                                }).ToList()
+                        }).ToList();
+
+                        return new JsonResult
+                        {
+                            Data = new { success = true, mAssets = slim },
+                            JsonRequestBehavior = JsonRequestBehavior.AllowGet,
+                            MaxJsonLength = int.MaxValue
+                        };
+                    }
+                    else
+                    {
+                        Response.StatusCode = (int)response.StatusCode;
+                        return Json(new
+                        {
+                            success = false,
+                            mAssets = new List<object>(),
+                            errorMessage = "API returned status: " + response.StatusCode
+                        }, JsonRequestBehavior.AllowGet);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                return Json(new
+                {
+                    success = false,
+                    mAssets = new List<object>(),
+                    errorMessage = ex.Message
+                }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        /// <summary>
+        /// Returns the current TCP + MQTT connectivity status for all modems
+        /// and A10 (ADC) devices at a site.
+        /// API: A10Status/GetStatus/SiteId/{siteId}/SearchDate/{today}
+        /// </summary>
+        public ActionResult GetDeviceStatus(int siteId)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    string searchDate = DateTime.Now.ToString("dd-MM-yyyy");
+                    string apiUrl = string.Format(
+                        "A10Status/GetStatus/SiteId/{0}/SearchDate/{1}",
+                        siteId, searchDate);
+
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        // Return raw JSON wrapped in success envelope.
+                        // Avoids double-serialization (Newtonsoft → JavaScriptSerializer)
+                        // which can mangle property names.
+                        return Content(
+                            "{\"success\":true,\"raw\":" + jsonString + "}",
+                            "application/json");
+                    }
+                    else
+                    {
+                        Response.StatusCode = (int)response.StatusCode;
+                        return Json(new { success = false, errorMessage = "API returned: " + response.StatusCode },
+                            JsonRequestBehavior.AllowGet);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                return Json(new { success = false, errorMessage = ex.Message },
+                    JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        /// <summary>
+        /// Returns the raw CardLine list for a site.  CardLine carries the
+        /// physical hardware mapping: attributeId → sensor, adcId → IoT device,
+        /// modem fields → network device.
+        /// </summary>
+        public JsonResult GetSiteCardLines(int siteId)
+        {
+            try
+            {
+                var cardLines = GetCardLineData(siteId);
+
+                return new JsonResult
+                {
+                    Data = new { success = true, cardLines = cardLines },
+                    JsonRequestBehavior = JsonRequestBehavior.AllowGet,
+                    MaxJsonLength = int.MaxValue
+                };
+            }
+            catch (Exception ex)
+            {
+                Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                return Json(new
+                {
+                    success = false,
+                    cardLines = new List<object>(),
+                    errorMessage = ex.Message
+                }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        private List<CardLine> GetCardLineData(int siteId)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync($"CardLine/SiteId/{siteId}").Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        return JsonConvert.DeserializeObject<List<CardLine>>(jsonString);
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"CardLine API error: {response.StatusCode} - {jsonString}");
+                        return new List<CardLine>();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"GetCardLineData exception: {ex.Message}");
+                return new List<CardLine>();
+            }
+        }
+
+        /// <summary>
+        /// Returns A10 (ADC) history for a given cluster + A10 in a date range.
+        /// API: A10Status/GetA10History/ClusterId/{clusterId}/A10Id/{a10Id}/FromDate/{from}/ToDate/{to}
+        /// </summary>
+        [HttpGet]
+        public ActionResult GetA10History(int clusterId, int a10Id, string fromDate = null, string toDate = null)
+        {
+            try
+            {
+                string from = string.IsNullOrEmpty(fromDate) ? DateTime.Now.ToString("dd-MM-yyyy") : fromDate;
+                string to = string.IsNullOrEmpty(toDate) ? DateTime.Now.ToString("dd-MM-yyyy") : toDate;
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var apiUrl = string.Format("A10Status/GetA10History/ClusterId/{0}/A10Id/{1}/FromDate/{2}/ToDate/{3}",
+                        clusterId, a10Id, from, to);
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string json = response.Content.ReadAsStringAsync().Result;
+                        return Content(json, "application/json");
+                    }
+                    return Json(new { Success = false, Message = "API returned: " + response.StatusCode },
+                        JsonRequestBehavior.AllowGet);
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, Message = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        /// <summary>
+        /// Returns Modem history for a given cluster in a date range.
+        /// API: Product/GetModemHistory/ClusterId/{clusterId}/FromDate/{from}/ToDate/{to}
+        /// </summary>
+        [HttpGet]
+        public ActionResult GetModemHistory(int clusterId, string fromDate = null, string toDate = null)
+        {
+            try
+            {
+                string from = string.IsNullOrEmpty(fromDate) ? DateTime.Now.ToString("dd-MM-yyyy") : fromDate;
+                string to = string.IsNullOrEmpty(toDate) ? DateTime.Now.ToString("dd-MM-yyyy") : toDate;
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var apiUrl = string.Format("Product/GetModemHistory/ClusterId/{0}/FromDate/{1}/ToDate/{2}",
+                        clusterId, from, to);
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string json = response.Content.ReadAsStringAsync().Result;
+                        return Content(json, "application/json");
+                    }
+                    return Json(new { Success = false, Message = "API returned: " + response.StatusCode },
+                        JsonRequestBehavior.AllowGet);
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, Message = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
         public MQTTDetailList GetMQTTDetailList()
         {
             MQTTDetailList mMQTTDetail = new MQTTDetailList();

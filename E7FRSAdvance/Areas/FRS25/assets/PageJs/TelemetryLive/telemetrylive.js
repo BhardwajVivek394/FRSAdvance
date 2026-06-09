@@ -1714,7 +1714,64 @@ function resolveBulkDataloggerName(assetId, roleOrAttrId, rawName) {
 
     return _tlStripAssetPrefix(assetId, null, raw);
 }
+function resolveBulkDataloggerRole(assetId, roleOrRawName, rawName) {
+    var aid = _tlMetaStr(assetId);
+    var input = _tlMetaStr(roleOrRawName).trim();
+    var raw = _tlMetaStr(rawName).trim();
 
+    if (!aid) return '';
+
+    function norm(v) {
+        return _tlMetaStr(v).trim().toUpperCase();
+    }
+
+    function same(a, b) {
+        return norm(a) && norm(a) === norm(b);
+    }
+
+    var prefix = aid + '_';
+
+    // Direct Role key
+    if (input && bulkDataloggerMap[prefix + input]) {
+        return bulkDataloggerMap[prefix + input].role || bulkDataloggerMap[prefix + input].Role || input;
+    }
+
+    if (input && userAssetDataloggerMap[prefix + input]) {
+        return userAssetDataloggerMap[prefix + input].role || userAssetDataloggerMap[prefix + input].Role || input;
+    }
+
+    // Match text/name to Role
+    for (var k in bulkDataloggerMap) {
+        if (!bulkDataloggerMap.hasOwnProperty(k)) continue;
+        if (k.indexOf(prefix) !== 0) continue;
+
+        var e = bulkDataloggerMap[k];
+        if (!e) continue;
+
+        var role = e.role || e.Role || k.substring(prefix.length);
+
+        if (
+            same(input, role) ||
+            same(raw, role) ||
+            same(input, e.dataloggerAttribute) ||
+            same(raw, e.dataloggerAttribute) ||
+            same(input, e.DataloggerAttribute) ||
+            same(raw, e.DataloggerAttribute) ||
+            same(input, e.dataloggerAssetName) ||
+            same(raw, e.dataloggerAssetName) ||
+            same(input, e.DataloggerAssetName) ||
+            same(raw, e.DataloggerAssetName) ||
+            same(input, e.name) ||
+            same(raw, e.name)
+        ) {
+            return role;
+        }
+    }
+
+    return '';
+}
+
+window.resolveBulkDataloggerRole = resolveBulkDataloggerRole;
 function populateAssetDropdownsFromBulk(options) {
     options = options || {};
     var d = bulkAssetsList || [];
@@ -1936,51 +1993,65 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                     var dl = dls[k];
                     if (!dl) continue;
 
-                    // For DL display, always show DataloggerAttribute, e.g. TPR.
-                    // History/graph can receive AttributeId as DataloggerAttributeId, Value, Id, or raw name.
-                    var dlName = $.trim(String(dl.DataloggerAttribute || ''));
-                    if (!dlName) dlName = $.trim(String(dl.DataloggerAssetName || ''));
-                    if (!dlName) dlName = $.trim(String(dl.AttributeName || dl.Name || ''));
+                    // IMPORTANT:
+                    // DataLogger identity must come from Role only.
+                    // Do NOT use Id / DataloggerAttributeId as the DataLogger id.
+                    var dlRole = $.trim(String(dl.Role || dl.role || ''));
+
+                    if (!dlRole || dlRole === '0' || dlRole.toLowerCase() === 'null') {
+                        console.warn('[BulkMeta-DL] Skipped DL because Role is missing', {
+                            assetId: aid,
+                            assetName: assetName,
+                            dl: dl
+                        });
+                        continue;
+                    }
+
+                    // Display name must be DataloggerAttribute, e.g. TPR.
+                    var dlName = $.trim(String(dl.DataloggerAttribute || dl.dataloggerAttribute || ''));
+                    if (!dlName) dlName = $.trim(String(dl.DataloggerAssetName || dl.dataloggerAssetName || ''));
+                    if (!dlName) dlName = $.trim(String(dl.AttributeName || dl.Name || 'DL ' + dlRole));
                     if (!dlName) continue;
 
                     var dlEntry = {
-                        name: dlName,                                // final display name: TPR
+                        // Canonical DataLogger id
+                        role: dlRole,
+                        Role: dlRole,
+                        dataloggerRole: dlRole,
+
+                        // Display fields
+                        name: dlName,
+                        Name: dlName,
                         attributeName: dl.DataloggerAttribute || dlName,
+                        AttributeName: dl.DataloggerAttribute || dlName,
                         dataloggerAttribute: dl.DataloggerAttribute || '',
+                        DataloggerAttribute: dl.DataloggerAttribute || '',
                         dataloggerAssetName: dl.DataloggerAssetName || '',
+                        DataloggerAssetName: dl.DataloggerAssetName || '',
+
+                        // Keep these only as metadata, not as lookup key
                         dataloggerAttributeId: dl.DataloggerAttributeId || null,
+                        DataloggerAttributeId: dl.DataloggerAttributeId || null,
                         dataloggerValueId: dl.Value || null,
+                        DataloggerValueId: dl.Value || null,
+                        sourceId: dl.Id || null,
+                        SourceId: dl.Id || null,
+
                         contactType: dl.ContactType || '',
                         assetName: assetName,
+                        AssetName: assetName,
                         assetTypeId: asset.AssetTypeId,
                         siteId: asset.SiteId
                     };
 
-                    function addDlMapKey(mapId) {
-                        mapId = $.trim(String(mapId || ''));
-                        if (!mapId || mapId === '0' || mapId.toLowerCase() === 'null') return;
+                    var dlKey = aid + '_' + dlRole;
 
-                        var dlKey = aid + '_' + mapId;
+                    userAssetDataloggerMap[dlKey] = dlEntry;
+                    bulkDataloggerMap[dlKey] = dlEntry;
 
-                        userAssetDataloggerMap[dlKey] = dlEntry;
-                        bulkDataloggerMap[dlKey] = dlEntry;
-                        dlRoleNameMap[mapId] = dlName;
-                        dlAssetRoleMap[dlKey] = dlName;
-                    }
-
-                    // Main DL mappings
-                    addDlMapKey(dl.DataloggerAttributeId);
-
-                    // Required for graph/history where AttributeId can come as the DL Value id, e.g. 3392 / 3428
-                    addDlMapKey(dl.Value);
-
-                    // Optional safety mappings
-                    addDlMapKey(dl.Id);
-                    addDlMapKey(dl.Role);
-                    addDlMapKey(dl.AssetAttributeId);
-                    addDlMapKey(dl.SrNo);
-                    addDlMapKey(dl.DataloggerAttribute);
-                    addDlMapKey(dl.DataloggerAssetName);
+                    // Role-based lookup only
+                    dlRoleNameMap[dlRole] = dlName;
+                    dlAssetRoleMap[dlKey] = dlName;
 
                     dlCount++;
                 }
@@ -2116,6 +2187,7 @@ window.getBulkAssetName = getBulkAssetName;
 window.resolveBulkDataloggerName = resolveBulkDataloggerName;
 
 function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
+    debugger;
     var aid = String(assetId || '');
 
     function clean(v) {
@@ -2157,15 +2229,25 @@ function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
     var candidates = [];
 
     if (rawD) {
-        candidates.push(rawD.DataloggerAttributeId);
-        candidates.push(rawD.AssetAttributeId);
-        candidates.push(rawD.AttributeId);
+        // Role is the only canonical DataLogger id.
         candidates.push(rawD.Role);
-        candidates.push(rawD.Value);
-        candidates.push(rawD.Id);
+        candidates.push(rawD.role);
+        candidates.push(rawD.dataloggerRole);
+        candidates.push(rawD.DataloggerRole);
+
+        // Text fallbacks only. Do not use Id / DataloggerAttributeId as DL id.
+        candidates.push(rawD.DataloggerAttribute);
+        candidates.push(rawD.dataloggerAttribute);
+        candidates.push(rawD.DataloggerAssetName);
+        candidates.push(rawD.dataloggerAssetName);
     }
 
     candidates.push(attrNameOrId);
+
+    if (typeof resolveBulkDataloggerRole === 'function') {
+        var resolvedRole = resolveBulkDataloggerRole(assetId, attrNameOrId, rawText);
+        if (resolvedRole) candidates.unshift(resolvedRole);
+    }
 
     var rawText = clean(attrNameOrId);
     var nums = rawText.match(/\d+/g);
@@ -8234,7 +8316,7 @@ var PM_INDICATION_COLORS = {
         '.vib-close{background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;opacity:.75;padding:3px 7px;border-radius:4px;transition:opacity .15s,background .15s;}' +
         '.vib-close:hover{opacity:1;background:rgba(255,255,255,.14);}' +
         /* ── Sub-bar ── */
-        '.vib-modal-subbar{background:#f8fafc;border-bottom:1px solid #e2e8f0;padding:7px 20px;font-size:11.5px;color:#64748b;display:flex;align-items:center;gap:7px;flex-shrink:0;}' +
+        '.vib-modal-subbar{background:#f8fafc;border-bottom:1px solid rgba(255,255,255,0.10);padding:7px 20px;font-size:11.5px;color:#64748b;display:flex;align-items:center;gap:7px;flex-shrink:0;}' +
         '.vib-live-dot{width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;animation:vibPulse 2s infinite;}' +
         '@@keyframes vibPulse{0%,100%{opacity:1;}50%{opacity:.3;}}' +
         '.vib-last-ts{margin-left:auto;font-size:11px;color:#94a3b8;}' +
@@ -8762,14 +8844,14 @@ function renderPmIndicationFromApi(data, filterIds, end) {
     var chart = echarts.init(el);
 
     chart.setOption({
-        backgroundColor: '#fff',
+        backgroundColor: 'transparent',
         tooltip: {
             trigger: 'axis',
-            backgroundColor: '#fff',
-            borderColor: '#e2e8f0',
+            backgroundColor: 'rgba(5,9,24,0.97)',
+            borderColor: 'rgba(34,211,238,0.30)',
             borderWidth: 1,
             padding: [12, 16],
-            textStyle: { color: '#334155', fontSize: 12 },
+            textStyle: { color: 'rgba(255,255,255,0.86)', fontSize: 12 },
             formatter: function (params) {
                 if (!params || !params.length) return '';
                 var t = new Date(params[0].value[0]);
@@ -8779,15 +8861,15 @@ function renderPmIndicationFromApi(data, filterIds, end) {
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
                     String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
 
-                var html = '<div style="font-weight:600;margin-bottom:10px;color:#1e293b;padding-bottom:8px;border-bottom:1px solid #e2e8f0;">' + dateStr + ' ' + timeStr + '</div>';
+                var html = '<div style="font-weight:700;margin-bottom:10px;color:#22d3ee;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);">' + dateStr + ' ' + timeStr + '</div>';
 
                 // Show all 4 attributes
                 params.forEach(function (p) {
                     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">' +
                         '<div style="display:flex;align-items:center;">' +
                         '<span style="display:inline-block;width:12px;height:3px;border-radius:1px;background:' + p.color + ';margin-right:10px;"></span>' +
-                        '<span style="color:#64748b;">' + p.seriesName + '</span></div>' +
-                        '<span style="font-weight:700;color:#1e293b;margin-left:15px;">' + p.value[1].toFixed(2) + ' V</span></div>';
+                        '<span style="color:rgba(255,255,255,0.72);">' + p.seriesName + '</span></div>' +
+                        '<span style="font-weight:700;color:rgba(255,255,255,0.94);margin-left:15px;">' + p.value[1].toFixed(2) + ' V</span></div>';
                 });
                 return html;
             }
@@ -8796,7 +8878,7 @@ function renderPmIndicationFromApi(data, filterIds, end) {
             data: legends,
             top: 8,
             left: 'center',
-            textStyle: { fontSize: 12, color: '#475569' },
+            textStyle: { fontSize: 12, color: 'rgba(255,255,255,0.72)' },
             itemGap: 20,
             itemWidth: 20,
             itemHeight: 10
@@ -8810,14 +8892,14 @@ function renderPmIndicationFromApi(data, filterIds, end) {
                 restore: {},
                 saveAsImage: { pixelRatio: 2 }
             },
-            iconStyle: { borderColor: '#94a3b8' }
+            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } }
         },
         xAxis: {
             type: 'time',
             boundaryGap: false,
             axisLabel: {
                 fontSize: 10,
-                color: '#64748b',
+                color: 'rgba(255,255,255,0.55)',
                 formatter: function (v) {
                     var d = new Date(v);
                     return String(d.getDate()).padStart(2, '0') + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + '\n' +
@@ -8825,19 +8907,19 @@ function renderPmIndicationFromApi(data, filterIds, end) {
                 },
                 lineHeight: 14
             },
-            axisLine: { lineStyle: { color: '#e2e8f0' } },
-            splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
         },
         yAxis: {
             type: 'value',
             name: 'Voltage (V)',
-            nameTextStyle: { fontSize: 11, color: '#64748b' },
-            axisLabel: { fontSize: 10, color: '#64748b', formatter: function (v) { return v.toFixed(2); } },
-            axisLine: { show: true, lineStyle: { color: '#e2e8f0' } },
-            splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+            nameTextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.60)' },
+            axisLabel: { fontSize: 10, color: 'rgba(255,255,255,0.55)', formatter: function (v) { return v.toFixed(2); } },
+            axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
         },
         dataZoom: [
-            { type: 'slider', height: 22, bottom: 8, borderColor: '#e2e8f0', backgroundColor: '#fafafa', fillerColor: 'rgba(37,99,235,0.08)', handleStyle: { color: '#2563eb' }, textStyle: { fontSize: 10 } },
+            { type: 'slider', height: 22, bottom: 8, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)', fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 10, color: 'rgba(255,255,255,0.50)' } },
             { type: 'inside' }
         ],
         series: series
@@ -8900,19 +8982,20 @@ function renderPmDirChart(data, assetId, filterIds) {
     var chart = echarts.init(el);
 
     chart.setOption({
+        backgroundColor: 'transparent',
         tooltip: {
             trigger: 'axis',
-            axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } },
+            axisPointer: { type: 'cross', label: { backgroundColor: 'rgba(34,211,238,0.80)' } },
             confine: true,
-            backgroundColor: 'rgba(255,255,255,0.95)',
-            borderColor: '#e2e8f0',
+            backgroundColor: 'rgba(5,9,24,0.97)',
+            borderColor: 'rgba(34,211,238,0.30)',
             borderWidth: 1,
-            textStyle: { color: '#333', fontSize: 13 },
+            textStyle: { color: 'rgba(255,255,255,0.86)', fontSize: 13 },
             formatter: function (params) {
                 if (!params || !params.length) return '';
                 var d = new Date(params[0].value[0]);
                 var timeStr = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-                var html = '<div style="padding:4px 8px;"><b style="color:#1a365d;">' + timeStr + '</b><br/>';
+                var html = '<div style="padding:4px 8px;"><b style="color:#22d3ee;">' + timeStr + '</b><br/>';
                 params.forEach(function (p) {
                     html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + p.color + ';margin-right:6px;"></span>' + p.seriesName + ': <b>' + p.value[1].toFixed(2) + ' V</b><br/>';
                 });
@@ -8923,7 +9006,7 @@ function renderPmDirChart(data, assetId, filterIds) {
         legend: {
             data: lg,
             bottom: 45,
-            textStyle: { fontSize: 13, fontWeight: '500' },
+            textStyle: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.72)' },
             itemWidth: 20,
             itemHeight: 12,
             itemGap: 20
@@ -8937,29 +9020,29 @@ function renderPmDirChart(data, assetId, filterIds) {
                 restore: { title: 'Reset' },
                 saveAsImage: { title: 'Save', pixelRatio: 2 }
             },
-            iconStyle: { borderColor: '#64748b' }
+            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } }
         },
         xAxis: [{
             type: 'time',
             boundaryGap: false,
             axisLabel: {
                 fontSize: 12,
-                color: '#64748b',
+                color: 'rgba(255,255,255,0.55)',
                 formatter: function (v) { var d = new Date(v); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
             },
-            axisLine: { lineStyle: { color: '#cbd5e1' } },
-            splitLine: { lineStyle: { color: '#f1f5f9' } }
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } }
         }],
         yAxis: [{
             type: 'value',
             name: 'Voltage (V)',
-            nameTextStyle: { fontSize: 13, fontWeight: 'bold', color: '#475569' },
-            axisLabel: { fontSize: 12, color: '#64748b' },
-            axisLine: { show: true, lineStyle: { color: '#259dab', width: 2 } },
-            splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+            nameTextStyle: { fontSize: 13, fontWeight: 'bold', color: '#22d3ee' },
+            axisLabel: { fontSize: 12, color: 'rgba(255,255,255,0.55)' },
+            axisLine: { show: true, lineStyle: { color: 'rgba(34,211,238,0.45)', width: 2 } },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
         }],
         dataZoom: [
-            { type: 'slider', height: 30, start: 0, end: 100, bottom: 10, borderColor: '#e2e8f0', fillerColor: 'rgba(37,157,171,0.2)', handleStyle: { color: '#259dab' }, textStyle: { fontSize: 11 } },
+            { type: 'slider', height: 30, start: 0, end: 100, bottom: 10, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)', fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' } },
             { type: 'inside' }
         ],
         color: colors,
@@ -9496,7 +9579,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
         toolbox: {
             right: 15,
             top: 8,
-            iconStyle: { borderColor: '#64748b' },
+            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } },
             emphasis: { iconStyle: { borderColor: '#22d3ee' } },
             feature: {
                 dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
@@ -9511,7 +9594,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             boundaryGap: false,
             axisLabel: {
                 fontSize: 11,
-                color: '#64748b',
+                color: 'rgba(255,255,255,0.55)',
                 formatter: function (v) {
                     return _graphXAxisLabel(v, spanMs);
                 }
@@ -9818,7 +9901,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 //                restore: { title: 'Reset' },
 //                saveAsImage: { title: 'Save', pixelRatio: 2 }
 //            },
-//            iconStyle: { borderColor: '#94a3b8' },
+//            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } },
 //            emphasis: { iconStyle: { borderColor: '#22d3ee' } }
 //        },
 //        xAxis: {
@@ -10057,7 +10140,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 //        toolbox: {
 //            right: 15,
 //            top: 8,
-//            iconStyle: { borderColor: '#64748b' },
+//            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } },
 //            emphasis: { iconStyle: { borderColor: '#22d3ee' } },
 //            feature: {
 //                dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
@@ -10068,7 +10151,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 //            type: 'time',
 //            axisLabel: {
 //                fontSize: 11,
-//                color: '#64748b',
+//                color: 'rgba(255,255,255,0.55)',
 //                formatter: function (v) {
 //                    var d = new Date(v);
 //                    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
@@ -10196,7 +10279,7 @@ function renderModalChart(data) {
     var xV = []; $.each(data.DateList, function (i, v) { xV.push(v); });
     if (rdpmsGraphChart) rdpmsGraphChart.dispose();
     rdpmsGraphChart = echarts.init(document.getElementById('rdpmsGraphChartDiv'));
-    rdpmsGraphChart.setOption({ tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: '#6a7985' } } }, legend: { data: legends, x: 'left', textStyle: { fontSize: 11 } }, toolbox: { show: true, feature: { dataView: { show: true, readOnly: false }, magicType: { show: true, type: ['line', 'bar'] }, restore: { show: true }, saveAsImage: { show: true } } }, grid: { left: '3%', right: '4%', bottom: '15%', top: '15%', containLabel: true }, xAxis: [{ type: 'category', boundaryGap: false, axisLine: { onZero: false }, data: xV, axisLabel: { fontSize: 10 } }], yAxis: [{ type: 'value', min: 0, max: macLeft || 'dataMax', data: lary, name: 'mA', nameTextStyle: { fontSize: 11 } }, { type: 'value', inverse: false, min: -1, max: maxV + 1, data: rary, name: 'V', nameTextStyle: { fontSize: 11 } }], dataZoom: [{ type: 'slider', height: 30, start: 0, end: 100, bottom: 5 }], color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"], series: DS });
+    rdpmsGraphChart.setOption({ tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: 'rgba(34,211,238,0.80)' } }, backgroundColor: 'rgba(5,9,24,0.97)', borderColor: 'rgba(34,211,238,0.30)', textStyle: { color: 'rgba(255,255,255,0.86)' } }, legend: { data: legends, x: 'left', textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.72)' } }, toolbox: { show: true, feature: { dataView: { show: true, readOnly: false }, magicType: { show: true, type: ['line', 'bar'] }, restore: { show: true }, saveAsImage: { show: true } } }, grid: { left: '3%', right: '4%', bottom: '15%', top: '15%', containLabel: true }, xAxis: [{ type: 'category', boundaryGap: false, axisLine: { onZero: false }, data: xV, axisLabel: { fontSize: 10 } }], yAxis: [{ type: 'value', min: 0, max: macLeft || 'dataMax', data: lary, name: 'mA', nameTextStyle: { fontSize: 11 } }, { type: 'value', inverse: false, min: -1, max: maxV + 1, data: rary, name: 'V', nameTextStyle: { fontSize: 11 } }], dataZoom: [{ type: 'slider', height: 30, start: 0, end: 100, bottom: 5 }], color: ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"], series: DS });
     $(window).on('resize.rdpmsGraph', function () { if (rdpmsGraphChart) rdpmsGraphChart.resize(); });
 }
 
@@ -13748,18 +13831,18 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
     }
 
     _singleArrChart.setOption({
-        backgroundColor: '#fff',
+        backgroundColor: 'transparent',
         title: {
             text: title,
             subtext: series.length + ' operation(s) plotted',
             left: 'center',
             top: 10,
-            textStyle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-            subtextStyle: { fontSize: 11, color: '#64748b' }
+            textStyle: { fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.94)' },
+            subtextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' }
         },
         tooltip: {
             trigger: 'axis',
-            backgroundColor: 'rgba(255,255,255,0.98)',
+            backgroundColor: 'rgba(5,9,24,0.97)',
             borderColor: color,
             borderWidth: 1,
             padding: [12, 16],
@@ -13772,14 +13855,14 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                     String(t.getMilliseconds()).padStart(3, '0');
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
                     String(t.getMonth() + 1).padStart(2, '0');
-                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">' +
+                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' +
                     dateStr + ' ' + timeStr + '</div>';
                 params.forEach(function (p) {
                     if (p.value !== undefined && p.value[1] !== undefined) {
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
                             '<span style="display:inline-block;width:10px;height:3px;background:' + p.color + ';margin-right:8px;border-radius:2px;"></span>' +
-                            '<span style="flex:1;font-size:11px;color:#64748b;">Value:</span>' +
-                            '<span style="font-weight:700;margin-left:10px;color:#1e293b;">' +
+                            '<span style="flex:1;font-size:11px;color:rgba(255,255,255,0.62);">Value:</span>' +
+                            '<span style="font-weight:700;margin-left:10px;color:rgba(255,255,255,0.94);">' +
                             p.value[1].toFixed(2) + ' ' + unit + '</span></div>';
                     }
                 });
@@ -13790,7 +13873,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
             data: legends,
             top: 50,
             left: 'center',
-            textStyle: { fontSize: 11 },
+            textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.72)' },
             itemGap: 15,
             type: 'scroll'
         },
@@ -13809,10 +13892,10 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
             name: 'Time (ms)',
             nameLocation: 'center',
             nameGap: 32,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
             axisLabel: {
                 fontSize: 10,
-                color: '#64748b',
+                color: 'rgba(255,255,255,0.55)',
                 formatter: function (v) {
                     var d = new Date(v);
                     return String(d.getHours()).padStart(2, '0') + ':' +
@@ -13820,22 +13903,22 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                         String(d.getSeconds()).padStart(2, '0');
                 }
             },
-            axisLine: { lineStyle: { color: '#e2e8f0' } },
-            splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
         },
         yAxis: {
             type: 'value',
             name: unit,
             nameLocation: 'middle',
             nameGap: 45,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
             axisLabel: {
                 fontSize: 10,
-                color: '#64748b',
+                color: 'rgba(255,255,255,0.55)',
                 formatter: function (v) { return v.toFixed(2); }
             },
             axisLine: { show: true, lineStyle: { color: color, width: 2 } },
-            splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
         },
         dataZoom: [
             {
@@ -13844,7 +13927,8 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                 bottom: 10,
                 start: 0,
                 end: 100,
-                borderColor: '#e2e8f0',
+                borderColor: 'rgba(255,255,255,0.14)',
+                backgroundColor: 'rgba(15,23,42,0.70)',
                 // FIX 5: rgba not hex alpha
                 fillerColor: _hexToRgba(color, 0.12),
                 handleStyle: { color: color }
@@ -14067,14 +14151,14 @@ function updatePmWaveforms(assetId, pm) {
             }
 
             chart.setOption({
-                backgroundColor: '#ffffff',
+                backgroundColor: 'transparent',
                 tooltip: {
                     trigger: 'axis',
                     axisPointer: {
                         type: 'line',
                         lineStyle: { color: chartColor, width: 1.5, type: 'dashed' }
                     },
-                    backgroundColor: '#1e293b',
+                    backgroundColor: 'rgba(5,9,24,0.97)',
                     borderColor: chartColor,
                     borderWidth: 1.5,
                     borderRadius: 10,
@@ -14115,7 +14199,7 @@ function updatePmWaveforms(assetId, pm) {
                     text: '↓ ' + minVal.toFixed(2) + '   ↑ ' + maxVal.toFixed(2) + '   ~ ' + avgVal.toFixed(2) + ' ' + chartUnit + '   ·   Δt 20 ms',
                     left: 'center',
                     top: 4,
-                    textStyle: { fontSize: 11, fontWeight: '400', color: '#94a3b8', fontFamily: 'inherit' }
+                    textStyle: { fontSize: 11, fontWeight: '400', color: 'rgba(255,255,255,0.62)', fontFamily: 'inherit' }
                 },
                 xAxis: {
                     type: startTimestamp ? 'time' : 'category',
@@ -14125,11 +14209,11 @@ function updatePmWaveforms(assetId, pm) {
                         : 'Elapsed Time -- ' + totalDurationSec + ' sec total',
                     nameLocation: 'center',
                     nameGap: 36,
-                    nameTextStyle: { fontSize: 11, color: '#64748b', fontWeight: '500' },
+                    nameTextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: '500' },
                     boundaryGap: false,
                     axisLabel: {
                         fontSize: 11,
-                        color: '#64748b',
+                        color: 'rgba(255,255,255,0.55)',
                         fontWeight: '500',
                         margin: 10,
                         interval: startTimestamp ? null : 0,
@@ -14144,8 +14228,8 @@ function updatePmWaveforms(assetId, pm) {
                         }
                     },
                     splitLine: { show: false },
-                    axisLine: { show: true, lineStyle: { color: '#e2e8f0', width: 1.5 } },
-                    axisTick: { show: true, alignWithLabel: true, length: 4, lineStyle: { color: '#e2e8f0' } }
+                    axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.16)', width: 1.5 } },
+                    axisTick: { show: true, alignWithLabel: true, length: 4, lineStyle: { color: 'rgba(255,255,255,0.14)' } }
                 },
                 yAxis: {
                     type: 'value',
@@ -14155,7 +14239,7 @@ function updatePmWaveforms(assetId, pm) {
                     nameTextStyle: { fontSize: 12, color: chartColor, fontWeight: '700', padding: [0, 0, 0, 48] },
                     axisLabel: {
                         fontSize: 11,
-                        color: '#64748b',
+                        color: 'rgba(255,255,255,0.55)',
                         formatter: function (v) { return v.toFixed(2); },
                         margin: 10
                     },
@@ -14171,9 +14255,9 @@ function updatePmWaveforms(assetId, pm) {
                         start: 0,
                         end: 100,
                         borderColor: 'transparent',
-                        backgroundColor: '#f8fafc',
+                        backgroundColor: 'rgba(15,23,42,0.70)',
                         fillerColor: chartColor + '30',
-                        handleStyle: { color: chartColor, borderColor: '#fff', borderWidth: 2, shadowBlur: 4, shadowColor: chartColor + '60' },
+                        handleStyle: { color: chartColor, borderColor: 'rgba(255,255,255,0.80)', borderWidth: 2, shadowBlur: 4, shadowColor: chartColor + '60' },
                         handleSize: '80%',
                         textStyle: { fontSize: 10, color: '#94a3b8' },
                         dataBackground: {
@@ -14194,7 +14278,7 @@ function updatePmWaveforms(assetId, pm) {
                         restore: { title: 'Reset' },
                         saveAsImage: { title: 'Save PNG', pixelRatio: 2 }
                     },
-                    iconStyle: { borderColor: '#cbd5e1', borderWidth: 1 },
+                    iconStyle: { borderColor: 'rgba(255,255,255,0.55)', borderWidth: 1 },
                     emphasis: { iconStyle: { borderColor: chartColor } }
                 },
                 series: [{
@@ -14206,7 +14290,7 @@ function updatePmWaveforms(assetId, pm) {
                     // Do NOT use 'sampling' -- every 20 ms point must be rendered as-is
                     itemStyle: {
                         color: chartColor,
-                        borderColor: '#ffffff',
+                        borderColor: 'rgba(5,9,24,0.94)',
                         borderWidth: 2.5,
                         shadowBlur: 5,
                         shadowColor: chartColor + 'aa'
@@ -14277,10 +14361,10 @@ function pmShowChart(assetId, chartType) {
         '<h6><i class="fas fa-chart-line"></i> ' + title + '</h6>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()">&times;</button></div>' +
         '<div class="rdpms-graph-body" style="padding:24px;">' +
-        '<div style="background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #e2e8f0;">' +
-        '<span style="font-size:14px;color:#64748b;"><strong>Samples:</strong> ' + vals.length + ' points</span>' +
-        '<span style="font-size:14px;color:#64748b;"><strong>Min:</strong> ' + Math.min.apply(null, vals).toFixed(2) + ' | <strong>Max:</strong> ' + Math.max.apply(null, vals).toFixed(2) + ' | <strong>Avg:</strong> ' + (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(2) + '</span>' +
+        '<div class="pm-modal-chart-card" style="border-radius:12px;padding:20px;">' +
+        '<div class="pm-modal-chart-summary" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;">' +
+        '<span style="font-size:14px;color:rgba(255,255,255,0.62);"><strong>Samples:</strong> ' + vals.length + ' points</span>' +
+        '<span style="font-size:14px;color:rgba(255,255,255,0.62);"><strong>Min:</strong> ' + Math.min.apply(null, vals).toFixed(2) + ' | <strong>Max:</strong> ' + Math.max.apply(null, vals).toFixed(2) + ' | <strong>Avg:</strong> ' + (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(2) + '</span>' +
         '</div>' +
         '<canvas id="pmModalChart" style="width:100%;height:480px;"></canvas>' +
         '</div></div></div></div>';
@@ -14303,15 +14387,15 @@ function pmShowChart(assetId, chartType) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            legend: { display: true, labels: { fontSize: 14, fontStyle: 'bold' } },
+            legend: { display: true, labels: { fontSize: 14, fontStyle: 'bold', fontColor: 'rgba(255,255,255,0.72)' } },
             scales: {
-                xAxes: [{ ticks: { maxTicksLimit: 20, fontSize: 12 }, scaleLabel: { display: true, labelString: 'Sample Index', fontSize: 13 } }],
-                yAxes: [{ ticks: { fontSize: 12 }, scaleLabel: { display: true, labelString: 'Value', fontSize: 13 } }]
+                xAxes: [{ ticks: { maxTicksLimit: 20, fontSize: 12, fontColor: 'rgba(255,255,255,0.55)' }, gridLines: { color: 'rgba(255,255,255,0.06)', zeroLineColor: 'rgba(255,255,255,0.14)' }, scaleLabel: { display: true, labelString: 'Sample Index', fontSize: 13, fontColor: 'rgba(255,255,255,0.60)' } }],
+                yAxes: [{ ticks: { fontSize: 12, fontColor: 'rgba(255,255,255,0.55)' }, gridLines: { color: 'rgba(255,255,255,0.06)', zeroLineColor: 'rgba(255,255,255,0.14)' }, scaleLabel: { display: true, labelString: 'Value', fontSize: 13, fontColor: 'rgba(255,255,255,0.60)' } }]
             },
             tooltips: {
-                backgroundColor: 'rgba(255,255,255,0.95)',
-                titleFontColor: '#333',
-                bodyFontColor: '#333',
+                backgroundColor: 'rgba(5,9,24,0.97)',
+                titleFontColor: '#22d3ee',
+                bodyFontColor: 'rgba(255,255,255,0.86)',
                 borderColor: '#259dab',
                 borderWidth: 1,
                 callbacks: {
@@ -14582,19 +14666,19 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
     });
 
     chart.setOption({
-        backgroundColor: '#fff',
+        backgroundColor: 'transparent',
         title: {
             text: title,
             subtext: 'A: ' + aOperations.length + ' operation(s), B: ' + bOperations.length + ' operation(s)',
             left: 'center',
             top: 10,
-            textStyle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-            subtextStyle: { fontSize: 11, color: '#64748b' }
+            textStyle: { fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.94)' },
+            subtextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' }
         },
         tooltip: {
             trigger: 'axis',
-            backgroundColor: 'rgba(255,255,255,0.98)',
-            borderColor: '#e2e8f0',
+            backgroundColor: 'rgba(5,9,24,0.97)',
+            borderColor: 'rgba(255,255,255,0.12)',
             borderWidth: 1,
             padding: [12, 16],
             formatter: function (params) {
@@ -14606,7 +14690,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
                     String(t.getMilliseconds()).padStart(3, '0');
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0');
 
-                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid #e2e8f0;padding-bottom:6px;">' + dateStr + ' ' + timeStr + '</div>';
+                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' + dateStr + ' ' + timeStr + '</div>';
                 params.forEach(function (p) {
                     if (p.value !== undefined && p.value[1] !== undefined && !isNaN(p.value[1])) {
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
@@ -14622,7 +14706,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
             data: legends,
             top: 50,
             left: 'center',
-            textStyle: { fontSize: 11 },
+            textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.72)' },
             itemGap: 15,
             type: 'scroll'
         },
@@ -14641,10 +14725,10 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
             name: 'Time (TimestampDevice)',
             nameLocation: 'center',
             nameGap: 30,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: '#64748b' },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
             axisLabel: {
                 fontSize: 10,
-                color: '#64748b',
+                color: 'rgba(255,255,255,0.55)',
                 formatter: function (v) {
                     var d = new Date(v);
                     return String(d.getHours()).padStart(2, '0') + ':' +
@@ -14652,19 +14736,19 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
                         String(d.getSeconds()).padStart(2, '0');
                 }
             },
-            axisLine: { lineStyle: { color: '#e2e8f0' } },
-            splitLine: { show: true, lineStyle: { color: '#f1f5f9' } }
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
         },
         yAxis: {
             type: 'value',
             name: unit,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: '#64748b' },
-            axisLabel: { fontSize: 10, color: '#64748b', formatter: function (v) { return v.toFixed(2); } },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
+            axisLabel: { fontSize: 10, color: 'rgba(255,255,255,0.55)', formatter: function (v) { return v.toFixed(2); } },
             axisLine: { show: true, lineStyle: { color: '#e2e8f0' } },
-            splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
         },
         dataZoom: [
-            { type: 'slider', height: 22, bottom: 8, start: 0, end: 100, borderColor: '#e2e8f0', fillerColor: 'rgba(37,99,235,0.1)', handleStyle: { color: '#2563eb' } },
+            { type: 'slider', height: 22, bottom: 8, start: 0, end: 100, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)', fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { color: 'rgba(255,255,255,0.50)' } },
             { type: 'inside' }
         ],
         series: series
@@ -14784,31 +14868,31 @@ function renderPointMachineTableView() {
         globalHasB = true;
     }
 
-    // Table Header - use !important to override theme styles
+    // Table Header - Aurora classes only; avoid inline !important so theme remains authoritative
     h += '<thead><tr>';
-    h += '<th style="min-width:120px;background:#1a6e74!important;color:#fff!important;">Point Machine</th>';
-    h += '<th style="background:#1a6e74!important;color:#fff!important;">Direction</th>';
+    h += '<th class="pm-table-head-main" style="min-width:120px;">Point Machine</th>';
+    h += '<th class="pm-table-head-main">Direction</th>';
 
     // A-end columns (only if any asset has A data)
     if (globalHasA) {
-        h += '<th class="col-a" style="background:#e5f2ff!important;color:#333!important;">A Current<br/>(Max/Avg)</th>';
-        h += '<th class="col-a" style="background:#e5f2ff!important;color:#333!important;">A Voltage<br/>(Avg)</th>';
-        h += '<th class="col-a" style="background:#e5f2ff!important;color:#333!important;">A Op Time<br/>(ms)</th>';
-        h += '<th class="col-a" style="background:#e5f2ff!important;color:#333!important;">A Count</th>';
-        h += '<th class="col-a" style="background:#e5f2ff!important;color:#333!important;">A Op Date</th>';
+        h += '<th class="col-a pm-table-head-a">A Current<br/>(Max/Avg)</th>';
+        h += '<th class="col-a pm-table-head-a">A Voltage<br/>(Avg)</th>';
+        h += '<th class="col-a pm-table-head-a">A Op Time<br/>(ms)</th>';
+        h += '<th class="col-a pm-table-head-a">A Count</th>';
+        h += '<th class="col-a pm-table-head-a">A Op Date</th>';
     }
 
     // B-end columns (only if any asset has B data)
     if (globalHasB) {
-        h += '<th class="col-b" style="background:#cde6ff!important;color:#333!important;">B Current<br/>(Max/Avg)</th>';
-        h += '<th class="col-b" style="background:#cde6ff!important;color:#333!important;">B Voltage<br/>(Avg)</th>';
-        h += '<th class="col-b" style="background:#cde6ff!important;color:#333!important;">B Op Time<br/>(ms)</th>';
-        h += '<th class="col-b" style="background:#cde6ff!important;color:#333!important;">B Count</th>';
-        h += '<th class="col-b" style="background:#cde6ff!important;color:#333!important;">B Op Date</th>';
+        h += '<th class="col-b pm-table-head-b">B Current<br/>(Max/Avg)</th>';
+        h += '<th class="col-b pm-table-head-b">B Voltage<br/>(Avg)</th>';
+        h += '<th class="col-b pm-table-head-b">B Op Time<br/>(ms)</th>';
+        h += '<th class="col-b pm-table-head-b">B Count</th>';
+        h += '<th class="col-b pm-table-head-b">B Op Date</th>';
     }
 
-    h += '<th style="background:#1a6e74!important;color:#fff!important;min-width:100px;">DataLogger</th>';
-    h += '<th style="background:#1a6e74!important;color:#fff!important;">Last Update</th>';
+    h += '<th class="pm-table-head-main" style="min-width:100px;">DataLogger</th>';
+    h += '<th class="pm-table-head-main">Last Update</th>';
     h += '</tr></thead>';
 
     // Table Body
@@ -19015,190 +19099,62 @@ $(document).on('keydown', function (e) { if (e.key === 'Escape' && $('#rdpmsCirc
     };
 })();
 
-
-// Open SIP asset popup when clicking an asset name in telemetry live
-$(document).on('click', '.at-card-name', function () {
-    var $card = $(this).closest('.at-asset-card');
-    var assetId = $card.attr('data-id');
+function tlOpenTelemetryAssetPopup(assetId, source) {
+    assetId = String(assetId || '').trim();
     if (!assetId || typeof window.OpenSipAssetPopupFromCell !== 'function') return;
 
-    var asset = wsLiveData[assetId];
+    var asset = window.wsLiveData && window.wsLiveData[assetId];
     if (!asset) return;
 
+    var assetName = asset.AssetName || ('Asset ' + assetId);
+    var siteId = asset.SiteId || $('#drpSite').val();
+    var assetTypeId = asset.AssetTypeId || $('#drpAssetType').val() || window.wsCurrentAssetTypeId;
+    var assetTypeName = asset.AssetTypeName || '';
+
     window.OpenSipAssetPopupFromCell({
+        id: assetId,
         assetId: assetId,
-        assetName: asset.AssetName || ('Asset ' + assetId),
-        stencilType: asset.AssetTypeName || '',
-        type: asset.AssetTypeName || '',
-        attrs: asset.attrs || {}
-    }, { source: 'telemetry-live-click' });
-});
+        AssetId: assetId,
+        assetName: assetName,
+        AssetName: assetName,
+        siteId: siteId,
+        SiteId: siteId,
+        assetTypeId: assetTypeId,
+        AssetTypeId: assetTypeId,
+        stencilType: assetTypeName,
+        type: assetTypeName,
+        attrs: {
+            label: { text: assetName },
+            live: asset.attrs || {}
+        },
+        telemetryAsset: asset
+    }, {
+        source: source || 'telemetry-live-click',
+        assetId: assetId,
+        AssetId: assetId,
+        assetName: assetName,
+        AssetName: assetName,
+        siteId: siteId,
+        SiteId: siteId,
+        assetTypeId: assetTypeId,
+        AssetTypeId: assetTypeId
+    });
+}
 
+window.tlOpenTelemetryAssetPopup = tlOpenTelemetryAssetPopup;
 
-// ── SIP Asset Popup for Telemetry Live page ──────────────────────
-(function () {
-    'use strict';
+$(document)
+    .off('click.tlAssetPopup', '.at-card-name, #wsLiveTable td.asset-name')
+    .on('click.tlAssetPopup', '.at-card-name, #wsLiveTable td.asset-name', function () {
+        var assetId = $(this).closest('.at-asset-card').attr('data-id');
 
-    function esc(v) {
-        return String(v == null ? '' : v)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
-    function ensurePopup() {
-        var existing = document.getElementById('sipAssetPopupOverlay');
-        if (existing) return existing;
-
-        var style = document.createElement('style');
-        style.id = 'sipAssetPopupStyle';
-        style.textContent =
-            '#sipAssetPopupOverlay{position:fixed;inset:0;background:rgba(5,8,18,.72);z-index:999999;display:none;align-items:center;justify-content:center;font-family:Arial,Helvetica,sans-serif;}' +
-            '#sipAssetPopupBox{width:900px;max-width:96vw;max-height:80vh;background:#0f172a;border:1px solid #334155;border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.45);color:#e2e8f0;}' +
-            '#sipAssetPopupHead{padding:14px 18px;background:#111827;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;}' +
-            '#sipAssetPopupTitle{font-size:17px;font-weight:700;color:#fff;}' +
-            '#sipAssetPopupSub{font-size:12px;color:#94a3b8;margin-top:3px;}' +
-            '#sipAssetPopupClose{border:1px solid #475569;background:#1e293b;color:#cbd5e1;width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:18px;}' +
-            '#sipAssetPopupTabs{display:flex;background:#020617;border-bottom:1px solid #334155;}' +
-            '.sip-popup-tab{padding:11px 16px;color:#94a3b8;font-size:13px;border:none;background:transparent;cursor:pointer;}' +
-            '.sip-popup-tab.active{color:#22d3ee;border-bottom:2px solid #22d3ee;}' +
-            '#sipAssetPopupBody{padding:16px;overflow:auto;max-height:58vh;}' +
-            '.sip-attr-table{width:100%;border-collapse:collapse;}' +
-            '.sip-attr-table th{text-align:left;font-size:12px;color:#94a3b8;text-transform:uppercase;padding:10px;border-bottom:1px solid #334155;}' +
-            '.sip-attr-table td{padding:10px;border-bottom:1px solid #1e293b;font-size:13px;}' +
-            '.sip-attr-table td.value{color:#22d3ee;font-family:"JetBrains Mono",monospace;}' +
-            '.sip-empty{color:#64748b;text-align:center;padding:32px;font-size:13px;}';
-        document.head.appendChild(style);
-
-        var overlay = document.createElement('div');
-        overlay.id = 'sipAssetPopupOverlay';
-        overlay.innerHTML =
-            '<div id="sipAssetPopupBox">' +
-            '<div id="sipAssetPopupHead">' +
-            '<div><div id="sipAssetPopupTitle">Selected Asset</div>' +
-            '<div id="sipAssetPopupSub">Live Attributes</div></div>' +
-            '<button id="sipAssetPopupClose" type="button">&times;</button>' +
-            '</div>' +
-            '<div id="sipAssetPopupTabs">' +
-            '<button type="button" class="sip-popup-tab active" data-tab="live">Live</button>' +
-            '<button type="button" class="sip-popup-tab" data-tab="info">Asset Info</button>' +
-            '</div>' +
-            '<div id="sipAssetPopupBody"></div>' +
-            '</div>';
-        document.body.appendChild(overlay);
-
-        document.getElementById('sipAssetPopupClose').onclick = function () {
-            overlay.style.display = 'none';
-        };
-        overlay.addEventListener('click', function (e) {
-            if (e.target === overlay) overlay.style.display = 'none';
-        });
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && overlay.style.display === 'flex') overlay.style.display = 'none';
-        });
-
-        return overlay;
-    }
-
-    function getLiveValues(assetName) {
-        // Pull from SipTelemetry bridge state if available
-        if (window.SipTelemetry && SipTelemetry._state &&
-            SipTelemetry._state.assetValues &&
-            SipTelemetry._state.assetValues[assetName]) {
-            return SipTelemetry._state.assetValues[assetName];
+        if (!assetId) {
+            assetId = $(this).closest('tr[data-id]').attr('data-id');
         }
-        // Fallback: pull from wsLiveData (telemetrylive.js global)
-        if (window.wsLiveData) {
-            for (var id in wsLiveData) {
-                if (wsLiveData[id].AssetName === assetName && wsLiveData[id].attrs) {
-                    var out = {};
-                    var attrs = wsLiveData[id].attrs;
-                    for (var k in attrs) {
-                        if (attrs.hasOwnProperty(k)) out[k] = attrs[k].Value;
-                    }
-                    return out;
-                }
-            }
-        }
-        return {};
-    }
 
-    function renderLiveValues(values) {
-        var keys = Object.keys(values || {});
-        if (!keys.length) return '<div class="sip-empty">No live attribute values received for this asset yet.</div>';
+        tlOpenTelemetryAssetPopup(assetId, 'telemetry-live-click');
+    });
 
-        keys.sort();
-
-        var html = '<table class="sip-attr-table"><thead><tr><th>Attribute</th><th>Live Value</th></tr></thead><tbody>';
-
-        keys.forEach(function (key) {
-            var label = key;
-
-            if (typeof window.getBulkAliasName === 'function') {
-                label = window.getBulkAliasName('', key, '') || label;
-            } else if (typeof window.getAttrDisplayName === 'function') {
-                label = window.getAttrDisplayName(key, null, null) || label;
-            }
-
-            html += '<tr><td>' + esc(label) + '</td><td class="value">' + esc(values[key]) + '</td></tr>';
-        });
-
-        return html + '</tbody></table>';
-    }
-
-    function getAssetName(cell, detail) {
-        return (detail && (detail.assetName || detail.AssetName))
-            || (cell && cell.attrs && cell.attrs.label && cell.attrs.label.text)
-            || (cell && (cell.assetName || cell.AssetName || cell.id))
-            || 'Selected Asset';
-    }
-
-    function getAssetType(cell, detail) {
-        return (detail && (detail.stencilType || detail.type))
-            || (cell && cell.type)
-            || '';
-    }
-
-    // ── FALLBACK POPUP ─────────────────────────────────────
-    // Only register if sip-asset-popup.js hasn't already provided the
-    // full Aurora-themed popup.  If that script loaded first, its
-    // OpenSipAssetPopupFromCell is the one we want — skip this simpler version.
-    if (typeof window.OpenSipAssetPopupFromCell !== 'function') {
-        window.OpenSipAssetPopupFromCell = function (cell, detail) {
-            var overlay = ensurePopup();
-            var assetName = getAssetName(cell, detail || {});
-            var assetType = getAssetType(cell, detail || {});
-            var liveValues = getLiveValues(assetName);
-
-            document.getElementById('sipAssetPopupTitle').textContent = assetName;
-            document.getElementById('sipAssetPopupSub').textContent = assetType || 'Live Attributes';
-            document.getElementById('sipAssetPopupBody').innerHTML = renderLiveValues(liveValues);
-
-            var tabs = overlay.querySelectorAll('.sip-popup-tab');
-            tabs.forEach(function (tab) {
-                tab.onclick = function () {
-                    tabs.forEach(function (t) { t.classList.remove('active'); });
-                    tab.classList.add('active');
-                    if (tab.getAttribute('data-tab') === 'live') {
-                        document.getElementById('sipAssetPopupBody').innerHTML =
-                            renderLiveValues(getLiveValues(assetName));
-                    } else {
-                        document.getElementById('sipAssetPopupBody').innerHTML =
-                            '<table class="sip-attr-table"><tbody>' +
-                            '<tr><td>Asset Name</td><td class="value">' + esc(assetName) + '</td></tr>' +
-                            '<tr><td>Cell Type</td><td class="value">' + esc(assetType) + '</td></tr>' +
-                            '<tr><td>Source</td><td class="value">' + esc(detail && detail.source) + '</td></tr>' +
-                            '</tbody></table>';
-                    }
-                };
-            });
-
-            overlay.style.display = 'flex';
-        };
-        console.log('[sip-popup] window.OpenSipAssetPopupFromCell registered (telemetry-live fallback)');
-    } else {
-        console.log('[sip-popup] window.OpenSipAssetPopupFromCell already exists (sip-asset-popup.js) — skipping fallback.');
-    }
-})();
 
 
 // ================================================================
@@ -20010,7 +19966,17 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
             }
 
             var ts = dl.TimestampDevice || dl.TimestampLocal || dl.TimestampChange || new Date().toISOString();
-            var roleId = dl.AssetAttributeId || dl.DataloggerAttributeId || dl.AttrId || dl.AssetAttributeName;
+
+            // DataLogger id must come from Role.
+            // If WS does not send Role, resolve Role from GetBulkAssetMetadata using AssetAttributeName.
+            var roleId = dl.Role || dl.role || '';
+
+            if (!roleId && typeof window.resolveBulkDataloggerRole === 'function') {
+                roleId = window.resolveBulkDataloggerRole(dl.AssetId, dl.AssetAttributeName, dl.AssetAttributeName);
+            }
+
+            // Last fallback is raw name only, not Id / DataloggerAttributeId.
+            if (!roleId) roleId = dl.AssetAttributeName;
 
             // Seed bulkDataloggerMap at runtime so next message resolves instantly
             var resolvedName = '';
@@ -20186,22 +20152,26 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
         var overlay = document.getElementById('sipAssetPopupOverlay');
         if (!overlay) return;
 
-        // Remove any existing aria-hidden
+        // Remove any existing aria-hidden — use inert instead
         overlay.removeAttribute('aria-hidden');
 
-        // Set inert when hidden (display:none)
-        if (overlay.style.display === 'none' || overlay.style.display === '') {
+        // The popup uses the CSS class 'sap-show' to toggle display:flex,
+        // NOT inline style.display. Check the class to determine visibility.
+        var isVisible = overlay.classList.contains('sap-show');
+        if (!isVisible) {
             overlay.setAttribute('inert', '');
+        } else {
+            overlay.removeAttribute('inert');
         }
 
-        // Observe style changes (display toggling)
+        // Observe class changes (sap-show toggling) instead of style changes
         var observer = new MutationObserver(function (mutations) {
             for (var i = 0; i < mutations.length; i++) {
                 var m = mutations[i];
                 if (m.type === 'attributes') {
-                    if (m.attributeName === 'style') {
-                        var isVisible = overlay.style.display === 'flex' || overlay.style.display === 'block';
-                        if (isVisible) {
+                    if (m.attributeName === 'class') {
+                        var shown = overlay.classList.contains('sap-show');
+                        if (shown) {
                             overlay.removeAttribute('inert');
                             overlay.removeAttribute('aria-hidden');
                         } else {
@@ -20219,10 +20189,10 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
 
         observer.observe(overlay, {
             attributes: true,
-            attributeFilter: ['style', 'aria-hidden']
+            attributeFilter: ['class', 'aria-hidden']
         });
 
-        console.log('[TL-Fix-G] SIP popup aria-hidden fix applied (using inert)');
+        console.log('[TL-Fix-G] SIP popup aria-hidden fix applied (watching class for sap-show)');
     }
 
     // Run after DOM is ready and after any popup creation
@@ -20310,5 +20280,5 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
         console.groupEnd();
     };
 
-    console.log('[TL-Fix-v4] Applied: A(NumericId) B(DLAssetName) C(roleOrAttrId) D(UIUpdate) E(DedupKeys) F(PerAssetAlias) G(AriaHidden)');
+    console.log('[TL-Fix-v4] Applied: A(NumericId) B(DLAssetName) C(roleOrAttrId) D(UIUpdate) E(DedupKeys) F(PerAssetAlias) G(AriaHidden-ClassWatch)');
 })();
