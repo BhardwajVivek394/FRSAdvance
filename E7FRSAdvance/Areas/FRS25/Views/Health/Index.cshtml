@@ -25,6 +25,9 @@
 }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<!-- Chart.js + date adapter for the Modem / A10 history graphs (same versions the Network Dashboard uses) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
     #app, #app *, #app *::before, #app *::after,
@@ -1885,11 +1888,882 @@
                 transform: none
             }
     }
+
+    /* ===================================================================
+       MULTI-SELECT FILTERS + HISTORY MODAL (theme-matched additions)
+       =================================================================== */
+    .msel {
+        position: relative;
+        min-width: 150px
+    }
+
+    .msel-btn {
+        width: 100%;
+        background: var(--bg2);
+        color: var(--tx);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 7px 28px 7px 12px;
+        font-size: 12px;
+        font-family: var(--sans);
+        cursor: pointer;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        position: relative;
+        transition: border-color .15s
+    }
+
+        .msel-btn::after {
+            content: "";
+            position: absolute;
+            right: 11px;
+            top: 50%;
+            width: 7px;
+            height: 7px;
+            border-right: 1.6px solid var(--tx4);
+            border-bottom: 1.6px solid var(--tx4);
+            transform: translateY(-65%) rotate(45deg);
+            transition: transform .15s
+        }
+
+        .msel.open .msel-btn, .msel-btn:hover {
+            border-color: var(--blu)
+        }
+
+            .msel.open .msel-btn::after {
+                transform: translateY(-35%) rotate(225deg)
+            }
+
+    .msel-count {
+        background: var(--blu-s);
+        color: var(--blu);
+        border: 1px solid rgba(96,165,250,.3);
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0 7px;
+        border-radius: 10px;
+        font-family: var(--mono)
+    }
+
+    .msel-panel {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        min-width: 230px;
+        max-width: 320px;
+        background: linear-gradient(180deg, var(--bg3), var(--bg2));
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        border: 1px solid var(--bdr2);
+        border-radius: 10px;
+        box-shadow: var(--card-shadow);
+        z-index: 2500;
+        display: none;
+        overflow: hidden
+    }
+
+    .msel.open .msel-panel {
+        display: block
+    }
+
+    .msel-search {
+        padding: 8px;
+        border-bottom: 1px solid var(--bdr)
+    }
+
+        .msel-search input {
+            width: 100%;
+            background: var(--bg2);
+            color: var(--tx);
+            border: 1px solid var(--bdr);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 11.5px;
+            font-family: var(--sans)
+        }
+
+            .msel-search input:focus {
+                outline: none;
+                border-color: var(--blu)
+            }
+
+    .msel-tools {
+        display: flex;
+        gap: 6px;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--bdr)
+    }
+
+        .msel-tools button {
+            flex: 1;
+            background: transparent;
+            border: 1px solid var(--bdr);
+            color: var(--tx3);
+            font-size: 10.5px;
+            font-weight: 600;
+            border-radius: 6px;
+            padding: 4px 6px;
+            cursor: pointer
+        }
+
+            .msel-tools button:hover {
+                border-color: var(--blu);
+                color: var(--blu)
+            }
+
+    .msel-list {
+        max-height: 240px;
+        overflow-y: auto;
+        padding: 6px
+    }
+
+    .msel-opt {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: var(--tx2);
+        cursor: pointer;
+        user-select: none
+    }
+
+        .msel-opt:hover {
+            background: var(--bg4);
+            color: var(--tx)
+        }
+
+        .msel-opt input {
+            accent-color: var(--blu);
+            cursor: pointer
+        }
+
+    .msel-empty {
+        font-size: 11px;
+        color: var(--tx3);
+        text-align: center;
+        padding: 14px
+    }
+
+    .msel-spin {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border: 2px solid var(--bdr2);
+        border-top-color: var(--blu);
+        border-radius: 50%;
+        animation: mselrot .8s linear infinite;
+        vertical-align: middle
+    }
+
+    @@keyframes mselrot {
+        to {
+            transform: rotate(360deg)
+        }
+    }
+
+    /* Actions column */
+    .act-cell {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        justify-content: center
+    }
+
+    .hist-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        border: 1px solid rgba(96,165,250,.28);
+        background: var(--blu-s);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all .15s;
+        color: var(--blu)
+    }
+
+        .hist-btn:hover {
+            background: var(--bg5);
+            border-color: var(--blu)
+        }
+
+        .hist-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round
+        }
+
+    /* Live connectivity tags (TCP / MQTT) */
+    .conn-tag {
+        font-size: 9px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px
+    }
+
+        .conn-tag .ct-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%
+        }
+
+        .conn-tag.tag-on {
+            background: var(--grn-s);
+            color: var(--grn)
+        }
+
+            .conn-tag.tag-on .ct-dot {
+                background: var(--grn)
+            }
+
+        .conn-tag.tag-off {
+            background: var(--red-s);
+            color: var(--red)
+        }
+
+            .conn-tag.tag-off .ct-dot {
+                background: var(--red)
+            }
+
+    .hw-device {
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 10px;
+        padding: 11px 14px;
+        margin-bottom: 8px
+    }
+
+        .hw-device .hd-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            flex-wrap: wrap;
+            gap: 6px
+        }
+
+        .hw-device .hd-name {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--tx)
+        }
+
+        .hw-device .hd-tags {
+            display: flex;
+            gap: 4px
+        }
+
+        .hw-device .hd-meta {
+            font-size: 10.5px;
+            color: var(--tx3);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-family: var(--mono)
+        }
+
+    /* ===== HISTORY MODAL ===== */
+    .hmodal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%) scale(.97);
+        z-index: 3001;
+        background: linear-gradient(180deg, var(--bg2), var(--bg3));
+        border: 1px solid var(--bdr);
+        border-radius: 16px;
+        width: 1080px;
+        max-width: 96vw;
+        height: 88vh;
+        box-shadow: 0 28px 90px rgba(0,0,0,.46);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: all .25s
+    }
+
+        .hmodal.open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translate(-50%,-50%) scale(1)
+        }
+
+    .hmo-meta {
+        font-size: 11px;
+        color: var(--tx3);
+        margin-top: 3px
+    }
+
+    .hmo-dates {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap
+    }
+
+        .hmo-dates label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .06em
+        }
+
+        .hmo-dates input[type=date] {
+            background: var(--bg2);
+            color: var(--tx);
+            border: 1px solid var(--bdr);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-family: var(--sans);
+            color-scheme: dark
+        }
+
+    body[data-aurora="light"] .hmo-dates input[type=date] {
+        color-scheme: light
+    }
+
+    .hmo-dates input:focus {
+        outline: none;
+        border-color: var(--blu)
+    }
+
+    .hmo-tabs {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--bdr);
+        padding: 0 16px;
+        flex-wrap: wrap;
+        flex-shrink: 0
+    }
+
+    .htab {
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        color: var(--tx3);
+        border-bottom: 2px solid transparent;
+        transition: all .15s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: -1px;
+        white-space: nowrap
+    }
+
+        .htab:hover {
+            color: var(--tx)
+        }
+
+        .htab.active {
+            color: var(--cyan);
+            border-bottom-color: var(--cyan)
+        }
+
+        .htab.svc-tab.active {
+            color: var(--grn);
+            border-bottom-color: var(--grn)
+        }
+
+    .hmo-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 22px
+    }
+
+    .dev-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill,minmax(235px,1fr));
+        gap: 10px;
+        margin-bottom: 14px
+    }
+
+    .dev-card {
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 10px;
+        padding: 11px 13px;
+        cursor: pointer;
+        transition: all .15s
+    }
+
+        .dev-card:hover {
+            border-color: var(--blu)
+        }
+
+        .dev-card.selected {
+            border-color: var(--cyan);
+            background: rgba(34,211,238,.07)
+        }
+
+        .dev-card .dc-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px
+        }
+
+        .dev-card .dc-name {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--tx);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis
+        }
+
+        .dev-card .dc-meta {
+            font-size: 10px;
+            color: var(--tx3);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            font-family: var(--mono)
+        }
+
+    .a10-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 14px;
+        border: 1px solid var(--bdr);
+        background: var(--bg2);
+        color: var(--tx2);
+        cursor: pointer;
+        transition: all .15s;
+        margin: 2px
+    }
+
+        .a10-chip:hover {
+            border-color: var(--blu)
+        }
+
+        .a10-chip.selected {
+            border-color: var(--cyan);
+            background: rgba(34,211,238,.08);
+            color: var(--cyan)
+        }
+
+        .a10-chip .ad {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%
+        }
+
+            .a10-chip .ad.on {
+                background: var(--grn)
+            }
+
+            .a10-chip .ad.off {
+                background: var(--red)
+            }
+
+    .a10-group {
+        margin-bottom: 12px
+    }
+
+        .a10-group .ag-hdr {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--tx2);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+    .graph-box {
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 12px;
+        padding: 14px;
+        margin-top: 8px
+    }
+
+    .graph-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 10px
+    }
+
+        .graph-bar .gb-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--tx2);
+            margin-right: auto
+        }
+
+        .graph-bar .gchk {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: var(--tx2);
+            cursor: pointer
+        }
+
+            .graph-bar .gchk input {
+                accent-color: var(--blu)
+            }
+
+    .gbtn {
+        background: var(--blu);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 6px 14px;
+        font-size: 11.5px;
+        font-weight: 600;
+        cursor: pointer
+    }
+
+        .gbtn:disabled {
+            opacity: .5;
+            cursor: not-allowed
+        }
+
+    .graph-stats {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 8px
+    }
+
+    .gstat {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--bg3);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 11px;
+        color: var(--tx2)
+    }
+
+        .gstat .gs-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%
+        }
+
+            .gstat .gs-dot.tcp {
+                background: var(--blu)
+            }
+
+            .gstat .gs-dot.mqtt {
+                background: var(--grn)
+            }
+
+        .gstat .pct {
+            font-weight: 700;
+            font-family: var(--mono)
+        }
+
+            .gstat .pct.good {
+                color: var(--grn)
+            }
+
+            .gstat .pct.warn {
+                color: var(--amb)
+            }
+
+            .gstat .pct.poor {
+                color: var(--red)
+            }
+
+    .chart-wrap {
+        position: relative;
+        height: 300px
+    }
+
+    .graph-empty, .graph-loader {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        height: 110px;
+        color: var(--tx3);
+        font-size: 12px;
+        gap: 8px
+    }
+
+    .hist-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 240px;
+        overflow-y: auto;
+        margin-top: 10px
+    }
+
+    .hist-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--bg3);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 11.5px
+    }
+
+        .hist-row .hr-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0
+        }
+
+            .hist-row .hr-dot.on {
+                background: var(--grn)
+            }
+
+            .hist-row .hr-dot.off {
+                background: var(--red)
+            }
+
+        .hist-row .hr-time {
+            font-family: var(--mono);
+            color: var(--tx3);
+            white-space: nowrap
+        }
+
+        .hist-row .hr-proto {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 7px;
+            border-radius: 8px
+        }
+
+            .hist-row .hr-proto.tcp {
+                background: var(--blu-s);
+                color: var(--blu)
+            }
+
+            .hist-row .hr-proto.mqtt {
+                background: var(--grn-s);
+                color: var(--grn)
+            }
+
+        .hist-row .hr-txt {
+            color: var(--tx2)
+        }
+
+    .htl {
+        position: relative;
+        padding-left: 28px
+    }
+
+        .htl::before {
+            content: "";
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--bdr)
+        }
+
+    .htl-item {
+        position: relative;
+        padding: 10px 16px;
+        margin-bottom: 8px;
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 8px
+    }
+
+        .htl-item::before {
+            content: "";
+            position: absolute;
+            left: -22px;
+            top: 14px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid var(--bdr2)
+        }
+
+        .htl-item.st-critical::before {
+            background: var(--red);
+            border-color: var(--red)
+        }
+
+        .htl-item.st-warning::before {
+            background: var(--amb);
+            border-color: var(--amb)
+        }
+
+        .htl-item .htl-time {
+            font-size: 11px;
+            font-family: var(--mono);
+            color: var(--tx3);
+            margin-bottom: 3px
+        }
+
+        .htl-item .htl-event {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--tx)
+        }
+
+        .htl-item .htl-sub {
+            font-size: 11px;
+            color: var(--tx2);
+            margin-top: 3px;
+            line-height: 1.4
+        }
+
+    /* "All fields" payload viewer */
+    .m-details {
+        margin: 10px 0;
+        border: 1px solid var(--bdr);
+        border-radius: 10px;
+        background: var(--bg2);
+        overflow: hidden
+    }
+
+        .m-details summary {
+            cursor: pointer;
+            padding: 10px 14px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--tx2);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            user-select: none;
+            list-style: none
+        }
+
+            .m-details summary::-webkit-details-marker {
+                display: none
+            }
+
+            .m-details summary::before {
+                content: "\25B8";
+                margin-right: 8px;
+                color: var(--tx3);
+                display: inline-block;
+                transition: transform .15s
+            }
+
+        .m-details[open] > summary::before {
+            transform: rotate(90deg)
+        }
+
+        .m-details summary:hover {
+            color: var(--tx)
+        }
+
+    .m-details-body {
+        padding: 10px 14px;
+        border-top: 1px solid var(--bdr)
+    }
+
+    .kv-group {
+        margin: 12px 0 4px
+    }
+
+    .kv-group-t {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--cyan);
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        margin-bottom: 6px;
+        border-left: 2px solid var(--cyan);
+        padding-left: 8px
+    }
+
+    .kv-empty {
+        font-size: 11px;
+        color: var(--tx4);
+        padding: 4px 0
+    }
+
+    .m-met .mv.kv-v {
+        font-size: 12px;
+        word-break: break-all
+    }
+
+    pre.raw-json {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--tx2);
+        background: var(--bg3);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 10px;
+        overflow: auto;
+        max-height: 320px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 6px 0 0
+    }
+
+    .htl-empty, .pending-note {
+        text-align: center;
+        color: var(--tx3);
+        padding: 26px;
+        font-size: 12px;
+        line-height: 1.7
+    }
+
+    .pending-note {
+        background: var(--bg2);
+        border: 1px dashed var(--bdr2);
+        border-radius: 12px
+    }
+
+        .pending-note b {
+            color: var(--tx2)
+        }
 </style>
 
 <div class="shell" id="app"></div>
 <div class="overlay" id="ov" onclick="HealthDash.closeModal()"></div>
 <div class="modal" id="mo" onclick="event.stopPropagation()"></div>
+
+<!-- History (watch button) modal -->
+<div class="overlay" id="hov" onclick="HealthDash.closeHistory()"></div>
+<div class="hmodal" id="hmo" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+        <div>
+            <h3><span style="color:var(--cyan)">&#x1F552;</span> Health History &mdash; <span id="hmoStation"></span></h3>
+            <div class="hmo-meta" id="hmoMeta"></div>
+        </div>
+        <div class="hmo-dates">
+            <label>From</label><input type="date" id="histFrom" />
+            <label>To</label><input type="date" id="histTo" />
+            <button class="modal-close" onclick="HealthDash.closeHistory()">&times;</button>
+        </div>
+    </div>
+    <div class="hmo-tabs" id="hmoTabs"></div>
+    <div class="hmo-body" id="hmoBody"></div>
+</div>
 
 <script>
 (function () {
@@ -1897,6 +2771,9 @@
 
     var CONFIG = { API_URL: null, POLL_INTERVAL_MS: 15000 };
     var DEBOUNCER_WS_URL = "ws://proxy.energy7.org:8081/subscribe/debouncerHealth";
+
+    // If a site sends no MQTT data within this window, force all its services unhealthy.
+    var STALE_THRESHOLD_MS = 90 * 1000;
 
     var SVC_ORDER = [
         { key: "DataRecv", label: "Data Receiver", icon: "\uD83D\uDCE5" },
@@ -1921,8 +2798,12 @@
     var ALERT_LIVE_URL = '@Url.Action("GetAlertLive", "Health", new { area = "FRS25" })';
     var SITE_ASSETS_URL = '@Url.Action("GetSiteAssets", "Health", new { area = "FRS25" })';
     var CARDLINE_URL = '@Url.Action("GetSiteCardLines", "Health", new { area = "FRS25" })';
-    var A10_HISTORY_URL = '@Url.Action("GetA10History", "Health", new { area = "FRS25" })';
-    var MODEM_HISTORY_URL = '@Url.Action("GetModemHistory", "Health", new { area = "FRS25" })';
+    // Device status + history graph endpoints (added to the Health controller;
+    // binding mirrors the Network Dashboard's modem & A10 data flow).
+    var DEVICE_STATUS_URL = '@Url.Action("GetSiteDeviceStatus", "Health", new { area = "FRS25" })';
+    var MODEM_GRAPH_URL = '@Url.Action("GetModemHistoryForGraph", "Health", new { area = "FRS25" })';
+    var A10_GRAPH_URL = '@Url.Action("GetA10HistoryForGraph", "Health", new { area = "FRS25" })';
+    var A10_RECORDS_URL = '@Url.Action("GetA10HistoryRecords", "Health", new { area = "FRS25" })';
 
     var masterZones = normalizeSelectItems(@Html.Raw(zonesJson));
     var masterDivisions = normalizeSelectItems(@Html.Raw(divisionsJson));
@@ -1933,7 +2814,12 @@
 
     var stations = [];
     var lastRefresh = Date.now();
-    var filterZoneId = "", filterDivisionId = "", filterSiteId = "", filterSearch = "";
+    // Multi-select filter state: empty array = "All"
+    var filterZoneIds = [], filterDivisionIds = [], filterSiteIds = [], filterSearch = "";
+    var divisionsByZone = {}, sitesByDivision = {};   // cascade lookup caches (server fetched, memoised)
+    var deviceStatusCache = {};                        // { siteId: { loading, error, ts, modems[] } }
+    var currentModal = null;                           // { kind: "svc"|"hw"|"wrench", sid, idx?, type? } - live-refreshed on render
+    var _filterFocusEl = null, _filterSelStart = null, _filterSelEnd = null; // search-box focus preservation
     var mqttClient = null, mqttConnected = false, mqttSubscribed = false;
     var mqttTopic = "";
     var mqttTopics = [];
@@ -1992,8 +2878,23 @@
         return out;
     }
 
+    function isPlainObj(x) { return !!x && typeof x === "object" && !Array.isArray(x); }
+    // Deep-merge incoming health payloads: objects merge key-by-key (newest
+    // values win), arrays and primitives are replaced. Services that alternate
+    // between message shapes (small heartbeat vs full diagnostics) no longer
+    // make previously received fields "disappear" from the modal.
+    function deepMergePayload(oldVal, newVal) {
+        if (!isPlainObj(oldVal) || !isPlainObj(newVal)) return newVal;
+        var out = {};
+        Object.keys(oldVal).forEach(function (k) { out[k] = oldVal[k]; });
+        Object.keys(newVal).forEach(function (k) { out[k] = deepMergePayload(oldVal[k], newVal[k]); });
+        return out;
+    }
+
     // ===== Site / Topic resolution =====
-    function selectedHealthSiteId() { return filterSiteId ? parseInt(filterSiteId, 10) || 0 : 0; }
+    // MQTT topic scope: a single concrete site only when exactly one is selected,
+    // otherwise 0 = all sites (display filtering stays client-side).
+    function selectedHealthSiteId() { return filterSiteIds.length === 1 ? (parseInt(filterSiteIds[0], 10) || 0) : 0; }
 
     async function refreshHealthMqttTopics(autoResubscribe) {
         var siteId = selectedHealthSiteId();
@@ -2019,10 +2920,17 @@
                 // so the dashboard still subscribes correctly if an older controller is deployed.
                 var parsedSid = parseInt(siteIdValue, 10) || 0;
                 if (parsedSid > 0) {
-                    [
+                    var extraTopics = [
                         "debouncer/" + parsedSid + "/health",
                         "pointServices/" + parsedSid + "/health"
-                    ].forEach(function (extraTopic) {
+                    ];
+                    // The Alert service (TriggerAlert) publishes its health on
+                    // {BasePath}/alerthealth (e.g. /DNR/PPTA/alerthealth), so make
+                    // sure that topic is always part of the subscription set even
+                    // if the backend topic list does not include it.
+                    var bp = String(basePathValue || "").replace(/^\/+|\/+$/g, "");
+                    if (bp) extraTopics.push(bp + "/alerthealth");
+                    extraTopics.forEach(function (extraTopic) {
                         if (rowTopics.indexOf(extraTopic) < 0) rowTopics.push(extraTopic);
                     });
                 }
@@ -2057,6 +2965,7 @@
             else { render(); }
             // Fetch sensor data for any newly discovered sites
             fetchAllSensorData();
+            loadVisibleDeviceStatus();
         } catch (e) {
             mqttTopics = []; mqttTopic = ""; healthTopicMeta = {};
             log("Health topic bind failed: " + e.message, "err");
@@ -2070,22 +2979,202 @@
         return String(raw || "").split(/[\n,]+/).map(function (x) { return x.trim().replace(/^\/+|\/+$/g, ""); }).filter(function (x, i, arr) { return x && arr.indexOf(x) === i; });
     }
 
-    // ===== Filter cascading =====
-    async function bindHealthDivisions(zoneId) {
-        filterDivisionId = ""; filterSiteId = ""; siteOptions = [];
-        if (!zoneId) { divisionOptions = masterDivisions.slice(); siteOptions = masterSites.slice(); await refreshHealthMqttTopics(true); render(); return; }
-        divisionOptions = []; render();
-        try { var r = await fetch(DIVISION_URL + "?zoneId=" + encodeURIComponent(zoneId), { credentials: "same-origin" }); if (!r.ok) throw new Error("HTTP " + r.status); divisionOptions = mapApiSelectItems(await r.json()); }
-        catch (e) { log("Division bind failed: " + e.message, "err"); divisionOptions = []; }
-        await refreshHealthMqttTopics(true); render();
+    // =====================================================================
+    // MULTI-SELECT FILTERS (Zone / Division / Site)
+    // Empty selection = "All". Division & Site options cascade from the
+    // selected parents using the existing GetDivisionByZoneId /
+    // GetSiteByDivisionId endpoints (results memoised per id).
+    // =====================================================================
+    function MultiSelect(cfg) {
+        this.allLabel = cfg.allLabel || "All";
+        this.onChange = cfg.onChange || function () { };
+        this.items = [];
+        this.selected = {};   // id -> true (empty = All)
+        this.search = "";
+        this.root = document.createElement("div");
+        this.root.className = "msel";
+        this._build();
     }
-    async function bindHealthSites(divisionId) {
-        filterSiteId = "";
-        if (!divisionId) { siteOptions = masterSites.slice(); await refreshHealthMqttTopics(true); render(); return; }
-        siteOptions = []; render();
-        try { var r = await fetch(SITE_URL + "?divisionId=" + encodeURIComponent(divisionId), { credentials: "same-origin" }); if (!r.ok) throw new Error("HTTP " + r.status); siteOptions = mapApiSelectItems(await r.json()); }
-        catch (e) { log("Site bind failed: " + e.message, "err"); siteOptions = []; }
-        await refreshHealthMqttTopics(true); render();
+    MultiSelect.prototype._build = function () {
+        var self = this;
+        this.root.innerHTML =
+            '<button type="button" class="msel-btn"><span class="msel-label"></span></button>' +
+            '<div class="msel-panel">' +
+                '<div class="msel-search"><input type="text" placeholder="Search\u2026" /></div>' +
+                '<div class="msel-tools"><button type="button" class="ms-all">Select all</button><button type="button" class="ms-clear">Clear (All)</button></div>' +
+                '<div class="msel-list"></div>' +
+            '</div>';
+        this.btn = this.root.querySelector(".msel-btn");
+        this.labelEl = this.root.querySelector(".msel-label");
+        this.listEl = this.root.querySelector(".msel-list");
+        this.searchEl = this.root.querySelector(".msel-search input");
+        this.btn.onclick = function (e) {
+            e.stopPropagation();
+            var open = self.root.classList.contains("open");
+            closeAllMultiSelects();
+            if (!open) { self.root.classList.add("open"); self.searchEl.focus(); }
+        };
+        this.root.querySelector(".msel-panel").onclick = function (e) { e.stopPropagation(); };
+        this.searchEl.oninput = function () { self.search = this.value; self._renderList(); };
+        this.root.querySelector(".ms-all").onclick = function () {
+            self._visible().forEach(function (it) { self.selected[String(it.Id)] = true; });
+            self._renderList(); self._renderLabel(); self.onChange();
+        };
+        this.root.querySelector(".ms-clear").onclick = function () {
+            self.selected = {}; self._renderList(); self._renderLabel(); self.onChange();
+        };
+        this._renderLabel(); this._renderList();
+    };
+    MultiSelect.prototype._visible = function () {
+        var q = this.search.toLowerCase();
+        return this.items.filter(function (it) { return !q || String(it.Name).toLowerCase().indexOf(q) >= 0; });
+    };
+    MultiSelect.prototype._renderList = function () {
+        var self = this, vis = this._visible();
+        if (!vis.length) { this.listEl.innerHTML = '<div class="msel-empty">No options</div>'; return; }
+        this.listEl.innerHTML = vis.map(function (it) {
+            return '<label class="msel-opt"><input type="checkbox" data-id="' + esc(it.Id) + '"' +
+                (self.selected[String(it.Id)] ? " checked" : "") + ' /><span>' + esc(it.Name) + '</span></label>';
+        }).join("");
+        Array.prototype.forEach.call(this.listEl.querySelectorAll("input[type=checkbox]"), function (cb) {
+            cb.onchange = function () {
+                var id = String(this.getAttribute("data-id"));
+                if (this.checked) self.selected[id] = true; else delete self.selected[id];
+                self._renderLabel(); self.onChange();
+            };
+        });
+    };
+    MultiSelect.prototype._renderLabel = function () {
+        var ids = Object.keys(this.selected);
+        if (!ids.length) { this.labelEl.innerHTML = esc(this.allLabel); return; }
+        if (ids.length === 1) {
+            var it = this.items.find(function (x) { return String(x.Id) === ids[0]; });
+            this.labelEl.innerHTML = esc(it ? it.Name : "1 selected"); return;
+        }
+        this.labelEl.innerHTML = '<span class="msel-count">' + ids.length + '</span>&nbsp;selected';
+    };
+    MultiSelect.prototype.setItems = function (items) {
+        var self = this;
+        this.items = items || [];
+        var valid = {};
+        this.items.forEach(function (it) { valid[String(it.Id)] = true; });
+        Object.keys(this.selected).forEach(function (id) { if (!valid[id]) delete self.selected[id]; });
+        this._renderList(); this._renderLabel();
+    };
+    MultiSelect.prototype.getSelected = function () { return Object.keys(this.selected); };
+    function closeAllMultiSelects() {
+        document.querySelectorAll(".msel.open").forEach(function (el) { el.classList.remove("open"); });
+    }
+    document.addEventListener("click", closeAllMultiSelects);
+
+    // ---- persistent filter bar (built once, re-mounted on each render so
+    //      open dropdowns / typed search survive frequent MQTT re-renders) ----
+    var msZone = null, msDiv = null, msSite = null, filterBarEl = null;
+    function buildFilterBar() {
+        filterBarEl = document.createDocumentFragment();
+        var mk = function (labelText) {
+            var wrap = document.createElement("label");
+            wrap.textContent = labelText;
+            filterBarEl.appendChild(wrap);
+        };
+        mk("Zone");
+        msZone = new MultiSelect({ allLabel: "All Zones", onChange: function () { onFiltersChanged("zone"); } });
+        filterBarEl.appendChild(msZone.root);
+        mk("Division");
+        msDiv = new MultiSelect({ allLabel: "All Divisions", onChange: function () { onFiltersChanged("division"); } });
+        filterBarEl.appendChild(msDiv.root);
+        mk("Site");
+        msSite = new MultiSelect({ allLabel: "All Sites", onChange: function () { onFiltersChanged("site"); } });
+        filterBarEl.appendChild(msSite.root);
+        var search = document.createElement("input");
+        search.className = "search-box"; search.id = "fS"; search.placeholder = "Search station\u2026";
+        var stimer;
+        search.oninput = function (e) { clearTimeout(stimer); stimer = setTimeout(function () { filterSearch = e.target.value; render(); loadVisibleDeviceStatus(); }, 250); };
+        filterBarEl.appendChild(search);
+        msZone.setItems(masterZones);
+        msDiv.setItems(divisionOptions);
+        msSite.setItems(siteOptions);
+        // Wrap fragment children into a persistent container element
+        var host = document.createElement("div");
+        host.style.display = "contents";
+        host.appendChild(filterBarEl);
+        filterBarEl = host;
+    }
+    function mountFilterBar() {
+        var hostSlot = document.getElementById("filterHost");
+        if (!hostSlot) return;
+        if (!filterBarEl) buildFilterBar();
+        hostSlot.appendChild(filterBarEl);
+        // Restore focus + caret captured at the start of render()
+        if (_filterFocusEl) {
+            try {
+                _filterFocusEl.focus({ preventScroll: true });
+                if (_filterSelStart !== null && typeof _filterFocusEl.setSelectionRange === "function") {
+                    _filterFocusEl.setSelectionRange(_filterSelStart, _filterSelEnd);
+                }
+            } catch (focusErr) { }
+            _filterFocusEl = null; _filterSelStart = _filterSelEnd = null;
+        }
+    }
+
+    async function rebuildDivisionOptions() {
+        if (!filterZoneIds.length) { divisionOptions = masterDivisions.slice(); return; }
+        var lists = await Promise.all(filterZoneIds.map(async function (zid) {
+            if (divisionsByZone[zid]) return divisionsByZone[zid];
+            try {
+                var r = await fetch(DIVISION_URL + "?zoneId=" + encodeURIComponent(zid), { credentials: "same-origin" });
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                var data = mapApiSelectItems(await r.json());
+                divisionsByZone[zid] = data;
+                return data;
+            } catch (e) { log("Division bind failed (zone " + zid + "): " + e.message, "err"); return []; }
+        }));
+        var seen = {}; divisionOptions = [];
+        lists.forEach(function (l) { l.forEach(function (d) { if (!seen[String(d.Id)]) { seen[String(d.Id)] = 1; divisionOptions.push(d); } }); });
+    }
+    async function rebuildSiteOptions() {
+        // Site options follow the selected divisions; if none are selected but
+        // zones are, they follow every division of those zones.
+        var divIds = filterDivisionIds.length ? filterDivisionIds
+            : (filterZoneIds.length ? divisionOptions.map(function (d) { return String(d.Id); }) : []);
+        if (!divIds.length) { siteOptions = masterSites.slice(); return; }
+        var lists = await Promise.all(divIds.map(async function (did) {
+            if (sitesByDivision[did]) return sitesByDivision[did];
+            try {
+                var r = await fetch(SITE_URL + "?divisionId=" + encodeURIComponent(did), { credentials: "same-origin" });
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                var data = mapApiSelectItems(await r.json());
+                sitesByDivision[did] = data;
+                return data;
+            } catch (e) { log("Site bind failed (division " + did + "): " + e.message, "err"); return []; }
+        }));
+        var seen = {}; siteOptions = [];
+        lists.forEach(function (l) { l.forEach(function (s) { if (!seen[String(s.Id)]) { seen[String(s.Id)] = 1; siteOptions.push(s); } }); });
+    }
+    var _filterSeq = 0;
+    async function onFiltersChanged(level) {
+        filterZoneIds = msZone.getSelected();
+        filterDivisionIds = msDiv.getSelected();
+        filterSiteIds = msSite.getSelected();
+        var seq = ++_filterSeq;
+        render(); // instant feedback with current data
+        if (level === "zone") {
+            await rebuildDivisionOptions();
+            if (seq !== _filterSeq) return;
+            msDiv.setItems(divisionOptions);
+            filterDivisionIds = msDiv.getSelected();
+        }
+        if (level === "zone" || level === "division") {
+            await rebuildSiteOptions();
+            if (seq !== _filterSeq) return;
+            msSite.setItems(siteOptions);
+            filterSiteIds = msSite.getSelected();
+        }
+        await refreshHealthMqttTopics(true);
+        if (seq !== _filterSeq) return;
+        fetchAlertLive();
+        loadVisibleDeviceStatus();
+        render();
     }
 
     // ===== Topic-to-service mapping =====
@@ -2103,7 +3192,10 @@
         var t = String(topic || "").toLowerCase();
         var p = safeObj(payload);
         var mt = String(firstDefined(p.Topic, p.topic, p.MessageType, "") || "").toLowerCase();
-        var all = t + " " + mt;
+        // New-format payloads identify themselves via a "service" field
+        // (e.g. TriggerAlert health -> { service: "TriggerAlert", connections: [...] })
+        var svcName = String(firstDefined(p.service, p.Service, p.serviceName, p.ServiceName, "") || "").toLowerCase();
+        var all = t + " " + mt + " " + svcName;
         if (all.indexOf("datareceiver") >= 0 || all.indexOf("data-receiver") >= 0 || all.indexOf("datarecv") >= 0) return "dataReceiverHealth";
         if (all.indexOf("dataloggerdiagnostic") >= 0 || all.indexOf("diagnostic") >= 0) return "dataloggerDiagnostic";
         if (all.indexOf("dataloggerheartbeat") >= 0 || all.indexOf("heartbeat") >= 0 || all.indexOf("mqtt/dl/heartbeat") >= 0) return "dataloggerHeartbeat";
@@ -2162,8 +3254,8 @@
         Object.keys(directServiceMap).forEach(function (k) {
             if (payload[k]) {
                 var targetKey = directServiceMap[k];
-                current.services[targetKey] = payload[k];
-                current._rawPayloads[targetKey] = payload[k];
+                current.services[targetKey] = deepMergePayload(current.services[targetKey], payload[k]);
+                current._rawPayloads[targetKey] = current.services[targetKey];
             }
         });
 
@@ -2171,15 +3263,15 @@
             Object.keys(directServiceMap).forEach(function (k) {
                 if (payload.services[k]) {
                     var targetKey = directServiceMap[k];
-                    current.services[targetKey] = payload.services[k];
-                    current._rawPayloads[targetKey] = payload.services[k];
+                    current.services[targetKey] = deepMergePayload(current.services[targetKey], payload.services[k]);
+                    current._rawPayloads[targetKey] = current.services[targetKey];
                 }
             });
         }
 
         var mappedKey = serviceKeyFromTopic(topic, payload);
         if (mappedKey && !payload.services && !payload[mappedKey]) {
-            current.services[mappedKey] = payload;
+            current.services[mappedKey] = deepMergePayload(current.services[mappedKey], payload);
         }
 
         // Store raw payload per service key for detailed modal view
@@ -2199,30 +3291,57 @@
         if (!Array.isArray(d.connections)) return null;
         var conns = [], issues = [], allOk = true;
         d.connections.forEach(function (c) {
-            var ok = boolFrom(c.connected);
-            conns.push({ l: c.name || "unknown", ok: ok, transport: c.transport || "", role: c.role || "", lastActivityAgeSec: num(c.lastActivityAgeSec), reconnectAttempts: num(c.reconnectAttempts), disconnectCount: num(c.disconnectCount) });
-            if (!ok) { allOk = false; issues.push({ sev: "critical", msg: (c.name || "Connection") + " (" + (c.transport || "") + ") disconnected" }); }
+            // Only entries that actually carry a "connected" flag take part in the
+            // up/down decision. Stat-only entries (e.g. FCM push over HTTP) have no
+            // such flag and must NOT be treated as disconnected.
+            var hasConnectedFlag = (c.connected !== undefined && c.connected !== null);
+            if (hasConnectedFlag) {
+                var ok = boolFrom(c.connected);
+                conns.push({ l: c.name || "unknown", ok: ok, transport: c.transport || "", role: c.role || "", lastActivityAgeSec: num(c.lastActivityAgeSec), reconnectAttempts: num(c.reconnectAttempts), disconnectCount: num(c.disconnectCount) });
+                if (!ok) { allOk = false; issues.push({ sev: "critical", msg: (c.name || "Connection") + " (" + (c.transport || "") + ") disconnected" }); }
+            } else {
+                var sent = num(firstDefined(c.sentTotal, c.sent, 0)), fail = num(firstDefined(c.failTotal, c.failed, 0));
+                var failPct = (sent + fail) > 0 ? (fail / (sent + fail) * 100) : 0;
+                conns.push({ l: c.name || "unknown", ok: failPct < 50, transport: c.transport || "", role: c.role || "" });
+                if (fail > 0 && failPct >= 25) issues.push({ sev: "warning", msg: (c.name || "push") + " failures: " + fail + "/" + (sent + fail) + " (" + failPct.toFixed(0) + "%)" });
+            }
             if (num(c.reconnectAttempts) > 5) issues.push({ sev: "warning", msg: (c.name || "") + " " + c.reconnectAttempts + " reconnect attempts" });
             if (num(c.disconnectCount) > 0) issues.push({ sev: "warning", msg: (c.name || "") + " " + c.disconnectCount + " disconnect(s)" });
             if (c.errorRatePct && num(c.errorRatePct) > 50) issues.push({ sev: "warning", msg: (c.name || "api") + " error rate " + num(c.errorRatePct).toFixed(1) + "%" });
+            if (num(c.queryErrors) > 0) issues.push({ sev: "warning", msg: (c.name || "db") + " " + num(c.queryErrors) + " query error(s)" });
+            if (c.lastError && String(c.lastError).trim() !== "") issues.push({ sev: "warning", msg: (c.name || "") + " last error: " + esc(String(c.lastError).substring(0, 80)) });
         });
+        var pr = safeObj(d.processing);
+        if (num(pr.processingErrors) > 0) issues.push({ sev: "warning", msg: num(pr.processingErrors) + " processing errors" });
+        if (num(pr.avgProcessingMs) > 200) issues.push({ sev: "warning", msg: "Latency: " + num(pr.avgProcessingMs).toFixed(0) + "ms" });
         var exc = safeObj(d.exceptions);
         if (num(exc.total) > 5000) issues.push({ sev: "warning", msg: num(exc.total).toLocaleString() + " total exceptions" });
         if (num(exc.ratePerMin) > 100) issues.push({ sev: "warning", msg: "Exception rate: " + num(exc.ratePerMin) + "/min" });
 
         var statusField = String(firstDefined(d.status, d.Status, "")).toUpperCase();
         var status = "healthy";
-        if (!allOk || statusField === "DOWN" || statusField === "ERROR") status = "critical";
-        else if (issues.some(function (i) { return i.sev === "warning"; }) || statusField === "DEGRADED" || statusField === "WARNING") status = "warning";
+        if (!allOk || statusField === "DOWN" || statusField === "ERROR" || statusField === "CRITICAL" || statusField === "FAIL") status = "critical";
+        else if (issues.some(function (i) { return i.sev === "warning"; }) || statusField === "DEGRADED" || statusField === "WARNING" || statusField === "WARN") status = "warning";
 
-        var metrics = { Status: str(d.status), Uptime: fmtUp(d.uptimeSec || d.UptimeSec) };
+        var metrics = { Status: str(d.status), Uptime: fmtUp(firstDefined(d.uptimeSec, d.UptimeSec, d.uptimeSeconds)) };
+        if (pr.batchesLastMinute !== undefined) metrics.Batches_min = num(pr.batchesLastMinute);
+        if (pr.messagesProcessedLastMinute !== undefined) metrics.Msgs_min = num(pr.messagesProcessedLastMinute);
+        if (pr.avgProcessingMs !== undefined) metrics.Avg_Latency = num(pr.avgProcessingMs).toFixed(1) + "ms";
+        if (pr.totalBatches !== undefined) metrics.Total_Batches = num(pr.totalBatches).toLocaleString();
+        if (pr.processingErrors !== undefined) metrics.Proc_Errors = num(pr.processingErrors);
         if (exc.total !== undefined) metrics.Exceptions = num(exc.total).toLocaleString();
         if (exc.ratePerMin !== undefined) metrics.Exc_Rate = exc.ratePerMin + "/min";
         var apiConn = d.connections.find(function (c) { return c.name === "api"; });
         if (apiConn) { metrics.API_Calls = num(apiConn.calls); metrics.API_Errors = num(apiConn.errors); metrics.API_ErrRate = num(apiConn.errorRatePct).toFixed(1) + "%"; }
+        var pushConn = d.connections.find(function (c) { return c.role === "push" || c.name === "fcm"; });
+        if (pushConn) { metrics.Push_Sent = num(firstDefined(pushConn.sentTotal, pushConn.sent, 0)); metrics.Push_Fail = num(firstDefined(pushConn.failTotal, pushConn.failed, 0)); }
 
+        // runtime.* may be flat ({ workingSetMb, cpuPct, ... }) or nested under .process
         var rt = safeObj(d.runtime);
-        if (rt.process) { var p = safeObj(rt.process); if (p.cpuPct) metrics.CPU = p.cpuPct + "%"; if (p.workingSetMb) metrics.RAM = p.workingSetMb + "MB"; if (p.threadCount) metrics.Threads = p.threadCount; }
+        var rp = rt.process ? safeObj(rt.process) : rt;
+        if (rp.cpuPct !== undefined && rp.cpuPct !== null) metrics.CPU = rp.cpuPct + "%";
+        if (rp.workingSetMb) metrics.RAM = rp.workingSetMb + "MB";
+        if (rp.threadCount) metrics.Threads = rp.threadCount;
 
         return { status: status, conns: conns, issues: issues, metrics: metrics };
     }
@@ -2386,7 +3505,32 @@
     }
 
     var EV = { DataRecv: evalDataReceiver, Datalogger: evalDatalogger, Alert: evalAlert, Debouncer: evalDebouncer, Point: evalPoint };
-    function evalStation(st) { return SVC_ORDER.map(function (s) { return Object.assign(EV[s.key](getSvcData(st.services, s.key)), { key: s.key, label: s.label, icon: s.icon }); }); }
+
+    // Milliseconds since the last MQTT payload for this station (Infinity if never received).
+    function stationDataAgeMs(st) {
+        if (!st || !st._updatedAt) return Infinity;
+        var t = new Date(st._updatedAt).getTime();
+        if (isNaN(t)) return Infinity;
+        return Date.now() - t;
+    }
+    function isStationStale(st) { return stationDataAgeMs(st) > STALE_THRESHOLD_MS; }
+
+    function evalStation(st) {
+        var svcs = SVC_ORDER.map(function (s) { return Object.assign(EV[s.key](getSvcData(st.services, s.key)), { key: s.key, label: s.label, icon: s.icon }); });
+        // No MQTT data within the staleness window -> mark every service unhealthy.
+        if (isStationStale(st)) {
+            var ageMs = stationDataAgeMs(st);
+            var msg = isFinite(ageMs)
+                ? ("No MQTT data for " + Math.floor(ageMs / 1000) + "s (threshold " + Math.floor(STALE_THRESHOLD_MS / 1000) + "s)")
+                : "No MQTT data received";
+            svcs.forEach(function (svc) {
+                svc.status = "critical";
+                svc.stale = true;
+                svc.issues = [{ sev: "critical", msg: msg }].concat(Array.isArray(svc.issues) ? svc.issues : []);
+            });
+        }
+        return svcs;
+    }
 
     function getFixActions(st, svcs) {
         var fixes = [];
@@ -2413,24 +3557,209 @@
 
     // ===== Filtering =====
     function getFilteredStations() {
-        var zoneName = optionName(masterZones, filterZoneId);
-        var divisionName = optionName(divisionOptions.length ? divisionOptions : masterDivisions, filterDivisionId);
-        var siteName = optionName(siteOptions.length ? siteOptions : masterSites, filterSiteId);
+        // Multi-select semantics: empty selection = All; match by id with a
+        // name fallback (some MQTT stations only carry zone/division names).
+        var dList = divisionOptions.length ? divisionOptions : masterDivisions;
+        var sList = siteOptions.length ? siteOptions : masterSites;
+        var zNames = filterZoneIds.map(function (id) { return String(optionName(masterZones, id) || "").toLowerCase(); }).filter(Boolean);
+        var dNames = filterDivisionIds.map(function (id) { return String(optionName(dList, id) || "").toLowerCase(); }).filter(Boolean);
+        var sNames = filterSiteIds.map(function (id) { return String(optionName(sList, id) || "").toLowerCase(); }).filter(Boolean);
         return stations.filter(function (s) {
             var ok = true;
-            if (filterZoneId) ok = ok && (String(firstDefined(s.zoneId, s.ZoneId, "")) === String(filterZoneId) || (zoneName && String(s.zone || "").toLowerCase() === zoneName.toLowerCase()));
-            if (filterDivisionId) ok = ok && (String(firstDefined(s.divisionId, s.DivisionId, "")) === String(filterDivisionId) || (divisionName && String(s.division || "").toLowerCase() === divisionName.toLowerCase()));
-            if (filterSiteId) ok = ok && (String(firstDefined(s.siteId, s.SiteId, "")) === String(filterSiteId) || (siteName && String(s.stationName || "").toLowerCase() === siteName.toLowerCase()));
-            if (filterSearch) { var q = filterSearch.toLowerCase(); ok = ok && [s.stationName, s.siteId, s.zone, s.division, s._topic].some(function (x) { return String(x || "").toLowerCase().indexOf(q) >= 0; }); }
+            if (filterZoneIds.length) ok = ok && (filterZoneIds.indexOf(String(firstDefined(s.zoneId, s.ZoneId, ""))) >= 0 || zNames.indexOf(String(s.zone || "").toLowerCase()) >= 0);
+            if (ok && filterDivisionIds.length) ok = ok && (filterDivisionIds.indexOf(String(firstDefined(s.divisionId, s.DivisionId, ""))) >= 0 || dNames.indexOf(String(s.division || "").toLowerCase()) >= 0);
+            if (ok && filterSiteIds.length) ok = ok && (filterSiteIds.indexOf(String(firstDefined(s.siteId, s.SiteId, ""))) >= 0 || sNames.indexOf(String(s.stationName || "").toLowerCase()) >= 0);
+            if (ok && filterSearch) { var q = filterSearch.toLowerCase(); ok = [s.stationName, s.siteId, s.zone, s.division, s._topic].some(function (x) { return String(x || "").toLowerCase().indexOf(q) >= 0; }); }
             return ok;
         });
+    }
+
+    // =====================================================================
+    // LIVE DEVICE STATUS — Network (Modem) & IoT (A10)
+    // Bound exactly like the Network Dashboard: per-site call to the
+    // A10Status/GetStatus API (proxied by Health/GetSiteDeviceStatus) giving
+    // real TCP / MQTT connectivity per modem and per A10.
+    // =====================================================================
+    var DS_MAX_CONCURRENT = 4, DS_MAX_SITES = 60, DS_CACHE_MS = 30000;
+    var dsQueue = [], dsActive = 0;
+    function dsEnqueue(job) { dsQueue.push(job); dsPump(); }
+    function dsPump() {
+        while (dsActive < DS_MAX_CONCURRENT && dsQueue.length) {
+            var job = dsQueue.shift();
+            dsActive++;
+            job().then(function () { dsActive--; dsPump(); }, function () { dsActive--; dsPump(); });
+        }
+    }
+
+    function normalizeDeviceStatus(resp) {
+        var modems = (resp && Array.isArray(resp.Modems)) ? resp.Modems : [];
+        var net = { total: 0, online: 0, offline: 0, tcpOnline: 0, mqttOnline: 0, devices: [] };
+        var iot = { total: 0, online: 0, offline: 0, tcpOnline: 0, mqttOnline: 0, devices: [] };
+        var normModems = [];
+        modems.forEach(function (m) {
+            var tcp = !!firstDefined(m.TcpStatus, m.tcpStatus, false);
+            var mqtt = !!firstDefined(m.MqttStatus, m.mqttStatus, false);
+            var online = firstDefined(m.IsOnline, m.isOnline);
+            online = (online === null) ? (tcp || mqtt) : !!online;
+            var name = String(firstDefined(m.ClusterName, m.clusterName, m.ModemName, m.modemName, "Modem"));
+            var nm = {
+                clusterId: num(firstDefined(m.ClusterId, m.clusterId), 0),
+                clusterName: name,
+                modemId: String(firstDefined(m.ModemId, m.modemId, "")),
+                modemName: String(firstDefined(m.ModemName, m.modemName, name)),
+                version: firstDefined(m.Version, m.version, ""),
+                signal: firstDefined(m.SignalStrength, m.signalStrength),
+                sim: firstDefined(m.SimNumber, m.simNumber, ""),
+                tcp: tcp, mqtt: mqtt, online: online, a10s: []
+            };
+            net.total++;
+            if (online) net.online++; else net.offline++;
+            if (tcp) net.tcpOnline++;
+            if (mqtt) net.mqttOnline++;
+            if (!online) net.devices.push({
+                name: name, modemId: nm.modemId,
+                signal: (nm.signal !== null && nm.signal !== undefined && nm.signal !== "") ? nm.signal + " dBm" : "\u2014",
+                tcp: tcp, mqtt: mqtt,
+                a10Count: (firstDefined(m.A10List, m.a10List) || []).length,
+                issue: "Modem offline"
+            });
+            (firstDefined(m.A10List, m.a10List) || []).forEach(function (a) {
+                var aTcp = !!firstDefined(a.TcpStatus, a.tcpStatus, false);
+                var aMqtt = !!firstDefined(a.MqttStatus, a.mqttStatus, a.MQTTStatus, false);
+                var aOnline = aTcp || aMqtt;
+                var aId = firstDefined(a.A10Id, a.a10Id, a.Id, a.id, "?");
+                var na = {
+                    a10Id: aId, clusterId: nm.clusterId, modemId: nm.modemId,
+                    modemName: nm.modemName, clusterName: nm.clusterName,
+                    tcp: aTcp, mqtt: aMqtt, online: aOnline,
+                    type: firstDefined(a.ADCTypeName, a.adcTypeName, ""),
+                    fw: firstDefined(a.FirmwareVersion, a.firmwareVersion, ""),
+                    lastData: firstDefined(a.LastDataTime, a.lastDataTime, ""),
+                    uptime: firstDefined(a.Uptime, a.uptime, "")
+                };
+                nm.a10s.push(na);
+                iot.total++;
+                if (aOnline) iot.online++; else iot.offline++;
+                if (aTcp) iot.tcpOnline++;
+                if (aMqtt) iot.mqttOnline++;
+                if (!aOnline) iot.devices.push({
+                    name: "A10-" + aId, type: na.type, tcp: aTcp, mqtt: aMqtt,
+                    modemName: nm.modemName, clusterName: nm.clusterName,
+                    issue: "TCP/MQTT disconnected"
+                });
+            });
+            normModems.push(nm);
+        });
+        return { modems: normModems, network: net, iot: iot };
+    }
+
+    function applyDeviceStatus(siteId, norm) {
+        var st = stations.find(function (s) { return String(s.siteId) === String(siteId); });
+        if (!st) return;
+        st.hardware.iot = st.hardware.iot || { total: 0, unhealthy: 0, issues: [] };
+        st.hardware.network = st.hardware.network || { total: 0, unhealthy: 0, issues: [] };
+        var iot = st.hardware.iot, net = st.hardware.network;
+        iot.ds = norm.iot;
+        iot.total = norm.iot.total;
+        iot.unhealthy = norm.iot.offline;
+        iot.issues = norm.iot.devices.map(function (d) { return d.name + " (" + d.modemName + ") \u2014 " + d.issue; });
+        net.ds = norm.network;
+        net.total = norm.network.total;
+        net.unhealthy = norm.network.offline;
+        net.issues = norm.network.devices.map(function (d) { return d.name + " [" + d.modemId + "] \u2014 " + d.issue; });
+    }
+
+    function fetchDeviceStatusForSite(siteId, force) {
+        siteId = parseInt(siteId, 10) || 0;
+        if (!siteId || !DEVICE_STATUS_URL || DEVICE_STATUS_URL === "null") return;
+        var c = deviceStatusCache[siteId];
+        if (c && (c.loading || (!force && c.ts && (Date.now() - c.ts) < DS_CACHE_MS))) return;
+        deviceStatusCache[siteId] = deviceStatusCache[siteId] || {};
+        deviceStatusCache[siteId].loading = true;
+        deviceStatusCache[siteId].error = null;
+        dsEnqueue(async function () {
+            try {
+                var r = await fetch(DEVICE_STATUS_URL + "?siteId=" + encodeURIComponent(siteId), { credentials: "same-origin" });
+                if (!r.ok) throw new Error("HTTP " + r.status);
+                var resp = await r.json();
+                if (resp && resp.Success === false) throw new Error(resp.Message || "API error");
+                var norm = normalizeDeviceStatus(resp);
+                deviceStatusCache[siteId] = { loading: false, error: null, ts: Date.now(), modems: norm.modems };
+                applyDeviceStatus(siteId, norm);
+            } catch (e) {
+                deviceStatusCache[siteId] = { loading: false, error: e.message, ts: Date.now() };
+                log("Device status failed (site " + siteId + "): " + e.message, "err");
+            }
+            renderThrottled();
+        });
+    }
+
+    function loadVisibleDeviceStatus(force) {
+        getFilteredStations().slice(0, DS_MAX_SITES).forEach(function (st) {
+            fetchDeviceStatusForSite(st.siteId, force);
+        });
+    }
+
+    var _renderTimer = null;
+    function renderThrottled() {
+        if (_renderTimer) return;
+        _renderTimer = setTimeout(function () { _renderTimer = null; render(); }, 150);
+    }
+
+    // Live connectivity section used inside the hardware detail modal.
+    function buildConnectivitySection(stn, type) {
+        if (type !== "iot" && type !== "network") return "";
+        var hw = safeObj(stn.hardware[type]);
+        var ds = hw.ds;
+        var dsc = deviceStatusCache[parseInt(stn.siteId, 10) || 0] || {};
+        var title = type === "iot" ? "A10 Connectivity (live TCP / MQTT)" : "Modem Connectivity (live TCP / MQTT)";
+        var html = '<div class="m-sec"><div class="m-sec-t">' + title + '</div>';
+        if (!ds) {
+            if (dsc.loading) html += '<div class="htl-empty">\u23F3 Loading device status\u2026</div>';
+            else html += '<div class="htl-empty">Device status not loaded' + (dsc.error ? ' (' + esc(dsc.error) + ')' : '') +
+                '. <button class="paste-btn" onclick="HealthDash.loadSiteDevices(' + num(stn.siteId) + ',\'' + type + '\')">Load Now</button></div>';
+            return html + '</div>';
+        }
+        html += '<div class="m-metrics" style="margin-bottom:10px">';
+        html += '<div class="m-met"><div class="ml">Total</div><div class="mv">' + ds.total + '</div></div>';
+        html += '<div class="m-met"><div class="ml">Online</div><div class="mv" style="color:var(--grn)">' + ds.online + '</div></div>';
+        html += '<div class="m-met"><div class="ml">Offline</div><div class="mv' + (ds.offline > 0 ? ' bad' : '') + '">' + ds.offline + '</div></div>';
+        html += '<div class="m-met"><div class="ml">TCP Online</div><div class="mv">' + ds.tcpOnline + '</div></div>';
+        html += '<div class="m-met"><div class="ml">MQTT Online</div><div class="mv">' + ds.mqttOnline + '</div></div>';
+        html += '</div>';
+        if (ds.devices.length) {
+            ds.devices.forEach(function (d) {
+                html += '<div class="hw-device"><div class="hd-top"><div class="hd-name">' + (type === "iot" ? "\u25CF " : "\uD83D\uDCE1 ") + esc(d.name) + '</div>' +
+                    '<div class="hd-tags">' +
+                    '<span class="conn-tag ' + (d.tcp ? "tag-on" : "tag-off") + '"><span class="ct-dot"></span>TCP</span>' +
+                    '<span class="conn-tag ' + (d.mqtt ? "tag-on" : "tag-off") + '"><span class="ct-dot"></span>MQTT</span>' +
+                    '</div></div>' +
+                    '<div class="hd-meta">' +
+                    (d.modemId ? '<span>Modem: ' + esc(d.modemId) + '</span>' : (d.modemName ? '<span>Modem: ' + esc(d.modemName) + '</span>' : '')) +
+                    (d.type ? '<span>Type: ' + esc(d.type) + '</span>' : '') +
+                    (d.signal ? '<span>Signal: ' + esc(d.signal) + '</span>' : '') +
+                    (d.a10Count ? '<span>A10s: ' + d.a10Count + '</span>' : '') +
+                    '</div></div>';
+            });
+        } else {
+            html += '<div style="text-align:center;color:var(--grn);padding:10px;font-size:12px">\u2705 All ' + ds.total + ' device' + (ds.total === 1 ? '' : 's') + ' online</div>';
+        }
+        html += '<div style="margin-top:8px;text-align:right"><button class="paste-btn" onclick="HealthDash.openHistory(\'' + esc(String(stn.siteId)) + '\')">\u23F1 View History &amp; Graphs</button></div>';
+        return html + '</div>';
     }
 
     // ===== RENDER =====
     function render() {
         var app = document.getElementById("app");
         if (!app) return;
-        var zoneOptions = masterZones.length ? masterZones : normalizeSelectItems([].concat(new Set(stations.map(function (s) { return s.zone; }).filter(Boolean))).sort().map(function (z) { return { Id: z, Name: z }; }));
+        // Preserve focus + caret of the search box / dropdown search inside the
+        // persistent filter bar: the bar gets detached during the innerHTML
+        // rebuild below, which would otherwise steal focus on every
+        // MQTT-triggered render (this was the "search filter" bug).
+        _filterFocusEl = (filterBarEl && document.activeElement && filterBarEl.contains(document.activeElement)) ? document.activeElement : null;
+        if (_filterFocusEl && typeof _filterFocusEl.selectionStart === "number") {
+            try { _filterSelStart = _filterFocusEl.selectionStart; _filterSelEnd = _filterFocusEl.selectionEnd; } catch (selErr) { _filterSelStart = _filterSelEnd = null; }
+        } else { _filterSelStart = _filterSelEnd = null; }
         var f = getFilteredStations();
         var ev = f.map(function (st) { return { st: st, svcs: evalStation(st) }; });
         var tot = ev.length;
@@ -2456,21 +3785,9 @@
                 '</div>' +
             '</div>' +
 
-            '<div class="filters">' +
-                '<label>Zone</label>' +
-                '<select class="sel" id="fZ"><option value="">All Zones</option>' +
-                zoneOptions.map(function (z) { return '<option value="' + esc(z.Id) + '" ' + (String(z.Id) === String(filterZoneId) ? "selected" : "") + '>' + esc(z.Name) + '</option>'; }).join("") +
-                '</select>' +
-                '<label>Division</label>' +
-                '<select class="sel" id="fD"><option value="">All Divisions</option>' +
-                divisionOptions.map(function (d) { return '<option value="' + esc(d.Id) + '" ' + (String(d.Id) === String(filterDivisionId) ? "selected" : "") + '>' + esc(d.Name) + '</option>'; }).join("") +
-                '</select>' +
-                '<label>Site</label>' +
-                '<select class="sel" id="fSite"><option value="">All Sites</option>' +
-                siteOptions.map(function (site) { return '<option value="' + esc(site.Id) + '" ' + (String(site.Id) === String(filterSiteId) ? "selected" : "") + '>' + esc(site.Name) + '</option>'; }).join("") +
-                '</select>' +
-                '<input class="search-box" id="fS" placeholder="Search station\u2026" value="' + esc(filterSearch) + '" />' +
-            '</div>' +
+            // Persistent multi-select filter bar is re-mounted into this host after
+            // every render (see mountFilterBar) so its open/typing state survives.
+            '<div class="filters" id="filterHost"></div>' +
 
             '<div class="summary">' +
                 '<div class="sum-card c-blu"><div class="sc-icon">\uD83D\uDCCA</div><div class="sc-label">Stations</div><div class="sc-val blu">' + tot + '</div></div>' +
@@ -2578,7 +3895,7 @@
                         '<th class="g-station" rowspan="2" style="width:180px;text-align:left">Station</th>' +
                         '<th class="g-services" colspan="' + SVC_ORDER.length + '">Services</th>' +
                         '<th class="g-hardware" colspan="' + HW_ORDER.length + '">Hardware</th>' +
-                        '<th class="g-action" rowspan="2" style="width:44px"></th>' +
+                        '<th class="g-action" rowspan="2" style="width:88px">Actions</th>' +
                     '</tr>' +
                     '<tr class="sub-row">' +
                         SVC_ORDER.map(function (s, i) { return '<th class="' + (i === 0 ? "sh-svc" : "") + (i === SVC_ORDER.length - 1 ? " sh-svc-last" : "") + '">' + esc(s.label) + '</th>'; }).join("") +
@@ -2589,11 +3906,7 @@
             '</table></div>' : "") +
             '<div class="ftr">RDPMS Health Dashboard &middot; ENERGY7</div>';
 
-        document.getElementById("fZ").onchange = function (e) { filterZoneId = e.target.value || ""; bindHealthDivisions(filterZoneId); };
-        document.getElementById("fD").onchange = function (e) { filterDivisionId = e.target.value || ""; bindHealthSites(filterDivisionId); };
-        document.getElementById("fSite").onchange = async function (e) { filterSiteId = e.target.value || ""; await refreshHealthMqttTopics(true); fetchAlertLive(); render(); };
-        var stimer;
-        document.getElementById("fS").oninput = function (e) { clearTimeout(stimer); stimer = setTimeout(function () { filterSearch = e.target.value; render(); }, 250); };
+        mountFilterBar();
 
         var tb = document.getElementById("tb");
         if (activeView === "live" && tb) {
@@ -2619,8 +3932,25 @@
                     if (i === HW_ORDER.length - 1) cls.push("bd-hw-r");
                     var total = num(hw.total);
                     var bad = num(hw.unhealthy);
-                    // Sensors, IoT, Network: always show total with clickable detail
-                    if (h.key === "sensors" || h.key === "iot" || h.key === "network") {
+                    // IoT / Network: live TCP-MQTT connectivity (Network-Dashboard style binding)
+                    if (h.key === "iot" || h.key === "network") {
+                        var dsc = deviceStatusCache[parseInt(stn.siteId, 10) || 0] || {};
+                        if (!hw.ds && dsc.loading) {
+                            return '<td class="' + cls.join(" ") + '"><div class="hw-val ok" title="Loading device status\u2026"><span class="msel-spin"></span></div></td>';
+                        }
+                        var tip = hw.ds
+                            ? (hw.ds.online + " online / " + hw.ds.total + " total \u00B7 TCP " + hw.ds.tcpOnline + " \u00B7 MQTT " + hw.ds.mqttOnline)
+                            : (dsc.error ? ("Device status error: " + dsc.error) : "");
+                        if (total > 0 && bad > 0) {
+                            return '<td class="' + cls.join(" ") + '"><div class="hw-val issue" title="' + esc(tip) + '" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon + '<span class="hw-count">' + bad + '</span><span class="hw-total">/' + total + '</span></div></td>';
+                        }
+                        if (total > 0) {
+                            return '<td class="' + cls.join(" ") + '"><div class="hw-val ok hw-clickable" title="' + esc(tip) + '" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon + '<span class="hw-total-ok">' + total + '</span></div></td>';
+                        }
+                        return '<td class="' + cls.join(" ") + '"><div class="hw-val ok"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>\u2014</div></td>';
+                    }
+                    // Sensors: alert-derived health (unchanged)
+                    if (h.key === "sensors") {
                         if (total > 0 && bad > 0) {
                             return '<td class="' + cls.join(" ") + '"><div class="hw-val issue" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon + '<span class="hw-count">' + bad + '</span><span class="hw-total">/' + total + '</span></div></td>';
                         }
@@ -2632,13 +3962,46 @@
                     if (bad > 0) return '<td class="' + cls.join(" ") + '"><div class="hw-val issue" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon + '<span class="hw-count">' + bad + '</span></div></td>';
                     return '<td class="' + cls.join(" ") + '"><div class="hw-val ok">\u2014</div></td>';
                 }).join("");
-                tr.innerHTML = '<td><div class="stn-col"><div class="zone">' + esc(stn.zone) + ' \u203A ' + esc(stn.division) + '</div><div class="stn">' + esc(stn.stationName) + '</div><div class="sid">ID: ' + esc(stn.siteId) + (stn._updatedAt ? " \u00B7 " + new Date(stn._updatedAt).toLocaleTimeString() : "") + '</div></div></td>' + svcCells + hwCells + '<td><button class="wrench-btn ' + (fixes.length ? "has-act" : "") + '" onclick="HealthDash.openWrench(\'' + escapedSid + '\')" title="Fix Actions"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></button></td>';
+                tr.innerHTML = '<td><div class="stn-col"><div class="zone">' + esc(stn.zone) + ' \u203A ' + esc(stn.division) + '</div><div class="stn">' + esc(stn.stationName) + '</div><div class="sid">ID: ' + esc(stn.siteId) + (stn._updatedAt ? " \u00B7 " + new Date(stn._updatedAt).toLocaleTimeString() : "") + '</div></div></td>' + svcCells + hwCells + '<td><div class="act-cell">' +
+                    '<button class="hist-btn" onclick="HealthDash.openHistory(\'' + escapedSid + '\')" title="Watch History \u2014 Modem / A10 / Sensors"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>' +
+                    '<button class="wrench-btn ' + (fixes.length ? "has-act" : "") + '" onclick="HealthDash.openWrench(\'' + escapedSid + '\')" title="Fix Actions"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></button>' +
+                    '</div></td>';
                 tb.appendChild(tr);
             });
         }
         } // end activeView === "live"
         window._healthEv = ev;
+        refreshOpenModal();
         restoreLog();
+    }
+
+    // Re-render the currently open modal in place whenever new data arrives,
+    // preserving scroll position and which <details> sections are expanded.
+    // This stops the "data is there / data is gone" effect between opens.
+    var _modalRefreshing = false;
+    function refreshOpenModal() {
+        if (_modalRefreshing || !currentModal) return;
+        var m = document.getElementById("mo");
+        if (!m || !m.classList.contains("open")) return;
+        var body = m.querySelector(".modal-body");
+        var scrollPos = body ? body.scrollTop : 0;
+        var openSecs = [];
+        if (body) body.querySelectorAll("details[data-sec]").forEach(function (d) { if (d.open) openSecs.push(d.getAttribute("data-sec")); });
+        _modalRefreshing = true;
+        try {
+            if (currentModal.kind === "svc") openSvc(currentModal.sid, currentModal.idx);
+            else if (currentModal.kind === "hw") openHW(currentModal.sid, currentModal.type);
+            else if (currentModal.kind === "wrench") openWrench(currentModal.sid);
+        } catch (err) { }
+        _modalRefreshing = false;
+        body = m.querySelector(".modal-body");
+        if (body) {
+            openSecs.forEach(function (sec) {
+                var d = body.querySelector('details[data-sec="' + sec.replace(/"/g, '\\"') + '"]');
+                if (d) d.open = true;
+            });
+            body.scrollTop = scrollPos;
+        }
     }
 
     // ===== SERVICE DETAIL MODAL =====
@@ -2651,7 +4014,10 @@
             html += '<td>' + esc(c.name || "") + '</td>';
             html += '<td>' + esc(c.transport || "") + '</td>';
             html += '<td>' + esc(c.role || "") + '</td>';
-            html += '<td class="' + (c.connected ? "conn-ok" : "conn-bad") + '">' + (c.connected ? "Yes" : "No") + '</td>';
+            var hasConnFlag = (c.connected !== undefined && c.connected !== null);
+            html += hasConnFlag
+                ? '<td class="' + (c.connected ? "conn-ok" : "conn-bad") + '">' + (c.connected ? "Yes" : "No") + '</td>'
+                : '<td>\u2014</td>';
             html += '<td>' + (c.lastActivityAgeSec !== undefined ? num(c.lastActivityAgeSec) + "s" : "\u2014") + '</td>';
             html += '<td>' + num(c.reconnectAttempts) + '</td>';
             html += '<td>' + num(c.disconnectCount) + '</td>';
@@ -2701,8 +4067,85 @@
         return html;
     }
 
+    // =====================================================================
+    // COMPLETE PAYLOAD VIEWER - renders EVERY field of an MQTT health payload
+    // (nested objects as grouped grids, arrays of objects as tables) plus a
+    // collapsible raw-JSON view, so no information from the message is hidden.
+    // =====================================================================
+    function fmtAnyVal(v) {
+        if (v === null || v === undefined || v === "") return "\u2014";
+        if (typeof v === "boolean") return v ? "true" : "false";
+        if (typeof v === "number") return (v % 1 === 0) ? v.toLocaleString() : String(v);
+        return String(v);
+    }
+    function buildDataTree(value, depth) {
+        depth = depth || 0;
+        if (depth > 6) return '<div class="kv-empty">\u2026</div>';
+        if (Array.isArray(value)) {
+            if (!value.length) return '<div class="kv-empty">(empty list)</div>';
+            if (isPlainObj(value[0])) {
+                // Array of objects -> table over the union of primitive columns
+                var cols = [];
+                value.forEach(function (row) {
+                    if (!isPlainObj(row)) return;
+                    Object.keys(row).forEach(function (k) {
+                        if (cols.indexOf(k) < 0 && !isPlainObj(row[k]) && !Array.isArray(row[k])) cols.push(k);
+                    });
+                });
+                cols = cols.slice(0, 12);
+                var h = '<div class="conn-table-wrap"><table class="conn-tbl"><thead><tr>' +
+                    cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join("") + '</tr></thead><tbody>';
+                value.forEach(function (row) {
+                    h += '<tr>' + cols.map(function (c) { return '<td>' + esc(fmtAnyVal(safeObj(row)[c])) + '</td>'; }).join("") + '</tr>';
+                });
+                h += '</tbody></table></div>';
+                // Nested structures inside rows (rare) rendered underneath
+                value.forEach(function (row, i) {
+                    if (!isPlainObj(row)) return;
+                    Object.keys(row).forEach(function (k) {
+                        if (isPlainObj(row[k]) || Array.isArray(row[k])) {
+                            h += '<div class="kv-group"><div class="kv-group-t">[' + i + '] ' + esc(k) + '</div>' + buildDataTree(row[k], depth + 1) + '</div>';
+                        }
+                    });
+                });
+                return h;
+            }
+            return '<div class="m-metrics">' + value.map(function (v, i) {
+                return '<div class="m-met"><div class="ml">#' + i + '</div><div class="mv kv-v">' + esc(fmtAnyVal(v)) + '</div></div>';
+            }).join("") + '</div>';
+        }
+        if (isPlainObj(value)) {
+            var prims = [], nested = [];
+            Object.keys(value).forEach(function (k) {
+                if (isPlainObj(value[k]) || Array.isArray(value[k])) nested.push(k); else prims.push(k);
+            });
+            var out = "";
+            if (prims.length) {
+                out += '<div class="m-metrics">' + prims.map(function (k) {
+                    return '<div class="m-met"><div class="ml">' + esc(k) + '</div><div class="mv kv-v">' + esc(fmtAnyVal(value[k])) + '</div></div>';
+                }).join("") + '</div>';
+            }
+            nested.forEach(function (k) {
+                out += '<div class="kv-group"><div class="kv-group-t">' + esc(k) + '</div>' + buildDataTree(value[k], depth + 1) + '</div>';
+            });
+            return out || '<div class="kv-empty">(empty)</div>';
+        }
+        return '<div class="m-metrics"><div class="m-met"><div class="mv kv-v">' + esc(fmtAnyVal(value)) + '</div></div></div>';
+    }
+    function buildFullDataSection(title, payload) {
+        if (!payload || typeof payload !== "object" || !Object.keys(payload).length) return "";
+        var jsonText = "";
+        try { jsonText = JSON.stringify(payload, null, 2); } catch (e) { jsonText = "(unserializable)"; }
+        return '<details class="m-details" data-sec="' + esc(title) + '" open>' +
+            '<summary>\uD83D\uDCC4 ' + esc(title) + ' \u2014 all fields</summary>' +
+            '<div class="m-details-body">' + buildDataTree(payload, 0) +
+            '<details class="m-details" data-sec="' + esc(title) + '-json"><summary>Raw JSON</summary><pre class="raw-json">' + esc(jsonText) + '</pre></details>' +
+            '</div></details>';
+    }
+
     function openSvc(sid, idx) {
         var e = window._healthEv.find(function (d) { return String(d.st.siteId) === String(sid); }); if (!e) return;
+        currentModal = { kind: "svc", sid: String(sid), idx: idx };
         var svc = e.svcs[idx], sc = svc.status === "healthy" ? "g" : svc.status === "warning" || svc.status === "unknown" ? "a" : "r";
         var m = document.getElementById("mo"), o = document.getElementById("ov");
 
@@ -2748,6 +4191,14 @@
         } else {
             html += '<div style="text-align:center;color:var(--tx3);padding:20px">\u2705 No issues</div>';
         }
+        // ===== COMPLETE PAYLOAD - every field from the MQTT message(s) =====
+        if (svc.key === "Datalogger") {
+            html += buildFullDataSection("Heartbeat payload", firstDefined((e.st._rawPayloads || {}).dataloggerHeartbeat, safeObj(e.st.services).dataloggerHeartbeat, null));
+            html += buildFullDataSection("Diagnostic payload", firstDefined((e.st._rawPayloads || {}).dataloggerDiagnostic, safeObj(e.st.services).dataloggerDiagnostic, null));
+        } else {
+            html += buildFullDataSection("Complete payload", rawPayload || getSvcData(e.st.services, svc.key));
+        }
+
         html += '</div>';
         m.innerHTML = html;
         m.classList.add("open"); o.classList.add("open");
@@ -2755,6 +4206,7 @@
 
     function openHW(sid, type) {
         var stn = stations.find(function (s) { return String(s.siteId) === String(sid); }); if (!stn) return;
+        currentModal = { kind: "hw", sid: String(sid), type: type };
         var hw = safeObj(stn.hardware[type]); var info = HW_ORDER.find(function (h) { return h.key === type; });
         var m = document.getElementById("mo"), o = document.getElementById("ov");
         var html = '<div class="modal-hdr"><h3>' + esc(info.label) + ' \u2014 ' + esc(stn.stationName) + '</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
@@ -2766,6 +4218,9 @@
         html += '<div class="m-met"><div class="ml">Unhealthy</div><div class="mv bad">' + num(hw.unhealthy) + '</div></div>';
         html += '<div class="m-met"><div class="ml">Healthy</div><div class="mv" style="color:var(--grn)">' + (num(hw.total) - num(hw.unhealthy)) + '</div></div>';
         html += '</div></div>';
+
+        // Live modem / A10 connectivity (Network-Dashboard style) for IoT & Network
+        html += buildConnectivitySection(stn, type);
 
         // ===== SENSOR DETAIL with per-attribute alerts =====
         if (type === "sensors") {
@@ -2962,6 +4417,7 @@
 
     function openWrench(sid) {
         var e = window._healthEv.find(function (d) { return String(d.st.siteId) === String(sid); }); if (!e) return;
+        currentModal = { kind: "wrench", sid: String(sid) };
         var fixes = getFixActions(e.st, e.svcs);
         var m = document.getElementById("mo"), o = document.getElementById("ov");
         var html = '<div class="modal-hdr"><h3>\uD83D\uDD27 Fix Actions \u2014 ' + esc(e.st.stationName) + '</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
@@ -2977,6 +4433,7 @@
     }
 
     function openPaste() {
+        currentModal = null;
         var m = document.getElementById("mo"), o = document.getElementById("ov");
         var html = '<div class="modal-hdr"><h3>Update Health Data</h3><button class="modal-close" onclick="HealthDash.closeModal()">&times;</button></div>';
         html += '<div class="modal-body"><div class="paste-box"><p>Paste full stations array, single station object, or single service health JSON.</p>';
@@ -2991,7 +4448,7 @@
         try { mergeHealthPayload(JSON.parse(v), "manual/paste"); closeModal(); }
         catch (e) { alert("Invalid JSON: " + e.message); }
     }
-    function closeModal() { var m = document.getElementById("mo"), o = document.getElementById("ov"); if (m) m.classList.remove("open"); if (o) o.classList.remove("open"); }
+    function closeModal() { currentModal = null; var m = document.getElementById("mo"), o = document.getElementById("ov"); if (m) m.classList.remove("open"); if (o) o.classList.remove("open"); }
 
     // ===== ALERT LIVE API =====
     function parseAlertIdentifier(alertId) {
@@ -3045,9 +4502,12 @@
 
         siteIds.forEach(function (sid) {
             var siteAlerts = serviceHealthAlerts[sid] || {};
+            var stn = stations.find(function (s) { return String(s.siteId) === sid; });
+            var stale = stn ? isStationStale(stn) : false;
             SERVICE_HEALTH_IDS.forEach(function (svcId) {
                 var entry = siteAlerts[svcId];
                 var st = entry ? entry.status : "healthy";
+                if (stale) st = "unhealthy"; // no MQTT data within staleness window
                 if (st === "unhealthy") total.unhealthy++;
                 else if (st === "warning") total.warning++;
                 else total.healthy++;
@@ -3424,16 +4884,26 @@
                             (d.alerts.length ? " (" + d.alerts.length + " alert" + (d.alerts.length > 1 ? "s" : "") + ")" : "");
                     })
                 };
-                station.hardware.iot = {
-                    total: iotTotal,
-                    unhealthy: iotUnhealthy + iotWarning,
-                    issues: iotIssues
-                };
-                station.hardware.network = {
-                    total: netTotal,
-                    unhealthy: netUnhealthy + netWarning,
-                    issues: netIssues
-                };
+                // IoT / Network are now primarily bound to live device status
+                // (Network-Dashboard style). Keep the sensor-alert mapping as
+                // supplementary info, and only use it as the column source
+                // while live device status has not loaded yet.
+                station.hardware.iot = station.hardware.iot || { total: 0, unhealthy: 0, issues: [] };
+                station.hardware.iot.alertIssues = iotIssues;
+                station.hardware.iot.alertUnhealthy = iotUnhealthy + iotWarning;
+                if (!station.hardware.iot.ds) {
+                    station.hardware.iot.total = iotTotal;
+                    station.hardware.iot.unhealthy = iotUnhealthy + iotWarning;
+                    station.hardware.iot.issues = iotIssues;
+                }
+                station.hardware.network = station.hardware.network || { total: 0, unhealthy: 0, issues: [] };
+                station.hardware.network.alertIssues = netIssues;
+                station.hardware.network.alertUnhealthy = netUnhealthy + netWarning;
+                if (!station.hardware.network.ds) {
+                    station.hardware.network.total = netTotal;
+                    station.hardware.network.unhealthy = netUnhealthy + netWarning;
+                    station.hardware.network.issues = netIssues;
+                }
             }
         });
     }
@@ -3448,6 +4918,14 @@
             if (!map[sid]) {
                 map[sid] = { siteName: st.stationName || ("Site " + sid), services: {}, allAlerts: [], alertCount: 0 };
                 SERVICE_HEALTH_IDS.forEach(function (s) { map[sid].services[s] = { status: "healthy", alerts: [] }; });
+            }
+            // No MQTT data within the staleness window -> mark every service unhealthy.
+            if (isStationStale(st)) {
+                SERVICE_HEALTH_IDS.forEach(function (s) {
+                    if (!map[sid].services[s]) map[sid].services[s] = { status: "healthy", alerts: [] };
+                    map[sid].services[s].status = "unhealthy";
+                    map[sid].services[s].stale = true;
+                });
             }
         });
 
@@ -3545,8 +5023,17 @@
         if (!mqttConnected || !mqttClient) { log("Connect MQTT first", "err"); return; }
         if (!topics.length) { log("No health topics found. Check Site base path configuration.", "err"); return; }
         try {
-            currentSubscribedTopics.forEach(function (topic) { try { mqttClient.unsubscribe(topic); } catch (ignore) { } });
-            topics.forEach(function (topic) { mqttClient.subscribe(topic, { qos: 0 }); });
+            currentSubscribedTopics.forEach(function (topic) {
+                try { mqttClient.unsubscribe(topic); } catch (ignore) { }
+                if (topic.charAt(0) !== "/") { try { mqttClient.unsubscribe("/" + topic); } catch (ignore) { } }
+            });
+            topics.forEach(function (topic) {
+                mqttClient.subscribe(topic, { qos: 0 });
+                // Some services publish with a leading slash (TriggerAlert uses
+                // "/DNR/PPTA/alerthealth"). In MQTT "/a/b" and "a/b" are DIFFERENT
+                // topics, so subscribe to both variants to catch either style.
+                if (topic.charAt(0) !== "/") { try { mqttClient.subscribe("/" + topic, { qos: 0 }); } catch (ignore) { } }
+            });
             currentSubscribedTopics = topics.slice();
             mqttSubscribed = true;
             log("Subscribed " + topics.length + " topic(s)", "sys");
@@ -3619,6 +5106,7 @@
     }
 
     function openAlertDetail(alertId) {
+        currentModal = null;
         var alert = alertLiveRaw.find(function (a) { return a.alertId === alertId; });
         if (!alert) return;
         var m = document.getElementById("mo"), o = document.getElementById("ov");
@@ -3653,8 +5141,823 @@
     }
 
     // ===== PUBLIC API =====
+    // =====================================================================
+    // HISTORY MODAL (watch button) — Modem & A10 graphs bound exactly like
+    // the Network Dashboard:
+    //   GetModemHistoryForGraph -> [{TimeStamp, TypeId(1 TCP / 2 MQTT), SignalStrength}]
+    //   GetA10HistoryForGraph   -> [{TimeStamp, TypeId, ResponseTime | Uptime}]
+    //   GetA10HistoryRecords    -> {Success, Data:[records]}
+    // Dates go to the API as dd-MM-yyyy (same as the Network Dashboard).
+    // =====================================================================
+    var histState = { siteId: null, chart: null, sel: null, selType: null, lastData: null };
+
+    function hdUrlOk(u) { return u && u !== "null"; }
+    function hdFormatDateApi(dateStr) {
+        var d = new Date(dateStr);
+        return String(d.getDate()).padStart(2, "0") + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + d.getFullYear();
+    }
+    function hdIsoDay(d) { return d.toISOString().slice(0, 10); }
+    function hdUnwrapList(resp) {
+        if (Array.isArray(resp)) return resp;
+        if (resp && Array.isArray(resp.Data)) return resp.Data;
+        if (resp && Array.isArray(resp.data)) return resp.data;
+        return [];
+    }
+    function histDates() {
+        return { from: document.getElementById("histFrom").value, to: document.getElementById("histTo").value };
+    }
+    function destroyHistChart() {
+        if (histState.chart) { try { histState.chart.destroy(); } catch (e) { } histState.chart = null; }
+    }
+
+    // =====================================================================
+    // HISTORY IN A SEPARATE PAGE - the watch button opens a standalone tab
+    // with the station's Modem / A10 / Sensor history. If the popup is
+    // blocked by the browser, it falls back to the in-page modal.
+    // =====================================================================
+    function openHistory(sid) {
+        var stn = stations.find(function (s) { return String(s.siteId) === String(sid); });
+        if (!stn) return;
+        var w = null;
+        try { w = window.open("", "_blank"); } catch (winErr) { w = null; }
+        if (!w) { openHistoryInline(sid); return; }
+        try { buildHistoryWindow(w, stn); }
+        catch (buildErr) {
+            try { w.close(); } catch (closeErr) { }
+            log("History window failed: " + buildErr.message, "err");
+            openHistoryInline(sid);
+        }
+    }
+
+    function buildHistoryWindow(w, stn) {
+        function absUrl(u) { return (!u || u === "null") ? "" : (u.charAt(0) === "/" ? (window.location.origin + u) : u); }
+        var sensorAlerts = alertLiveRaw.filter(function (a) {
+            return String(a.siteId || "") === String(stn.siteId) && SERVICE_HEALTH_IDS.indexOf(String(a.sourceId || "")) < 0;
+        }).slice(0, 300).map(function (a) {
+            return {
+                time: firstDefined(a.timestampSet, a.TimestampSet, null),
+                source: String(firstDefined(a.sourceId, a.SourceId, "Sensor")),
+                desc: String(firstDefined(a.alertDescription, a.AlertDescription, "")),
+                priority: String(firstDefined(a.priority, a.Priority, ""))
+            };
+        });
+        var cfg = {
+            siteId: stn.siteId,
+            siteName: String(stn.stationName || ("Site " + stn.siteId)),
+            zone: String(stn.zone || "?"),
+            division: String(stn.division || "?"),
+            deviceStatusUrl: absUrl(DEVICE_STATUS_URL),
+            modemGraphUrl: absUrl(MODEM_GRAPH_URL),
+            a10GraphUrl: absUrl(A10_GRAPH_URL),
+            a10RecordsUrl: absUrl(A10_RECORDS_URL),
+            sensorAlerts: sensorAlerts,
+            generatedAt: new Date().toLocaleString()
+        };
+        w.document.open();
+        w.document.write(buildHistoryDocHtml(cfg));
+        w.document.close();
+    }
+
+    function buildHistoryDocHtml(cfg) {
+        var cfgJson = JSON.stringify(cfg).replace(/</g, "\\u003c");
+        return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Health History - ${cfg.siteName.replace(/[<>&"]/g, "")}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"><\/script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#070d1d;--bg2:#0c1731;--bg3:#101e3e;--bdr:#1b2c55;--bdr2:#27407a;--tx:#e7edf7;--tx2:#9fb1d1;--tx3:#5f7499;--tx4:#3c4f74;--grn:#34d399;--amb:#fbbf24;--red:#fb7185;--blu:#60a5fa;--cyan:#22d3ee;--mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Manrope','Segoe UI',-apple-system,sans-serif}
+body{font-family:var(--sans);background:radial-gradient(1100px 500px at 15% -10%,rgba(34,211,238,.10),transparent 60%),radial-gradient(900px 480px at 95% 0%,rgba(96,165,250,.10),transparent 55%),var(--bg);color:var(--tx);min-height:100vh;padding:26px}
+.wrap{max-width:1180px;margin:0 auto}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.hdr h1{font-size:21px;font-weight:800}
+.hdr h1 em{color:var(--cyan);font-style:normal}
+.hdr .meta{font-size:12px;color:var(--tx3);margin-top:3px}
+.hdr .meta b{color:var(--tx2)}
+.gen{font-size:11px;color:var(--tx3)}
+.datebar{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.datebar label{font-size:10px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.08em}
+.datebar input[type=date]{background:var(--bg3);color:var(--tx);border:1px solid var(--bdr2);border-radius:8px;padding:7px 11px;font-size:12px;font-family:var(--sans);color-scheme:dark}
+.datebar input:focus{outline:none;border-color:var(--cyan)}
+.tabs{display:flex;gap:0;border-bottom:2px solid var(--bdr);margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:10px 18px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--tx3);border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap}
+.tab:hover{color:var(--tx)}
+.tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+.tab.svc.active{color:var(--grn);border-bottom-color:var(--grn)}
+.sec-t{font-size:10.5px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.1em;margin:0 0 10px}
+.dev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-bottom:14px}
+.dev-card{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color .15s}
+.dev-card:hover{border-color:var(--blu)}
+.dev-card.sel{border-color:var(--cyan);background:rgba(34,211,238,.06)}
+.dc-top{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px}
+.dc-name{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dc-meta{font-size:10px;color:var(--tx3);display:flex;gap:10px;flex-wrap:wrap;font-family:var(--mono)}
+.tag{font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px}
+.tag i{width:5px;height:5px;border-radius:50%;display:inline-block}
+.tag.on{background:rgba(52,211,153,.12);color:var(--grn)} .tag.on i{background:var(--grn)}
+.tag.off{background:rgba(251,113,133,.12);color:var(--red)} .tag.off i{background:var(--red)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 11px;border-radius:14px;border:1px solid var(--bdr);background:var(--bg2);color:var(--tx2);cursor:pointer;margin:2px}
+.chip:hover{border-color:var(--blu)}
+.chip.sel{border-color:var(--cyan);background:rgba(34,211,238,.08);color:var(--cyan)}
+.chip i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.chip i.on{background:var(--grn)} .chip i.off{background:var(--red)}
+.agroup{margin-bottom:12px}
+.agroup .ag-h{font-size:11px;font-weight:700;color:var(--tx2);margin-bottom:6px}
+.gbox{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:14px;margin-top:10px}
+.gbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.gtitle{font-size:12.5px;font-weight:700;color:var(--tx2);margin-right:auto}
+.gchk{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);cursor:pointer}
+.gchk input{accent-color:var(--cyan)}
+.gbtn{background:var(--cyan);color:#04222b;border:none;border-radius:8px;padding:7px 15px;font-size:11.5px;font-weight:700;cursor:pointer}
+.gbtn:disabled{opacity:.5;cursor:not-allowed}
+.gstats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.gstat{display:inline-flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:6px 12px;font-size:11px;color:var(--tx2)}
+.gdot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.gdot.tcp{background:var(--blu)} .gdot.mqtt{background:var(--grn)}
+.pct{font-weight:700;font-family:var(--mono)} .pct.good{color:var(--grn)} .pct.warn{color:var(--amb)} .pct.poor{color:var(--red)}
+.cwrap{position:relative;height:330px}
+.note{display:none;align-items:center;justify-content:center;height:110px;color:var(--tx3);font-size:12px}
+.rows{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto;margin-top:10px}
+.row{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:7px 12px;font-size:11.5px}
+.row .t{font-family:var(--mono);color:var(--tx3);white-space:nowrap}
+.row .p{font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px}
+.row .p.tcp{background:rgba(96,165,250,.12);color:var(--blu)} .row .p.mqtt{background:rgba(52,211,153,.12);color:var(--grn)}
+.row .x{color:var(--tx2)}
+.tl{position:relative;padding-left:28px}
+.tl::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--bdr)}
+.tli{position:relative;padding:10px 16px;margin-bottom:8px;background:var(--bg2);border:1px solid var(--bdr);border-radius:8px}
+.tli::before{content:"";position:absolute;left:-22px;top:14px;width:10px;height:10px;border-radius:50%;border:2px solid var(--bdr2)}
+.tli.crit::before{background:var(--red);border-color:var(--red)}
+.tli.warn::before{background:var(--amb);border-color:var(--amb)}
+.tli .tt{font-size:11px;font-family:var(--mono);color:var(--tx3);margin-bottom:3px}
+.tli .te{font-size:13px;font-weight:600}
+.tli .ts{font-size:11px;color:var(--tx2);margin-top:3px;line-height:1.4}
+.empty{text-align:center;color:var(--tx3);padding:30px;font-size:12px}
+.pending{background:var(--bg2);border:1px dashed var(--bdr2);border-radius:12px;padding:26px;text-align:center;color:var(--tx3);font-size:12.5px;line-height:1.7}
+.pending b{color:var(--tx2)}
+.ftr{text-align:center;margin-top:26px;font-size:10px;color:var(--tx3)}
+</style></head><body><div class="wrap">
+<div class="hdr"><div><h1><em>&#x1F552;</em> Health History - <span id="stn"></span></h1><div class="meta" id="meta"></div></div><div class="gen" id="gen"></div></div>
+<div class="datebar"><label>From</label><input type="date" id="dFrom"/><label>To</label><input type="date" id="dTo"/><span style="font-size:10.5px;color:var(--tx4)">Pick a device below, then Load Graph. Dates use the same range for graphs, records and the sensor timeline.</span></div>
+<div class="tabs" id="tabs"></div>
+<div id="body"></div>
+<div class="ftr">RDPMS Health History &middot; ENERGY7</div>
+</div>
+<script>
+var CFG = ${cfgJson};
+var modems = [], devErr = null, devLoading = true;
+var sel = null, selType = null, chart = null, lastData = null, activeTab = "network";
+function el(id){ return document.getElementById(id); }
+function esc(v){ return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function num(v,d){ var n = Number(v); return isFinite(n) ? n : (d || 0); }
+function fd(){ for (var i = 0; i < arguments.length; i++) if (arguments[i] !== undefined && arguments[i] !== null && arguments[i] !== "") return arguments[i]; return null; }
+function isoDay(d){ return d.toISOString().slice(0,10); }
+function fmtApi(s){ var d = new Date(s); return String(d.getDate()).padStart(2,"0") + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + d.getFullYear(); }
+el("stn").textContent = CFG.siteName;
+el("meta").innerHTML = esc(CFG.zone) + " &rsaquo; " + esc(CFG.division) + " &middot; <b>Site ID: " + esc(CFG.siteId) + "</b>";
+el("gen").textContent = "Generated: " + CFG.generatedAt;
+el("dFrom").value = isoDay(new Date()); el("dTo").value = isoDay(new Date());
+var TABS = [{k:"network",l:"Network (Modem)"},{k:"iot",l:"IoT (A10)"},{k:"sensors",l:"Sensors"},{k:"services",l:"Services",c:"svc"}];
+el("tabs").innerHTML = TABS.map(function(t,i){ return '<div class="tab ' + (t.c||"") + (i===0?" active":"") + '" data-k="' + t.k + '">' + t.l + '</div>'; }).join("");
+Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(t){
+  t.onclick = function(){
+    Array.prototype.forEach.call(document.querySelectorAll(".tab"), function(x){ x.classList.remove("active"); });
+    t.classList.add("active"); activeTab = t.getAttribute("data-k"); renderTab();
+  };
+});
+function destroyChart(){ if (chart) { try { chart.destroy(); } catch(e){} chart = null; } }
+function loadDevices(){
+  if (!CFG.deviceStatusUrl) { devLoading = false; devErr = "Device endpoint not configured"; renderTab(); return; }
+  fetch(CFG.deviceStatusUrl + "?siteId=" + encodeURIComponent(CFG.siteId), { credentials: "include" })
+  .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(function(resp){
+    if (resp && resp.Success === false) throw new Error(resp.Message || "API error");
+    var ms = (resp && resp.Modems) || [];
+    modems = ms.filter(function(m){ return m && (m.ModemId || m.modemId); }).map(function(m){
+      var tcp = !!fd(m.TcpStatus, m.tcpStatus, false), mqtt = !!fd(m.MqttStatus, m.mqttStatus, false);
+      var onl = fd(m.IsOnline, m.isOnline); onl = (onl === null) ? (tcp || mqtt) : !!onl;
+      return {
+        clusterId: num(fd(m.ClusterId, m.clusterId), 0),
+        clusterName: String(fd(m.ClusterName, m.clusterName, m.ModemName, m.modemName, "Modem")),
+        modemId: String(fd(m.ModemId, m.modemId, "")),
+        modemName: String(fd(m.ModemName, m.modemName, "")),
+        version: String(fd(m.Version, m.version, "")),
+        signal: fd(m.SignalStrength, m.signalStrength),
+        tcp: tcp, mqtt: mqtt, online: onl,
+        a10s: (fd(m.A10List, m.a10List) || []).map(function(a){
+          var at = !!fd(a.TcpStatus, a.tcpStatus, false), am = !!fd(a.MqttStatus, a.mqttStatus, a.MQTTStatus, false);
+          return { a10Id: fd(a.A10Id, a.a10Id, a.Id, a.id, "?"), type: String(fd(a.ADCTypeName, a.adcTypeName, "")), tcp: at, mqtt: am, online: at || am };
+        })
+      };
+    });
+    devLoading = false; devErr = null; renderTab();
+  })
+  .catch(function(e){ devLoading = false; devErr = e.message; renderTab(); });
+}
+function renderTab(){
+  destroyChart(); sel = null; selType = null; lastData = null;
+  var b = el("body");
+  if (activeTab === "services") {
+    b.innerHTML = '<div class="pending"><b>Service health history</b><br/>Debouncer, Datalogger, Point Machine, Alert and Data Receiver history APIs are not available yet.<br/>This tab will bind automatically once those endpoints are integrated.</div>';
+    return;
+  }
+  if (activeTab === "sensors") { renderSensors(); return; }
+  if (devLoading) { b.innerHTML = '<div class="empty">Loading device list&hellip;</div>'; return; }
+  if (devErr) { b.innerHTML = '<div class="empty">Failed to load devices: ' + esc(devErr) + '</div>'; return; }
+  if (!modems.length) { b.innerHTML = '<div class="empty">No devices found for this station.</div>'; return; }
+  var h = "";
+  if (activeTab === "network") {
+    h += '<div class="sec-t">Select a modem to view its status history &amp; signal graph</div><div class="dev-grid">';
+    modems.forEach(function(m, i){
+      h += '<div class="dev-card" data-i="' + i + '"><div class="dc-top"><div class="dc-name">&#x1F4E1; ' + esc(m.clusterName) + '</div><div>' +
+        '<span class="tag ' + (m.tcp?"on":"off") + '"><i></i>TCP</span> <span class="tag ' + (m.mqtt?"on":"off") + '"><i></i>MQTT</span></div></div>' +
+        '<div class="dc-meta"><span>' + esc(m.modemName) + '</span><span>V' + esc(m.version || "?") + '</span>' +
+        (m.signal !== null && m.signal !== undefined && m.signal !== "" ? '<span>' + esc(m.signal) + ' dBm</span>' : '') +
+        '<span>' + m.a10s.length + ' A10</span></div></div>';
+    });
+    h += '</div>';
+  } else {
+    h += '<div class="sec-t">Select an A10 to view its status history &amp; graph</div>';
+    modems.forEach(function(m, mi){
+      if (!m.a10s.length) return;
+      h += '<div class="agroup"><div class="ag-h">&#x1F4E1; ' + esc(m.clusterName) + ' <span style="color:var(--tx4);font-weight:400">(' + esc(m.modemName) + ')</span></div><div>';
+      m.a10s.forEach(function(a, ai){
+        h += '<span class="chip" data-mi="' + mi + '" data-ai="' + ai + '"><i class="' + (a.online?"on":"off") + '"></i>A10-' + esc(a.a10Id) + (a.type ? ' &middot; ' + esc(a.type) : '') + '</span>';
+      });
+      h += '</div></div>';
+    });
+  }
+  h += '<div id="garea"></div>';
+  b.innerHTML = h;
+  if (activeTab === "network") {
+    Array.prototype.forEach.call(b.querySelectorAll(".dev-card"), function(c){
+      c.onclick = function(){
+        Array.prototype.forEach.call(b.querySelectorAll(".dev-card"), function(x){ x.classList.remove("sel"); });
+        c.classList.add("sel");
+        sel = modems[parseInt(c.getAttribute("data-i"), 10)]; selType = "modem";
+        buildGraphArea("Modem - " + sel.clusterName); loadGraph();
+      };
+    });
+  } else {
+    Array.prototype.forEach.call(b.querySelectorAll(".chip"), function(c){
+      c.onclick = function(){
+        Array.prototype.forEach.call(b.querySelectorAll(".chip"), function(x){ x.classList.remove("sel"); });
+        c.classList.add("sel");
+        var m = modems[parseInt(c.getAttribute("data-mi"), 10)];
+        var a = m.a10s[parseInt(c.getAttribute("data-ai"), 10)];
+        sel = { clusterId: m.clusterId, modemId: m.modemId, a10Id: a.a10Id }; selType = "a10";
+        buildGraphArea("A10-" + a.a10Id + " - " + m.clusterName); loadGraph(); loadRecords();
+      };
+    });
+  }
+}
+function buildGraphArea(title){
+  el("garea").innerHTML = '<div class="gbox"><div class="gbar"><div class="gtitle">' + esc(title) + '</div>' +
+    '<label class="gchk"><input type="checkbox" id="cT" checked/> TCP</label>' +
+    '<label class="gchk"><input type="checkbox" id="cM" checked/> MQTT</label>' +
+    '<button class="gbtn" id="bL">Load Graph</button></div>' +
+    '<div class="gstats" id="gstats"></div>' +
+    '<div class="note" id="gload">Loading history&hellip;</div>' +
+    '<div class="note" id="gempty">&#x1F4ED; No history found for this date range.</div>' +
+    '<div class="cwrap"><canvas id="cv" style="display:none"></canvas></div>' +
+    '<div class="rows" id="recs"></div></div>';
+  el("bL").onclick = function(){ loadGraph(); if (selType === "a10") loadRecords(); };
+  el("cT").onchange = function(){ if (lastData) renderChart(lastData); };
+  el("cM").onchange = function(){ if (lastData) renderChart(lastData); };
+}
+function dates(){ return { from: el("dFrom").value, to: el("dTo").value }; }
+function loadGraph(){
+  if (!sel) return;
+  var d = dates();
+  if (!d.from || !d.to) { alert("Please select a date range"); return; }
+  var url = selType === "modem"
+    ? CFG.modemGraphUrl + "?clusterId=" + sel.clusterId + "&fromDate=" + fmtApi(d.from) + "&toDate=" + fmtApi(d.to)
+    : CFG.a10GraphUrl + "?clusterId=" + sel.clusterId + "&a10Id=" + sel.a10Id + "&fromDate=" + fmtApi(d.from) + "&toDate=" + fmtApi(d.to);
+  el("gload").style.display = "flex"; el("gempty").style.display = "none"; el("cv").style.display = "none";
+  el("gstats").innerHTML = ""; el("bL").disabled = true;
+  fetch(url, { credentials: "include" })
+  .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(function(data){
+    el("gload").style.display = "none"; el("bL").disabled = false;
+    var arr = Array.isArray(data) ? data : ((data && (data.Data || data.data)) || []);
+    if (!arr.length || (data && data.Success === false)) { el("gempty").style.display = "flex"; lastData = null; return; }
+    lastData = arr; el("cv").style.display = "block"; renderChart(arr);
+  })
+  .catch(function(){ el("gload").style.display = "none"; el("bL").disabled = false; el("gempty").style.display = "flex"; });
+}
+function fillGaps(arr, from, to, gapMin){
+  if (!arr.length) return [];
+  var gap = (gapMin || 5) * 60000;
+  arr.sort(function(a,b){ return a.x - b.x; });
+  var out = [], start = new Date(from + "T00:00:00").getTime(), end = Math.min(new Date(to + "T23:59:59").getTime(), Date.now());
+  if (arr[0].x.getTime() > start + gap) { out.push({x:new Date(start),y:0,s:"off"}); out.push({x:new Date(arr[0].x.getTime()-1000),y:0,s:"off"}); }
+  for (var i = 0; i < arr.length; i++) {
+    if (i > 0 && arr[i].x.getTime() - arr[i-1].x.getTime() > gap) {
+      out.push({x:new Date(arr[i-1].x.getTime()+1000),y:0,s:"off"});
+      out.push({x:new Date(arr[i].x.getTime()-1000),y:0,s:"off"});
+    }
+    out.push({x:arr[i].x,y:arr[i].y,s:"on"});
+  }
+  var last = arr[arr.length-1];
+  if (last.x.getTime() < end - gap) { out.push({x:new Date(last.x.getTime()+1000),y:0,s:"off"}); out.push({x:new Date(end),y:0,s:"off"}); }
+  return out;
+}
+function stats(filled, from, to){
+  if (!filled.length) return {pct:0,avg:0};
+  var on = filled.filter(function(p){ return p.s === "on"; });
+  var avg = on.length ? Math.round(on.reduce(function(s,p){ return s+p.y; },0)/on.length) : 0;
+  var t = 0, st = null;
+  filled.forEach(function(p){
+    if (p.s === "on" && st === null) st = p.x.getTime();
+    else if (p.s === "off" && st !== null) { t += p.x.getTime() - st; st = null; }
+  });
+  if (st !== null) t += filled[filled.length-1].x.getTime() - st;
+  var total = Math.min(new Date(to + "T23:59:59").getTime(), Date.now()) - new Date(from + "T00:00:00").getTime();
+  return { pct: Math.min(total > 0 ? Math.round(t/total*100) : 0, 100), avg: avg };
+}
+function renderChart(data){
+  var d = dates(), showT = el("cT").checked, showM = el("cM").checked, isModem = selType === "modem";
+  var tcp = [], mqtt = [];
+  data.forEach(function(it){
+    var ts = fd(it.TimeStamp, it.Timestamp, it.timeStamp, it.CreatedOn, it.DateTime);
+    var tid = num(fd(it.TypeId, it.typeId), 0);
+    if (!ts) return;
+    var v = isModem ? (parseInt(fd(it.SignalStrength, it.signalStrength, 0), 10) || 0)
+      : (tid === 1 ? (parseInt(fd(it.ResponseTime, it.responseTime, 0), 10) || 0) : (parseInt(fd(it.Uptime, it.uptime, 0), 10) || 0));
+    if (v <= 0) return;
+    var p = { x: new Date(ts), y: v };
+    if (tid === 1) tcp.push(p); else if (tid === 2) mqtt.push(p);
+  });
+  var tf = fillGaps(tcp, d.from, d.to, 5), mf = fillGaps(mqtt, d.from, d.to, 5);
+  var tst = stats(tf, d.from, d.to), mst = stats(mf, d.from, d.to);
+  var unit = isModem ? " dBm" : "";
+  var sh = "";
+  if (showT && tf.length) sh += '<div class="gstat"><span class="gdot tcp"></span>TCP &middot; avg ' + tst.avg + unit + ' &middot; <span class="pct ' + (tst.pct>=80?"good":tst.pct>=50?"warn":"poor") + '">' + tst.pct + '% online</span></div>';
+  if (showM && mf.length) sh += '<div class="gstat"><span class="gdot mqtt"></span>MQTT &middot; avg ' + mst.avg + unit + ' &middot; <span class="pct ' + (mst.pct>=80?"good":mst.pct>=50?"warn":"poor") + '">' + mst.pct + '% online</span></div>';
+  el("gstats").innerHTML = sh;
+  var hasT = showT && tf.length > 0, hasM = showM && mf.length > 0;
+  if (!hasT && !hasM) { el("cv").style.display = "none"; el("gempty").style.display = "flex"; return; }
+  el("gempty").style.display = "none"; el("cv").style.display = "block";
+  destroyChart();
+  function seg(c){ return {
+    borderColor: function(ctx){ return (ctx.p0.parsed.y === 0 || ctx.p1.parsed.y === 0) ? "#ef4444" : c; },
+    backgroundColor: function(ctx){ return (ctx.p0.parsed.y === 0 || ctx.p1.parsed.y === 0) ? "rgba(239,68,68,0.1)" : "rgba(0,0,0,0)"; }
+  }; }
+  var ds = [];
+  if (hasT) ds.push({ label:"TCP", data:tf.map(function(p){return {x:p.x,y:p.y};}), borderColor:"#60a5fa", backgroundColor:"rgba(96,165,250,0.1)", borderWidth:2, fill:true, tension:0, pointRadius:1, pointHoverRadius:5, segment:seg("#60a5fa") });
+  if (hasM) ds.push({ label:"MQTT", data:mf.map(function(p){return {x:p.x,y:p.y};}), borderColor:"#34d399", backgroundColor:"rgba(52,211,153,0.1)", borderWidth:2, fill:true, tension:0, pointRadius:1, pointHoverRadius:5, segment:seg("#34d399") });
+  chart = new Chart(el("cv").getContext("2d"), {
+    type: "line", data: { datasets: ds },
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: true, labels: { color: "#9fb1d1", boxWidth: 12, font: { size: 10 } } },
+        tooltip: { callbacks: {
+          title: function(c){ return new Date(c[0].parsed.x).toLocaleString(); },
+          label: function(c){ var v = c.parsed.y; return c.dataset.label + ": " + (v === 0 ? "OFFLINE" : v + (isModem ? " dBm" : "")); }
+        } }
+      },
+      scales: {
+        x: { type: "time", time: { displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "dd MMM" } }, grid: { color: "rgba(255,255,255,0.07)" }, ticks: { color: "#9fb1d1", maxRotation: 45 } },
+        y: { min: 0, title: { display: true, text: (isModem ? "Signal (dBm)" : "TCP: response / MQTT: uptime"), color: "#9fb1d1" }, grid: { color: "rgba(255,255,255,0.07)" }, ticks: { color: "#9fb1d1", callback: function(v){ return v === 0 ? "Offline" : v; } } }
+      }
+    }
+  });
+}
+function loadRecords(){
+  if (!sel || selType !== "a10" || !CFG.a10RecordsUrl) return;
+  var d = dates(), r = el("recs");
+  r.innerHTML = '<div class="empty">Loading records&hellip;</div>';
+  var url = CFG.a10RecordsUrl + "?clusterId=" + sel.clusterId + "&a10Id=" + sel.a10Id + "&ModemId=" + encodeURIComponent(sel.modemId || "") + "&fromDate=" + fmtApi(d.from) + "&toDate=" + fmtApi(d.to);
+  fetch(url, { credentials: "include" })
+  .then(function(x){ if (!x.ok) throw new Error("HTTP " + x.status); return x.json(); })
+  .then(function(resp){
+    if (resp && resp.Success === false) { r.innerHTML = '<div class="empty">' + esc(resp.Message || "No records") + '</div>'; return; }
+    var rows = Array.isArray(resp) ? resp : ((resp && (resp.Data || resp.data)) || []);
+    if (!rows.length) { r.innerHTML = '<div class="empty">No records in this range.</div>'; return; }
+    rows.sort(function(a,b){ return new Date(fd(b.TimeStamp, b.timeStamp, 0)) - new Date(fd(a.TimeStamp, a.timeStamp, 0)); });
+    r.innerHTML = rows.slice(0, 100).map(function(rec){
+      var ts = new Date(fd(rec.TimeStamp, rec.timeStamp, 0));
+      var tid = num(fd(rec.TypeId, rec.typeId), 0);
+      return '<div class="row"><span class="t">' + ts.toLocaleString() + '</span>' +
+        '<span class="p ' + (tid === 1 ? "tcp" : "mqtt") + '">' + (tid === 1 ? "TCP" : "MQTT") + '</span>' +
+        '<span class="x">' + (tid === 1 ? ("Response " + esc(fd(rec.ResponseTime, rec.responseTime, "-"))) : ("Uptime " + esc(fd(rec.Uptime, rec.uptime, "-")))) + '</span></div>';
+    }).join("");
+  })
+  .catch(function(){ r.innerHTML = '<div class="empty">Failed to load records.</div>'; });
+}
+function renderSensors(){
+  var b = el("body"), d = dates();
+  var from = new Date(d.from + "T00:00:00").getTime(), to = new Date(d.to + "T23:59:59").getTime();
+  var list = (CFG.sensorAlerts || []).filter(function(a){
+    if (!a.time) return true;
+    var t = new Date(a.time).getTime();
+    return t >= from && t <= to;
+  });
+  var h = '<div class="sec-t">Sensor alert timeline (' + list.length + ' alert' + (list.length === 1 ? "" : "s") + ' in range) - snapshot taken when this page was opened</div>';
+  if (!list.length) { b.innerHTML = h + '<div class="empty">&#x2705; No sensor alerts in this date range.</div>'; return; }
+  list.sort(function(a,b){ return new Date(b.time || 0) - new Date(a.time || 0); });
+  h += '<div class="tl">';
+  list.forEach(function(a){
+    var pri = String(a.priority || "").toLowerCase();
+    var cls = (pri.indexOf("crit") >= 0 || pri.indexOf("high") >= 0) ? "crit" : "warn";
+    h += '<div class="tli ' + cls + '"><div class="tt">' + (a.time ? new Date(a.time).toLocaleString() : "-") + '</div><div class="te">' + esc(a.source) + '</div><div class="ts">' + esc(a.desc) + '</div></div>';
+  });
+  b.innerHTML = h + '</div>';
+}
+el("dFrom").onchange = function(){ if (activeTab === "sensors") renderSensors(); };
+el("dTo").onchange = function(){ if (activeTab === "sensors") renderSensors(); };
+renderTab();
+loadDevices();
+<\/script></body></html>`;
+    }
+
+    function openHistoryInline(sid) {
+        var stn = stations.find(function (s) { return String(s.siteId) === String(sid); });
+        if (!stn) return;
+        histState.siteId = stn.siteId;
+        histState.sel = null; histState.selType = null; histState.lastData = null;
+        destroyHistChart();
+
+        document.getElementById("hmoStation").textContent = stn.stationName;
+        document.getElementById("hmoMeta").textContent = (stn.zone || "?") + " \u203A " + (stn.division || "?") + " \u00B7 Site ID: " + stn.siteId;
+        document.getElementById("histFrom").value = hdIsoDay(new Date());
+        document.getElementById("histTo").value = hdIsoDay(new Date());
+
+        fetchDeviceStatusForSite(stn.siteId, false);
+
+        var tabs = [
+            { key: "network", label: "Network (Modem)", cls: "" },
+            { key: "iot", label: "IoT (A10)", cls: "" },
+            { key: "sensors", label: "Sensors", cls: "" },
+            { key: "services", label: "Services", cls: "svc-tab" }
+        ];
+        document.getElementById("hmoTabs").innerHTML = tabs.map(function (t, i) {
+            return '<div class="htab ' + t.cls + (i === 0 ? " active" : "") + '" data-key="' + t.key + '">' + esc(t.label) + '</div>';
+        }).join("");
+        document.querySelectorAll("#hmoTabs .htab").forEach(function (el) {
+            el.onclick = function () {
+                document.querySelectorAll("#hmoTabs .htab").forEach(function (x) { x.classList.remove("active"); });
+                el.classList.add("active");
+                renderHistTab(el.getAttribute("data-key"));
+            };
+        });
+
+        document.getElementById("hmo").classList.add("open");
+        document.getElementById("hov").classList.add("open");
+        renderHistTab("network");
+    }
+    function closeHistory() {
+        destroyHistChart();
+        document.getElementById("hmo").classList.remove("open");
+        document.getElementById("hov").classList.remove("open");
+    }
+
+    function renderHistTab(key) {
+        destroyHistChart();
+        histState.sel = null; histState.selType = null; histState.lastData = null;
+        var body = document.getElementById("hmoBody");
+        var dsc = deviceStatusCache[parseInt(histState.siteId, 10) || 0] || {};
+
+        if (key === "services") {
+            body.innerHTML = '<div class="pending-note"><b>Service health history</b><br/>' +
+                'Debouncer, Datalogger, Point Machine, Alert and Data Receiver history APIs are not available yet.<br/>' +
+                'This tab is wired up and will bind automatically once those endpoints are integrated.</div>';
+            return;
+        }
+        if (key === "sensors") { renderSensorTimeline(); return; }
+
+        if (dsc.loading && !dsc.modems) {
+            body.innerHTML = '<div class="graph-loader" style="display:flex"><span class="msel-spin"></span> Loading device list\u2026</div>';
+            setTimeout(function () {
+                var active = document.querySelector("#hmoTabs .htab.active");
+                if (active && active.getAttribute("data-key") === key && document.getElementById("hmo").classList.contains("open")) renderHistTab(key);
+            }, 800);
+            return;
+        }
+        if (dsc.error && !dsc.modems) {
+            body.innerHTML = '<div class="htl-empty">Failed to load devices: ' + esc(dsc.error) +
+                ' <button class="paste-btn" onclick="HealthDash.loadSiteDevices(' + num(histState.siteId) + ')">Retry</button></div>';
+            return;
+        }
+        var modems = dsc.modems || [];
+        if (!modems.length) { body.innerHTML = '<div class="htl-empty">No devices found for this station.</div>'; return; }
+
+        var h = "";
+        if (key === "network") {
+            h += '<div class="m-sec-t" style="margin-bottom:10px">Select a modem to view its status history &amp; signal graph</div><div class="dev-grid">';
+            modems.forEach(function (m, i) {
+                h += '<div class="dev-card" data-i="' + i + '"><div class="dc-top"><div class="dc-name">\uD83D\uDCE1 ' + esc(m.clusterName) + '</div>' +
+                    '<div class="hd-tags">' +
+                    '<span class="conn-tag ' + (m.tcp ? "tag-on" : "tag-off") + '"><span class="ct-dot"></span>TCP</span>' +
+                    '<span class="conn-tag ' + (m.mqtt ? "tag-on" : "tag-off") + '"><span class="ct-dot"></span>MQTT</span>' +
+                    '</div></div>' +
+                    '<div class="dc-meta"><span>' + esc(m.modemName) + '</span><span>V' + esc(m.version || "?") + '</span>' +
+                    (m.signal !== null && m.signal !== undefined && m.signal !== "" ? '<span>' + esc(m.signal) + ' dBm</span>' : '') +
+                    '<span>' + m.a10s.length + ' A10</span></div></div>';
+            });
+            h += '</div>';
+        } else { // iot
+            h += '<div class="m-sec-t" style="margin-bottom:10px">Select an A10 to view its status history &amp; graph</div>';
+            modems.forEach(function (m, mi) {
+                if (!m.a10s.length) return;
+                h += '<div class="a10-group"><div class="ag-hdr">\uD83D\uDCE1 ' + esc(m.clusterName) + ' <span style="color:var(--tx4);font-weight:400">(' + esc(m.modemName) + ')</span></div><div>';
+                m.a10s.forEach(function (a, ai) {
+                    h += '<span class="a10-chip" data-mi="' + mi + '" data-ai="' + ai + '"><span class="ad ' + (a.online ? "on" : "off") + '"></span>A10-' + esc(a.a10Id) + (a.type ? ' \u00B7 ' + esc(a.type) : '') + '</span>';
+                });
+                h += '</div></div>';
+            });
+        }
+        h += '<div id="histGraphArea"></div>';
+        body.innerHTML = h;
+
+        if (key === "network") {
+            body.querySelectorAll(".dev-card").forEach(function (el) {
+                el.onclick = function () {
+                    body.querySelectorAll(".dev-card").forEach(function (x) { x.classList.remove("selected"); });
+                    el.classList.add("selected");
+                    histState.sel = modems[parseInt(el.getAttribute("data-i"), 10)];
+                    histState.selType = "modem";
+                    buildGraphArea("Modem \u2014 " + histState.sel.clusterName);
+                    loadHistGraph();
+                };
+            });
+        } else {
+            body.querySelectorAll(".a10-chip").forEach(function (el) {
+                el.onclick = function () {
+                    body.querySelectorAll(".a10-chip").forEach(function (x) { x.classList.remove("selected"); });
+                    el.classList.add("selected");
+                    var m = modems[parseInt(el.getAttribute("data-mi"), 10)];
+                    histState.sel = m.a10s[parseInt(el.getAttribute("data-ai"), 10)];
+                    histState.selType = "a10";
+                    buildGraphArea("A10-" + histState.sel.a10Id + " \u2014 " + m.clusterName);
+                    loadHistGraph();
+                    loadA10HistoryList();
+                };
+            });
+        }
+    }
+
+    function buildGraphArea(title) {
+        document.getElementById("histGraphArea").innerHTML =
+            '<div class="graph-box">' +
+              '<div class="graph-bar"><div class="gb-title">' + esc(title) + '</div>' +
+                '<label class="gchk"><input type="checkbox" id="hChkTcp" checked /> TCP</label>' +
+                '<label class="gchk"><input type="checkbox" id="hChkMqtt" checked /> MQTT</label>' +
+                '<button class="gbtn" id="hBtnLoad">Load Graph</button></div>' +
+              '<div class="graph-stats" id="hGraphStats"></div>' +
+              '<div class="graph-loader" id="hGraphLoader"><span class="msel-spin"></span> Loading history\u2026</div>' +
+              '<div class="graph-empty" id="hGraphEmpty">\uD83D\uDCED No history found for this date range.</div>' +
+              '<div class="chart-wrap"><canvas id="hChart" style="display:none"></canvas></div>' +
+              '<div class="hist-list" id="hHistList"></div>' +
+            '</div>';
+        document.getElementById("hBtnLoad").onclick = function () { loadHistGraph(); if (histState.selType === "a10") loadA10HistoryList(); };
+        document.getElementById("hChkTcp").onchange = function () { if (histState.lastData) renderHistChart(histState.lastData); };
+        document.getElementById("hChkMqtt").onchange = function () { if (histState.lastData) renderHistChart(histState.lastData); };
+    }
+
+    async function loadHistGraph() {
+        if (!histState.sel) return;
+        var d = histDates();
+        if (!d.from || !d.to) { alert("Please select a date range"); return; }
+        var url;
+        if (histState.selType === "modem") {
+            if (!hdUrlOk(MODEM_GRAPH_URL)) return;
+            url = MODEM_GRAPH_URL + "?clusterId=" + histState.sel.clusterId + "&fromDate=" + hdFormatDateApi(d.from) + "&toDate=" + hdFormatDateApi(d.to);
+        } else {
+            if (!hdUrlOk(A10_GRAPH_URL)) return;
+            url = A10_GRAPH_URL + "?clusterId=" + histState.sel.clusterId + "&a10Id=" + histState.sel.a10Id + "&fromDate=" + hdFormatDateApi(d.from) + "&toDate=" + hdFormatDateApi(d.to);
+        }
+        var loader = document.getElementById("hGraphLoader"), empty = document.getElementById("hGraphEmpty"),
+            chartEl = document.getElementById("hChart"), btn = document.getElementById("hBtnLoad");
+        loader.style.display = "flex"; empty.style.display = "none"; chartEl.style.display = "none";
+        document.getElementById("hGraphStats").innerHTML = "";
+        btn.disabled = true;
+        try {
+            var r = await fetch(url, { credentials: "same-origin" });
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            var data = await r.json();
+            loader.style.display = "none"; btn.disabled = false;
+            if (!data || data.Success === false || (Array.isArray(data) && data.length === 0)) {
+                empty.style.display = "flex"; histState.lastData = null; return;
+            }
+            histState.lastData = Array.isArray(data) ? data : hdUnwrapList(data);
+            chartEl.style.display = "block";
+            renderHistChart(histState.lastData);
+        } catch (e) {
+            loader.style.display = "none"; btn.disabled = false; empty.style.display = "flex";
+            log("History graph failed: " + e.message, "err");
+        }
+    }
+
+    // ---- gap filling + online stats (ported from the Network Dashboard) ----
+    function hdFillTimeGaps(dataArray, fromDate, toDate, gapThresholdMinutes) {
+        if (dataArray.length === 0) return [];
+        var gapMs = (gapThresholdMinutes || 5) * 60 * 1000;
+        dataArray.sort(function (a, b) { return a.x - b.x; });
+        var out = [];
+        var startTime = new Date(fromDate + "T00:00:00").getTime();
+        var endTime = new Date(toDate + "T23:59:59").getTime();
+        var effectiveEnd = Math.min(endTime, Date.now());
+        if (dataArray[0].x.getTime() > startTime + gapMs) {
+            out.push({ x: new Date(startTime), y: 0, status: "offline" });
+            out.push({ x: new Date(dataArray[0].x.getTime() - 1000), y: 0, status: "offline" });
+        }
+        for (var i = 0; i < dataArray.length; i++) {
+            if (i > 0) {
+                var gap = dataArray[i].x.getTime() - dataArray[i - 1].x.getTime();
+                if (gap > gapMs) {
+                    out.push({ x: new Date(dataArray[i - 1].x.getTime() + 1000), y: 0, status: "offline" });
+                    out.push({ x: new Date(dataArray[i].x.getTime() - 1000), y: 0, status: "offline" });
+                }
+            }
+            out.push({ x: dataArray[i].x, y: dataArray[i].y, status: "online" });
+        }
+        var last = dataArray[dataArray.length - 1];
+        if (last.x.getTime() < effectiveEnd - gapMs) {
+            out.push({ x: new Date(last.x.getTime() + 1000), y: 0, status: "offline" });
+            out.push({ x: new Date(effectiveEnd), y: 0, status: "offline" });
+        }
+        return out;
+    }
+    function hdCalcOnlineStats(filled, fromDate, toDate) {
+        if (!filled.length) return { onlinePercent: 0, avg: 0 };
+        var on = filled.filter(function (p) { return p.status === "online"; });
+        var avg = on.length ? Math.round(on.reduce(function (s, p) { return s + p.y; }, 0) / on.length) : 0;
+        var t = 0, start = null;
+        filled.forEach(function (p) {
+            if (p.status === "online" && start === null) start = p.x.getTime();
+            else if (p.status === "offline" && start !== null) { t += p.x.getTime() - start; start = null; }
+        });
+        if (start !== null) t += filled[filled.length - 1].x.getTime() - start;
+        var total = Math.min(new Date(toDate + "T23:59:59").getTime(), Date.now()) - new Date(fromDate + "T00:00:00").getTime();
+        return { onlinePercent: Math.min(total > 0 ? Math.round(t / total * 100) : 0, 100), avg: avg };
+    }
+
+    function renderHistChart(data) {
+        var d = histDates();
+        var showTcp = document.getElementById("hChkTcp").checked;
+        var showMqtt = document.getElementById("hChkMqtt").checked;
+        var isModem = histState.selType === "modem";
+        var tcpRaw = [], mqttRaw = [];
+
+        data.forEach(function (item) {
+            var ts = firstDefined(item.TimeStamp, item.Timestamp, item.timeStamp, item.CreatedOn, item.DateTime);
+            var typeId = num(firstDefined(item.TypeId, item.typeId), 0);
+            if (!ts) return;
+            var val;
+            if (isModem) val = parseInt(firstDefined(item.SignalStrength, item.signalStrength, 0), 10) || 0;
+            else val = typeId === 1 ? (parseInt(firstDefined(item.ResponseTime, item.responseTime, 0), 10) || 0)
+                                    : (parseInt(firstDefined(item.Uptime, item.uptime, 0), 10) || 0);
+            if (val <= 0) return;
+            var pt = { x: new Date(ts), y: val };
+            if (typeId === 1) tcpRaw.push(pt); else if (typeId === 2) mqttRaw.push(pt);
+        });
+
+        var tcpFilled = hdFillTimeGaps(tcpRaw, d.from, d.to, 5);
+        var mqttFilled = hdFillTimeGaps(mqttRaw, d.from, d.to, 5);
+        var tcpStats = hdCalcOnlineStats(tcpFilled, d.from, d.to);
+        var mqttStats = hdCalcOnlineStats(mqttFilled, d.from, d.to);
+
+        var unit = isModem ? " dBm" : "";
+        var statsHtml = "";
+        if (showTcp && tcpFilled.length) {
+            var tc = tcpStats.onlinePercent >= 80 ? "good" : tcpStats.onlinePercent >= 50 ? "warn" : "poor";
+            statsHtml += '<div class="gstat"><span class="gs-dot tcp"></span>TCP \u00B7 avg ' + tcpStats.avg + unit + ' \u00B7 <span class="pct ' + tc + '">' + tcpStats.onlinePercent + '% online</span></div>';
+        }
+        if (showMqtt && mqttFilled.length) {
+            var mc = mqttStats.onlinePercent >= 80 ? "good" : mqttStats.onlinePercent >= 50 ? "warn" : "poor";
+            statsHtml += '<div class="gstat"><span class="gs-dot mqtt"></span>MQTT \u00B7 avg ' + mqttStats.avg + unit + ' \u00B7 <span class="pct ' + mc + '">' + mqttStats.onlinePercent + '% online</span></div>';
+        }
+        document.getElementById("hGraphStats").innerHTML = statsHtml;
+
+        var hasTcp = showTcp && tcpFilled.length > 0, hasMqtt = showMqtt && mqttFilled.length > 0;
+        var chartEl = document.getElementById("hChart"), empty = document.getElementById("hGraphEmpty");
+        if (!hasTcp && !hasMqtt) { chartEl.style.display = "none"; empty.style.display = "flex"; return; }
+        empty.style.display = "none"; chartEl.style.display = "block";
+
+        destroyHistChart();
+        function seg(colorOk) {
+            return {
+                borderColor: function (ctx) { return (ctx.p0.parsed.y === 0 || ctx.p1.parsed.y === 0) ? "#ef4444" : colorOk; },
+                backgroundColor: function (ctx) { return (ctx.p0.parsed.y === 0 || ctx.p1.parsed.y === 0) ? "rgba(239,68,68,0.1)" : "rgba(0,0,0,0)"; }
+            };
+        }
+        var datasets = [];
+        if (hasTcp) datasets.push({ label: "TCP", data: tcpFilled.map(function (p) { return { x: p.x, y: p.y }; }), borderColor: "#60a5fa", backgroundColor: "rgba(96,165,250,0.1)", borderWidth: 2, fill: true, tension: 0, pointRadius: 1, pointHoverRadius: 5, segment: seg("#60a5fa") });
+        if (hasMqtt) datasets.push({ label: "MQTT", data: mqttFilled.map(function (p) { return { x: p.x, y: p.y }; }), borderColor: "#34d399", backgroundColor: "rgba(52,211,153,0.1)", borderWidth: 2, fill: true, tension: 0, pointRadius: 1, pointHoverRadius: 5, segment: seg("#34d399") });
+
+        var isLight = document.body.getAttribute("data-aurora") === "light";
+        var gridColor = isLight ? "rgba(15,23,42,0.08)" : "rgba(255,255,255,0.08)";
+        var textColor = isLight ? "#64748b" : "#8b9dc3";
+        var yTitle = isModem ? "Signal (dBm)" : "TCP: response \u00B7 MQTT: uptime";
+
+        histState.chart = new Chart(chartEl.getContext("2d"), {
+            type: "line",
+            data: { datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: "index", intersect: false },
+                plugins: {
+                    legend: { display: true, labels: { color: textColor, boxWidth: 12, font: { size: 10 } } },
+                    tooltip: {
+                        callbacks: {
+                            title: function (ctx) { return new Date(ctx[0].parsed.x).toLocaleString(); },
+                            label: function (ctx) { var v = ctx.parsed.y; return ctx.dataset.label + ": " + (v === 0 ? "OFFLINE" : v + (isModem ? " dBm" : "")); }
+                        }
+                    }
+                },
+                scales: {
+                    x: { type: "time", time: { displayFormats: { minute: "HH:mm", hour: "HH:mm", day: "dd MMM" } }, grid: { color: gridColor }, ticks: { color: textColor, maxRotation: 45 } },
+                    y: { min: 0, title: { display: true, text: yTitle, color: textColor }, grid: { color: gridColor }, ticks: { color: textColor, callback: function (v) { return v === 0 ? "Offline" : v; } } }
+                }
+            }
+        });
+    }
+
+    // A10 recent records list ({Success, Data})
+    async function loadA10HistoryList() {
+        if (!histState.sel || histState.selType !== "a10" || !hdUrlOk(A10_RECORDS_URL)) return;
+        var d = histDates();
+        var el = document.getElementById("hHistList");
+        el.innerHTML = '<div class="graph-loader" style="display:flex"><span class="msel-spin"></span> Loading records\u2026</div>';
+        var url = A10_RECORDS_URL + "?clusterId=" + histState.sel.clusterId + "&a10Id=" + histState.sel.a10Id +
+            "&ModemId=" + encodeURIComponent(histState.sel.modemId || "") +
+            "&fromDate=" + hdFormatDateApi(d.from) + "&toDate=" + hdFormatDateApi(d.to);
+        try {
+            var r = await fetch(url, { credentials: "same-origin" });
+            if (!r.ok) throw new Error("HTTP " + r.status);
+            var resp = await r.json();
+            if (resp && resp.Success === false) { el.innerHTML = '<div class="htl-empty">' + esc(resp.Message || "No records") + '</div>'; return; }
+            var rows = hdUnwrapList(resp);
+            if (!rows.length) { el.innerHTML = '<div class="htl-empty">No records in this range.</div>'; return; }
+            rows.sort(function (a, b) { return new Date(firstDefined(b.TimeStamp, b.timeStamp, 0)) - new Date(firstDefined(a.TimeStamp, a.timeStamp, 0)); });
+            el.innerHTML = rows.slice(0, 100).map(function (rec) {
+                var ts = new Date(firstDefined(rec.TimeStamp, rec.timeStamp, 0));
+                var typeId = num(firstDefined(rec.TypeId, rec.typeId), 0);
+                return '<div class="hist-row"><span class="hr-dot on"></span>' +
+                    '<span class="hr-time">' + ts.toLocaleString() + '</span>' +
+                    '<span class="hr-proto ' + (typeId === 1 ? "tcp" : "mqtt") + '">' + (typeId === 1 ? "TCP" : "MQTT") + '</span>' +
+                    '<span class="hr-txt">' + (typeId === 1
+                        ? ("Response " + esc(firstDefined(rec.ResponseTime, rec.responseTime, "\u2014")))
+                        : ("Uptime " + esc(firstDefined(rec.Uptime, rec.uptime, "\u2014")))) + '</span></div>';
+            }).join("");
+        } catch (e) {
+            el.innerHTML = '<div class="htl-empty">Failed to load records.</div>';
+        }
+    }
+
+    // Sensors tab — sensor-alert timeline for the site within the date range
+    function renderSensorTimeline() {
+        var body = document.getElementById("hmoBody");
+        var d = histDates();
+        var from = new Date(d.from + "T00:00:00").getTime(), to = new Date(d.to + "T23:59:59").getTime();
+        var alerts = alertLiveRaw.filter(function (a) {
+            if (String(a.siteId || "") !== String(histState.siteId)) return false;
+            if (SERVICE_HEALTH_IDS.indexOf(String(a.sourceId || "")) >= 0) return false;
+            var ts = firstDefined(a.timestampSet, a.TimestampSet, a.timestampUpdated, a.TimestampUpdated);
+            if (!ts) return true;
+            var t = new Date(ts).getTime();
+            return t >= from && t <= to;
+        });
+        var h = '<div class="m-sec-t" style="margin-bottom:10px">Sensor alert timeline (' + alerts.length + ' alert' + (alerts.length === 1 ? '' : 's') + ' in range)</div>' +
+            '<div style="font-size:10.5px;color:var(--tx4);margin-bottom:12px">Refresh range with the date pickers above, then re-open this tab.</div>';
+        if (!alerts.length) { body.innerHTML = h + '<div class="htl-empty">\u2705 No sensor alerts in this date range.</div>'; return; }
+        alerts.sort(function (a, b) {
+            return new Date(firstDefined(b.timestampSet, b.TimestampSet, 0)).getTime() - new Date(firstDefined(a.timestampSet, a.TimestampSet, 0)).getTime();
+        });
+        h += '<div class="htl">';
+        alerts.slice(0, 150).forEach(function (a) {
+            var ts = firstDefined(a.timestampSet, a.TimestampSet);
+            var pri = String(firstDefined(a.priority, a.Priority, "")).toLowerCase();
+            var stCls = (pri.indexOf("crit") >= 0 || pri.indexOf("high") >= 0) ? "st-critical" : "st-warning";
+            h += '<div class="htl-item ' + stCls + '"' + (a.alertId ? ' style="cursor:pointer" onclick="HealthDash.openAlertDetail(' + num(a.alertId) + ')"' : '') + '>' +
+                '<div class="htl-time">' + (ts ? new Date(ts).toLocaleString() : "\u2014") + '</div>' +
+                '<div class="htl-event">' + esc(firstDefined(a.sourceId, a.SourceId, "Sensor")) + '</div>' +
+                '<div class="htl-sub">' + esc(firstDefined(a.alertDescription, a.AlertDescription, "")) + '</div></div>';
+        });
+        body.innerHTML = h + '</div>';
+    }
+
+    function loadSiteDevices(siteId, reopenType) {
+        fetchDeviceStatusForSite(siteId, true);
+        if (reopenType) {
+            var tries = 0;
+            var t = setInterval(function () {
+                var c = deviceStatusCache[parseInt(siteId, 10) || 0] || {};
+                if (!c.loading || ++tries > 40) {
+                    clearInterval(t);
+                    var mo = document.getElementById("mo");
+                    if (mo && mo.classList.contains("open")) openHW(String(siteId), reopenType);
+                }
+            }, 300);
+        }
+    }
+
     window.HealthDash = {
         openSvc: openSvc, openHW: openHW, openWrench: openWrench,
+        openHistory: openHistory, closeHistory: closeHistory, loadSiteDevices: loadSiteDevices,
+        mergePayload: mergeHealthPayload, // debug/integration hook: HealthDash.mergePayload(json, topic)
         openPaste: openPaste, doPaste: doPaste, closeModal: closeModal,
         toggleMqtt: function () { mqttConnected ? disconnectMqtt() : connectMqtt(); },
         subscribeMqtt: subscribeMqtt,
@@ -3680,13 +5983,24 @@
         connectDebouncerWs();
         // Fetch sensor data for all known sites after topics load
         setTimeout(fetchAllSensorData, 1000);
+        // Live modem / A10 device status (Network-Dashboard style binding)
+        setTimeout(loadVisibleDeviceStatus, 500);
     });
     fetchAlertLive();
     setInterval(fetchAlertLive, ALERT_LIVE_POLL_MS);
+    // Refresh visible-site device status every 2 minutes
+    setInterval(function () { loadVisibleDeviceStatus(true); }, 120000);
     // Re-fetch sensor data periodically (every 5 min) for new sites
     setInterval(function () { fetchAllSensorData(); }, 300000);
     render();
-    setInterval(function () { var t = document.getElementById("timer"); if (t) t.textContent = Math.floor((Date.now() - lastRefresh) / 1000) + "s"; }, 1000);
+    var _lastStaleKey = null;
+    setInterval(function () {
+        var t = document.getElementById("timer");
+        if (t) t.textContent = Math.floor((Date.now() - lastRefresh) / 1000) + "s";
+        // Detect staleness transitions (sites going silent / coming back) and re-render.
+        var staleKey = stations.filter(isStationStale).map(function (s) { return s.siteId; }).sort().join(",");
+        if (staleKey !== _lastStaleKey) { _lastStaleKey = staleKey; render(); }
+    }, 1000);
 
     if (CONFIG.API_URL) {
         var poll = async function () {

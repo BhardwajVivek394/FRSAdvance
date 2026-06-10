@@ -1,4 +1,5 @@
 ﻿using Domain;
+using Domain.Dto;
 using E7FRSAdvance.Interface;
 using E7FRSAdvance.Utility;
 using Newtonsoft.Json;
@@ -9,6 +10,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Web.Mvc;
+using static E7FRSAdvance.Utility.Utility;
 
 namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
@@ -183,11 +185,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 DivisionName = GetSiteReflectedString(site, new[] { "DivisionName", "divisionName", "Division" }),
                 Topics = new[]
                 {
-                    basePath + "/mqtt/dl/heartbeat",
-                    basePath + "/alerthealth",
-                    "datareceiver/" + site.Id + "/health",
-                    "debouncer/" + site.Id + "/health",
-                    "pointServices/" + site.Id + "/health"
+                     $"/{basePath}/mqtt/dl/heartbeat",
+                     $"/{basePath}/alerthealth",
+                     $"datareceiver/{site.Id}/health",
+                     $"debouncer/{site.Id}/health",
+                     $"pointServices/{site.Id}/health"
                 }
             });
         }
@@ -553,5 +555,222 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             return mMQTTDetail;
         }
+
+        [HttpGet]
+        public ActionResult GetSiteDeviceStatus(int siteId)
+        {
+            try
+            {
+                ApiStatusResponse apiData = null;
+                string searchDate = DateTime.Now.ToString("dd-MM-yyyy");
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    string apiUrl = string.Format(
+                        "A10Status/GetStatus/SiteId/{0}/SearchDate/{1}",
+                        siteId,
+                        searchDate);
+
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = response.Content.ReadAsStringAsync().Result;
+                        var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                        serializer.MaxJsonLength = int.MaxValue;
+                        apiData = serializer.Deserialize<ApiStatusResponse>(jsonResponse);
+                    }
+                }
+
+                if (apiData == null)
+                {
+                    return Json(
+                        new { Success = false, Message = "No data from status API", SiteId = siteId },
+                        JsonRequestBehavior.AllowGet);
+                }
+
+                var modems = new List<object>();
+
+                if (apiData.Modems != null)
+                {
+                    foreach (var apiModem in apiData.Modems)
+                    {
+                        // Same rule as the Network Dashboard: skip placeholder rows
+                        if (string.IsNullOrEmpty(apiModem.ModemId))
+                            continue;
+
+                        var a10s = new List<object>();
+
+                        if (apiModem.A10List != null)
+                        {
+                            foreach (var a10 in apiModem.A10List)
+                            {
+                                string adcTypeName;
+                                try { adcTypeName = EnumHelper.GetDisplayName((ADCType)a10.ADCTypeId); }
+                                catch { adcTypeName = "Type " + a10.ADCTypeId; }
+
+                                a10s.Add(new
+                                {
+                                    A10Id = a10.A10Id,
+                                    TcpStatus = a10.TcpStatus,
+                                    MqttStatus = a10.MQTTStatus,
+                                    LastDataTime = (a10.TimeStamp != default(DateTime))
+                                        ? a10.TimeStamp.ToString("yyyy-MM-ddTHH:mm:ss")
+                                        : null,
+                                    Uptime = a10.Uptime,
+                                    ADCTypeId = a10.ADCTypeId,
+                                    ADCTypeName = adcTypeName,
+                                    FirmwareVersion = a10.FirmwareVersion
+                                });
+                            }
+                        }
+
+                        modems.Add(new
+                        {
+                            ClusterId = apiModem.ClusterId,
+                            ClusterName = apiModem.ClusterName,
+                            ModemId = apiModem.ModemId,
+                            ModemName = apiModem.ModemName,
+                            Version = apiModem.ModemVersion,
+                            SignalStrength = apiModem.SignalStrength,
+                            TcpStatus = apiModem.TcpStatus,
+                            MqttStatus = apiModem.MqttStatus,
+                            IsOnline = apiModem.Status,
+                            SimNumber = apiModem.SimNumber,
+                            A10List = a10s
+                        });
+                    }
+                }
+
+                var result = Json(new
+                {
+                    Success = true,
+                    SiteId = siteId,
+                    SiteName = apiData.SiteName,
+                    DivisionName = apiData.DivisionName,
+                    ZoneName = apiData.ZoneName,
+                    Modems = modems
+                }, JsonRequestBehavior.AllowGet);
+
+                // Large stations can exceed the default serializer limit
+                result.MaxJsonLength = int.MaxValue;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                return Json(
+                    new { Success = false, Message = ex.Message, SiteId = siteId },
+                    JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        // --------------------------------------------------------------------------
+        // 2) GET: Health/GetModemHistoryForGraph?clusterId=&fromDate=&toDate=
+        //    Modem signal/status history for the graph (dates: dd-MM-yyyy).
+        //    Returns the upstream JSON untouched:
+        //      [{ TimeStamp, TypeId (1 = TCP, 2 = MQTT), SignalStrength }, ...]
+        // --------------------------------------------------------------------------
+        [HttpGet]
+        public ActionResult GetModemHistoryForGraph(int clusterId, string fromDate, string toDate)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    string apiUrl = string.Format(
+                        "Product/GetModemHistory/ClusterId/{0}/FromDate/{1}/ToDate/{2}",
+                        clusterId, fromDate, toDate);
+
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = response.Content.ReadAsStringAsync().Result;
+                        return Content(jsonResponse, "application/json");
+                    }
+                }
+
+                return Content("[]", "application/json");
+            }
+            catch (Exception)
+            {
+                return Content("[]", "application/json");
+            }
+        }
+
+        // --------------------------------------------------------------------------
+        // 3) GET: Health/GetA10HistoryForGraph?clusterId=&a10Id=&fromDate=&toDate=
+        //    A10 history for the graph (dates: dd-MM-yyyy). Upstream JSON untouched:
+        //      [{ TimeStamp, TypeId (1 = TCP, 2 = MQTT), ResponseTime, Uptime }, ...]
+        //    (the page plots ResponseTime for TCP and Uptime for MQTT, exactly like
+        //    the Network Dashboard's A10 graph)
+        // --------------------------------------------------------------------------
+        [HttpGet]
+        public ActionResult GetA10HistoryForGraph(int clusterId, int a10Id, string fromDate, string toDate)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    string apiUrl = string.Format(
+                        "A10Status/GetA10History/ClusterId/{0}/A10Id/{1}/FromDate/{2}/ToDate/{3}",
+                        clusterId, a10Id, fromDate, toDate);
+
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = response.Content.ReadAsStringAsync().Result;
+                        return Content(jsonResponse, "application/json");
+                    }
+                }
+
+                return Content("[]", "application/json");
+            }
+            catch (Exception)
+            {
+                return Content("[]", "application/json");
+            }
+        }
+
+        // --------------------------------------------------------------------------
+        // 4) GET: Health/GetA10HistoryRecords?clusterId=&a10Id=&ModemId=&fromDate=&toDate=
+        //    A10 record list for the history panel, wrapped as { Success, Data }.
+        //    ("Records" suffix avoids clashing with any existing GetA10History action.)
+        // --------------------------------------------------------------------------
+        [HttpGet]
+        public ActionResult GetA10HistoryRecords(int clusterId, int a10Id, string ModemId, string fromDate, string toDate)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    string apiUrl = string.Format(
+                        "A10Status/GetA10History/ClusterId/{0}/A10Id/{1}/FromDate/{2}/ToDate/{3}",
+                        clusterId, a10Id, fromDate, toDate);
+
+                    var response = hcf.client.GetAsync(apiUrl).Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = response.Content.ReadAsStringAsync().Result;
+                        var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                        serializer.MaxJsonLength = int.MaxValue;
+                        var data = serializer.DeserializeObject(jsonResponse);
+
+                        var result = Json(new { Success = true, Data = data }, JsonRequestBehavior.AllowGet);
+                        result.MaxJsonLength = int.MaxValue;
+                        return result;
+                    }
+                }
+
+                return Json(new { Success = false, Message = "No data from history API" }, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, Message = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
     }
 }
