@@ -27,50 +27,81 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
-    *, *::before, *::after {
+    #app, #app *, #app *::before, #app *::after,
+    #ov, #mo, #mo *, #mo *::before, #mo *::after {
         box-sizing: border-box;
-        margin: 0;
-        padding: 0
     }
 
-    :root {
-        --bg: #04080f;
-        --bg2: #0b1120;
-        --bg3: #0f1729;
-        --bg4: #131d33;
-        --bg5: #182440;
-        --bdr: #1a2540;
-        --bdr2: #243352;
-        --tx: #e2e8f0;
-        --tx2: #8b9dc3;
-        --tx3: #4a5e80;
-        --tx4: #334563;
+        #app button, #mo button, #app input, #app select, #mo input, #mo select, #mo textarea {
+            font: inherit;
+        }
+
+    :root, body:not([data-aurora="light"]) {
+        --bg: transparent;
+        --bg2: rgba(255,255,255,.055);
+        --bg3: rgba(255,255,255,.075);
+        --bg4: rgba(255,255,255,.105);
+        --bg5: rgba(255,255,255,.135);
+        --bdr: rgba(255,255,255,.105);
+        --bdr2: rgba(255,255,255,.18);
+        --tx: rgba(255,255,255,.94);
+        --tx2: rgba(226,232,240,.76);
+        --tx3: rgba(203,213,225,.55);
+        --tx4: rgba(148,163,184,.42);
         --grn: #34d399;
         --amb: #fbbf24;
-        --red: #f87171;
+        --red: #fb7185;
         --blu: #60a5fa;
         --pur: #a78bfa;
         --cyan: #22d3ee;
-        --grn-s: rgba(52,211,153,.08);
-        --amb-s: rgba(251,191,36,.08);
-        --red-s: rgba(248,113,113,.08);
-        --blu-s: rgba(96,165,250,.08);
-        --pur-s: rgba(167,139,250,.06);
-        --mono: 'JetBrains Mono',monospace;
-        --sans: 'DM Sans',-apple-system,sans-serif;
+        --grn-s: rgba(52,211,153,.10);
+        --amb-s: rgba(251,191,36,.10);
+        --red-s: rgba(251,113,133,.10);
+        --blu-s: rgba(96,165,250,.10);
+        --pur-s: rgba(167,139,250,.08);
+        --card-shadow: 0 18px 44px rgba(0,0,0,.24);
+        --glass-blur: blur(22px) saturate(145%);
+        --mono: 'JetBrains Mono',ui-monospace,monospace;
+        --sans: 'Manrope','Inter','DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     }
 
-    body {
+    body[data-aurora="light"] {
+        --bg: transparent;
+        --bg2: rgba(255,255,255,.78);
+        --bg3: rgba(248,250,252,.92);
+        --bg4: rgba(226,232,240,.72);
+        --bg5: rgba(203,213,225,.65);
+        --bdr: rgba(15,23,42,.10);
+        --bdr2: rgba(15,23,42,.18);
+        --tx: #0f172a;
+        --tx2: #334155;
+        --tx3: #64748b;
+        --tx4: #94a3b8;
+        --grn: #059669;
+        --amb: #d97706;
+        --red: #dc2626;
+        --blu: #2563eb;
+        --pur: #7c3aed;
+        --cyan: #0891b2;
+        --grn-s: rgba(5,150,105,.10);
+        --amb-s: rgba(217,119,6,.10);
+        --red-s: rgba(220,38,38,.10);
+        --blu-s: rgba(37,99,235,.10);
+        --pur-s: rgba(124,58,237,.08);
+        --card-shadow: 0 14px 38px rgba(15,23,42,.08);
+        --glass-blur: blur(18px) saturate(135%);
+    }
+
+    #app, #mo {
         font-family: var(--sans);
-        background: var(--bg);
         color: var(--tx);
-        min-height: 100vh
     }
 
     .shell {
-        max-width: 1440px;
-        margin: 0 auto;
-        padding: 24px 20px
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        padding: 8px 2px 0;
     }
 
     /* ===== HEADER ===== */
@@ -80,13 +111,13 @@
         align-items: center;
         flex-wrap: wrap;
         gap: 12px;
-        margin-bottom: 20px
+        margin-bottom: 18px
     }
 
         .hdr h1 {
             font-size: 22px;
             font-weight: 800;
-            color: #f1f5f9;
+            color: var(--tx);
             letter-spacing: -.02em
         }
 
@@ -226,13 +257,16 @@
     }
 
     .sum-card {
-        background: var(--bg2);
+        background: linear-gradient(180deg, var(--bg2), rgba(255,255,255,.025));
         border: 1px solid var(--bdr);
-        border-radius: 12px;
+        border-radius: 14px;
         padding: 14px 18px;
         position: relative;
         overflow: hidden;
-        transition: all .2s
+        transition: all .2s;
+        box-shadow: var(--card-shadow);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
     }
 
         .sum-card::before {
@@ -307,27 +341,40 @@
 
     /* ===== TABLE ===== */
     .tbl-wrap {
-        overflow-x: auto;
+        overflow: auto;
+        max-height: clamp(360px, calc(100vh - 420px), 680px);
         border: 1px solid var(--bdr);
-        border-radius: 12px;
-        background: var(--bg2)
+        border-radius: 14px;
+        background: linear-gradient(180deg, var(--bg2), rgba(255,255,255,.025));
+        box-shadow: var(--card-shadow);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+        scrollbar-width: thin;
+        scrollbar-color: var(--bdr2) transparent;
     }
 
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        min-width: 1080px
-    }
+        .tbl-wrap > table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 1120px
+        }
 
-    thead tr.group-row th {
-        text-align: center;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: .1em;
-        text-transform: uppercase;
-        padding: 8px 10px;
-        border-bottom: 1px solid var(--bdr)
-    }
+        .tbl-wrap thead tr.group-row th {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--bdr);
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: var(--bg3);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+        }
 
     .group-row .g-station {
         background: transparent;
@@ -353,7 +400,7 @@
         background: transparent
     }
 
-    thead tr.sub-row th {
+    .tbl-wrap thead tr.sub-row th {
         font-size: 9.5px;
         font-weight: 600;
         color: var(--tx3);
@@ -364,9 +411,11 @@
         border-bottom: 1px solid var(--bdr);
         white-space: nowrap;
         position: sticky;
-        top: 0;
-        background: var(--bg2);
-        z-index: 2
+        top: 33px;
+        background: var(--bg3);
+        z-index: 4;
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
     }
 
     .sub-row .sh-svc {
@@ -385,38 +434,38 @@
         border-right: 2px solid rgba(167,139,250,.15)
     }
 
-    tbody tr {
+    .tbl-wrap tbody tr {
         transition: background .12s
     }
 
-        tbody tr:hover {
+        .tbl-wrap tbody tr:hover {
             background: var(--bg4)
         }
 
-    tbody td {
+    .tbl-wrap tbody td {
         padding: 10px 8px;
         border-bottom: 1px solid rgba(26,37,64,.5);
         vertical-align: middle;
         font-size: 13px
     }
 
-    tbody tr:last-child td {
+    .tbl-wrap tbody tr:last-child td {
         border-bottom: none
     }
 
-    tbody .bd-svc-l {
+    .tbl-wrap tbody .bd-svc-l {
         border-left: 2px solid rgba(96,165,250,.08)
     }
 
-    tbody .bd-svc-r {
+    .tbl-wrap tbody .bd-svc-r {
         border-right: 2px solid rgba(96,165,250,.08)
     }
 
-    tbody .bd-hw-l {
+    .tbl-wrap tbody .bd-hw-l {
         border-left: 2px solid rgba(167,139,250,.08)
     }
 
-    tbody .bd-hw-r {
+    .tbl-wrap tbody .bd-hw-r {
         border-right: 2px solid rgba(167,139,250,.08)
     }
 
@@ -436,6 +485,20 @@
     .stn-col .sid {
         font-size: 11px;
         color: var(--tx3)
+    }
+
+    .tbl-wrap thead tr.group-row th:first-child,
+    .tbl-wrap tbody td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 3;
+        background: var(--bg2);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
+    }
+
+    .tbl-wrap thead tr.group-row th:first-child {
+        z-index: 7;
     }
 
     /* ===== SERVICE CHIP ===== */
@@ -598,7 +661,7 @@
         position: fixed;
         inset: 0;
         background: rgba(0,0,0,.55);
-        z-index: 500;
+        z-index: 3000;
         opacity: 0;
         pointer-events: none;
         transition: opacity .2s
@@ -614,13 +677,16 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%,-50%) scale(.95);
-        z-index: 501;
-        background: var(--bg2);
+        z-index: 3001;
+        background: linear-gradient(180deg, var(--bg2), var(--bg3));
         border: 1px solid var(--bdr);
-        border-radius: 14px;
-        width: 640px;
+        border-radius: 16px;
+        width: 960px;
         max-width: 94vw;
-        max-height: 85vh;
+        max-height: 92vh;
+        box-shadow: 0 28px 90px rgba(0,0,0,.46);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
         display: flex;
         flex-direction: column;
         opacity: 0;
@@ -699,7 +765,10 @@
     .modal-body {
         flex: 1;
         overflow-y: auto;
-        padding: 16px 20px
+        padding: 16px 20px;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: var(--bdr2) transparent;
     }
 
     .m-sec {
@@ -826,14 +895,27 @@
         }
 
     /* ===== CONNECTION DETAIL TABLE in modal ===== */
+    .conn-table-wrap {
+        overflow: auto;
+        max-height: 280px;
+        border: 1px solid var(--bdr);
+        border-radius: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--bdr2) transparent;
+    }
+
     .conn-tbl {
         width: 100%;
-        border-collapse: collapse;
+        min-width: 720px;
+        border-collapse: separate;
+        border-spacing: 0;
         font-size: 11px;
-        margin-top: 6px
     }
 
         .conn-tbl th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
             text-align: left;
             font-size: 9px;
             color: var(--tx3);
@@ -841,7 +923,8 @@
             letter-spacing: .08em;
             padding: 4px 8px;
             border-bottom: 1px solid var(--bdr);
-            font-weight: 600
+            font-weight: 600;
+            background: var(--bg3);
         }
 
         .conn-tbl td {
@@ -1074,10 +1157,13 @@
     }
 
     .ah-card {
-        background: var(--bg2);
+        background: linear-gradient(180deg, var(--bg2), rgba(255,255,255,.025));
         border: 1px solid var(--bdr);
-        border-radius: 12px;
-        overflow: hidden
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: var(--card-shadow);
+        backdrop-filter: var(--glass-blur);
+        -webkit-backdrop-filter: var(--glass-blur);
     }
 
     .ah-top {
@@ -1145,12 +1231,24 @@
     }
 
     /* Per-site alert table */
+    .ah-table-wrap {
+        overflow: auto;
+        max-height: clamp(320px, calc(100vh - 470px), 620px);
+        scrollbar-width: thin;
+        scrollbar-color: var(--bdr2) transparent;
+    }
+
     .ah-tbl {
         width: 100%;
-        border-collapse: collapse
+        min-width: 860px;
+        border-collapse: separate;
+        border-spacing: 0;
     }
 
         .ah-tbl thead th {
+            position: sticky;
+            top: 0;
+            z-index: 3;
             font-size: 9.5px;
             font-weight: 600;
             color: var(--tx3);
@@ -1713,9 +1811,54 @@
             transform: translateY(-1px)
         }
 
+
+    .tbl-wrap::-webkit-scrollbar,
+    .ah-table-wrap::-webkit-scrollbar,
+    .modal-body::-webkit-scrollbar,
+    .conn-table-wrap::-webkit-scrollbar {
+        width: 9px;
+        height: 9px;
+    }
+
+    .tbl-wrap::-webkit-scrollbar-track,
+    .ah-table-wrap::-webkit-scrollbar-track,
+    .modal-body::-webkit-scrollbar-track,
+    .conn-table-wrap::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .tbl-wrap::-webkit-scrollbar-thumb,
+    .ah-table-wrap::-webkit-scrollbar-thumb,
+    .modal-body::-webkit-scrollbar-thumb,
+    .conn-table-wrap::-webkit-scrollbar-thumb {
+        background: var(--bdr2);
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+    }
+
+        .tbl-wrap::-webkit-scrollbar-thumb:hover,
+        .ah-table-wrap::-webkit-scrollbar-thumb:hover,
+        .modal-body::-webkit-scrollbar-thumb:hover,
+        .conn-table-wrap::-webkit-scrollbar-thumb:hover {
+            background: var(--tx3);
+            background-clip: content-box;
+        }
+
+    body[data-aurora="light"] .sum-card,
+    body[data-aurora="light"] .tbl-wrap,
+    body[data-aurora="light"] .ah-card,
+    body[data-aurora="light"] .modal {
+        box-shadow: 0 14px 38px rgba(15,23,42,.08);
+    }
+
     @@media(max-width:700px) {
         .summary {
             grid-template-columns: 1fr 1fr
+        }
+
+        .tbl-wrap, .ah-table-wrap {
+            max-height: 58vh;
         }
 
         .filters {
@@ -1745,6 +1888,8 @@
 </style>
 
 <div class="shell" id="app"></div>
+<div class="overlay" id="ov" onclick="HealthDash.closeModal()"></div>
+<div class="modal" id="mo" onclick="event.stopPropagation()"></div>
 
 <script>
 (function () {
@@ -1870,11 +2015,16 @@
                 var divisionNameValue = firstDefined(row.DivisionName, row.divisionName, "");
                 var rowTopics = Array.isArray(row.Topics) ? row.Topics : (Array.isArray(row.topics) ? row.topics : []);
 
-                // Also add pointServices topic
+                // Backend now returns these topics, but keep this client-side fallback
+                // so the dashboard still subscribes correctly if an older controller is deployed.
                 var parsedSid = parseInt(siteIdValue, 10) || 0;
                 if (parsedSid > 0) {
-                    var ptTopic = "pointServices/" + parsedSid + "/healthpointServices";
-                    if (rowTopics.indexOf(ptTopic) < 0) rowTopics.push(ptTopic);
+                    [
+                        "debouncer/" + parsedSid + "/health",
+                        "pointServices/" + parsedSid + "/health"
+                    ].forEach(function (extraTopic) {
+                        if (rowTopics.indexOf(extraTopic) < 0) rowTopics.push(extraTopic);
+                    });
                 }
 
                 rowTopics.forEach(function (topic) {
@@ -1945,7 +2095,7 @@
         if (direct) return parseInt(direct, 10) || 0;
         var meta = healthTopicMeta[String(topic || "").replace(/^\/+|\/+$/g, "")];
         if (meta && meta.siteId) return parseInt(meta.siteId, 10) || 0;
-        var match = String(topic || "").match(/(?:site|rdpms|health|datareceiver|pointServices)[\/\-_]?(\d+)/i) || String(topic || "").match(/\/(\d+)\//);
+        var match = String(topic || "").match(/(?:site|rdpms|health|datareceiver|debouncer|pointServices)[\/\-_]?(\d+)/i) || String(topic || "").match(/\/(\d+)\//);
         return match ? (parseInt(match[1], 10) || 0) : 0;
     }
 
@@ -1958,8 +2108,8 @@
         if (all.indexOf("dataloggerdiagnostic") >= 0 || all.indexOf("diagnostic") >= 0) return "dataloggerDiagnostic";
         if (all.indexOf("dataloggerheartbeat") >= 0 || all.indexOf("heartbeat") >= 0 || all.indexOf("mqtt/dl/heartbeat") >= 0) return "dataloggerHeartbeat";
         if (all.indexOf("alerthealth") >= 0 || all.indexOf("alert") >= 0) return "alertHealth";
-        if (all.indexOf("debouncerhealth") >= 0 || all.indexOf("debouncer") >= 0) return "debouncerHealth";
-        if (all.indexOf("pointservices") >= 0 || all.indexOf("pointhealth") >= 0 || all.indexOf("point") >= 0) return "pointHealth";
+        if (all.indexOf("debouncer/health") >= 0 || all.indexOf("debouncerhealth") >= 0 || all.indexOf("debouncer") >= 0) return "debouncerHealth";
+        if (all.indexOf("pointservices") >= 0 || all.indexOf("pointmachinehealth") >= 0 || all.indexOf("pointhealth") >= 0 || all.indexOf("point") >= 0) return "pointHealth";
         return null;
     }
 
@@ -1995,8 +2145,37 @@
         if (payload.services) current.services = Object.assign({}, current.services, safeObj(payload.services));
         if (payload.hardware) current.hardware = normalizeHardware(Object.assign({}, current.hardware, safeObj(payload.hardware)));
 
-        var directServices = ["dataReceiverHealth", "dataloggerHeartbeat", "dataloggerDiagnostic", "alertHealth", "debouncerHealth", "pointHealth"];
-        directServices.forEach(function (k) { if (payload[k]) current.services[k] = payload[k]; });
+        var directServiceMap = {
+            dataReceiverHealth: "dataReceiverHealth",
+            dataReceiver: "dataReceiverHealth",
+            dataloggerHeartbeat: "dataloggerHeartbeat",
+            dataloggerDiagnostic: "dataloggerDiagnostic",
+            alertHealth: "alertHealth",
+            debouncerHealth: "debouncerHealth",
+            debouncer: "debouncerHealth",
+            pointHealth: "pointHealth",
+            pointMachineHealth: "pointHealth",
+            pointServicesHealth: "pointHealth",
+            pointServices: "pointHealth"
+        };
+
+        Object.keys(directServiceMap).forEach(function (k) {
+            if (payload[k]) {
+                var targetKey = directServiceMap[k];
+                current.services[targetKey] = payload[k];
+                current._rawPayloads[targetKey] = payload[k];
+            }
+        });
+
+        if (payload.services) {
+            Object.keys(directServiceMap).forEach(function (k) {
+                if (payload.services[k]) {
+                    var targetKey = directServiceMap[k];
+                    current.services[targetKey] = payload.services[k];
+                    current._rawPayloads[targetKey] = payload.services[k];
+                }
+            });
+        }
 
         var mappedKey = serviceKeyFromTopic(topic, payload);
         if (mappedKey && !payload.services && !payload[mappedKey]) {
@@ -2004,7 +2183,7 @@
         }
 
         // Store raw payload per service key for detailed modal view
-        if (mappedKey) current._rawPayloads[mappedKey] = payload;
+        if (mappedKey) current._rawPayloads[mappedKey] = current.services[mappedKey] || payload;
 
         lastRefresh = Date.now();
         render();
@@ -2151,25 +2330,58 @@
         d = safeObj(d);
         if (!Object.keys(d).length) return unknownSvc("Point Machine");
         var nf = parseConnectionsFormat(d); if (nf) return nf;
-        var mqttOk = boolFrom(firstDefined(d.mqttConnected, true));
-        var issues = [], conns = [{ l: "MQTT", ok: mqttOk }];
+
+        var mqttPresent = firstDefined(d.mqttConnected, d.MqttConnected, d.mqttConnectionStatus, d.MqttConnectionStatus, null) !== null;
+        var wsPresent = firstDefined(d.wsConnected, d.webSocketConnected, d.WebSocketConnected, d.wsConnectionStatus, null) !== null;
+        var dbPresent = firstDefined(d.dbConnected, d.databaseConnected, d.DatabaseConnected, null) !== null;
+
+        var mqttOk = boolFrom(firstDefined(d.mqttConnected, d.MqttConnected, d.mqttConnectionStatus, d.MqttConnectionStatus, true));
+        var wsOk = boolFrom(firstDefined(d.wsConnected, d.webSocketConnected, d.WebSocketConnected, d.wsConnectionStatus, true));
+        var dbOk = boolFrom(firstDefined(d.dbConnected, d.databaseConnected, d.DatabaseConnected, true));
+
+        var issues = [], conns = [];
+        if (mqttPresent || !wsPresent) conns.push({ l: "MQTT", ok: mqttOk });
+        if (wsPresent) conns.push({ l: "WS", ok: wsOk });
+        if (dbPresent) conns.push({ l: "DB", ok: dbOk });
+
         if (!mqttOk) issues.push({ sev: "critical", msg: "MQTT disconnected" });
-        var ir = num(d.totalEventReceive) > 0 ? (num(d.totalInvalidEvent) / num(d.totalEventReceive) * 100) : 0;
+        if (!wsOk) issues.push({ sev: "critical", msg: "WebSocket disconnected" });
+        if (!dbOk) issues.push({ sev: "critical", msg: "Database disconnected" });
+
+        var received = num(firstDefined(d.totalEventReceive, d.totalReceived, d.messagesReceived, d.received, d.rxMqtt));
+        var invalid = num(firstDefined(d.totalInvalidEvent, d.invalidEvents, d.invalid, d.rxCorrupted));
+        var ir = received > 0 ? (invalid / received * 100) : 0;
         if (ir > 20) issues.push({ sev: "warning", msg: "Invalid: " + ir.toFixed(0) + "%" });
         if (num(d.rxCorrupted) > 5) issues.push({ sev: "warning", msg: num(d.rxCorrupted) + " corrupted" });
-        if (num(d.mqttSilence) > 60) issues.push({ sev: "warning", msg: "Silent " + num(d.mqttSilence) + "s" });
-        return { status: !mqttOk ? "critical" : issues.some(function (i) { return i.sev === "warning"; }) ? "warning" : "healthy", conns: conns, issues: issues, metrics: { Received: num(d.totalEventReceive), Saved: num(d.totalEventSave), Broadcast: num(d.totalEventBroadcast), Invalid: num(d.totalInvalidEvent), RX_Cluster: num(d.rxCluster), RX_FTP: num(d.rxFtp), RX_MQTT: num(d.rxMqtt) } };
+        if (num(firstDefined(d.mqttSilence, d.mqttSilenceSec, d.silenceSeconds)) > 60) issues.push({ sev: "warning", msg: "Silent " + num(firstDefined(d.mqttSilence, d.mqttSilenceSec, d.silenceSeconds)) + "s" });
+
+        var allOk = mqttOk && wsOk && dbOk;
+        return {
+            status: !allOk ? "critical" : issues.some(function (i) { return i.sev === "warning"; }) ? "warning" : "healthy",
+            conns: conns,
+            issues: issues,
+            metrics: {
+                Received: received,
+                Saved: num(firstDefined(d.totalEventSave, d.totalSaved, d.saved)),
+                Broadcast: num(firstDefined(d.totalEventBroadcast, d.totalBroadcast, d.broadcast)),
+                Invalid: invalid,
+                RX_Cluster: num(d.rxCluster),
+                RX_FTP: num(d.rxFtp),
+                RX_MQTT: num(d.rxMqtt),
+                Uptime: str(firstDefined(d.uptime, fmtUp(d.uptimeSeconds || d.uptimeSec)), "—")
+            }
+        };
     }
 
     function unknownSvc() { return { status: "unknown", conns: [], issues: [{ sev: "info", msg: "No health packet received yet" }], metrics: { Status: "Waiting" } }; }
 
     function getSvcData(services, key) {
         services = safeObj(services);
-        if (key === "DataRecv") return services.dataReceiverHealth;
+        if (key === "DataRecv") return firstDefined(services.dataReceiverHealth, services.dataReceiver, {});
         if (key === "Datalogger") return { dataloggerHeartbeat: services.dataloggerHeartbeat, dataloggerDiagnostic: services.dataloggerDiagnostic };
-        if (key === "Alert") return services.alertHealth;
-        if (key === "Debouncer") return services.debouncerHealth;
-        if (key === "Point") return services.pointHealth;
+        if (key === "Alert") return firstDefined(services.alertHealth, services.alert, {});
+        if (key === "Debouncer") return firstDefined(services.debouncerHealth, services.debouncer, {});
+        if (key === "Point") return firstDefined(services.pointHealth, services.pointMachineHealth, services.pointServicesHealth, services.pointServices, {});
         return {};
     }
 
@@ -2241,7 +2453,6 @@
                     '<span class="mqtt-ind ' + connCls + '"><span class="dot"></span>' + connText + '</span>' +
                     '<span class="ws-ind ' + wsCls + '"><span class="dot"></span>' + wsText + '</span>' +
                     '<span class="refresh"><b id="timer">' + Math.floor((Date.now() - lastRefresh) / 1000) + 's</b> ago</span>' +
-                    '<button class="paste-btn" onclick="HealthDash.openPaste()">UPDATE JSON</button>' +
                 '</div>' +
             '</div>' +
 
@@ -2305,7 +2516,7 @@
                 if (!siteIds.length) {
                     html += '<div class="ah-no-alerts">\u23F3 Waiting for AlertLive data\u2026</div>';
                 } else {
-                    html += '<div style="overflow-x:auto"><table class="ah-tbl"><thead><tr>' +
+                    html += '<div class="ah-table-wrap"><table class="ah-tbl"><thead><tr>' +
                         '<th style="width:180px">Station</th>';
                     SERVICE_HEALTH_IDS.forEach(function (sid) { html += '<th class="th-svc">' + esc(svcLabels[sid] || sid) + '</th>'; });
                     html += '<th style="width:50px;text-align:center">Alerts</th></tr></thead><tbody>';
@@ -2318,7 +2529,7 @@
                         SERVICE_HEALTH_IDS.forEach(function (svcId) {
                             var entry = site.services[svcId] || { status: "healthy", alerts: [] };
                             var cls = entry.status === "unhealthy" ? "r" : entry.status === "warning" ? "a" : "g";
-                            var label = entry.status === "unhealthy" ? "Dead" : entry.status === "warning" ? "Warn" : "OK";
+                            var label = entry.status === "unhealthy" ? "Unhealthy" : entry.status === "warning" ? "Warning" : "Healthy";
                             html += '<td style="text-align:center"><div class="ah-badge ' + cls + '"' +
                                 (entry.alerts.length ? ' onclick="HealthDash.openAlertDetail(' + entry.alerts[0].alertId + ')"' : '') + '>' +
                                 '<span class="ab-dot"></span>' + label;
@@ -2376,8 +2587,7 @@
                 '</thead>' +
                 '<tbody id="tb"></tbody>' +
             '</table></div>' : "") +
-            '<div class="ftr">RDPMS Health Dashboard &middot; ENERGY7</div>' +
-            '<div class="overlay" id="ov" onclick="HealthDash.closeModal()"></div><div class="modal" id="mo"></div>';
+            '<div class="ftr">RDPMS Health Dashboard &middot; ENERGY7</div>';
 
         document.getElementById("fZ").onchange = function (e) { filterZoneId = e.target.value || ""; bindHealthDivisions(filterZoneId); };
         document.getElementById("fD").onchange = function (e) { filterDivisionId = e.target.value || ""; bindHealthSites(filterDivisionId); };
@@ -2434,7 +2644,7 @@
     // ===== SERVICE DETAIL MODAL =====
     function buildConnectionDetailHtml(rawPayload) {
         if (!rawPayload || !Array.isArray(rawPayload.connections)) return "";
-        var html = '<div class="m-sec"><div class="m-sec-t">Connection Details</div>';
+        var html = '<div class="m-sec"><div class="m-sec-t">Connection Details</div><div class="conn-table-wrap">';
         html += '<table class="conn-tbl"><thead><tr><th>Name</th><th>Transport</th><th>Role</th><th>Connected</th><th>Last Activity</th><th>Reconnects</th><th>Disconnects</th></tr></thead><tbody>';
         rawPayload.connections.forEach(function (c) {
             html += '<tr>';
@@ -2447,7 +2657,7 @@
             html += '<td>' + num(c.disconnectCount) + '</td>';
             html += '</tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table></div></div>';
 
         // Exceptions section
         var exc = safeObj(rawPayload.exceptions);
@@ -2793,11 +3003,10 @@
     }
 
     function getAlertHealthStatus(alertIdentifier) {
-        var parsed = parseAlertIdentifier(alertIdentifier);
-        var kind = String(parsed.kind || "").toLowerCase();
-        if (kind === "dead") return "unhealthy";
-        if (kind) return "warning";
-        return "warning"; // alert exists but no kind → warning
+        var raw = String(alertIdentifier || "").toLowerCase();
+        if (raw.indexOf("dead") >= 0) return "unhealthy";
+        if (raw.length > 0) return "warning";
+        return "warning";
     }
 
     function processAlertLiveData(alerts) {

@@ -185,7 +185,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 {
                     basePath + "/mqtt/dl/heartbeat",
                     basePath + "/alerthealth",
-                    "datareceiver/" + site.Id + "/health"
+                    "datareceiver/" + site.Id + "/health",
+                    "debouncer/" + site.Id + "/health",
+                    "pointServices/" + site.Id + "/health"
                 }
             });
         }

@@ -1838,7 +1838,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                                     dl.DataloggerAttributeId,
                                     dl.DataloggerAttribute,
                                     dl.DataloggerAssetName,
-                                    dl.Role
+                                    dl.Value
                                 }).ToList()
 
                         }).ToList();

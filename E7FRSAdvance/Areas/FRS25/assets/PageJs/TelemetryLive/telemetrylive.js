@@ -122,9 +122,13 @@ function atBuildTrackCard(aid) {
         var attrId = ad ? (ad.AttrId || ad.AssetAttributeId) : null;
         var lbl = (typeof getAttrDisplayName === 'function') ? getAttrDisplayName(an, attrId, aid) : an;
         var zone = i < 4 ? 'z1' : (i < 7 ? 'z2' : 'z3');
+        var _trkStaleMap = wsStaleAttrs[aid] || {};
+        if (_trkStaleMap[an]) cls += (cls ? ' ' : '') + 'ws-stale-val';
+        var _tip = _getValueTooltip(an, num, cls);
+        var _marks = _getCellMarkers(cls);
         grid += '<div class="' + zone + '">' +
             '<span class="at-tdg-lbl" title="' + lbl + '">' + lbl + '</span>' +
-            '<span class="at-tdg-val ' + cls + '">' + val + '</span>' +
+            '<span class="at-tdg-val ' + cls + '"' + (_tip ? ' title="' + _tip + '"' : '') + ' data-attr="' + an + '">' + val + _marks + '</span>' +
             '</div>';
     }
 
@@ -299,8 +303,13 @@ var _staleBatchTimer = null;
 var STALE_BATCH_DELAY = 3000;       // wait 3 s of quiet before firing
 var STALE_REQ_GAP_MS = 150;         // gap between sequential AJAX calls
 var STALE_MAX_FLUSH = 5;            // never flush more than 5 assets at a time
-var STALE_PATCH_THRESHOLD = 5;      // only check stale when ≤ 5 assets updated in a batch
+var STALE_PATCH_THRESHOLD = 100;      // only check stale when ≤ 5 assets updated in a batch
 
+// ── AUTO STALE CHECK: fires when no WS data received for 5 minutes ──
+var _wsAutoStaleTimer = null;
+var WS_AUTO_STALE_INTERVAL = 60 * 1000;    // check every 60s whether data went silent
+var WS_AUTO_STALE_THRESHOLD = 5 * 60 * 1000; // 5 min no-data triggers auto stale call
+var _wsAutoStaleRunning = false;
 function isAttrStale(assetId, attrName) {
     return !!(wsStaleAttrs[assetId] && wsStaleAttrs[assetId][attrName]);
 }
@@ -318,6 +327,8 @@ function _markInitialLoadComplete() {
     if (_wsInitialLoadComplete) return;
     _wsInitialLoadComplete = true;
     console.log('[Stale] Initial WS load complete — incremental stale checks now enabled');
+    // Start the auto-stale watchdog now that initial data is loaded
+    startAutoStaleCheck();
 }
 
 // Helper: returns true when Signal asset type is selected AND view is List/Table.
@@ -390,6 +401,61 @@ function stopStalePoll() {
     wsStaleAttrs = {};
 }
 
+// ── AUTO STALE: periodically checks if WS went silent ────────────
+function startAutoStaleCheck() {
+    stopAutoStaleCheck();
+    _wsAutoStaleRunning = true;
+    console.log('[AutoStale] Started — will check every ' + (WS_AUTO_STALE_INTERVAL / 1000) + 's for ' + (WS_AUTO_STALE_THRESHOLD / 60000) + 'min silence');
+    _wsAutoStaleTimer = setInterval(_autoStaleCheckTick, WS_AUTO_STALE_INTERVAL);
+}
+
+function stopAutoStaleCheck() {
+    if (_wsAutoStaleTimer) { clearInterval(_wsAutoStaleTimer); _wsAutoStaleTimer = null; }
+    _wsAutoStaleRunning = false;
+}
+
+function _autoStaleCheckTick() {
+    if (!wsIsConnected || !_wsInitialLoadComplete) return;
+    var now = Date.now();
+    var elapsed = now - (wsLastMessageTime || 0);
+
+    if (elapsed < WS_AUTO_STALE_THRESHOLD) return; // data is still fresh
+
+    console.log('[AutoStale] No WS data for ' + Math.round(elapsed / 1000) + 's — running stale check for all assets');
+
+    var assetIds = Object.keys(wsLiveData || {});
+    if (assetIds.length === 0) return;
+
+    // Fetch stale for all assets in small batches to avoid flooding server
+    var batch = assetIds.slice(0, STALE_MAX_FLUSH);
+    var remaining = assetIds.slice(STALE_MAX_FLUSH);
+
+    _flushAutoStaleBatch(batch, 0, remaining);
+}
+
+function _flushAutoStaleBatch(batch, idx, remaining) {
+    if (idx >= batch.length) {
+        // If there are remaining assets, schedule next batch after a gap
+        if (remaining.length > 0) {
+            var nextBatch = remaining.slice(0, STALE_MAX_FLUSH);
+            var nextRemaining = remaining.slice(STALE_MAX_FLUSH);
+            setTimeout(function () {
+                _flushAutoStaleBatch(nextBatch, 0, nextRemaining);
+            }, STALE_BATCH_DELAY);
+        } else {
+            console.log('[AutoStale] All assets checked');
+        }
+        return;
+    }
+    console.log('[AutoStale] GetLiveValue for asset ' + batch[idx] + ' (' + (idx + 1) + '/' + batch.length + ')');
+    _fetchLiveValueAndCheckStale(batch[idx]);
+    if (idx + 1 < batch.length) {
+        setTimeout(function () { _flushAutoStaleBatch(batch, idx + 1, remaining); }, STALE_REQ_GAP_MS);
+    } else {
+        // Move to remaining
+        _flushAutoStaleBatch(batch, batch.length, remaining);
+    }
+}
 function _applyStaleFlags(assetId, apiItems, nowMs) {
     var aid = String(assetId);
     if (!wsStaleAttrs[aid]) wsStaleAttrs[aid] = {};
@@ -454,10 +520,47 @@ function _applyStaleFlags(assetId, apiItems, nowMs) {
     if (flagsChanged) _applyStaleClassesToUI(aid);
 }
 
+function _staleMarkerHtml() {
+    return ' <i class="fas fa-clock ws-stale-marker" title="Stale: no update for 5+ min"></i>';
+}
+
+function _warnMarkerHtml(cls) {
+    if (cls.indexOf('val-danger') > -1 || cls.indexOf('danger') > -1) {
+        return ' <i class="fas fa-exclamation-triangle ws-warn-marker ws-danger" title="Critical: out of safe range"></i>';
+    }
+    if (cls.indexOf('warn') > -1) {
+        return ' <i class="fas fa-exclamation-triangle ws-warn-marker ws-warning" title="Warning: approaching limit"></i>';
+    }
+    return '';
+}
+
+// Returns both markers when both conditions apply
+function _getCellMarkers(cls) {
+    var html = '';
+    if (cls.indexOf('warn') > -1 || cls.indexOf('danger') > -1 || cls.indexOf('val-danger') > -1) {
+        html += _warnMarkerHtml(cls);
+    }
+    if (cls.indexOf('ws-stale-val') > -1) {
+        html += _staleMarkerHtml();
+    }
+    return html;
+}
+
+function _setStaleCell($el, isStale) {
+    $el.toggleClass('ws-stale-val', isStale);
+    if (isStale) {
+        if (!$el.find('.ws-stale-marker').length) {
+            $el.append(_staleMarkerHtml());
+        }
+    } else {
+        $el.find('.ws-stale-marker').remove();
+    }
+}
+
 function _applyStaleClassesToUI(aid) {
     var staleMap = wsStaleAttrs[aid] || {};
 
-    // ── Table cells ──
+    // ── Table cells (generic + signal) ──
     var $tableRow = $('#wsLiveTable tbody tr[data-id="' + aid + '"]');
     if (!$tableRow.length) $tableRow = $('#signalAspectTablesWrapper tr[data-id="' + aid + '"]');
 
@@ -465,7 +568,7 @@ function _applyStaleClassesToUI(aid) {
         var an = $(this).attr('data-attr');
         if (an === 'LastUpdate') return;
         if ($(this).closest('.dl-cell').length) return;
-        $(this).toggleClass('ws-stale-val', !!staleMap[an]);
+        _setStaleCell($(this), !!staleMap[an]);
     });
 
     // ── Signal grouped tables (List view) ──
@@ -475,7 +578,7 @@ function _applyStaleClassesToUI(aid) {
             var an = $(this).attr('data-attr');
             if (an === 'LastUpdate') return;
             if ($(this).closest('.dl-cell').length) return;
-            $(this).toggleClass('ws-stale-val', !!staleMap[an]);
+            _setStaleCell($(this), !!staleMap[an]);
         });
     }
 
@@ -485,7 +588,7 @@ function _applyStaleClassesToUI(aid) {
         $card.find('[data-attr]').each(function () {
             var an = $(this).attr('data-attr');
             if ($(this).hasClass('rdpms-dl-badge')) return;
-            $(this).toggleClass('ws-stale-val', !!staleMap[an]);
+            _setStaleCell($(this), !!staleMap[an]);
         });
 
         // Collect stale names (excluding DataLogger)
@@ -530,7 +633,6 @@ function _applyStaleClassesToUI(aid) {
             else { $card.find('.card-body-signal').append(stripHtml); }
         }
     }
-
     // ── Point Machine table/cards ──
     var $pmRow = $('#pointMachineContainer tr[data-id="' + aid + '"]');
     if (!$pmRow.length) $pmRow = $('.pm-card[data-id="' + aid + '"]');
@@ -538,8 +640,26 @@ function _applyStaleClassesToUI(aid) {
         var an = $(this).attr('data-attr');
         if (an === 'LastUpdate') return;
         if ($(this).closest('.dl-cell').length) return;
-        $(this).toggleClass('ws-stale-val', !!staleMap[an]);
+        _setStaleCell($(this), !!staleMap[an]);
     });
+
+    // ── IPS cards ──
+    var $ipsCard = $('[data-ips-id="' + aid + '"]');
+    if ($ipsCard.length) {
+        $ipsCard.find('.ips-attr-val[data-attr]').each(function () {
+            var an = $(this).attr('data-attr');
+            _setStaleCell($(this), !!staleMap[an]);
+        });
+    }
+
+    // ── Track cards ──
+    var $trackCard = $('.at-asset-card[data-id="' + aid + '"]');
+    if ($trackCard.length) {
+        $trackCard.find('[data-attr]').each(function () {
+            var an = $(this).attr('data-attr');
+            _setStaleCell($(this), !!staleMap[an]);
+        });
+    }
 }
 
 
@@ -1996,7 +2116,7 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                     // IMPORTANT:
                     // DataLogger identity must come from Role only.
                     // Do NOT use Id / DataloggerAttributeId as the DataLogger id.
-                    var dlRole = $.trim(String(dl.Role || dl.role || ''));
+                    var dlRole = $.trim(String(dl.Value || dl.value || ''));
 
                     if (!dlRole || dlRole === '0' || dlRole.toLowerCase() === 'null') {
                         console.warn('[BulkMeta-DL] Skipped DL because Role is missing', {
@@ -2030,8 +2150,8 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                         DataloggerAssetName: dl.DataloggerAssetName || '',
 
                         // Keep these only as metadata, not as lookup key
-                        dataloggerAttributeId: dl.DataloggerAttributeId || null,
-                        DataloggerAttributeId: dl.DataloggerAttributeId || null,
+                        dataloggerAttributeId: dl.Value || null,
+                        DataloggerAttributeId: dl.Value || null,
                         dataloggerValueId: dl.Value || null,
                         DataloggerValueId: dl.Value || null,
                         sourceId: dl.Id || null,
@@ -2464,6 +2584,7 @@ function disconnectWebSocket() {
     if (wsSafetyInterval) { clearInterval(wsSafetyInterval); wsSafetyInterval = null; }
     if (wsHeartbeatInterval) { clearInterval(wsHeartbeatInterval); wsHeartbeatInterval = null; }
     stopStalePoll();
+    stopAutoStaleCheck();
     // Clear message queue and all timers
     if (wsQueueProcessTimer) { clearTimeout(wsQueueProcessTimer); wsQueueProcessTimer = null; }
     if (wsUIUpdateTimer) { clearTimeout(wsUIUpdateTimer); wsUIUpdateTimer = null; }
@@ -2920,8 +3041,11 @@ function _buildSigTableRow(assetId, cols) {
         var cls = val === '--' ? 'val-na' : '';
         // Apply stale class during initial build if asset already has stale flags
         var _staleMap = wsStaleAttrs[assetId] || {};
-        if (_staleMap[an]) cls += (cls ? ' ' : '') + 'ws-stale-val';
-        h += '<td class="' + cls + '" data-attr="' + _sigEscAttr(an) + '">' + val + '</td>';
+        var _sigIsStale = !!_staleMap[an];
+        if (_sigIsStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
+        var _tip = _getValueTooltip(an, parseFloat(raw), cls);
+        var _marks = _getCellMarkers(cls);
+        h += '<td class="' + cls + '" data-attr="' + _sigEscAttr(an) + '"' + (_tip ? ' title="' + _tip + '"' : '') + '>' + val + _marks + '</td>';
     }
 
     // DataLogger relay pills
@@ -3263,10 +3387,11 @@ window.updateSignalGroupedTables = function (updatedIds) {
             var val = (raw !== null && raw !== undefined && raw !== '' && !isNaN(parseFloat(raw)))
                 ? parseFloat(raw).toFixed(2) : '--';
             var cls = val === '--' ? 'val-na' : '';
-            $(this).text(val).attr('class', cls);
-
-            // Apply / clear stale indicator
-            $(this).toggleClass('ws-stale-val', !!staleMap[attrName]);
+            var isStale = !!staleMap[attrName];
+            if (isStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
+            var _marks = _getCellMarkers(cls);
+            var _tip = _getValueTooltip(attrName, parseFloat(raw), cls);
+            $(this).html(val + _marks).attr('class', cls).attr('title', _tip || '');
         });
 
         var dlRelays = asset.dlRelays || {};
@@ -3293,6 +3418,68 @@ function arraysEqual(a, b) {
         if (a[i] !== b[i]) return false;
     }
     return true;
+}
+// ================================================================
+// getValueColorClass - returns CSS class for dangerous/warning values
+// based on attribute ID and numeric value.
+// ================================================================
+function getValueColorClass(attrId, value) {
+    if (value === undefined || value === null || isNaN(value)) return '';
+
+    // Map attribute ID to name (if needed, use global assetAttributeMap)
+    var attrName = '';
+    if (typeof assetAttributeMap !== 'undefined' && attrId) {
+        attrName = assetAttributeMap[String(attrId)] || assetAttributeMap[attrId] || '';
+    }
+    // Fallback: if no name found via ID, we cannot colour – return empty
+    if (!attrName) return '';
+
+    var lowerName = attrName.toLowerCase();
+
+    // Danger rules (copied from original buildTableRow comments)
+    // Vr: danger if (value > 0.1 && value < 2.5) || value > 4.2
+    if ((lowerName === 'vr' || lowerName.indexOf('vr') !== -1) &&
+        ((value > 0.1 && value < 2.5) || value > 4.2)) {
+        return 'val-danger';
+    }
+    // TPR V / TPR V (Loc): danger if value > 0.1 && value < 20
+    if ((lowerName.indexOf('tpr') !== -1) &&
+        (value > 0.1 && value < 20)) {
+        return 'val-danger';
+    }
+    // Charger mA: danger if value < 100
+    if ((lowerName === 'charger ma' || lowerName.indexOf('charger') !== -1) &&
+        value < 100) {
+        return 'val-danger';
+    }
+    // Choke V: danger if value > 1.8
+    if ((lowerName === 'choke v' || lowerName.indexOf('choke') !== -1) &&
+        value > 1.8) {
+        return 'val-danger';
+    }
+
+    return '';
+}
+
+// Returns a short hover tooltip for danger/warn/stale cells
+// Returns short combined hover tooltip for danger/warn/stale cells.
+function _getValueTooltip(attrName, num, cls) {
+    if (!cls) return '';
+    var parts = [];
+
+    // Threshold part (short)
+    if (attrName === 'Vr' && num > 4.2) parts.push('\u26a0 Vr > 4.2V');
+    else if (attrName === 'Vr' && num > 0.1 && num < 2.5) parts.push('\u26a0 Vr 0.1\u20132.5V');
+    else if ((attrName === 'TPR V' || attrName === 'TPR V (Loc)') && num > 0.1 && num < 20) parts.push('\u26a0 TPR 0.1\u201320V');
+    else if (attrName === 'Charger mA' && num < 100) parts.push('\u26a0 Charger < 100mA');
+    else if (attrName === 'Choke V' && num > 1.8) parts.push('\u26a0 Choke > 1.8V');
+    else if (cls.indexOf('val-danger') > -1 || cls.indexOf('danger') > -1) parts.push('\u26a0 Out of range');
+    else if (cls.indexOf('warn') > -1) parts.push('\u26a0 Approaching limit');
+
+    // Stale part (short)
+    if (cls.indexOf('ws-stale-val') > -1) parts.push('\ud83d\udd53 Stale 5+ min');
+
+    return parts.join(' \u2502 ');
 }
 
 function buildFullTable(assetIds, typeName, isTrack) {
@@ -3394,7 +3581,12 @@ function buildTableRow(assetId, isTrack, isNew) {
                 ad.changed = false;
             }
         }
-        h += '<td class="' + cls + '" data-attr="' + an + '">' + disp + '</td>';
+        var _genStaleMap = wsStaleAttrs[assetId] || {};
+        var _genIsStale = !!_genStaleMap[an];
+        if (_genIsStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
+        var _tip = _getValueTooltip(an, (typeof num !== 'undefined' ? num : parseFloat(raw)), cls);
+        var _marks = _getCellMarkers(cls);
+        h += '<td class="' + cls + '" data-attr="' + an + '"' + (_tip ? ' title="' + _tip + '"' : '') + '>' + disp + _marks + '</td>';
     }
 
     if (isTrack) {
@@ -3488,7 +3680,13 @@ function updateRowCells($row, asset, isTrack) {
             }
         }
 
-        if ($cell.text() !== disp) {
+        // Stale check
+        var _incStaleMap = wsStaleAttrs[assetId] || {};
+        var _incIsStale = !!_incStaleMap[an];
+        if (_incIsStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
+
+        var _cellText = $cell.clone().children('.ws-stale-marker,.ws-warn-marker').remove().end().text();
+        if (_cellText !== disp) {
             if (ad && ad.changed) {
                 cls += ' ws-cell-flash val-changed-flash';
                 ad.changed = false;
@@ -3498,7 +3696,9 @@ function updateRowCells($row, asset, isTrack) {
                     }, 1200);
                 })($cell);
             }
-            $cell.attr('class', cls).text(disp);
+            var _incTip = _getValueTooltip(an, (typeof num !== 'undefined' ? num : NaN), cls);
+            var _incMarks = _getCellMarkers(cls);
+            $cell.attr('class', cls).attr('title', _incTip || '').html(disp + _incMarks);
         }
     }
 
@@ -3619,6 +3819,8 @@ function updateSingleTableCell(assetId, attrName, value, hasChanged, timestamp) 
         else if (attrName === 'Choke V' && num > 1.8) cls = 'val-danger';
     }
 
+    var _tip = _getValueTooltip(attrName, num, cls);
+
     // Add flash animation if value changed
     if (hasChanged) {
         cls += ' ws-cell-flash val-changed-flash';
@@ -3628,7 +3830,8 @@ function updateSingleTableCell(assetId, attrName, value, hasChanged, timestamp) 
     }
 
     // Update cell
-    $cell.attr('class', cls).text(disp);
+    var _marks = _getCellMarkers(cls);
+    $cell.attr('class', cls).attr('title', _tip || '').html(disp + _marks);
 
     // Update timestamp
     var _tsAsset = wsLiveData[assetId];
@@ -4370,8 +4573,23 @@ function processItemsInternal(items) {
 
                 checkStaleForAsset(_staleAid);
             }
-        } else {
-            console.log('[Stale] Skipping stale check — bulk batch (' + _staleAssets.length + ' assets > threshold ' + STALE_PATCH_THRESHOLD + ')');
+        }
+        //else {
+        //    console.log('[Stale] Skipping stale check — bulk batch (' + _staleAssets.length + ' assets > threshold ' + STALE_PATCH_THRESHOLD + ')');
+        //}
+
+        else {
+            console.log('[Stale] Large batch (' + _staleAssets.length + ' assets) – forcing stale check anyway');
+            // proceed with stale check
+            var _inSignalList = (typeof _isSignalListView === 'function' && _isSignalListView());
+            for (var _si = 0; _si < _staleAssets.length; _si++) {
+                var _staleAid = _staleAssets[_si];
+                if (_inSignalList && wsStaleAttrs[_staleAid] && hasStale) {
+                    _fetchLiveValueAndCheckStale(_staleAid);
+                    continue;
+                }
+                checkStaleForAsset(_staleAid);
+            }
         }
     }
 
@@ -4456,6 +4674,7 @@ function connectWebSocket(siteId, assetTypeId, assetIds) {
     if (_wsInitialLoadTimer) { clearTimeout(_wsInitialLoadTimer); _wsInitialLoadTimer = null; }
     if (_staleBatchTimer) { clearTimeout(_staleBatchTimer); _staleBatchTimer = null; }
     _stalePendingSet = {};
+    stopAutoStaleCheck();
     if (_sigRenderTimer) { clearTimeout(_sigRenderTimer); _sigRenderTimer = null; }
     _sigRenderActive = false;
     rdpmsCardsBuilt = {};
@@ -5108,13 +5327,13 @@ function buildMainSignalCard(assetId) {
     if (hasCalling) { h += '<div class="rdpms-routeSignal2"><div class="rdpms-yellow light-off" id="rdpmsCalling_' + assetId + '"></div><span>C</span></div>'; }
     h += '</div></div>';
     h += '<div class="rdpms-route-table"><table>';
-    if (hasRG) h += '<tr id="rdpmsTrRG_' + assetId + '" style="display:none"><td id="rdpmsTdRGma_' + assetId + '"></td><td id="rdpmsTdRGv_' + assetId + '"></td></tr>';
-    if (hasDG) h += '<tr id="rdpmsTrDG_' + assetId + '" style="display:none"><td id="rdpmsTdDGma_' + assetId + '"></td><td id="rdpmsTdDGv_' + assetId + '"></td></tr>';
-    if (hasHG) h += '<tr id="rdpmsTrHG_' + assetId + '" style="display:none"><td id="rdpmsTdHGma_' + assetId + '"></td><td id="rdpmsTdHGv_' + assetId + '"></td></tr>';
-    if (hasHHG) h += '<tr id="rdpmsTrHHG_' + assetId + '" style="display:none"><td id="rdpmsTdHHGma_' + assetId + '"></td><td id="rdpmsTdHHGv_' + assetId + '"></td></tr>';
-    if (hasPilot) h += '<tr id="rdpmsTrPilot_' + assetId + '" style="display:none"><td id="rdpmsTdPilotma_' + assetId + '"></td><td id="rdpmsTdPilotv_' + assetId + '"></td></tr>';
-    if (hasCalling) h += '<tr id="rdpmsTrCO_' + assetId + '" style="display:none"><td id="rdpmsTdCOma_' + assetId + '"></td><td id="rdpmsTdCOv_' + assetId + '"></td></tr>';
-    if (hasRoutes) h += '<tr id="rdpmsTrRoute_' + assetId + '" style="display:none"><td id="rdpmsTdRoutema_' + assetId + '"></td><td id="rdpmsTdRoutev_' + assetId + '"></td></tr>';
+    if (hasRG) h += '<tr id="rdpmsTrRG_' + assetId + '" style="display:none"><td id="rdpmsTdRGma_' + assetId + '" data-attr="RG mA"></td><td id="rdpmsTdRGv_' + assetId + '" data-attr="RG V"></td></tr>';
+    if (hasDG) h += '<tr id="rdpmsTrDG_' + assetId + '" style="display:none"><td id="rdpmsTdDGma_' + assetId + '" data-attr="DG mA"></td><td id="rdpmsTdDGv_' + assetId + '" data-attr="DG V"></td></tr>';
+    if (hasHG) h += '<tr id="rdpmsTrHG_' + assetId + '" style="display:none"><td id="rdpmsTdHGma_' + assetId + '" data-attr="HG mA"></td><td id="rdpmsTdHGv_' + assetId + '" data-attr="HG V"></td></tr>';
+    if (hasHHG) h += '<tr id="rdpmsTrHHG_' + assetId + '" style="display:none"><td id="rdpmsTdHHGma_' + assetId + '" data-attr="HHG mA"></td><td id="rdpmsTdHHGv_' + assetId + '" data-attr="HHG V"></td></tr>';
+    if (hasPilot) h += '<tr id="rdpmsTrPilot_' + assetId + '" style="display:none"><td id="rdpmsTdPilotma_' + assetId + '" data-attr="PILOT mA"></td><td id="rdpmsTdPilotv_' + assetId + '" data-attr="PILOT V"></td></tr>';
+    if (hasCalling) h += '<tr id="rdpmsTrCO_' + assetId + '" style="display:none"><td id="rdpmsTdCOma_' + assetId + '" data-attr="Co_Hg mA"></td><td id="rdpmsTdCOv_' + assetId + '" data-attr="Co_Hg V"></td></tr>';
+    if (hasRoutes) h += '<tr id="rdpmsTrRoute_' + assetId + '" style="display:none"><td id="rdpmsTdRoutema_' + assetId + '" data-attr="Route mA"></td><td id="rdpmsTdRoutev_' + assetId + '" data-attr="Route V"></td></tr>';
     // DPR, HPR, HHPR rows - shown based on DataLogger relay conditions
     h += '<tr id="rdpmsTrDPR_' + assetId + '" style="display:none"><td id="rdpmsTdDPRval_' + assetId + '" colspan="2"></td></tr>';
     h += '<tr id="rdpmsTrHPR_' + assetId + '" style="display:none"><td id="rdpmsTdHPRval_' + assetId + '" colspan="2"></td></tr>';
@@ -5135,9 +5354,9 @@ function buildShuntSignalCard(assetId) {
     h += '<div class="card-body-signal"><div class="rdpms-sizeShuntDiv"><div class="rdpms-shunt"><img class="trianglePng" src="/assets/images/shunt.png" />';
     h += '<div class="rdpms-white light-off" id="rdpmsShuntTop_' + assetId + '"></div><div class="rdpms-white light-off" id="rdpmsShuntRight_' + assetId + '"></div><div class="rdpms-white light-off" id="rdpmsShuntLeft_' + assetId + '"></div></div>';
     h += '<div class="rdpms-route-table"><table>';
-    h += '<tr id="rdpmsTrOn_' + assetId + '" style="display:none"><td id="rdpmsTdOnma_' + assetId + '"></td><td id="rdpmsTdOnv_' + assetId + '"></td></tr>';
-    h += '<tr id="rdpmsTrOff_' + assetId + '" style="display:none"><td id="rdpmsTdOffma_' + assetId + '"></td><td id="rdpmsTdOffv_' + assetId + '"></td></tr>';
-    h += '<tr id="rdpmsTrShPilot_' + assetId + '" style="display:none"><td id="rdpmsTdShPilotma_' + assetId + '"></td><td id="rdpmsTdShPilotv_' + assetId + '"></td></tr>';
+    h += '<tr id="rdpmsTrOn_' + assetId + '" style="display:none"><td id="rdpmsTdOnma_' + assetId + '" data-attr="On Aspect mA"></td><td id="rdpmsTdOnv_' + assetId + '" data-attr="On Aspect V"></td></tr>';
+    h += '<tr id="rdpmsTrOff_' + assetId + '" style="display:none"><td id="rdpmsTdOffma_' + assetId + '" data-attr="Off Aspect mA"></td><td id="rdpmsTdOffv_' + assetId + '" data-attr="Off Aspect V"></td></tr>';
+    h += '<tr id="rdpmsTrShPilot_' + assetId + '" style="display:none"><td id="rdpmsTdShPilotma_' + assetId + '" data-attr="PILOT mA"></td><td id="rdpmsTdShPilotv_' + assetId + '" data-attr="PILOT V"></td></tr>';
     h += '</table></div>';
     h += getDataloggerSectionHTML(assetId);
     h += '</div></div></div></div>';
@@ -5857,7 +6076,9 @@ function renderApiTable(data, assetTypeId) {
             else if ((a === 'TPR V' || a === 'TPR V (Loc)') && v > 0.1 && v < 20) cls = 'val-danger';
             else if (a === 'Charger mA' && v < 100) cls = 'val-danger';
             else if (a === 'Choke V' && v > 1.8) cls = 'val-danger';
-            h += '<td class="' + cls + '">' + disp + '</td>';
+            var _tip = _getValueTooltip(a, v, cls);
+            var _marks = _getCellMarkers(cls);
+            h += '<td class="' + cls + '"' + (_tip ? ' title="' + _tip + '"' : '') + '>' + disp + _marks + '</td>';
         });
         if (isTrack) {
             // Calculate and add derived values
@@ -6241,9 +6462,15 @@ function buildIpsCard(assetId) {
                 label = window.formatAliasName(label) || label;
             }
 
+            var _ipsStaleMap = wsStaleAttrs[assetId] || {};
+            var _ipsIsStale = !!_ipsStaleMap[an];
+            if (_ipsIsStale) valCls += ' ws-stale-val';
+            var _ipsTip = _getValueTooltip(an, parseFloat(rawVal), valCls);
+            var _ipsMarks = _getCellMarkers(valCls);
+
             h += '<div class="ips-attr-row">';
             h += '<span class="ips-attr-name" title="' + label + '">' + label + '</span>';
-            h += '<span class="' + valCls + '" data-attr="' + an + '">' + disp + '</span>';
+            h += '<span class="' + valCls + '" data-attr="' + an + '"' + (_ipsTip ? ' title="' + _ipsTip + '"' : '') + '>' + disp + _ipsMarks + '</span>';
             h += '</div>';
         }
     }
@@ -6279,6 +6506,7 @@ window.updateIpsGridIncremental = function updateIpsGridIncremental(updatedAsset
             if (!asset) continue;
             var attrs = asset.attrs || {};
 
+            var _ipsStaleMap = wsStaleAttrs[aid] || {};
             $card.find('.ips-attr-row .ips-attr-val').each(function () {
                 var $v = $(this);
                 var an = $v.attr('data-attr');
@@ -6286,13 +6514,25 @@ window.updateIpsGridIncremental = function updateIpsGridIncremental(updatedAsset
                 var aObj = attrs[an] || {};
                 var raw = aObj.Value;
                 var disp = (raw !== null && raw !== undefined && raw !== '') ? raw : '--';
+                var isStale = !!_ipsStaleMap[an];
+                var valCls = (disp === '--') ? 'ips-attr-val no-data' : 'ips-attr-val';
+                if (isStale) valCls += ' ws-stale-val';
+                var _marks = _getCellMarkers(valCls);
+                var _tip = _getValueTooltip(an, parseFloat(raw), valCls);
 
-                if ($v.text() !== String(disp)) {
-                    $v.text(disp);
+                var oldText = $v.clone().children('.ws-stale-marker,.ws-warn-marker').remove().end().text();
+                if (oldText !== String(disp)) {
+                    $v.html(disp + _marks).attr('class', valCls).attr('title', _tip || '');
                     if (disp !== '--') {
                         $v.addClass('ips-val-flash');
                         setTimeout(function () { $v.removeClass('ips-val-flash'); }, 1200);
                     }
+                } else {
+                    // Value unchanged but stale status may have changed
+                    $v.toggleClass('ws-stale-val', isStale);
+                    $v.find('.ws-stale-marker,.ws-warn-marker').remove();
+                    if (_marks) $v.append(_marks);
+                    $v.attr('title', _tip || '');
                 }
             });
 
@@ -15659,22 +15899,40 @@ function updateTableCellOnly(assetId, attrName, value, hasChanged, timestamp) {
         else if (attrName === 'Choke V' && num > 1.8) cls = 'val-danger';
     }
 
+    // Stale check for this cell
+    var _cellStaleMap = wsStaleAttrs[assetId] || {};
+    var _cellIsStale = !!_cellStaleMap[attrName];
+    if (_cellIsStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
+
     // Only update if value actually changed
-    var currentText = $cell.text();
+    var currentText = $cell.clone().children('.ws-stale-marker,.ws-warn-marker').remove().end().text();
     if (currentText !== disp) {
         // Apply flash animation for changed values
         if (hasChanged) {
             cls += ' ws-cell-flash val-changed-flash';
         }
 
-        $cell.attr('class', cls).text(disp);
-
+        var _tip = _getValueTooltip(attrName, num, cls);
+        var _marks = _getCellMarkers(cls);
+        $cell.attr('class', cls).attr('title', _tip || '').html(disp + _marks);
         // Remove flash after animation
         if (hasChanged) {
             setTimeout(function () {
                 $cell.removeClass('ws-cell-flash val-changed-flash');
             }, 1200);
         }
+    } else {
+        // Value unchanged but stale status may have changed
+        var _updCls = $cell.attr('class') || '';
+        _updCls = _updCls.replace(/\bws-stale-val\b/g, '').trim();
+        if (_cellIsStale) _updCls += ' ws-stale-val';
+        $cell.attr('class', _updCls);
+        $cell.find('.ws-stale-marker').remove();
+        $cell.find('.ws-warn-marker').remove();
+        var _marks2 = _getCellMarkers(_updCls);
+        if (_marks2) $cell.append(_marks2);
+        var _tip2 = _getValueTooltip(attrName, num, _updCls);
+        $cell.attr('title', _tip2 || '');
     }
 
     // Update timestamp cell
@@ -15722,7 +15980,8 @@ function addNewTableRow(assetId) {
                 else disp = num.toFixed(2);
             }
         }
-        h += '<td class="' + cls + '" data-attr="' + an + '">' + disp + '</td>';
+        var _tip = _getValueTooltip(an, (typeof num !== 'undefined' ? num : parseFloat(raw)), cls);
+        h += '<td class="' + cls + '" data-attr="' + an + '"' + (_tip ? ' title="' + _tip + '"' : '') + '>' + disp + '</td>';
     }
 
     if (isTrack) {
@@ -15943,7 +16202,11 @@ function updateSignalDataTable(assetId, attrName, value) {
         if ($cell.length) {
             var unit = attrName.indexOf('V') > -1 ? ' V' : ' mA';
             var label = attrName.replace(' mA', '').replace(' V', '');
-            $cell.html('I<sub>Sig' + label + '</sub> : <span class="rdpms-val-flash">' + fv + unit + '</span>');
+            var isStale = !!(wsStaleAttrs[assetId] && wsStaleAttrs[assetId][attrName]);
+            var _rdpmsCls = isStale ? 'ws-stale-val' : '';
+            var _marks = _getCellMarkers(_rdpmsCls);
+            $cell.html('I<sub>Sig' + label + '</sub> : <span class="rdpms-val-flash">' + fv + unit + '</span>' + _marks);
+            $cell.toggleClass('ws-stale-val', isStale);
         }
     }
 }
@@ -16681,8 +16944,14 @@ function updateExistingRowCells(assetId, $row) {
             }
         }
 
+        // Stale check
+        var _5bStaleMap = wsStaleAttrs[assetId] || {};
+        var _5bIsStale = !!_5bStaleMap[an];
+        if (_5bIsStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
+
         // Only update if changed
-        if ($cell.text() !== disp) {
+        var _5bText = $cell.clone().children('.ws-stale-marker,.ws-warn-marker').remove().end().text();
+        if (_5bText !== disp) {
             if (ad && ad.changed) {
                 cls += ' ws-cell-flash val-changed-flash';
                 ad.changed = false;
@@ -16692,7 +16961,9 @@ function updateExistingRowCells(assetId, $row) {
                     }, 1200);
                 })($cell);
             }
-            $cell.attr('class', cls).text(disp);
+            var _5bTip = _getValueTooltip(an, (typeof num !== 'undefined' ? num : NaN), cls);
+            var _5bMarks = _getCellMarkers(cls);
+            $cell.attr('class', cls).attr('title', _5bTip || '').html(disp + _5bMarks);
         }
     }
 
@@ -19969,7 +20240,7 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
 
             // DataLogger id must come from Role.
             // If WS does not send Role, resolve Role from GetBulkAssetMetadata using AssetAttributeName.
-            var roleId = dl.Role || dl.role || '';
+            var roleId = dl.Value || dl.value || '';
 
             if (!roleId && typeof window.resolveBulkDataloggerRole === 'function') {
                 roleId = window.resolveBulkDataloggerRole(dl.AssetId, dl.AssetAttributeName, dl.AssetAttributeName);

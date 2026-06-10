@@ -538,10 +538,11 @@
                                     'Shunt') +
                 `</div>`;
 
-            /* Lamp/lit controls only apply to the composite signal */
-            if (c.type === 'examples.Signal') {
-                const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps) || 'BBB';
-                const litStr = (typeof sigProps.lit === 'string' && sigProps.lit) || '';
+            /* Lamp/lit controls apply to main signal and combined signal+shunt */
+            if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
+                const defaultLamps = c.type === 'examples.SignalShunt' ? 'RYG' : 'BBB';
+                const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps) || defaultLamps;
+                const litStr = (typeof sigProps.lit === 'string' && sigProps.lit) || ((c.attrs && c.attrs.lit) || '');
 
                 const LAMP_COLORS = { B: '#aaaaaa', R: '#FF2E2E', Y: '#FFD400', G: '#22D142', X: '#c8a800' };
                 const LAMP_NAMES = { B: 'Blank', R: 'Red', Y: 'Yellow', G: 'Green', X: 'Dbl Yellow' };
@@ -581,6 +582,46 @@
 
                 html += `<div class="field"><label>Lit aspects</label>` +
                     `<input type="text" id="insp-sig-lit" value="${escAttr(litStr)}" placeholder="(none — e.g. R, RG, Y)"/></div>`;
+
+                if (c.type === 'examples.SignalShunt') {
+                    const lampGapVal = +sigProps.lampGap || 7;
+                    const shuntGapVal = +sigProps.shuntGap || 2;
+                    const shuntSizeVal = +sigProps.shuntSize || 42;
+                    const shuntSideVal = String(sigProps.shuntSide || 'right').toLowerCase();
+                    const shuntStateVal = String(sigProps.shuntState || sigProps.shuntVariant || sigProps.shuntLit || 'PROCEED').toUpperCase();
+                    function _selected(v, cur) { return String(v).toUpperCase() === String(cur).toUpperCase() ? 'selected' : ''; }
+                    function _selectedSide(v, cur) { return String(v).toLowerCase() === String(cur).toLowerCase() ? 'selected' : ''; }
+
+                    html += `<div class="insp-grid">` +
+                        `<div class="field"><label>Main lamp gap</label><input type="number" id="insp-combined-lamp-gap" value="${lampGapVal}" min="2" max="30" step="1"/></div>` +
+                        `<div class="field"><label>Signal-shunt gap</label><input type="number" id="insp-combined-shunt-gap" value="${shuntGapVal}" min="0" max="80" step="1"/></div>` +
+                        `</div>`;
+
+                    html += `<div class="insp-grid">` +
+                        `<div class="field"><label>Shunt position</label><select id="insp-combined-shunt-side">` +
+                        `<option value="right" ${_selectedSide('right', shuntSideVal)}>Right of main</option>` +
+                        `<option value="left" ${_selectedSide('left', shuntSideVal)}>Left of main</option>` +
+                        `<option value="top" ${_selectedSide('top', shuntSideVal)}>Above main</option>` +
+                        `<option value="bottom" ${_selectedSide('bottom', shuntSideVal)}>Below main</option>` +
+                        `<option value="none" ${_selectedSide('none', shuntSideVal)}>No shunt</option>` +
+                        `</select></div>` +
+                        `<div class="field"><label>Shunt size</label><input type="number" id="insp-combined-shunt-size" value="${shuntSizeVal}" min="24" max="110" step="1"/></div>` +
+                        `</div>`;
+
+                    html += `<div class="insp-grid">` +
+                        `<div class="field"><label>Shunt combination</label><select id="insp-combined-shunt-state">` +
+                        `<option value="OFF" ${_selected('OFF', shuntStateVal)}>Off / all dark</option>` +
+                        `<option value="PROCEED" ${_selected('PROCEED', shuntStateVal)}>Proceed · BL + BR</option>` +
+                        `<option value="DIVERGE_RIGHT" ${_selected('DIVERGE_RIGHT', shuntStateVal)}>Diverge right · Top + BR</option>` +
+                        `<option value="DIVERGE_LEFT" ${_selected('DIVERGE_LEFT', shuntStateVal)}>Diverge left · Top + BL</option>` +
+                        `<option value="TOP" ${_selected('TOP', shuntStateVal)}>Top only</option>` +
+                        `<option value="BL" ${_selected('BL', shuntStateVal)}>Bottom-left only</option>` +
+                        `<option value="BR" ${_selected('BR', shuntStateVal)}>Bottom-right only</option>` +
+                        `<option value="ALL" ${_selected('ALL', shuntStateVal)}>All three</option>` +
+                        `</select></div>` +
+                        `<div class="field"><label>Custom shunt code</label><input type="text" id="insp-combined-shunt-code" value="${escAttr(shuntStateVal)}" placeholder="OFF / PROCEED / T,BL,BR"/></div>` +
+                        `</div>`;
+                }
             }
 
             /* ---- Rotation (quick buttons + number input) ---- */
@@ -647,9 +688,23 @@
             }
             html += `</div></div>`;
 
-            /* Stand length */
-            html += `<div class="field"><label>Stand length</label>` +
-                `<input type="number" id="insp-sig-stand-len" value="${standLen}" min="0" max="400" step="2"/></div>`;
+            /* Stand size */
+            const standArm = +sigProps.standArm || 14;
+            const standDrop = String(sigProps.standDrop || 'down').toLowerCase();
+            const signalLabelGap = +sigProps.labelGap || ((c.type === 'examples.Shaunt' || c.type === 'examples.Shaunt2' || c.type === 'examples.Shaunt3') ? 8 : 6);
+            html += `<div class="insp-grid">` +
+                `<div class="field"><label>Stand vertical</label>` +
+                `<input type="number" id="insp-sig-stand-len" value="${standLen}" min="0" max="400" step="2"/></div>` +
+                `<div class="field"><label>L arm size</label>` +
+                `<input type="number" id="insp-sig-stand-arm" value="${standArm}" min="0" max="200" step="1"/></div>` +
+                `</div>`;
+            html += `<div class="field"><label>L drop direction</label>` +
+                `<select id="insp-sig-stand-drop">` +
+                `<option value="down" ${standDrop !== 'up' ? 'selected' : ''}>Down</option>` +
+                `<option value="up" ${standDrop === 'up' ? 'selected' : ''}>Up</option>` +
+                `</select></div>`;
+            html += `<div class="field"><label>Label gap</label>` +
+                `<input type="number" id="insp-sig-label-gap" value="${signalLabelGap}" min="0" max="60" step="1"/></div>`;
 
             /* Route / Calling editor.  For examples.Signal this is optional;
                for examples.RouteCallingSignal it is always enabled. */
@@ -663,9 +718,11 @@
                 const callingSideVal = routeProps.callingSide || 'bottom';
                 const callingOn = routeProps.calling !== false && routeProps.calling !== 'false';
                 const callingLabel = routeProps.callingLabel || 'C';
-                const dotCountVal = routeProps.dotCount || 4;
-                const armSpacingVal = routeProps.armSpacing || 27;
-                const armLengthVal = routeProps.armLength || 34;
+                const routeLightSizeVal = routeProps.dotSize || routeProps.lightSize || 3.8;
+                const armSpacingVal = routeProps.armSpacing || 22;
+                const armLengthVal = routeProps.armLength || 22;
+                const routeLabelSizeVal = routeProps.labelSize || 8.5;
+                const routeLabelGapVal = routeProps.labelGap || 8;
                 function _sideOpts(cur) {
                     const opts = [
                         ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['right', 'Right']
@@ -688,14 +745,14 @@
                         `<input type="checkbox" id="insp-route-enabled" ${routeEnabled ? 'checked' : ''} style="width:auto;">` +
                         `<label for="insp-route-enabled" style="margin:0;">Show route/calling on this main signal</label></div>`;
                 }
-                html += `<div class="field"><label>Route arms</label>` +
+                html += `<div class="field"><label>Route aspects above main signal</label>` +
                     `<div style="display:flex;gap:6px;align-items:center;">` +
                     `<input type="text" id="insp-route-labels" value="${escAttr(labelsVal)}" placeholder="AUG,BUG,CUG,DUG" style="flex:1;"/>` +
-                    `<button type="button" id="insp-route-add" class="tb" style="padding:4px 9px;">+</button>` +
-                    `<button type="button" id="insp-route-remove" class="tb" style="padding:4px 9px;">−</button>` +
-                    `</div></div>`;
+                    `<button type="button" id="insp-route-add" class="tb" style="padding:4px 9px;white-space:nowrap;" title="Add one route aspect above the signal">+ Add</button>` +
+                    `<button type="button" id="insp-route-remove" class="tb" style="padding:4px 9px;" title="Remove last route aspect">−</button>` +
+                    `</div><small class="muted">Each aspect is a small independent line above the main signal with one white lamp and editable label.</small></div>`;
                 html += `<div class="field"><label>Active route/call for preview</label>` +
-                    `<input type="text" id="insp-route-active" value="${escAttr(activeVal)}" placeholder="AUG or CALL or AUG,CALL"/></div>`;
+                    `<input type="text" id="insp-route-active" value="${escAttr(activeVal)}" placeholder="AUG or C or AUG,C"/></div>`;
                 const routeSideLabel = isRouteCell ? 'Route side' : 'Route attach side';
                 const callingSideLabel = isRouteCell ? 'Calling side' : 'Calling attach side';
                 html += `<div class="insp-grid">` +
@@ -709,13 +766,17 @@
                     `<label for="insp-calling-enabled" style="margin:0;">Calling</label></div>` +
                     `</div>`;
                 html += `<div class="insp-grid">` +
-                    `<div class="field"><label>Route dots</label><input type="number" id="insp-route-dot-count" value="${dotCountVal}" min="1" max="6" step="1"/></div>` +
-                    `<div class="field"><label>Arm length</label><input type="number" id="insp-route-arm-length" value="${armLengthVal}" min="16" max="100" step="2"/></div>` +
+                    `<div class="field"><label>Route light size</label><input type="number" id="insp-route-light-size" value="${routeLightSizeVal}" min="2.4" max="10" step="0.2"/></div>` +
+                    `<div class="field"><label>Small arm length</label><input type="number" id="insp-route-arm-length" value="${armLengthVal}" min="8" max="120" step="2"/></div>` +
                     `</div>`;
-                const attachGapVal = routeProps.attachGap || 14;
                 html += `<div class="insp-grid">` +
-                    `<div class="field"><label>Compact spacing</label>` +
-                    `<input type="number" id="insp-route-arm-spacing" value="${armSpacingVal}" min="14" max="80" step="1"/></div>` +
+                    `<div class="field"><label>Route label size</label><input type="number" id="insp-route-label-size" value="${routeLabelSizeVal}" min="6" max="18" step="0.5"/></div>` +
+                    `<div class="field"><label>Route label gap</label><input type="number" id="insp-route-label-gap" value="${routeLabelGapVal}" min="0" max="40" step="1"/></div>` +
+                    `</div>`;
+                const attachGapVal = routeProps.attachGap || 6;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Aspect gap</label>` +
+                    `<input type="number" id="insp-route-arm-spacing" value="${armSpacingVal}" min="12" max="90" step="1"/></div>` +
                     `<div class="field"><label>Attach gap</label>` +
                     `<input type="number" id="insp-route-attach-gap" value="${attachGapVal}" min="0" max="80" step="1"/></div>` +
                     `</div>`;
@@ -762,17 +823,30 @@
                 c.attrs.signal = c.attrs.signal || {};
                 return c.attrs.signal;
             };
-            /* Lamp/lit only exist for the composite signal */
-            if (c.type === 'examples.Signal') {
+            /* Lamp/lit controls exist for main signal and combined signal+shunt */
+            if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
                 function cleanLampCode(v) {
                     var out = String(v || '').toUpperCase().replace(/[^BRYGX]/g, '');
                     return out || 'B';
                 }
                 function fitSignalWidthForAspects(count) {
                     count = Math.max(1, Math.min(8, parseInt(count, 10) || 1));
-                    var lampD = Math.max(10, ((c.size && c.size.height) || 24) - 6);
+                    var baseH = (c.size && c.size.height) || (c.type === 'examples.SignalShunt' ? 80 : 24);
+                    var lampD = Math.max(10, c.type === 'examples.SignalShunt' ? Math.min(32, baseH * 0.46 - 10) : baseH - 6);
                     var minW = Math.ceil((count * lampD + (count + 1) * 8) / 10) * 10;
-                    if (!c.size) c.size = { width: minW, height: 24 };
+                    if (c.type === 'examples.SignalShunt') {
+                        var sp0 = (c.attrs && c.attrs.signal) || {};
+                        var shSide = String(sp0.shuntSide || 'right').toLowerCase();
+                        var shSize = Math.max(24, Math.min(110, +sp0.shuntSize || 42));
+                        var shGap = Math.max(0, +sp0.shuntGap || 2);
+                        if (shSide === 'left' || shSide === 'right') {
+                            minW += shSize + shGap + 20;
+                        } else if (shSide === 'top' || shSide === 'bottom') {
+                            minW = Math.max(minW, shSize + 20);
+                            if (c.size && c.size.height < 100) c.size.height = 100;
+                        }
+                    }
+                    if (!c.size) c.size = { width: minW, height: c.type === 'examples.SignalShunt' ? 80 : 24 };
                     if (c.size.width < minW) c.size.width = minW;
                 }
                 function resizeLampCode(code, count) {
@@ -784,7 +858,7 @@
                 }
                 bindInspectorInputNum('insp-sig-aspect-count', v => {
                     const sp = ensureSig();
-                    sp.lamps = resizeLampCode(sp.lamps || 'BBB', v);
+                    sp.lamps = resizeLampCode(sp.lamps || (c.type === 'examples.SignalShunt' ? 'RYG' : 'BBB'), v);
                     fitSignalWidthForAspects(sp.lamps.length);
                 });
                 bindInspectorInput('insp-sig-lamps', v => {
@@ -800,7 +874,7 @@
                     lampRow.querySelectorAll('.sip-lamp-dot').forEach(dot => {
                         dot.addEventListener('click', () => {
                             const sp = ensureSig();
-                            let lamps = String(sp.lamps || 'BBB').split('');
+                            let lamps = String(sp.lamps || (c.type === 'examples.SignalShunt' ? 'RYG' : 'BBB')).split('');
                             const idx = parseInt(dot.getAttribute('data-idx'), 10);
                             const curKind = dot.getAttribute('data-kind');
                             const nextIdx = (LAMP_CYCLE.indexOf(curKind) + 1) % LAMP_CYCLE.length;
@@ -814,7 +888,7 @@
                     if (addBtn) {
                         addBtn.addEventListener('click', () => {
                             const sp = ensureSig();
-                            sp.lamps = (sp.lamps || 'BBB') + 'B';
+                            sp.lamps = (sp.lamps || (c.type === 'examples.SignalShunt' ? 'RYG' : 'BBB')) + 'B';
                             fitSignalWidthForAspects(sp.lamps.length);
                             render();
                             pushHistory();
@@ -836,6 +910,43 @@
                 bindInspectorInput('insp-sig-lit', v => {
                     const sp = ensureSig();
                     sp.lit = String(v || '').toUpperCase().replace(/[^BRYGX]/g, '');
+                    if (c.type === 'examples.SignalShunt') c.attrs.lit = sp.lit;
+                });
+                bindInspectorInputNum('insp-combined-lamp-gap', v => {
+                    const sp = ensureSig();
+                    sp.lampGap = Math.max(2, Math.min(30, v));
+                });
+                bindInspectorInputNum('insp-combined-shunt-gap', v => {
+                    const sp = ensureSig();
+                    sp.shuntGap = Math.max(0, Math.min(80, v));
+                });
+                bindInspectorInputNum('insp-combined-shunt-size', v => {
+                    const sp = ensureSig();
+                    sp.shuntSize = Math.max(24, Math.min(110, v));
+                    fitSignalWidthForAspects(String(sp.lamps || 'RYG').length);
+                });
+                const shuntSideEl = $('#insp-combined-shunt-side');
+                if (shuntSideEl) {
+                    shuntSideEl.addEventListener('change', () => {
+                        const sp = ensureSig();
+                        sp.shuntSide = shuntSideEl.value;
+                        fitSignalWidthForAspects(String(sp.lamps || 'RYG').length);
+                        render();
+                        pushHistory();
+                    });
+                }
+                const shuntStateEl = $('#insp-combined-shunt-state');
+                if (shuntStateEl) {
+                    shuntStateEl.addEventListener('change', () => {
+                        const sp = ensureSig();
+                        sp.shuntState = String(shuntStateEl.value || 'OFF').toUpperCase();
+                        render();
+                        pushHistory();
+                    });
+                }
+                bindInspectorInput('insp-combined-shunt-code', v => {
+                    const sp = ensureSig();
+                    sp.shuntState = String(v || 'OFF').toUpperCase();
                 });
             }
 
@@ -861,7 +972,6 @@
                         /* Clear legacy properties so resolveStandPos uses standPos */
                         delete sp.stand;
                         delete sp.standSide;
-                        delete sp.standArm;
                         delete sp.standArmBefore;
                         delete sp.signalSide;
                         render();
@@ -870,10 +980,27 @@
                 });
             }
 
-            /* Stand length */
+            /* Stand size */
             bindInspectorInputNum('insp-sig-stand-len', v => {
                 const sp = ensureSig();
                 sp.standLength = v;
+            });
+            bindInspectorInputNum('insp-sig-stand-arm', v => {
+                const sp = ensureSig();
+                sp.standArm = v;
+            });
+            const standDropEl = $('#insp-sig-stand-drop');
+            if (standDropEl) {
+                standDropEl.addEventListener('change', () => {
+                    const sp = ensureSig();
+                    sp.standDrop = standDropEl.value;
+                    render();
+                    pushHistory();
+                });
+            }
+            bindInspectorInputNum('insp-sig-label-gap', v => {
+                const sp = ensureSig();
+                sp.labelGap = Math.max(0, Math.min(60, v));
             });
 
             /* Route / Calling bindings */
@@ -883,7 +1010,7 @@
                     c.attrs.route = c.attrs.route || {};
                     return c.attrs.route;
                 };
-                const ROUTE_POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG'];
+                const ROUTE_POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG', 'KUG', 'LUG'];
                 function getRouteLabels() {
                     const rp = ensureRoute();
                     return String(rp.labels || 'AUG,BUG,CUG,DUG').split(/[\s,|/]+/)
@@ -912,7 +1039,9 @@
                         let next = ROUTE_POOL.find(x => labels.indexOf(x) === -1) || ('R' + (labels.length + 1));
                         labels.push(next);
                         rp.labels = labels.join(',');
-                        if (c.type === 'examples.RouteCallingSignal') rp.enabled = true;
+                        rp.enabled = true;
+                        if (!rp.routeSide) rp.routeSide = 'top';
+                        if (!rp.callingSide) rp.callingSide = 'bottom';
                         render();
                         pushHistory();
                     });
@@ -963,13 +1092,23 @@
                     const rp = ensureRoute();
                     rp.callingLabel = String(v || 'C').toUpperCase();
                 });
-                bindInspectorInputNum('insp-route-dot-count', v => {
+                bindInspectorInputNum('insp-route-light-size', v => {
                     const rp = ensureRoute();
-                    rp.dotCount = Math.max(1, Math.min(6, Math.round(v)));
+                    rp.dotSize = Math.max(2.4, Math.min(10, v));
+                    rp.lightSize = rp.dotSize;
+                    rp.dotCount = 1;
                 });
                 bindInspectorInputNum('insp-route-arm-length', v => {
                     const rp = ensureRoute();
                     rp.armLength = v;
+                });
+                bindInspectorInputNum('insp-route-label-size', v => {
+                    const rp = ensureRoute();
+                    rp.labelSize = Math.max(6, Math.min(18, v));
+                });
+                bindInspectorInputNum('insp-route-label-gap', v => {
+                    const rp = ensureRoute();
+                    rp.labelGap = Math.max(0, Math.min(40, v));
                 });
                 bindInspectorInputNum('insp-route-arm-spacing', v => {
                     const rp = ensureRoute();

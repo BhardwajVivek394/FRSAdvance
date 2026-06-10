@@ -635,22 +635,35 @@
      *  signal-stand bracket. The bend ratio splits the total length 40:60
      *  (first leg shorter) for a visually pleasing elbow.
      * ----------------------------------------------------------------------- */
-    function renderStand8(box, pos, len, bendR) {
+    function renderStand8(box, pos, len, bendR, opts) {
         if (!pos || pos === 'none') return '';
+        opts = opts || {};
         len = Math.max(8, len || 30);
         bendR = bendR != null ? bendR : 4;
         const bx = box.x, by = box.y, bw = box.w, bh = box.h;
         const mx = bx + bw / 2, my = by + bh / 2;
 
+        /*
+         * L/R stands must attach from the exact centre of the signal/shunt side.
+         * The horizontal leg is independently adjustable through signal.standArm;
+         * the vertical drop uses signal.standLength. This gives a real L-bracket
+         * instead of a loose line from the corner/bottom of the symbol.
+         */
+        const armLen = Math.max(0, +opts.standArm || Math.max(10, len * 0.45));
+        const dropMode = String(opts.standDrop || opts.drop || 'down').toLowerCase();
+        const vSign = (dropMode === 'up' || dropMode === 'top') ? -1 : 1;
+
         let pts;  // array of [x,y] waypoints
         switch (pos) {
-            /* ---- Side centres: straight line ---- */
+            /* ---- Side centres ---- */
             case 'T': pts = [[mx, by], [mx, by - len]]; break;
             case 'B': pts = [[mx, by + bh], [mx, by + bh + len]]; break;
-            case 'L': pts = [[bx, my], [bx - len, my]]; break;
-            case 'R': pts = [[bx + bw, my], [bx + bw + len, my]]; break;
 
-            /* ---- Corners: L-shaped bracket ---- */
+            /* ---- Left / Right: L-bracket from exact side centre ---- */
+            case 'L': pts = [[bx, my], [bx - armLen, my], [bx - armLen, my + vSign * len]]; break;
+            case 'R': pts = [[bx + bw, my], [bx + bw + armLen, my], [bx + bw + armLen, my + vSign * len]]; break;
+
+            /* ---- Corners: legacy L-shaped bracket ---- */
             case 'TL': pts = [[bx, by], [bx - len * 0.4, by], [bx - len * 0.4, by - len * 0.6]]; break;
             case 'TR': pts = [[bx + bw, by], [bx + bw + len * 0.4, by], [bx + bw + len * 0.4, by - len * 0.6]]; break;
             case 'BL': pts = [[bx, by + bh], [bx - len * 0.4, by + bh], [bx - len * 0.4, by + bh + len * 0.6]]; break;
@@ -663,11 +676,9 @@
         if (pts.length === 2) {
             d = `M ${pts[0][0]} ${pts[0][1]} L ${pts[1][0]} ${pts[1][1]}`;
         } else {
-            /* L-bend with rounded corner */
             const A = pts[0], B = pts[1], C = pts[2];
             const r = Math.min(bendR, Math.hypot(B[0] - A[0], B[1] - A[1]) * 0.45,
                 Math.hypot(C[0] - B[0], C[1] - B[1]) * 0.45);
-            /* Unit vectors along each leg */
             const d1 = [B[0] - A[0], B[1] - A[1]];
             const l1 = Math.hypot(d1[0], d1[1]) || 1;
             const u1 = [d1[0] / l1, d1[1] / l1];
@@ -691,8 +702,8 @@
      *  labelSideFromStand  — choose the best label anchor opposite the stand
      *  Returns { lx, ly, anchor } for the <text> element.
      * ----------------------------------------------------------------------- */
-    function labelSideFromStand(standPos, x, y, w, h, lblSize) {
-        const pad = 6;
+    function labelSideFromStand(standPos, x, y, w, h, lblSize, labelGap) {
+        const pad = Math.max(0, +labelGap || 6);
         switch (standPos) {
             case 'B': case 'BL': case 'BR':
                 return { lx: x + w + pad, ly: y + h / 2, anchor: 'start' };
@@ -730,7 +741,7 @@
         let svg = `<g class="sip-asset sip-signal-composite" data-id="${cell.id}" data-type="${cell.type}">`;
 
         /* 1. Stand — drawn FIRST so it sits behind the pill */
-        svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen);
+        svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen, 4, sigProps);
 
         /* 2. Background pill */
         const rx = Math.min(h / 2 - 1, 6);
@@ -789,7 +800,7 @@
         if (lblText && lblAttr.fill !== 'transparent') {
             const lblFill = lblAttr.fill || '#dcd7d7';
             const lblSize = +lblAttr.fontSize || 12;
-            const lp = labelSideFromStand(standPos, x, y, w, h, lblSize);
+            const lp = labelSideFromStand(standPos, x, y, w, h, lblSize, sigProps.labelGap);
             svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${lblFill}" ` +
                 `font-family="${T.labelFont}" font-size="${lblSize}" font-weight="700" ` +
                 `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(lblText)}</text>`;
@@ -898,13 +909,20 @@
             }
         }
 
+        // Stand — drawn from cell.attrs.signal props, same model as the
+        // composite signal so all stand-bearing elements behave consistently.
+        // Falls back to the old auto-stick only when no signal props are set
+        // (preserves legacy behaviour for data saved before this change).
+        const sigProps = (cell.attrs && cell.attrs.signal) || null;
+
         if (labelTxt) {
             const lFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
                 ? labelAttrs.fill
                 : 'rgba(220,228,245,0.85)';
             const sigSide = (cell.attrs && cell.attrs.signal && cell.attrs.signal.signalSide) || 'up';
             const isRight = (sigSide === 'up' || sigSide === 'right');
-            const lx = isRight ? bx + bw + 8 : bx - 8;
+            const lblGap = Math.max(4, +(sigProps && sigProps.labelGap) || 8);
+            const lx = isRight ? bx + bw + lblGap : bx - lblGap;
             const anchor = isRight ? 'start' : 'end';
             const ly = by + bh / 2 + 5;
             svg += `<text x="${lx}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
@@ -914,16 +932,10 @@
                 `font-family="${T.labelFont}" font-size="14" font-weight="700" ` +
                 `text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(labelTxt)}</text>`;
         }
-
-        // Stand — drawn from cell.attrs.signal props, same model as the
-        // composite signal so all stand-bearing elements behave consistently.
-        // Falls back to the old auto-stick only when no signal props are set
-        // (preserves legacy behaviour for data saved before this change).
-        const sigProps = (cell.attrs && cell.attrs.signal) || null;
         if (sigProps) {
             const sPos = resolveStandPos(sigProps);
             const sLen = Math.max(8, +sigProps.standLength || 20);
-            svg += renderStand8({ x: bx, y: by, w: bw, h: bh }, sPos, sLen);
+            svg += renderStand8({ x: bx, y: by, w: bw, h: bh }, sPos, sLen, 4, sigProps);
         } else {
             // Legacy path: rail-snapping auto-stick for old saved shunts.
             svg += renderStick({ x: bx, y: by, w: bw, h: bh }, 'right');
@@ -946,70 +958,64 @@
      *  Shunt variant is fixed at v1 (top dim, BL+BR lit) — same as the
      *  standalone Shaunt — because that's the most common combined pattern.
      * ------------------------------------------------------------------------ */
-    function renderSignalShunt(cell) {
-        const x = cell.position.x;
-        const y = cell.position.y;
-        const w = cell.size.width || 200;
-        const h = cell.size.height || 80;
+    function normaliseCombinedShuntSide(value) {
+        const side = String(value || 'right').toLowerCase().trim();
+        return /^(left|right|top|bottom|none)$/.test(side) ? side : 'right';
+    }
 
-        const litAttr = (cell.attrs && cell.attrs.lit) || '';
+    function normaliseCombinedShuntState(value) {
+        let raw = String(value == null || value === '' ? 'PROCEED' : value).toUpperCase().trim();
+        raw = raw.replace(/[\s\-]+/g, '_');
 
-        const labelAttrs = (cell.attrs && cell.attrs.label) || {};
-        const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
-        const labelFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
-            ? labelAttrs.fill : 'rgba(220,228,245,0.85)';
-        const labelSize = +labelAttrs.fontSize || 14;
+        const alias = {
+            '0': 'OFF', '3': 'OFF', 'FALSE': 'OFF', 'DROP': 'OFF', 'DOWN': 'OFF', 'BLANK': 'OFF', 'DARK': 'OFF',
+            '1': 'PROCEED', 'TRUE': 'PROCEED', 'PICKUP': 'PROCEED', 'P': 'PROCEED', 'ON': 'PROCEED',
+            'BOTH': 'PROCEED', 'BOTTOM': 'PROCEED', 'BOTTOM_BOTH': 'PROCEED', 'BOTH_BOTTOM': 'PROCEED',
+            'BLBR': 'PROCEED', 'BRBL': 'PROCEED', 'BL_BR': 'PROCEED', 'BR_BL': 'PROCEED',
+            '2': 'DIVERGE_RIGHT', 'DIVERGE': 'DIVERGE_RIGHT', 'DIVERGE_R': 'DIVERGE_RIGHT', 'DR': 'DIVERGE_RIGHT',
+            'RIGHT_DIVERGE': 'DIVERGE_RIGHT', 'TOP_RIGHT': 'DIVERGE_RIGHT', 'TOP_BR': 'DIVERGE_RIGHT',
+            'TBR': 'DIVERGE_RIGHT', 'T_BR': 'DIVERGE_RIGHT', 'BR_TOP': 'DIVERGE_RIGHT',
+            'DIVERGE_L': 'DIVERGE_LEFT', 'DL': 'DIVERGE_LEFT', 'LEFT_DIVERGE': 'DIVERGE_LEFT',
+            'TOP_LEFT': 'DIVERGE_LEFT', 'TOP_BL': 'DIVERGE_LEFT', 'TBL': 'DIVERGE_LEFT', 'T_BL': 'DIVERGE_LEFT', 'BL_TOP': 'DIVERGE_LEFT',
+            'T': 'TOP', 'TOP_ONLY': 'TOP',
+            'L': 'BL', 'LEFT': 'BL', 'BOTTOM_LEFT': 'BL', 'BL_ONLY': 'BL',
+            'R': 'BR', 'RIGHT': 'BR', 'BOTTOM_RIGHT': 'BR', 'BR_ONLY': 'BR',
+            'FULL': 'ALL', 'ALL_ON': 'ALL'
+        };
+        raw = alias[raw] || raw;
 
-        // Layout inside the cell bounding box: signal box on the LEFT,
-        // shunt triangle on the RIGHT, sharing the same y level.
-        const sigW = 84;
-        const sigH = 36;
-        const shW = 44;
-        const shH = shW * (23 / 25);
-        const totalW = sigW + shW + 2;          // 2 = gap
-        const innerY = y + (h - sigH) / 2;
-        const startX = x + (w - totalW) / 2;
-        const sigX = startX;
-        const sigY = innerY;
-        const shX = sigX + sigW + 2;
-        const shY = innerY + (sigH - shH) / 2;
-
-        let svg = `<g class="sip-asset sip-sigshunt" data-id="${cell.id}" data-type="${cell.type}">`;
-
-        // ── 3-aspect signal head ──
-        svg += `<rect x="${sigX}" y="${sigY}" width="${sigW}" height="${sigH}" rx="5" fill="#3a3a3a"/>`;
-        svg += `<rect x="${sigX + 1}" y="${sigY + 1}" width="${sigW - 2}" height="${sigH - 2}" rx="4" fill="#606060"/>`;
-        const lampDefs = [
-            { kind: 'R', cx: sigX + 18, cy: sigY + sigH / 2 },
-            { kind: 'Y', cx: sigX + 42, cy: sigY + sigH / 2 },
-            { kind: 'G', cx: sigX + 66, cy: sigY + sigH / 2 }
-        ];
-        const litMap = { R: '#FF2E2E', Y: '#FFD400', G: '#22D142', X: '#FFD400' };
-        for (const lamp of lampDefs) {
-            const isLitLamp = litAttr === lamp.kind || (litAttr === 'X' && lamp.kind === 'Y');
-            const r = 10;
-            if (isLitLamp) {
-                const col = litMap[lamp.kind] || '#FFD400';
-                svg += `<circle cx="${lamp.cx}" cy="${lamp.cy}" r="${r + 4}" fill="${col}" opacity="0.18"/>`;
-                svg += `<circle cx="${lamp.cx}" cy="${lamp.cy}" r="${r + 2}" fill="${col}" opacity="0.35"/>`;
-                svg += `<circle cx="${lamp.cx}" cy="${lamp.cy}" r="${r}" fill="${col}"/>`;
-                svg += `<ellipse cx="${lamp.cx - r * 0.35}" cy="${lamp.cy - r * 0.4}" rx="${r * 0.35}" ry="${r * 0.22}" fill="white" opacity="0.45"/>`;
-            } else {
-                svg += `<circle cx="${lamp.cx}" cy="${lamp.cy}" r="${r}" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1.2"/>`;
-                // Marker
-                if (lamp.kind === 'R') {
-                    svg += `<line x1="${lamp.cx - r + 1}" y1="${lamp.cy - 1.4}" x2="${lamp.cx + r - 1}" y2="${lamp.cy - 1.4}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                    svg += `<line x1="${lamp.cx - r + 1}" y1="${lamp.cy + 1.4}" x2="${lamp.cx + r - 1}" y2="${lamp.cy + 1.4}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                } else if (lamp.kind === 'Y') {
-                    const d = r * 0.72;
-                    svg += `<line x1="${lamp.cx - d}" y1="${lamp.cy - d}" x2="${lamp.cx + d}" y2="${lamp.cy + d}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                } else if (lamp.kind === 'G') {
-                    svg += `<line x1="${lamp.cx}" y1="${lamp.cy - r + 1}" x2="${lamp.cx}" y2="${lamp.cy + r - 1}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                }
+        const set = { top: false, bl: false, br: false, code: raw };
+        function applyToken(token) {
+            token = alias[token] || token;
+            switch (token) {
+                case 'OFF': break;
+                case 'PROCEED': set.bl = true; set.br = true; break;
+                case 'DIVERGE_RIGHT': set.top = true; set.br = true; break;
+                case 'DIVERGE_LEFT': set.top = true; set.bl = true; break;
+                case 'TOP': set.top = true; break;
+                case 'BL': set.bl = true; break;
+                case 'BR': set.br = true; break;
+                case 'ALL': set.top = true; set.bl = true; set.br = true; break;
             }
         }
 
-        // ── Shunt triangle (v1: dim top, lit BL+BR) ──
+        const known = ['OFF', 'PROCEED', 'DIVERGE_RIGHT', 'DIVERGE_LEFT', 'TOP', 'BL', 'BR', 'ALL'];
+        if (known.indexOf(raw) >= 0) {
+            applyToken(raw);
+            return set;
+        }
+
+        // Custom dot-combination support: T,BL,BR / TOP+BR / BL|BR etc.
+        raw.split(/[,+|/;]+/).forEach(function (tok) {
+            tok = String(tok || '').toUpperCase().trim();
+            if (tok) applyToken(tok);
+        });
+        return set;
+    }
+
+    function renderCombinedShuntSymbol(shX, shY, shW, shH, dotSet, bodyFill) {
+        dotSet = dotSet || { top: false, bl: true, br: true };
+        bodyFill = bodyFill || '#5B6168';
         const sx = shW / 25;
         const sy = shH / 23;
         const pathD = `M ${shX + 7.91188 * sx} ${shY + 0.180471 * sy} ` +
@@ -1020,14 +1026,16 @@
             `L ${shX + 21.7913 * sx} ${shY + 9.09038 * sy} ` +
             `C ${shX + 20.0269 * sx} ${shY + 7.48825 * sy} ${shX + 17.2844 * sx} ${shY + 4.90306 * sy} ${shX + 15.6975 * sx} ${shY + 3.34558 * sy} ` +
             `C ${shX + 12.8669 * sx} ${shY + 0.567087 * sy} ${shX + 10.3638 * sx} ${shY - 0.450839 * sy} ${shX + 7.91188 * sx} ${shY + 0.180471 * sy} Z`;
+        let svg = '';
         svg += `<path d="${pathD}" fill="#3a3e44"/>`;
         svg += `<g transform="translate(${shX + shW / 2} ${shY + shH / 2}) scale(0.96) translate(${-(shX + shW / 2)} ${-(shY + shH / 2)})">` +
-            `<path d="${pathD}" fill="#5B6168"/></g>`;
+            `<path d="${pathD}" fill="${bodyFill}"/></g>`;
+
         const dotR = Math.max(3.4, 3.4 * Math.min(sx, sy));
         const dots = [
-            { cx: shX + 9.5 * sx, cy: shY + 7.5 * sy, lit: false },                  // top dim
-            { cx: shX + 7.5 * sx, cy: shY + 17.5 * sy, lit: true },                   // BL lit
-            { cx: shX + 17.5 * sx, cy: shY + 17.5 * sy, lit: true }                    // BR lit
+            { cx: shX + 9.5 * sx, cy: shY + 7.5 * sy, lit: !!dotSet.top },
+            { cx: shX + 7.5 * sx, cy: shY + 17.5 * sy, lit: !!dotSet.bl },
+            { cx: shX + 17.5 * sx, cy: shY + 17.5 * sy, lit: !!dotSet.br }
         ];
         for (const d of dots) {
             if (d.lit) {
@@ -1038,34 +1046,149 @@
                 svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white" fill-opacity="0.08" stroke="white" stroke-opacity="0.25" stroke-width="0.6"/>`;
             }
         }
+        return svg;
+    }
 
-        // ── L-stick to nearest rail ──
-        // ── Stand ──
-        const sigStandProps = (cell.attrs && cell.attrs.signal) || null;
-        const standHeadBox = { x: sigX, y: Math.min(sigY, shY), w: totalW, h: Math.max(sigH, shH) };
-        if (sigStandProps) {
-            const sPos = resolveStandPos(sigStandProps);
-            const sLen = Math.max(8, +sigStandProps.standLength || 30);
-            svg += renderStand8(standHeadBox, sPos, sLen);
+    function renderSignalShunt(cell) {
+        const x = cell.position.x;
+        const y = cell.position.y;
+        const w = cell.size.width || 200;
+        const h = cell.size.height || 80;
+
+        const sigProps = (cell.attrs && cell.attrs.signal) || {};
+        const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps.length) ? sigProps.lamps : 'RYG';
+        const lampsClean = String(lampsStr).toUpperCase().replace(/[^BRYGX]/g, '') || 'B';
+        const lamps = lampsClean.split('');
+        const n = Math.max(1, lamps.length);
+        const litAttr = String((sigProps.lit != null ? sigProps.lit : ((cell.attrs && cell.attrs.lit) || '')) || '').toUpperCase();
+        const litSet = {};
+        for (let i = 0; i < litAttr.length; i++) litSet[litAttr[i]] = 1;
+
+        const labelAttrs = (cell.attrs && cell.attrs.label) || {};
+        const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
+        const labelFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
+            ? labelAttrs.fill : 'rgba(220,228,245,0.85)';
+        const labelSize = +labelAttrs.fontSize || 14;
+
+        /* Main + shunt are now fully combinable:
+           - main signal supports any 1..8 lamp code through attrs.signal.lamps
+           - shunt can be placed left/right/top/bottom/none
+           - shunt dot state supports every practical 3-dot combination through
+             attrs.signal.shuntState: OFF, PROCEED, DIVERGE_RIGHT,
+             DIVERGE_LEFT, TOP, BL, BR, ALL, or a custom T,BL,BR code. */
+        const sigH = Math.max(24, Math.min(42, h * 0.46));
+        const lampD = Math.max(12, sigH - 10);
+        const lampGap = Math.max(4, +sigProps.lampGap || 7);
+        const sigW = Math.max(34, n * lampD + (n + 1) * lampGap);
+        const shuntSide = normaliseCombinedShuntSide(sigProps.shuntSide);
+        const hasShunt = shuntSide !== 'none';
+        const defaultShW = Math.max(36, Math.min(50, sigH * 1.22));
+        const shW = Math.max(24, Math.min(110, +sigProps.shuntSize || defaultShW));
+        const shH = shW * (23 / 25);
+        const shuntGap = Math.max(0, +sigProps.shuntGap || 2);
+        const maxH = Math.max(sigH, shH);
+
+        let sigX, sigY, shX, shY, totalW, totalH, contentX, contentY;
+        if (!hasShunt) {
+            totalW = sigW; totalH = sigH;
+            contentX = x + (w - totalW) / 2;
+            contentY = y + (h - totalH) / 2;
+            sigX = contentX; sigY = contentY;
+        } else if (shuntSide === 'left' || shuntSide === 'right') {
+            totalW = sigW + shuntGap + shW;
+            totalH = maxH;
+            contentX = x + (w - totalW) / 2;
+            contentY = y + (h - totalH) / 2;
+            if (shuntSide === 'left') {
+                shX = contentX;
+                sigX = contentX + shW + shuntGap;
+            } else {
+                sigX = contentX;
+                shX = contentX + sigW + shuntGap;
+            }
+            sigY = contentY + (totalH - sigH) / 2;
+            shY = contentY + (totalH - shH) / 2;
         } else {
-            svg += renderStick(standHeadBox, 'right');
+            totalW = Math.max(sigW, shW);
+            totalH = sigH + shuntGap + shH;
+            contentX = x + (w - totalW) / 2;
+            contentY = y + (h - totalH) / 2;
+            if (shuntSide === 'top') {
+                shY = contentY;
+                sigY = contentY + shH + shuntGap;
+            } else {
+                sigY = contentY;
+                shY = contentY + sigH + shuntGap;
+            }
+            sigX = contentX + (totalW - sigW) / 2;
+            shX = contentX + (totalW - shW) / 2;
         }
+
+        let svg = `<g class="sip-asset sip-sigshunt" data-id="${cell.id}" data-type="${cell.type}">`;
+
+        // ── Variable-aspect main signal head ──
+        svg += `<rect x="${sigX}" y="${sigY}" width="${sigW}" height="${sigH}" rx="5" fill="#3a3a3a"/>`;
+        svg += `<rect x="${sigX + 1}" y="${sigY + 1}" width="${sigW - 2}" height="${sigH - 2}" rx="4" fill="#606060"/>`;
+        const litMap = { R: '#FF2E2E', Y: '#FFD400', G: '#22D142', X: '#FFD400' };
+        const r = lampD / 2;
+        for (let i = 0; i < n; i++) {
+            const kind = lamps[i] || 'B';
+            const cx = sigX + lampGap * (i + 1) + lampD * i + r;
+            const cy = sigY + sigH / 2;
+            const isLitLamp = !!litSet[kind] || (kind === 'Y' && !!litSet.X);
+            if (isLitLamp && litMap[kind]) {
+                const col = litMap[kind] || '#FFD400';
+                svg += `<circle cx="${cx}" cy="${cy}" r="${r + 4}" fill="${col}" opacity="0.18"/>`;
+                svg += `<circle cx="${cx}" cy="${cy}" r="${r + 2}" fill="${col}" opacity="0.35"/>`;
+                svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;
+                svg += `<ellipse cx="${cx - r * 0.35}" cy="${cy - r * 0.4}" rx="${r * 0.35}" ry="${r * 0.22}" fill="white" opacity="0.45"/>`;
+            } else {
+                svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1.2"/>`;
+                if (kind === 'R') {
+                    svg += `<line x1="${cx - r + 1}" y1="${cy - 1.4}" x2="${cx + r - 1}" y2="${cy - 1.4}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - r + 1}" y1="${cy + 1.4}" x2="${cx + r - 1}" y2="${cy + 1.4}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                } else if (kind === 'Y') {
+                    const d = r * 0.72;
+                    svg += `<line x1="${cx - d}" y1="${cy - d}" x2="${cx + d}" y2="${cy + d}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                } else if (kind === 'G') {
+                    svg += `<line x1="${cx}" y1="${cy - r + 1}" x2="${cx}" y2="${cy + r - 1}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                } else if (kind === 'X') {
+                    const d = r * 0.72;
+                    svg += `<line x1="${cx - d}" y1="${cy - d + 2.2}" x2="${cx + d}" y2="${cy + d + 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d - 2.2}" x2="${cx + d}" y2="${cy + d - 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                }
+            }
+        }
+
+        // ── Shunt triangle with every 3-dot combination ──
+        if (hasShunt) {
+            const shuntState = sigProps.shuntState || sigProps.shuntVariant || sigProps.shuntLit || (cell.attrs && (cell.attrs.shuntState || cell.attrs.shuntLit)) || 'PROCEED';
+            const dotSet = normaliseCombinedShuntState(shuntState);
+            svg += renderCombinedShuntSymbol(shX, shY, shW, shH, dotSet, '#5B6168');
+        }
+
+        // ── Centre-attached L stand for combined signal + shunt ──
+        const standHeadBox = { x: contentX, y: contentY, w: totalW, h: totalH };
+        const sPos = resolveStandPos(sigProps);
+        const sLen = Math.max(8, +sigProps.standLength || 30);
+        svg += renderStand8(standHeadBox, sPos, sLen, 4, sigProps);
 
         // ── Label ──
         if (labelTxt) {
-            const lx = sigX - 6;
-            const ly = sigY + sigH / 2 + labelSize / 3;
-            svg += `<text x="${lx}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
+            const labelGap = Math.max(4, +sigProps.labelGap || 6);
+            const lp = labelSideFromStand(sPos, standHeadBox.x, standHeadBox.y, standHeadBox.w, standHeadBox.h, labelSize, labelGap);
+            svg += `<text x="${lp.lx}" y="${lp.ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
                 `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="700" ` +
-                `text-anchor="end" paint-order="stroke">${escapeXml(labelTxt)}</text>`;
-            svg += `<text x="${lx}" y="${ly}" fill="${labelFill}" ` +
+                `text-anchor="${lp.anchor}" dominant-baseline="central" paint-order="stroke">${escapeXml(labelTxt)}</text>`;
+            svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${labelFill}" ` +
                 `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="700" ` +
-                `text-anchor="end">${escapeXml(labelTxt)}</text>`;
+                `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(labelTxt)}</text>`;
         }
 
         svg += `</g>`;
         return svg;
     }
+
 
 
     /* --- Route / Calling signal module -------------------------------------- *
@@ -1133,27 +1256,14 @@
         }
     }
 
-    function renderTinyRouteLamp(cx, cy, r, lit, colour) {
-        colour = colour || '#ffffff';
-        if (lit) {
-            return `<circle cx="${cx}" cy="${cy}" r="${r + 2.2}" fill="${colour}" opacity="0.18"/>` +
-                `<circle cx="${cx}" cy="${cy}" r="${r + 1}" fill="${colour}" opacity="0.35"/>` +
-                `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}"/>` +
-                `<ellipse cx="${cx - r * 0.35}" cy="${cy - r * 0.35}" rx="${r * 0.34}" ry="${r * 0.20}" fill="white" opacity="0.55"/>`;
-        }
-        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="white" fill-opacity="0.10" ` +
-            `stroke="white" stroke-opacity="0.36" stroke-width="0.7"/>`;
-    }
-
     function normaliseRouteCallingConfig(cell, forceEnabled) {
         const route = (cell.attrs && cell.attrs.route) || {};
         const labels = parseRouteLabels(route.labels || route.routes || route.routeLabels);
         const side = String(route.routeSide || 'top').toLowerCase();
         const safeSide = /^(top|bottom|left|right)$/.test(side) ? side : 'top';
-        let callingSide = String(route.callingSide || 'opposite').toLowerCase();
-        if (callingSide === 'opposite' || !/^(top|bottom|left|right)$/.test(callingSide)) {
-            callingSide = routeOppositeSide(safeSide);
-        }
+        let callingSide = String(route.callingSide || 'bottom').toLowerCase();
+        if (callingSide === 'opposite') callingSide = routeOppositeSide(safeSide);
+        if (!/^(top|bottom|left|right)$/.test(callingSide)) callingSide = 'bottom';
         return {
             enabled: forceEnabled || boolRouteProp(route.enabled, false),
             labels: labels,
@@ -1162,142 +1272,263 @@
             calling: boolRouteProp(route.calling, true),
             callingLabel: String(route.callingLabel || 'C'),
             active: String(route.active || route.activeRoutes || ''),
-            dotCount: Math.round(clampRouteNumber(route.dotCount, 4, 1, 6)),
-            dotSize: clampRouteNumber(route.dotSize, 3.8, 2.2, 8),
-            armSpacing: clampRouteNumber(route.armSpacing, 27, 14, 80),
-            armLength: clampRouteNumber(route.armLength, 34, 16, 100),
-            attachGap: clampRouteNumber(route.attachGap, 14, 0, 80),
-            callingGap: clampRouteNumber(route.callingGap, 14, 0, 80),
+            dotCount: 1, // legacy field retained, simple route uses exactly one light per aspect
+            dotSize: clampRouteNumber(route.dotSize || route.lightSize, 3.8, 2.4, 10),
+            labelSize: clampRouteNumber(route.labelSize, 8.5, 6, 18),
+            labelGap: clampRouteNumber(route.labelGap, 8, 0, 50),
+            armSpacing: clampRouteNumber(route.armSpacing, 22, 10, 90),
+            armLength: clampRouteNumber(route.armLength, 22, 8, 120),
+            attachGap: clampRouteNumber(route.attachGap, 6, 0, 100),
+            callingGap: clampRouteNumber(route.callingGap, route.attachGap || 6, 0, 100),
             compact: boolRouteProp(route.compact, true)
         };
     }
 
-    function renderRouteCallingGraphic(cx, cy, cfg, opts) {
-        opts = opts || {};
+    function routeEdgePoint(box, sideName, lateral) {
+        const side = routeSideUnit(sideName);
+        const x = box.x, y = box.y, w = box.w, h = box.h;
+        let sx, sy;
+        switch (sideName) {
+            case 'bottom': sx = x + w / 2; sy = y + h; break;
+            case 'left': sx = x; sy = y + h / 2; break;
+            case 'right': sx = x + w; sy = y + h / 2; break;
+            case 'top':
+            default: sx = x + w / 2; sy = y; break;
+        }
+        sx += side.px * lateral;
+        sy += side.py * lateral;
+        return { sx: sx, sy: sy, ax: side.ax, ay: side.ay, px: side.px, py: side.py };
+    }
+
+    function routeLabelPoint(sideName, x, y, gap) {
+        gap = Math.max(0, +gap || 0);
+        switch (sideName) {
+            case 'bottom': return { x: x, y: y + gap, anchor: 'middle' };
+            case 'left': return { x: x - gap, y: y + 4, anchor: 'end' };
+            case 'right': return { x: x + gap, y: y + 4, anchor: 'start' };
+            case 'top':
+            default: return { x: x, y: y - gap, anchor: 'middle' };
+        }
+    }
+
+    function renderSimpleRouteLamp(cx, cy, r, lit, colour) {
+        colour = colour || '#ffffff';
+        if (lit) {
+            return `<circle cx="${cx}" cy="${cy}" r="${r + 3}" fill="${colour}" opacity="0.18">` +
+                `<animate attributeName="opacity" values="0.18;0.03;0.18" dur="0.8s" repeatCount="indefinite"/>` +
+                `</circle>` +
+                `<circle cx="${cx}" cy="${cy}" r="${r + 1.3}" fill="${colour}" opacity="0.45">` +
+                `<animate attributeName="opacity" values="0.45;0.12;0.45" dur="0.8s" repeatCount="indefinite"/>` +
+                `</circle>` +
+                `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}" stroke="${colour}" stroke-width="0.8">` +
+                `<animate attributeName="opacity" values="1;0.25;1" dur="0.8s" repeatCount="indefinite"/>` +
+                `</circle>`;
+        }
+        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#0a0f1e" ` +
+            `stroke="${colour}" stroke-opacity="0.68" stroke-width="0.9"/>` +
+            `<circle cx="${cx}" cy="${cy}" r="${Math.max(1.3, r * 0.34)}" fill="${colour}" fill-opacity="0.16"/>`;
+    }
+
+    function renderRouteArmsOnBox(box, cfg, sideName, origin) {
         const labels = cfg.labels.length ? cfg.labels : ['AUG'];
         const n = labels.length;
         const activeSet = parseRouteActiveSet(cfg.active);
-        const allRoutesActive = !!(activeSet.ALL || activeSet.ROUTE || activeSet['*']);
-        const side = routeSideUnit(cfg.routeSide);
+        const allRoutesActive = !!(activeSet.ALL || activeSet.ROUTE || activeSet.ROUTES || activeSet['*']);
+        sideName = /^(top|bottom|left|right)$/.test(sideName) ? sideName : 'top';
+
+        const side = routeSideUnit(sideName);
         const mid = (n - 1) / 2;
-        const routeLen = cfg.armLength;
-        const spacing = cfg.armSpacing;
-        const dotStep = cfg.dotSize * 2.35;
-        const dotR = cfg.dotSize;
-        const lineCol = '#9aa8c4';
-        let anyRouteLit = false;
-        let svg = `<g class="sip-route-call-module">`;
+        const spacing = Math.max(10, +cfg.armSpacing || 22);
+        const lineLen = Math.max(8, +cfg.armLength || 22);
+        const attachGap = Math.max(0, +cfg.attachGap || 6);
+        const dotR = Math.max(2.4, +cfg.dotSize || 3.8);
+        const labelSize = Math.max(6, +cfg.labelSize || 8.5);
+        const labelGap = Math.max(0, +cfg.labelGap || 8);
+        const baseCol = '#9aa8c4';
+        let svg = `<g class="sip-route-top-arms" pointer-events="none">`;
 
-        // Root route lamp — same conceptual role as rdpmsRootMiddle in telemetry live.
-        for (let i = 0; i < n; i++) {
-            const lbl = labels[i];
-            if (allRoutesActive || activeSet[lbl]) anyRouteLit = true;
-        }
-        const rootLit = anyRouteLit || !!(activeSet.ROOT || activeSet.CENTER);
-        svg += `<circle cx="${cx}" cy="${cy}" r="${cfg.dotSize + 2.4}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.1"/>`;
-        svg += renderTinyRouteLamp(cx, cy, cfg.dotSize, rootLit, '#ffffff');
-
-        // Route arms — compact fan on any side. Each route has four white lamps by default.
+        /* Railway SIP-style route indicator:
+           no centre hub, no fan cluster, no route box. Each route aspect is a
+           small independent arm above the main signal: line + single lamp + label.
+           When origin is supplied (attached-to-signal mode), each arm line starts
+           from the centre of the main signal body instead of the box edge. */
         for (let i = 0; i < n; i++) {
             const lbl = labels[i];
             const lit = allRoutesActive || !!activeSet[lbl];
             const lateral = (i - mid) * spacing;
-            const baseX = cx + side.px * lateral;
-            const baseY = cy + side.py * lateral;
-            const endX = baseX + side.ax * routeLen;
-            const endY = baseY + side.ay * routeLen;
-            const bendX = cx + side.px * lateral * 0.35 + side.ax * routeLen * 0.42;
-            const bendY = cy + side.py * lateral * 0.35 + side.ay * routeLen * 0.42;
-            svg += `<path d="M ${cx} ${cy} Q ${bendX} ${bendY} ${endX} ${endY}" ` +
-                `stroke="${lit ? '#ffffff' : lineCol}" stroke-width="1.4" fill="none" ` +
-                `stroke-linecap="round" opacity="${lit ? '0.95' : '0.55'}"/>`;
+            const p = routeEdgePoint(box, sideName, lateral);
+            const jx = p.sx + p.ax * attachGap;
+            const jy = p.sy + p.ay * attachGap;
+            const ex = p.sx + p.ax * (attachGap + lineLen);
+            const ey = p.sy + p.ay * (attachGap + lineLen);
+            const stroke = lit ? '#ffffff' : baseCol;
 
-            const horizontal = cfg.routeSide === 'top' || cfg.routeSide === 'bottom';
-            const clusterCx = endX;
-            const clusterCy = endY;
-            for (let d = 0; d < cfg.dotCount; d++) {
-                const off = (d - (cfg.dotCount - 1) / 2) * dotStep;
-                const dx = horizontal ? off : 0;
-                const dy = horizontal ? 0 : off;
-                svg += renderTinyRouteLamp(clusterCx + dx, clusterCy + dy, dotR, lit, '#ffffff');
-            }
-            const labelX = clusterCx + side.labelDx;
-            const labelY = clusterCy + side.labelDy;
-            svg += `<text x="${labelX}" y="${labelY}" fill="${lit ? '#ffffff' : '#d7d7d7'}" ` +
-                `font-family="${T.labelFont}" font-size="9.5" font-weight="800" ` +
-                `text-anchor="${side.anchor}" dominant-baseline="central">${escapeXml(lbl)}</text>`;
+            /* origin override: route lines start from signal centre when attached */
+            const startX = origin ? origin.x : p.sx;
+            const startY = origin ? origin.y : p.sy;
+
+            svg += `<line x1="${startX}" y1="${startY}" x2="${ex}" y2="${ey}" ` +
+                `stroke="${stroke}" stroke-width="1.45" stroke-linecap="round" opacity="${lit ? '1' : '0.76'}">` +
+                (lit ? `<animate attributeName="opacity" values="1;0.28;1" dur="0.8s" repeatCount="indefinite"/>` : '') +
+                `</line>`;
+            svg += renderSimpleRouteLamp(ex, ey, dotR, lit, '#ffffff');
+
+            const lp = routeLabelPoint(sideName, ex, ey, dotR + labelGap);
+            svg += `<text x="${lp.x}" y="${lp.y}" fill="${lit ? '#ffffff' : '#d7d7d7'}" ` +
+                `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="800" ` +
+                `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(lbl)}</text>`;
         }
-
-        // Independent calling signal (Co_Hg/C) — can sit on any side.
-        if (cfg.calling) {
-            const cside = routeSideUnit(cfg.callingSide);
-            const callLit = !!(activeSet.C || activeSet.CALL || activeSet.CALLING || activeSet.COHG || activeSet.CO_HG);
-            const cReach = Math.max(22, routeLen * 0.82);
-            const callX = cx + cside.ax * cReach;
-            const callY = cy + cside.ay * cReach;
-            svg += `<line x1="${cx}" y1="${cy}" x2="${callX}" y2="${callY}" stroke="#9aa8c4" ` +
-                `stroke-width="1.2" stroke-linecap="round" opacity="0.55"/>`;
-            svg += `<circle cx="${callX}" cy="${callY}" r="${dotR + 3.8}" fill="#0a0f1e" stroke="#FFD400" stroke-width="1.1"/>`;
-            svg += renderTinyRouteLamp(callX, callY, dotR + 1.4, callLit, '#FFD400');
-            const labelX = callX + cside.labelDx;
-            const labelY = callY + cside.labelDy;
-            svg += `<text x="${labelX}" y="${labelY}" fill="#FFD400" ` +
-                `font-family="${T.labelFont}" font-size="11" font-weight="900" ` +
-                `text-anchor="${cside.anchor}" dominant-baseline="central">${escapeXml(cfg.callingLabel || 'C')}</text>`;
-        }
-
         svg += `</g>`;
         return svg;
     }
 
-    function routeBoxAnchor(box, side, gap) {
-        gap = gap == null ? 14 : gap;
-        const x = box.x, y = box.y, w = box.w, h = box.h;
-        switch (side) {
-            case 'bottom': return { sx: x + w / 2, sy: y + h, cx: x + w / 2, cy: y + h + gap };
-            case 'left': return { sx: x, sy: y + h / 2, cx: x - gap, cy: y + h / 2 };
-            case 'right': return { sx: x + w, sy: y + h / 2, cx: x + w + gap, cy: y + h / 2 };
-            case 'top':
-            default: return { sx: x + w / 2, sy: y, cx: x + w / 2, cy: y - gap };
+    function renderSimpleCallingLineOnBox(box, cfg, sideName, origin) {
+        sideName = /^(top|bottom|left|right)$/.test(sideName) ? sideName : 'bottom';
+        const side = routeSideUnit(sideName);
+        const callGap = Math.max(0, +cfg.callingGap || +cfg.attachGap || 6);
+        const callLen = Math.max(12, (+cfg.callingLength || Math.max(18, (+cfg.armLength || 22) * 0.82)));
+        const start = routeEdgePoint(box, sideName, 0);
+        const endX = start.sx + side.ax * (callGap + callLen);
+        const endY = start.sy + side.ay * (callGap + callLen);
+        /* origin override: calling line starts from signal centre when attached */
+        const lineStartX = origin ? origin.x : start.sx;
+        const lineStartY = origin ? origin.y : start.sy;
+        let svg = `<g class="sip-calling-below-line" pointer-events="none">`;
+        svg += `<line x1="${lineStartX}" y1="${lineStartY}" x2="${endX}" y2="${endY}" ` +
+            `stroke="#9aa8c4" stroke-width="1.25" stroke-linecap="round" opacity="0.72"/>`;
+        svg += renderCallingAttachment(endX, endY, cfg, sideName);
+        svg += `</g>`;
+        return svg;
+    }
+
+    function renderRouteCallingGraphic(cx, cy, cfg, opts) {
+        opts = opts || {};
+        /* Standalone Route/Calling stencil uses the same simple SIP model as the
+           main-signal attachment. A small notional centre line is used only for
+           geometry; nothing fan-shaped or multi-dot is drawn. */
+        const labels = cfg.labels.length ? cfg.labels : ['AUG'];
+        const span = Math.max(54, (labels.length - 1) * Math.max(10, +cfg.armSpacing || 22) + 24);
+        const box = { x: cx - span / 2, y: cy - 3, w: span, h: 6 };
+        let svg = `<g class="sip-route-call-module sip-route-simple sip-route-railway-style">`;
+        svg += renderRouteArmsOnBox(box, cfg, cfg.routeSide || 'top');
+        if (cfg.calling && opts.includeCalling !== false) {
+            svg += renderSimpleCallingLineOnBox(box, cfg, cfg.callingSide || 'bottom');
         }
+        svg += `</g>`;
+        return svg;
     }
 
     function renderCallingAttachment(cx, cy, cfg, sideName) {
-        const side = routeSideUnit(sideName);
         const activeSet = parseRouteActiveSet(cfg.active);
         const callLit = !!(activeSet.C || activeSet.CALL || activeSet.CALLING || activeSet.COHG || activeSet.CO_HG);
-        const dotR = Math.max(2.8, cfg.dotSize + 1.3);
-        let svg = '';
-        svg += `<circle cx="${cx}" cy="${cy}" r="${dotR + 3.8}" fill="#0a0f1e" stroke="#FFD400" stroke-width="1.1"/>`;
-        svg += renderTinyRouteLamp(cx, cy, dotR, callLit, '#FFD400');
-        const labelX = cx + side.labelDx;
-        const labelY = cy + side.labelDy;
-        svg += `<text x="${labelX}" y="${labelY}" fill="#FFD400" ` +
-            `font-family="${T.labelFont}" font-size="11" font-weight="900" ` +
-            `text-anchor="${side.anchor}" dominant-baseline="central">${escapeXml(cfg.callingLabel || 'C')}</text>`;
+        const r = Math.max(5.2, (+cfg.dotSize || 3.8) + 1.6);
+        const label = String(cfg.callingLabel || 'C').toUpperCase();
+        let svg = `<g class="sip-calling-simple">`;
+        if (callLit) {
+            svg += `<circle cx="${cx}" cy="${cy}" r="${r + 3.5}" fill="#ffffff" opacity="0.18">` +
+                `<animate attributeName="opacity" values="0.18;0.03;0.18" dur="0.8s" repeatCount="indefinite"/>` +
+                `</circle>`;
+            svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ffffff" stroke="#ffffff" stroke-width="1.1">` +
+                `<animate attributeName="opacity" values="1;0.25;1" dur="0.8s" repeatCount="indefinite"/>` +
+                `</circle>`;
+            svg += `<text x="${cx}" y="${cy}" fill="#0a0f1e" font-family="${T.labelFont}" ` +
+                `font-size="${Math.max(8, r * 1.15)}" font-weight="900" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`;
+        } else {
+            svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#0a0f1e" stroke="#ffffff" stroke-opacity="0.78" stroke-width="1.1"/>`;
+            svg += `<text x="${cx}" y="${cy}" fill="#ffffff" fill-opacity="0.88" font-family="${T.labelFont}" ` +
+                `font-size="${Math.max(8, r * 1.15)}" font-weight="900" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`;
+        }
+        svg += `</g>`;
         return svg;
     }
 
     function renderAttachedRouteCallingToSignal(box, cfg) {
-        const routeSideName = /^(top|bottom|left|right)$/.test(cfg.routeSide) ? cfg.routeSide : 'top';
-        const callingSideName = /^(top|bottom|left|right)$/.test(cfg.callingSide) ? cfg.callingSide : routeOppositeSide(routeSideName);
-        const gap = Math.max(6, cfg.attachGap || 14);
-        const callGap = Math.max(6, cfg.callingGap || gap);
-        const routeAnchor = routeBoxAnchor(box, routeSideName, gap);
-        let svg = `<g class="sip-route-call-attached">`;
+        /* ------------------------------------------------------------------ *
+         *  Radial fan layout — reference: live telemetry signal style.       *
+         *  Route arms radiate from the centre of the main signal body like   *
+         *  spokes of a wheel, fanning out toward the configured route side.  *
+         *  Calling drops straight down from centre, always below the signal. *
+         * ------------------------------------------------------------------ */
+        const cx = box.x + box.w / 2;
+        const cy = box.y + box.h / 2;
 
-        // Route indicator: root sits just outside the main signal body and fans outward.
-        svg += `<line x1="${routeAnchor.sx}" y1="${routeAnchor.sy}" x2="${routeAnchor.cx}" y2="${routeAnchor.cy}" ` +
-            `stroke="#9aa8c4" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/>`;
-        const routeOnlyCfg = Object.assign({}, cfg, { calling: false, routeSide: routeSideName });
-        svg += renderRouteCallingGraphic(routeAnchor.cx, routeAnchor.cy, routeOnlyCfg);
+        const labels = cfg.labels.length ? cfg.labels : ['AUG'];
+        const n = labels.length;
+        const activeSet = parseRouteActiveSet(cfg.active);
+        const allRoutesActive = !!(activeSet.ALL || activeSet.ROUTE || activeSet.ROUTES || activeSet['*']);
 
-        // Calling indicator: independently attached to its own selected edge.
+        const armLen = Math.max(8, +cfg.armLength || 22);
+        const dotR = Math.max(2.4, +cfg.dotSize || 3.8);
+        const labelSz = Math.max(6, +cfg.labelSize || 8.5);
+        const labelGap = Math.max(0, +cfg.labelGap || 8);
+        const baseCol = '#9aa8c4';
+
+        /* Base angle: direction the fan is centred on (degrees, 0 = right) */
+        const routeSide = /^(top|bottom|left|right)$/.test(cfg.routeSide) ? cfg.routeSide : 'top';
+        let baseDeg;
+        switch (routeSide) {
+            case 'bottom': baseDeg = 90; break;
+            case 'left': baseDeg = 180; break;
+            case 'right': baseDeg = 0; break;
+            case 'top':
+            default: baseDeg = -90; break;
+        }
+
+        /* Fan spread — scales with arm count, capped at 150° */
+        const totalSpread = n > 1 ? Math.min(150, (n - 1) * 35) : 0;
+
+        let svg = `<g class="sip-route-call-attached sip-route-call-simple sip-route-main-attached">`;
+
+        /* ── Route arms (radial fan from signal centre) ── */
+        for (let i = 0; i < n; i++) {
+            const lbl = labels[i];
+            const lit = allRoutesActive || !!activeSet[lbl];
+
+            /* Angle for this arm — evenly spaced within the fan arc */
+            const offset = n > 1 ? ((i / (n - 1)) - 0.5) * totalSpread : 0;
+            const angleDeg = baseDeg + offset;
+            const angleRad = angleDeg * Math.PI / 180;
+
+            /* Arm endpoint */
+            const ex = cx + Math.cos(angleRad) * armLen;
+            const ey = cy + Math.sin(angleRad) * armLen;
+            const stroke = lit ? '#ffffff' : baseCol;
+
+            /* Arm line from signal centre → endpoint */
+            svg += `<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" ` +
+                `stroke="${stroke}" stroke-width="1.45" stroke-linecap="round" opacity="${lit ? '1' : '0.76'}">` +
+                (lit ? `<animate attributeName="opacity" values="1;0.28;1" dur="0.8s" repeatCount="indefinite"/>` : '') +
+                `</line>`;
+
+            /* Lamp dot at the tip */
+            svg += renderSimpleRouteLamp(ex, ey, dotR, lit, '#ffffff');
+
+            /* Label beyond the dot, pushed outward along the same angle */
+            const lx = ex + Math.cos(angleRad) * (dotR + labelGap);
+            const ly = ey + Math.sin(angleRad) * (dotR + labelGap);
+
+            /* Text anchor depends on which direction the arm points */
+            const cosA = Math.cos(angleRad);
+            let anchor;
+            if (cosA > 0.3) anchor = 'start';   /* arm points right */
+            else if (cosA < -0.3) anchor = 'end';      /* arm points left  */
+            else anchor = 'middle';   /* arm points up/down */
+
+            svg += `<text x="${lx}" y="${ly}" fill="${lit ? '#ffffff' : '#d7d7d7'}" ` +
+                `font-family="${T.labelFont}" font-size="${labelSz}" font-weight="800" ` +
+                `text-anchor="${anchor}" dominant-baseline="central">${escapeXml(lbl)}</text>`;
+        }
+
+        /* ── Calling — straight down from centre, always below the signal ── */
         if (cfg.calling) {
-            const callAnchor = routeBoxAnchor(box, callingSideName, callGap);
-            svg += `<line x1="${callAnchor.sx}" y1="${callAnchor.sy}" x2="${callAnchor.cx}" y2="${callAnchor.cy}" ` +
-                `stroke="#9aa8c4" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/>`;
-            svg += renderCallingAttachment(callAnchor.cx, callAnchor.cy, cfg, callingSideName);
+            const callGap = Math.max(0, +cfg.callingGap || +cfg.attachGap || 6);
+            const callLen = Math.max(12, (+cfg.callingLength || Math.max(18, armLen * 0.82)));
+            /* End Y starts from the bottom edge of the signal + gap + length */
+            const callEndY = box.y + box.h + callGap + callLen;
+
+            svg += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${callEndY}" ` +
+                `stroke="#9aa8c4" stroke-width="1.25" stroke-linecap="round" opacity="0.72"/>`;
+            svg += renderCallingAttachment(cx, callEndY, cfg, 'bottom');
         }
 
         svg += `</g>`;
@@ -1307,8 +1538,8 @@
     function renderRouteCallingSignal(cell) {
         const x = cell.position.x;
         const y = cell.position.y;
-        const w = cell.size.width || 160;
-        const h = cell.size.height || 110;
+        const w = cell.size.width || 150;
+        const h = cell.size.height || 95;
         const cx = x + w / 2;
         const cy = y + h / 2;
         const cfg = normaliseRouteCallingConfig(cell, true);
@@ -1318,11 +1549,11 @@
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
 
-        let svg = `<g class="sip-asset sip-route-calling" data-id="${cell.id}" data-type="${cell.type}">`;
-        svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen);
-        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="rgba(15,23,42,0.10)" ` +
-            `stroke="rgba(34,211,238,0.18)" stroke-width="1" stroke-dasharray="4,4"/>`;
-        svg += renderRouteCallingGraphic(cx, cy, cfg);
+        let svg = `<g class="sip-asset sip-route-calling sip-route-calling-simple-asset" data-id="${cell.id}" data-type="${cell.type}">`;
+        // Transparent hit area keeps the asset easy to select without drawing a big box.
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent"/>`;
+        svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen, 4, sigProps);
+        svg += renderRouteCallingGraphic(cx, cy, cfg, { includeCalling: true });
 
         if (labelTxt && labelAttrs.fill !== 'transparent') {
             const fill = labelAttrs.fill || T.labelDefault;
@@ -1618,9 +1849,9 @@
         },
         'examples.RouteCallingSignal': {
             label: 'Route / Calling Signal', group: 'signal',
-            size: { width: 160, height: 110 },
+            size: { width: 150, height: 95 },
             attrs: {
-                signal: { standPos: 'B', standLength: 24 },
+                signal: { standPos: 'R', standLength: 24, standArm: 14, standDrop: 'down', labelGap: 6 },
                 route: {
                     enabled: true,
                     labels: 'AUG,BUG,CUG,DUG',
@@ -1629,10 +1860,12 @@
                     calling: true,
                     callingSide: 'bottom',
                     callingLabel: 'C',
-                    dotCount: 4,
+                    dotCount: 1,
                     dotSize: 3.8,
-                    armSpacing: 27,
-                    armLength: 34,
+                    labelSize: 8.5,
+                    labelGap: 8,
+                    armSpacing: 22,
+                    armLength: 22,
                     compact: true
                 },
                 label: { text: '', fill: T.labelDefault, fontSize: 12, fontWeight: 'bold' }
@@ -1640,16 +1873,16 @@
             render: renderRouteCallingSignal,
             icon: function () {
                 return `<svg viewBox="0 0 80 54" xmlns="http://www.w3.org/2000/svg">` +
-                    `<line x1="40" y1="28" x2="40" y2="50" stroke="#b8b8b8" stroke-width="1.2"/>` +
-                    `<circle cx="40" cy="28" r="4" fill="#f4f4f4" stroke="#22d3ee" stroke-width="0.8"/>` +
-                    `<path d="M40 28 Q28 18 18 12 M40 28 Q40 16 40 9 M40 28 Q52 18 62 12" stroke="#9aa8c4" stroke-width="1.2" fill="none"/>` +
-                    `<text x="18" y="7" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">AUG</text>` +
-                    `<text x="40" y="5" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">BUG</text>` +
-                    `<text x="62" y="7" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">CUG</text>` +
-                    `<circle cx="15" cy="13" r="1.6" fill="#fff"/><circle cx="19" cy="13" r="1.6" fill="#fff"/><circle cx="23" cy="13" r="1.6" fill="#fff"/>` +
-                    `<circle cx="36" cy="9" r="1.6" fill="#fff"/><circle cx="40" cy="9" r="1.6" fill="#fff"/><circle cx="44" cy="9" r="1.6" fill="#fff"/>` +
-                    `<circle cx="57" cy="13" r="1.6" fill="#fff"/><circle cx="61" cy="13" r="1.6" fill="#fff"/><circle cx="65" cy="13" r="1.6" fill="#fff"/>` +
-                    `<circle cx="40" cy="45" r="4" fill="#FFD400"/><text x="49" y="47" font-family="${T.labelFont}" font-size="8" fill="#FFD400" font-weight="900">C</text>` +
+                    `<line x1="18" y1="30" x2="62" y2="30" stroke="#9aa8c4" stroke-width="1.1" opacity="0.7"/>` +
+                    `<line x1="24" y1="30" x2="24" y2="13" stroke="#9aa8c4" stroke-width="1.3"/>` +
+                    `<line x1="40" y1="30" x2="40" y2="13" stroke="#9aa8c4" stroke-width="1.3"/>` +
+                    `<line x1="56" y1="30" x2="56" y2="13" stroke="#9aa8c4" stroke-width="1.3"/>` +
+                    `<circle cx="24" cy="13" r="3.2" fill="#fff"/><circle cx="40" cy="13" r="3.2" fill="#0a0f1e" stroke="#fff"/><circle cx="56" cy="13" r="3.2" fill="#0a0f1e" stroke="#fff"/>` +
+                    `<text x="24" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">AUG</text>` +
+                    `<text x="40" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">BUG</text>` +
+                    `<text x="56" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">CUG</text>` +
+                    `<line x1="40" y1="30" x2="40" y2="45" stroke="#9aa8c4" stroke-width="1.1"/>` +
+                    `<circle cx="40" cy="45" r="5" fill="#0a0f1e" stroke="#fff"/><text x="40" y="46" font-family="${T.labelFont}" font-size="7" fill="#fff" font-weight="900" text-anchor="middle">C</text>` +
                     `</svg>`;
             }
         },
@@ -1657,7 +1890,7 @@
             label: 'Signal', group: 'signal',
             size: { width: 90, height: 24 },
             attrs: {
-                signal: { lamps: 'BBB', standPos: 'B', standLength: 30, lit: '' },
+                signal: { lamps: 'BBB', standPos: 'R', standLength: 30, standArm: 14, standDrop: 'down', lit: '', labelGap: 6 },
                 route: {
                     enabled: false,
                     labels: 'AUG,BUG,CUG,DUG',
@@ -1666,12 +1899,14 @@
                     calling: true,
                     callingSide: 'bottom',
                     callingLabel: 'C',
-                    dotCount: 4,
+                    dotCount: 1,
                     dotSize: 3.8,
-                    armSpacing: 27,
-                    armLength: 34,
-                    attachGap: 14,
-                    callingGap: 14,
+                    labelSize: 8.5,
+                    labelGap: 8,
+                    armSpacing: 22,
+                    armLength: 22,
+                    attachGap: 6,
+                    callingGap: 6,
                     compact: true
                 },
                 label: { text: '', fill: 'transparent', fontSize: 12, fontWeight: 'bold' }
@@ -1774,7 +2009,7 @@
             label: 'Shunt 3-Asp · Proceed', group: 'shunt',
             size: { width: 30, height: 30 },
             attrs: {
-                signal: { stand: 'bottom', standLength: 22, standArm: 0, standSide: 'center', signalSide: 'up' },
+                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8 },
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },
@@ -1798,7 +2033,7 @@
             label: 'Shunt 3-Asp · Diverge', group: 'shunt',
             size: { width: 30, height: 30 },
             attrs: {
-                signal: { stand: 'bottom', standLength: 22, standArm: 0, standSide: 'center', signalSide: 'up' },
+                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8 },
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },
@@ -1822,7 +2057,7 @@
             label: 'Shunt 3-Asp · Off', group: 'shunt',
             size: { width: 30, height: 30 },
             attrs: {
-                signal: { stand: 'bottom', standLength: 22, standArm: 0, standSide: 'center', signalSide: 'up' },
+                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8 },
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },
@@ -1846,7 +2081,7 @@
             label: 'Signal + Shunt (combined)', group: 'signal',
             size: { width: 200, height: 80 },
             attrs: {
-                signal: { stand: 'bottom', standLength: 30, standArm: 0, standSide: 'center', signalSide: 'up' },
+                signal: { lamps: 'RYG', standPos: 'R', standLength: 30, standArm: 14, standDrop: 'down', signalSide: 'up', lit: '', lampGap: 7, shuntGap: 2, shuntSide: 'right', shuntState: 'PROCEED', shuntSize: 42, labelGap: 6 },
                 lit: '',            // '' | 'R' | 'Y' | 'G' | 'X'
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
