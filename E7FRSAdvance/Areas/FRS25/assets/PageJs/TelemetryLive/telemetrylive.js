@@ -8436,6 +8436,38 @@ function _graphGetEntryTimeMs(entry, axisMin, axisMax) {
 
     return ms;
 }
+// Apply the From / To custom range from the graph modal toolbar.
+// Global on purpose: the Apply button calls this via inline onclick, which fires
+// reliably even though the modal shell uses event.stopPropagation(). The assetId
+// is read from the overlay's data (set in fnGetAssetGraph).
+function rdpmsApplyGraphRange() {
+    var assetId = $('#rdpmsGraphOverlay').data('assetId');
+    if (!assetId) { if (typeof showWarning === 'function') showWarning('Graph is not ready yet.', 'Graph'); return; }
+
+    var fromVal = $('#graphFromDate').val();
+    var toVal = $('#graphToDate').val();
+
+    if (!fromVal || !toVal) {
+        showWarning('Please select both From and To date/time.', 'Graph');
+        return;
+    }
+
+    var s = new Date(fromVal);
+    var en = new Date(toVal);
+
+    if (isNaN(s.getTime()) || isNaN(en.getTime())) {
+        showWarning('Invalid date/time selected.', 'Graph');
+        return;
+    }
+    if (s.getTime() >= en.getTime()) {
+        showWarning('From date/time must be before To date/time.', 'Graph');
+        return;
+    }
+
+    var spanHours = Math.max(1, Math.round((en.getTime() - s.getTime()) / 3600000));
+    loadHistoryGraphData(assetId, spanHours, s, en);
+}
+
 function fnGetAssetGraph(siteId, assetId) {
     if (!siteId || !assetId) { showWarning('Missing site or asset info', 'Graph'); return; }
 
@@ -8458,13 +8490,13 @@ function fnGetAssetGraph(siteId, assetId) {
         '<button class="tl-modal-close" onclick="closeGraphModal()" title="Close">&times;</button>' +
         '</div>' +
         '</div>' +
-        '<div class="tl-modal-toolbar">' +
-        '<div class="tl-time-pills">' +
-        '<button type="button" class="tl-time-pill" data-hours="1">1H</button>' +
-        '<button type="button" class="tl-time-pill" data-hours="3">3H</button>' +
-        '<button type="button" class="tl-time-pill" data-hours="6">6H</button>' +
-        '<button type="button" class="tl-time-pill" data-hours="12">12H</button>' +
-        '<button type="button" class="tl-time-pill active" data-hours="24">24H</button>' +
+        '<div class="tl-modal-toolbar" style="flex-wrap:wrap;gap:10px;">' +
+        '<div class="tl-date-filter" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+        '<label style="font-size:12px;color:#94a3b8;margin:0;">From</label>' +
+        '<input type="datetime-local" id="graphFromDate" step="1" onkeydown="if(event.key===\'Enter\'){rdpmsApplyGraphRange();}" style="background:rgba(15,23,42,0.70);border:1px solid rgba(255,255,255,0.18);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;color-scheme:dark;" />' +
+        '<label style="font-size:12px;color:#94a3b8;margin:0;">To</label>' +
+        '<input type="datetime-local" id="graphToDate" step="1" onkeydown="if(event.key===\'Enter\'){rdpmsApplyGraphRange();}" style="background:rgba(15,23,42,0.70);border:1px solid rgba(255,255,255,0.18);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;color-scheme:dark;" />' +
+        '<button type="button" id="graphApplyRange" onclick="rdpmsApplyGraphRange()" style="background:#259dab;border:none;color:#fff;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-filter"></i> Apply</button>' +
         '</div>' +
         '<span class="tl-time-range" id="graphTimeRange"></span>' +
         '</div>' +
@@ -8495,8 +8527,14 @@ function fnGetAssetGraph(siteId, assetId) {
 
             $btn.addClass('active').siblings().removeClass('active');
 
+            // Reset to the rolling last-N-hours window.
             loadHistoryGraphData(assetId, hours);
         });
+
+    // From / To custom range filter is handled by the button's inline
+    // onclick="rdpmsApplyGraphRange()" (see global function above). Inline handlers
+    // on the target element fire reliably even though the modal shell calls
+    // event.stopPropagation(), which had been swallowing delegated/bound handlers.
 
     // Default: show last 24 hours
     loadHistoryGraphData(assetId, 24);
@@ -9292,7 +9330,17 @@ function renderPmDirChart(data, assetId, filterIds) {
     $(window).off('resize.pmg').on('resize.pmg', function () { chart.resize(); });
 }
 
-function loadHistoryGraphData(assetId, hours) {
+// Format a Date as the value a <input type="datetime-local" step="1"> expects (local time).
+function _toLocalDateTimeInput(d) {
+    d = new Date(d);
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+        'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+// hours        -> rolling window size (also used for messages/labels)
+// startOverride/endOverride (optional) -> explicit From/To range from the filter
+function loadHistoryGraphData(assetId, hours, startOverride, endOverride) {
     var $loading = $('#rdpmsGraphLoading');
     var $chartDiv = $('#rdpmsGraphChartDiv');
     var $error = $('#rdpmsGraphError');
@@ -9315,11 +9363,18 @@ function loadHistoryGraphData(assetId, hours) {
         try { rdpmsGraphChart.clear(); } catch (e) { }
     }
 
-    var endDate = new Date();
-    var startDate = new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
+    var endDate = endOverride ? new Date(endOverride) : new Date();
+    var startDate = startOverride ? new Date(startOverride)
+        : new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
 
     var startStr = formatDateForHistoryApi(startDate);
     var endStr = formatDateForHistoryApi(endDate);
+
+    // Keep the From / To inputs in sync with whatever range is loaded.
+    try {
+        $('#graphFromDate').val(_toLocalDateTimeInput(startDate));
+        $('#graphToDate').val(_toLocalDateTimeInput(endDate));
+    } catch (e) { }
 
     // Show date + time, not only HH:mm.
     $timeRange.text(formatDateTimeForGraphDisplay(startDate) + ' - ' + formatDateTimeForGraphDisplay(endDate));
@@ -9505,6 +9560,8 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 
     var pendingSeries = [];
     var legends = [];
+    var tooltipSeries = []; // full per-series points for carry-forward hover
+    var derivedOperands = []; // raw operand series captured for derived-value calc
 
     var hasVoltageSeries = false;
     var hasOtherSeries = false;
@@ -9667,13 +9724,31 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 
         points = collapsed;
 
+        // Capture the raw device samples (operands) so derived-value series can be
+        // reconstructed across time with the same calculateDerivedValues() formula.
+        derivedOperands.push({ name: displayName, attrId: attrId, points: points.slice() });
+
         var actualCount = points.length;
 
-        var chartPoints = points.map(function (p) {
+        // Carry-forward: change-of-value telemetry only reports on change, so the
+        // last known value is still valid until the next change. Hold it flat to
+        // the right edge (capped at "now", never into the future).
+        var hasSyntheticEnd = false;
+        if (points.length) {
+            var lastReal = points[points.length - 1];
+            var endAnchorMs = Math.min(axisMax, Date.now());
+            if (lastReal[0] < endAnchorMs) {
+                points.push([endAnchorMs, lastReal[1]]);
+                hasSyntheticEnd = true;
+            }
+        }
+
+        var chartPoints = points.map(function (p, idx) {
+            var isSynthetic = hasSyntheticEnd && idx === points.length - 1;
             return {
                 value: p,
-                symbol: actualCount < 80 ? 'circle' : 'none',
-                symbolSize: actualCount < 80 ? 4 : 0
+                symbol: (!isSynthetic && actualCount < 80) ? 'circle' : 'none',
+                symbolSize: (!isSynthetic && actualCount < 80) ? 4 : 0
             };
         });
 
@@ -9691,6 +9766,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             name: displayName,
             type: 'line',
             smooth: false,
+            step: 'end',          // hold value until the next change (carry-forward)
             connectNulls: false,
             showSymbol: actualCount < 80,
             symbol: 'circle',
@@ -9701,7 +9777,119 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             data: chartPoints,
             __isVoltage: isVoltage
         });
+
+        // Store the full point list (incl. carry-forward end) for the hover tooltip
+        // so every attribute can be shown at any hovered time.
+        tooltipSeries.push({
+            name: displayName,
+            color: color,
+            isVoltage: isVoltage,
+            points: points
+        });
     });
+
+    // ===== DERIVED VALUE SERIES =====
+    // Reconstruct the live derived metrics (ITC BATT CHARG, VTC VAR RES, ...) over
+    // time: at every sample instant, carry each raw operand forward and run the same
+    // calculateDerivedValues() the live tiles use. Metrics whose operands are not
+    // present resolve to null and are simply skipped (no empty series).
+    if (typeof calculateDerivedValues === 'function' && derivedOperands.length) {
+        var _derivedDefs = [
+            { key: 'itcBattCharg', name: 'ITC BATT CHARG (mA)' },
+            { key: 'vtcVarRes', name: 'VTC VAR RES (V)' },
+            { key: 'rtcChFeedEnd', name: 'RTC CH FEED END (\u03A9)' },
+            { key: 'rtcVarRes', name: 'RTC VAR RES (\u03A9)' },
+            { key: 'vtcTr', name: 'VTC TR (V)' },
+            { key: 'ibalst', name: 'IBALST (mA)' },
+            { key: 'rrail', name: 'RRAIL (\u03A9)' }
+        ];
+
+        var _timeSet = {};
+        derivedOperands.forEach(function (op) {
+            op.points.forEach(function (p) { _timeSet[p[0]] = true; });
+        });
+        var _times = Object.keys(_timeSet).map(Number).sort(function (a, b) { return a - b; });
+
+        var _derivedPoints = {};
+        _derivedDefs.forEach(function (d) { _derivedPoints[d.key] = []; });
+
+        _times.forEach(function (tm) {
+            var attrsAtTime = {};
+            derivedOperands.forEach(function (op) {
+                var v = null, pts = op.points;
+                for (var i = 0; i < pts.length; i++) {
+                    if (pts[i][0] <= tm) v = pts[i][1]; else break;
+                }
+                if (v !== null) {
+                    attrsAtTime[op.name] = { Value: v, AttrId: op.attrId, AssetAttributeId: op.attrId };
+                }
+            });
+
+            var dv;
+            try { dv = calculateDerivedValues(attrsAtTime); } catch (e) { dv = null; }
+            if (!dv) return;
+
+            _derivedDefs.forEach(function (d) {
+                var val = dv[d.key];
+                if (val !== null && val !== undefined && !isNaN(val)) {
+                    _derivedPoints[d.key].push([tm, val]);
+                }
+            });
+        });
+
+        var _endAnchor = Math.min(axisMax, Date.now());
+
+        _derivedDefs.forEach(function (d) {
+            var pts = _derivedPoints[d.key];
+            if (!pts.length) return; // operands unavailable -> skip metric
+
+            var dpts = pts.slice();
+            var lastD = dpts[dpts.length - 1];
+            if (lastD[0] < _endAnchor) dpts.push([_endAnchor, lastD[1]]);
+
+            var dIsVoltage = _graphIsVoltageSeries(d.name);
+            if (dIsVoltage) hasVoltageSeries = true; else hasOtherSeries = true;
+
+            var dColor = window._gColorMap[d.name] || colors[colorIdx % colors.length];
+            window._gColorMap[d.name] = dColor;
+            colorIdx++;
+
+            var dCount = pts.length;
+            var dChart = dpts.map(function (p, idx) {
+                var isEnd = (idx === dpts.length - 1) && (dpts.length > pts.length);
+                return {
+                    value: p,
+                    symbol: (!isEnd && dCount < 80) ? 'circle' : 'none',
+                    symbolSize: (!isEnd && dCount < 80) ? 4 : 0
+                };
+            });
+
+            legends.push(d.name);
+
+            pendingSeries.push({
+                name: d.name,
+                type: 'line',
+                smooth: false,
+                step: 'end',
+                connectNulls: false,
+                showSymbol: dCount < 80,
+                symbol: 'circle',
+                symbolSize: 4,
+                lineStyle: { width: 2, color: dColor, type: 'dashed' }, // dashed = derived
+                itemStyle: { color: dColor },
+                emphasis: { lineStyle: { width: 3 } },
+                data: dChart,
+                __isVoltage: dIsVoltage
+            });
+
+            tooltipSeries.push({
+                name: d.name,
+                color: dColor,
+                isVoltage: dIsVoltage,
+                points: dpts
+            });
+        });
+    }
 
     if (!pendingSeries.length) {
         $chartDiv.hide();
@@ -9731,6 +9919,9 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
     el.offsetHeight;
 
     rdpmsGraphChart = echarts.init(el);
+
+    // Make the per-series points available to the carry-forward tooltip formatter.
+    window._rdpmsTooltipSeries = tooltipSeries;
 
     var leftAxisName = useDualAxis ? 'mA / Value' : (hasVoltageSeries ? 'V' : 'mA / Value');
 
@@ -9763,6 +9954,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
         tooltip: {
             trigger: 'axis',
             confine: true,
+            axisPointer: { type: 'line', snap: false, lineStyle: { color: 'rgba(34,211,238,0.45)', width: 1 } },
             backgroundColor: 'rgba(10,26,46,0.96)',
             borderColor: 'rgba(37,157,171,0.4)',
             borderWidth: 1,
@@ -9771,27 +9963,51 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             formatter: function (params) {
                 if (!params || !params.length) return '';
 
-                var t = new Date(params[0].value[0]);
+                // Exact time under the cursor (snap:false keeps it continuous).
+                var hoverMs = (params[0].axisValue != null) ? +params[0].axisValue : +params[0].value[0];
+
+                var t = new Date(hoverMs);
                 var timeStr = String(t.getDate()).padStart(2, '0') + '/' +
                     String(t.getMonth() + 1).padStart(2, '0') + ' ' +
                     String(t.getHours()).padStart(2, '0') + ':' +
                     String(t.getMinutes()).padStart(2, '0') + ':' +
                     String(t.getSeconds()).padStart(2, '0');
 
+                // Respect legend selection (hidden series stay hidden in the tooltip).
+                var selected = {};
+                try {
+                    var opt = rdpmsGraphChart.getOption();
+                    if (opt && opt.legend && opt.legend[0] && opt.legend[0].selected) selected = opt.legend[0].selected;
+                } catch (e) { }
+
+                var store = window._rdpmsTooltipSeries || [];
                 var html = '<div style="font-weight:600;margin-bottom:8px;color:#22d3ee;">' + timeStr + '</div>';
+                var shown = 0;
 
-                params.forEach(function (p) {
-                    var suffix = _graphIsVoltageSeries(p.seriesName) ? ' V' : '';
+                // Show EVERY attribute, carrying the last value forward to the hovered time.
+                store.forEach(function (s) {
+                    if (selected[s.name] === false) return;
 
+                    var pts = s.points || [];
+                    var v = null;
+                    for (var i = 0; i < pts.length; i++) {
+                        if (pts[i][0] <= hoverMs) v = pts[i][1];
+                        else break;
+                    }
+                    if (v === null) return; // no reading yet at this time
+
+                    var suffix = s.isVoltage ? ' V' : '';
                     html += '<div style="display:flex;align-items:center;margin:4px 0;">' +
                         '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
-                        p.color + ';margin-right:10px;"></span>' +
-                        '<span style="flex:1;color:#cbd5e1;">' + p.seriesName + '</span>' +
+                        s.color + ';margin-right:10px;"></span>' +
+                        '<span style="flex:1;color:#cbd5e1;">' + s.name + '</span>' +
                         '<span style="font-weight:700;margin-left:15px;color:#fff;">' +
-                        Number(p.value[1]).toFixed(2) + suffix +
+                        Number(v).toFixed(2) + suffix +
                         '</span></div>';
+                    shown++;
                 });
 
+                if (!shown) return '';
                 return html;
             }
         },
@@ -9799,9 +10015,9 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             data: legends,
             type: 'scroll',
             orient: 'horizontal',
-            top: 10,
-            left: 'center',
-            width: '85%',
+            top: 34,             // own row, BELOW the toolbox icons -> no overlap ever
+            left: 10,
+            right: 10,
             textStyle: { fontSize: 12, color: '#94a3b8' },
             pageTextStyle: { color: '#94a3b8' },
             pageIconColor: '#259dab',
@@ -9811,15 +10027,16 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             itemHeight: 12
         },
         grid: {
-            top: legends.length <= 3 ? 45 : legends.length <= 6 ? 70 : legends.length <= 9 ? 95 : 120,
+            top: 66,             // clear the toolbox row + the legend row
             left: 65,
             right: useDualAxis ? 65 : 30,
             bottom: 78
         },
         toolbox: {
-            right: 15,
-            top: 8,
-            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } },
+            right: 12,
+            top: 6,
+            itemGap: 8,
+            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' },
             emphasis: { iconStyle: { borderColor: '#22d3ee' } },
             feature: {
                 dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
