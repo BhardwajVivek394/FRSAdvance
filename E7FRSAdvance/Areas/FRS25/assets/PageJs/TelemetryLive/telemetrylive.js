@@ -136,13 +136,13 @@ function atBuildTrackCard(aid) {
     if (typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
-        grid += '<div class="z2"><span class="at-tdg-lbl" title="Charger mA - If mA">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
-        grid += '<div class="z2"><span class="at-tdg-lbl" title="Charger OP V - Vf - Choke V">VTC VAR RES (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcVarRes) + '</span></div>';
-        grid += '<div class="z3"><span class="at-tdg-lbl" title="Choke V / If mA × 1000">RTC CH FEED END (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcChFeedEnd) + '</span></div>';
-        grid += '<div class="z3"><span class="at-tdg-lbl" title="VTC VAR RES / If mA × 1000">RTC VAR RES (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcVarRes) + '</span></div>';
-        grid += '<div class="z3"><span class="at-tdg-lbl" title="Ir mA × TR Res">VTC TR (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcTr) + '</span></div>';
-        grid += '<div class="z1"><span class="at-tdg-lbl" title="If mA - Ir mA">IBALST (mA)</span><span class="at-tdg-val">' + fmtD(derived.ibalst) + '</span></div>';
-        grid += '<div class="z1"><span class="at-tdg-lbl" title="2×(Vf - VTC TR) / (If + Ir)">RRAIL (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rrail) + '</span></div>';
+        grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
+        grid += '<div class="z2"><span class="at-tdg-lbl" title="VTC VAR RES (V)">VTC VAR RES (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcVarRes) + '</span></div>';
+        grid += '<div class="z3"><span class="at-tdg-lbl" title="RTC CH FEED END (Ω)">RTC CH FEED END (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcChFeedEnd) + '</span></div>';
+        grid += '<div class="z3"><span class="at-tdg-lbl" title="RTC VAR RES (Ω)">RTC VAR RES (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcVarRes) + '</span></div>';
+        grid += '<div class="z3"><span class="at-tdg-lbl" title="VTC TR (V)">VTC TR (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcTr) + '</span></div>';
+        grid += '<div class="z1"><span class="at-tdg-lbl" title="IBALST (mA)">IBALST (mA)</span><span class="at-tdg-val">' + fmtD(derived.ibalst) + '</span></div>';
+        grid += '<div class="z1"><span class="at-tdg-lbl" title="RRAIL (Ω)">RRAIL (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rrail) + '</span></div>';
     }
 
     // ── DataLogger pills ──────────────────────────────────────────
@@ -4016,19 +4016,8 @@ function scheduleUIUpdate(forceImmediate) {
 function executeUIUpdate() {
     // Gate: SIP-only connections should not render data into table/cards.
     // Only user-initiated Search clears this flag.
-// ── GATE: SIP-only connections must not render table/cards,
-//    but the SIP schematic still needs the data. Feed the SIP
-//    bridge directly, then skip all UI processing. ──
-if (window._wsSipOnlyMode) {
-    try {
-        if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
-            var sipRaw = event.data;
-            var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
-            window.SipTelemetry.applyPayload(sipBatch);
-        }
-    } catch (eSip) { /* malformed frame — ignore */ }
-    return;
-}
+    if (window._wsSipOnlyMode) return;
+
     var viewType = $('#drpView').val();
     var updatedAssetIds = Object.keys(wsUpdatedAssets);
 
@@ -4821,19 +4810,8 @@ function connectWebSocket(siteId, assetTypeId, assetIds) {
             //    data into wsLiveData or trigger any rendering. The SIP
             //    schematic uses its own separate WebSocket via
             //    SipTelemetry.connectToSite(). ──
-            // ── GATE: SIP-only connections must not render table/cards,
-            //    but the SIP schematic still needs the data. Feed the SIP
-            //    bridge directly, then skip all UI processing. ──
-            if (window._wsSipOnlyMode) {
-                try {
-                    if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
-                        var sipRaw = event.data;
-                        var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
-                        window.SipTelemetry.applyPayload(sipBatch);
-                    }
-                } catch (eSip) { /* malformed frame — ignore */ }
-                return;
-            }
+            if (window._wsSipOnlyMode) return;
+
             try {
                 var rawData = event.data;
 
@@ -17413,19 +17391,8 @@ console.log('[PM] Point Machine view loaded (dynamic ends + table view support).
                 //    data into wsLiveData or trigger any rendering. The SIP
                 //    schematic uses its own separate WebSocket via
                 //    SipTelemetry.connectToSite(). ──
-                // ── GATE: SIP-only connections must not render table/cards,
-                //    but the SIP schematic still needs the data. Feed the SIP
-                //    bridge directly, then skip all UI processing. ──
-                if (window._wsSipOnlyMode) {
-                    try {
-                        if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
-                            var sipRaw = event.data;
-                            var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
-                            window.SipTelemetry.applyPayload(sipBatch);
-                        }
-                    } catch (eSip) { /* malformed frame — ignore */ }
-                    return;
-                }
+                if (window._wsSipOnlyMode) return;
+
                 try {
                     var rawData = event.data;
                     var batch;
@@ -19882,19 +19849,8 @@ function tlBulkRenderCurrentViewFromPlaceholders() {
     // Point Machine view is rendered by dedicated PM renderer, not bulk placeholders.
     if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip($('#drpAssetType').val() || wsCurrentAssetTypeId)) return;
     if (!bulkExpectedSchemaReady && !bulkMetadataLoaded) return;
-    // ── GATE: SIP-only connections must not render table/cards,
-    //    but the SIP schematic still needs the data. Feed the SIP
-    //    bridge directly, then skip all UI processing. ──
-    if (window._wsSipOnlyMode) {
-        try {
-            if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
-                var sipRaw = event.data;
-                var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
-                window.SipTelemetry.applyPayload(sipBatch);
-            }
-        } catch (eSip) { /* malformed frame — ignore */ }
-        return;
-    }
+    if (window._wsSipOnlyMode) return;
+
     tlBulkEnsurePlaceholdersForCurrentFilter();
 
     if (Object.keys(wsLiveData).length === 0) return;
