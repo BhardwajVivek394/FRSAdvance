@@ -71,6 +71,37 @@
     var TRACK_OCC_THR = 1.0;
     var PM_IND_THR = 4.5;
 
+    /* Point-machine operate blink — indicator blinks this long after a
+       NORMAL ⇆ REVERSE transition is detected from live data. */
+    var PM_BLINK_MS = 6000;
+
+    /* ── Console logging ──────────────────────────────────────────────────
+       All SIP live-state decisions are logged with the [sip-telemetry]
+       prefix. Set window.SIP_DEBUG = false in DevTools to silence. */
+    function slog() {
+        if (window.SIP_DEBUG === false) return;
+        console.log.apply(console, ['[sip-telemetry]'].concat([].slice.call(arguments)));
+    }
+    function swarn() {
+        if (window.SIP_DEBUG === false) return;
+        console.warn.apply(console, ['[sip-telemetry]'].concat([].slice.call(arguments)));
+    }
+    var _warnOnceKeys = {};
+    /* warn only once per key — keeps the console readable on 1s streams */
+    function swarnOnce(key) {
+        if (_warnOnceKeys[key]) return;
+        _warnOnceKeys[key] = 1;
+        swarn.apply(null, [].slice.call(arguments, 1));
+    }
+    /* forget previous one-time warnings (e.g. on site change a fresh layout
+       deserves fresh diagnostics) — optionally scoped by key prefix */
+    function clearWarnOnce(prefix) {
+        if (!prefix) { _warnOnceKeys = {}; return; }
+        for (var k in _warnOnceKeys) {
+            if (_warnOnceKeys.hasOwnProperty(k) && k.indexOf(prefix) === 0) delete _warnOnceKeys[k];
+        }
+    }
+
     /* Colours — same palette as sip-library.js */
     var OFF_GREY = '#3c4260';
     var PM_OFF = '#d4d4d4';
@@ -157,7 +188,11 @@
             recent: [],     // ring-30
             unmatched: []      // ring-20
         },
-        simNoEnrich: {}     // assetName -> true; simulation reset skips wsLiveData merge once
+        simNoEnrich: {},    // assetName -> true; simulation reset skips wsLiveData merge once
+        pmLast: {},         // cell.id -> 'NORMAL' | 'REVERSE' (for operate-blink detection)
+        lastItemAt: 0,      // ms timestamp of last telemetry item (feed watchdog)
+        _watchdog: null,    // interval handle for the site-feed watchdog
+        _watchdogSiteId: null
     };
 
     /* ── DOM refs (resolved in init()) ───────────────────────────────────── */
@@ -421,15 +456,17 @@
         var label = getCellLabel(cell);
         if (!label) return '';
 
-        // Legacy signal lamps are saved as "S18 RG", "S18 HG", etc.
-        // Actual live asset name usually comes as only "S18".
         if (LAMP_SIGNAL[cell.type] || !state.byLabel[label]) {
             var prefix = label.split(/\s+/)[0];
             if (prefix && state.assetValues[prefix]) return prefix;
         }
-
         if (state.assetValues[label]) return label;
 
+        /* NEW — normalized reverse lookup: cell "S14" → live asset "S-14" */
+        var nk = _normLabel(label);
+        for (var an in state.assetValues) {
+            if (state.assetValues.hasOwnProperty(an) && _normLabel(an) === nk) return an;
+        }
         return label.split(/\s+/)[0] || label;
     }
 
@@ -677,6 +714,13 @@
         state.siteId = siteId;
         state.assetValues = {};
         state.simNoEnrich = {};
+        state._bufferedAssets = {};
+        state.lastItemAt = 0;
+        /* fresh site ⇒ fresh diagnostics — old unmatched/no-attr warnings
+           belong to the previous layout */
+        clearWarnOnce('nomatch:');
+        clearWarnOnce('sig-noattr:');
+        clearWarnOnce('buffering-preload');
         state.msgCount = 0;
         state.diag.recv = state.diag.items = state.diag.hits = state.diag.noMatch = 0;
         setStatus('Loading layout…', 'loading');
@@ -717,9 +761,33 @@
                 }
 
                 state.cells = cells;
+
+                /* ── LIVE BASELINE RESET ─────────────────────────────────
+                   The saved layout may carry editor PREVIEW states (e.g. a
+                   signal saved with lit='G'). On the live page nothing may
+                   appear lit/occupied until real telemetry proves it —
+                   otherwise a signal with NO data shows a phantom green. */
+                var resetN = sanitizeLiveBaseline(state.cells);
+                slog('Layout loaded: ' + state.cells.length + ' cells. ' +
+                    'Live baseline applied — ' + resetN + ' cell(s) had editor preview ' +
+                    'states cleared (no data ⇒ lamps OFF, tracks grey, PM neutral).');
+
                 state.viewBox = autoViewBox(cells);
                 buildIndex();
                 render();
+
+                /* Evaluate every snapshot absorbed while the layout was still
+                   loading (and anything already merged in wsLiveData) so the
+                   schematic paints with live state on FIRST render instead of
+                   waiting for the next WS frame per asset.                  */
+                var preAssets = Object.keys(state.assetValues).length;
+                if (preAssets) {
+                    var evalRes = reevalAllAbsorbed();
+                    slog('Layout ready — evaluated ' + preAssets + ' asset snapshot(s) buffered during load: ' +
+                        evalRes.matched + ' matched cell(s), ' + evalRes.unmatched + ' unmatched.');
+                }
+                state._bufferedAssets = {};
+
                 startAlertFlash();
                 openSocket(siteId);
             },
@@ -728,6 +796,90 @@
                 renderPlaceholder('Could not reach /Telemetry/GetSipView.');
             }
         });
+    }
+
+    /* ── reevalAllAbsorbed ───────────────────────────────────────────────
+       Walks every absorbed asset snapshot, enriches from wsLiveData and
+       re-evaluates the matching cells. Used right after the layout loads
+       so telemetry that raced ahead of GetSipView is applied immediately.
+       Unmatched warnings are only meaningful HERE (index exists now).    */
+    function reevalAllAbsorbed() {
+        var matched = 0, unmatched = 0, dirty = false;
+        for (var assetName in state.assetValues) {
+            if (!state.assetValues.hasOwnProperty(assetName)) continue;
+            var snapshot = state.assetValues[assetName];
+            enrichFromWsLiveData(assetName, snapshot);
+            var cells = findCells(assetName);
+            if (!cells.length) {
+                unmatched++;
+                pushSample(state.diag.unmatched, assetName, 20);
+                swarnOnce('nomatch:' + assetName,
+                    'No SIP cell matches asset "' + assetName + '" — telemetry for it is ignored. ' +
+                    'Check the cell label spelling in the SIP editor.');
+                continue;
+            }
+            matched++;
+            for (var i = 0; i < cells.length; i++) {
+                if (reeval(cells[i], assetName, snapshot)) dirty = true;
+            }
+        }
+        if (dirty) requestRender();
+        return { matched: matched, unmatched: unmatched };
+    }
+
+    /* ── sanitizeLiveBaseline ────────────────────────────────────────────
+       Clears every live-driven visual attribute on freshly loaded cells so
+       the schematic starts from a truthful "no data yet" state:
+         • composite / shunt signals → all lamps OFF
+         • route & calling indicators → none active
+         • legacy lamp cells → grey
+         • tracks → grey (not occupied)
+         • point machines → neutral indicator, no blink
+       Telemetry then lights things up ONLY when a condition is proven. */
+    function sanitizeLiveBaseline(cells) {
+        var n = 0;
+        for (var i = 0; i < cells.length; i++) {
+            var c = cells[i];
+            if (!c || !c.type) continue;
+            c.attrs = c.attrs || {};
+            var touched = false;
+
+            if (COMPOSITE_SIGNAL[c.type]) {
+                if (c.attrs.lit) { c.attrs.lit = ''; touched = true; }
+                if (c.attrs.signal && c.attrs.signal.lit) { c.attrs.signal.lit = ''; touched = true; }
+                if (c.attrs.route && (c.attrs.route.active || c.attrs.route.activeRoutes)) {
+                    c.attrs.route.active = '';
+                    c.attrs.route.activeRoutes = '';
+                    touched = true;
+                }
+            } else if (ROUTE_CALLING_TYPES[c.type]) {
+                if (c.attrs.route && (c.attrs.route.active || c.attrs.route.activeRoutes)) {
+                    c.attrs.route.active = '';
+                    c.attrs.route.activeRoutes = '';
+                    touched = true;
+                }
+            } else if (LAMP_SIGNAL[c.type]) {
+                c.attrs.circle1 = c.attrs.circle1 || {};
+                if (c.attrs.circle1.fill !== OFF_GREY) { c.attrs.circle1.fill = OFF_GREY; touched = true; }
+            } else if (TRACK_STROKE[c.type]) {
+                c.attrs.path = c.attrs.path || {};
+                if (c.attrs.path.stroke !== OFF_GREY) { c.attrs.path.stroke = OFF_GREY; touched = true; }
+            } else if (TRACK_FILL[c.type]) {
+                c.attrs.path = c.attrs.path || {};
+                if (c.attrs.path.fill !== OFF_GREY) { c.attrs.path.fill = OFF_GREY; touched = true; }
+            } else if (PM_TYPES[c.type]) {
+                c.attrs.circle1 = c.attrs.circle1 || {};
+                c.attrs.body = c.attrs.body || {};
+                if (c.attrs.circle1.fill !== PM_OFF) { c.attrs.circle1.fill = PM_OFF; touched = true; }
+                if (c.attrs.body.stroke !== OFF_GREY) { c.attrs.body.stroke = OFF_GREY; touched = true; }
+                if (c.attrs.pmBlink) { delete c.attrs.pmBlink; touched = true; }
+            } else if (SHUNT_TYPES[c.type]) {
+                if (c.attrs.shuntLive) { c.attrs.shuntLive = ''; touched = true; }
+            }
+
+            if (touched) n++;
+        }
+        return n;
     }
 
     function autoViewBox(cells) {
@@ -752,18 +904,23 @@
     function buildIndex() {
         state.byLabel = {};
         state.byPrefix = {};
+        state.byNorm = {};        // NEW: normalized label  → cells
+        state.byNormPrefix = {};  // NEW: normalized prefix → cells
         state.cells.forEach(function (c) {
             var raw = c.attrs && c.attrs.label && c.attrs.label.text;
             if (raw == null || raw === '') return;
             var lbl = String(raw).trim();
             var prefix = lbl.split(/\s+/)[0];
 
-            // Direct label index for ALL types
             (state.byLabel[lbl] = state.byLabel[lbl] || []).push(c);
 
-            // Prefix index only for legacy per-lamp cells ("S18 RG" → prefix "S18")
+            var nk = _normLabel(lbl);                                    // "S  2" → "S2"
+            if (nk) (state.byNorm[nk] = state.byNorm[nk] || []).push(c);
+
             if (!COMPOSITE_SIGNAL[c.type] && prefix && prefix !== lbl) {
                 (state.byPrefix[prefix] = state.byPrefix[prefix] || []).push(c);
+                var np = _normLabel(prefix);
+                if (np) (state.byNormPrefix[np] = state.byNormPrefix[np] || []).push(c);
             }
         });
     }
@@ -778,33 +935,81 @@
        STANDALONE MODE: open our own WS when bridge is not available.         */
 
     function openSocket(siteId) {
-        if (tryBridge()) {
-            setStatus('Live (bridged)', 'ok');
-            console.log('[sip-telemetry] Bridge mode — sharing telemetrylive.js WS');
+        /* ── SITE-SELECTION-DRIVEN FEED ──────────────────────────────────
+           The SIP live feed must depend ONLY on the selected site — never
+           on the asset-type / Search selection in Telemetry Live.
+
+           Old behaviour: if telemetrylive.js was present, we went
+           "bridge-only" and waited for ITS pipeline. But that pipeline only
+           runs after the user searches an asset type (e.g. Signal), so the
+           SIP stayed silent until a signal was selected.
+
+           New behaviour:
+             1. Install the bridge as a SUPPLEMENT (so Search-filtered
+                streams also reach the SIP) — never as the only source.
+             2. If the host page already holds a SITE-WIDE socket
+                (…/{siteId}/all — not asset-type filtered), rely on it:
+                its SIP-only gate forwards every frame to applyPayload.
+             3. Otherwise open our OWN dedicated site-wide socket NOW —
+                no waiting, no dependency on any selection.
+             4. A watchdog keeps checking: if telemetry goes silent and the
+                host socket disappears or becomes asset-filtered (user
+                clicked Search), we open our own socket so tracks/PMs/
+                signals on the SIP keep updating.                          */
+        tryBridge();
+        startFeedWatchdog(siteId);
+
+        if (hostHasSiteWideStream(siteId)) {
+            setStatus('Live (host site stream)', 'ok');
+            slog('Site ' + siteId + ': host page already streams site-wide WS — SIP fed via its SIP-only gate' +
+                (state.bridgeInstalled ? ' + bridge for filtered views.' : '.'));
             return;
         }
-        // telemetrylive.js may not have exposed window.processItemsInternal yet
-        // (script-load ordering). Poll briefly before falling back to a 2nd WS.
-        if (!state._bridgeWaitTimer) {
-            var attempts = 0;
-            state._bridgeWaitTimer = setInterval(function () {
-                attempts++;
-                if (tryBridge()) {
-                    clearInterval(state._bridgeWaitTimer);
-                    state._bridgeWaitTimer = null;
-                    setStatus('Live (bridged)', 'ok');
-                    console.log('[sip-telemetry] Bridge installed after ' + attempts + ' wait(s)');
-                    return;
-                }
-                if (attempts >= 20) {   // ~10s total
-                    clearInterval(state._bridgeWaitTimer);
-                    state._bridgeWaitTimer = null;
-                    console.warn('[sip-telemetry] Bridge unavailable after wait — opening own WS');
-                    openOwnSocket(siteId);
-                }
-            }, 500);
-            setStatus('Waiting for telemetry bridge…', 'loading');
-        }
+
+        slog('Site ' + siteId + ': no site-wide WS found (host socket ' +
+            (window.wsConnection ? 'is asset-filtered: ' + String(window.wsConnection.url || '') : 'absent') +
+            ') — opening dedicated SIP socket. Feed is driven purely by site selection.');
+        openOwnSocket(siteId);
+    }
+
+    /* True when the HOST page (telemetrylive.js) holds an open/connecting
+       WebSocket subscribed to the WHOLE site (…/{siteId}/all). An asset-
+       type-filtered URL (…/{siteId}/{typeId}/all) or single-asset URL does
+       NOT count — those starve the SIP of other asset types.             */
+    function hostHasSiteWideStream(siteId) {
+        var c = window.wsConnection;
+        if (!c) return false;
+        if (c.readyState !== 0 && c.readyState !== 1) return false;  // CONNECTING / OPEN only
+        var u = String(c.url || '').split('?')[0];
+        return new RegExp('/subscribe/liveValue/' + String(siteId) + '/all$').test(u);
+    }
+
+    /* ── Feed watchdog ────────────────────────────────────────────────────
+       Re-checks every 8s. If no telemetry item has reached the SIP for 20s
+       AND we have no own socket AND the host has no site-wide stream
+       (missing, closed, or replaced by an asset-filtered URL after Search),
+       open the dedicated site-wide socket. Also retries the bridge install
+       in case telemetrylive.js loaded late.                              */
+    var WATCHDOG_TICK_MS = 8000;
+    var WATCHDOG_SILENT_MS = 20000;
+    function startFeedWatchdog(siteId) {
+        stopFeedWatchdog();
+        state._watchdogSiteId = siteId;
+        state._watchdog = setInterval(function () {
+            tryBridge();   // no-op if already installed
+            if (state.ws && (state.ws.readyState === 0 || state.ws.readyState === 1)) return;
+            var silentMs = Date.now() - (state.lastItemAt || 0);
+            if (silentMs < WATCHDOG_SILENT_MS) return;
+            if (hostHasSiteWideStream(siteId)) return;   // site stream exists; data may simply be quiet
+            swarn('No SIP telemetry for ' + Math.round(silentMs / 1000) + 's and the host WS is ' +
+                (window.wsConnection ? 'asset-filtered (' + String(window.wsConnection.url || '').split('?')[0] + ')' : 'absent') +
+                ' — opening dedicated site-wide socket for site ' + siteId + '.');
+            openOwnSocket(siteId);
+        }, WATCHDOG_TICK_MS);
+    }
+    function stopFeedWatchdog() {
+        if (state._watchdog) { clearInterval(state._watchdog); state._watchdog = null; }
+        state._watchdogSiteId = null;
     }
 
     /* ── Bridge installation ─────────────────────────────────────────────── */
@@ -871,6 +1076,10 @@
 
     /* ── Standalone WebSocket ────────────────────────────────────────────── */
     function openOwnSocket(siteId) {
+        /* Idempotency — watchdog and openSocket may both call this */
+        if (state.ws && (state.ws.readyState === 0 || state.ws.readyState === 1)) {
+            return;
+        }
         var url = WS_BASE + '/' + siteId + '/all';
 
         // ── FIX: Upgrade ws:// → wss:// on HTTPS pages ──
@@ -944,6 +1153,7 @@
 
     function closeSockets() {
         removeBridge();
+        stopFeedWatchdog();
         stopAlertFlash();
         if (state.wsReconnTimer) { clearTimeout(state.wsReconnTimer); state.wsReconnTimer = null; }
         stopHeartbeat();
@@ -977,6 +1187,7 @@
     function feedItems(items) {
         state.diag.recv++;
         if (!items || !items.length) return;
+        state.lastItemAt = Date.now();   // feed watchdog liveness marker
 
         var touched = {};   // assetName → true
 
@@ -1020,6 +1231,25 @@
         }
 
         /* ── PHASE 2: ENRICH + RE-EVALUATE ──────────────────────────────── */
+
+        /* ── LAYOUT-LOAD RACE GUARD ──────────────────────────────────────
+           On site selection the WS stream and the GetSipView layout AJAX
+           start in parallel. Frames that land BEFORE the layout returns
+           would find an empty cell index and falsely warn "no SIP cell
+           matches" for every asset. Their values are already absorbed in
+           PHASE 1 (state.assetValues), so just buffer here — loadSip runs
+           a full re-evaluation pass the moment the layout is in.          */
+        if (!state.cells.length) {
+            state._bufferedAssets = state._bufferedAssets || {};
+            for (var bn in touched) {
+                if (touched.hasOwnProperty(bn)) state._bufferedAssets[bn] = true;
+            }
+            swarnOnce('buffering-preload',
+                'Telemetry is arriving before the SIP layout finished loading — ' +
+                'buffering values; they will be evaluated as soon as the layout is in.');
+            return;
+        }
+
         var dirty = false;
         var batchHit = 0, batchMiss = 0, batchNoCell = 0;
 
@@ -1041,6 +1271,9 @@
             if (!cells.length) {
                 batchNoCell++;
                 pushSample(state.diag.unmatched, assetName, 20);
+                swarnOnce('nomatch:' + assetName,
+                    'No SIP cell matches asset "' + assetName + '" — telemetry for it is ignored. ' +
+                    'Check the cell label spelling in the SIP editor.');
                 continue;
             }
 
@@ -1179,13 +1412,24 @@
         if (direct) for (var i = 0; i < direct.length; i++) out.push(direct[i]);
         var prefix = state.byPrefix[assetName];
         if (prefix) for (var j = 0; j < prefix.length; j++) if (out.indexOf(prefix[j]) === -1) out.push(prefix[j]);
+
+        /* NEW — tolerant fallback: "S-14" ⇆ "S14", "SH-37" ⇆ "SH37", "S  2" ⇆ "S2" */
+        if (!out.length) {
+            var nk = _normLabel(assetName);
+            var nd = (state.byNorm && state.byNorm[nk]) || [];
+            for (var a = 0; a < nd.length; a++) if (out.indexOf(nd[a]) === -1) out.push(nd[a]);
+            var np = (state.byNormPrefix && state.byNormPrefix[nk]) || [];
+            for (var b = 0; b < np.length; b++) if (out.indexOf(np[b]) === -1) out.push(np[b]);
+        }
         return out;
     }
 
     /* =========================================================================
        SECTION 5 — SIGNAL / TRACK / PM LOGIC
        ========================================================================= */
-
+    function _normLabel(v) {
+        return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+    }
     function _sipNormName(v) {
         return String(v == null ? '' : v).toUpperCase().replace(/<[^>]*>/g, '')
             .replace(/[^A-Z0-9]+/g, '');
@@ -1237,6 +1481,27 @@
             }
         }
         return best;
+    }
+    /* Threshold — identical source priority to updateMainSignalLights():
+ * zeroOffsetCache (API) → wsLiveData.ZeroOffsetValue → RDPMS_DEFAULT_THRESHOLD */
+    function thresholdFor(assetName) {
+        if (window.wsLiveData) {
+            for (var id in wsLiveData) {
+                if (!wsLiveData.hasOwnProperty(id)) continue;
+                var e = wsLiveData[id];
+                if (!e || String(e.AssetName || '').trim() !== assetName) continue;
+                if (window.zeroOffsetCache && zeroOffsetCache[id] && zeroOffsetCache[id].fetched) {
+                    var cz = parseFloat(zeroOffsetCache[id].value);
+                    if (!isNaN(cz)) return cz;
+                }
+                var z = parseFloat(e.ZeroOffsetValue);
+                if (!isNaN(z)) return z;
+                break;
+            }
+        }
+        if (state.zeroOffset[assetName] != null) return state.zeroOffset[assetName];
+        return (typeof window.RDPMS_DEFAULT_THRESHOLD !== 'undefined')
+            ? window.RDPMS_DEFAULT_THRESHOLD : ZERO_OFFSET_DEFAULT;
     }
 
     /* Signal aspect — same priority used by telemetrylive.js updateMainSignalLights():
@@ -1332,6 +1597,22 @@
         return false;
     }
 
+    /* Diagnostic: does the snapshot contain ANY recognizable signal-aspect
+       attribute (aspect currents or ECR relays)? When telemetry arrives for
+       a signal but none of these match, the signal MUST stay all-OFF and we
+       warn so the attribute mapping can be corrected. */
+    function hasSignalAttrs(s) {
+        for (var k in s) {
+            if (!s.hasOwnProperty(k)) continue;
+            var nk = _sipNormName(k);
+            if (nk.indexOf('RGMA') !== -1 || nk.indexOf('DGMA') !== -1 ||
+                nk.indexOf('HGMA') !== -1 || nk.indexOf('HHGMA') !== -1 ||
+                nk.indexOf('RECR') !== -1 || nk.indexOf('DECR') !== -1 ||
+                nk.indexOf('HECR') !== -1 || nk.indexOf('HHECR') !== -1) return true;
+        }
+        return false;
+    }
+
     function routeLabelsForCell(cell) {
         var route = (cell.attrs && cell.attrs.route) || {};
         var raw = route.labels || route.routes || route.routeLabels || 'AUG,BUG,CUG,DUG,EUG';
@@ -1395,11 +1676,24 @@
         return 'UNKNOWN';
     }
 
-    /* Shunt lit when HR relay picked OR any mA > threshold */
-    function computeShunt(s, thr) {
-        if (relayPicked(s, ['HR'])) return true;
-        for (var k in s) if (s.hasOwnProperty(k) && k.toUpperCase().indexOf('MA') !== -1 && s[k] > thr) return true;
-        return false;
+    /* Shunt aspect — EXACT mirror of updateShuntSignalLights():
+ *   On Aspect mA  > threshold → ON   (left + right lamps lit)
+ *   Off Aspect mA > threshold → OFF  (top + right lamps lit)
+ *   neither                   → NONE (all lamps dim)
+ * Relay fallback (HR / OFFECR) only when no aspect currents exist. */
+    function computeShuntAspect(s, thr) {
+        var onMa = valOf(s, ['On Aspect mA', 'ON Aspect mA', 'OnAspect mA', 'IShSig ON', 'ShSig ON mA']);
+        if (onMa == null) onMa = valueByBaseAndUnit(s, 'ONASPECT', 'MA');
+        var offMa = valOf(s, ['Off Aspect mA', 'OFF Aspect mA', 'OffAspect mA', 'IShSig OFF', 'ShSig OFF mA']);
+        if (offMa == null) offMa = valueByBaseAndUnit(s, 'OFFASPECT', 'MA');
+
+        if (onMa != null && onMa > thr) return 'ON';
+        if (offMa != null && offMa > thr) return 'OFF';
+        if (onMa == null && offMa == null) {
+            if (relayPicked(s, ['HR'])) return 'ON';
+            if (relayPicked(s, ['OFFECR', 'OFF ECR'])) return 'OFF';
+        }
+        return 'NONE';
     }
 
     /* Bus Bar — returns { dcV, acV, lowDC, lowAC } for label + colour update.
@@ -1426,20 +1720,49 @@
        SECTION 6 — CELL RE-EVALUATION
        ========================================================================= */
 
+    /* Per-cell timers that clear the PM operate-blink flag */
+    var _pmBlinkTimers = {};
+    function schedulePmBlinkClear(cell) {
+        if (_pmBlinkTimers[cell.id]) clearTimeout(_pmBlinkTimers[cell.id]);
+        _pmBlinkTimers[cell.id] = setTimeout(function () {
+            delete _pmBlinkTimers[cell.id];
+            if (cell.attrs && cell.attrs.pmBlink) {
+                delete cell.attrs.pmBlink;
+                requestRender();
+            }
+        }, PM_BLINK_MS);
+    }
+
     function reeval(cell, assetName, s) {
         cell.attrs = cell.attrs || {};
-        var thr = state.zeroOffset[assetName] || ZERO_OFFSET_DEFAULT;
-
+        var thr = thresholdFor(assetName);
         /* ── Composite signal (examples.Signal / SignalShunt) ── */
         if (COMPOSITE_SIGNAL[cell.type]) {
             var aspect = computeAspect(s, thr);
             var changedSig = false;
 
+            /* Telemetry arrived but NOTHING matched a known aspect attribute.
+               Aspect resolves to OFF → all lamps dark (never a phantom green).
+               Warn once so the attribute naming can be fixed at the source. */
+            if (aspect === 'OFF' && Object.keys(s).length > 0 && !hasSignalAttrs(s)) {
+                swarnOnce('sig-noattr:' + assetName,
+                    'Signal "' + assetName + '": telemetry received but NO aspect attribute matched ' +
+                    '(expected RG/HG/HHG/DG mA or RECR/HECR/HHECR/DECR relays). ' +
+                    'All lamps held OFF. Snapshot keys:', Object.keys(s));
+                pushSample(state.diag.unmatched,
+                    '⚠ Signal ' + assetName + ': data received but no aspect attrs matched', 20);
+            }
+
             if (cell.type === 'examples.SignalShunt') {
                 /* SignalShunt uses attrs.lit directly (same char as composite) */
                 var litChar = aspectToLit(aspect, 'RYG');   // always has R,Y,G
                 var cur = String((cell.attrs && cell.attrs.lit) || '');
-                if (cur !== litChar) { cell.attrs.lit = litChar; changedSig = true; }
+                if (cur !== litChar) {
+                    cell.attrs.lit = litChar;
+                    changedSig = true;
+                    slog('Signal ' + assetName + ' aspect → ' + aspect +
+                        ' (lit "' + litChar + '", thr=' + thr + ')');
+                }
                 return changedSig;
             }
 
@@ -1452,6 +1775,8 @@
                 cell.attrs.signal = cell.attrs.signal || {};
                 cell.attrs.signal.lit = newLit;
                 changedSig = true;
+                slog('Signal ' + assetName + ' aspect → ' + aspect +
+                    ' (lit "' + newLit + '" of lamps "' + lamps + '", thr=' + thr + ')');
             }
 
             /* Attached Route / Calling on main signal — mirrors telemetrylive.js:
@@ -1506,7 +1831,11 @@
             }
             var ns = occ ? C_RED : OFF_GREY;
             cell.attrs.path = cell.attrs.path || {};
-            if (cell.attrs.path.stroke !== ns) { cell.attrs.path.stroke = ns; return true; }
+            if (cell.attrs.path.stroke !== ns) {
+                cell.attrs.path.stroke = ns;
+                slog('Track ' + assetName + ' → ' + (occ ? 'OCCUPIED (red)' : 'CLEAR (grey)'));
+                return true;
+            }
             return false;
         }
 
@@ -1519,7 +1848,11 @@
             }
             var nf = occ2 ? C_RED : OFF_GREY;
             cell.attrs.path = cell.attrs.path || {};
-            if (cell.attrs.path.fill !== nf) { cell.attrs.path.fill = nf; return true; }
+            if (cell.attrs.path.fill !== nf) {
+                cell.attrs.path.fill = nf;
+                slog('Track ' + assetName + ' → ' + (occ2 ? 'OCCUPIED (red)' : 'CLEAR (grey)'));
+                return true;
+            }
             return false;
         }
 
@@ -1533,18 +1866,50 @@
             cell.attrs.circle1 = cell.attrs.circle1 || {};
             cell.attrs.body = cell.attrs.body || {};
             var changed = false;
-            if (cell.attrs.circle1.fill !== pf) { cell.attrs.circle1.fill = pf; cell.attrs.circle1.stroke = pf; changed = true; }
+
+            /* ── Operate blink ──────────────────────────────────────────
+               When live data shows the machine moving from one PROVEN
+               position to the other (NORMAL ⇆ REVERSE), blink the
+               indicator for PM_BLINK_MS so the operation is visible.
+               First-ever data and UNKNOWN states never blink. */
+            var prevPos = state.pmLast[cell.id];
+            if (prevPos && prevPos !== pos &&
+                (prevPos === 'NORMAL' || prevPos === 'REVERSE') &&
+                (pos === 'NORMAL' || pos === 'REVERSE')) {
+                cell.attrs.pmBlink = true;
+                schedulePmBlinkClear(cell);
+                changed = true;
+                slog('Point machine ' + assetName + ' OPERATED: ' + prevPos + ' → ' + pos +
+                    ' — indicator blinking for ' + (PM_BLINK_MS / 1000) + 's');
+            }
+            if (pos === 'NORMAL' || pos === 'REVERSE') state.pmLast[cell.id] = pos;
+
+            if (cell.attrs.circle1.fill !== pf) {
+                cell.attrs.circle1.fill = pf;
+                cell.attrs.circle1.stroke = pf;
+                changed = true;
+                slog('Point machine ' + assetName + ' position → ' + pos);
+            }
             if (cell.attrs.body.stroke !== bs) { cell.attrs.body.stroke = bs; changed = true; }
             return changed;
         }
 
-        /* ── Shunt signal ── */
+        /* ── Shunt signal — drive the LAMPS, not the body fill ── */
         if (SHUNT_TYPES[cell.type]) {
-            var lit2 = computeShunt(s, thr);
-            var sf = lit2 ? C_RED : OFF_GREY;
+            var shAspect = computeShuntAspect(s, thr);
+            var newState = (shAspect === 'ON' || shAspect === 'OFF') ? shAspect : '';
+            var shChanged = false;
+            if (String(cell.attrs.shuntLive || '') !== newState) {
+                cell.attrs.shuntLive = newState;
+                shChanged = true;
+            }
+            /* Neutralise any red body fill written by the old logic */
             cell.attrs.body = cell.attrs.body || {};
-            if (cell.attrs.body.fill !== sf) { cell.attrs.body.fill = sf; return true; }
-            return false;
+            if (cell.attrs.body.fill && cell.attrs.body.fill !== '#5B6168') {
+                cell.attrs.body.fill = '#5B6168';
+                shChanged = true;
+            }
+            return shChanged;
         }
 
         /* ── Bus Bar — show live voltage in label, red when low ── */
@@ -1648,8 +2013,12 @@
             'class="sip-yard" preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;">' +
             '<defs>' +
             '<style>' +
+            //'.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
+            //'.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
             '.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
             '.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
+            '.sip-shunt-blink{animation:sipShuntBlink 1s ease-in-out infinite;}' +
+            '@keyframes sipShuntBlink{0%,100%{opacity:1}50%{opacity:.12}}' +
             '</style>' +
             '<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">' +
             '<stop offset="0%"  stop-color="#0c1530"/>' +
@@ -1848,6 +2217,7 @@
        ========================================================================= */
     window.SipTelemetry = {
         connectToSite: connectToSite,
+        applyPayload: applyPayload,
         disconnect: function () { closeSockets(); removeBridge(); },
         refresh: function () { if (state.siteId) connectToSite(state.siteId); },
         highlight: highlight,

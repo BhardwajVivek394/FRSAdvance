@@ -19,6 +19,17 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private static readonly int _maxToolLen = ReadInt("MaxToolResultChars", 20000);
         private static readonly int _warnTokens = ReadInt("WarnTokenThreshold", 40000);
 
+        // ── Tool logging ───────────────────────────────────────
+        // Enable with: <add key="AiToolLoggingEnabled" value="true" />
+        private static readonly bool _toolLoggingEnabled =
+            ReadBool("AiToolLoggingEnabled", false);
+        private static readonly int _maxToolLogChars =
+            ReadInt("AiToolLogMaxChars", 20000);
+        private static readonly object _toolLogLock = new object();
+        private static readonly string _toolLogDir =
+            System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "App_Data", "AiToolLogs");
+
         private static readonly Lazy<AnthropicClient> _ai =
             new Lazy<AnthropicClient>(CreateAiClient);
 
@@ -70,6 +81,143 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             int v;
             return int.TryParse(ConfigurationManager.AppSettings[key], out v) ? v : def;
+        }
+
+        private static bool ReadBool(string key, bool def)
+        {
+            string raw = ConfigurationManager.AppSettings[key];
+            if (string.IsNullOrWhiteSpace(raw)) return def;
+            raw = raw.Trim();
+            return raw.Equals("true", StringComparison.OrdinalIgnoreCase)
+                || raw.Equals("1", StringComparison.OrdinalIgnoreCase)
+                || raw.Equals("yes", StringComparison.OrdinalIgnoreCase)
+                || raw.Equals("on", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ResolveToolOwner(string toolName)
+        {
+            int owner = 1;
+            lock (_toolOwnerLock)
+            {
+                if (!string.IsNullOrEmpty(toolName) && _toolOwner.ContainsKey(toolName))
+                    owner = _toolOwner[toolName];
+            }
+            return owner;
+        }
+
+        private static void LogToolEvent(
+            string conversationId,
+            string phase,
+            int iteration,
+            string toolUseId,
+            string toolName,
+            int owner,
+            JToken args,
+            string result,
+            Exception error,
+            long elapsedMs)
+        {
+            if (!_toolLoggingEnabled) return;
+
+            try
+            {
+                JObject entry = new JObject();
+                entry["tsUtc"] = DateTime.UtcNow.ToString("o");
+                entry["conversationId"] = conversationId ?? string.Empty;
+                entry["phase"] = phase ?? string.Empty; // requested / response / error
+                entry["iteration"] = iteration;
+                entry["toolUseId"] = toolUseId ?? string.Empty;
+                entry["toolName"] = toolName ?? string.Empty;
+                entry["server"] = owner > 0 ? "srv" + owner : string.Empty;
+                if (elapsedMs >= 0) entry["elapsedMs"] = elapsedMs;
+
+                string argsJson = args == null
+                    ? string.Empty
+                    : CloneAndRedact(args).ToString(Formatting.None);
+
+                entry["argsPreview"] = LimitForLog(argsJson, _maxToolLogChars);
+                entry["resultLength"] = string.IsNullOrEmpty(result) ? 0 : result.Length;
+                entry["resultPreview"] = LimitForLog(result, _maxToolLogChars);
+                entry["error"] = error == null ? string.Empty : LimitForLog(error.ToString(), _maxToolLogChars);
+
+                System.IO.Directory.CreateDirectory(_toolLogDir);
+                string path = System.IO.Path.Combine(
+                    _toolLogDir,
+                    "ai-tool-" + DateTime.UtcNow.ToString("yyyyMMdd") + ".jsonl");
+
+                lock (_toolLogLock)
+                {
+                    System.IO.File.AppendAllText(
+                        path,
+                        entry.ToString(Formatting.None) + Environment.NewLine,
+                        Encoding.UTF8);
+                }
+            }
+            catch (Exception logEx)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "[AiChat] Tool log failed: " + logEx.Message);
+            }
+        }
+
+        private static string LimitForLog(string text, int maxChars)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            text = RedactSecretText(text);
+            if (maxChars <= 0 || text.Length <= maxChars) return text;
+            return text.Substring(0, maxChars)
+                + "\n...[truncated " + (text.Length - maxChars) + " chars]";
+        }
+
+        private static string RedactSecretText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            return Regex.Replace(
+                text,
+                @"(?i)(password|token|secret|api[_-]?key|authorization)\s*[:=]\s*[""']?[^,""'\s}]+",
+                "$1=***REDACTED***");
+        }
+
+        private static JToken CloneAndRedact(JToken token)
+        {
+            if (token == null) return JValue.CreateNull();
+
+            JObject obj = token as JObject;
+            if (obj != null)
+            {
+                JObject copy = new JObject();
+                foreach (JProperty prop in obj.Properties())
+                {
+                    if (IsSensitiveKey(prop.Name))
+                        copy[prop.Name] = "***REDACTED***";
+                    else
+                        copy[prop.Name] = CloneAndRedact(prop.Value);
+                }
+                return copy;
+            }
+
+            JArray arr = token as JArray;
+            if (arr != null)
+            {
+                JArray copy = new JArray();
+                foreach (JToken item in arr)
+                    copy.Add(CloneAndRedact(item));
+                return copy;
+            }
+
+            return token.DeepClone();
+        }
+
+        private static bool IsSensitiveKey(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return false;
+            string k = key.ToLowerInvariant();
+            return k.Contains("password")
+                || k.Contains("token")
+                || k.Contains("secret")
+                || k.Contains("apikey")
+                || k.Contains("api_key")
+                || k.Contains("authorization");
         }
 
         // ── Training file ───────────────────────────────────────
@@ -161,12 +309,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // ═════════════════════════════════════════════════════════
         private async Task<string> CallToolRoutedAsync(string toolName, JToken toolArgs)
         {
-            int owner = 1;
-            lock (_toolOwnerLock)
-            {
-                if (_toolOwner.ContainsKey(toolName))
-                    owner = _toolOwner[toolName];
-            }
+            int owner = ResolveToolOwner(toolName);
 
             // McpClient and McpSseClient have the same method signature
             if (owner == 2)
@@ -279,6 +422,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 else messages.Add(JObject.FromObject(m));
             }
 
+            string conversationId = Guid.NewGuid().ToString("N");
+
             string lastUserText = string.Empty;
             for (int i = messages.Count - 1; i >= 0; i--)
             {
@@ -379,12 +524,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     foreach (JToken block in toolUseBlocks)
                     {
                         string toolName = block["name"] != null ? block["name"].ToString() : "";
-                        int owner = 0;
-                        lock (_toolOwnerLock)
-                        {
-                            if (_toolOwner.ContainsKey(toolName))
-                                owner = _toolOwner[toolName];
-                        }
+                        int owner = ResolveToolOwner(toolName);
                         WriteSse("tool_use", new { name = toolName + " (srv" + owner + ")" });
                     }
 
@@ -396,16 +536,56 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         string toolName = block["name"] != null ? block["name"].ToString() : "";
                         string toolId = block["id"] != null ? block["id"].ToString() : "";
                         JToken toolArgs = block["input"];
+                        int owner = ResolveToolOwner(toolName);
+
+                        LogToolEvent(
+                            conversationId,
+                            "requested",
+                            iter,
+                            toolId,
+                            toolName,
+                            owner,
+                            toolArgs,
+                            null,
+                            null,
+                            -1);
 
                         string result;
+                        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
                         try
                         {
                             result = await CallToolRoutedAsync(toolName, toolArgs)
                                 .ConfigureAwait(false);
+                            sw.Stop();
+
+                            LogToolEvent(
+                                conversationId,
+                                "response",
+                                iter,
+                                toolId,
+                                toolName,
+                                owner,
+                                toolArgs,
+                                result,
+                                null,
+                                sw.ElapsedMilliseconds);
                         }
                         catch (Exception ex)
                         {
+                            sw.Stop();
                             result = "Tool '" + toolName + "' failed: " + ex.Message;
+
+                            LogToolEvent(
+                                conversationId,
+                                "error",
+                                iter,
+                                toolId,
+                                toolName,
+                                owner,
+                                toolArgs,
+                                result,
+                                ex,
+                                sw.ElapsedMilliseconds);
                         }
 
                         toolResults.Add(new

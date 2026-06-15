@@ -101,6 +101,24 @@
     }
     /* ── tiny helpers ─────────────────────────────────────────────── */
     function el(id) { return document.getElementById(id); }
+
+    /* ── Console logging ────────────────────────────────────────────────
+       Popup asset-resolution and data-binding decisions are logged with
+       the [sip-popup] prefix. Set window.SIP_DEBUG = false to silence. */
+    function sapLog() {
+        if (window.SIP_DEBUG === false) return;
+        console.log.apply(console, ['[sip-popup]'].concat([].slice.call(arguments)));
+    }
+    function sapWarn() {
+        if (window.SIP_DEBUG === false) return;
+        console.warn.apply(console, ['[sip-popup]'].concat([].slice.call(arguments)));
+    }
+    var _sapWarnOnce = {};
+    function sapWarnOnce(key) {
+        if (_sapWarnOnce[key]) return;
+        _sapWarnOnce[key] = 1;
+        sapWarn.apply(null, [].slice.call(arguments, 1));
+    }
     function esc(v) { var d = document.createElement('div'); d.textContent = (v == null ? '' : v); return d.innerHTML; }
 
     function sapNodeExists(node) {
@@ -719,15 +737,22 @@
         var ld = window.wsLiveData || {};
         var aid = String(_assetId || '').trim();
         var targetName = normAssetName(_assetName);
+        var targetLoose = looseAssetName(_assetName);
 
         function normAssetName(v) {
             return String(v == null ? '' : v).trim().toUpperCase();
         }
 
+        /* Loose key: strip everything except A-Z0-9 so SIP labels like
+           "S 5" / "S-5" still resolve the DB asset named "S5".          */
+        function looseAssetName(v) {
+            return normAssetName(v).replace(/[^A-Z0-9]+/g, '');
+        }
+
         function wrapSipState(id, value) {
             if (!value) return null;
             if (value.attrs || value.AssetName || value.assetName) {
-                return { id: id || '', d: value };
+                return { id: id || '', d: value, via: 'sip-state' };
             }
             return {
                 id: id || '',
@@ -735,21 +760,28 @@
                     attrs: value,
                     AssetName: _assetName,
                     SiteId: _siteId
-                }
+                },
+                via: 'sip-state'
             };
         }
 
         // 1. Exact AssetId from SIP metadata / sourceInfo.
-        if (aid && ld[aid]) return { id: aid, d: ld[aid] };
+        if (aid && ld[aid]) return { id: aid, d: ld[aid], via: 'wsLiveData:assetId' };
 
-        // 2. Exact AssetName match from wsLiveData.
+        // 2. AssetName match from wsLiveData — exact first, then loose.
         if (targetName) {
+            var looseHit = null;
             for (var id in ld) {
                 if (!ld.hasOwnProperty(id)) continue;
                 var row = ld[id] || {};
                 var nm = normAssetName(row.AssetName || row.assetName || row.Name || row.name);
-                if (nm && nm === targetName) return { id: id, d: row };
+                if (!nm) continue;
+                if (nm === targetName) return { id: id, d: row, via: 'wsLiveData:exact-name' };
+                if (!looseHit && targetLoose && looseAssetName(nm) === targetLoose) {
+                    looseHit = { id: id, d: row, via: 'wsLiveData:loose-name' };
+                }
             }
+            if (looseHit) return looseHit;
         }
 
         // 3. SIP bridge state by AssetId or AssetName.
@@ -771,17 +803,23 @@
             }
 
             if (targetName) {
+                var svLooseHit = null;
                 for (var sid in svMap) {
                     if (!svMap.hasOwnProperty(sid)) continue;
                     var sv = svMap[sid];
                     var svName = normAssetName(
                         (sv && (sv.AssetName || sv.assetName || sv.Name || sv.name)) || sid
                     );
-                    if (svName && svName === targetName) {
+                    if (!svName) continue;
+                    if (svName === targetName) {
                         var byScan = wrapSipState(sid, sv);
                         if (byScan) return byScan;
                     }
+                    if (!svLooseHit && targetLoose && looseAssetName(svName) === targetLoose) {
+                        svLooseHit = wrapSipState(sid, sv);
+                    }
                 }
+                if (svLooseHit) return svLooseHit;
             }
         }
 
@@ -795,11 +833,28 @@
                     AssetName: meta.Name || meta.AssetName || _assetName,
                     AssetTypeId: meta.AssetTypeId || _assetType,
                     SiteId: meta.SiteId || _siteId
-                }
+                },
+                via: 'bulkAssetMap:metadata-only'
             };
         }
 
         return null;
+    }
+
+    /* Resolve an asset id from bulkAssetMap by (loose) name. Used so the
+       popup never falls back to "show everything" when the SIP cell did
+       not carry a registry assetId.                                      */
+    function resolveAssetIdByName(name) {
+        if (!name || !window.bulkAssetMap) return '';
+        var want = String(name).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '');
+        if (!want) return '';
+        for (var id in window.bulkAssetMap) {
+            if (!window.bulkAssetMap.hasOwnProperty(id)) continue;
+            var m = window.bulkAssetMap[id] || {};
+            var nm = String(m.Name || m.AssetName || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '');
+            if (nm && nm === want) return String(id);
+        }
+        return '';
     }
 
     //function renderTelemRow(item) {
@@ -956,6 +1011,31 @@
         }
 
         var aid = String(_assetId || '').trim();
+
+        /* The cell may carry only a label, no registry assetId. Resolve the
+           id from bulkAssetMap by name so the configured-attribute loops
+           below stay scoped to THIS asset only.                            */
+        if (!aid && _assetName) {
+            aid = resolveAssetIdByName(_assetName);
+            if (aid) {
+                _assetId = aid;
+                sapLog('Resolved assetId ' + aid + ' for "' + _assetName + '" via bulkAssetMap name match.');
+            }
+        }
+
+        /* CONCEPT: the popup shows ONLY the clicked asset.
+           Previously, when aid was empty the simpleMap / dlMap loops lost
+           their prefix filter and dumped EVERY asset's configured attributes
+           into the grid (e.g. a signal popup also showing track attrs).
+           Now: no resolved assetId ⇒ configured loops are skipped entirely
+           and only the asset's own live snapshot rows are shown.           */
+        if (!aid) {
+            sapWarnOnce('noaid:' + String(_assetName || ''),
+                'Asset "' + _assetName + '" has no resolvable assetId — showing only live ' +
+                'snapshot values. Bind the SIP cell to a registry asset to see configured ' +
+                'attribute and DataLogger (TPR) placeholders.');
+        }
+
         var prefix = aid + '_';
 
         var dlMap = window.userAssetDataloggerMap || {};
@@ -1019,7 +1099,9 @@
         // This block collapses those aliases into one visible row.
         for (var dk in dlMap) {
             if (!dlMap.hasOwnProperty(dk)) continue;
-            if (aid && dk.indexOf(prefix) !== 0) continue;
+            /* Strict scoping: only THIS asset's DataLogger rows. When aid is
+               unknown we must not fall through to all assets.              */
+            if (!aid || dk.indexOf(prefix) !== 0) continue;
 
             var dlEntry = dlMap[dk] || {};
             var keySuffix = cleanId(dk.substring(prefix.length));
@@ -1181,8 +1263,40 @@
                 }
             }
 
-            var dlRelays = ra ? (ra.dlRelays || ra.DlRelays || ra.DLRelays || null) : null;
-            var sources = [dlRelays, ra];
+            /* ── DataLogger relay sources, in priority order ──────────────
+               FIX: in wsLiveData the dlRelays object lives on the asset
+               ENTRY itself (sibling of .attrs), but `ra` here is the .attrs
+               object — so the old `ra.dlRelays` lookup never found anything
+               and TPR rows showed '--' even with live relay data.
+
+               1. liveAsset.dlRelays   — the resolved wsLiveData entry
+               2. ra.dlRelays          — kept for flat/bridged snapshots
+               3. dlRelays + attrs of the wsLiveData entry whose AssetName
+                  matches the configured DataloggerAssetName (relays are
+                  often logged under a separate datalogger asset)
+               4. ra                   — flat SIP bridge snapshot values    */
+            var sources = [];
+            if (liveAsset && (liveAsset.dlRelays || liveAsset.DlRelays || liveAsset.DLRelays)) {
+                sources.push(liveAsset.dlRelays || liveAsset.DlRelays || liveAsset.DLRelays);
+            }
+            if (ra && (ra.dlRelays || ra.DlRelays || ra.DLRelays)) {
+                sources.push(ra.dlRelays || ra.DlRelays || ra.DLRelays);
+            }
+            if (meta.assetName && window.wsLiveData) {
+                var wantDlAsset = norm(meta.assetName).replace(/[^A-Z0-9]+/g, '');
+                if (wantDlAsset) {
+                    for (var wid in window.wsLiveData) {
+                        if (!window.wsLiveData.hasOwnProperty(wid)) continue;
+                        var wEntry = window.wsLiveData[wid] || {};
+                        var wName = norm(wEntry.AssetName || wEntry.assetName || '').replace(/[^A-Z0-9]+/g, '');
+                        if (!wName || wName !== wantDlAsset) continue;
+                        if (wEntry.dlRelays) sources.push(wEntry.dlRelays);
+                        if (wEntry.attrs) sources.push(wEntry.attrs);
+                        break;
+                    }
+                }
+            }
+            sources.push(ra);
 
             function matchesCandidate(v) {
                 var vn = norm(v);
@@ -1264,6 +1378,10 @@
                 if (res.found) return res.value;
             }
 
+            sapWarnOnce('dlmiss:' + aid + ':' + meta.id,
+                'DataLogger "' + meta.name + '" (id ' + meta.id + ') of asset "' + _assetName +
+                '": no live value found in dlRelays/attrs of any source — showing "--". ' +
+                'Configured DataloggerAssetName: "' + (meta.assetName || '—') + '".');
             return '--';
         }
 
@@ -1338,7 +1456,10 @@
         // Add configured asset attributes as placeholders when WebSocket has not sent them.
         for (var sk in simpleMap) {
             if (!simpleMap.hasOwnProperty(sk)) continue;
-            if (aid && sk.indexOf(prefix) !== 0) continue;
+            /* Strict scoping: only THIS asset's configured attributes. When
+               aid is unknown we must not fall through to all assets (this
+               was what made a signal popup also list track attributes).    */
+            if (!aid || sk.indexOf(prefix) !== 0) continue;
 
             var sEntry = simpleMap[sk] || {};
             var sAttrId = String(
@@ -1488,6 +1609,19 @@
         }
 
         _lastLiveSignature = signature;
+
+        /* Summary — logged only when the visible data actually changed */
+        (function () {
+            var nDl = 0, nLive = 0, nPlaceholder = 0;
+            for (var ki = 0; ki < keys.length; ki++) {
+                var rw = attrs[keys[ki]] || {};
+                if (rw.isDatalogger) nDl++;
+                else if (hasRealValue(rw)) nLive++;
+                else nPlaceholder++;
+            }
+            sapLog('Live grid updated for "' + _assetName + '" (assetId ' + (aid || '—') + '): ' +
+                nLive + ' live attr(s), ' + nPlaceholder + ' placeholder(s), ' + nDl + ' DataLogger row(s).');
+        })();
 
         var half = Math.ceil(keys.length / 2);
 
@@ -3085,6 +3219,11 @@
                 if (!_assetType) _assetType = fnd.d.AssetTypeName || fnd.d.assetTypeName || _assetType;
             }
         }
+
+        sapLog('Popup opened — cell label: "' + (pickedAssetName || '—') +
+            '", resolved asset: "' + _assetName + '" (assetId ' + (_assetId || '—') +
+            ', type ' + (_assetType || '—') + ', site ' + (_siteId || '—') + ')' +
+            (fnd ? ' via ' + (fnd.via || 'unknown source') : ' — NO live/metadata source matched yet'));
 
         _lastLiveSignature = '';
 

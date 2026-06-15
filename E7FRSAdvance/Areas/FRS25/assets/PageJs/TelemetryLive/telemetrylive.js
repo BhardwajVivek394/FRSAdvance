@@ -4016,8 +4016,19 @@ function scheduleUIUpdate(forceImmediate) {
 function executeUIUpdate() {
     // Gate: SIP-only connections should not render data into table/cards.
     // Only user-initiated Search clears this flag.
-    if (window._wsSipOnlyMode) return;
-
+// ── GATE: SIP-only connections must not render table/cards,
+//    but the SIP schematic still needs the data. Feed the SIP
+//    bridge directly, then skip all UI processing. ──
+if (window._wsSipOnlyMode) {
+    try {
+        if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
+            var sipRaw = event.data;
+            var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
+            window.SipTelemetry.applyPayload(sipBatch);
+        }
+    } catch (eSip) { /* malformed frame — ignore */ }
+    return;
+}
     var viewType = $('#drpView').val();
     var updatedAssetIds = Object.keys(wsUpdatedAssets);
 
@@ -4810,8 +4821,19 @@ function connectWebSocket(siteId, assetTypeId, assetIds) {
             //    data into wsLiveData or trigger any rendering. The SIP
             //    schematic uses its own separate WebSocket via
             //    SipTelemetry.connectToSite(). ──
-            if (window._wsSipOnlyMode) return;
-
+            // ── GATE: SIP-only connections must not render table/cards,
+            //    but the SIP schematic still needs the data. Feed the SIP
+            //    bridge directly, then skip all UI processing. ──
+            if (window._wsSipOnlyMode) {
+                try {
+                    if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
+                        var sipRaw = event.data;
+                        var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
+                        window.SipTelemetry.applyPayload(sipBatch);
+                    }
+                } catch (eSip) { /* malformed frame — ignore */ }
+                return;
+            }
             try {
                 var rawData = event.data;
 
@@ -17391,8 +17413,19 @@ console.log('[PM] Point Machine view loaded (dynamic ends + table view support).
                 //    data into wsLiveData or trigger any rendering. The SIP
                 //    schematic uses its own separate WebSocket via
                 //    SipTelemetry.connectToSite(). ──
-                if (window._wsSipOnlyMode) return;
-
+                // ── GATE: SIP-only connections must not render table/cards,
+                //    but the SIP schematic still needs the data. Feed the SIP
+                //    bridge directly, then skip all UI processing. ──
+                if (window._wsSipOnlyMode) {
+                    try {
+                        if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
+                            var sipRaw = event.data;
+                            var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
+                            window.SipTelemetry.applyPayload(sipBatch);
+                        }
+                    } catch (eSip) { /* malformed frame — ignore */ }
+                    return;
+                }
                 try {
                     var rawData = event.data;
                     var batch;
@@ -19849,8 +19882,19 @@ function tlBulkRenderCurrentViewFromPlaceholders() {
     // Point Machine view is rendered by dedicated PM renderer, not bulk placeholders.
     if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip($('#drpAssetType').val() || wsCurrentAssetTypeId)) return;
     if (!bulkExpectedSchemaReady && !bulkMetadataLoaded) return;
-    if (window._wsSipOnlyMode) return;
-
+    // ── GATE: SIP-only connections must not render table/cards,
+    //    but the SIP schematic still needs the data. Feed the SIP
+    //    bridge directly, then skip all UI processing. ──
+    if (window._wsSipOnlyMode) {
+        try {
+            if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
+                var sipRaw = event.data;
+                var sipBatch = (typeof sipRaw === 'string') ? JSON.parse(sipRaw) : sipRaw;
+                window.SipTelemetry.applyPayload(sipBatch);
+            }
+        } catch (eSip) { /* malformed frame — ignore */ }
+        return;
+    }
     tlBulkEnsurePlaceholdersForCurrentFilter();
 
     if (Object.keys(wsLiveData).length === 0) return;

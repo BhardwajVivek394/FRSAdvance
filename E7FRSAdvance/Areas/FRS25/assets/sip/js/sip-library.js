@@ -256,6 +256,23 @@
             ? labelAttrs.fill
             : '#FFC919';
 
+        /* PM display options (set from the SIP editor inspector):
+           attrs.pm = {
+               labelSide:   'auto' | 'opposite'   — 'opposite' puts the name on
+                            the REVERSE side of the diagonal (away from the
+                            indicator circle) to avoid overlapping it,
+               labelOffset: extra px gap pushing the label away from the rail
+           }
+           Legacy fallback: attrs.label.side is also honoured.            */
+        const pmProps = (cell.attrs && cell.attrs.pm) || {};
+        const pmLabelSide = String(pmProps.labelSide || labelAttrs.side || 'auto').toLowerCase();
+        const pmLabelExtra = Math.max(0, +pmProps.labelOffset || 0);
+
+        /* Operate blink — set by sip-telemetry.js when live data shows a
+           NORMAL ⇆ REVERSE transition; cleared automatically after a few
+           seconds. Rendered as an SVG opacity pulse on the lit indicator. */
+        const pmBlink = !!(cell.attrs && cell.attrs.pmBlink);
+
         /* ---- Diagonal rail strip geometry ---- */
         let x1, y1, x2, y2;
         if (mirror) {
@@ -337,27 +354,41 @@
         const indCx = x + w / 2 + perpX * offsetDist * sign;
         const indCy = y + h / 2 + perpY * offsetDist * sign;
 
+        const blinkAnim = pmBlink && indLit
+            ? `<animate attributeName="opacity" values="1;0.12;1" dur="0.7s" repeatCount="indefinite"/>`
+            : '';
+
+        /* Static dark ring stays solid; the lit parts (glow + fill + shine)
+           are grouped so the blink pulses them together. */
+        svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 1.5}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.8"/>`;
+        svg += `<g class="sip-pm-ind${pmBlink && indLit ? ' sip-pm-blink' : ''}">`;
         if (indLit) {
             svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 6}" fill="${indFill}" opacity="0.15"/>`;
             svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 3}" fill="${indFill}" opacity="0.30"/>`;
         }
-        svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 1.5}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.8"/>`;
         svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR}" ` +
             `fill="${indLit ? indFill : '#d4d4d4'}"/>`;
         if (indLit) {
             svg += `<ellipse cx="${indCx - indR * 0.3}" cy="${indCy - indR * 0.3}" ` +
                 `rx="${indR * 0.3}" ry="${indR * 0.18}" fill="white" opacity="0.55"/>`;
         }
+        svg += blinkAnim;
+        svg += `</g>`;
 
         /* ---- Label (rotated along the yellow merge line, like "101/102") ---- */
         if (labelTxt) {
             const midX = (x1 + x2) / 2;
             const midY = (y1 + y2) / 2;
             /* Offset the label slightly to the side of the diagonal so it
-               doesn't overlap the yellow line or the circle */
-            const labelOff = railW + 6;
-            const lx = midX + perpX * labelOff * sign;
-            const ly = midY + perpY * labelOff * sign;
+               doesn't overlap the yellow line or the circle.
+               labelSide 'opposite' flips the label to the REVERSE side of the
+               diagonal (away from the indicator circle) — used when the
+               default side overlaps neighbouring tracks/assets. */
+            const labelSign = (pmLabelSide === 'opposite' || pmLabelSide === 'reverse' || pmLabelSide === 'flip')
+                ? -sign : sign;
+            const labelOff = railW + 6 + pmLabelExtra;
+            const lx = midX + perpX * labelOff * labelSign;
+            const ly = midY + perpY * labelOff * labelSign;
             /* Rotate text to follow the diagonal angle.
                Ensure text is always readable (not upside-down). */
             let rotDeg = angDeg;
@@ -858,6 +889,16 @@
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
 
+        // Live telemetry override: ON → proceed lamps lit (blinking), OFF → all dim.
+        // Falls back to the stencil's static variant when no live state is present.
+        const live = cell.attrs ? cell.attrs.shuntLive : undefined;
+        let v = variant;
+        let blink = '';
+        if (live !== undefined) {
+            v = live === 'ON' ? 1 : live === 'OFF' ? 2 : 3;
+            if (live === 'ON') blink = ' class="sip-shunt-blink"';
+        }
+
         const bw = Math.max(44, Math.min(w * 1.5, 64));
         const bh = bw * (23 / 25);
         const bx = x + (w - bw) / 2;
@@ -895,14 +936,16 @@
         // v3 = blank / off     → all dim
         const dotR = Math.max(3.8, 3.8 * Math.min(sx, sy));
         const dotPositions = [
-            { cx: bx + 9.5 * sx, cy: by + 7.5 * sy, lit: variant === 2 },                       // top
-            { cx: bx + 7.5 * sx, cy: by + 17.5 * sy, lit: variant === 1 },                       // bottom-left
-            { cx: bx + 17.5 * sx, cy: by + 17.5 * sy, lit: variant === 1 || variant === 2 }       // bottom-right
+            { cx: bx + 9.5 * sx, cy: by + 7.5 * sy, lit: v === 2 },
+            { cx: bx + 7.5 * sx, cy: by + 17.5 * sy, lit: v === 1 },
+            { cx: bx + 17.5 * sx, cy: by + 17.5 * sy, lit: v === 1 || v === 2 }
         ];
         for (const d of dotPositions) {
             if (d.lit) {
-                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="white" opacity="0.18"/>`;
-                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white"/>`;
+                svg += `<circle${blink} cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="white" opacity="0.18"/>`;
+                svg += `<circle${blink} cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white"/>`;
+                //svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="white" opacity="0.18"/>`;
+                //svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white"/>`;
                 svg += `<ellipse cx="${d.cx - dotR * 0.35}" cy="${d.cy - dotR * 0.4}" rx="${dotR * 0.35}" ry="${dotR * 0.22}" fill="white" opacity="0.6"/>`;
             } else {
                 svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white" fill-opacity="0.08" stroke="white" stroke-opacity="0.25" stroke-width="0.6"/>`;
