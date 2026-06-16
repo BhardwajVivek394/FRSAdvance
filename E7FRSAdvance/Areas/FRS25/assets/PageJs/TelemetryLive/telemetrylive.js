@@ -8280,6 +8280,34 @@ function formatDateForHistoryApi(date) {
     return day + month + year + '_' + hours + minutes + seconds;
 }
 
+// Parse a device timestamp into epoch-ms WITHOUT timezone shifting.
+// The history API returns device-local wall-clock times; using new Date(str)
+// can re-interpret them against the browser's zone and shift the date/hour on
+// the tooltip. This extracts Y/M/D h:m:s components and rebuilds them as local
+// time so what we display always equals what the device reported.
+function pmParseDeviceTs(ts) {
+    if (ts === null || ts === undefined || ts === '') return NaN;
+    if (typeof ts === 'number') return ts;
+    var s = String(ts).trim();
+    // .NET "/Date(1718...)/"
+    var net = s.match(/\/Date\((-?\d+)/);
+    if (net) return parseInt(net[1], 10);
+    // ISO-ish "YYYY-MM-DD[T ]HH:mm:ss(.fff)?(Z|±hh:mm)?" — take wall-clock, drop tz
+    var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\.(\d+))?/);
+    if (m) {
+        var ms = m[7] ? parseInt((m[7] + '000').slice(0, 3), 10) : 0;
+        return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0, ms).getTime();
+    }
+    // "dd/MM/yyyy HH:mm(:ss)?"
+    var d2 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+    if (d2) {
+        return new Date(+d2[3], +d2[2] - 1, +d2[1], +d2[4], +d2[5], d2[6] ? +d2[6] : 0).getTime();
+    }
+    // Fallback
+    return new Date(s).getTime();
+}
+window.pmParseDeviceTs = pmParseDeviceTs;
+
 // Helper function to format timestamp for display (HH:mm)
 function formatTimeForDisplay(timestamp) {
     try {
@@ -8749,7 +8777,10 @@ function fnPmDirGraph(assetId, end) {
         '<h6 style="color:#fff;margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
         '<i class="fas fa-chart-line"></i> ' + name + ' -- ' + endLabel + ' Indication Voltages' +
         '</h6>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.75);width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
+        '</div>' +
         '</div>' +
         '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
         '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;">' +
@@ -8823,7 +8854,7 @@ function loadPmIndicationFromApi(assetId, hours, filterIds, end) {
             $ld.hide();
             if (response && response.Data && response.Data.length > 0) {
                 $ch.show();
-                renderPmIndicationFromApi(response.Data, filterIds, end);
+                renderPmIndicationFromApi(response.Data, filterIds, end, startDate.getTime());
             } else {
                 $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>' +
                     'No indication data available for the last ' + hours + ' hour(s)').show();
@@ -8863,7 +8894,7 @@ function loadPmIndicationByRange(assetId, startDate, endDate, filterIds, end) {
             $ld.hide();
             if (response && response.Data && response.Data.length > 0) {
                 $ch.show();
-                renderPmIndicationFromApi(response.Data, filterIds, end);
+                renderPmIndicationFromApi(response.Data, filterIds, end, startDate.getTime());
             } else {
                 $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>' +
                     'No indication data available for the selected range.').show();
@@ -8877,7 +8908,7 @@ function loadPmIndicationByRange(assetId, startDate, endDate, filterIds, end) {
     });
 }
 
-function renderPmIndicationFromApi(data, filterIds, end) {
+function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
     var el = document.getElementById('pmIndChartDiv');
     if (!el) return;
 
@@ -8913,7 +8944,7 @@ function renderPmIndicationFromApi(data, filterIds, end) {
                         var ts = entry.Timestamp.TimestampDevice;
                         if (!ts || ts.indexOf('0001') >= 0) continue;
 
-                        var timestamp = new Date(ts).getTime();
+                        var timestamp = pmParseDeviceTs(ts);
                         if (isNaN(timestamp) || timestamp <= 0) continue;
 
                         allTimestamps[timestamp] = true;
@@ -8923,6 +8954,12 @@ function renderPmIndicationFromApi(data, filterIds, end) {
             }
         }
     });
+
+    // Anchor the series to the start of the selected day so that values which
+    // last changed BEFORE the selected date still render as a flat line from
+    // 00:00 of that day (carry-forward), rather than starting mid-day.
+    var _hasRangeStart = (typeof rangeStart === 'number' && !isNaN(rangeStart));
+    if (_hasRangeStart) allTimestamps[rangeStart] = true;
 
     // Convert to sorted array
     var sortedTimestamps = Object.keys(allTimestamps).map(function (t) { return parseInt(t); }).sort(function (a, b) { return a - b; });
@@ -8959,7 +8996,7 @@ function renderPmIndicationFromApi(data, filterIds, end) {
                 var ts = entry.Timestamp.TimestampDevice;
                 if (!ts || ts.indexOf('0001') >= 0) continue;
 
-                var timestamp = new Date(ts).getTime();
+                var timestamp = pmParseDeviceTs(ts);
                 if (isNaN(timestamp) || timestamp <= 0) continue;
 
                 var value = parseFloat(entry.Value);
@@ -8970,13 +9007,19 @@ function renderPmIndicationFromApi(data, filterIds, end) {
             }
         }
 
-        // Create data points for ALL timestamps, using last known value
+        // Create data points for ALL timestamps, using last known value.
+        // Timestamps BEFORE the selected day are consumed only to seed the
+        // baseline value (carry-forward); the first plotted point lands on the
+        // day-start tick so the line begins at 00:00 of the selected date.
         var points = [];
         var lastValue = null;
 
         sortedTimestamps.forEach(function (ts) {
             if (valueMap[ts] !== undefined) {
                 lastValue = valueMap[ts];
+            }
+            if (_hasRangeStart && ts < rangeStart) {
+                return; // baseline only — don't plot pre-day points
             }
             if (lastValue !== null) {
                 points.push({
@@ -9082,6 +9125,7 @@ function renderPmIndicationFromApi(data, filterIds, end) {
         xAxis: {
             type: 'time',
             boundaryGap: false,
+            min: _hasRangeStart ? rangeStart : undefined,
             axisLabel: {
                 fontSize: 10,
                 color: 'rgba(255,255,255,0.55)',
@@ -10559,6 +10603,26 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 
 //    console.log('[Graph] Rendered', series.length, 'series for asset type', assetTypeId);
 //}
+
+function toggleGraphFullscreen(btn) {
+    var $modal = $(btn).closest('.rdpms-graph-modal');
+    if (!$modal.length) return;
+    $modal.toggleClass('rdpms-graph-fullscreen');
+    var fs = $modal.hasClass('rdpms-graph-fullscreen');
+    $(btn).find('i').toggleClass('fa-expand', !fs).toggleClass('fa-compress', fs);
+    // Resize whichever ECharts instance is mounted in this modal.
+    setTimeout(function () {
+        ['pmIndChartDiv', 'singleArrChartDiv', 'combineChartDiv'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            try {
+                var inst = (window.echarts && echarts.getInstanceByDom) ? echarts.getInstanceByDom(el) : null;
+                if (inst) inst.resize();
+            } catch (e) { }
+        });
+    }, 280);
+}
+window.toggleGraphFullscreen = toggleGraphFullscreen;
 
 function closeGraphModal(e) {
     if (e && e.target && !$(e.target).hasClass('tl-modal-overlay') && !$(e.target).hasClass('rdpms-graph-overlay')) return;
@@ -14021,7 +14085,10 @@ function pmShowSingleArrayGraph(assetId, direction, type) {
         '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);">' +
         '<h6 style="color:#fff;margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
         '<i class="fas fa-chart-line"></i> ' + title + '</h6>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.75);width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
+        '</div>' +
         '</div>' +
         '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
         '<div class="d-flex justify-content-between align-items-center flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;margin-bottom:12px;">' +
@@ -14124,7 +14191,7 @@ function loadSingleArrayData(startDate, endDate) {
                         var ts = entry.Timestamp ? entry.Timestamp.TimestampDevice : null;
                         if (!ts || ts.indexOf('0001') >= 0) continue;
 
-                        var timestamp = new Date(ts).getTime();
+                        var timestamp = pmParseDeviceTs(ts);
                         if (isNaN(timestamp) || timestamp <= 0) continue;
 
                         // De-duplicate by timestamp (same timestamp = same operation)
@@ -14280,7 +14347,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                     String(t.getSeconds()).padStart(2, '0') + '.' +
                     String(t.getMilliseconds()).padStart(3, '0');
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
-                    String(t.getMonth() + 1).padStart(2, '0');
+                    String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
                 var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' +
                     dateStr + ' ' + timeStr + '</div>';
                 params.forEach(function (p) {
@@ -14869,7 +14936,10 @@ function showCombinedArrayGraph(assetId, isReverse, isCurrent) {
         '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);">' +
         '<h6 style="color:#fff;margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
         '<i class="fas fa-chart-area"></i> ' + title + '</h6>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.75);width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
+        '</div>' +
         '</div>' +
         '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
         '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;">' +
@@ -14968,7 +15038,7 @@ function loadCombinedArrayData(startDate, endDate) {
                         var ts = entry.Timestamp ? entry.Timestamp.TimestampDevice : null;
                         if (!ts || ts.indexOf('0001') >= 0) continue;
 
-                        var timestamp = new Date(ts).getTime();
+                        var timestamp = pmParseDeviceTs(ts);
                         if (isNaN(timestamp) || timestamp <= 0) continue;
 
                         // De-duplicate
@@ -14993,7 +15063,7 @@ function loadCombinedArrayData(startDate, endDate) {
                         var ts = entry.Timestamp ? entry.Timestamp.TimestampDevice : null;
                         if (!ts || ts.indexOf('0001') >= 0) continue;
 
-                        var timestamp = new Date(ts).getTime();
+                        var timestamp = pmParseDeviceTs(ts);
                         if (isNaN(timestamp) || timestamp <= 0) continue;
 
                         // De-duplicate
@@ -15130,7 +15200,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
                     String(t.getMinutes()).padStart(2, '0') + ':' +
                     String(t.getSeconds()).padStart(2, '0') + '.' +
                     String(t.getMilliseconds()).padStart(3, '0');
-                var dateStr = String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0');
+                var dateStr = String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
 
                 var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' + dateStr + ' ' + timeStr + '</div>';
                 params.forEach(function (p) {
@@ -19436,6 +19506,9 @@ function fnGetAssetCircuit(assetId) {
         '<div class="tl-modal-subtitle">' + assetName + ' <span class="tl-live-badge"><span class="tl-live-dot-sm"></span> LIVE</span></div></div>' +
         '</div>' +
         '<div class="tl-modal-head-actions">' +
+        '<button class="tl-modal-fullscreen-btn" onclick="circuitZoom(0.15)" title="Zoom In"><i class="fas fa-search-plus"></i></button>' +
+        '<button class="tl-modal-fullscreen-btn" onclick="circuitZoom(-0.15)" title="Zoom Out"><i class="fas fa-search-minus"></i></button>' +
+        '<button class="tl-modal-fullscreen-btn" onclick="circuitZoomReset()" title="Fit / Reset Zoom"><i class="fas fa-compress-arrows-alt"></i></button>' +
         '<button class="tl-modal-fullscreen-btn" onclick="toggleModalFullscreen(\'rdpmsCircuitOverlay\')" title="Toggle Fullscreen"><i class="fas fa-expand"></i></button>' +
         '<button class="tl-modal-close" onclick="closeCircuitModal()" title="Close">&times;</button>' +
         '</div>' +
@@ -19510,6 +19583,12 @@ function fnGetAssetCircuit(assetId) {
                         connectCircuitWebSocket(siteId, assetTypeId, assetId);
                     }
                 }
+                // Mouse-wheel zoom (Ctrl optional) on the circuit canvas
+                $('#rdpmsCircuitContent').off('wheel.czoom').on('wheel.czoom', function (ev) {
+                    ev.preventDefault();
+                    var dy = ev.originalEvent ? ev.originalEvent.deltaY : ev.deltaY;
+                    circuitZoom(dy < 0 ? 0.12 : -0.12);
+                });
                 console.log('[Circuit Modal] Ready — asset:', assetId);
             }
 
@@ -19540,6 +19619,34 @@ function fnGetAssetCircuit(assetId) {
         }
     });
 }
+
+// ── Circuit zoom (JointJS paper / paperScroller aware) ──────────────
+function _circuitPaper() {
+    return (window.appModel && window.appModel.paper) ? window.appModel.paper : null;
+}
+function circuitZoom(delta) {
+    // Prefer a paper-scroller if the circuit uses Rappid's scroller.
+    var ps = window.appModel && (window.appModel.paperScroller || window.appModel.scroller);
+    if (ps && typeof ps.zoom === 'function') {
+        try { ps.zoom(delta, { min: 0.2, max: 3, grid: 0.05 }); return; } catch (e) { }
+    }
+    var p = _circuitPaper();
+    if (!p || typeof p.scale !== 'function') return;
+    var cur = 1;
+    try { cur = p.scale().sx || 1; } catch (e) { }
+    var next = Math.min(3, Math.max(0.2, +(cur + delta).toFixed(2)));
+    try { p.scale(next, next); } catch (e2) { }
+    // Keep the canvas large enough to scroll the scaled content.
+    try { if (typeof p.fitToContent === 'function') p.fitToContent({ padding: 20, allowNewOrigin: 'any', minWidth: 1, minHeight: 1 }); } catch (e3) { }
+}
+function circuitZoomReset() {
+    var p = _circuitPaper();
+    if (!p) return;
+    try { p.scaleContentToFit({ padding: 30, maxScale: 1.5, minScale: 0.2 }); }
+    catch (e) { try { p.fitToContent({ padding: 20 }); } catch (e2) { } }
+}
+window.circuitZoom = circuitZoom;
+window.circuitZoomReset = circuitZoomReset;
 
 function closeCircuitModal(e) {
     if (e && e.target && !$(e.target).hasClass('tl-modal-overlay')) return;
