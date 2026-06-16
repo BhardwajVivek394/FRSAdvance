@@ -276,6 +276,78 @@ function getTrackSortOrder(rawName) {
 var wsCurrentAssetTypeId = null;
 var wsValidAssetIds = [];   // whitelist from GetAssestBy / bulk asset list
 var wsCurrentFilterAssetIds = [];
+
+// ================================================================
+// WS ASSET WHITELIST GUARD
+// An asset must have been returned by GetBulkAssetMetadata (Track/Signal/IPS)
+// or GetAssestBy (Point Machine) before its WebSocket frames are allowed to
+// create a card / table row. The WS stream is site-wide and can carry assets
+// that the bulk response never listed (e.g. assets of another sub-type, or
+// stale/garbage assets). Those have no entry in bulkAssetMap, so their name
+// resolves to "Asset <id>" and they show up as garbage rows in Signal cards /
+// table view. This guard rejects any asset id not present in the bulk
+// whitelist.
+//
+// IMPORTANT: returns true (allow) when the whitelist is empty, so SIP-only
+// background connections and the brief window before bulk metadata finishes
+// loading are not blocked. Once wsValidAssetIds is populated, only those ids
+// pass.
+function rebuildWsValidAssetIdsFromBulk() {
+    wsValidAssetIds = [];
+
+    if (Array.isArray(bulkAssetsList) && bulkAssetsList.length > 0) {
+        for (var i = 0; i < bulkAssetsList.length; i++) {
+            if (bulkAssetsList[i] && bulkAssetsList[i].Id !== undefined && bulkAssetsList[i].Id !== null) {
+                wsValidAssetIds.push(String(bulkAssetsList[i].Id));
+            }
+        }
+        return;
+    }
+
+    if (bulkAssetMap && Object.keys(bulkAssetMap).length > 0) {
+        wsValidAssetIds = Object.keys(bulkAssetMap).map(String);
+    }
+}
+
+function isAssetInBulkWhitelist(assetId) {
+    var aid = String(assetId || '').trim();
+    if (!aid) return false;
+
+    // Rebuild whitelist if bulk metadata exists but wsValidAssetIds was not filled.
+    if ((!wsValidAssetIds || wsValidAssetIds.length === 0) &&
+        ((Array.isArray(bulkAssetsList) && bulkAssetsList.length > 0) ||
+            (bulkAssetMap && Object.keys(bulkAssetMap).length > 0))) {
+        rebuildWsValidAssetIdsFromBulk();
+    }
+
+    // When user selected an asset type, do NOT allow WS-only assets.
+    // This prevents scrap WS assets from entering Signal Card/List before bulk finishes.
+    var selectedType = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+
+    // FIX: Point Machine never calls GetBulkAssetMetadata — it uses GetAssestBy.
+    // Its whitelist (wsValidAssetIds) is frequently empty/not-yet-ready when WS
+    // frames arrive, so this guard was dropping EVERY PM frame ("not in bulk
+    // response — ignoring") and the card/list never bound. The asset filter
+    // (wsCurrentFilterAssetIds) already restricts PM to selected assets earlier
+    // in processItemsInternal, so the bulk-whitelist gate must not apply to PM.
+    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' &&
+        isPointMachineAssetTypeForBulkSkip(selectedType)) {
+        // If we DO have a populated PM whitelist, honour it; otherwise allow
+        // through so live data binds while GetAssestBy is still resolving.
+        if (wsValidAssetIds && wsValidAssetIds.length > 0) {
+            return wsValidAssetIds.indexOf(aid) !== -1;
+        }
+        return true;
+    }
+
+    if (selectedType && selectedType !== '0') {
+        return wsValidAssetIds && wsValidAssetIds.length > 0 &&
+            wsValidAssetIds.indexOf(aid) !== -1;
+    }
+
+    // SIP/site-only background connection can still receive site-wide WS data.
+    return true;
+}
 var wsIsConnected = false;
 var wsMessageCount = 0;
 var wsBatchCount = 0;
@@ -1431,233 +1503,6 @@ function loadUserAssetInfo(siteId, callback) {
     });
 }
 
-
-
-//var bulkMetadataLoaded = false;
-//var bulkMetadataSiteId = null;
-//var bulkMetadataAssetTypeId = null;
-//var bulkAssetsList = [];  // Stores { Id, Name } for dropdown population
-
-//function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
-//    if (!siteId || siteId === '0' || !assetTypeId || assetTypeId === '0') {
-//        console.warn('[BulkMeta] Missing siteId or assetTypeId — skipping');
-//        if (callback) callback();
-//        return;
-//    }
-
-//    // Skip re-fetch if already loaded for this site + assetType
-//    if (bulkMetadataLoaded &&
-//        bulkMetadataSiteId === String(siteId) &&
-//        bulkMetadataAssetTypeId === String(assetTypeId)) {
-//        console.log('[BulkMeta] Cache hit — site=' + siteId + ' type=' + assetTypeId);
-//        if (callback) callback();
-//        return;
-//    }
-
-//    console.log('[BulkMeta] Fetching — site=' + siteId + ' type=' + assetTypeId);
-
-//    // Payload matches _Table / _GetAssetDetails format:
-//    // AssetLister { SearchCriteria: Asset { SiteId, AssetTypeId } }
-//    var payload = {
-//        SearchCriteria: {
-//            SiteId: parseInt(siteId),
-//            AssetTypeId: parseInt(assetTypeId)
-//        }
-//    };
-
-//    $.ajax({
-//        url: '/FRS25/Telemetry/GetBulkAssetMetadata',
-//        type: 'POST',
-//        contentType: 'application/json',
-//        data: JSON.stringify(payload),
-//        dataType: 'json',
-//        timeout: 30000,
-//        success: function (response) {
-//            if (!response || !response.success || !response.mAssets) {
-//                console.warn('[BulkMeta] Error: ' + (response && response.errorMessage));
-//                _fallbackToLegacyLoad(siteId, assetTypeId, callback);
-//                return;
-//            }
-
-//            var assets = response.mAssets;
-//            var zeroCount = 0, attrCount = 0, dlCount = 0, sigCacheCount = 0;
-
-//            // Store asset list for dropdown population (replaces GetAssestBy)
-//            bulkAssetsList = [];
-//            for (var bi = 0; bi < assets.length; bi++) {
-//                bulkAssetsList.push({ Id: assets[bi].Id, Name: assets[bi].Name });
-//            }
-
-//            // Reset maps for new site data
-//            userAssetSimpleMap = {};
-//            userAssetDataloggerMap = {};
-
-//            for (var i = 0; i < assets.length; i++) {
-//                var asset = assets[i];
-//                var aid = String(asset.Id);
-
-//                // ── 1. ZeroOffsetValue → zeroOffsetCache ────────────
-//                // Replaces: N × GetZeroOffsetValue
-//                var rawOffset = parseFloat(asset.ZeroOffsetValue);
-//                var offsetVal = (!isNaN(rawOffset) && rawOffset > 0)
-//                    ? rawOffset
-//                    : RDPMS_DEFAULT_THRESHOLD;
-
-//                zeroOffsetCache[aid] = {
-//                    value: offsetVal,
-//                    fetched: true,
-//                    fetching: false,
-//                    pendingCallbacks: []
-//                };
-
-//                if (wsLiveData[aid]) {
-//                    wsLiveData[aid].ZeroOffsetValue = offsetVal;
-//                }
-//                if (offsetVal !== RDPMS_DEFAULT_THRESHOLD) zeroCount++;
-
-//                // ── 2. assetAttributes[] → assetAttributeMap + userAssetSimpleMap
-//                // Replaces: GetUserAssetInfoDatalogger
-//                var attrs = asset.assetAttributes;
-//                var sigAttrNames = [];   // for _sigAssetInfoCache (step 4)
-
-//                if (attrs && attrs.length > 0) {
-//                    for (var j = 0; j < attrs.length; j++) {
-//                        var attr = attrs[j];
-//                        var attrId = String(attr.Id || '');
-//                        var attrTitle = attr.AliasName || attr.Title || '';
-
-//                        if (!attrId || !attrTitle) continue;
-
-//                        // Global attribute map
-//                        assetAttributeMap[attrId] = attrTitle;
-//                        assetAttributeMap[String(attrId)] = attrTitle;
-//                        var numAttrId = parseInt(attrId);
-//                        if (!isNaN(numAttrId)) assetAttributeMap[numAttrId] = attrTitle;
-//                        assetAttributeByName[attrTitle] = attrTitle;
-
-//                        // userAssetSimpleMap
-//                        var simpleKey = aid + '_' + attrId;
-//                        if (!userAssetSimpleMap[simpleKey]) {
-//                            userAssetSimpleMap[simpleKey] = {
-//                                name: attrTitle,
-//                                attributeName: attr.Title || '',
-//                                assetName: asset.Name || '',
-//                                assetTypeId: asset.AssetTypeId,
-//                                siteId: asset.SiteId,
-//                                multiplication: attr.Multiplication,
-//                                absolute: attr.Absolute,
-//                                minValue: attr.MinValue,
-//                                maxValue: attr.MaxValue
-//                            };
-//                        }
-//                        attrCount++;
-
-//                        // Collect attr name for signal group cache
-//                        var sigName = attr.AliasName || attr.Title;
-//                        if (sigName && sigAttrNames.indexOf(sigName) === -1) {
-//                            sigAttrNames.push(sigName);
-//                        }
-//                    }
-//                }
-
-//                // ── 3. mAssetInfoDataloggers[] → datalogger maps ────
-//                // Replaces: GetUserAssetInfoDatalogger (datalogger portion)
-//                var dls = asset.mAssetInfoDataloggers;
-//                if (dls && dls.length > 0) {
-//                    for (var k = 0; k < dls.length; k++) {
-//                        var dl = dls[k];
-//                        var dlRole = String(dl.DataloggerAttributeId || '');
-//                        var dlName = dl.DataloggerAssetName || dl.DataloggerAttribute || '';
-
-//                        if (!dlRole || !dlName) continue;
-
-//                        var dlKey = aid + '_' + dlRole;
-//                        userAssetDataloggerMap[dlKey] = {
-//                            name: dlName,
-//                            attributeName: dl.DataloggerAttribute || '',
-//                            assetName: asset.Name || '',
-//                            assetTypeId: asset.AssetTypeId,
-//                            siteId: asset.SiteId
-//                        };
-
-//                        if (typeof dlRoleNameMap !== 'undefined' && !dlRoleNameMap[dlRole])
-//                            dlRoleNameMap[dlRole] = dlName;
-//                        if (typeof dlAssetRoleMap !== 'undefined' && !dlAssetRoleMap[dlKey])
-//                            dlAssetRoleMap[dlKey] = dlName;
-//                        dlCount++;
-//                    }
-//                }
-
-//                // ── 4. _sigAssetInfoCache → signal grouped table ────
-//                // Replaces: N × GetAssetInfoListData
-//                // The signal table groups assets by their attribute
-//                // "signature" (sorted list of attr names joined by |).
-//                // Pre-populating this cache means fetchSignalAssetInfo()
-//                // hits the "already loaded" guard and never fires AJAX.
-//                if (sigAttrNames.length > 0) {
-//                    _sigAssetInfoCache[aid] = {
-//                        loaded: true,
-//                        loading: false,
-//                        attrs: sigAttrNames,
-//                        pending: []
-//                    };
-//                    sigCacheCount++;
-//                }
-//            }
-
-//            // Mark all caches as loaded
-//            assetAttributeLoaded = true;
-//            userAssetInfoLoaded = true;
-//            userAssetInfoSiteId = String(siteId);
-//            bulkMetadataLoaded = true;
-//            bulkMetadataSiteId = String(siteId);
-//            bulkMetadataAssetTypeId = String(assetTypeId);
-
-//            console.log('[BulkMeta] ✓ ' + assets.length + ' assets | ' +
-//                zeroCount + ' zero offsets | ' +
-//                attrCount + ' attributes | ' +
-//                dlCount + ' datalogger | ' +
-//                sigCacheCount + ' signal groups — 1 API call');
-
-//            if (callback) callback();
-//        },
-//        error: function (xhr, status, err) {
-//            console.error('[BulkMeta] AJAX error (' + status + '): ' + err);
-//            _fallbackToLegacyLoad(siteId, assetTypeId, callback);
-//        }
-//    });
-//}
-
-//function _fallbackToLegacyLoad(siteId, assetTypeId, callback) {
-//    console.log('[BulkMeta] Fallback → legacy per-asset calls');
-//    loadUserAssetInfo(siteId, function () {
-//        var currentAssetTypeId = parseInt(assetTypeId || 0);
-//        for (var sk in userAssetSimpleMap) {
-//            var sEntry = userAssetSimpleMap[sk];
-//            if (!sEntry || !sEntry.name) continue;
-//            var sEntryAssetTypeId = parseInt(sEntry.assetTypeId || 0);
-//            if (sEntryAssetTypeId > 0 && currentAssetTypeId > 0 && sEntryAssetTypeId !== currentAssetTypeId) continue;
-//            var sParts = sk.split('_');
-//            if (sParts.length !== 2) continue;
-//            var aaId = sParts[1];
-//            assetAttributeMap[aaId] = sEntry.name;
-//            assetAttributeMap[String(aaId)] = sEntry.name;
-//            var numAaId = parseInt(aaId);
-//            if (!isNaN(numAaId)) assetAttributeMap[numAaId] = sEntry.name;
-//            assetAttributeByName[sEntry.name] = sEntry.name;
-//        }
-//        assetAttributeLoaded = true;
-//        if (callback) callback();
-//    });
-//}
-
-//function invalidateBulkMetadataCache() {
-//    bulkMetadataLoaded = false;
-//    bulkMetadataSiteId = null;
-//    bulkMetadataAssetTypeId = null;
-//}
-
-
 var bulkMetadataLoaded = false;
 var bulkMetadataSiteId = null;
 var bulkMetadataAssetTypeId = null;
@@ -1770,9 +1615,26 @@ function getBulkAssetMeta(assetId) {
     return bulkAssetMap[_tlMetaStr(assetId)] || null;
 }
 
+//function getBulkAssetName(assetId, fallbackName) {
+//    var meta = getBulkAssetMeta(assetId);
+//    var nm = meta ? _tlFirstNonEmpty(meta.Name, meta.AssetName) : '';
+//    return nm || fallbackName || ('Asset ' + assetId);
+//}
+
 function getBulkAssetName(assetId, fallbackName) {
     var meta = getBulkAssetMeta(assetId);
     var nm = meta ? _tlFirstNonEmpty(meta.Name, meta.AssetName) : '';
+
+    // If asset is in selected telemetry type, name should be from API metadata.
+    var selectedType = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+    if (selectedType && selectedType !== '0') {
+        // FIX: don't blow away the real WS-supplied name when metadata is missing
+        // (Point Machine has no bulkAssetMap entry from GetBulkAssetMetadata).
+        // Prefer metadata name, then the WS fallback name, only then "Asset <id>".
+        return nm || fallbackName || ('Asset ' + assetId);
+    }
+
+    // SIP/background fallback.
     return nm || fallbackName || ('Asset ' + assetId);
 }
 
@@ -1973,7 +1835,6 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
         contentType: 'application/json',
         data: JSON.stringify(payload),
         dataType: 'json',
-        timeout: 30000,
         success: function (response) {
             if (!response || !response.success || !response.mAssets) {
                 console.warn('[BulkMeta] Error: ' + (response && response.errorMessage));
@@ -2254,10 +2115,30 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                 });
             });
 
+            // Build allowed asset whitelist from API response.
+            // WebSocket data is accepted only for these AssetIds.
+            rebuildWsValidAssetIdsFromBulk();
+
+            // Remove any WS-only/scrap assets that entered before bulk metadata completed.
+            Object.keys(wsLiveData || {}).forEach(function (id) {
+                if (wsValidAssetIds.indexOf(String(id)) === -1) {
+                    console.warn('[BulkMeta] Removing WS-only asset not present in API response:', {
+                        assetId: id,
+                        assetName: wsLiveData[id] && wsLiveData[id].AssetName
+                    });
+                    delete wsLiveData[id];
+                    delete wsUpdatedAssets[id];
+                    $('#rdpmsCard_' + id).remove();
+                    $('.sig-group-wrap tr[data-id="' + id + '"]').remove();
+                    $('#wsLiveTable tbody tr[data-id="' + id + '"]').remove();
+                }
+            });
+
             window.bulkAssetsList = bulkAssetsList;
             window.bulkAssetMap = bulkAssetMap;
             window.bulkAssetAttrMap = bulkAssetAttrMap;
             window.bulkDataloggerMap = bulkDataloggerMap;
+            window.wsValidAssetIds = wsValidAssetIds;
 
             assetAttributeLoaded = true;
             userAssetInfoLoaded = true;
@@ -2751,6 +2632,17 @@ function parseBatchMessages(messages) {
 
 // ===== PM TABLE VIEW -- Dedicated renderer for Point Machine in Table mode =====
 function renderPmTableView() {
+    // FIX: the legacy body below builds rows via buildPmTableRow(), which reads
+    // pm.Operations[] — a shape getPmStructuredData() NEVER produces. The result
+    // was a table with correct headers but every A/B data cell stuck on "--"
+    // ("table view data not binding"). renderPointMachineTableView() reads the
+    // real pm[Normal|Reverse].AC/AV/BC/BV buckets and is what the cell-level
+    // updater (updatePointMachineTableCell) already targets, so delegate to it
+    // to keep full-render and incremental-update paths consistent.
+    if (typeof renderPointMachineTableView === 'function') {
+        return renderPointMachineTableView();
+    }
+
     var assetIds = getSortedAssetIds();
     if (assetIds.length === 0) return;
     $('#wsWaiting').remove();
@@ -2904,7 +2796,10 @@ function renderWsTable() {
         return;
     }
 
-    var assetIds = Object.keys(wsLiveData);
+    var assetIds = Object.keys(wsLiveData).filter(function (id) {
+        // Defense-in-depth: skip assets not in the bulk response.
+        return (typeof isAssetInBulkWhitelist !== 'function') || isAssetInBulkWhitelist(id);
+    });
     console.log('[WS Table] Rendering. Assets:', assetIds.length);
 
     if (assetIds.length === 0) return;
@@ -3170,6 +3065,9 @@ function _renderSignalGroupedTablesCore() {
         var ids = Object.keys(wsLiveData).filter(function (id) {
             var a = wsLiveData[id];
             if (!a) return false;
+            // Defense-in-depth: never render an asset that isn't in the bulk
+            // response (it would show as a "Asset <id>" garbage row).
+            if (typeof isAssetInBulkWhitelist === 'function' && !isAssetInBulkWhitelist(id)) return false;
             if (a.AssetTypeId === undefined || a.AssetTypeId === null || a.AssetTypeId === '') return true;
             return parseInt(a.AssetTypeId) === 2;
         });
@@ -3361,6 +3259,14 @@ window.updateSignalGroupedTables = function (updatedIds) {
 
     for (var i = 0; i < updatedIds.length; i++) {
         var aid = String(updatedIds[i]);
+
+        if (!isAssetInBulkWhitelist(aid)) {
+            delete wsLiveData[aid];
+            delete wsUpdatedAssets[aid];
+            $wrap.find('tr[data-id="' + aid + '"]').remove();
+            continue;
+        }
+
         var asset = wsLiveData[aid];
         if (!asset) continue;
 
@@ -4155,7 +4061,16 @@ function updateRDPMSViewIncremental(assetIds) {
 
     // Sort into buckets
     for (var i = 0; i < updatedIds.length; i++) {
-        var aid = updatedIds[i];
+        var aid = String(updatedIds[i]);
+
+        if (!isAssetInBulkWhitelist(aid)) {
+            delete wsLiveData[aid];
+            delete wsUpdatedAssets[aid];
+            $('#rdpmsCard_' + aid).remove();
+            delete rdpmsCardsBuilt[aid];
+            continue;
+        }
+
         if (!wsLiveData[aid]) continue;
 
         if (rdpmsCardsBuilt[aid]) {
@@ -4299,16 +4214,11 @@ function processItemsInternal(items) {
             continue;
         }
 
-        // Asset Type filter - be more lenient
-        // Only filter if we have a specific type selected AND the message has a type
-        if (atFilter && atFilter !== '0' && atFilter !== '' && d.AssetTypeId) {
-            if (String(d.AssetTypeId) !== String(atFilter)) {
-                skippedByType++;
-                continue;
-            }
-        }
-
-        if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
+        // FIX: was `length > 1` — skipped the filter entirely when exactly 1 asset was
+        // selected, letting WS data from other assets pollute wsAttributeNames with
+        // unvalidated attribute columns. Changed to `length > 0` so a single-asset
+        // selection is filtered just like a multi-asset selection.
+        if (aidFilter && aidFilter.length > 0 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
             var incomingAid = String(aid);
 
             if (aidFilter.map(String).indexOf(incomingAid) === -1) {
@@ -4321,6 +4231,23 @@ function processItemsInternal(items) {
                 skippedByAsset++;
                 continue;
             }
+        }
+
+        // ── BULK WHITELIST GUARD ──
+        // Reject any asset not returned by GetBulkAssetMetadata / GetAssestBy.
+        // Without this, the site-wide WS stream creates garbage rows for assets
+        // (wrong sub-type / stale ids) whose name only resolves to "Asset <id>"
+        // because they have no bulk metadata entry. Skip BEFORE creating the
+        // asset in wsLiveData or registering its attribute columns.
+        if (!isAssetInBulkWhitelist(aid)) {
+            if (!wsLiveData[aid]) {
+                console.warn('[Asset Whitelist Skip] not in bulk response — ignoring', {
+                    assetId: String(aid),
+                    assetName: d.AssetName
+                });
+            }
+            skippedByAsset++;
+            continue;
         }
 
         wsMessageCount++;
@@ -4989,6 +4916,8 @@ function renderRDPMSView() {
     var assetIds = Object.keys(wsLiveData).filter(function (id) {
         var a = wsLiveData[id];
         if (!a) return false;
+        // Defense-in-depth: never render an asset not in the bulk response.
+        if (typeof isAssetInBulkWhitelist === 'function' && !isAssetInBulkWhitelist(id)) return false;
         if (a.AssetTypeId === undefined || a.AssetTypeId === null || a.AssetTypeId === '') return true;
         return parseInt(a.AssetTypeId) === 2;
     });
@@ -6105,6 +6034,7 @@ function fnBindTable() {
 }
 
 function fnSearchView() {
+    debugger;
     var siteId = $('#drpSite').val();
     var assetTypeId = $('#drpAssetType').val();
     var selectedAssetIds = (typeof getSelectedAssetIds === 'function') ? getSelectedAssetIds() : [];
@@ -6371,7 +6301,10 @@ window.renderIpsGridView = function renderIpsGridView() {
         return;
     }
 
-    var assetIds = Object.keys(wsLiveData);
+    var assetIds = Object.keys(wsLiveData).filter(function (id) {
+        // Defense-in-depth: skip assets not in the bulk response.
+        return (typeof isAssetInBulkWhitelist !== 'function') || isAssetInBulkWhitelist(id);
+    });
     if (assetIds.length === 0) return;
 
     $('#wsWaiting').remove();
@@ -8818,31 +8751,22 @@ function fnPmDirGraph(assetId, end) {
         '</h6>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
         '</div>' +
-        '<div class="rdpms-graph-body" style="padding:20px;background:#f8fafc;">' +
-        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);gap:12px;">' +
-        '<div class="btn-group" role="group">' +
-        '<button type="button" class="btn btn-outline-primary pm-ind-time-btn active" data-hours="1" style="font-weight:600;">1H</button>' +
-        '<button type="button" class="btn btn-outline-primary pm-ind-time-btn" data-hours="3" style="font-weight:600;">3H</button>' +
-        '<button type="button" class="btn btn-outline-primary pm-ind-time-btn" data-hours="6" style="font-weight:600;">6H</button>' +
-        '<button type="button" class="btn btn-outline-primary pm-ind-time-btn" data-hours="12" style="font-weight:600;">12H</button>' +
-        '<button type="button" class="btn btn-outline-primary pm-ind-time-btn" data-hours="24" style="font-weight:600;">24H</button>' +
-        '</div>' +
-        // ── Custom from/to picker (ported from OLD working version) ──
+        '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
+        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;">' +
+        // ── Single date filter (loads the full 24h of the chosen day) ──
         '<div class="d-flex align-items-center" style="gap:8px;flex-wrap:wrap;">' +
-        '<label style="font-size:12px;color:#475569;margin:0;">From</label>' +
-        '<input type="datetime-local" id="pmIndFromDate" style="font-size:12px;border:1px solid #d1dce8;border-radius:6px;padding:4px 8px;color:#1e293b;background:#f8fafc;outline:none;"/>' +
-        '<label style="font-size:12px;color:#475569;margin:0;">To</label>' +
-        '<input type="datetime-local" id="pmIndToDate" style="font-size:12px;border:1px solid #d1dce8;border-radius:6px;padding:4px 8px;color:#1e293b;background:#f8fafc;outline:none;"/>' +
-        '<button type="button" id="pmIndLoadBtn" style="background:#0077cc;color:#fff;border:none;border-radius:6px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+        '<label style="font-size:12px;color:rgba(255,255,255,0.72);margin:0;font-weight:600;">Date</label>' +
+        '<input type="date" id="pmIndDate" style="font-size:12px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:5px 10px;color:#e6edf6;background:rgba(255,255,255,0.06);outline:none;color-scheme:dark;"/>' +
+        '<button type="button" id="pmIndLoadBtn" style="background:linear-gradient(135deg,#22d3ee,#0891b2);color:#04222b;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
         '<i class="fas fa-search"></i> Load</button>' +
         '</div>' +
-        '<span class="text-muted" style="font-size:13px;" id="pmIndTimeRange"></span>' +
+        '<span style="font-size:13px;color:rgba(255,255,255,0.55);" id="pmIndTimeRange"></span>' +
         '</div>' +
-        '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">' +
-        '<div id="pmIndLoading" style="display:flex;align-items:center;justify-content:center;height:420px;color:#64748b;gap:10px;">' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:16px;">' +
+        '<div id="pmIndLoading" style="display:flex;align-items:center;justify-content:center;height:420px;color:rgba(255,255,255,0.6);gap:10px;">' +
         '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading indication data...</div>' +
         '<div id="pmIndChartDiv" style="width:100%;height:450px;display:none;"></div>' +
-        '<div id="pmIndError" style="display:none;text-align:center;padding:50px;color:#64748b;">' +
+        '<div id="pmIndError" style="display:none;text-align:center;padding:50px;color:rgba(255,255,255,0.6);">' +
         '<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No data available</div>' +
         '</div>' +
         '</div></div></div>';
@@ -8850,47 +8774,30 @@ function fnPmDirGraph(assetId, end) {
     $('#rdpmsGraphOverlay').remove();
     $('body').append(modalHtml);
 
-    // ── Pre-fill date pickers: midnight today -> now (matches OLD default) ──
-    function _pmFmtLocal(d) {
+    // ── Default the date picker to today (24h window of that day) ──
+    function _pmDateStr(d) {
         return d.getFullYear() + '-' +
             String(d.getMonth() + 1).padStart(2, '0') + '-' +
-            String(d.getDate()).padStart(2, '0') + 'T' +
-            String(d.getHours()).padStart(2, '0') + ':' +
-            String(d.getMinutes()).padStart(2, '0');
+            String(d.getDate()).padStart(2, '0');
     }
-    var _pmDefTo = new Date();
-    var _pmDefFrom = new Date(_pmDefTo.getFullYear(), _pmDefTo.getMonth(), _pmDefTo.getDate(), 0, 0, 0);
-    $('#pmIndFromDate').val(_pmFmtLocal(_pmDefFrom));
-    $('#pmIndToDate').val(_pmFmtLocal(_pmDefTo));
+    var _pmToday = new Date();
+    $('#pmIndDate').val(_pmDateStr(_pmToday)).attr('max', _pmDateStr(_pmToday));
 
-    // Time range buttons (quick-select)
-    $('.pm-ind-time-btn').off('click').on('click', function () {
-        $('.pm-ind-time-btn').removeClass('active');
-        $(this).addClass('active');
-        loadPmIndicationFromApi(assetId, parseInt($(this).data('hours')), filterIds, end);
-    });
+    // Load the full 24-hour span (00:00:00 → 23:59:59) of the picked date.
+    function _pmLoadForDate() {
+        var ds = $('#pmIndDate').val();
+        if (!ds) { showWarning('Please select a date.', 'Validation'); return; }
+        var p = ds.split('-');
+        var y = parseInt(p[0], 10), mo = parseInt(p[1], 10) - 1, da = parseInt(p[2], 10);
+        var dayStart = new Date(y, mo, da, 0, 0, 0, 0);
+        var dayEnd = new Date(y, mo, da, 23, 59, 59, 999);
+        loadPmIndicationByRange(assetId, dayStart, dayEnd, filterIds, end);
+    }
 
-    // Custom range Load button
-    $('#pmIndLoadBtn').off('click').on('click', function () {
-        var fromVal = $('#pmIndFromDate').val();
-        var toVal = $('#pmIndToDate').val();
-        var fromDate = fromVal ? new Date(fromVal) : null;
-        var toDate = toVal ? new Date(toVal) : null;
-        if (!fromDate || !toDate || isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-            showWarning('Please enter valid From and To dates.', 'Validation');
-            return;
-        }
-        if (fromDate >= toDate) {
-            showWarning('From date must be before To date.', 'Validation');
-            return;
-        }
-        // Deactivate quick-select buttons since we're using a custom range
-        $('.pm-ind-time-btn').removeClass('active');
-        loadPmIndicationByRange(assetId, fromDate, toDate, filterIds, end);
-    });
+    $('#pmIndLoadBtn').off('click').on('click', _pmLoadForDate);
 
-    // Load default 1 hour
-    loadPmIndicationFromApi(assetId, 1, filterIds, end);
+    // Initial load = today's full day
+    _pmLoadForDate();
 }
 
 function loadPmIndicationFromApi(assetId, hours, filterIds, end) {
@@ -11003,16 +10910,25 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
                     var h = '';
                     wsValidAssetIds = [];
                     bulkAssetsList = [];
+                    bulkAssetMap = {};
 
                     $.each(list, function (k, v) {
                         wsValidAssetIds.push(String(v.Id));
                         bulkAssetsList.push({ Id: v.Id, Name: v.Name, SiteId: siteId, AssetTypeId: assetTypeId });
+                        // FIX: PM uses GetAssestBy (not GetBulkAssetMetadata), so bulkAssetMap
+                        // was never populated → getBulkAssetName() fell through to "Asset <id>",
+                        // breaking the PM asset-no binding in card/list views. Populate it here.
+                        bulkAssetMap[String(v.Id)] = {
+                            Id: v.Id, Name: v.Name, AssetName: v.Name,
+                            SiteId: siteId, AssetTypeId: assetTypeId
+                        };
                         h += '<div class="dropdown-item" data-value="' + _tlEscHtml(v.Id) + '" data-text="' + _tlEscHtml(v.Name) + '">' +
                             '<input type="checkbox" value="' + _tlEscHtml(v.Id) + '"><span>' + _tlEscHtml(v.Name) + '</span>' +
                             '</div>';
                     });
 
                     window.bulkAssetsList = bulkAssetsList;
+                    window.bulkAssetMap = bulkAssetMap;
                     $('#listAssetNumber').html(h);
 
                     if (typeof window._tlAutoLoad === 'function') {
@@ -11062,6 +10978,8 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
         populateAssetDropdownsFromBulk({ autoLoad: true });
     });
 }
+// Ensure the PM-aware loader is reachable from the view's pill handler.
+window.loadAssetNumbersMulti = loadAssetNumbersMulti;
 
 function GetDivisionByZone(zoneId) { if (!zoneId || zoneId === '' || zoneId === '0') { return; } $("#loader").show(); $.ajax({ url: '/FRS25/Telemetry/GetDivisionByZoneId', type: 'POST', data: JSON.stringify({ zoneId: zoneId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $("#drpDivisions").empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpDivisions").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $("#drpSite").empty().append('<option value="">All</option>'); $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); } }); }
 function GetByDivisionId(divId) { if (!divId || divId === '0' || divId === '') return; $("#loader").show(); $.ajax({ url: '/FRS25/Telemetry/GetSiteByDivisionId', type: 'POST', data: JSON.stringify({ divisionId: divId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $("#drpSite").empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpSite").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); console.log('[Site] Error loading sites for division: ' + divId); } }); }
@@ -11084,15 +11002,22 @@ function GetByAssest(siteId, assetTypeId) {
                 var list = Array.isArray(d) ? d : (d && (d.Data || d.data || d.Result || []));
                 $('#drpAsset').empty().append('<option value="">All</option>');
                 bulkAssetsList = [];
+                bulkAssetMap = {};
 
                 if (list && list.length > 0) {
                     $.each(list, function (k, v) {
                         $('#drpAsset').append('<option value="' + _tlEscHtml(v.Id) + '">' + _tlEscHtml(v.Name) + '</option>');
                         bulkAssetsList.push({ Id: v.Id, Name: v.Name, SiteId: siteId, AssetTypeId: assetTypeId });
+                        // FIX: keep bulkAssetMap in sync so PM names resolve (see getBulkAssetName).
+                        bulkAssetMap[String(v.Id)] = {
+                            Id: v.Id, Name: v.Name, AssetName: v.Name,
+                            SiteId: siteId, AssetTypeId: assetTypeId
+                        };
                     });
                 }
 
                 window.bulkAssetsList = bulkAssetsList;
+                window.bulkAssetMap = bulkAssetMap;
                 if (typeof loadPmAssetMeta === 'function') loadPmAssetMeta(siteId, assetTypeId);
             },
             error: function () {
@@ -12063,6 +11988,10 @@ $(document).ready(function () {
         } else {
             var $wrap = $('#atCardView');
             var assetIds = Object.keys(wsLiveData);
+            // Defense-in-depth: drop assets not in the bulk response.
+            if (typeof isAssetInBulkWhitelist === 'function') {
+                assetIds = assetIds.filter(function (id) { return isAssetInBulkWhitelist(id); });
+            }
             // Apply user's Asset Number multi-select filter, if any.
             if (typeof window._sipFilteredAssetIds === 'function') {
                 assetIds = window._sipFilteredAssetIds(assetIds);
@@ -12957,7 +12886,10 @@ function renderPointMachineView() {
         return;
     }
 
-    var ids = Object.keys(wsLiveData);
+    var ids = Object.keys(wsLiveData).filter(function (id) {
+        // Defense-in-depth: skip assets not in the bulk/GetAssestBy response.
+        return (typeof isAssetInBulkWhitelist !== 'function') || isAssetInBulkWhitelist(id);
+    });
     console.log('[PM View] Rendering. Assets:', ids.length, 'Data:', wsLiveData);
 
     if (ids.length === 0) {
@@ -13330,15 +13262,15 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     var chartNames = [];
     var dirs = ['N', 'R']; // Both directions - will be filtered at render time
     if (showA) {
-        chartNames.push({ key: 'N_AC', label: 'Normal -- A Current (mA)', dir: 'N' });
+        chartNames.push({ key: 'N_AC', label: 'Normal -- A Current (A)', dir: 'N' });
         chartNames.push({ key: 'N_AV', label: 'Normal -- A Voltage (V)', dir: 'N' });
-        chartNames.push({ key: 'R_AC', label: 'Reverse -- A Current (mA)', dir: 'R' });
+        chartNames.push({ key: 'R_AC', label: 'Reverse -- A Current (A)', dir: 'R' });
         chartNames.push({ key: 'R_AV', label: 'Reverse -- A Voltage (V)', dir: 'R' });
     }
     if (showB) {
-        chartNames.push({ key: 'N_BC', label: 'Normal -- B Current (mA)', dir: 'N' });
+        chartNames.push({ key: 'N_BC', label: 'Normal -- B Current (A)', dir: 'N' });
         chartNames.push({ key: 'N_BV', label: 'Normal -- B Voltage (V)', dir: 'N' });
-        chartNames.push({ key: 'R_BC', label: 'Reverse -- B Current (mA)', dir: 'R' });
+        chartNames.push({ key: 'R_BC', label: 'Reverse -- B Current (A)', dir: 'R' });
         chartNames.push({ key: 'R_BV', label: 'Reverse -- B Voltage (V)', dir: 'R' });
     }
     for (var ci = 0; ci < chartNames.length; ci++) {
@@ -13604,7 +13536,11 @@ function updatePmCard(assetId) {
         if (isNaN(rv)) continue;
 
         var rkLow = rk.toLowerCase();
-        var attrId = attrData.AttrId;
+        // FIX: was `attrData.AttrId` (raw — could be a string from JSON), so strict
+        // equality checks like `attrId === 25` silently failed for string "25".
+        // Use parseInt on AssetAttributeId || AttrId, matching the pre-scan at line
+        // 13175, so all downstream `=== 25 / 26 / 27 …` comparisons are numeric.
+        var attrId = parseInt(attrData.AssetAttributeId || attrData.AttrId) || 0;
 
         console.log('[PM Voltage] Checking:', rk, '| AttrId:', attrId, '| Value:', rv);
 
@@ -14067,12 +14003,12 @@ function pmShowSingleArrayGraph(assetId, direction, type) {
 
     var dirLabel = direction === 'R' ? 'Reverse' : 'Normal';
     var typeLabels = {
-        'AC': 'A Current (mA)',
+        'AC': 'A Current (A)',
         'AV': 'A Voltage (V)',
-        'BC': 'B Current (mA)',
+        'BC': 'B Current (A)',
         'BV': 'B Voltage (V)'
     };
-    var units = { 'AC': 'mA', 'AV': 'V', 'BC': 'mA', 'BV': 'V' };
+    var units = { 'AC': 'A', 'AV': 'V', 'BC': 'A', 'BV': 'V' };
     var colors = { 'AC': '#2563eb', 'AV': '#059669', 'BC': '#dc2626', 'BV': '#d97706' };
 
     var title = name + ' -- ' + dirLabel + ' ' + typeLabels[type];
@@ -14087,15 +14023,21 @@ function pmShowSingleArrayGraph(assetId, direction, type) {
         '<i class="fas fa-chart-line"></i> ' + title + '</h6>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
         '</div>' +
-        '<div class="rdpms-graph-body" style="padding:20px;background:#f8fafc;">' +
-        '<div style="padding:10px 16px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
-        '<i class="fas fa-clock" style="color:#259dab;font-size:13px;"></i>' +
-        '<span style="font-size:14px;font-weight:600;color:#042c43;" id="singleArrTimeRange">Loading...</span>' +
+        '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
+        '<div class="d-flex justify-content-between align-items-center flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;margin-bottom:12px;">' +
+        '<div class="d-flex align-items-center" style="gap:8px;flex-wrap:wrap;">' +
+        '<label style="font-size:12px;color:rgba(255,255,255,0.72);margin:0;font-weight:600;">Date</label>' +
+        '<input type="date" id="singleArrDate" style="font-size:12px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:5px 10px;color:#e6edf6;background:rgba(255,255,255,0.06);outline:none;color-scheme:dark;"/>' +
+        '<button type="button" id="singleArrLoadBtn" style="background:linear-gradient(135deg,#22d3ee,#0891b2);color:#04222b;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+        '<i class="fas fa-search"></i> Load</button>' +
         '</div>' +
-        '<div id="singleArrLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:#64748b;gap:10px;">' +
+        '<span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.78);display:inline-flex;align-items:center;gap:6px;">' +
+        '<i class="fas fa-clock" style="color:#22d3ee;font-size:13px;"></i><span id="singleArrTimeRange">Loading...</span></span>' +
+        '</div>' +
+        '<div id="singleArrLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:rgba(255,255,255,0.6);gap:10px;">' +
         '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading array data...</div>' +
-        '<div id="singleArrChartDiv" style="width:100%;height:500px;display:none;"></div>' +
-        '<div id="singleArrError" style="display:none;text-align:center;padding:50px;color:#ef4444;"></div>' +
+        '<div id="singleArrChartDiv" style="width:100%;height:500px;display:none;background:#0a1228;border-radius:10px;"></div>' +
+        '<div id="singleArrError" style="display:none;text-align:center;padding:50px;color:#fb7185;"></div>' +
         '</div></div></div>';
 
     $('#rdpmsGraphOverlay').remove();
@@ -14104,22 +14046,49 @@ function pmShowSingleArrayGraph(assetId, direction, type) {
     // Store params
     window._singleArrParams = { assetId: assetId, attrId: attrId, title: title, unit: unit, color: color, type: type };
 
-    loadSingleArrayData(24);
+    // ── Date filter: default to today, load that day's full 24h window ──
+    function _saDateStr(d) {
+        return d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+    }
+    var _saToday = new Date();
+    $('#singleArrDate').val(_saDateStr(_saToday)).attr('max', _saDateStr(_saToday));
+
+    function _saLoadForDate() {
+        var ds = $('#singleArrDate').val();
+        if (!ds) { showWarning('Please select a date.', 'Validation'); return; }
+        var p = ds.split('-');
+        var y = parseInt(p[0], 10), mo = parseInt(p[1], 10) - 1, da = parseInt(p[2], 10);
+        var dayStart = new Date(y, mo, da, 0, 0, 0, 0);
+        var dayEnd = new Date(y, mo, da, 23, 59, 59, 999);
+        loadSingleArrayData(dayStart, dayEnd);
+    }
+
+    $('#singleArrLoadBtn').off('click').on('click', _saLoadForDate);
+
+    // Initial load = today's full day
+    _saLoadForDate();
 }
 
-function loadSingleArrayData(hours) {
+function loadSingleArrayData(startDate, endDate) {
     var p = window._singleArrParams;
     if (!p) return;
 
     var $ld = $('#singleArrLoading'), $ch = $('#singleArrChartDiv'), $er = $('#singleArrError'), $tr = $('#singleArrTimeRange');
     $ld.show(); $ch.hide(); $er.hide();
 
-    var endDate = new Date();
-    var startDate = new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
     var startStr = formatDateForHistoryApi(startDate);
     var endStr = formatDateForHistoryApi(endDate);
 
-    $tr.text('Loading...');
+    // 24-hour range label for the selected date
+    function _saFmt(d) {
+        return String(d.getDate()).padStart(2, '0') + '/' +
+            String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() + ' ' +
+            String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+    $tr.text(_saFmt(startDate) + ' \u2014 ' + _saFmt(endDate));
+
     var apiUrl = HISTORY_API_BASE + '?assetId=' + p.assetId + '&startDate=' + startStr + '&endDate=' + endStr;
 
     $.ajax({
@@ -14131,7 +14100,7 @@ function loadSingleArrayData(hours) {
             $ld.hide();
 
             if (!response || !response.Data || response.Data.length === 0) {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data available for the last ' + hours + ' hour(s)').show();
+                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data available for the selected date').show();
                 return;
             }
 
@@ -14288,7 +14257,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
     }
 
     _singleArrChart.setOption({
-        backgroundColor: 'transparent',
+        backgroundColor: '#0a1228',
         title: {
             text: title,
             subtext: series.length + ' operation(s) plotted',
@@ -14462,13 +14431,13 @@ function updatePmWaveforms(assetId, pm) {
     if (!pm) return;
 
     var cfgs = [
-        { dir: 'Normal', k: 'N_AC', type: 'AC', color: '#259dab', label: 'Normal -- A Current (mA)', unit: 'mA' },
+        { dir: 'Normal', k: 'N_AC', type: 'AC', color: '#259dab', label: 'Normal -- A Current (A)', unit: 'A' },
         { dir: 'Normal', k: 'N_AV', type: 'AV', color: '#0d6efd', label: 'Normal -- A Voltage (V)', unit: 'V' },
-        { dir: 'Normal', k: 'N_BC', type: 'BC', color: '#e4b704', label: 'Normal -- B Current (mA)', unit: 'mA' },
+        { dir: 'Normal', k: 'N_BC', type: 'BC', color: '#e4b704', label: 'Normal -- B Current (A)', unit: 'A' },
         { dir: 'Normal', k: 'N_BV', type: 'BV', color: '#6f42c1', label: 'Normal -- B Voltage (V)', unit: 'V' },
-        { dir: 'Reverse', k: 'R_AC', type: 'AC', color: '#dc3545', label: 'Reverse -- A Current (mA)', unit: 'mA' },
+        { dir: 'Reverse', k: 'R_AC', type: 'AC', color: '#dc3545', label: 'Reverse -- A Current (A)', unit: 'A' },
         { dir: 'Reverse', k: 'R_AV', type: 'AV', color: '#198754', label: 'Reverse -- A Voltage (V)', unit: 'V' },
-        { dir: 'Reverse', k: 'R_BC', type: 'BC', color: '#fd7e14', label: 'Reverse -- B Current (mA)', unit: 'mA' },
+        { dir: 'Reverse', k: 'R_BC', type: 'BC', color: '#fd7e14', label: 'Reverse -- B Current (A)', unit: 'A' },
         { dir: 'Reverse', k: 'R_BV', type: 'BV', color: '#0dcaf0', label: 'Reverse -- B Voltage (V)', unit: 'V' }
     ];
 
@@ -14880,9 +14849,9 @@ function showCombinedArrayGraph(assetId, isReverse, isCurrent) {
     if (isCurrent) {
         aAttrId = isReverse ? 6001 : 1001;  // AC Array
         bAttrId = isReverse ? 8001 : 3001;  // BC Array
-        aLabel = 'A Current (mA)';
-        bLabel = 'B Current (mA)';
-        unit = 'mA';
+        aLabel = 'A Current (A)';
+        bLabel = 'B Current (A)';
+        unit = 'A';
     } else {
         aAttrId = isReverse ? 7001 : 2001;  // AV Array
         bAttrId = isReverse ? 9001 : 4001;  // BV Array
@@ -14902,53 +14871,69 @@ function showCombinedArrayGraph(assetId, isReverse, isCurrent) {
         '<i class="fas fa-chart-area"></i> ' + title + '</h6>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
         '</div>' +
-        '<div class="rdpms-graph-body" style="padding:20px;background:#f8fafc;">' +
-        '<div class="d-flex justify-content-between align-items-center mb-3" style="padding:10px 16px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">' +
-        '<div class="btn-group" role="group">' +
-        '<button type="button" class="btn btn-outline-primary combine-time-btn active" data-hours="1" style="font-weight:600;">1H</button>' +
-        '<button type="button" class="btn btn-outline-primary combine-time-btn" data-hours="3" style="font-weight:600;">3H</button>' +
-        '<button type="button" class="btn btn-outline-primary combine-time-btn" data-hours="6" style="font-weight:600;">6H</button>' +
-        '<button type="button" class="btn btn-outline-primary combine-time-btn" data-hours="12" style="font-weight:600;">12H</button>' +
-        '<button type="button" class="btn btn-outline-primary combine-time-btn" data-hours="24" style="font-weight:600;">24H</button>' +
+        '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
+        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;">' +
+        '<div class="d-flex align-items-center" style="gap:8px;flex-wrap:wrap;">' +
+        '<label style="font-size:12px;color:rgba(255,255,255,0.72);margin:0;font-weight:600;">Date</label>' +
+        '<input type="date" id="combineDate" style="font-size:12px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:5px 10px;color:#e6edf6;background:rgba(255,255,255,0.06);outline:none;color-scheme:dark;"/>' +
+        '<button type="button" id="combineLoadBtn" style="background:linear-gradient(135deg,#22d3ee,#0891b2);color:#04222b;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+        '<i class="fas fa-search"></i> Load</button>' +
         '</div>' +
-        '<span class="text-muted" style="font-size:13px;" id="combineTimeRange"></span>' +
+        '<span style="font-size:13px;color:rgba(255,255,255,0.55);" id="combineTimeRange"></span>' +
         '</div>' +
-        '<div id="combineChartLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:#64748b;gap:10px;">' +
+        '<div id="combineChartLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:rgba(255,255,255,0.6);gap:10px;">' +
         '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading combined array data...</div>' +
-        '<div id="combineChartDiv" style="width:100%;height:500px;display:none;"></div>' +
-        '<div id="combineChartError" style="display:none;text-align:center;padding:50px;color:#ef4444;"></div>' +
+        '<div id="combineChartDiv" style="width:100%;height:500px;display:none;background:#0a1228;border-radius:10px;"></div>' +
+        '<div id="combineChartError" style="display:none;text-align:center;padding:50px;color:#fb7185;"></div>' +
         '</div></div></div>';
 
     $('#rdpmsGraphOverlay').remove();
     $('body').append(modalHtml);
 
-    // Store params for time range buttons
+    // Store params
     window._combineParams = { assetId: assetId, aAttrId: aAttrId, bAttrId: bAttrId, aLabel: aLabel, bLabel: bLabel, unit: unit, title: title, isCurrent: isCurrent };
 
-    // Time range buttons
-    $('.combine-time-btn').off('click').on('click', function () {
-        $('.combine-time-btn').removeClass('active');
-        $(this).addClass('active');
-        loadCombinedArrayData(parseInt($(this).data('hours')));
-    });
+    // ── Date filter: default to today, load that day's full 24h window ──
+    function _coDateStr(d) {
+        return d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+    }
+    var _coToday = new Date();
+    $('#combineDate').val(_coDateStr(_coToday)).attr('max', _coDateStr(_coToday));
 
-    // Load default 1 hour
-    loadCombinedArrayData(1);
+    function _coLoadForDate() {
+        var ds = $('#combineDate').val();
+        if (!ds) { showWarning('Please select a date.', 'Validation'); return; }
+        var p = ds.split('-');
+        var y = parseInt(p[0], 10), mo = parseInt(p[1], 10) - 1, da = parseInt(p[2], 10);
+        var dayStart = new Date(y, mo, da, 0, 0, 0, 0);
+        var dayEnd = new Date(y, mo, da, 23, 59, 59, 999);
+        loadCombinedArrayData(dayStart, dayEnd);
+    }
+
+    $('#combineLoadBtn').off('click').on('click', _coLoadForDate);
+
+    // Initial load = today's full day
+    _coLoadForDate();
 }
 
-function loadCombinedArrayData(hours) {
+function loadCombinedArrayData(startDate, endDate) {
     var p = window._combineParams;
     if (!p) return;
 
     var $ld = $('#combineChartLoading'), $ch = $('#combineChartDiv'), $er = $('#combineChartError'), $tr = $('#combineTimeRange');
     $ld.show(); $ch.hide(); $er.hide();
 
-    var endDate = new Date();
-    var startDate = new Date(endDate.getTime() - (hours * 60 * 60 * 1000));
     var startStr = formatDateForHistoryApi(startDate);
     var endStr = formatDateForHistoryApi(endDate);
 
-    $tr.text(formatTimeForDisplay(startDate) + ' - ' + formatTimeForDisplay(endDate));
+    function _coFmt(d) {
+        return String(d.getDate()).padStart(2, '0') + '/' +
+            String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() + ' ' +
+            String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+    $tr.text(_coFmt(startDate) + ' \u2014 ' + _coFmt(endDate));
 
     var apiUrl = HISTORY_API_BASE + '?assetId=' + p.assetId + '&startDate=' + startStr + '&endDate=' + endStr;
 
@@ -14961,7 +14946,7 @@ function loadCombinedArrayData(hours) {
             $ld.hide();
 
             if (!response || !response.Data || response.Data.length === 0) {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data available for the last ' + hours + ' hour(s)').show();
+                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data available for the selected date').show();
                 return;
             }
 
@@ -15123,7 +15108,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
     });
 
     chart.setOption({
-        backgroundColor: 'transparent',
+        backgroundColor: '#0a1228',
         title: {
             text: title,
             subtext: 'A: ' + aOperations.length + ' operation(s), B: ' + bOperations.length + ' operation(s)',
@@ -15348,7 +15333,7 @@ function renderPointMachineTableView() {
         h += '<th class="col-b pm-table-head-b">B Op Date</th>';
     }
 
-    h += '<th class="pm-table-head-main" style="min-width:100px;">DataLogger</th>';
+    h += '<th class="pm-table-head-main" style="min-width:240px;">DataLogger</th>';
     h += '<th class="pm-table-head-main">Last Update</th>';
     h += '</tr></thead>';
 
@@ -15761,6 +15746,12 @@ function getSortedAssetIds(force) {
         return wsLiveData[id] !== undefined;
     });
 
+    // Defense-in-depth: drop any asset not present in the bulk response so
+    // garbage WS assets never reach the table / PM renderers.
+    if (typeof isAssetInBulkWhitelist === 'function') {
+        existing = existing.filter(function (id) { return isAssetInBulkWhitelist(id); });
+    }
+
     // Apply user's Asset Number multi-select filter, if any.
     if (typeof window._sipFilteredAssetIds === 'function') {
         existing = window._sipFilteredAssetIds(existing);
@@ -15787,7 +15778,11 @@ function processSingleLiveUpdateFixed(d) {
     var aidFilter = wsCurrentFilterAssetIds;
 
     if (atFilter && atFilter !== '0' && atFilter !== '' && d.AssetTypeId != atFilter) return;
-    if (aidFilter && aidFilter.length > 1 && aidFilter.indexOf(aid.toString()) === -1) return;
+    // FIX: was > 1 — same off-by-one as main processItemsInternal
+    if (aidFilter && aidFilter.length > 0 && aidFilter.indexOf(aid.toString()) === -1 && aidFilter[0] !== '' && aidFilter[0] !== '0') return;
+
+    // ── BULK WHITELIST GUARD ── (see processItemsInternal for rationale)
+    if (typeof isAssetInBulkWhitelist === 'function' && !isAssetInBulkWhitelist(aid)) return;
 
     wsMessageCount++;
 
@@ -16780,8 +16775,14 @@ function processItemsFixed(items) {
             if (String(d.AssetTypeId) !== String(atFilter)) continue;
         }
 
-        if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
+        // FIX: same off-by-one as main processItemsInternal — was > 1, now > 0
+        if (aidFilter && aidFilter.length > 0 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
             if (aidFilter.indexOf(String(aid)) === -1) continue;
+        }
+
+        // ── BULK WHITELIST GUARD ── (see processItemsInternal for rationale)
+        if (typeof isAssetInBulkWhitelist === 'function' && !isAssetInBulkWhitelist(aid)) {
+            continue;
         }
 
         wsMessageCount++;
@@ -17829,6 +17830,16 @@ console.log('[DataLogger-Fix] Initializing DataLogger Pickup/Drop fix...');
 //    return true;
 //};
 window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, timestamp, roleOrAttrId) {
+    // ── BULK WHITELIST GUARD ──
+    // Never create an asset from a DataLogger frame if it wasn't in the bulk
+    // response. Updating an asset that already exists is fine (it passed the
+    // guard when first created); only block creation of brand-new garbage ids.
+    if (typeof isAssetInBulkWhitelist === 'function' &&
+        !isAssetInBulkWhitelist(assetId) &&
+        !(window.wsLiveData && window.wsLiveData[assetId])) {
+        return;
+    }
+
     var resolvedAssetName = (typeof getBulkAssetName === 'function')
         ? getBulkAssetName(assetId, assetName)
         : (assetName || ('Asset ' + assetId));
@@ -18125,7 +18136,8 @@ function processDataLoggerItems(items) {
             if (String(d.AssetTypeId) !== String(atFilter)) continue;
         }
 
-        if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
+        // FIX: was > 1 — same off-by-one as main processItemsInternal
+        if (aidFilter && aidFilter.length > 0 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
             if (aidFilter.indexOf(String(assetId)) === -1) continue;
         }
 
@@ -18173,7 +18185,8 @@ window.processSingleLiveUpdate = function (d) {
             if (String(d.AssetTypeId) !== String(atFilter)) return;
         }
 
-        if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
+        // FIX: was > 1 — same off-by-one as main processItemsInternal
+        if (aidFilter && aidFilter.length > 0 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
             if (aidFilter.indexOf(String(assetId)) === -1) return;
         }
 
@@ -20449,7 +20462,8 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
             if (atFilter && atFilter !== '0' && atFilter !== '' && dl.AssetTypeId) {
                 if (_s(dl.AssetTypeId) !== _s(atFilter)) continue;
             }
-            if (aidFilter && aidFilter.length > 1 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
+            // FIX: was > 1 — same off-by-one as main processItemsInternal
+            if (aidFilter && aidFilter.length > 0 && aidFilter[0] !== '' && aidFilter[0] !== '0') {
                 if (aidFilter.map(_s).indexOf(_s(dl.AssetId)) === -1) continue;
             }
 
