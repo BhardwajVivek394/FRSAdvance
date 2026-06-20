@@ -315,13 +315,15 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             return Json(mDivisions, JsonRequestBehavior.AllowGet);
         }
+
+
+        // ===== REPLACE your existing GetSMSLogList method in FRS25 Area UserSiteController =====
+
         public ActionResult GetSMSLogList(List<int> siteIds)
+
         {
             var smsSiteIds = new List<int>();
-
-            //var mSMSLogLister = new SMSLogLister();
             var mHooterSetting = GetSetting();
-
 
             try
             {
@@ -332,24 +334,34 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mFRSAlertLister.SearchCriteria.ToDate = DateTime.Now;
                 mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
                 mFRSAlertLister = frsAlertService.GetListerWithTimeFilter(mFRSAlertLister);
+
                 if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts != null && mFRSAlertLister.mFRSAlerts.Count > 0)
                 {
                     var oldSMSLogs = TempData.Peek($"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}") as List<FRSAlert>;
+
                     if (oldSMSLogs != null && oldSMSLogs.Count > 0)
                     {
+                        // Filter out already-seen alerts
                         var smsIds = oldSMSLogs.Select(x => x.Id).ToList();
-                        mFRSAlertLister.mFRSAlerts = mFRSAlertLister.mFRSAlerts.Where(x => !smsIds.Contains(x.Id)).ToList();
-                        oldSMSLogs.AddRange(mFRSAlertLister.mFRSAlerts);
+                        var newAlerts = mFRSAlertLister.mFRSAlerts.Where(x => !smsIds.Contains(x.Id)).ToList();
+
+                        // Add only new ones to the existing list
+                        oldSMSLogs.AddRange(newAlerts);
                         TempData[$"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}"] = oldSMSLogs;
                         TempData.Keep();
                     }
                     else
                     {
+                        // First time — store all alerts
+                        oldSMSLogs = mFRSAlertLister.mFRSAlerts;
                         TempData.Remove($"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}");
-                        TempData[$"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}"] = mFRSAlertLister.mFRSAlerts;
+                        TempData[$"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}"] = oldSMSLogs;
                         TempData.Keep();
                     }
-                    var groupedCustomerList = mFRSAlertLister.mFRSAlerts.GroupBy(u => u.SiteId).Select(grp => grp.Key).ToList();
+
+                    // FIX: Build site IDs from ALL alerts in TempData (old + new)
+                    // Previously this used mFRSAlertLister.mFRSAlerts which was filtered to new-only
+                    var groupedCustomerList = oldSMSLogs.GroupBy(u => u.SiteId).Select(grp => grp.Key).ToList();
                     if (groupedCustomerList != null && groupedCustomerList.Count > 0)
                     {
                         foreach (var siteId in groupedCustomerList)
@@ -358,18 +370,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                                 smsSiteIds.Add(siteId);
                         }
                     }
-
                 }
                 else
                 {
+                    // No active alerts from API — clear TempData
                     TempData.Remove($"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}");
                 }
             }
             catch (Exception)
             {
-
             }
-            //return Json(mSMSLogLister, JsonRequestBehavior.AllowGet);
 
             var jsonResult = Json(smsSiteIds, JsonRequestBehavior.AllowGet);
             jsonResult.MaxJsonLength = int.MaxValue;
@@ -469,6 +479,34 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
 
+        // ===== ADD THIS ACTION to your FRS25 Area UserSiteController =====
+        // File: Areas/FRS25/Controllers/UserSiteController.cs
+        // Add inside the class body, after GetSMSLogList method
 
+        [HttpPost]
+        public JsonResult GetFRSAlertsBySite(int siteId)
+        {
+            var alerts = new List<FRSAlert>();
+            try
+            {
+                var oldFRSAlerts = TempData.Peek($"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}") as List<FRSAlert>;
+                if (oldFRSAlerts != null && oldFRSAlerts.Count > 0)
+                {
+                    alerts = oldFRSAlerts
+                        .Where(x => x.SiteId == siteId)
+                        .OrderByDescending(x => x.SetTimeStamp)
+                        .Take(4)
+                        .ToList();
+                }
+            }
+            catch (Exception)
+            {
+                // Silently fail
+            }
+
+            var jsonResult = Json(alerts, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
+        }
     }
 }
