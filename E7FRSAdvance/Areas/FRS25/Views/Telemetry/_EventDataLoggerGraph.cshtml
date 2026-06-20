@@ -66,8 +66,34 @@
         background: rgba(251,191,36,0.18);
         color: #fcd34d;
     }
+
+    /* FIX: this table always renders inside the light #modalalertlogs modal.
+       Keep text/hover readable even when the page theme is dark (which would
+       otherwise force near-invisible light grey text on the light modal). */
+    #modalalertlogs .el-dg-table tbody td {
+        color: #374151 !important;
+        border-bottom-color: #e2e8f0 !important;
+    }
+
+    #modalalertlogs .el-dg-table tbody tr:hover {
+        background: #eef2f7 !important;
+    }
+
+        #modalalertlogs .el-dg-table tbody tr:hover td {
+            color: #0f172a !important;
+        }
+
+    #modalalertlogs .el-dg-pickup {
+        background: #dcfce7 !important;
+        color: #166534 !important;
+    }
+
+    #modalalertlogs .el-dg-drop {
+        background: #fef3c7 !important;
+        color: #92400e !important;
+    }
 </style>
-<table class="table el-dg-table" style="border-collapse:separate;border-spacing:0;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+<table id="EventDataLoggerGraphTable" class="table el-dg-table" style="border-collapse:separate;border-spacing:0;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
     <thead>
         <tr>
             <th>SR No.</th>
@@ -89,17 +115,21 @@
                     <td>@item.AssetName</td>
                     <td>@item.AttributeName</td>
                     <td>
-                        @if (item.CurrentValue == "Pickup")
-                        {
-                            <span class='el-dg-pickup'>Pickup</span>
+                        @{
+                            var currentValue = (item.CurrentValue ?? string.Empty).Trim();
                         }
-                        else if (item.CurrentValue == "Drop")
+
+                        @if (currentValue.Equals("Pickup", StringComparison.OrdinalIgnoreCase))
                         {
-                            <span class='el-dg-drop'>DROP</span>
+                            <span class="el-dg-pickup">Pickup</span>
+                        }
+                        else if (currentValue.Equals("Drop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="el-dg-drop">Drop</span>
                         }
                         else
                         {
-                            @item.CurrentValue
+                            @(string.IsNullOrWhiteSpace(currentValue) ? "-" : currentValue)
                         }
                     </td>
                     <td>@(item.Timestamp != null ? item.Timestamp.ToString() : "-")</td>

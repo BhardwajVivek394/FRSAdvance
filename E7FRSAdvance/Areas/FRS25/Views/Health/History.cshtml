@@ -1,0 +1,1849 @@
+@{
+    ViewBag.Title = "Health History";
+    Layout = null;
+    var siteId = Convert.ToInt32(ViewBag.SiteId ?? 0);
+    var siteName = Convert.ToString(ViewBag.SiteName ?? ("Site " + siteId));
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Health History - @siteName</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        :root {
+            --bg: #070d1d;
+            --panel: #0c1731;
+            --panel2: #101e3e;
+            --bdr: #1b2c55;
+            --bdr2: #27407a;
+            --txt: #e7edf7;
+            --mut: #9fb1d1;
+            --dim: #60749a;
+            --cyan: #22d3ee;
+            --green: #34d399;
+            --red: #fb7185;
+            --amber: #fbbf24;
+            --blue: #60a5fa;
+            --mono: 'JetBrains Mono',Consolas,monospace;
+            --sans: 'Manrope','Segoe UI',Arial,sans-serif
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(1000px 480px at 10% -10%,rgba(34,211,238,.12),transparent 60%),radial-gradient(900px 520px at 100% 0,rgba(96,165,250,.10),transparent 55%),var(--bg);
+            color: var(--txt);
+            font-family: var(--sans);
+            padding: 22px
+        }
+
+        .top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            margin-bottom: 14px;
+            background: rgba(12,23,49,.82);
+            border: 1px solid var(--bdr);
+            border-radius: 16px;
+            padding: 14px 18px;
+        }
+
+        .title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .title-ico {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(34,211,238,.18), rgba(96,165,250,.12));
+            border: 1px solid rgba(34,211,238,.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .title h1 {
+            font-size: 19px;
+            margin: 0 0 3px;
+            letter-spacing: -.01em;
+        }
+
+        .meta {
+            color: var(--mut);
+            font-size: 12px
+        }
+
+        .back {
+            border: 1px solid var(--bdr2);
+            background: linear-gradient(135deg,#10244d,#0b1733);
+            color: var(--txt);
+            border-radius: 12px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+            .back:hover {
+                border-color: var(--cyan)
+            }
+
+        .datebar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            background: rgba(12,23,49,.78);
+            border: 1px solid var(--bdr);
+            border-radius: 14px;
+            padding: 10px 14px;
+            margin-bottom: 14px
+        }
+
+        .datebar-ico {
+            font-size: 15px;
+            line-height: 1;
+        }
+
+        .datebar label {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--mut);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em
+        }
+
+        .datebar input {
+            background: #071126;
+            border: 1px solid var(--bdr2);
+            color: var(--txt);
+            border-radius: 9px;
+            padding: 8px 10px 8px 12px;
+            font-family: var(--sans);
+            font-size: 13px;
+            font-weight: 600;
+            color-scheme: dark;
+            min-width: 150px;
+            cursor: pointer;
+            transition: border-color .2s
+        }
+
+            .datebar input:hover {
+                border-color: var(--cyan)
+            }
+
+            .datebar input:focus {
+                outline: none;
+                border-color: var(--cyan);
+                box-shadow: 0 0 0 2px rgba(34,211,238,.15)
+            }
+
+        /* Make the native calendar picker icon clearly VISIBLE on the dark theme
+           (default indicator renders nearly black and disappears). */
+        input[type=date]::-webkit-calendar-picker-indicator,
+        input[type=time]::-webkit-calendar-picker-indicator {
+            filter: invert(.72) sepia(.55) saturate(4) hue-rotate(155deg) brightness(1.15);
+            opacity: .95;
+            cursor: pointer;
+            width: 17px;
+            height: 17px;
+            margin-left: 4px;
+        }
+
+        input[type=date]:hover::-webkit-calendar-picker-indicator,
+        input[type=time]:hover::-webkit-calendar-picker-indicator {
+            opacity: 1;
+            filter: invert(.85) sepia(.6) saturate(5) hue-rotate(155deg) brightness(1.3);
+        }
+
+        /* Quick-range presets (Today / 7D / 30D) - NW-dashboard style segmented pills */
+        .qr {
+            display: inline-flex;
+            border: 1px solid var(--bdr2);
+            border-radius: 9px;
+            overflow: hidden;
+        }
+
+            .qr button {
+                background: var(--panel2);
+                border: none;
+                border-right: 1px solid var(--bdr);
+                color: var(--mut);
+                font-size: 11px;
+                font-weight: 700;
+                padding: 8px 12px;
+                cursor: pointer;
+                transition: all .15s;
+            }
+
+                .qr button:last-child {
+                    border-right: none;
+                }
+
+                .qr button:hover, .qr button.active {
+                    background: rgba(34,211,238,.14);
+                    color: var(--cyan);
+                }
+
+        .hint {
+            color: var(--dim);
+            font-size: 12px
+        }
+
+        .tabs {
+            display: inline-flex;
+            gap: 0;
+            margin-bottom: 14px;
+            border: 1px solid var(--bdr2);
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(16,30,62,.6);
+        }
+
+        .tab {
+            padding: 10px 18px;
+            border: none;
+            border-right: 1px solid var(--bdr);
+            background: transparent;
+            color: var(--mut);
+            cursor: pointer;
+            font-weight: 800;
+            font-size: 12px;
+            transition: all .15s;
+        }
+
+            .tab:last-child {
+                border-right: none;
+            }
+
+            .tab:hover {
+                color: var(--txt);
+            }
+
+            .tab.active {
+                color: var(--cyan);
+                background: rgba(34,211,238,.13);
+                box-shadow: inset 0 -2px 0 var(--cyan);
+            }
+
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(300px, 360px) 1fr;
+            gap: 14px;
+            transition: margin-right .25s ease;
+        }
+
+        /* When the device sidebar is open on wide screens, PUSH the content
+           left (NW-dashboard behaviour) instead of covering it with an
+           overlay - the device list stays visible, clickable, and no data
+           or scroll position is lost. */
+        body.dsb-open .layout {
+            margin-right: 444px;
+        }
+
+        body.dsb-open .top,
+        body.dsb-open .datebar,
+        body.dsb-open .tabs {
+            margin-right: 444px;
+            transition: margin-right .25s ease;
+        }
+
+        .side, .main {
+            background: rgba(12,23,49,.82);
+            border: 1px solid var(--bdr);
+            border-radius: 18px;
+            padding: 14px;
+            min-height: 570px
+        }
+
+        .side {
+            position: sticky;
+            top: 14px;
+            max-height: calc(100vh - 28px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
+        }
+
+            .side::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            .side::-webkit-scrollbar-thumb {
+                background: var(--bdr2);
+                border-radius: 8px;
+            }
+
+        .side-title {
+            font-weight: 900;
+            color: var(--cyan);
+            margin-bottom: 10px;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: .08em
+        }
+
+        .empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--mut);
+            height: 300px;
+            text-align: center;
+            border: 1px dashed var(--bdr2);
+            border-radius: 16px
+        }
+
+        .loader {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--mut)
+        }
+
+        .spin {
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(34,211,238,.20);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: s 1s linear infinite
+        }
+
+        @@keyframes s {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        .card {
+            border: 1px solid var(--bdr);
+            background: rgba(16,30,62,.72);
+            border-radius: 14px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer
+        }
+
+            .card:hover, .card.selected {
+                border-color: rgba(34,211,238,.65);
+                background: rgba(34,211,238,.08)
+            }
+
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px
+        }
+
+        .name {
+            font-weight: 900
+        }
+
+        .tags {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap
+        }
+
+        .tag {
+            font-size: 10px;
+            border-radius: 999px;
+            padding: 4px 7px;
+            border: 1px solid var(--bdr2);
+            font-family: var(--mono)
+        }
+
+        .on {
+            color: var(--green);
+            border-color: rgba(52,211,153,.45);
+            background: rgba(52,211,153,.08)
+        }
+
+        .off {
+            color: var(--red);
+            border-color: rgba(251,113,133,.45);
+            background: rgba(251,113,133,.08)
+        }
+
+        .card-meta {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            color: var(--mut);
+            font-size: 11px;
+            margin-top: 8px
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin: 5px 5px 5px 0;
+            padding: 8px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--bdr);
+            background: rgba(16,30,62,.78);
+            cursor: pointer;
+            font-size: 12px
+        }
+
+            .chip:hover, .chip.selected {
+                border-color: rgba(34,211,238,.65);
+                color: var(--cyan)
+            }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--red)
+        }
+
+            .dot.ok {
+                background: var(--green)
+            }
+
+        .group {
+            margin-bottom: 12px
+        }
+
+        .group-h {
+            color: var(--mut);
+            font-size: 12px;
+            font-weight: 900;
+            margin-bottom: 6px
+        }
+
+        .main-hint {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--mut);
+            line-height: 1.7
+        }
+
+        /* ===== CENTER PANEL DEVICE VIEW ===== */
+        .center-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px;
+            margin-bottom: 18px
+        }
+
+        .center-stat {
+            border: 1px solid var(--bdr);
+            border-radius: 14px;
+            padding: 14px 10px;
+            background: linear-gradient(135deg, rgba(16,30,62,.9), rgba(12,23,49,.7));
+            text-align: center;
+            position: relative;
+            overflow: hidden
+        }
+
+            .center-stat::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 2px;
+                background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+                opacity: .4
+            }
+
+            .center-stat b {
+                display: block;
+                font-size: 24px;
+                color: var(--cyan);
+                margin-bottom: 3px;
+                letter-spacing: -.02em
+            }
+
+            .center-stat small {
+                font-size: 10px;
+                color: var(--dim);
+                text-transform: uppercase;
+                letter-spacing: .08em;
+                font-weight: 700
+            }
+
+        .center-hint {
+            color: var(--dim);
+            font-size: 12px;
+            margin-bottom: 16px;
+            padding: 0 2px
+        }
+
+        .center-device {
+            border: 1px solid var(--bdr);
+            border-radius: 18px;
+            padding: 18px;
+            background: linear-gradient(160deg, rgba(16,30,62,.72), rgba(7,13,29,.6));
+            margin-bottom: 14px;
+            transition: border-color .2s
+        }
+
+            .center-device:hover {
+                border-color: rgba(34,211,238,.25)
+            }
+
+        .center-device-hdr {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(27,44,85,.5)
+        }
+
+            .center-device-hdr h2 {
+                margin: 0;
+                font-size: 17px;
+                letter-spacing: -.01em
+            }
+
+        .cbadge {
+            font-size: 9px;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .05em
+        }
+
+            .cbadge.on {
+                background: rgba(52,211,153,.1);
+                color: var(--green);
+                border: 1px solid rgba(52,211,153,.35)
+            }
+
+            .cbadge.off {
+                background: rgba(251,113,133,.1);
+                color: var(--red);
+                border: 1px solid rgba(251,113,133,.35)
+            }
+
+            .cbadge.info {
+                background: rgba(96,165,250,.1);
+                color: var(--blue);
+                border: 1px solid rgba(96,165,250,.35)
+            }
+
+            .cbadge.cy {
+                background: rgba(34,211,238,.1);
+                color: var(--cyan);
+                border: 1px solid rgba(34,211,238,.35)
+            }
+
+        .ckv-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 6px;
+            margin-bottom: 14px
+        }
+
+        .ckv {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 9px 14px;
+            border-radius: 10px;
+            background: rgba(7,17,38,.55);
+            font-size: 12px;
+            border: 1px solid rgba(27,44,85,.4)
+        }
+
+            .ckv .k {
+                color: var(--dim);
+                text-transform: uppercase;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: .06em
+            }
+
+            .ckv .v {
+                font-weight: 800;
+                font-family: var(--mono);
+                font-size: 12px;
+                text-align: right;
+                max-width: 60%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap
+            }
+
+                .ckv .v.grn {
+                    color: var(--green)
+                }
+
+                .ckv .v.red {
+                    color: var(--red)
+                }
+
+        .ca10-title {
+            font-size: 11px;
+            color: var(--mut);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin: 14px 0 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+            .ca10-title::after {
+                content: '';
+                flex: 1;
+                height: 1px;
+                background: var(--bdr)
+            }
+
+        .ca10-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+            gap: 8px
+        }
+
+        /* Uptime / Downtime chip (N/W-db parity): green up-arrow, red down-arrow */
+        .ud {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+            .ud .up {
+                color: var(--green);
+            }
+
+            .ud .dn {
+                color: var(--red);
+            }
+
+        .ca10-ud {
+            margin-top: 6px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .ca10 {
+            border: 1px solid var(--bdr);
+            border-radius: 12px;
+            padding: 12px;
+            background: rgba(7,17,38,.5);
+            cursor: pointer;
+            transition: all .2s;
+            text-align: center
+        }
+
+            .ca10:hover {
+                border-color: rgba(34,211,238,.55);
+                background: rgba(34,211,238,.05);
+                transform: translateY(-1px)
+            }
+
+        .ca10-id {
+            font-weight: 900;
+            font-size: 15px;
+            color: var(--cyan);
+            margin-bottom: 6px
+        }
+
+        .ca10-badges {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            flex-wrap: wrap;
+            font-size: 9px
+        }
+
+        .ca10-type {
+            font-size: 10px;
+            color: var(--dim);
+            margin-top: 4px
+        }
+
+        .center-chart-section {
+            border: 1px solid var(--bdr);
+            border-radius: 16px;
+            padding: 16px;
+            background: linear-gradient(160deg, rgba(16,30,62,.72), rgba(7,13,29,.6));
+            margin-top: 14px
+        }
+
+        .center-chart-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 8px
+        }
+
+        .center-chart-title {
+            font-weight: 900;
+            color: var(--cyan);
+            margin-right: auto;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: .06em
+        }
+
+        .center-chart-hint {
+            color: var(--dim);
+            font-size: 11px
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.62);
+            backdrop-filter: blur(5px);
+            display: none;
+            z-index: 95
+        }
+
+            .overlay.open {
+                display: block
+            }
+
+        .modal {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%,-50%);
+            width: min(1100px,96vw);
+            max-height: 90vh;
+            overflow: auto;
+            background: #081226;
+            border: 1px solid var(--bdr2);
+            border-radius: 20px;
+            display: none;
+            z-index: 96;
+            box-shadow: 0 24px 80px rgba(0,0,0,.45)
+        }
+
+            .modal.open {
+                display: block
+            }
+
+        .mh {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--bdr)
+        }
+
+            .mh h3 {
+                margin: 0;
+                font-size: 18px
+            }
+
+        .x {
+            border: 1px solid var(--bdr2);
+            background: #101e3e;
+            color: var(--txt);
+            border-radius: 10px;
+            width: 34px;
+            height: 34px;
+            cursor: pointer
+        }
+
+        .mb {
+            padding: 14px
+        }
+
+        .graph-box {
+            border: 1px solid var(--bdr);
+            border-radius: 16px;
+            padding: 12px;
+            background: rgba(16,30,62,.55)
+        }
+
+        .bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px
+        }
+
+        .bar-title {
+            font-weight: 900;
+            color: var(--cyan);
+            margin-right: auto
+        }
+
+        .btn {
+            border: 1px solid var(--bdr2);
+            background: #10244d;
+            color: var(--txt);
+            border-radius: 9px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: 800
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4,minmax(130px,1fr));
+            gap: 8px;
+            margin-bottom: 10px
+        }
+
+        .stat {
+            border: 1px solid var(--bdr);
+            border-radius: 12px;
+            padding: 9px;
+            background: rgba(7,17,38,.7)
+        }
+
+            .stat b {
+                display: block;
+                font-size: 18px
+            }
+
+            .stat span {
+                font-size: 11px;
+                color: var(--mut)
+            }
+
+        .chart {
+            height: 380px
+        }
+
+        .list {
+            margin-top: 12px;
+            max-height: 180px;
+            overflow: auto;
+            border-top: 1px solid var(--bdr);
+            padding-top: 8px
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 160px 80px 1fr;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--mut);
+            padding: 7px;
+            border-bottom: 1px solid rgba(27,44,85,.55)
+        }
+
+        @@media(max-width:1280px) {
+            body.dsb-open .layout,
+            body.dsb-open .top,
+            body.dsb-open .datebar,
+            body.dsb-open .tabs {
+                margin-right: 0;
+            }
+        }
+
+        @@media(max-width:1024px) {
+            .layout {
+                grid-template-columns: 1fr
+            }
+
+            .side {
+                position: static;
+                max-height: 340px;
+            }
+
+            .side, .main {
+                min-height: auto
+            }
+        }
+
+        @@media(max-width:850px) {
+            body {
+                padding: 12px;
+            }
+
+            .top {
+                flex-wrap: wrap;
+            }
+
+            .stats {
+                grid-template-columns: 1fr 1fr
+            }
+
+            .chart {
+                height: 300px
+            }
+
+            .center-summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        /* ===== device detail sidebar (N/W db parity) ===== */
+        /* On wide screens the sidebar is NON-BLOCKING: no dark overlay, page
+           content shifts left and remains fully interactive (click another
+           device to switch the sidebar without losing anything). The dimming
+           overlay only applies on narrow screens where the sidebar overlaps. */
+        .dsb-ov {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.5);
+            z-index: 90;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .2s;
+            display: none;
+        }
+
+        @@media(max-width:1280px) {
+            .dsb-ov {
+                display: block;
+            }
+
+                .dsb-ov.open {
+                    opacity: 1;
+                    pointer-events: auto
+                }
+        }
+
+        .dsb {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 430px;
+            max-width: 96vw;
+            height: 100vh;
+            background: linear-gradient(180deg,var(--panel),var(--panel2));
+            border-left: 1px solid var(--bdr2);
+            z-index: 91;
+            transform: translateX(100%);
+            transition: transform .25s;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -8px 0 40px rgba(0,0,0,.4)
+        }
+
+            .dsb.open {
+                transform: translateX(0)
+            }
+
+        .dsb-hdr {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 13px 15px;
+            border-bottom: 1px solid var(--bdr);
+            flex-wrap: wrap
+        }
+
+            .dsb-hdr h3 {
+                font-size: 14px;
+                margin: 0;
+                flex: 1;
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                flex-wrap: wrap
+            }
+
+        .dsb-x {
+            margin-left: auto;
+            background: none;
+            border: 1px solid var(--bdr2);
+            color: var(--mut);
+            border-radius: 8px;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            font-size: 14px
+        }
+
+            .dsb-x:hover {
+                color: var(--txt);
+                border-color: var(--cyan)
+            }
+
+        .dsb-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--bdr)
+        }
+
+        .dsb-tab {
+            flex: 1;
+            text-align: center;
+            padding: 9px 4px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--mut);
+            cursor: pointer;
+            border-bottom: 2px solid transparent
+        }
+
+            .dsb-tab.active {
+                color: var(--cyan);
+                border-bottom-color: var(--cyan)
+            }
+
+        .dsb-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 13px
+        }
+
+        .dpane {
+            display: none
+        }
+
+            .dpane.active {
+                display: block
+            }
+
+        .sgrid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 7px;
+            margin-bottom: 10px
+        }
+
+        .sstat {
+            background: var(--panel2);
+            border: 1px solid var(--bdr);
+            border-radius: 9px;
+            padding: 7px 9px
+        }
+
+            .sstat .l {
+                font-size: 9px;
+                font-weight: 700;
+                letter-spacing: .06em;
+                text-transform: uppercase;
+                color: var(--dim);
+                margin-bottom: 2px
+            }
+
+            .sstat .v {
+                font-size: 12px;
+                font-weight: 700
+            }
+
+        .ddot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle
+        }
+
+            .ddot.on {
+                background: var(--green);
+                box-shadow: 0 0 6px var(--green)
+            }
+
+            .ddot.off {
+                background: var(--red);
+                box-shadow: 0 0 6px var(--red)
+            }
+
+        .dbadge {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 99px;
+            background: var(--panel2);
+            border: 1px solid var(--bdr2);
+            color: var(--mut)
+        }
+
+            .dbadge.v1 {
+                color: #fb923c
+            }
+
+            .dbadge.v2 {
+                color: #a78bfa
+            }
+
+            .dbadge.mq {
+                color: var(--green)
+            }
+
+            .dbadge.a10 {
+                color: var(--cyan)
+            }
+
+            .dbadge.no {
+                color: var(--red)
+            }
+
+        .dsec {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--dim);
+            margin: 12px 0 6px
+        }
+
+        .dkv {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 11px;
+            padding: 4px 1px;
+            border-bottom: 1px dashed var(--bdr);
+            color: var(--dim)
+        }
+
+            .dkv b {
+                color: var(--txt);
+                font-size: 10px;
+                word-break: break-all;
+                text-align: right;
+                font-family: var(--mono)
+            }
+
+        .dbtn {
+            width: 100%;
+            text-align: left;
+            background: var(--panel2);
+            border: 1px solid var(--bdr2);
+            border-radius: 9px;
+            padding: 7px 9px;
+            color: var(--txt);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 6px
+        }
+
+            .dbtn small {
+                display: block;
+                font-size: 8px;
+                color: var(--dim);
+                font-family: var(--mono);
+                font-weight: 400
+            }
+
+            .dbtn:hover {
+                border-color: var(--cyan)
+            }
+
+        .dgrid2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px
+        }
+
+        .dgrid3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px
+        }
+
+            .dgrid2 .dbtn, .dgrid3 .dbtn {
+                margin-bottom: 0
+            }
+
+        .dcon {
+            background: #050b18;
+            border: 1px solid var(--bdr);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 8px
+        }
+
+        .dcon-h {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 9px;
+            background: var(--panel2);
+            border-bottom: 1px solid var(--bdr);
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--mut)
+        }
+
+        .dcon-b {
+            max-height: 190px;
+            overflow-y: auto;
+            padding: 7px 9px;
+            font-size: 10px
+        }
+
+        .dcl {
+            display: flex;
+            gap: 6px;
+            padding: 2px 0
+        }
+
+            .dcl pre {
+                margin: 0;
+                white-space: pre-wrap;
+                word-break: break-all;
+                font-family: var(--mono);
+                font-size: 10px;
+                flex: 1
+            }
+
+            .dcl.cmd pre {
+                color: var(--cyan)
+            }
+
+            .dcl.resp pre {
+                color: var(--green)
+            }
+
+            .dcl.err pre {
+                color: var(--red)
+            }
+
+            .dcl.info pre {
+                color: var(--dim)
+            }
+
+        .dcl-ts {
+            color: var(--dim);
+            font-size: 9px;
+            font-family: var(--mono);
+            white-space: nowrap
+        }
+
+        .dcon-in {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-top: 1px solid var(--bdr);
+            padding: 5px 8px
+        }
+
+            .dcon-in input {
+                flex: 1;
+                background: transparent;
+                border: none;
+                outline: none;
+                color: var(--txt);
+                font-size: 11px;
+                font-family: var(--mono)
+            }
+
+        .dfrow {
+            display: flex;
+            gap: 7px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 8px
+        }
+
+            .dfrow label {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                font-size: 9px;
+                font-weight: 700;
+                text-transform: uppercase;
+                color: var(--dim)
+            }
+
+            .dfrow input[type=date], .dfrow select {
+                background: var(--panel2);
+                color: var(--txt);
+                border: 1px solid var(--bdr2);
+                border-radius: 7px;
+                padding: 5px 7px;
+                font-size: 11px;
+                color-scheme: dark
+            }
+
+        .dhist {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 46vh;
+            overflow-y: auto
+        }
+
+        .dh-card {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            background: var(--panel2);
+            border: 1px solid var(--bdr);
+            border-radius: 8px;
+            padding: 6px 9px;
+            font-size: 11px
+        }
+
+            .dh-card.off {
+                background: rgba(251,113,133,.07);
+                border-color: rgba(251,113,133,.25)
+            }
+
+        .dh-time {
+            margin-left: auto;
+            font-size: 9px;
+            color: var(--dim);
+            font-family: var(--mono);
+            white-space: nowrap
+        }
+
+        .dtag {
+            font-size: 9px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 5px
+        }
+
+            .dtag.tcp {
+                background: rgba(96,165,250,.16);
+                color: var(--blue)
+            }
+
+            .dtag.mqtt {
+                background: rgba(52,211,153,.16);
+                color: var(--green)
+            }
+
+            .dtag.off {
+                background: rgba(251,113,133,.14);
+                color: var(--red)
+            }
+
+        .dmq {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 7px
+        }
+
+        .dmq-c {
+            background: var(--panel2);
+            border: 1px solid var(--bdr2);
+            border-radius: 9px;
+            padding: 7px 9px;
+            cursor: pointer
+        }
+
+            .dmq-c:hover, .dmq-c.live {
+                border-color: var(--green)
+            }
+
+            .dmq-c .l {
+                font-size: 9px;
+                font-weight: 700;
+                color: var(--dim)
+            }
+
+            .dmq-c .t {
+                font-size: 9px;
+                color: var(--green);
+                font-family: var(--mono);
+                word-break: break-all
+            }
+
+        .dim-box {
+            background: var(--panel2);
+            border: 1px solid var(--bdr2);
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-top: 9px
+        }
+
+            .dim-box label {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                font-size: 9px;
+                font-weight: 700;
+                text-transform: uppercase;
+                color: var(--dim);
+                margin-bottom: 6px
+            }
+
+            .dim-box input, .dim-box select {
+                background: var(--panel);
+                color: var(--txt);
+                border: 1px solid var(--bdr2);
+                border-radius: 7px;
+                padding: 5px 8px;
+                font-size: 11px;
+                color-scheme: dark
+            }
+
+        .dempty {
+            text-align: center;
+            color: var(--dim);
+            font-size: 12px;
+            padding: 14px
+        }
+
+        .vtoggle {
+            display: inline-flex;
+            border: 1px solid var(--bdr2);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-left: auto
+        }
+
+            .vtoggle button {
+                background: var(--panel2);
+                border: none;
+                color: var(--dim);
+                font-size: 10px;
+                font-weight: 700;
+                padding: 4px 11px;
+                cursor: pointer
+            }
+
+                .vtoggle button.active {
+                    background: rgba(34,211,238,.16);
+                    color: var(--cyan)
+                }
+
+        .side-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .ag {
+            border: 1px solid var(--bdr);
+            border-radius: 9px;
+            margin-bottom: 6px;
+            overflow: hidden
+        }
+
+        .ag-h {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 8px 10px;
+            background: var(--panel2);
+            cursor: pointer;
+            font-size: 12px
+        }
+
+        .at-h {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 10px 6px 20px;
+            cursor: pointer;
+            font-size: 11px;
+            color: var(--mut);
+            border-top: 1px solid var(--bdr)
+        }
+
+        .chev {
+            font-size: 8px;
+            color: var(--dim);
+            transition: transform .15s
+        }
+
+        .adc-i {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 10px;
+            padding: 5px 8px 5px 32px;
+            cursor: pointer;
+            color: var(--mut)
+        }
+
+            .adc-i:hover {
+                background: var(--panel2);
+                color: var(--txt)
+            }
+
+            .adc-i b {
+                color: var(--amber)
+            }
+
+        .gbtn {
+            border: 1px solid var(--bdr2);
+            background: linear-gradient(135deg,#10244d,#0b1733);
+            color: var(--txt);
+            border-radius: 9px;
+            padding: 6px 11px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 11px
+        }
+
+            .gbtn:hover {
+                border-color: var(--cyan)
+            }
+    </style>
+</head>
+<body>
+    <div class="top">
+        <div class="title">
+            <div class="title-ico">&#128338;</div>
+            <div>
+                <h1>Health History &mdash; <span id="siteName"></span></h1>
+                <div class="meta">Site ID: <b id="siteId"></b> &#183; Select any modem or A10 to open its detail panel &amp; history.</div>
+            </div>
+        </div>
+        <button class="back" onclick="goBack()">&#8592; Back to Health DB</button>
+    </div>
+    <div class="datebar">
+        <label><span class="datebar-ico">&#128197;</span>From</label><input type="date" id="fromDate" title="From date" />
+        <label><span class="datebar-ico">&#128197;</span>To</label><input type="date" id="toDate" title="To date" />
+        <span class="qr">
+            <button type="button" data-qr="0" class="active">Today</button>
+            <button type="button" data-qr="1">Yesterday</button>
+            <button type="button" data-qr="7">7 Days</button>
+            <button type="button" data-qr="30">30 Days</button>
+        </span>
+        <span class="hint">History &amp; graphs use this date range.</span>
+    </div>
+    <div class="tabs"><button class="tab active" data-tab="network">Network / Modem</button><button class="tab" data-tab="iot">IoT / A10</button><button class="tab" data-tab="services">Services</button></div>
+    <div class="layout"><aside class="side" id="side"></aside><section class="main" id="main"><div class="main-hint">Select Network / Modem or IoT / A10 from the sidebar.<br />Graph opens in popup, not below the page.</div></section></div>
+
+    <div class="overlay" id="ov" onclick="closeGraph()"></div>
+    <div class="modal" id="graphModal" onclick="event.stopPropagation()"><div class="mh"><h3 id="graphTitle">Device History Graph</h3><button class="x" onclick="closeGraph()">&#215;</button></div><div class="mb" id="graphBody"></div></div>
+    <!-- device detail sidebar (modem / A10) -->
+    <div class="dsb-ov" id="dsbov" onclick="DSB.close()"></div>
+    <div class="dsb" id="dsb" onclick="event.stopPropagation()"><div class="dsb-hdr" id="dsbHdr"></div><div class="dsb-tabs" id="dsbTabs"></div><div class="dsb-body" id="dsbBody"></div></div>
+    <script>
+(function(){
+var SITE_ID=@siteId, SITE_NAME=@Html.Raw(Json.Encode(siteName));
+var DEVICE_STATUS_URL='@Url.Action("GetSiteDeviceStatus", "Health", new { area = "FRS25" })';
+var MODEM_GRAPH_URL='@Url.Action("GetModemHistoryForGraph", "Health", new { area = "FRS25" })';
+var A10_GRAPH_URL='@Url.Action("GetA10HistoryForGraph", "Health", new { area = "FRS25" })';
+var A10_RECORDS_URL='@Url.Action("GetA10HistoryRecords", "Health", new { area = "FRS25" })';
+var INDEX_URL='@Url.Action("Index", "Health", new { area = "FRS25" })';
+var NW_ASSET_TYPES_URL='@Url.Action("GetAssetTypeBySiteId", "Health", new { area = "" })';
+var NW_YARD_CONFIG_URL='@Url.Action("GetYardConfigByAssetTypeJson", "Health", new { area = "" })';
+var MODEM_TCP_CMD_URL ='/Health/SendTcpCommand';
+var IS_ADMIN=@((E7FRSAdvance.Utility.ClsHttpContent.LoginUser != null && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode()) ? "true" : "false");
+var MQTT_CFG=@Html.Raw(Json.Encode(ViewBag.MQTTDetail))||{};
+var modems=[], active='network', sel=null, selType=null, chart=null, lastData=null;
+function el(id){return document.getElementById(id)}
+function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function fd(){for(var i=0;i<arguments.length;i++){if(arguments[i]!==undefined&&arguments[i]!==null&&arguments[i]!== '')return arguments[i]}return null}
+function num(v,d){var n=Number(v);return isFinite(n)?n:(d||0)}
+function iso(d){return d.toISOString().slice(0,10)}
+function apiDate(s){var p=String(s).split('-');if(p.length===3)return p[2]+'-'+p[1]+'-'+p[0];var d=new Date(s);return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear()}
+function parseTs(v){if(v===null||v===undefined||v==='')return null;if(v instanceof Date)return isNaN(v.getTime())?null:v.getTime();if(typeof v==='number')return v>1e12?v:(v>1e9?v*1000:null);var s=String(v).trim();var m=s.match(/\/Date\((-?\d+)/);if(m)return Number(m[1]);var t=Date.parse(s);if(!isNaN(t))return t;m=s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);if(m)return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0),+(m[6]||0)).getTime();return null}
+window.goBack=function(){ if(history.length>1) history.back(); else window.location.href=INDEX_URL; };
+el('siteId').textContent=SITE_ID; el('siteName').textContent=SITE_NAME; el('fromDate').value=iso(new Date()); el('toDate').value=iso(new Date());
+// Quick-range presets: Today / Yesterday / 7 Days / 30 Days
+document.querySelectorAll('.qr button').forEach(function(b){b.onclick=function(){
+var d=parseInt(b.dataset.qr,10)||0,now=new Date(),from=new Date(),to=new Date();
+if(d===1){from.setDate(now.getDate()-1);to.setDate(now.getDate()-1)}else if(d>1){from.setDate(now.getDate()-(d-1))}
+el('fromDate').value=iso(from);el('toDate').value=iso(to);
+document.querySelectorAll('.qr button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');
+var f=el('dHistFrom'),t=el('dHistTo');if(f)f.value=el('fromDate').value;if(t)t.value=el('toDate').value}});
+// Manual date edits deactivate presets and sync into the open sidebar's history filter
+['fromDate','toDate'].forEach(function(id){el(id).addEventListener('change',function(){
+document.querySelectorAll('.qr button').forEach(function(x){x.classList.remove('active')});
+var f=el('dHistFrom'),t=el('dHistTo');if(f)f.value=el('fromDate').value;if(t)t.value=el('toDate').value})});
+document.querySelectorAll('.tab').forEach(function(t){t.onclick=function(){document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active')});t.classList.add('active');active=t.dataset.tab;render()}});
+// Treat "null" / "undefined" strings from the API as empty (was rendering literal "null" in cards)
+function nn(v){v=String(v==null?'':v).trim();var lo=v.toLowerCase();return(lo==='null'||lo==='undefined'||lo==='nan')?'':v}
+// Badge with explicit ON / OFF state (instead of colour-only)
+function tg(lbl,on){return '<span class="tag '+(on?'on':'off')+'">'+lbl+' '+(on?'ON':'OFF')+'</span>'}
+// N/W-db style uptime / downtime chip: "↑ 11h55m  ↓ 24m" (renders only what exists)
+function udChip(up,dn){var h='';if(up!=null&&up!=='')h+='<b class="up" title="Uptime">\u2191 '+esc(up)+'</b>';if(dn!=null&&dn!=='')h+='<b class="dn" title="Downtime">\u2193 '+esc(dn)+'</b>';return h?'<span class="ud">'+h+'</span>':''}
+function normalize(resp){var ms=(resp&&resp.Modems)||[];return ms.filter(function(m){return m}).map(function(m){var tcp=!!fd(m.TcpStatus,m.tcpStatus,false),mqtt=!!fd(m.MqttStatus,m.mqttStatus,false);var on=fd(m.IsOnline,m.isOnline);on=(on===null)?(tcp||mqtt):!!on;var clusterId=num(fd(m.ClusterId,m.clusterId),0);var modemId=String(fd(m.ModemId,m.modemId,''));return{clusterId:clusterId,clusterName:String(fd(m.ClusterName,m.clusterName,m.ModemName,m.modemName,'Modem')),modemId:modemId,modemName:nn(fd(m.ModemName,m.modemName,'')),version:nn(fd(m.Version,m.version,'')),signal:fd(m.SignalStrength,m.signalStrength),sim:nn(fd(m.SimNumber,m.simNumber,'')),mqttBase:String(fd(m.MqttBasePath,m.mqttBasePath,m.MQTTBasePath,'rdpms')),uptime:nn(fd(m.Uptime,m.uptime,m.UpTime,m.upTime,'')),downtime:nn(fd(m.DownTime,m.downTime,m.Downtime,m.downtime,'')),lastData:nn(fd(m.LastDataTime,m.lastDataTime,m.LastData,m.lastData,'')),tcp:tcp,mqtt:mqtt,online:on,a10s:(fd(m.A10List,m.a10List)||[]).map(function(a){var at=!!fd(a.TcpStatus,a.tcpStatus,false),am=!!fd(a.MqttStatus,a.mqttStatus,a.MQTTStatus,false);return{a10Id:fd(a.A10Id,a.a10Id,a.Id,a.id,'?'),clusterId:clusterId,modemId:modemId,tcp:at,mqtt:am,online:at||am,type:nn(fd(a.ADCTypeName,a.adcTypeName,'')),fw:nn(fd(a.FirmwareVersion,a.firmwareVersion,'')),lastData:nn(fd(a.LastDataTime,a.lastDataTime,'')),uptime:nn(fd(a.Uptime,a.uptime,a.UpTime,'')),downtime:nn(fd(a.DownTime,a.downTime,a.Downtime,a.downtime,'')),slave:fd(a.SlaveAddress,a.slaveAddress,fd(a.A10Id,a.a10Id,a.Id,a.id,'?')),adcNumber:fd(a.ADCNumber,a.adcNumber,fd(a.A10Id,a.a10Id,a.Id,a.id,'?'))}})}})}
+function load(){el('side').innerHTML='<div class="loader"><span class="spin"></span>Loading device status...</div>';fetch(DEVICE_STATUS_URL+'?siteId='+encodeURIComponent(SITE_ID),{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){if(j&&j.Success===false)throw new Error(j.Message||'API error');modems=normalize(j);render()}).catch(function(e){el('side').innerHTML='<div class="empty">Failed to load devices<br/>'+esc(e.message)+'</div>'})}
+function render(){destroyChart();if(active==='services'){el('side').innerHTML='<div class="side-title">Services</div><div class="empty">Service history APIs are not available yet.</div>';el('main').innerHTML='<div class="main-hint">Service history APIs are not available yet.<br/>This feature is coming soon.</div>';return}if(!modems.length){el('side').innerHTML='<div class="empty">No modem / A10 device found for this station.</div>';el('main').innerHTML='<div class="main-hint">No modem or A10 device found for this station.</div>';return}var vm=devView[active]||'cluster';var h='<div class="side-title side-title-row">'+(active==='network'?'Network / Modem':'IoT / A10')+'<span class="vtoggle"><button class="'+(vm==='cluster'?'active':'')+'" onclick="DSB.view(\'cluster\')">Cluster</button><button class="'+(vm==='asset'?'active':'')+'" onclick="DSB.view(\'asset\')">Asset</button></span></div>';if(vm==='asset'){h+=assetSectionHtml();el('side').innerHTML=h;ensureAssetTypes();return}if(active==='network'){modems.forEach(function(m,i){h+='<div class="card" data-i="'+i+'"><div class="card-top"><div class="name"><span class="ddot '+(m.online?'on':'off')+'"></span>\uD83D\uDCE1 '+esc(m.clusterName)+'</div><div class="tags">'+tg('TCP',m.tcp)+tg('MQTT',m.mqtt)+'</div></div><div class="card-meta"><span>'+esc(m.modemName||m.modemId||'\u2014')+'</span><span>V '+esc(m.version||'?')+'</span>'+(m.signal!==null&&m.signal!==undefined?'<span>'+esc(m.signal)+' dBm</span>':'')+'<span>'+m.a10s.length+' A10</span>'+udChip(m.uptime,m.downtime)+'</div></div>'})}else{modems.forEach(function(m,mi){if(!m.a10s.length)return;h+='<div class="group"><div class="group-h">\uD83D\uDCE1 '+esc(m.clusterName)+' <span style="font-weight:400;color:var(--dim)">'+esc(m.modemName)+'</span></div>';m.a10s.forEach(function(a,ai){h+='<span class="chip" data-mi="'+mi+'" data-ai="'+ai+'"><span class="dot '+(a.online?'ok':'')+'"></span>A10-'+esc(a.a10Id)+' <b style="font-size:9px;color:'+(a.online?'var(--green)':'var(--red)')+'">'+(a.online?'ON':'OFF')+'</b>'+(a.type?' \u00B7 '+esc(a.type):'')+'</span>'});h+='</div>'})}el('side').innerHTML=h;if(active==='network'){document.querySelectorAll('.card').forEach(function(c){c.onclick=function(){document.querySelectorAll('.card').forEach(function(x){x.classList.remove('selected')});c.classList.add('selected');openModemSb(modems[parseInt(c.dataset.i,10)])}})}else{document.querySelectorAll('.chip').forEach(function(c){c.onclick=function(){document.querySelectorAll('.chip').forEach(function(x){x.classList.remove('selected')});c.classList.add('selected');var m=modems[parseInt(c.dataset.mi,10)];openA10Sb(m,m.a10s[parseInt(c.dataset.ai,10)])}})};renderStationCenter()}
+// ---------- CENTER PANEL RENDERING ----------
+function renderStationCenter(){var main=el('main');if(!modems.length){main.innerHTML='<div class="main-hint">No devices loaded yet. Select a station from the left sidebar.</div>';return}
+var totalA10=0,tcpOn=0,mqttOn=0,online=0;modems.forEach(function(m){totalA10+=m.a10s.length;if(m.tcp)tcpOn++;if(m.mqtt)mqttOn++;if(m.online)online++;m.a10s.forEach(function(a){if(a.tcp)tcpOn++;if(a.mqtt)mqttOn++})});
+var h='<div class="center-summary">'
++'<div class="center-stat"><b>'+esc(SITE_NAME)+'</b><small>Station</small></div>'
++'<div class="center-stat"><b>'+modems.length+'</b><small>Modems</small></div>'
++'<div class="center-stat"><b>'+totalA10+'</b><small>A10 Devices</small></div>'
++'<div class="center-stat"><b>'+online+' <span style="font-size:11px;color:var(--dim)">/ '+modems.length+'</span></b><small>Online</small></div>'
++'<div class="center-stat"><b style="color:var(--green)">'+tcpOn+'</b><small>TCP Online</small></div>'
++'<div class="center-stat"><b style="color:var(--green)">'+mqttOn+'</b><small>MQTT Online</small></div></div>';
+h+='<div class="center-hint">Click any modem or A10 to open its detail panel on the right \u2014 this overview stays in place.</div>';
+modems.forEach(function(m,mi){h+='<div class="center-device"><div class="center-device-hdr"><h2>\uD83D\uDCE1 '+esc(m.clusterName)+'</h2><span class="cbadge '+(m.online?'on':'off')+'">'+(m.online?'Online':'Offline')+'</span>'+tg('TCP',m.tcp)+tg('MQTT',m.mqtt)+'</div>'
++'<div class="ckv-grid">'
++'<div class="ckv"><span class="k">Modem ID</span><span class="v">'+esc(m.modemId||'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">Version</span><span class="v">V'+esc(m.version||'?')+'</span></div>'
++(m.signal!=null&&m.signal!==''?'<div class="ckv"><span class="k">Signal</span><span class="v">'+esc(m.signal)+' dBm</span></div>':'')
++'<div class="ckv"><span class="k">SIM</span><span class="v">'+esc(m.sim||'\u2014')+'</span></div>'
++(m.uptime?'<div class="ckv"><span class="k">Uptime</span><span class="v grn">\u2191 '+esc(m.uptime)+'</span></div>':'')
++(m.downtime?'<div class="ckv"><span class="k">Downtime</span><span class="v red">\u2193 '+esc(m.downtime)+'</span></div>':'')
++(m.lastData?'<div class="ckv"><span class="k">Last Data</span><span class="v">'+esc(fmtTs(m.lastData))+'</span></div>':'')
++'</div>';
+if(m.a10s.length){h+='<div class="ca10-title">A10 Devices ('+m.a10s.length+')</div><div class="ca10-grid">';m.a10s.forEach(function(a,ai){h+='<div class="ca10" onclick="DSB.a10('+mi+','+ai+')"><div class="ca10-id">A10-'+esc(a.a10Id)+'</div><div class="ca10-badges">'+tg('TCP',a.tcp)+tg('MQTT',a.mqtt)+'</div>'+(a.type?'<div class="ca10-type">'+esc(a.type)+'</div>':'')+(udChip(a.uptime,a.downtime)?'<div class="ca10-ud">'+udChip(a.uptime,a.downtime)+'</div>':'')+(a.lastData?'<div class="ca10-type" title="Last data received">\u23F1 '+esc(fmtTs(a.lastData))+'</div>':'')+'</div>'});h+='</div>'}
+h+='</div>'});main.innerHTML=h}
+function renderModemCenter(m){var main=el('main');var ver=verNum(m.version);var t=topics(m.mqttBase,m.clusterName||m.modemName);
+var h='<div class="center-device"><div class="center-device-hdr"><h2>\uD83D\uDCE1 '+esc(m.clusterName||m.modemName)+'</h2><span class="cbadge '+(m.online?'on':'off')+'">'+(m.online?'Online':'Offline')+'</span>'+tg('TCP',m.tcp)+tg('MQTT',m.mqtt)+'<span class="cbadge info">Modem V'+ver+'</span></div>'
++'<div class="ckv-grid">'
++'<div class="ckv"><span class="k">Status</span><span class="v '+(m.online?'grn':'red')+'">'+(m.online?'Online':'Offline')+'</span></div>'
++'<div class="ckv"><span class="k">Signal</span><span class="v">'+(m.signal!=null&&m.signal!==''?esc(m.signal)+' dBm':'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">TCP</span><span class="v '+(m.tcp?'grn':'red')+'">'+(m.tcp?'Connected':'Offline')+'</span></div>'
++'<div class="ckv"><span class="k">MQTT</span><span class="v '+(m.mqtt?'grn':'red')+'">'+(m.mqtt?'Connected':'Offline')+'</span></div>'
++'<div class="ckv"><span class="k">Modem ID</span><span class="v">'+esc(m.modemId||'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">SIM</span><span class="v">'+esc(m.sim||'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">MQTT Base</span><span class="v">'+esc(m.mqttBase||'rdpms')+'</span></div>'
++'<div class="ckv"><span class="k">Cmd Topic</span><span class="v" style="font-size:10px">'+esc(t.pub)+'</span></div>'
++'<div class="ckv"><span class="k">Resp Topic</span><span class="v" style="font-size:10px">'+esc(t.sub)+'</span></div>'
++'</div>';
+if(m.a10s.length){var mi=modems.indexOf(m);h+='<div class="ca10-title">Connected A10 Devices ('+m.a10s.length+')</div><div class="ca10-grid">';m.a10s.forEach(function(a,ai){h+='<div class="ca10" onclick="DSB.a10('+mi+','+ai+')"><div class="ca10-id">A10-'+esc(a.a10Id)+'</div><div class="ca10-badges">'+tg('TCP',a.tcp)+tg('MQTT',a.mqtt)+'</div>'+(a.type?'<div class="ca10-type">'+esc(a.type)+'</div>':'')+(udChip(a.uptime,a.downtime)?'<div class="ca10-ud">'+udChip(a.uptime,a.downtime)+'</div>':'')+(a.lastData?'<div class="ca10-type" title="Last data received">\u23F1 '+esc(fmtTs(a.lastData))+'</div>':'')+'</div>'});h+='</div>'}
+h+='</div>';
+h+='<div class="center-chart-section"><div class="center-chart-bar"><span class="center-chart-title">\uD83D\uDCC8 Signal History</span><button class="btn" onclick="DSB.graph()">\uD83D\uDCC8 Open Full Graph</button></div><div class="center-chart-hint">Use the date range above and open the full graph from the sidebar.</div></div>';
+main.innerHTML=h}
+function renderA10Center(m,a){var main=el('main');var ver=verNum(m.version);var t=topics(m.mqttBase,m.clusterName||m.modemName);
+var h='<div class="center-device"><div class="center-device-hdr"><h2>A10-'+esc(a.a10Id)+'</h2><span class="cbadge '+(a.online?'on':'off')+'">'+(a.online?'Online':'Offline')+'</span><span class="cbadge cy">A10 Device</span><span class="cbadge info">Parent V'+ver+'</span></div>'
++'<div class="ckv-grid">'
++'<div class="ckv"><span class="k">Modbus TCP</span><span class="v '+(a.tcp?'grn':'red')+'">'+(a.tcp?'Online':'Offline')+'</span></div>'
++'<div class="ckv"><span class="k">MQTT Periodic</span><span class="v '+(a.mqtt?'grn':'red')+'">'+(a.mqtt?'Connected':'Disconnected')+'</span></div>'
++'<div class="ckv"><span class="k">Type</span><span class="v">'+esc(a.type||'Data Logger')+'</span></div>'
++'<div class="ckv"><span class="k">Firmware</span><span class="v">'+esc(a.fw||'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">Slave Address</span><span class="v">'+esc(a.slave||a.a10Id)+'</span></div>'
++'<div class="ckv"><span class="k">Parent Modem</span><span class="v" style="color:var(--blue)">'+esc(m.clusterName||m.modemName)+'</span></div>'
++'<div class="ckv"><span class="k">Last Data</span><span class="v">'+esc(a.lastData?fmtTs(a.lastData):'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">Uptime</span><span class="v">'+esc(a.uptime||'\u2014')+'</span></div>'
++'<div class="ckv"><span class="k">Subscribe Topic</span><span class="v" style="font-size:10px">'+esc(t.sub)+'</span></div>'
++'<div class="ckv"><span class="k">Publish Topic</span><span class="v" style="font-size:10px">'+esc(t.pub)+'</span></div>'
++'</div></div>';
+h+='<div class="center-chart-section"><div class="center-chart-bar"><span class="center-chart-title">\uD83D\uDCC8 A10 History</span><button class="btn" onclick="DSB.graph()">\uD83D\uDCC8 Open Full Graph</button></div><div class="center-chart-hint">Use the date range above and open the full graph from the sidebar.</div></div>';
+main.innerHTML=h}
+function openGraph(title){el('graphTitle').textContent=title;el('ov').classList.add('open');el('graphModal').classList.add('open');el('graphBody').innerHTML='<div class="graph-box"><div class="bar"><div class="bar-title">'+esc(title)+'</div><label><input type="checkbox" id="tcp" checked> TCP</label><label><input type="checkbox" id="mqtt" checked> MQTT</label><button class="btn" id="reload">Load Graph</button></div><div class="stats" id="stats"></div><div class="loader" id="loader"><span class="spin"></span>Loading history...</div><div class="empty" id="empty" style="display:none;height:120px">No history found for selected date range.</div><div class="chart"><canvas id="chart" style="display:none"></canvas></div><div class="list" id="records"></div></div>';el('reload').onclick=function(){loadGraph();if(selType==='a10')loadA10Records()};el('tcp').onchange=function(){if(lastData)draw(lastData)};el('mqtt').onchange=function(){if(lastData)draw(lastData)}}
+window.closeGraph=function(){destroyChart();el('ov').classList.remove('open');el('graphModal').classList.remove('open');el('graphBody').innerHTML=''};
+function destroyChart(){if(chart){try{chart.destroy()}catch(e){}chart=null}}
+function loadGraph(){if(!sel)return;destroyChart();lastData=null;el('loader').style.display='flex';el('empty').style.display='none';var f=apiDate(el('fromDate').value),t=apiDate(el('toDate').value);var u=selType==='modem'?MODEM_GRAPH_URL+'?clusterId='+encodeURIComponent(sel.clusterId)+'&fromDate='+encodeURIComponent(f)+'&toDate='+encodeURIComponent(t):A10_GRAPH_URL+'?clusterId='+encodeURIComponent(sel.clusterId)+'&a10Id='+encodeURIComponent(sel.a10Id)+'&fromDate='+encodeURIComponent(f)+'&toDate='+encodeURIComponent(t);fetch(u,{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){var data=Array.isArray(j)?j:(j.Data||j.data||[]);lastData=data;draw(data)}).catch(function(e){el('loader').style.display='none';el('empty').style.display='flex';el('empty').innerHTML='Graph load failed<br/>'+esc(e.message)})}
+function draw(data){el('loader').style.display='none';var rows=(data||[]).map(function(x){return{time:parseTs(fd(x.TimeStamp,x.timestamp,x.Timestamp,x.timeStamp,x.CreatedOn,x.time)),type:num(fd(x.TypeId,x.typeId),0),signal:fd(x.SignalStrength,x.signalStrength),uptime:fd(x.Uptime,x.uptime),response:fd(x.ResponseTime,x.responseTime)}}).filter(function(x){return x.time!==null});rows.sort(function(a,b){return a.time-b.time});var showTcp=el('tcp').checked,showMqtt=el('mqtt').checked;rows=rows.filter(function(x){return (x.type===1&&showTcp)||(x.type===2&&showMqtt)||(!x.type)});if(!rows.length){el('empty').style.display='flex';el('chart').style.display='none';el('stats').innerHTML='';return}el('empty').style.display='none';el('chart').style.display='block';var tcp=rows.filter(function(x){return x.type===1}).length,mqtt=rows.filter(function(x){return x.type===2}).length;el('stats').innerHTML='<div class="stat"><b>'+rows.length+'</b><span>Total samples</span></div><div class="stat"><b>'+tcp+'</b><span>TCP samples</span></div><div class="stat"><b>'+mqtt+'</b><span>MQTT samples</span></div><div class="stat"><b>'+esc(new Date(rows[rows.length-1].time).toLocaleString())+'</b><span>Last point</span></div>';var ctx=el('chart');chart=new Chart(ctx,{type:'line',data:{datasets:[{label:'TCP',data:rows.filter(function(x){return x.type===1}).map(function(x){return{x:x.time,y:num(fd(x.signal,x.response,x.uptime),0)}}),borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.1)',borderWidth:2,fill:true,pointRadius:1,pointHoverRadius:5,tension:.25},{label:'MQTT',data:rows.filter(function(x){return x.type===2}).map(function(x){return{x:x.time,y:num(fd(x.signal,x.response,x.uptime),0)}}),borderColor:'#34d399',backgroundColor:'rgba(52,211,153,.1)',borderWidth:2,fill:true,pointRadius:1,pointHoverRadius:5,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,parsing:false,normalized:true,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:'#e7edf7'}},tooltip:{callbacks:{title:function(c){return new Date(c[0].parsed.x).toLocaleString()}}}},scales:{x:{type:'time',time:{displayFormats:{minute:'HH:mm',hour:'HH:mm',day:'dd MMM'}},ticks:{color:'#9fb1d1',maxRotation:45},grid:{color:'rgba(96,116,154,.18)'}},y:{ticks:{color:'#9fb1d1'},grid:{color:'rgba(96,116,154,.18)'}}}}})}
+function loadA10Records(){if(selType!=='a10')return;var f=apiDate(el('fromDate').value),t=apiDate(el('toDate').value);var u=A10_RECORDS_URL+'?clusterId='+encodeURIComponent(sel.clusterId)+'&a10Id='+encodeURIComponent(sel.a10Id)+'&ModemId='+encodeURIComponent(sel.modemId||'')+'&fromDate='+encodeURIComponent(f)+'&toDate='+encodeURIComponent(t);fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(j){var arr=Array.isArray(j)?j:(j.Data||j.data||[]);el('records').innerHTML=arr.slice(0,80).map(function(r){return'<div class="row"><span>'+esc(fd(r.TimeStamp,r.timestamp,''))+'</span><span>'+esc(fd(r.TypeId,r.typeId,''))+'</span><span>'+esc(fd(r.Message,r.message,r.Status,r.status,''))+'</span></div>'}).join('')}).catch(function(){})}
+// =====================================================================
+// DEVICE DETAIL SIDEBAR (N/W db parity) + cluster/asset grouping
+// =====================================================================
+var devView={network:'cluster',iot:'cluster'};
+var cur=null,pendingPin=null,cmdPending=false;
+var dMq=null,dMqOn=false,dMqPend={},dLiveSub=null;
+var assetCache={loading:false,types:null,selType:'',trees:{}};
+var GAP_MIN=5,MQ_TIMEOUT=10000;
+function verNum(v){var n=parseInt(String(v==null?'':v).replace(/\D/g,''),10);return isNaN(n)||n===0?2:n}
+function topics(base,cluster){var b=String(base||'rdpms').replace(/\/+$/,'');var c=String(cluster||'').replace(/\s+/g,'');return{pub:b+'/'+c+'/S',sub:b+'/'+c+'/P'}}
+function fmtTs(v){var ms=parseTs(v);if(ms===null)return String(v||'-');var d=new Date(ms);return d.toLocaleDateString('en-GB')+' '+d.toLocaleTimeString('en-GB')}
+function pretty(d){try{return JSON.stringify(JSON.parse(d),null,2)}catch(e){return d}}
+function dsbOpen(hdr,tabs,body){el('dsbHdr').innerHTML=hdr+'<button class="dsb-x" onclick="DSB.close()">&#215;</button>';el('dsbTabs').innerHTML=tabs;el('dsbBody').innerHTML=body;el('dsbov').classList.add('open');el('dsb').classList.add('open');document.body.classList.add('dsb-open');var f=el('dHistFrom'),t=el('dHistTo');if(f)f.value=el('fromDate').value;if(t)t.value=el('toDate').value}
+function dsbClose(){el('dsb').classList.remove('open');el('dsbov').classList.remove('open');document.body.classList.remove('dsb-open');if(dLiveSub&&dMq){try{dMq.unsubscribe(dLiveSub)}catch(e){}dLiveSub=null}cur=null}
+function tabBtn(k,l,a){return '<div class="dsb-tab'+(a?' active':'')+'" data-t="'+k+'" onclick="DSB.tab(this,\''+k+'\')">'+l+'</div>'}
+function dsbTab(elx,t){document.querySelectorAll('#dsbTabs .dsb-tab').forEach(function(x){x.classList.remove('active')});elx.classList.add('active');document.querySelectorAll('#dsbBody .dpane').forEach(function(p){p.classList.toggle('active',p.dataset.p===t)});if(t==='history'&&cur&&!cur.histLoaded){cur.histLoaded=true;loadHist()}}
+function pane(k,a,inner){return '<div class="dpane'+(a?' active':'')+'" data-p="'+k+'">'+inner+'</div>'}
+// ---------- MODEM SIDEBAR ----------
+function openModemSb(m){var ver=verNum(m.version);cur={kind:'modem',modem:m,a10:null,ver:ver,histLoaded:false};
+var t=topics(m.mqttBase,m.clusterName||m.modemName);
+var hdr='<h3><span class="ddot '+(m.online?'on':'off')+'"></span>\uD83D\uDCE1 '+esc(m.clusterName||m.modemName)+' <span class="dbadge v'+ver+'">MODEM V'+ver+'</span></h3>';
+var tabs=tabBtn('status','Status',1)+tabBtn('a10s','A10 List',0)+tabBtn('history','History',0)+tabBtn('command','Command',0);
+var st='<div class="sgrid">'
++'<div class="sstat"><div class="l">Status</div><div class="v" style="color:'+(m.online?'var(--green)':'var(--red)')+'">'+(m.online?'Online':'Offline')+'</div></div>'
++'<div class="sstat"><div class="l">Signal</div><div class="v">'+(m.signal!=null&&m.signal!==''?esc(m.signal)+' dBm':'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">TCP</div><div class="v" style="color:'+(m.tcp?'var(--green)':'var(--red)')+'">'+(m.tcp?'Connected':'Offline')+'</div></div>'
++'<div class="sstat"><div class="l">MQTT</div><div class="v" style="color:'+(m.mqtt?'var(--green)':'var(--red)')+'">'+(m.mqtt?'Connected':'Offline')+'</div></div>'
++'<div class="sstat"><div class="l">Modem ID</div><div class="v" style="font-size:10px">'+esc(m.modemId||'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">SIM</div><div class="v" style="font-size:10px">'+esc(m.sim||'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">Uptime</div><div class="v" style="font-size:9px;color:var(--green)">'+(m.uptime?'\u2191 '+esc(m.uptime):'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">Downtime</div><div class="v" style="font-size:9px;color:'+(m.downtime?'var(--red)':'var(--dim)')+'">'+(m.downtime?'\u2193 '+esc(m.downtime):'\u2014')+'</div></div>'
++(m.lastData?'<div class="sstat" style="grid-column:1/-1"><div class="l">Last Data Received</div><div class="v" style="font-size:10px">'+esc(fmtTs(m.lastData))+'</div></div>':'')
++'</div><div class="dsec">MQTT</div>'
++'<div class="dkv"><span>Base</span><b>'+esc(m.mqttBase||'rdpms')+'</b></div>'
++'<div class="dkv"><span>Cmd Topic</span><b>'+esc(t.pub)+'</b></div>'
++'<div class="dkv"><span>Resp Topic</span><b>'+esc(t.sub)+'</b></div>'
++'<button class="gbtn" style="width:100%;margin-top:10px" onclick="DSB.graph()">\uD83D\uDCC8 View Signal Graph</button>';
+var a10s='<div class="dsec">Connected A10 Devices ('+m.a10s.length+')</div>';
+if(m.a10s.length){m.a10s.forEach(function(a,ai){a10s+='<div class="dh-card" style="cursor:pointer" onclick="DSB.a10('+modems.indexOf(m)+','+ai+')"><span class="ddot '+(a.online?'on':'off')+'"></span><b style="color:var(--cyan)">A10-'+esc(a.a10Id)+'</b><span class="dtag '+(a.tcp?'tcp':'off')+'">TCP '+(a.tcp?'ON':'OFF')+'</span><span class="dtag '+(a.mqtt?'mqtt':'off')+'">MQTT '+(a.mqtt?'ON':'OFF')+'</span>'+(a.type?'<span style="font-size:9px;color:var(--dim)">'+esc(a.type)+'</span>':'')+(udChip(a.uptime,a.downtime)?'<span style="margin-left:auto">'+udChip(a.uptime,a.downtime)+'</span>':'')+'</div>'})}else a10s+='<div class="dempty">No A10 devices</div>';
+dsbOpen(hdr,tabs,pane('status',1,st)+pane('a10s',0,a10s)+pane('history',0,histPaneHtml())+pane('command',0,modemCmdHtml(m,ver)))}
+// ---------- A10 SIDEBAR ----------
+function openA10Sb(m,a){var ver=verNum(m.version);cur={kind:'a10',modem:m,a10:a,ver:ver,histLoaded:false};
+var t=topics(m.mqttBase,m.clusterName||m.modemName);a._sub=t.sub;a._pub=t.pub;
+var hdr='<h3><span class="ddot '+(a.online?'on':'off')+'"></span>A10-'+esc(a.a10Id)+' <span class="dbadge a10">A10 DEVICE</span> <span class="dbadge v'+ver+'">Parent: V'+ver+'</span> '+(ver===1?'<span class="dbadge no">No Commands</span>':'<span class="dbadge mq">MQTT</span>')+'</h3>';
+var tabs=tabBtn('status','Status',1)+tabBtn('history','History',0)+(ver===1?'':tabBtn('command','Command',0));
+var st='<div class="sgrid">'
++'<div class="sstat"><div class="l">Modbus TCP</div><div class="v" style="color:'+(a.tcp?'var(--green)':'var(--red)')+'"><span class="ddot '+(a.tcp?'on':'off')+'"></span>'+(a.tcp?'Online':'Offline')+'</div></div>'
++'<div class="sstat"><div class="l">MQTT Periodic</div><div class="v" style="color:'+(a.mqtt?'var(--green)':'var(--red)')+'"><span class="ddot '+(a.mqtt?'on':'off')+'"></span>'+(a.mqtt?'Connected':'Disconnected')+'</div></div>'
++'<div class="sstat"><div class="l">Type</div><div class="v" style="font-size:10px">'+esc(a.type||'Data Logger')+'</div></div>'
++'<div class="sstat"><div class="l">Firmware</div><div class="v" style="font-size:10px">'+esc(a.fw||'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">Slave Address</div><div class="v">'+esc(a.slave||a.a10Id)+'</div></div>'
++'<div class="sstat"><div class="l">Parent Modem</div><div class="v" style="font-size:10px;color:var(--blue)">'+esc(m.clusterName||m.modemName)+'</div></div>'
++'<div class="sstat"><div class="l">Last Data</div><div class="v" style="font-size:9px">'+esc(a.lastData?fmtTs(a.lastData):'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">Uptime</div><div class="v" style="font-size:9px;color:var(--green)">'+(a.uptime?'\u2191 '+esc(a.uptime):'\u2014')+'</div></div>'
++'<div class="sstat"><div class="l">Downtime</div><div class="v" style="font-size:9px;color:'+(a.downtime?'var(--red)':'var(--dim)')+'">'+(a.downtime?'\u2193 '+esc(a.downtime):'\u2014')+'</div></div>'
++'</div><div class="dsec">MQTT Paths</div><div class="dmq">'
++'<div class="dmq-c" id="dSubCard" onclick="DSB.sub()"><div class="l">Subscribe (Response) <span id="dSubState"></span></div><div class="t">'+esc(t.sub)+'</div></div>'
++'<div class="dmq-c" onclick="DSB.pub()"><div class="l">Publish (Command) &#10148;</div><div class="t">'+esc(t.pub)+'</div></div></div>'
++'<div class="dcon" id="dStCon" style="display:none"><div class="dcon-h"><span>&#9679; Console</span><button class="dsb-x" style="width:auto;height:auto;padding:1px 8px;font-size:9px" onclick="DSB.clear(\'dStConB\')">Clear</button></div><div class="dcon-b" id="dStConB"></div></div>';
+dsbOpen(hdr,tabs,pane('status',1,st)+pane('history',0,histPaneHtml())+(ver===1?'':pane('command',0,a10CmdHtml(a))))}
+// ---------- HISTORY (gap detection + protocol filter) ----------
+function histPaneHtml(){return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="dsec" style="margin:0">Status History</span><button class="gbtn" onclick="DSB.graph()">\uD83D\uDCC8 View Graph</button></div>'
++'<div class="dfrow"><label>From<input type="date" id="dHistFrom"></label><label>To<input type="date" id="dHistTo"></label><label>Protocol<select id="dHistProto" onchange="DSB.filt()"><option value="all">All</option><option value="tcp">TCP</option><option value="mqtt">MQTT</option></select></label><button class="gbtn" onclick="DSB.hist()">&#8635;</button></div>'
++'<div style="font-size:10px;color:var(--dim);margin-bottom:6px">Showing <b id="dHVis" style="color:var(--txt)">0</b> of <b id="dHTot" style="color:var(--txt)">0</b> records</div>'
++'<div class="dhist" id="dHistList"><div class="dempty">Click &#8635; to load history</div></div>'}
+function loadHist(){if(!cur)return;var L=el('dHistList');var f=el('dHistFrom').value||iso(new Date()),t=el('dHistTo').value||iso(new Date());el('dHistProto').value='all';
+L.innerHTML='<div class="dempty">Loading...</div>';
+var u=cur.kind==='modem'?MODEM_GRAPH_URL+'?clusterId='+encodeURIComponent(cur.modem.clusterId)+'&fromDate='+encodeURIComponent(apiDate(f))+'&toDate='+encodeURIComponent(apiDate(t))
+:A10_RECORDS_URL+'?clusterId='+encodeURIComponent(cur.a10.clusterId)+'&a10Id='+encodeURIComponent(cur.a10.a10Id)+'&ModemId='+encodeURIComponent(cur.a10.modemId||'')+'&fromDate='+encodeURIComponent(apiDate(f))+'&toDate='+encodeURIComponent(apiDate(t));
+fetch(u,{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){if(j&&j.Success===false){L.innerHTML='<div class="dempty" style="color:var(--red)">'+esc(j.Message||'No records')+'</div>';cnt(0,0);return}
+var raw=Array.isArray(j)?j:(j.Data||j.data||[]);renderHist(gaps(raw,f,t))}).catch(function(){L.innerHTML='<div class="dempty" style="color:var(--red)">Failed to load history</div>';cnt(0,0)})}
+function gaps(raw,f,t){if(!raw||!raw.length)return[];var rows=raw.map(function(r){return{ts:parseTs(fd(r.TimeStamp,r.timeStamp)),ty:num(fd(r.TypeId,r.typeId),0),src:r}}).filter(function(r){return r.ts!==null});if(!rows.length)return[];
+rows.sort(function(a,b){return a.ts-b.ts});var g=GAP_MIN*60000,out=[],s=new Date(f+'T00:00:00').getTime(),e=Math.min(new Date(t+'T23:59:59').getTime(),Date.now());
+if(rows[0].ts-s>g)out.push({ts:s,ty:rows[0].ty,on:false});
+for(var i=0;i<rows.length;i++){if(i>0&&rows[i].ts-rows[i-1].ts>g)out.push({ts:rows[i-1].ts+60000,ty:rows[i-1].ty||rows[i].ty,on:false});out.push({ts:rows[i].ts,ty:rows[i].ty,on:true,src:rows[i].src})}
+if(e-rows[rows.length-1].ts>g)out.push({ts:rows[rows.length-1].ts+60000,ty:rows[rows.length-1].ty,on:false});return out}
+function renderHist(d){var L=el('dHistList');if(!d.length){L.innerHTML='<div class="dempty">No history for selected range</div>';cnt(0,0);return}
+d.sort(function(a,b){return b.ts-a.ts});
+L.innerHTML=d.map(function(it){var tcp=it.ty===1,mq=it.ty===2;var ex='';if(it.on&&it.src){var v=tcp?fd(it.src.ResponseTime,it.src.responseTime,it.src.SignalStrength,it.src.signalStrength):fd(it.src.Uptime,it.src.uptime,it.src.SignalStrength,it.src.signalStrength);if(v!=null&&v!=='')ex='<span style="font-size:9px;color:var(--dim)">'+esc(v)+'</span>'}
+return '<div class="dh-card'+(it.on?'':' off')+'" data-p="'+(tcp?'tcp':mq?'mqtt':'offline')+'"><span class="ddot '+(it.on?'on':'off')+'"></span><span class="dtag '+(tcp?'tcp':mq?'mqtt':'')+'">'+(tcp?'TCP':mq?'MQTT':'\u2014')+'</span><span style="color:'+(it.on?'var(--green)':'var(--red)')+';font-weight:600">'+(it.on?'Online':'Offline')+'</span>'+ex+'<span class="dh-time">'+fmtTs(it.ts)+'</span></div>'}).join('');
+cnt(d.length,d.length)}
+function cnt(v,t){el('dHVis').textContent=v;el('dHTot').textContent=t}
+function filtHist(){var f=el('dHistProto').value;var cs=document.querySelectorAll('#dHistList .dh-card'),vis=0;cs.forEach(function(c){var ok=f==='all'||c.dataset.p===f;c.style.display=ok?'':'none';if(ok)vis++});cnt(vis,cs.length)}
+function openSelGraph(){if(!cur)return;sel=cur.kind==='modem'?cur.modem:cur.a10;selType=cur.kind;el('fromDate').value=el('dHistFrom')?el('dHistFrom').value:el('fromDate').value;el('toDate').value=el('dHistTo')?el('dHistTo').value:el('toDate').value;
+openGraph(cur.kind==='modem'?('Modem \u2014 '+cur.modem.clusterName):('A10-'+cur.a10.a10Id+' \u2014 '+cur.modem.clusterName));loadGraph();if(cur.kind==='a10')loadA10Records()}
+// ---------- MQTT TRANSPORT ----------
+function mqHost(){return fd(MQTT_CFG&&MQTT_CFG.MQTTUri,MQTT_CFG&&MQTT_CFG.Uri,MQTT_CFG&&MQTT_CFG.Host,null)}
+function mqPort(){return num(fd(MQTT_CFG&&MQTT_CFG.MQTTPort,MQTT_CFG&&MQTT_CFG.Port,null),0)}
+function mqInit(cb){if(dMqOn&&dMq){cb(true);return}
+var C=(typeof Paho!=='undefined')?((Paho.MQTT&&Paho.MQTT.Client)||Paho.Client):null;
+if(!C){cb(false,'Paho MQTT not loaded');return}
+var h=mqHost(),p=mqPort();if(!h||!p){cb(false,'MQTT detail missing (ViewBag.MQTTDetail)');return}
+try{dMq=new C(h,p,'web_cmd_'+Math.ceil(Math.random()*100000));
+dMq.onConnectionLost=function(){dMqOn=false;for(var k in dMqPend){var x=dMqPend[k];if(x.tid)clearTimeout(x.tid);if(x.cb)x.cb(false,'Connection lost',0)}dMqPend={}};
+dMq.onMessageArrived=function(msg){var tp=msg.destinationName,pl=msg.payloadString;
+if(dLiveSub&&tp===dLiveSub)dlog('dStConB','resp',pl);
+var x=dMqPend[tp];if(x){if(x.tid)clearTimeout(x.tid);delete dMqPend[tp];if(tp!==dLiveSub){try{dMq.unsubscribe(tp)}catch(e){}}if(x.cb)x.cb(true,pl,Date.now()-x.at)}};
+var o={timeout:10,useSSL:location.protocol==='https:',cleanSession:true,onSuccess:function(){dMqOn=true;cb(true)},onFailure:function(e){cb(false,e&&e.errorMessage)}};
+var u=fd(MQTT_CFG&&MQTT_CFG.MQTTUsername,MQTT_CFG&&MQTT_CFG.Username,null),pw=fd(MQTT_CFG&&MQTT_CFG.MQTTPassword,MQTT_CFG&&MQTT_CFG.Password,null);
+if(u)o.userName=u;if(pw)o.password=pw;dMq.connect(o)}catch(e){cb(false,e.message)}}
+function mqCmd(base,cluster,json,cb){var t=topics(base,cluster);var pend={at:Date.now(),cb:cb,tid:null};
+function go(){dMqPend[t.sub]=pend;dMq.subscribe(t.sub,{qos:0,onSuccess:function(){try{dMq.send(t.pub,json,0,false);pend.tid=setTimeout(function(){if(t.sub!==dLiveSub){try{dMq.unsubscribe(t.sub)}catch(e){}}delete dMqPend[t.sub];if(cb)cb(false,'Timeout - No response',Date.now()-pend.at)},MQ_TIMEOUT)}catch(pe){delete dMqPend[t.sub];if(cb)cb(false,'Publish failed: '+pe.message,0)}},onFailure:function(er){delete dMqPend[t.sub];if(cb)cb(false,'Subscribe failed',0)}})}
+if(!dMqOn||!dMq){mqInit(function(ok,err){if(ok)go();else if(cb)cb(false,'MQTT connect failed: '+(err||'?'),0)});return}go()}
+function dlog(id,type,txt,lat){var b=el(id);if(!b)return;var c=type==='cmd'?'cmd':type==='resp'?'resp':type==='err'?'err':'info';
+var d=document.createElement('div');d.className='dcl '+c;d.innerHTML='<span class="dcl-ts">'+new Date().toLocaleTimeString('en-GB')+'</span><pre>'+esc(txt)+'</pre>'+(lat!=null?'<span class="dcl-ts">('+lat+'ms)</span>':'');b.appendChild(d);b.scrollTop=b.scrollHeight}
+// ---------- MODEM COMMANDS ----------
+function modemCmdHtml(m,ver){var h='';
+if(ver===1){h+='<div class="dsec"><span class="dtag tcp">TCP</span> Modem Commands (V1)</div><button class="dbtn" onclick="DSB.mcmd(\'tcp\',\'ZL+CSQ?\')">&#128246; Signal Strength<small>ZL+CSQ?</small></button><div class="dempty" style="font-size:10px">V1 Modem supports TCP only with Signal Strength command.</div>'}
+else{h+='<div class="dkv"><span>Protocol</span><b><select id="dMProto" style="background:var(--panel2);color:var(--txt);border:1px solid var(--bdr2);border-radius:6px;padding:3px 6px" onchange="DSB.mproto()"><option value="mqtt">MQTT</option><option value="tcp">TCP</option></select></b></div>'
++'<div id="dMMq"><div class="dsec"><span class="dtag mqtt">MQTT</span> Modem Commands (V2)</div><div class="dgrid2">'
++'<button class="dbtn" onclick="DSB.mcmd(\'mqtt\',\'ZL+CSQ?\')">&#128246; Signal<small>ZL+CSQ?</small></button>'
++(IS_ADMIN?'<button class="dbtn" onclick="DSB.mcmd(\'mqtt\',\'ZL+RESTART=1\')">&#8635; Restart<small>ZL+RESTART=1</small></button>'
++'<button class="dbtn" onclick="DSB.mcmd(\'mqtt\',\'ZLAN+SYSRESTORE=1\')">&#128190; Sync Store<small>ZLAN+SYSRESTORE=1</small></button>'
++'<button class="dbtn" onclick="DSB.mcmd(\'mqtt\',\'ZL+ClearOfflStorData=1\')">&#128465; Clear Data<small>ZL+ClearOfflStorData=1</small></button>':'')+'<button class="dbtn" onclick="DSB.mcmd(\'mqtt\',\'ZL+VER?\')">&#8505; Version<small>ZL+VER?</small></button>'+'<button class="dbtn" onclick="DSB.mcmd(\'mqtt\',\'ZL+IMEI?\')">&#128290; IMEI<small>ZL+IMEI?</small></button></div></div>'
++'<div id="dMTcp" style="display:none"><div class="dsec"><span class="dtag tcp">TCP</span> Modem Commands (V2)</div><button class="dbtn" onclick="DSB.mcmd(\'tcp\',\'ZL+CSQ?\')">&#128246; Signal Strength<small>ZL+CSQ?</small></button></div>'}
+h+='<div class="dsec">Console <span id="dMInfo" style="color:var(--dim);font-weight:400;text-transform:none">Ready</span></div>'
++'<div class="dcon"><div class="dcon-h"><span>&#9679; Terminal</span><button class="dsb-x" style="width:auto;height:auto;padding:1px 8px;font-size:9px" onclick="DSB.clear(\'dMConB\')">Clear</button></div><div class="dcon-b" id="dMConB"><div class="dcl info"><pre>// Modem ready</pre></div></div>'
++'<div class="dcon-in"><span style="color:var(--cyan);font-family:var(--mono)">&gt;</span><input id="dMIn" placeholder="Enter command..." onkeypress="if(event.key===\'Enter\')DSB.msend()"><button class="gbtn" onclick="DSB.msend()">Send</button></div></div>';return h}
+function mproto(){var s=el('dMProto');el('dMMq').style.display=s.value==='mqtt'?'block':'none';el('dMTcp').style.display=s.value==='tcp'?'block':'none'}
+function clusterNoOf(n){if(!n)return 0;var m=String(n).replace(/\s/g,'').match(/cluster_?(\d+)/i);return(m&&m[1])?parseInt(m[1],10):0}
+function proxyHost(){var h=window.location.hostname;if(h==='localhost'||h==='127.0.0.1'||h.indexOf('.local',h.length-6)!==-1)return 'proxy.energy7.org';if(h==='energy7.in'||h.indexOf('.energy7.in',h.length-11)!==-1)return 'proxy.energy7.org';return '172.31.25.106'}
+function tcpPortOf(sid,cn,off){sid=parseInt(sid,10)||0;if(sid<=0||!cn||cn<=0)return 0;var c=String(cn+off);if(c.length<2)c='0'+c;return parseInt(String(sid)+c,10)}
+function tcpInfoOf(m){var cn=clusterNoOf(m.clusterName||m.modemName),h=proxyHost(),rp=tcpPortOf(SITE_ID,cn,0),sp=tcpPortOf(SITE_ID,cn,30),b=String(m.mqttBase||'rdpms').replace(/\/+$/,''),cl=String(m.clusterName||m.modemName||'').replace(/\s+/g,'');return{modemId:m.modemId,modemName:m.modemName||m.clusterName,version:String(verNum(m.version)),clusterId:m.clusterId,clusterName:m.clusterName,clusterNo:cn,stationName:SITE_NAME||'',divisionName:'',zoneName:'',mqttBase:m.mqttBase,tcpSendPort:sp?h+':'+sp:'-',tcpRecvPort:rp?h+':'+rp:'-',subscribeTopic:b+'/'+cl+'/S',publishTopic:b+'/'+cl+'/P',tcpStatus:!!m.tcp,mqttStatus:!!m.mqtt,simNumber:m.sim||'-',signal:(m.signal!==undefined?m.signal:null)}}
+function sigInfo(r){if(r===99)return{d:'Unknown',v:'Not detectable'};if(r===0)return{d:'No signal',v:'-113 dBm or less'};if(r===1)return{d:'Very weak',v:'-111 dBm'};if(r<=9)return{d:'Weak',v:'-109 to -95 dBm'};if(r<=14)return{d:'Fair',v:'-93 to -85 dBm'};if(r<=19)return{d:'Good',v:'-83 to -75 dBm'};return{d:'Excellent',v:'-73 dBm or greater'}}
+function mcmd(proto,c){if(!cur||cur.kind!=='modem')return;if(cmdPending){dlog('dMConB','err','Command in progress...');return}
+var m=cur.modem;dlog('dMConB','cmd','['+proto.toUpperCase()+'] > '+c);cmdPending=true;el('dMInfo').textContent='Sending...';
+function done(ok,data,lat){cmdPending=false;if(ok&&data){dlog('dMConB','resp',pretty(data),lat);try{var j=JSON.parse(data);if(j.CSQ){var si=sigInfo(parseInt(String(j.CSQ).split(',')[0],10));dlog('dMConB','info','// Signal: '+si.d+' ('+si.v+')')}}catch(e){}el('dMInfo').textContent='OK ('+lat+'ms)'}else{dlog('dMConB','err',data||'No response (timeout)');el('dMInfo').textContent='Timeout'}}
+if(proto==='mqtt')mqCmd(m.mqttBase,m.clusterName||m.modemName,c,done);
+else{var at=Date.now();fetch(MODEM_TCP_CMD_URL,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({modemId:m.modemId,command:c,tcpInfo:tcpInfoOf(m)})}).then(function(r){return r.json()}).then(function(res){var lat=Date.now()-at;if(res&&(res.success||res.Success)&&(res.data||res.Data))done(true,res.data||res.Data,lat);else done(false,(res&&(res.error||res.Error))||'No response (timeout)',lat)}).catch(function(e){done(false,'TCP Failed: '+e.message,0)})}}
+function msend(){var i=el('dMIn');if(!i||!i.value.trim())return;var p=el('dMProto')?el('dMProto').value:(cur.ver===1?'tcp':'mqtt');mcmd(p,i.value.trim());i.value=''}
+// ---------- A10 COMMANDS ----------
+var NOPIN=['time_get','fw_get','update','channel_get_all'],PIN=['event_get','event_clear','channel_get'];
+function a10CmdHtml(a){function b(c,i,l){return '<button class="dbtn" onclick="DSB.acmd(\''+c+'\')">'+i+' '+l+'<small>'+c+'</small></button>'}
+return '<div class="dsec"><span class="dtag mqtt">MQTT</span> A10 Commands</div>'
++'<div class="dsec" style="margin-top:6px">Time Commands</div><div class="dgrid3">'+b('time_get','&#128338;','Get Time')+b('time_set','&#128197;','Set Time')+b('fw_get','&#128187;','Firmware')+'</div>'
++'<div class="dsec">Event Commands</div><div class="dgrid2">'+b('event_get','&#128203;','Get Event')+b('event_clear','&#129529;','Clear Event')+'</div>'
++'<div class="dsec">Channel Commands</div><div class="dgrid3">'+b('channel_get','&#127899;','Get Ch')+b('channel_get_all','&#128230;','Get All')+b('channel_set','&#9881;','Set Ch')+'</div>'
++'<div class="dsec">Update Command</div><div class="dgrid2">'+b('update','&#8635;','Get Update')+'</div>'
++'<div class="dim-box" id="dPinBox" style="display:none"><div style="font-size:11px;font-weight:700;margin-bottom:7px">Enter PIN Number (1-10)</div><select id="dPinSel">'+(function(){var o='';for(var i=1;i<=10;i++)o+='<option value="'+i+'">'+i+'</option>';return o})()+'</select><div style="display:flex;gap:7px;margin-top:8px"><button class="gbtn" onclick="DSB.pinOk()">Send</button><button class="gbtn" style="opacity:.7" onclick="DSB.pinNo()">Cancel</button></div></div>'
++'<div class="dim-box" id="dTimeBox" style="display:none"><div style="font-size:11px;font-weight:700;margin-bottom:7px">&#128197; Set Device Time</div><label>Date<input type="date" id="dTd" onchange="DSB.ep()"></label><label>Time<input type="time" id="dTt" onchange="DSB.ep()"></label><div style="font-size:10px;color:var(--dim)" id="dEp">Epoch: --</div><div style="display:flex;gap:7px;margin-top:8px"><button class="gbtn" onclick="DSB.timeOk()">Send</button><button class="gbtn" style="opacity:.7" onclick="DSB.timeNo()">Cancel</button></div></div>'
++'<div class="dsec">Console <span id="dAInfo" style="color:var(--dim);font-weight:400;text-transform:none">Ready</span></div>'
++'<div class="dcon"><div class="dcon-h"><span>&#9679; A10 Terminal <span class="dtag mqtt">MQTT</span></span><button class="dsb-x" style="width:auto;height:auto;padding:1px 8px;font-size:9px" onclick="DSB.clear(\'dAConB\')">Clear</button></div><div class="dcon-b" id="dAConB"><div class="dcl info"><pre>// A10-'+esc(a.a10Id)+' ready (MQTT)</pre></div></div>'
++'<div class="dcon-in"><span style="color:var(--cyan);font-family:var(--mono)">&gt;</span><input id="dAIn" placeholder="Enter JSON command..." onkeypress="if(event.key===\'Enter\')DSB.asend()"><button class="gbtn" onclick="DSB.asend()">Send</button></div></div>'}
+function acmd(t){if(!cur||cur.kind!=='a10')return;if(cur.ver===1){dlog('dAConB','err','A10 commands not available for V1 Modem');return}
+if(t==='channel_set'){chSet();return}
+if(t==='time_set'){var n=new Date();el('dTd').value=iso(n);el('dTt').value=('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2);epPrev();el('dTimeBox').style.display='block';return}
+if(PIN.indexOf(t)!==-1){pendingPin=t;el('dPinBox').style.display='block';return}
+execA10(t,1)}
+function execA10(t,v){var c={id:parseInt(cur.a10.a10Id,10)||1};c[t]=v;sendA10(JSON.stringify(c))}
+function pinOk(){var p=parseInt(el('dPinSel').value,10)||1;el('dPinBox').style.display='none';if(pendingPin){execA10(pendingPin,p);pendingPin=null}}
+function pinNo(){pendingPin=null;el('dPinBox').style.display='none'}
+function epPrev(){var d=el('dTd').value,t=el('dTt').value;el('dEp').textContent=(d&&t)?('Epoch: '+Math.floor(new Date(d+'T'+t).getTime()/1000)):'Epoch: --'}
+function timeOk(){var d=el('dTd').value,t=el('dTt').value;if(!d||!t){dlog('dAConB','err','Please select date and time');return}
+var dt=new Date(d+'T'+t),ep=Math.floor(dt.getTime()/1000);el('dTimeBox').style.display='none';
+dlog('dAConB','info','Setting time to: '+dt.toLocaleString()+' (Epoch: '+ep+')');sendA10(JSON.stringify({id:parseInt(cur.a10.a10Id,10)||1,time_set:ep}))}
+function timeNo(){el('dTimeBox').style.display='none'}
+function chSet(){var ch=prompt('Enter channel number (1-10):');if(!ch)return;var mo=prompt('Enter mode (0-7):');if(mo===null)return;
+var th=prompt('Enter threshold (default 60):'),mu=prompt('Enter multiplier (default 328):'),dv=prompt('Enter divisor (default 100):'),of=prompt('Enter offset (default 0):');
+sendA10(JSON.stringify({id:parseInt(cur.a10.a10Id,10)||1,channel_set:parseInt(ch,10),mode:parseInt(mo,10)||0,threshold:parseInt(th,10)||60,mul:parseInt(mu,10)||328,div:parseInt(dv,10)||100,offset:parseInt(of,10)||0}))}
+function sendA10(json){if(!cur||cur.kind!=='a10')return;if(cmdPending){dlog('dAConB','err','Command in progress...');return}
+dlog('dAConB','cmd','[MQTT] > '+json);cmdPending=true;el('dAInfo').textContent='Sending...';
+mqCmd(cur.modem.mqttBase,cur.modem.clusterName||cur.modem.modemName,json,function(ok,data,lat){cmdPending=false;
+if(ok&&data){dlog('dAConB','resp',pretty(data),lat);el('dAInfo').textContent='OK ('+lat+'ms)'}else{dlog('dAConB','err',data||'No response (timeout)');el('dAInfo').textContent='Timeout'}})}
+function asend(){var i=el('dAIn');if(i&&i.value.trim()){sendA10(i.value.trim());i.value=''}}
+function subToggle(){if(!cur||cur.kind!=='a10')return;var tp=cur.a10._sub;el('dStCon').style.display='block';
+if(dLiveSub===tp){try{if(dMq)dMq.unsubscribe(tp)}catch(e){}dLiveSub=null;el('dSubState').textContent='';el('dSubCard').classList.remove('live');dlog('dStConB','info','// Unsubscribed '+tp);return}
+mqInit(function(ok,err){if(!ok){dlog('dStConB','err','MQTT connect failed: '+(err||'?'));return}
+try{dMq.subscribe(tp,{qos:0});dLiveSub=tp;el('dSubState').textContent='\u25CF LIVE';el('dSubState').style.color='var(--green)';el('dSubCard').classList.add('live');dlog('dStConB','info','// Subscribed '+tp)}catch(e){dlog('dStConB','err','Subscribe failed: '+e.message)}})}
+function pubClick(){if(!cur||cur.kind!=='a10')return;var def='{"id":'+(parseInt(cur.a10.a10Id,10)||1)+',"time_get":1}';
+var c=prompt('Publish JSON command to '+cur.a10._pub+':',def);if(!c)return;el('dStCon').style.display='block';dlog('dStConB','cmd','[MQTT] > '+c);
+mqCmd(cur.modem.mqttBase,cur.modem.clusterName||cur.modem.modemName,c,function(ok,data,lat){dlog('dStConB',ok?'resp':'err',ok?pretty(data):(data||'No response'),lat)})}
+// ---------- ASSET VIEW (Asset -> Attribute -> ADC) ----------
+function ensureAssetTypes(){if(assetCache.types||assetCache.loading)return;assetCache.loading=true;
+fetch(NW_ASSET_TYPES_URL+'?siteId='+encodeURIComponent(SITE_ID),{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){assetCache.loading=false;assetCache.types=Array.isArray(j)?j:[];render()}).catch(function(){assetCache.loading=false;assetCache.types=[];render()})}
+function assetSectionHtml(){var c=assetCache;
+var h='<div class="dfrow" style="margin-top:4px"><label style="flex:1">Asset Type<select style="width:100%" onchange="DSB.atype(this.value)"><option value="">-- Select Asset Type --</option>'
++(c.types||[]).map(function(it){var id=fd(it.Id,it.id,''),nm=fd(it.Name,it.name,'');return '<option value="'+esc(id)+'"'+(String(c.selType)===String(id)?' selected':'')+'>'+esc(nm)+'</option>'}).join('')+'</select></label></div>';
+if(c.loading)return h+'<div class="dempty">Loading asset types...</div>';
+if(!c.types)return h+'<div class="dempty">Asset types not loaded</div>';
+if(!c.selType)return h+'<div class="dempty">Select an asset type to view assets, attributes &amp; ADCs</div>';
+var tr=c.trees[c.selType];if(tr==='loading')return h+'<div class="dempty">Loading assets...</div>';
+if(!tr||!tr.length)return h+'<div class="dempty">No assets found for this type</div>';
+var gr={};tr.forEach(function(it){var an=fd(it.AssetName,it.assetName,'Unknown');if(!gr[an])gr[an]={tn:fd(it.AssetTypeName,it.assetTypeName,''),at:{}};var a=fd(it.AttributeName,it.attributeName,'Unknown');(gr[an].at[a]=gr[an].at[a]||[]).push(it)});
+Object.keys(gr).sort().forEach(function(an){var g=gr[an],aid='ag_'+an.replace(/[^a-zA-Z0-9]/g,'_');
+h+='<div class="ag"><div class="ag-h" onclick="DSB.tog(\''+aid+'\',this)"><span class="chev">&#9654;</span>&#128230; <b>'+esc(an)+'</b><span class="dbadge">'+esc(g.tn)+'</span><span class="dbadge mq" style="margin-left:auto">'+Object.keys(g.at).length+' Attributes</span></div><div id="'+aid+'" style="display:none">';
+Object.keys(g.at).forEach(function(at){var ads=g.at[at],tid=aid+'_'+at.replace(/[^a-zA-Z0-9]/g,'_');
+h+='<div class="at-h" onclick="DSB.tog(\''+tid+'\',this)"><span class="chev">&#9654;</span>&#127898; '+esc(at)+'<span class="dbadge" style="margin-left:auto">'+ads.length+' ADCs</span></div><div id="'+tid+'" style="display:none">';
+ads.forEach(function(adc){var n=fd(adc.ADCNumber,adc.adcNumber,'?'),pin=fd(adc.Pin,adc.pin,'?'),cl=fd(adc.ClusterId,adc.clusterId,''),cn=fd(adc.ClusterName,adc.clusterName,'');
+h+='<div class="adc-i" onclick="DSB.adc(\''+esc(String(n))+'\',\''+esc(String(cl))+'\')">&#128268; <b>ADC-'+esc(n)+'</b><span>Pin '+esc(pin)+'</span><span class="dbadge">'+esc(cn||'-')+'</span></div>'});
+h+='</div>'});h+='</div></div>'});return h}
+function atype(v){assetCache.selType=v;if(!v){render();return}
+if(assetCache.trees[v]&&assetCache.trees[v]!=='loading'){render();return}
+assetCache.trees[v]='loading';render();
+fetch(NW_YARD_CONFIG_URL+'?siteId='+encodeURIComponent(SITE_ID)+'&assetTypeId='+encodeURIComponent(v),{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){var d=[];if(j&&(j.Success||j.success)&&(j.Data||j.data))d=j.Data||j.data;else if(Array.isArray(j))d=j;assetCache.trees[v]=d;render()}).catch(function(){assetCache.trees[v]=[];render()})}
+function tog(id,hdr){var x=el(id);if(!x)return;var o=x.style.display!=='none';x.style.display=o?'none':'block';var ch=hdr.querySelector('.chev');if(ch)ch.style.transform=o?'':'rotate(90deg)'}
+function openAdc(adcNumber,clusterId){var m=modems.find(function(x){return String(x.clusterId)===String(clusterId)});if(!m)return;
+var a=(m.a10s||[]).find(function(x){return String(x.adcNumber)===String(adcNumber)||String(x.a10Id)===String(adcNumber)});
+if(a){openA10Sb(m,a);return}
+openA10Sb(m,{a10Id:adcNumber,clusterId:m.clusterId,modemId:m.modemId,tcp:false,mqtt:false,online:false,type:'',fw:'',lastData:'',uptime:'',slave:adcNumber,adcNumber:adcNumber})}
+// ---------- public namespace for onclick attributes ----------
+window.DSB={close:dsbClose,tab:dsbTab,graph:openSelGraph,hist:loadHist,filt:filtHist,
+mcmd:mcmd,msend:msend,mproto:mproto,acmd:acmd,asend:asend,pinOk:pinOk,pinNo:pinNo,ep:epPrev,timeOk:timeOk,timeNo:timeNo,
+sub:subToggle,pub:pubClick,clear:function(id){var b=el(id);if(b)b.innerHTML=''},
+view:function(v){devView[active]=v;render();if(v==='asset')ensureAssetTypes()},atype:atype,tog:tog,adc:openAdc,
+a10:function(mi,ai){var m=modems[mi];if(m&&m.a10s[ai])openA10Sb(m,m.a10s[ai])}};
+
+// Escape closes the graph popup first, then the device sidebar
+document.addEventListener('keydown',function(e){if(e.key!=='Escape')return;
+if(el('graphModal').classList.contains('open')){closeGraph();return}
+if(el('dsb').classList.contains('open'))dsbClose()});
+
+load();
+})();
+    </script>
+</body>
+</html>

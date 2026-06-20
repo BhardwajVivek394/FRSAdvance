@@ -783,6 +783,24 @@
             }
         }
 
+        /* ---- Point-machine-only fields ---- */
+        const PM_EDIT_TYPES = { 'examples.PointMachine': 1, 'examples.PointMachine1': 1 };
+        if (PM_EDIT_TYPES[c.type]) {
+            const pmProps = (c.attrs && c.attrs.pm) || {};
+            const pmLabelSide = String(pmProps.labelSide || (c.attrs && c.attrs.label && c.attrs.label.side) || 'auto').toLowerCase();
+            const pmLabelOffset = Math.max(0, +pmProps.labelOffset || 0);
+            const sideIsOpp = (pmLabelSide === 'opposite' || pmLabelSide === 'reverse' || pmLabelSide === 'flip');
+            html += `<div class="tb-group-h" style="margin-top:14px">Point Machine</div>`;
+            html += `<div class="field"><label>Name (label) side</label>` +
+                `<select id="insp-pm-label-side">` +
+                `<option value="auto" ${!sideIsOpp ? 'selected' : ''}>Auto — with indicator circle</option>` +
+                `<option value="opposite" ${sideIsOpp ? 'selected' : ''}>Opposite — reverse side (avoids overlap)</option>` +
+                `</select>` +
+                `<small class="muted">Use "Opposite" when the PT name overlaps the track or indicator.</small></div>`;
+            html += `<div class="field"><label>Label extra gap (px)</label>` +
+                `<input type="number" id="insp-pm-label-offset" value="${pmLabelOffset}" min="0" max="60" step="1"/></div>`;
+        }
+
         html += `<div class="insp-actions">`;
         html += `<button class="tb" onclick="SipEditor.duplicateSelected()">Duplicate</button>`;
         html += `<button class="tb danger" onclick="SipEditor.deleteSelected()">Delete</button>`;
@@ -807,6 +825,26 @@
         bindInspectorInputNum('insp-y', v => { c.position.y = v; });
         bindInspectorInputNum('insp-w', v => { c.size.width = v; });
         bindInspectorInputNum('insp-h', v => { c.size.height = v; });
+
+        /* ---- Point Machine inspector bindings ---- */
+        if (PM_EDIT_TYPES[c.type]) {
+            const ensurePm = () => {
+                c.attrs = c.attrs || {};
+                c.attrs.pm = c.attrs.pm || {};
+                return c.attrs.pm;
+            };
+            const pmSideEl = $('#insp-pm-label-side');
+            if (pmSideEl) {
+                pmSideEl.addEventListener('change', () => {
+                    ensurePm().labelSide = pmSideEl.value;
+                    render();
+                    pushHistory();
+                });
+            }
+            bindInspectorInputNum('insp-pm-label-offset', v => {
+                ensurePm().labelOffset = Math.max(0, Math.min(60, v));
+            });
+        }
 
         /* ---- Signal / Shunt inspector bindings ---- */
         const SIG_STAND_BIND_TYPES = {

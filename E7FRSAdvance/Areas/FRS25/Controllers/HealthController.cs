@@ -1,14 +1,20 @@
 ﻿using Domain;
 using Domain.Dto;
+using E7FRSAdvance.Controllers;
 using E7FRSAdvance.Interface;
 using E7FRSAdvance.Utility;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 using System.Web.Mvc;
 using static E7FRSAdvance.Utility.Utility;
 
@@ -17,11 +23,18 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
     [E7FRSAdvance.Areas.FRS25.Filter.Authenticate]
     public class HealthController : Controller
     {
+
         private readonly ISiteService _siteService;
         private readonly IZoneService _zoneService;
         private readonly IDivisionService _divisionService;
         private readonly IFRSAlertService _alertService;
+        private static readonly string TCP_SERVER_HOST = ConfigurationManager.AppSettings["TcpServerHost"] ?? "proxy.energy7.org";
 
+        // Base port for TCP connections
+        private const int TCP_BASE_PORT = 1400;
+
+        // Default Lc offset when no /LcXb pattern found
+        private const int DEFAULT_LC_OFFSET = 30;
         public HealthController(
             ISiteService siteService,
             IZoneService zoneService,
@@ -42,6 +55,33 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             var mqttDetailList = GetMQTTDetailList();
             ViewBag.MQTTDetail = mqttDetailList != null ? mqttDetailList.mQTTDetailWeb : null;
+
+            return View();
+        }
+
+
+        public ActionResult History(int siteId)
+        {
+
+            if (siteId <= 0)
+                return RedirectToAction("Index");
+
+            var siteName = "Site " + siteId;
+            try
+            {
+                var site = _siteService.Get(siteId);
+                if (site != null && !string.IsNullOrWhiteSpace(site.Name))
+                    siteName = site.Name;
+            }
+            catch
+            {
+                // Keep the history page usable even if site lookup fails;
+                // device data is still loaded through GetSiteDeviceStatus(siteId).
+            }
+
+            ViewBag.SiteId = siteId;
+            ViewBag.SiteName = siteName;
+            ViewBag.MQTTDetail = GetMQTTDetailList().mQTTDetailWeb;
 
             return View();
         }
@@ -772,5 +812,410 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
+        public ActionResult GetAssetTypeBySiteId(int siteId)
+        {
+            List<Domain.AssetType> mAssetTypes = new List<Domain.AssetType>();
+            if (siteId > 0)
+            {
+                try
+                {
+                    using (var mHttpClientFactory = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                    {
+                        var response = mHttpClientFactory.client.GetAsync(String.Format("AssetType/GetAllAssestType/{0}", siteId)).Result;
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        if (response.StatusCode == HttpStatusCode.OK)
+                        {
+                            mAssetTypes = JsonConvert.DeserializeObject<List<Domain.AssetType>>(jsonString);
+                        }
+                        else
+                        {
+                            ViewBag.Error = "Internal server error.";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ViewBag.Error = ex.Message.ToString();
+                }
+            }
+
+            return Json(mAssetTypes, JsonRequestBehavior.AllowGet);
+        }
+        public ActionResult GetYardConfigByAssetType(int siteId, int assetTypeId)
+        {
+            List<CardLine> mCardLines = new List<CardLine>();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(String.Format("CardLine/SiteId/{0}/assetTypeId/{1}", siteId, assetTypeId)).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mCardLines = JsonConvert.DeserializeObject<List<CardLine>>(jsonString);
+                    }
+                    else
+                    {
+                        ViewBag.Type = "Error";
+                        ViewBag.Message = "Internal server error!";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ViewBag.Type = "Error";
+                ViewBag.Message = ex.Message;
+            }
+
+            return PartialView("_YardConfigByAssetTypePartial", mCardLines);
+
+        }
+        public ActionResult GetYardConfigByAssetTypeJson(int siteId, int assetTypeId)
+        {
+            List<CardLine> mCardLines = new List<CardLine>();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(
+                        String.Format("CardLine/SiteId/{0}/assetTypeId/{1}", siteId, assetTypeId)).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mCardLines = JsonConvert.DeserializeObject<List<CardLine>>(jsonString);
+                    }
+                }
+
+                return Json(new { Success = true, Data = mCardLines }, JsonRequestBehavior.AllowGet);
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, Error = ex.Message, Data = new List<CardLine>() }, JsonRequestBehavior.AllowGet);
+            }
+        }
+        private string ExtractCleanJsonResponse(string rawResponse)
+        {
+            if (string.IsNullOrEmpty(rawResponse))
+            {
+                return null;
+            }
+
+            int jsonStart = -1;
+            int jsonEnd = -1;
+            int braceCount = 0;
+            bool inJson = false;
+
+            for (int i = 0; i < rawResponse.Length; i++)
+            {
+                char c = rawResponse[i];
+
+                if (c == '{')
+                {
+                    if (!inJson)
+                    {
+                        jsonStart = i;
+                        inJson = true;
+                    }
+                    braceCount++;
+                }
+                else if (c == '}' && inJson)
+                {
+                    braceCount--;
+                    if (braceCount == 0)
+                    {
+                        jsonEnd = i;
+
+                        string potentialJson = rawResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
+
+                        if (potentialJson.Contains("CSQ") || potentialJson.Contains("ID"))
+                        {
+                            try
+                            {
+                                JObject json = JObject.Parse(potentialJson);
+
+                                if (json["CSQ"] != null)
+                                {
+                                    return json.ToString(Newtonsoft.Json.Formatting.None);
+                                }
+                            }
+                            catch
+                            {
+                            }
+                        }
+
+                        inJson = false;
+                        braceCount = 0;
+                    }
+                }
+            }
+
+            int arrayStart = rawResponse.IndexOf("[\"CSQ\"");
+            if (arrayStart >= 0)
+            {
+                int arrayEnd = rawResponse.IndexOf("]", arrayStart);
+                if (arrayEnd > arrayStart)
+                {
+                    string arrayJson = rawResponse.Substring(arrayStart, arrayEnd - arrayStart + 1);
+
+                    try
+                    {
+                        if (arrayJson.Contains("CSQ"))
+                        {
+                            int csqIndex = arrayJson.IndexOf("\"CSQ\"");
+                            if (csqIndex >= 0)
+                            {
+                                int valueStart = arrayJson.IndexOf("\"", csqIndex + 5);
+                                if (valueStart >= 0)
+                                {
+                                    int valueEnd = arrayJson.IndexOf("\"", valueStart + 1);
+                                    if (valueEnd > valueStart)
+                                    {
+                                        string csqValue = arrayJson.Substring(valueStart + 1, valueEnd - valueStart - 1);
+
+                                        string idValue = "";
+                                        int idIndex = arrayJson.IndexOf("\"ID\"");
+                                        if (idIndex < 0)
+                                        {
+                                            idIndex = arrayJson.IndexOf("ID\":");
+                                        }
+                                        if (idIndex >= 0)
+                                        {
+                                            int idValueStart = arrayJson.IndexOf("\"", idIndex + 3);
+                                            if (idValueStart >= 0)
+                                            {
+                                                int idValueEnd = arrayJson.IndexOf("\"", idValueStart + 1);
+                                                if (idValueEnd > idValueStart)
+                                                {
+                                                    idValue = arrayJson.Substring(idValueStart + 1, idValueEnd - idValueStart - 1);
+                                                }
+                                            }
+                                        }
+
+                                        JObject result = new JObject();
+                                        result["CSQ"] = csqValue;
+                                        if (!string.IsNullOrEmpty(idValue))
+                                        {
+                                            result["ID"] = idValue;
+                                        }
+                                        return result.ToString(Newtonsoft.Json.Formatting.None);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            int csqPlainIndex = rawResponse.IndexOf("CSQ");
+            if (csqPlainIndex >= 0)
+            {
+                int colonIndex = rawResponse.IndexOf(":", csqPlainIndex);
+                if (colonIndex < 0)
+                {
+                    colonIndex = rawResponse.IndexOf(",", csqPlainIndex);
+                }
+
+                if (colonIndex >= 0 && colonIndex < rawResponse.Length - 1)
+                {
+                    StringBuilder valueBuilder = new StringBuilder();
+                    bool foundDigit = false;
+
+                    for (int i = colonIndex + 1; i < rawResponse.Length && i < colonIndex + 10; i++)
+                    {
+                        char c = rawResponse[i];
+                        if (char.IsDigit(c) || c == ',')
+                        {
+                            valueBuilder.Append(c);
+                            foundDigit = true;
+                        }
+                        else if (foundDigit && !char.IsDigit(c) && c != ',')
+                        {
+                            break;
+                        }
+                    }
+
+                    if (valueBuilder.Length > 0)
+                    {
+                        JObject result = new JObject();
+                        result["CSQ"] = valueBuilder.ToString().Trim(',');
+                        return result.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        [HttpPost]
+        public JsonResult SendTcpCommand()
+        {
+            try
+            {
+                // Read JSON from request body
+                Request.InputStream.Position = 0;
+                string jsonBody;
+                using (var reader = new System.IO.StreamReader(Request.InputStream))
+                {
+                    jsonBody = reader.ReadToEnd();
+                }
+
+                // Deserialize JSON
+                var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+                var request = serializer.Deserialize<SendTcpCommandRequest>(jsonBody);
+
+                if (request == null)
+                {
+                    return Json(new { success = false, error = "Invalid request" });
+                }
+                if (request.TcpInfo == null)
+                {
+                    return Json(new { success = false, error = "Modem not found: " + request.ModemId });
+                }
+                if (string.IsNullOrEmpty(request.TcpInfo.ClusterName))
+                {
+                    return Json(new { success = false, error = "Cluster not found for modem: " + request.ModemId });
+                }
+
+                //int tcpPort = CalculateTcpPort(request.TcpInfo.ClusterName);
+                string value = request.TcpInfo.TcpSendPort;
+                int tcpPort = int.Parse(value.Substring(value.LastIndexOf(':') + 1));
+                string rawResponse = SendTcpCommandInternal(
+                    TCP_SERVER_HOST,
+                    tcpPort,
+                    request.Command,
+                    TimeSpan.FromSeconds(10)
+                );
+                string cleanResponse = ExtractCleanJsonResponse(rawResponse);
+
+                return Json(new
+                {
+                    success = cleanResponse != null,
+                    data = cleanResponse,
+                    rawData = rawResponse,
+                    protocol = "TCP",
+                    host = TCP_SERVER_HOST,
+                    port = tcpPort,
+                    //siteId = tcpInfo.SiteId,
+                    siteName = request.TcpInfo.StationName,
+                    clusterName = request.TcpInfo.ClusterName,
+                    commandType = "modem_at_tcp"
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, error = "TCP Error: " + ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Internal method to send TCP command and receive response.
+        /// </summary>
+        private string SendTcpCommandInternal(string host, int port, string command, TimeSpan timeout)
+        {
+            string response = null;
+            TcpClient client = null;
+            NetworkStream stream = null;
+
+            try
+            {
+                client = new TcpClient();
+
+                IAsyncResult connectResult = client.BeginConnect(host, port, null, null);
+                bool connected = connectResult.AsyncWaitHandle.WaitOne(timeout);
+
+                if (!connected)
+                {
+                    throw new TimeoutException("TCP connection timeout to " + host + ":" + port.ToString());
+                }
+
+                client.EndConnect(connectResult);
+
+                stream = client.GetStream();
+                stream.ReadTimeout = (int)timeout.TotalMilliseconds;
+                stream.WriteTimeout = (int)timeout.TotalMilliseconds;
+
+                byte[] commandBytes = Encoding.ASCII.GetBytes(command + "\r\n");
+                stream.Write(commandBytes, 0, commandBytes.Length);
+                stream.Flush();
+
+                Thread.Sleep(200);
+
+                byte[] buffer = new byte[4096];
+                StringBuilder responseBuilder = new StringBuilder();
+
+                try
+                {
+                    DateTime startTime = DateTime.Now;
+                    while ((DateTime.Now - startTime).TotalMilliseconds < timeout.TotalMilliseconds)
+                    {
+                        if (stream.DataAvailable)
+                        {
+                            int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                            if (bytesRead > 0)
+                            {
+                                responseBuilder.Append(Encoding.ASCII.GetString(buffer, 0, bytesRead));
+
+                                string currentResponse = responseBuilder.ToString();
+                                if (currentResponse.Contains("\n") ||
+                                    currentResponse.Contains("OK") ||
+                                    currentResponse.Contains("ERROR") ||
+                                    currentResponse.Contains("+CSQ") ||
+                                    (currentResponse.Contains("[") && currentResponse.Contains("]")) ||
+                                    (currentResponse.Contains("{") && currentResponse.Contains("}")))
+                                {
+                                    Thread.Sleep(100);
+
+                                    if (stream.DataAvailable)
+                                    {
+                                        int extraBytes = stream.Read(buffer, 0, buffer.Length);
+                                        if (extraBytes > 0)
+                                        {
+                                            responseBuilder.Append(Encoding.ASCII.GetString(buffer, 0, extraBytes));
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Thread.Sleep(50);
+                        }
+                    }
+
+                    response = responseBuilder.ToString().Trim();
+
+                    if (string.IsNullOrEmpty(response))
+                    {
+                        response = null;
+                    }
+                }
+                catch (IOException)
+                {
+                    response = null;
+                }
+            }
+            catch (SocketException ex)
+            {
+                throw new Exception("TCP Socket Error: " + ex.Message);
+            }
+            finally
+            {
+                if (stream != null)
+                {
+                    try { stream.Close(); } catch { }
+                }
+                if (client != null)
+                {
+                    try { client.Close(); } catch { }
+                }
+            }
+
+            return response;
+        }
     }
 }
