@@ -136,13 +136,13 @@ function atBuildTrackCard(aid) {
     if (typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
-        grid += '<div class="z2"><span class="at-tdg-lbl" title="Charger mA - If mA">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
-        grid += '<div class="z2"><span class="at-tdg-lbl" title="Charger OP V - Vf - Choke V">VTC VAR RES (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcVarRes) + '</span></div>';
-        grid += '<div class="z3"><span class="at-tdg-lbl" title="Choke V / If mA × 1000">RTC CH FEED END (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcChFeedEnd) + '</span></div>';
-        grid += '<div class="z3"><span class="at-tdg-lbl" title="VTC VAR RES / If mA × 1000">RTC VAR RES (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcVarRes) + '</span></div>';
-        grid += '<div class="z3"><span class="at-tdg-lbl" title="Ir mA × TR Res">VTC TR (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcTr) + '</span></div>';
-        grid += '<div class="z1"><span class="at-tdg-lbl" title="If mA - Ir mA">IBALST (mA)</span><span class="at-tdg-val">' + fmtD(derived.ibalst) + '</span></div>';
-        grid += '<div class="z1"><span class="at-tdg-lbl" title="2×(Vf - VTC TR) / (If + Ir)">RRAIL (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rrail) + '</span></div>';
+        grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
+        grid += '<div class="z2"><span class="at-tdg-lbl" title="VTC VAR RES (V)">VTC VAR RES (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcVarRes) + '</span></div>';
+        grid += '<div class="z3"><span class="at-tdg-lbl" title="RTC CH FEED END (Ω)">RTC CH FEED END (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcChFeedEnd) + '</span></div>';
+        grid += '<div class="z3"><span class="at-tdg-lbl" title="RTC VAR RES (Ω)">RTC VAR RES (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcVarRes) + '</span></div>';
+        grid += '<div class="z3"><span class="at-tdg-lbl" title="VTC TR (V)">VTC TR (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcTr) + '</span></div>';
+        grid += '<div class="z1"><span class="at-tdg-lbl" title="IBALST (mA)">IBALST (mA)</span><span class="at-tdg-val">' + fmtD(derived.ibalst) + '</span></div>';
+        grid += '<div class="z1"><span class="at-tdg-lbl" title="RRAIL (Ω)">RRAIL (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rrail) + '</span></div>';
     }
 
     // ── DataLogger pills ──────────────────────────────────────────
