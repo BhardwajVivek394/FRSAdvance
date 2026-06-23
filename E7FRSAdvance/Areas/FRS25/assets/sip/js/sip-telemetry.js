@@ -1687,6 +1687,7 @@
         var offMa = valOf(s, ['Off Aspect mA', 'OFF Aspect mA', 'OffAspect mA', 'IShSig OFF', 'ShSig OFF mA']);
         if (offMa == null) offMa = valueByBaseAndUnit(s, 'OFFASPECT', 'MA');
 
+        // Reference parity (telemetrylive.js): ON wins over OFF when both exceed thr.
         if (onMa != null && onMa > thr) return 'ON';
         if (offMa != null && offMa > thr) return 'OFF';
         if (onMa == null && offMa == null) {
@@ -1903,6 +1904,15 @@
                 cell.attrs.shuntLive = newState;
                 shChanged = true;
             }
+            /* PILOT is a measured value only — it never lights a lamp, but the
+               asset popup surfaces it (mirrors telemetrylive.js I_Sh PILOT row). */
+            var pilotMa = valOf(s, ['PILOT mA', 'PILOTRoot mA']);
+            if (pilotMa == null) pilotMa = valueByBaseAndUnit(s, 'PILOT', 'MA');
+            cell.attrs.shunt = cell.attrs.shunt || {};
+            if (pilotMa != null && cell.attrs.shunt.pilotMa !== pilotMa) {
+                cell.attrs.shunt.pilotMa = pilotMa;
+                shChanged = true;
+            }
             /* Neutralise any red body fill written by the old logic */
             cell.attrs.body = cell.attrs.body || {};
             if (cell.attrs.body.fill && cell.attrs.body.fill !== '#5B6168') {
@@ -2017,8 +2027,6 @@
             //'.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
             '.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
             '.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
-            '.sip-shunt-blink{animation:sipShuntBlink 1s ease-in-out infinite;}' +
-            '@keyframes sipShuntBlink{0%,100%{opacity:1}50%{opacity:.12}}' +
             '</style>' +
             '<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">' +
             '<stop offset="0%"  stop-color="#0c1530"/>' +

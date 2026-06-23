@@ -179,6 +179,7 @@
             const px = x + (w - pillW) / 2;
             const py = cy - railH / 2 - 6 - pillH;
 
+            svg += `<g class="sip-label">`;
             svg += `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" ` +
                 `rx="${pillH / 2}" ry="${pillH / 2}" ` +
                 `fill="${pillFill}" stroke="${pillStroke}" stroke-width="1.2"/>`;
@@ -186,6 +187,7 @@
                 `fill="#ffffff" font-family="${T.labelFont}" ` +
                 `font-size="${labelSize}" font-weight="700" ` +
                 `text-anchor="middle">${escapeXml(labelTxt)}</text>`;
+            svg += `</g>`;
         }
 
         svg += `</g>`;
@@ -342,14 +344,21 @@
          *  by enough distance to clear the rail body completely.
          * ------------------------------------------------------------------- */
         const indR = Math.max(10, Math.min(14, Math.min(w, h) * 0.14));
-        const offsetDist = railW / 2 + indR + 3;  // clear the rail edge + circle radius + gap
+        const baseOffset = railW / 2 + indR + 3;  // clear the rail edge + circle radius + gap
 
         /* Perpendicular unit vector to the diagonal direction. */
         const perpX = -Math.sin(ang);
         const perpY = Math.cos(ang);
         /* Choose the sign so the circle goes DOWNWARD / to the outer side
-           (below the diagonal track strip). */
+           (below the diagonal track strip) by default. */
         const sign = perpY > 0 ? 1 : -1;
+
+        /* User adjustment (SIP editor inspector): attrs.pm.indOffset shifts the
+           indicator circle along the perpendicular of the PM line. Positive
+           moves it further DOWN / outward, negative moves it UP / inward (and
+           past the line to the other side for large negative values). */
+        const indAdjust = +(pmProps.indOffset) || 0;
+        const offsetDist = baseOffset + indAdjust;
 
         const indCx = x + w / 2 + perpX * offsetDist * sign;
         const indCy = y + h / 2 + perpY * offsetDist * sign;
@@ -896,7 +905,6 @@
         let blink = '';
         if (live !== undefined) {
             v = live === 'ON' ? 1 : live === 'OFF' ? 2 : 3;
-            if (live === 'ON') blink = ' class="sip-shunt-blink"';
         }
 
         const bw = Math.max(44, Math.min(w * 1.5, 64));
@@ -964,7 +972,9 @@
                 : 'rgba(220,228,245,0.85)';
             const sigSide = (cell.attrs && cell.attrs.signal && cell.attrs.signal.signalSide) || 'up';
             const isRight = (sigSide === 'up' || sigSide === 'right');
-            const lblGap = Math.max(4, +(sigProps && sigProps.labelGap) || 8);
+            // Wider default gap so the SHxx label clears the triangle body /
+            // stand. A user-set labelGap still overrides this.
+            const lblGap = Math.max(4, +(sigProps && sigProps.labelGap) || 12);
             const lx = isRight ? bx + bw + lblGap : bx - lblGap;
             const anchor = isRight ? 'start' : 'end';
             const ly = by + bh / 2 + 5;
@@ -2307,6 +2317,37 @@
         };
     }
 
+    /* Universal per-asset label nudge.
+     * Every renderer draws the user label as a <text>…</text> whose body is the
+     * cell's label string. This shifts ONLY those label glyphs by the user-set
+     * pixel offset (attrs.label.dx / attrs.label.dy) so any asset's label can be
+     * repositioned from the inspector without touching each renderer. Asset
+     * graphics and non-label text (lamp letters, etc.) are left untouched. */
+    function applyLabelOffset(inner, cell) {
+        const lbl = (cell.attrs && cell.attrs.label) || {};
+        const dx = +lbl.dx || 0;
+        const dy = +lbl.dy || 0;
+        if (!dx && !dy) return inner;
+        const txt = lbl.text != null ? String(lbl.text) : '';
+        if (txt === '') return inner;
+
+        // Preferred path: renderers that draw a composite label (pill/badge +
+        // text) wrap it in <g class="sip-label">…</g>. Translate that whole
+        // group so the badge and text move together. Wrap the group's contents
+        // in a translate so the marker class stays on the outer <g>.
+        if (inner.indexOf('class="sip-label"') !== -1) {
+            return inner.replace(/(<g class="sip-label">)([\s\S]*?)(<\/g>)/g,
+                (m, open, body, close) =>
+                    open + '<g transform="translate(' + dx + ' ' + dy + ')">' + body + '</g>' + close);
+        }
+
+        // Fallback: plain-text labels (no badge) — shift just the <text> glyphs.
+        const body = escapeXml(txt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(<text\\b[^>]*>)(' + body + ')(</text>)', 'g');
+        return inner.replace(re, (m) =>
+            '<g transform="translate(' + dx + ' ' + dy + ')">' + m + '</g>');
+    }
+
     function renderCell(cell) {
         const s = ASSETS[cell.type];
         let inner;
@@ -2321,6 +2362,7 @@
         } else {
             inner = s.render(cell);
         }
+        inner = applyLabelOffset(inner, cell);
         if (cell.angle && Math.abs(cell.angle) > 0.01) {
             const w = (cell.size && cell.size.width) || 60;
             const h = (cell.size && cell.size.height) || 60;

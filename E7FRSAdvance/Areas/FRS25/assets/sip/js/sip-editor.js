@@ -125,6 +125,29 @@
         return false;
     }
 
+    /* Map a label-position direction to a preset (dx, dy) nudge, scaled to the
+     * cell's size. dx/dy are offsets applied on top of each renderer's default
+     * label anchor (which for most assets sits just below the asset), so the
+     * presets push the label clearly toward the chosen side. */
+    function labelDirOffset(dir, cell) {
+        const w = (cell.size && cell.size.width) || 40;
+        const h = (cell.size && cell.size.height) || 24;
+        const hx = Math.round(w / 2 + 10);   // horizontal reach past the edge
+        const up = Math.round(h + 18);        // lift above the asset
+        const dn = 6;                          // small extra drop below default
+        switch (dir) {
+            case 'above': return { dx: 0, dy: -up };
+            case 'below': return { dx: 0, dy: dn };
+            case 'left': return { dx: -hx, dy: -Math.round(h / 2) };
+            case 'right': return { dx: hx, dy: -Math.round(h / 2) };
+            case 'above-left': return { dx: -hx, dy: -up };
+            case 'above-right': return { dx: hx, dy: -up };
+            case 'below-left': return { dx: -hx, dy: dn };
+            case 'below-right': return { dx: hx, dy: dn };
+            default: return { dx: 0, dy: 0 };
+        }
+    }
+
     function parseViewBox(vb) {
         const a = String(vb || state.viewBox).split(/\s+/).map(Number);
         return { x: a[0] || 0, y: a[1] || 0, w: a[2] || 2000, h: a[3] || 740 };
@@ -195,7 +218,7 @@
     /* ------------------------------------------------------------------------ *
      *  RENDER — paint the whole canvas from state.cells
      * ------------------------------------------------------------------------ */
-    function render() {
+    function render(skipInspector) {
         if (typeof SIP.prepareRailContext === 'function') SIP.prepareRailContext(state.cells);   // ← ADD THIS LINE
 
         const fragments = state.cells.map(c => {
@@ -242,9 +265,81 @@
             sel +
             `</svg>`;
 
-        renderInspector();
+        placeLabelHandle();
+        if (!skipInspector) renderInspector();
         updateStatusBar();
         refreshHistoryButtons();
+    }
+
+    /* After the SVG is in the DOM, find the SELECTED cell's actual label glyph
+     * and lay an interactive highlight + grab handle directly over it. This
+     * makes "drag the label" land exactly on the real text wherever each
+     * renderer happens to draw it (below, beside, centred…), instead of an
+     * assumed anchor — so the label tracks the pointer 1:1. */
+    function placeLabelHandle() {
+        if (!state.selectedId) return;
+        const c = cellById(state.selectedId);
+        if (!c) return;
+        const txt = c.attrs && c.attrs.label && c.attrs.label.text;
+        if (txt == null || String(txt) === '') return;
+
+        const svg = canvasEl.querySelector('svg');
+        const overlay = canvasEl.querySelector('.selection-overlay');
+        if (!svg || !overlay) return;
+
+        const grp = svg.querySelector(`g.editable[data-eid="${cssEsc(state.selectedId)}"]`);
+        if (!grp) return;
+
+        // Prefer the composite label group (badge/pill + text) so the handle
+        // wraps the whole label unit. Fall back to the bare <text> glyph.
+        let target = grp.querySelector('g.sip-label');
+        if (!target) {
+            const want = String(txt);
+            const texts = grp.querySelectorAll('text');
+            for (const t of texts) {
+                if (t.textContent === want) { target = t; }   // last match = top fill glyph
+            }
+        }
+        if (!target) return;
+
+        let bb;
+        try { bb = target.getBBox(); } catch (e) { return; }
+        if (!bb || (!bb.width && !bb.height)) return;
+
+        const pad = 3;
+        const NS = 'http://www.w3.org/2000/svg';
+        // Highlight box around the actual label
+        const hl = document.createElementNS(NS, 'rect');
+        hl.setAttribute('x', bb.x - pad);
+        hl.setAttribute('y', bb.y - pad);
+        hl.setAttribute('width', bb.width + pad * 2);
+        hl.setAttribute('height', bb.height + pad * 2);
+        hl.setAttribute('rx', '3');
+        hl.setAttribute('fill', 'rgba(251,191,36,0.12)');
+        hl.setAttribute('stroke', '#fbbf24');
+        hl.setAttribute('stroke-width', '1');
+        hl.setAttribute('stroke-dasharray', '4,3');
+        hl.setAttribute('class', 'label-handle');
+        hl.setAttribute('data-handle', 'label');
+        hl.setAttribute('style', 'cursor:move');
+        overlay.appendChild(hl);
+
+        // Small grab dot at the label's top-right for a clear affordance
+        const dot = document.createElementNS(NS, 'circle');
+        dot.setAttribute('cx', bb.x + bb.width + pad);
+        dot.setAttribute('cy', bb.y - pad);
+        dot.setAttribute('r', '4');
+        dot.setAttribute('fill', '#0f172a');
+        dot.setAttribute('stroke', '#fbbf24');
+        dot.setAttribute('stroke-width', '2');
+        dot.setAttribute('class', 'label-handle');
+        dot.setAttribute('data-handle', 'label');
+        dot.setAttribute('style', 'cursor:move');
+        overlay.appendChild(dot);
+    }
+
+    function cssEsc(s) {
+        return String(s).replace(/["\\]/g, '\\$&');
     }
 
     function makeGrid(vb) {
@@ -515,6 +610,31 @@
         html += `<div class="field"><label>Label colour</label><input type="text" id="insp-lf" value="${escAttr(labelFill)}" placeholder="#d7d7d7"/></div>`;
         html += `<div class="field"><label>Label size</label><input type="number" id="insp-ls" value="${labelSize || 14}" min="6" max="40"/></div>`;
         html += `</div>`;
+        const labelDx = (c.attrs && c.attrs.label && c.attrs.label.dx) || 0;
+        const labelDy = (c.attrs && c.attrs.label && c.attrs.label.dy) || 0;
+        const labelDir = (c.attrs && c.attrs.label && c.attrs.label.dir) || 'custom';
+        const _dirOpt = (val, txt) => `<option value="${val}" ${labelDir === val ? 'selected' : ''}>${txt}</option>`;
+        html += `<div class="field"><label>Label position</label>` +
+            `<select id="insp-ldir">` +
+            _dirOpt('custom', 'Custom (drag / offsets)') +
+            _dirOpt('above', 'Above') +
+            _dirOpt('below', 'Below') +
+            _dirOpt('left', 'Left') +
+            _dirOpt('right', 'Right') +
+            _dirOpt('above-left', 'Above-left') +
+            _dirOpt('above-right', 'Above-right') +
+            _dirOpt('below-left', 'Below-left') +
+            _dirOpt('below-right', 'Below-right') +
+            `</select></div>`;
+        html += `<div class="insp-grid">`;
+        html += `<div class="field"><label>Label X offset</label><input type="number" id="insp-ldx" value="${labelDx}" step="1"/></div>`;
+        html += `<div class="field"><label>Label Y offset</label><input type="number" id="insp-ldy" value="${labelDy}" step="1"/></div>`;
+        html += `</div>`;
+        html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0 6px;">` +
+            `<button type="button" id="insp-lreset" style="background:rgba(255,46,46,0.12);` +
+            `border:1px solid rgba(255,46,46,0.4);color:#ff8a8a;border-radius:6px;` +
+            `padding:4px 10px;cursor:pointer;font-size:12px;">Reset label position</button>` +
+            `<span style="font-size:11px;color:#64748b;">or drag the label on the canvas</span></div>`;
 
         /* ---- Composite-signal-only fields (Signal composite + Shunts) ---- */
         const SIG_STAND_TYPES = {
@@ -533,9 +653,9 @@
                     c.type === 'examples.SignalShunt' ? 'Signal + Shunt' :
                         c.type === 'examples.RouteCallingSignal' ? 'Route / Calling Signal' :
                             c.type === 'examples.Shaunt' ? 'Shunt · Proceed' :
-                            c.type === 'examples.Shaunt2' ? 'Shunt · Diverge' :
-                                c.type === 'examples.Shaunt3' ? 'Shunt · Off' :
-                                    'Shunt') +
+                                c.type === 'examples.Shaunt2' ? 'Shunt · Diverge' :
+                                    c.type === 'examples.Shaunt3' ? 'Shunt · Off' :
+                                        'Shunt') +
                 `</div>`;
 
             /* Lamp/lit controls apply to main signal and combined signal+shunt */
@@ -789,6 +909,7 @@
             const pmProps = (c.attrs && c.attrs.pm) || {};
             const pmLabelSide = String(pmProps.labelSide || (c.attrs && c.attrs.label && c.attrs.label.side) || 'auto').toLowerCase();
             const pmLabelOffset = Math.max(0, +pmProps.labelOffset || 0);
+            const pmIndOffset = +(pmProps.indOffset) || 0;
             const sideIsOpp = (pmLabelSide === 'opposite' || pmLabelSide === 'reverse' || pmLabelSide === 'flip');
             html += `<div class="tb-group-h" style="margin-top:14px">Point Machine</div>`;
             html += `<div class="field"><label>Name (label) side</label>` +
@@ -799,6 +920,13 @@
                 `<small class="muted">Use "Opposite" when the PT name overlaps the track or indicator.</small></div>`;
             html += `<div class="field"><label>Label extra gap (px)</label>` +
                 `<input type="number" id="insp-pm-label-offset" value="${pmLabelOffset}" min="0" max="60" step="1"/></div>`;
+            html += `<div class="field"><label>Indicator circle position (up / down)</label>` +
+                `<input type="range" id="insp-pm-ind-offset" value="${pmIndOffset}" min="-60" max="60" step="1" style="width:100%;"/>` +
+                `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">` +
+                `<input type="number" id="insp-pm-ind-offset-num" value="${pmIndOffset}" min="-120" max="120" step="1" style="width:70px;"/>` +
+                `<button type="button" id="insp-pm-ind-reset" style="background:rgba(255,46,46,0.12);` +
+                `border:1px solid rgba(255,46,46,0.4);color:#ff8a8a;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:12px;">Reset</button>` +
+                `<span class="muted" style="font-size:11px;">− up · + down</span></div></div>`;
         }
 
         html += `<div class="insp-actions">`;
@@ -821,6 +949,42 @@
             c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
             if (v) c.attrs.label.fontSize = v;
         });
+        bindInspectorInputNum('insp-ldx', v => {
+            c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+            c.attrs.label.dx = v || 0;
+            c.attrs.label.dir = 'custom';
+        });
+        bindInspectorInputNum('insp-ldy', v => {
+            c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+            c.attrs.label.dy = v || 0;
+            c.attrs.label.dir = 'custom';
+        });
+        const ldirEl = $('#insp-ldir');
+        if (ldirEl) {
+            ldirEl.addEventListener('change', () => {
+                c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+                const dir = ldirEl.value;
+                c.attrs.label.dir = dir;
+                if (dir !== 'custom') {
+                    const off = labelDirOffset(dir, c);
+                    c.attrs.label.dx = off.dx;
+                    c.attrs.label.dy = off.dy;
+                }
+                render();
+                pushHistory();
+            });
+        }
+        const lresetEl = $('#insp-lreset');
+        if (lresetEl) {
+            lresetEl.addEventListener('click', () => {
+                c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+                c.attrs.label.dx = 0;
+                c.attrs.label.dy = 0;
+                c.attrs.label.dir = 'custom';
+                render();
+                pushHistory();
+            });
+        }
         bindInspectorInputNum('insp-x', v => { c.position.x = v; });
         bindInspectorInputNum('insp-y', v => { c.position.y = v; });
         bindInspectorInputNum('insp-w', v => { c.size.width = v; });
@@ -844,6 +1008,37 @@
             bindInspectorInputNum('insp-pm-label-offset', v => {
                 ensurePm().labelOffset = Math.max(0, Math.min(60, v));
             });
+            // Indicator circle up/down — slider and number input stay in sync,
+            // both write attrs.pm.indOffset (− up / + down along the PM line).
+            const setIndOffset = (v, fromSlider) => {
+                const clamped = Math.max(-120, Math.min(120, v));
+                ensurePm().indOffset = clamped;
+                const slider = $('#insp-pm-ind-offset');
+                const num = $('#insp-pm-ind-offset-num');
+                if (slider && !fromSlider) slider.value = Math.max(-60, Math.min(60, clamped));
+                if (num && fromSlider) num.value = clamped;
+                render(true);
+            };
+            const pmIndSlider = $('#insp-pm-ind-offset');
+            if (pmIndSlider) {
+                pmIndSlider.addEventListener('input', () => { const v = parseFloat(pmIndSlider.value); if (!isNaN(v)) setIndOffset(v, true); });
+                pmIndSlider.addEventListener('change', () => { render(); pushHistory(); });
+            }
+            const pmIndNum = $('#insp-pm-ind-offset-num');
+            if (pmIndNum) {
+                pmIndNum.addEventListener('input', () => { const v = parseFloat(pmIndNum.value); if (!isNaN(v)) setIndOffset(v, false); });
+                pmIndNum.addEventListener('change', () => { render(); pushHistory(); });
+            }
+            const pmIndReset = $('#insp-pm-ind-reset');
+            if (pmIndReset) {
+                pmIndReset.addEventListener('click', () => {
+                    ensurePm().indOffset = 0;
+                    const slider = $('#insp-pm-ind-offset'); if (slider) slider.value = 0;
+                    const num = $('#insp-pm-ind-offset-num'); if (num) num.value = 0;
+                    render();
+                    pushHistory();
+                });
+            }
         }
 
         /* ---- Signal / Shunt inspector bindings ---- */
@@ -1188,14 +1383,14 @@
     function bindInspectorInput(id, setter) {
         const el = $('#' + id);
         if (!el) return;
-        el.addEventListener('input', () => { setter(el.value); render(); });
-        el.addEventListener('change', () => pushHistory());
+        el.addEventListener('input', () => { setter(el.value); render(true); });
+        el.addEventListener('change', () => { render(); pushHistory(); });
     }
     function bindInspectorInputNum(id, setter) {
         const el = $('#' + id);
         if (!el) return;
-        el.addEventListener('input', () => { const v = parseFloat(el.value); if (!isNaN(v)) { setter(v); render(); } });
-        el.addEventListener('change', () => pushHistory());
+        el.addEventListener('input', () => { const v = parseFloat(el.value); if (!isNaN(v)) { setter(v); render(true); } });
+        el.addEventListener('change', () => { render(); pushHistory(); });
     }
     function escAttr(s) {
         return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -1249,6 +1444,7 @@
      * ------------------------------------------------------------------------ */
     let drag = null;    // { id, offX, offY, moved }   — moving an existing cell
     let resize = null;  // { id, handle, ox, oy, ow, oh, moved } — resizing
+    let labelDrag = null; // { id, startX, startY, baseDx, baseDy, moved } — moving a label
 
     function onCanvasMouseDown(evt) {
         // (a) Was it a resize handle?
@@ -1261,6 +1457,22 @@
                 id: c.id, handle: dir,
                 ox: c.position.x, oy: c.position.y,
                 ow: c.size.width, oh: c.size.height,
+                moved: false
+            };
+            evt.preventDefault();
+            return;
+        }
+        // (a2) Was it the draggable label handle?
+        if (node && node.classList && node.classList.contains('label-handle')) {
+            const c = selectedCell();
+            if (!c) return;
+            c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+            const start = clientToWorld(evt);
+            labelDrag = {
+                id: c.id,
+                startX: start.x, startY: start.y,
+                baseDx: +(c.attrs.label.dx || 0),
+                baseDy: +(c.attrs.label.dy || 0),
                 moved: false
             };
             evt.preventDefault();
@@ -1298,6 +1510,23 @@
         const w = clientToWorld(evt);
         const cc = $('#cursor-coords');
         if (cc) cc.textContent = Math.round(w.x) + ',' + Math.round(w.y);
+
+        // LABEL DRAG has priority — just nudges the label offset
+        if (labelDrag) {
+            const c = cellById(labelDrag.id);
+            if (!c) return;
+            c.attrs = c.attrs || {}; c.attrs.label = c.attrs.label || {};
+            const ndx = Math.round(labelDrag.baseDx + (w.x - labelDrag.startX));
+            const ndy = Math.round(labelDrag.baseDy + (w.y - labelDrag.startY));
+            if (ndx !== (c.attrs.label.dx || 0) || ndy !== (c.attrs.label.dy || 0)) {
+                c.attrs.label.dx = ndx;
+                c.attrs.label.dy = ndy;
+                c.attrs.label.dir = 'custom';
+                labelDrag.moved = true;
+                render(true);
+            }
+            return;
+        }
 
         // RESIZE has priority over drag
         if (resize) {
@@ -1354,6 +1583,7 @@
 
     function onCanvasMouseUp() {
         if (resize && resize.moved) pushHistory();
+        if (labelDrag && labelDrag.moved) { render(); pushHistory(); }
         if (drag && drag.moved) {
             // If the cell being dragged is a signal lamp and we let go over
             // a SignalBackground, snap-fit it to the tray.
@@ -1363,6 +1593,7 @@
         }
         drag = null;
         resize = null;
+        labelDrag = null;
     }
 
     function onKey(evt) {
