@@ -4990,6 +4990,25 @@
         var sid = selectedHealthSiteId();
         return WS_BASE + ALERT_LIVE_WS_PATH + (sid > 0 ? sid : "all");
     }
+
+    // Make a WebSocket URL connect-ready exactly the way telemetrylive.js does.
+    // On an HTTPS page:
+    //   1. force ws:// -> wss:// so the browser does not block it as mixed
+    //      content (guards against a base/config left as ws://), and
+    //   2. append ?token=<WebSocketAuthToken>, which the server requires for the
+    //      WSS upgrade handshake (without it the connection is rejected).
+    // On plain HTTP it is returned unchanged.
+    function buildSecureWsUrl(rawUrl) {
+        var url = String(rawUrl || "");
+        if (isSecure && url.indexOf("ws://") === 0) {
+            url = "wss://" + url.slice(5);
+        }
+        if (isSecure && APP_CONFIG && APP_CONFIG.WebSocketAuthToken &&
+            APP_CONFIG.WebSocketAuthToken.indexOf("@@") === -1) {
+            url += (url.indexOf("?") > -1 ? "&" : "?") + "token=" + encodeURIComponent(APP_CONFIG.WebSocketAuthToken);
+        }
+        return url;
+    }
     var WS_MAX_RECONNECT_ATTEMPTS = 15, WS_RECONNECT_DELAY = 3000;
 
     // If a site sends no MQTT data within this window, force all its services unhealthy.
@@ -8125,11 +8144,8 @@
         }
         if (debouncerWsReconnectTimer) { clearTimeout(debouncerWsReconnectTimer); debouncerWsReconnectTimer = null; }
 
-        var wsUrl = DEBOUNCER_WS_URL;
-        // SSL auth token as query param (same as telemetrylive.js)
-        if (isSecure && APP_CONFIG && APP_CONFIG.WebSocketAuthToken && APP_CONFIG.WebSocketAuthToken.indexOf("@@") === -1) {
-            wsUrl += (wsUrl.indexOf("?") > -1 ? "&" : "?") + "token=" + encodeURIComponent(APP_CONFIG.WebSocketAuthToken);
-        }
+        // wss upgrade on HTTPS + SSL auth token (same handling as telemetrylive.js)
+        var wsUrl = buildSecureWsUrl(DEBOUNCER_WS_URL);
 
         try {
             debouncerWs = new WebSocket(wsUrl);
@@ -8246,12 +8262,10 @@
         }
         if (alertLiveWsReconnectTimer) { clearTimeout(alertLiveWsReconnectTimer); alertLiveWsReconnectTimer = null; }
 
-        var wsUrl = alertLiveWsUrl();
-        alertLiveWsCurrentUrl = wsUrl;
-        // SSL auth token as query param (same scheme as the Debouncer WS / telemetrylive.js)
-        if (isSecure && APP_CONFIG && APP_CONFIG.WebSocketAuthToken && APP_CONFIG.WebSocketAuthToken.indexOf("@@") === -1) {
-            wsUrl += (wsUrl.indexOf("?") > -1 ? "&" : "?") + "token=" + encodeURIComponent(APP_CONFIG.WebSocketAuthToken);
-        }
+        // Keep the token-less URL for the site-change reconnect comparison,
+        // but connect with the wss upgrade + SSL token applied (telemetrylive scheme).
+        alertLiveWsCurrentUrl = alertLiveWsUrl();
+        var wsUrl = buildSecureWsUrl(alertLiveWsCurrentUrl);
 
         try {
             alertLiveWs = new WebSocket(wsUrl);

@@ -211,15 +211,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             try
             {
-                bool isSecure = Request != null && Request.IsSecureConnection;
-                string baseUrl = isSecure
-                    ? ConfigurationManager.AppSettings["ProxyBaseUrlSSL"]
-                    : ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                //bool isSecure = Request != null && Request.IsSecureConnection;
+                //string baseUrl = isSecure
+                //    ? ConfigurationManager.AppSettings["ProxyBaseUrlSSL"]
+                //    : ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                string baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
                 // Fall back to the other key if the scheme-specific one is not set.
-                if (string.IsNullOrWhiteSpace(baseUrl))
-                    baseUrl = isSecure
-                        ? ConfigurationManager.AppSettings["ProxyBaseUrl"]
-                        : ConfigurationManager.AppSettings["ProxyBaseUrlSSL"];
+                //if (string.IsNullOrWhiteSpace(baseUrl))
+                //    baseUrl = isSecure
+                //        ? ConfigurationManager.AppSettings["ProxyBaseUrl"]
+                //        : ConfigurationManager.AppSettings["ProxyBaseUrlSSL"];
 
                 if (string.IsNullOrWhiteSpace(baseUrl))
                 {
