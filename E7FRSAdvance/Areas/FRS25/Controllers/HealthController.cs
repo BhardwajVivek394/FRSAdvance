@@ -202,6 +202,65 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
+        // Proxy for the AlertHistory API (historical alerts over a date range).
+        // Uses the same proxy base as the rest of the dashboard: "ProxyBaseUrlSSL"
+        // for HTTPS requests, "ProxyBaseUrl" for HTTP (with a fallback to whichever
+        // is configured). Dates are passed through verbatim in the ddMMyyyy_HHmmss
+        // format the upstream API expects (e.g. 24062026_160200).
+        public ActionResult GetAlertHistory(int siteId = 0, string startDate = "", string endDate = "")
+        {
+            try
+            {
+                bool isSecure = Request != null && Request.IsSecureConnection;
+                string baseUrl = isSecure
+                    ? ConfigurationManager.AppSettings["ProxyBaseUrlSSL"]
+                    : ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                // Fall back to the other key if the scheme-specific one is not set.
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    baseUrl = isSecure
+                        ? ConfigurationManager.AppSettings["ProxyBaseUrl"]
+                        : ConfigurationManager.AppSettings["ProxyBaseUrlSSL"];
+
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                    return Json(new { success = false, error = "ProxyBaseUrl / ProxyBaseUrlSSL not configured in AppSettings." },
+                        JsonRequestBehavior.AllowGet);
+                }
+
+                baseUrl = baseUrl.TrimEnd('/');
+
+                var qs = new List<string>();
+                if (siteId > 0) qs.Add("siteId=" + siteId);
+                if (!string.IsNullOrWhiteSpace(startDate)) qs.Add("StartDate=" + Uri.EscapeDataString(startDate));
+                if (!string.IsNullOrWhiteSpace(endDate)) qs.Add("EndDate=" + Uri.EscapeDataString(endDate));
+                string apiUrl = baseUrl + "/api/AlertHistory" + (qs.Count > 0 ? ("?" + string.Join("&", qs)) : "");
+
+                using (var client = new HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromSeconds(30);
+                    var response = client.GetAsync(apiUrl).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        return Content(jsonString, "application/json");
+                    }
+                    else
+                    {
+                        Response.StatusCode = (int)response.StatusCode;
+                        return Json(new { success = false, error = "AlertHistory API returned: " + response.StatusCode },
+                            JsonRequestBehavior.AllowGet);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+                return Json(new { success = false, error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
         private void AddSiteHealthTopics(List<object> result, Domain.Site site)
         {
             if (site == null)
@@ -227,9 +286,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 {
                      $"/{basePath}/mqtt/dl/heartbeat",
                      $"/{basePath}/alerthealth",
-                     $"datareceiver/{site.Id}/health",
-                     $"debouncer/{site.Id}/health",
-                     $"pointServices/{site.Id}/health"
+                     // datareceiver / debouncer / pointServices now publish health on
+                     // separate Local and Cloud topics (a /local/ or /cloud/ segment is
+                     // inserted just before /health). The dashboard subscribes to both
+                     // and routes each message to the matching node by the topic path.
+                     $"datareceiver/{site.Id}/local/health",
+                     $"datareceiver/{site.Id}/cloud/health",
+                     $"debouncer/{site.Id}/local/health",
+                     $"debouncer/{site.Id}/cloud/health",
+                     $"pointServices/{site.Id}/local/health",
+                     $"pointServices/{site.Id}/cloud/health"
                 }
             });
         }
