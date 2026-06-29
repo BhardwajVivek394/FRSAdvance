@@ -5019,8 +5019,21 @@
         { key: "Datalogger", label: "Datalogger", icon: "\uD83D\uDCE1" },
         { key: "Alert", label: "Alert", icon: "\u26A1" },
         { key: "Debouncer", label: "Debouncer", icon: "\uD83D\uDD00" },
-        { key: "Point", label: "Point Machine", icon: "\uD83D\uDD27" }
+        { key: "Point", label: "Point Machine", icon: "\uD83D\uDD27" },
+        { key: "EdgeX", label: "EdgeX", icon: "\uD83D\uDEF0" },
+        { key: "Reminder", label: "Reminder", icon: "\u23F0" }
     ];
+
+    // Which nodes each service column renders. Default (unlisted) = both.
+    var SVC_NODES = {
+        DataRecv: ["local", "cloud"],
+        Datalogger: ["local"],          // Local only
+        Alert: ["local", "cloud"],      // Local + Cloud
+        Debouncer: ["local", "cloud"],
+        Point: ["local", "cloud"],
+        EdgeX: ["local", "cloud"],      // Local + Cloud
+        Reminder: ["cloud"]             // Cloud only
+    };
 
     var HW_ORDER = [
         { key: "sensors", label: "Sensors", icon: '<svg viewBox="0 0 24 24"><path d="M12 2a4 4 0 014 4v4a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M6 10v1a6 6 0 0012 0v-1"/><path d="M12 17v5"/><path d="M8 22h8"/></svg>' },
@@ -5077,8 +5090,7 @@
 
     // ===== AlertLive API =====
     var ALERT_LIVE_POLL_MS = 30000;
-    var SERVICE_HEALTH_IDS = ["DataReceiverHealth", "DebouncerHealth", "PointMachineHealth", "AlertHealth", "DataloggerHealth"];
-
+    var SERVICE_HEALTH_IDS = ["DataReceiverHealth", "DebouncerHealth", "PointMachineHealth", "AlertHealth", "DataloggerHealth", "EdgeXHealth", "ReminderHealth"];
     // Rule-based service classification. AlertLive alerts are attributed to one of the
     // five health services by the "rule:" segment of the alertIdentifier, e.g.
     //   monitor:DatareceiverHealth|...|rule:datareceiver.health.bad|desc:...
@@ -5090,7 +5102,9 @@
         { sourceId: "DataloggerHealth",   prefixes: ["datalogger.health", "datalogger.service"] },
         { sourceId: "AlertHealth",        prefixes: ["alert.health", "alert.service"] },
         { sourceId: "DebouncerHealth",    prefixes: ["debouncer.health", "debouncer.service"] },
-        { sourceId: "PointMachineHealth", prefixes: ["pointmachine.health", "pointmachine.service"] }
+        { sourceId: "PointMachineHealth", prefixes: ["pointmachine.health", "pointmachine.service"] },
+        { sourceId: "EdgeXHealth", prefixes: ["edgex.health", "edgex.service"] },
+        { sourceId: "ReminderHealth", prefixes: ["reminder.health", "reminder.service"] }
     ];
 
     // Return the canonical service sourceId for an alert (one of SERVICE_HEALTH_IDS),
@@ -5252,14 +5266,23 @@
                         "debouncer/" + parsedSid + "/local/health",
                         "debouncer/" + parsedSid + "/cloud/health",
                         "pointServices/" + parsedSid + "/local/health",
-                        "pointServices/" + parsedSid + "/cloud/health"
+                        "pointServices/" + parsedSid + "/cloud/health",
+                        "alertServices/" + parsedSid + "/local/health",   // Alert Local
+                        "alertServices/" + parsedSid + "/cloud/health",   // Alert Cloud
+                        "edgex/" + parsedSid + "/local/health",           // EdgeX Local
+                        "edgex/" + parsedSid + "/cloud/health",           // EdgeX Cloud
+                        "reminderServices/" + parsedSid + "/cloud/health" // Reminder Cloud only
                     ];
                     // The Alert service (TriggerAlert) publishes its health on
                     // {BasePath}/alerthealth (e.g. /DNR/PPTA/alerthealth), so make
                     // sure that topic is always part of the subscription set even
                     // if the backend topic list does not include it.
                     var bp = String(basePathValue || "").replace(/^\/+|\/+$/g, "");
-                    if (bp) extraTopics.push(bp + "/alerthealth");
+                    if (bp) {
+                        extraTopics.push(bp + "/alerthealth");        // legacy combined
+                        extraTopics.push(bp + "/local/alerthealth");  // Alert Local
+                        extraTopics.push(bp + "/cloud/alerthealth");  // Alert Cloud
+                    }
                     extraTopics.forEach(function (extraTopic) {
                         if (rowTopics.indexOf(extraTopic) < 0) rowTopics.push(extraTopic);
                     });
@@ -5527,7 +5550,7 @@
         if (direct) return parseInt(direct, 10) || 0;
         var meta = healthTopicMeta[String(topic || "").replace(/^\/+|\/+$/g, "")];
         if (meta && meta.siteId) return parseInt(meta.siteId, 10) || 0;
-        var match = String(topic || "").match(/(?:site|rdpms|health|datareceiver|debouncer|pointServices)[\/\-_]?(\d+)/i) || String(topic || "").match(/\/(\d+)\//);
+        var match = String(topic || "").match(/(?:site|rdpms|health|datareceiver|debouncer|pointServices|alertServices|edgex|reminderServices)[\/\-_]?(\d+)/i) || String(topic || "").match(/\/(\d+)\//);
         return match ? (parseInt(match[1], 10) || 0) : 0;
     }
 
@@ -5556,6 +5579,8 @@
         if (all.indexOf("alerthealth") >= 0 || all.indexOf("alert") >= 0) return "alertHealth";
         if (all.indexOf("debouncer/health") >= 0 || all.indexOf("debouncerhealth") >= 0 || all.indexOf("debouncer") >= 0) return "debouncerHealth";
         if (all.indexOf("pointservices") >= 0 || all.indexOf("pointmachinehealth") >= 0 || all.indexOf("pointhealth") >= 0 || all.indexOf("point") >= 0) return "pointHealth";
+        if (all.indexOf("edgex") >= 0) return "edgexHealth";
+        if (all.indexOf("reminder") >= 0) return "reminderHealth";
         return null;
     }
 
@@ -5629,7 +5654,11 @@
             pointHealth: "pointHealth",
             pointMachineHealth: "pointHealth",
             pointServicesHealth: "pointHealth",
-            pointServices: "pointHealth"
+            pointServices: "pointHealth",
+            edgexHealth: "edgexHealth",
+            edgex: "edgexHealth",
+            reminderHealth: "reminderHealth",
+            reminder: "reminderHealth"
         };
 
         Object.keys(directServiceMap).forEach(function (k) {
@@ -5902,10 +5931,27 @@
         if (key === "Alert") return firstDefined(services.alertHealth, services.alert, {});
         if (key === "Debouncer") return firstDefined(services.debouncerHealth, services.debouncer, {});
         if (key === "Point") return firstDefined(services.pointHealth, services.pointMachineHealth, services.pointServicesHealth, services.pointServices, {});
+        if (key === "EdgeX") return firstDefined(services.edgexHealth, services.edgex, {});
+        if (key === "Reminder") return firstDefined(services.reminderHealth, services.reminder, {});
         return {};
     }
 
-    var EV = { DataRecv: evalDataReceiver, Datalogger: evalDatalogger, Alert: evalAlert, Debouncer: evalDebouncer, Point: evalPoint };
+    function evalGenericService(d, label) {
+        d = safeObj(d);
+        if (!Object.keys(d).length) return unknownSvc(label);
+        var nf = parseConnectionsFormat(d);   // new connections[] format
+        if (nf) return nf;
+        var sf = String(firstDefined(d.status, d.Status, "")).toUpperCase();
+        var status = (sf === "DOWN" || sf === "ERROR" || sf === "CRITICAL" || sf === "FAIL") ? "critical"
+            : (sf === "DEGRADED" || sf === "WARNING" || sf === "WARN") ? "warning" : "healthy";
+        return { status: status, conns: [], issues: [], metrics: { Status: str(d.status) || "OK" } };
+    }
+    function evalEdgeX(d) { return evalGenericService(d, "EdgeX"); }
+    function evalReminder(d) { return evalGenericService(d, "Reminder"); }
+
+
+
+    var EV = { DataRecv: evalDataReceiver, Datalogger: evalDatalogger, Alert: evalAlert, Debouncer: evalDebouncer, Point: evalPoint, EdgeX: evalEdgeX, Reminder: evalReminder };
 
     // Milliseconds since the last MQTT payload for this station (Infinity if never received).
     function stationDataAgeMs(st) {
@@ -5914,14 +5960,15 @@
         if (isNaN(t)) return Infinity;
         return Date.now() - t;
     }
+    @* razor-literal-split: keeps generated WriteLiteral under csc CS1647 limit *@
     function isStationStale(st) { return stationDataAgeMs(st) > STALE_THRESHOLD_MS; }
 
     // Map SVC_ORDER keys to internal service data keys
-    var SVC_KEY_TO_INTERNAL = { DataRecv: "dataReceiverHealth", Datalogger: "dataloggerHeartbeat", Alert: "alertHealth", Debouncer: "debouncerHealth", Point: "pointHealth" };
+    var SVC_KEY_TO_INTERNAL = { DataRecv: "dataReceiverHealth", Datalogger: "dataloggerHeartbeat", Alert: "alertHealth", Debouncer: "debouncerHealth", Point: "pointHealth", EdgeX: "edgexHealth", Reminder: "reminderHealth" };
 
     // Map a service-column key (SVC_ORDER) to its AlertLive sourceId (SERVICE_HEALTH_IDS).
     // Used by the "Services health" sub-cell to pull alert-engine status per Local / Cloud node.
-    var SVC_KEY_TO_SOURCEID = { DataRecv: "DataReceiverHealth", Datalogger: "DataloggerHealth", Alert: "AlertHealth", Debouncer: "DebouncerHealth", Point: "PointMachineHealth" };
+    var SVC_KEY_TO_SOURCEID = { DataRecv: "DataReceiverHealth", Datalogger: "DataloggerHealth", Alert: "AlertHealth", Debouncer: "DebouncerHealth", Point: "PointMachineHealth", EdgeX: "EdgeXHealth", Reminder: "ReminderHealth" };
 
     // Service-health (alert engine) summary for one site + service + node (local|cloud).
     // O(1) lookup into the index built by processAlertLiveData (was an O(alerts) scan
@@ -6406,7 +6453,7 @@
                     if (hasActiveFilter) return !!filteredSiteIdSet[sid];
                     return true;
                 }).sort(function (a, b) { return siteAlertMap[b].alertCount - siteAlertMap[a].alertCount; });
-                var svcLabels = { DataReceiverHealth: "Data Recv", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine" };
+                var svcLabels = { DataReceiverHealth: "Data Recv", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine", EdgeXHealth: "EdgeX", ReminderHealth: "Reminder" };
 
                 // Recompute summary based on filtered sites
                 var filteredAh = { healthy: 0, warning: 0, unhealthy: 0 };
@@ -6642,10 +6689,13 @@
                     return '<td class="' + cls.join(" ") + '">' +
                         '<div class="svc2">' +
                             '<span class="svc2-title">' + esc(svc.label) + svcCntBadge + '</span>' +
-                            '<div class="svc2-grid">' +
-                                nodeBlock('Local', '\uD83D\uDCBB', 'node-local', 'local', lcMq, lcMqClick, lcMqTip, lcSh, lcShCls) +
-                                nodeBlock('Cloud', '\u2601', 'node-cloud', 'cloud', clMq, clMqClick, clMqTip, clSh, clShCls) +
-                            '</div>' +
+                        '<div class="svc2-grid' + ((SVC_NODES[svc.key] || ["local", "cloud"]).length === 1 ? ' single' : '') + '">' +
+                        (SVC_NODES[svc.key] || ["local", "cloud"]).map(function (nd) {
+                            return nd === "local"
+                                ? nodeBlock('Local', '\uD83D\uDCBB', 'node-local', 'local', lcMq, lcMqClick, lcMqTip, lcSh, lcShCls)
+                                : nodeBlock('Cloud', '\u2601', 'node-cloud', 'cloud', clMq, clMqClick, clMqTip, clSh, clShCls);
+                        }).join("") +
+                        '</div>' +
                             lastTs +
                         '</div></td>';
                 }).join("");
@@ -6714,6 +6764,7 @@
     // This stops the "data is there / data is gone" effect between opens.
     var _modalRefreshing = false;
     var _lastModalRefreshAt = 0;
+    @* razor-literal-split: keeps generated WriteLiteral under csc CS1647 limit *@
     function refreshOpenModal(force) {
         if (_modalRefreshing || !currentModal) return;
         var m = document.getElementById("mo");
@@ -6964,6 +7015,8 @@
         else if (svc.key === "Alert") rawKey = "alertHealth";
         else if (svc.key === "Debouncer") rawKey = "debouncerHealth";
         else if (svc.key === "Point") rawKey = "pointHealth";
+        else if (svc.key === "EdgeX") rawKey = "edgexHealth";
+        else if (svc.key === "Reminder") rawKey = "reminderHealth";
 
         var rawPayload = null;
         if (serviceType && rawKey) {
@@ -7615,6 +7668,7 @@
         return list;
     }
 
+    @* razor-literal-split: keeps generated WriteLiteral under csc CS1647 limit *@
     async function fetchAlertLive() {
         var siteId = selectedHealthSiteId();
         try {
@@ -8396,7 +8450,7 @@
     // (default last 24h). Both bind: identifier, kind (local/cloud), description,
     // station, siteId, set/reset timestamps, priority, category.
     // =====================================================================
-    var AC_SVC_LABELS = { DataReceiverHealth: "Data Receiver", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine" };
+    var AC_SVC_LABELS = { DataReceiverHealth: "Data Receiver", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine", EdgeXHealth: "EdgeX", ReminderHealth: "Reminder" };
     var acState = { siteId: null, sourceId: null, node: null, tab: "live", from: null, to: null, hist: null, histLoading: false, histErr: null };
 
     function acIsoLocal(d) {
@@ -8575,7 +8629,7 @@
     // service at one site (both nodes), grouped by node and split into
     // dead (service.dead) vs bad (health.bad). Opened from the service count badge.
     function buildServiceAlertModel(siteId, sourceId) {
-        var svcLabels = { DataReceiverHealth: "Data Receiver", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine" };
+        var svcLabels = { DataReceiverHealth: "Data Receiver", DataloggerHealth: "Datalogger", AlertHealth: "Alert", DebouncerHealth: "Debouncer", PointMachineHealth: "Point Machine", EdgeXHealth: "EdgeX", ReminderHealth: "Reminder" };
         var model = {
             siteId: String(siteId),
             sourceId: sourceId,
