@@ -1,28 +1,28 @@
 ﻿@model Domain.SiteLister
-
 <style>
-    /* ===== Grid ===== */
     .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-        gap: 22px;
-        align-items: start;
+        grid-template-columns: repeat(auto-fill,minmax(372px,1fr));
+        gap: 18px;
+        align-items: start
     }
 
-    /* ===== Station Card ===== */
     .station-card {
         position: relative;
-        border-radius: 24px;
+        border-radius: 16px;
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        transition: transform .35s cubic-bezier(.2,.7,.3,1), box-shadow .4s, border-color .5s;
-        background: linear-gradient(165deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
-        backdrop-filter: blur(22px) saturate(170%);
-        -webkit-backdrop-filter: blur(22px) saturate(170%);
-        border: 1px solid rgba(255,255,255,.10);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 1px rgba(0,0,0,.25), 0 12px 34px rgba(0,0,0,.4);
+        background: linear-gradient(180deg,rgba(28,35,55,.9),rgba(16,21,34,.92)) padding-box,linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.035) 42%,rgba(255,255,255,.07)) border-box;
+        border: 1px solid transparent;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.06),0 1px 1px rgba(0,0,0,.5),0 22px 46px -26px rgba(0,0,0,.85);
+        transition: transform .25s cubic-bezier(.2,.7,.3,1),box-shadow .25s,border-color .25s
     }
+
+        .station-card > * {
+            position: relative;
+            z-index: 1
+        }
 
         .station-card::before {
             content: "";
@@ -30,504 +30,432 @@
             top: 0;
             left: 0;
             right: 0;
-            height: 42%;
-            pointer-events: none;
-            z-index: 0;
-            background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0));
+            height: 2px;
+            z-index: 5;
+            background: linear-gradient(90deg,transparent,var(--ok) 30%,var(--ok) 70%,transparent);
+            opacity: .95
         }
 
-        .station-card > * {
-            position: relative;
-            z-index: 1;
+        .station-card.has-alert::before {
+            background: linear-gradient(90deg,transparent,var(--alert) 30%,var(--alert) 70%,transparent)
         }
 
-        .station-card .sheen-sweep {
+        .station-card::after {
+            content: "";
             position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            width: 45%;
-            z-index: 2;
+            inset: 0;
+            z-index: 0;
             pointer-events: none;
-            opacity: 0;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,.16), transparent);
-        }
-
-        .station-card:hover .sheen-sweep {
-            opacity: 1;
-            animation: sheen-sweep .85s ease-out;
+            border-radius: 16px;
+            background: radial-gradient(130% 64% at 50% -12%,rgba(255,255,255,.07),transparent 56%)
         }
 
         .station-card:hover {
-            transform: translateY(-6px) scale(1.01);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.32), 0 24px 50px rgba(0,0,0,.55);
+            transform: translateY(-3px);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08),0 1px 1px rgba(0,0,0,.5),0 32px 60px -26px rgba(0,0,0,.9)
         }
 
         .station-card.has-alert {
-            border-color: rgba(248,113,113,.4);
-            animation: glow-red 2s ease-in-out infinite;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.06),0 1px 1px rgba(0,0,0,.5),0 22px 46px -26px rgba(0,0,0,.85),0 0 54px -18px var(--alert-glow)
         }
 
         .station-card.enter {
-            animation: card-in .6s cubic-bezier(.2,.7,.3,1) backwards;
+            animation: fade-up .55s cubic-bezier(.2,.7,.3,1) backwards
         }
 
-    /* ===== Station Board ===== */
-    .board-text {
-        flex: 1;
-        min-width: 0;
-        text-align: center;
+    @@keyframes fade-up {
+        from {
+            opacity: 0;
+            transform: translateY(12px)
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0)
+        }
     }
 
-    .board-name {
-        font-family: 'Roboto Condensed', 'Inter', sans-serif;
-        font-weight: 700;
-        font-size: 20px;
-        letter-spacing: 2px;
-        line-height: 1;
-        text-transform: uppercase;
-        color: #fff;
-        text-shadow: 0 1px 2px rgba(0,0,0,.5), 0 0 16px rgba(255,255,255,.25);
+    @@keyframes soft-pulse {
+        0%, 100% {
+            box-shadow: 0 0 0 3px var(--alert-soft),0 0 10px var(--alert-glow)
+        }
+
+        50% {
+            box-shadow: 0 0 0 6px rgba(251,111,132,.05),0 0 16px var(--alert-glow)
+        }
     }
 
-    .board-sub {
-        font-size: 8.5px;
-        color: rgba(255,255,255,.7);
-        font-weight: 700;
-        letter-spacing: 2.5px;
-        margin-top: 4px;
-        text-shadow: 0 1px 2px rgba(0,0,0,.4);
+    .card-head {
+        padding: 16px 18px 14px;
+        border-bottom: 1px solid var(--line)
     }
 
-    .board-code {
-        flex-shrink: 0;
-        background: rgba(255,255,255,.18);
-        color: #fff;
-        font-size: 10px;
-        font-weight: 800;
-        padding: 4px 9px;
-        border-radius: 7px;
-        letter-spacing: 1px;
-        border: 1px solid rgba(255,255,255,.3);
-        text-shadow: 0 1px 2px rgba(0,0,0,.3);
+    .ch-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px
     }
 
-    .master {
-        width: 58px;
-        height: 66px;
-        flex-shrink: 0;
-    }
-
-        .master svg {
-            width: 58px;
-            height: 66px;
-            display: block;
-        }
-
-    /* ===== Liquid Pool ===== */
-    .station-board-wrap {
-        position: relative;
-        padding: 18px 18px 22px;
-        margin: 6px 14px 0;
-        border-radius: 18px;
-        overflow: hidden;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 6px 20px rgba(0,0,0,.35);
-    }
-
-        .station-board-wrap.ok {
-            background: linear-gradient(180deg, rgba(6,78,59,.35), rgba(6,40,30,.5));
-        }
-
-        .station-board-wrap.alert {
-            background: linear-gradient(180deg, rgba(120,20,50,.35), rgba(70,10,30,.5));
-        }
-
-    .liquid-pool {
-        position: absolute;
-        inset: 0;
-        z-index: 0;
-        overflow: hidden;
-        border-radius: 18px;
-    }
-
-        .liquid-pool .w-back, .liquid-pool .w-mid, .liquid-pool .w-front {
-            position: absolute;
-            inset: 0;
-        }
-
-            .liquid-pool .w-back svg, .liquid-pool .w-mid svg, .liquid-pool .w-front svg {
-                position: absolute;
-                inset: 0;
-                width: 200%;
-                height: 100%;
-                display: block;
-            }
-
-        .liquid-pool .w-back {
-            opacity: .5;
-        }
-
-        .liquid-pool .w-mid {
-            opacity: .7;
-        }
-
-        .liquid-pool .w-front {
-            opacity: .92;
-        }
-
-        .liquid-pool.alert .w-back svg {
-            animation: wave-move 5s linear infinite;
-        }
-
-        .liquid-pool.alert .w-mid svg {
-            animation: wave-move 3.2s linear infinite reverse;
-        }
-
-        .liquid-pool.alert .w-front svg {
-            animation: wave-move 2.1s linear infinite;
-        }
-
-        .liquid-pool.ok .w-back svg {
-            animation: wave-move 9s linear infinite;
-        }
-
-        .liquid-pool.ok .w-mid svg {
-            animation: wave-move 6.5s linear infinite reverse;
-        }
-
-        .liquid-pool.ok .w-front svg {
-            animation: wave-move 4.6s linear infinite;
-        }
-
-        .liquid-pool::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 2;
-            pointer-events: none;
-            border-radius: 18px;
-            background: linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,.05) 30%, transparent 55%), radial-gradient(80% 50% at 25% 0%, rgba(255,255,255,.22), transparent 60%);
-        }
-
-        .liquid-pool::after {
-            content: "";
-            position: absolute;
-            top: 0;
-            left: -30%;
-            width: 50%;
-            height: 100%;
-            z-index: 2;
-            pointer-events: none;
-            background: linear-gradient(100deg, transparent, rgba(255,255,255,.14), transparent);
-            animation: shine-drift 7s ease-in-out infinite;
-        }
-
-    .station-board {
-        position: relative;
-        z-index: 1;
-        border-radius: 14px;
-        padding: 12px 16px;
+    .ch-id {
         display: flex;
         align-items: center;
-        gap: 12px;
-        background: linear-gradient(180deg, rgba(15,23,42,.42), rgba(8,14,30,.5));
-        backdrop-filter: blur(10px) saturate(150%);
-        -webkit-backdrop-filter: blur(10px) saturate(150%);
-        border: 1px solid rgba(255,255,255,.20);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 6px 18px rgba(0,0,0,.4);
+        gap: 11px;
+        min-width: 0
     }
 
-    .station-card.has-alert .station-board {
-        animation: board-shake .6s ease-in-out infinite;
-        border-color: rgba(255,255,255,.26);
-    }
-
-    /* ===== Status Line ===== */
-    .status-line {
+    .ch-mark {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
         display: flex;
         align-items: center;
         justify-content: center;
+        flex-shrink: 0;
+        background: linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+        border: 1px solid var(--line-2);
+        color: var(--text-2)
+    }
+
+        .ch-mark svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.7;
+            stroke-linecap: round;
+            stroke-linejoin: round
+        }
+
+    .station-card.has-alert .ch-mark {
+        color: var(--alert);
+        border-color: var(--alert-line);
+        background: var(--alert-soft);
+        box-shadow: 0 0 16px -6px var(--alert-glow)
+    }
+
+    .station-card:not(.has-alert) .ch-mark {
+        color: var(--ok);
+        border-color: var(--ok-line);
+        background: var(--ok-soft);
+        box-shadow: 0 0 16px -6px var(--ok-glow)
+    }
+
+    .ch-name {
+        font-size: 17px;
+        font-weight: 680;
+        letter-spacing: -.02em;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.18
+    }
+
+    .ch-sub {
+        font-size: 11px;
+        color: var(--text-3);
+        margin-top: 2px
+    }
+
+    .ch-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0
+    }
+
+    .ch-code {
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-2);
+        padding: 4px 9px;
+        border-radius: 7px;
+        background: linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+        border: 1px solid var(--line-2)
+    }
+
+    .status-line {
+        display: flex;
+        align-items: center;
         gap: 9px;
-        padding: 10px 14px 4px;
+        margin-top: 13px
     }
 
         .status-line .lamp {
-            position: relative;
-            width: 10px;
-            height: 10px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            flex-shrink: 0;
-            background: #fff;
+            flex-shrink: 0
         }
-
-            .status-line .lamp::after {
-                content: "";
-                position: absolute;
-                inset: -5px;
-                border-radius: 50%;
-                border: 1.5px solid rgba(255,255,255,.5);
-            }
-
-        .status-line.alert .lamp {
-            background: #fb7185;
-            box-shadow: 0 0 12px 2px rgba(251,113,133,.85);
-            animation: blink 1s infinite;
-        }
-
-            .status-line.alert .lamp::after {
-                animation: ring 1.4s ease-out infinite;
-                border-color: rgba(251,113,133,.7);
-            }
 
         .status-line.ok .lamp {
-            background: #34d399;
-            box-shadow: 0 0 12px 2px rgba(52,211,153,.8);
+            background: var(--ok);
+            box-shadow: 0 0 0 3px var(--ok-soft),0 0 10px var(--ok-glow)
         }
 
-            .status-line.ok .lamp::after {
-                border-color: rgba(52,211,153,.5);
-            }
+        .status-line.alert .lamp {
+            background: var(--alert);
+            box-shadow: 0 0 0 3px var(--alert-soft),0 0 10px var(--alert-glow);
+            animation: soft-pulse 1.9s ease-in-out infinite
+        }
 
         .status-line .txt {
             font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-        }
-
-        .status-line.alert .txt {
-            color: #fda4af;
-            text-shadow: 0 0 12px rgba(251,113,133,.4);
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase
         }
 
         .status-line.ok .txt {
-            color: #6ee7b7;
-            text-shadow: 0 0 12px rgba(52,211,153,.35);
+            color: var(--ok)
         }
 
-        .status-line .badge {
-            font-size: 9px;
-            font-weight: 700;
-            color: var(--txt-dim);
-            background: rgba(255,255,255,.06);
-            padding: 3px 9px;
-            border-radius: 20px;
-            margin-left: 1px;
-            border: 1px solid rgba(255,255,255,.10);
+        .status-line.alert .txt {
+            color: var(--alert)
         }
 
-    /* rail divider */
-    .rail {
-        height: 6px;
-        margin: 2px 14px 0;
-        background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.35) 0 6px, transparent 6px 20px);
-        background-size: 40px 6px;
-        opacity: .4;
+    .live-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: .09em;
+        color: #86e6c4;
+        background: var(--ok-soft);
+        border: 1px solid var(--ok-line);
+        padding: 2px 7px 2px 6px;
+        border-radius: 20px
     }
 
-    .station-card.has-alert .rail {
-        animation: rail-move 1.2s linear infinite;
-        opacity: .6;
+        .live-chip .ld {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--ok);
+            animation: live-ping 1.8s ease-out infinite
+        }
+
+    @@keyframes live-ping {
+        0% {
+            box-shadow: 0 0 0 0 rgba(52,211,153,.55)
+        }
+
+        70%, 100% {
+            box-shadow: 0 0 0 5px rgba(52,211,153,0)
+        }
     }
 
-    /* ===== Slides ===== */
-    .slide-viewport {
-        height: 210px;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .slide-track {
-        display: flex;
-        height: 100%;
-        transition: transform .45s cubic-bezier(.4,0,.2,1);
-    }
-
-    .slide {
-        min-width: 100%;
-        height: 100%;
-        padding: 14px 16px 8px;
+    .status-line .badge {
+        margin-left: auto;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-3);
+        padding: 3px 10px;
+        border-radius: 20px;
+        background: linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));
+        border: 1px solid var(--line)
     }
 
     .card-nav {
         display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 2px;
-        padding: 10px 12px 11px;
-        border-top: 1px solid rgba(255,255,255,.10);
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line)
     }
 
         .card-nav .seg {
             display: flex;
-            gap: 2px;
-            padding: 3px;
-            border-radius: 11px;
-            background: rgba(0,0,0,.18);
-            border: 1px solid rgba(255,255,255,.10);
+            width: 100%
         }
 
         .card-nav button {
+            flex: 1;
+            position: relative;
             background: transparent;
             border: none;
-            border-radius: 8px;
-            padding: 5px 12px;
+            padding: 12px 4px;
             cursor: pointer;
-            color: var(--txt-faint);
-            font-size: 9px;
-            font-weight: 700;
-            transition: color .25s, background .25s;
-            letter-spacing: .6px;
+            color: var(--text-3);
+            font-size: 10.5px;
+            font-weight: 600;
             font-family: inherit;
+            transition: color .18s;
+            white-space: nowrap
         }
 
             .card-nav button:hover {
-                color: #cdddff;
+                color: var(--text-2)
             }
 
-            .card-nav button.active-nav {
-                background: linear-gradient(180deg, rgba(129,140,248,.45), rgba(129,140,248,.22));
-                color: #fff;
-                box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 8px rgba(99,102,241,.35);
+            .card-nav button.active {
+                color: var(--text)
             }
 
-    .progress-bar {
-        height: 3px;
-        background: rgba(255,255,255,.06);
+                .card-nav button.active::after {
+                    content: "";
+                    position: absolute;
+                    left: 10%;
+                    right: 10%;
+                    bottom: -1px;
+                    height: 2px;
+                    border-radius: 2px;
+                    background: linear-gradient(90deg,var(--accent),var(--accent2));
+                    box-shadow: 0 0 10px rgba(124,131,242,.65)
+                }
+
+    .station-card.has-alert .card-nav button.active::after {
+        background: linear-gradient(90deg,#fb6f84,#fb9aa8);
+        box-shadow: 0 0 10px var(--alert-glow)
     }
 
-    .progress-fill {
-        height: 100%;
-        transition: width .45s cubic-bezier(.4,0,.2,1);
-        border-radius: 0 2px 2px 0;
+    .slide-viewport {
+        position: relative;
+        overflow: hidden;
+        height: 280px;
+        transition: height .35s cubic-bezier(.4,0,.2,1)
     }
 
-        .progress-fill.alert {
-            background: linear-gradient(90deg, #e11d48, #fb7185);
-            box-shadow: 0 0 10px rgba(225,29,72,.6);
-        }
+    .slide-track {
+        display: flex;
+        align-items: flex-start;
+        transition: transform .42s cubic-bezier(.4,0,.2,1)
+    }
 
-        .progress-fill.normal {
-            background: linear-gradient(90deg, #6366f1, #818cf8);
-            box-shadow: 0 0 10px rgba(99,102,241,.55);
-        }
+    .slide {
+        min-width: 100%;
+        padding: 16px 18px
+    }
 
-    /* Now slide */
+    .alert-info-box, .perf-card, .history-item {
+        background: linear-gradient(180deg,rgba(255,255,255,.052),rgba(255,255,255,.018)) padding-box,linear-gradient(180deg,rgba(255,255,255,.13),rgba(255,255,255,.03)) border-box;
+        border: 1px solid transparent;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05)
+    }
+
     .now-slide {
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        height: 100%;
-        justify-content: center;
+        gap: 11px
     }
 
     .now-heading {
         font-size: 10px;
         font-weight: 700;
-        color: var(--txt-dim);
+        color: var(--text-3);
         text-transform: uppercase;
-        letter-spacing: 1.5px;
+        letter-spacing: .1em
     }
 
     .alert-info-box {
-        width: 100%;
         border-radius: 12px;
-        padding: 12px 14px;
-        background: rgba(255,255,255,.07);
-        backdrop-filter: blur(10px);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.15);
+        padding: 14px
     }
 
         .alert-info-box.failure-border {
-            border: 1px solid rgba(255,99,99,.30);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 0 1px var(--alert-line),0 0 28px -16px var(--alert-glow)
         }
 
         .alert-info-box.predictive-border {
-            border: 1px solid rgba(99,179,237,.30);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(122,162,247,.3)
         }
 
+    .ab-top {
+        display: flex;
+        gap: 6px;
+        align-items: center
+    }
+
     .alert-type-badge {
-        font-size: 9px;
+        font-size: 9.5px;
         font-weight: 700;
-        padding: 2px 8px;
+        padding: 3px 9px;
         border-radius: 6px;
-        display: inline-block;
+        letter-spacing: .04em;
+        text-transform: uppercase
     }
 
         .alert-type-badge.failure {
-            background: rgba(255,77,77,.18);
-            color: #ff8585;
+            background: linear-gradient(180deg,rgba(251,111,132,.24),rgba(251,111,132,.12));
+            color: #ffb3c0;
+            box-shadow: inset 0 0 0 1px rgba(251,111,132,.32),0 0 12px -4px var(--alert-glow)
         }
 
         .alert-type-badge.predictive {
-            background: rgba(99,179,237,.18);
-            color: #8ecbf5;
+            background: linear-gradient(180deg,rgba(122,162,247,.22),rgba(122,162,247,.1));
+            color: #a8c2fc;
+            box-shadow: inset 0 0 0 1px rgba(122,162,247,.3)
         }
 
     .alert-status-badge {
-        font-size: 9px;
-        padding: 2px 8px;
+        font-size: 9.5px;
+        font-weight: 600;
+        padding: 3px 9px;
         border-radius: 6px;
-        display: inline-block;
-        margin-left: 6px;
+        letter-spacing: .03em;
+        text-transform: uppercase
     }
 
         .alert-status-badge.active-st {
-            background: rgba(34,197,94,.15);
-            color: #5fdd92;
+            background: var(--ok-soft);
+            color: #74e3bd;
+            box-shadow: inset 0 0 0 1px var(--ok-line)
         }
 
         .alert-status-badge.cleared-st {
-            background: rgba(148,163,184,.12);
-            color: var(--txt-faint);
+            background: rgba(255,255,255,.05);
+            color: var(--text-3);
+            box-shadow: inset 0 0 0 1px var(--line)
         }
 
+    .alert-asset-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 12px 0 5px
+    }
+
     .alert-asset {
-        color: #f8fafc;
-        font-size: 13px;
-        font-weight: 600;
-        margin: 7px 0 3px;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 640;
+        letter-spacing: -.01em
     }
 
     .alert-cause {
-        color: #fbbf24;
-        font-size: 10px;
-        font-family: monospace;
-        background: rgba(251,191,36,.12);
+        color: #f8c970;
+        font-size: 10.5px;
+        font-family: var(--mono);
+        background: var(--warn-soft);
         display: inline-block;
-        padding: 2px 7px;
+        padding: 3px 8px;
         border-radius: 5px;
+        margin-bottom: 11px;
+        box-shadow: inset 0 0 0 1px var(--warn-line)
+    }
+
+    .alert-msg {
+        color: var(--text-3);
+        font-size: 9.5px;
+        line-height: 1.4;
         margin-bottom: 8px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden
     }
 
     .alert-meta {
         display: flex;
-        gap: 14px;
-        color: var(--txt-dim);
-        font-size: 10px;
+        gap: 16px;
+        color: var(--text-3);
+        font-size: 10.5px;
+        font-family: var(--mono)
     }
 
         .alert-meta .dur {
-            color: #fcd34d;
-        }
-
-    /* Alert list in Now slide */
-    .alert-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        overflow-y: auto;
-        max-height: 170px;
-        padding-right: 4px;
-    }
-
-        .alert-list::-webkit-scrollbar {
-            width: 3px;
-        }
-
-        .alert-list::-webkit-scrollbar-thumb {
-            background: rgba(255,255,255,.15);
-            border-radius: 2px;
+            color: #f8c970
         }
 
     .alert-empty {
@@ -535,584 +463,471 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        color: #6ee7b7;
+        gap: 8px;
+        color: var(--ok);
         font-size: 11px;
         font-weight: 600;
-        height: 140px;
+        min-height: 120px
     }
 
-    .alert-card {
-        border-radius: 10px;
-        padding: 9px 12px;
-        cursor: pointer;
-        background: rgba(255,255,255,.05);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(255,255,255,.08);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
-        transition: background .2s, border-color .2s;
+    .timeline-title {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-3);
+        margin-bottom: 13px;
+        text-transform: uppercase;
+        letter-spacing: .1em
     }
 
-        .alert-card:hover {
-            background: rgba(255,255,255,.09);
-            border-color: rgba(255,255,255,.16);
+    .timeline {
+        position: relative;
+        padding-left: 15px
+    }
+
+    .timeline-line {
+        position: absolute;
+        left: 4px;
+        top: 4px;
+        bottom: 4px;
+        width: 1.5px;
+        background: linear-gradient(180deg,var(--line-3),transparent)
+    }
+
+    .timeline-item {
+        position: relative;
+        margin-bottom: 14px;
+        padding-left: 14px
+    }
+
+        .timeline-item:last-child {
+            margin-bottom: 0
         }
 
-        .alert-card .ac-top {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 4px;
+    .timeline-dot {
+        position: absolute;
+        left: -12px;
+        top: 4px;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        border: 2px solid #141a28
+    }
+
+        .timeline-dot.failure {
+            background: var(--alert);
+            box-shadow: 0 0 8px -1px var(--alert-glow)
         }
 
-        .alert-card .ac-badge {
-            font-size: 8px;
-            font-weight: 700;
-            padding: 1px 6px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            letter-spacing: .5px;
+        .timeline-dot.predictive {
+            background: var(--pred);
+            box-shadow: 0 0 8px -1px rgba(122,162,247,.6)
         }
 
-            .alert-card .ac-badge.failure {
-                background: rgba(255,77,77,.18);
-                color: #ff8585;
-            }
+    .timeline-head {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 3px;
+        flex-wrap: wrap
+    }
 
-            .alert-card .ac-badge.predictive {
-                background: rgba(99,179,237,.18);
-                color: #8ecbf5;
-            }
+    .timeline-type {
+        font-size: 9.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em
+    }
 
-        .alert-card .ac-asset {
-            color: #f1f5f9;
-            font-size: 11px;
-            font-weight: 600;
-            flex: 1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .timeline-type.failure {
+            color: #ffb3c0
         }
 
-        .alert-card .ac-time {
-            font-size: 9px;
-            color: var(--txt-faint);
-            font-family: monospace;
+        .timeline-type.predictive {
+            color: #a8c2fc
         }
 
-        .alert-card .ac-msg {
-            font-size: 9.5px;
-            color: var(--txt-dim);
-            line-height: 1.35;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
+    .timeline-time {
+        font-size: 10px;
+        color: var(--text-4);
+        font-family: var(--mono)
+    }
+
+    .timeline-st {
+        font-size: 8.5px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        margin-left: auto;
+        font-weight: 600;
+        text-transform: uppercase
+    }
+
+        .timeline-st.active-st {
+            background: var(--ok-soft);
+            color: #74e3bd
         }
 
-        .alert-card .ac-cause {
-            font-size: 9px;
-            color: #fbbf24;
-            font-family: monospace;
-            margin-top: 3px;
-            background: rgba(251,191,36,.08);
-            display: inline-block;
-            padding: 1px 6px;
-            border-radius: 4px;
+        .timeline-st.cleared-st {
+            background: rgba(255,255,255,.05);
+            color: var(--text-3)
         }
 
-    /* Placeholder for upcoming slides */
-    .placeholder-box {
+    .timeline-asset {
+        color: var(--text-2);
+        font-size: 11.5px;
+        font-weight: 540
+    }
+
+    .timeline-cause {
+        color: #e0aa58;
+        font-size: 10px;
+        font-family: var(--mono);
+        opacity: .9;
+        margin-top: 1px
+    }
+
+    .perf-slide {
         display: flex;
         flex-direction: column;
+        gap: 12px
+    }
+
+    .perf-heading {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-3);
+        text-transform: uppercase;
+        letter-spacing: .1em
+    }
+
+    .perf-card {
+        border-radius: 12px;
+        padding: 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 14px
+    }
+
+    .perf-ring-wrap {
+        position: relative;
+        width: 48px;
+        height: 48px;
+        flex-shrink: 0
+    }
+
+    .perf-ring-bg {
+        fill: none;
+        stroke: var(--line-3);
+        stroke-width: 4
+    }
+
+    .perf-ring-fill {
+        fill: none;
+        stroke-width: 4;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 1.2s;
+        filter: drop-shadow(0 0 4px currentColor)
+    }
+
+    .perf-ring-val {
+        position: absolute;
+        inset: 0;
+        display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        color: var(--txt-faint);
+        font-size: 11px;
+        font-weight: 730
+    }
+
+    .perf-detail {
+        flex: 1;
+        min-width: 0
+    }
+
+    .perf-label {
         font-size: 11px;
         font-weight: 600;
-        height: 150px;
-        border-radius: 12px;
-        border: 1px dashed rgba(255,255,255,.12);
-        background: rgba(255,255,255,.03);
+        color: var(--text);
+        margin-bottom: 7px
     }
 
-    @@media(max-width:1024px) {
-        .grid {
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    .perf-bar-track {
+        height: 6px;
+        background: var(--surface-3);
+        border-radius: 3px;
+        overflow: hidden
+    }
+
+    .perf-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 1.2s
+    }
+
+        .perf-bar-fill.failure-bar {
+            background: linear-gradient(90deg,#e5566d,#fb6f84);
+            box-shadow: 0 0 10px -2px var(--alert-glow)
         }
-    }
 
-    @@media(max-width:768px) {
-        .grid {
-            grid-template-columns: 1fr;
+        .perf-bar-fill.predictive-bar {
+            background: linear-gradient(90deg,#5d86e8,#7aa2f7);
+            box-shadow: 0 0 10px -2px rgba(122,162,247,.6)
         }
+
+        .perf-bar-fill.coverage-bar {
+            background: linear-gradient(90deg,#1faf80,#34d399);
+            box-shadow: 0 0 10px -2px var(--ok-glow)
+        }
+
+    .perf-sub {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 5px;
+        font-size: 9px;
+        color: var(--text-4)
     }
 
-    .card-nav button:focus-visible, .sound-toggle:focus-visible {
-        outline: 2px solid #a5b4fc;
-        outline-offset: 2px;
+    .history-title {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--text-3);
+        margin-bottom: 13px;
+        text-transform: uppercase;
+        letter-spacing: .1em
+    }
+
+    .history-item {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 9px 11px;
+        margin-bottom: 7px;
+        border-radius: 10px
+    }
+
+        .history-item:last-child {
+            margin-bottom: 0
+        }
+
+    .history-avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: linear-gradient(140deg,rgba(124,131,242,.3),rgba(124,131,242,.12));
+        border: 1px solid rgba(124,131,242,.28);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #c3cbfb;
+        font-size: 11px;
+        font-weight: 600;
+        flex-shrink: 0
+    }
+
+    .history-info {
+        flex: 1;
+        min-width: 0
+    }
+
+    .history-user {
+        color: var(--text);
+        font-size: 11.5px;
+        font-weight: 600
+    }
+
+    .history-action {
+        color: var(--text-3);
+        font-size: 10.5px;
+        margin-top: 1px
+    }
+
+    .history-time {
+        color: var(--text-4);
+        font-size: 9.5px;
+        flex-shrink: 0;
+        text-align: right;
+        line-height: 1.4;
+        font-family: var(--mono)
+    }
+
+    .health-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-4);
+        font-size: 11px;
+        font-weight: 600;
+        min-height: 120px
     }
 </style>
-
 <input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
 <input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
-
 <div class="grid" id="station-grid">
     @if (Model.mSites != null && Model.mSites.Count > 0)
     {
-        var idx = 0;
-        foreach (var item in Model.mSites)
+        var idx = 0; foreach (var item in Model.mSites)
         {
-            var hasAlert = false; // will be set dynamically via JS polling
-            var alertCount = item.TrackCount + item.SignalCount + item.PointMachineCount;
             var siteCode = item.Name != null && item.Name.Length >= 4 ? item.Name.Substring(0, 4).ToUpper() : (item.Name ?? "").ToUpper();
-
-            <div class="station-card enter" id="divSite_@item.Id" data-siteid="@item.Id" data-sitename="@item.Name" style="animation-delay: @(idx * 0.09)s;">
-                <div class="sheen-sweep"></div>
-
-                <!-- Station Board with Liquid Pool -->
-                <div class="station-board-wrap ok" id="boardWrap_@item.Id">
-                    <div class="liquid-pool ok" id="liquidPool_@item.Id">
-                        <!-- Green wave (ok state) — JS will swap to red on alert -->
-                        <div class="w-back">
-                            <svg viewBox="0 0 400 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-                                <defs><linearGradient id="lb-ok-@item.Id" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#047857" /><stop offset="100%" stop-color="#053d2c" /></linearGradient></defs>
-                                <path d="M0,42 C50,30 100,54 150,42 C200,30 250,54 300,42 C350,30 400,54 400,42 L400,90 L0,90 Z" fill="url(#lb-ok-@item.Id)" />
-                            </svg>
+            <div class="station-card enter" id="divSite_@item.Id" data-siteid="@item.Id" data-sitename="@item.Name" style="animation-delay:@(idx*0.09)s">
+                <div class="card-head">
+                    <div class="ch-top">
+                        <div class="ch-id">
+                            <div class="ch-mark"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="1.8" /><path d="M12 10.3V20" /><path d="M9 20l3-3 3 3" /><path d="M8.4 5.6a4.6 4.6 0 000 6M15.6 5.6a4.6 4.6 0 010 6" /></svg></div>
+                            <div><div class="ch-name">@item.Name</div><div class="ch-sub">RDPMS · E7FRS</div></div>
                         </div>
-                        <div class="w-mid">
-                            <svg viewBox="0 0 400 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-                                <defs><linearGradient id="lm-ok-@item.Id" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#059669" /><stop offset="100%" stop-color="#047857" /></linearGradient></defs>
-                                <path d="M0,54 C44,44 88,64 132,54 C176,44 220,64 264,54 C308,44 352,64 400,54 L400,90 L0,90 Z" fill="url(#lm-ok-@item.Id)" />
-                            </svg>
-                        </div>
-                        <div class="w-front">
-                            <svg viewBox="0 0 400 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-                                <defs><linearGradient id="lf-ok-@item.Id" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981" /><stop offset="100%" stop-color="#059669" /></linearGradient></defs>
-                                <path d="M0,66 C40,58 80,74 120,66 C160,58 200,74 240,66 C280,58 320,74 360,66 C380,62 400,70 400,66 L400,90 L0,90 Z" fill="url(#lf-ok-@item.Id)" />
-                                <path d="M0,66 C40,58 80,74 120,66 C160,58 200,74 240,66 C280,58 320,74 360,66 C380,62 400,70 400,66" fill="none" stroke="#a7f3d0" stroke-width="1.5" opacity=".75" />
-                            </svg>
-                        </div>
+                        <div class="ch-right"><div class="ch-code">@siteCode</div></div>
                     </div>
-                    <div class="station-board">
-                        <div class="master" id="master_@item.Id">
-                            <!-- Station Master SVG (ok state) — JS will swap on alert -->
-                        </div>
-                        <div class="board-text">
-                            <div class="board-name">@item.Name</div>
-                            <div class="board-sub">RDPMS · E7FRS</div>
-                        </div>
-                        <div class="board-code">@siteCode</div>
+                    <div class="status-line ok" id="statusLine_@item.Id">
+                        <span class="lamp"></span>
+                        <span class="txt" id="statusTxt_@item.Id">Operational</span>
+                        <span class="live-chip"><span class="ld"></span>LIVE</span>
+                        <span class="badge" id="statusBadge_@item.Id">All clear</span>
                     </div>
                 </div>
-
-                <!-- Status Line -->
-                <div class="status-line ok" id="statusLine_@item.Id">
-                    <span class="lamp"></span>
-                    <span class="txt" id="statusTxt_@item.Id">All Clear</span>
-                    <span class="badge" id="statusBadge_@item.Id">0 active</span>
-                </div>
-
-                <!-- Rail Divider -->
-                <div class="rail"></div>
-
-                <!-- Slides -->
-                <div class="slide-viewport">
-                    <div class="slide-track">
-                        <!-- Slide 1: Now — Last 4 FRS Alerts -->
-                        <div class="slide">
-                            <div class="now-slide" id="nowSlide_@item.Id">
-                                <div class="now-heading">Recent Alerts</div>
-                                <div class="alert-list" id="alertList_@item.Id">
-                                    <div class="alert-empty">
-                                        <span style="font-size:22px;">✓</span>
-                                        <span>No active alerts</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Slide 2: Timeline (placeholder — data coming soon) -->
-                        <div class="slide">
-                            <div class="now-slide" id="timelineSlide_@item.Id">
-                                <div class="now-heading">Timeline</div>
-                                <div class="placeholder-box" id="timelineContent_@item.Id">
-                                    <span style="font-size:18px;">📅</span>
-                                    <span>Timeline data coming soon</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Slide 3: Performance (placeholder — data coming soon) -->
-                        <div class="slide">
-                            <div class="now-slide" id="performanceSlide_@item.Id">
-                                <div class="now-heading">Performance</div>
-                                <div class="placeholder-box" id="performanceContent_@item.Id">
-                                    <span style="font-size:18px;">📊</span>
-                                    <span>Performance data coming soon</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Slide 4: Users (placeholder — data coming soon) -->
-                        <div class="slide">
-                            <div class="now-slide" id="usersSlide_@item.Id">
-                                <div class="now-heading">Users</div>
-                                <div class="placeholder-box" id="usersContent_@item.Id">
-                                    <span style="font-size:18px;">👤</span>
-                                    <span>User data coming soon</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Card Nav -->
                 <div class="card-nav">
                     <div class="seg">
-                        <button class="active-nav" data-idx="0">Now</button>
-                        <button data-idx="1">Timeline</button>
-                        <button data-idx="2">Performance</button>
-                        <button data-idx="3">Users</button>
+                        <button type="button" class="active" data-idx="0">Now</button>
+                        <button type="button" data-idx="1">Timeline</button>
+                        <button type="button" data-idx="2">Performance</button>
+                        <button type="button" data-idx="3">Users</button>
+                        <button type="button" data-idx="4">Health</button>
                     </div>
                 </div>
-                <div class="progress-bar"><div class="progress-fill normal" style="width:25%"></div></div>
+                <div class="slide-viewport">
+                    <div class="slide-track">
+                        <div class="slide"><div class="now-slide" id="nowSlide_@item.Id"><div class="now-heading" id="nowHeading_@item.Id">Last Event</div><div id="nowContent_@item.Id"><div class="alert-empty"><span style="font-size:22px">✓</span><span>No alerts received</span></div></div></div></div>
+                        <div class="slide"><div id="timelineContent_@item.Id"><div class="alert-empty"><span>Loading timeline…</span></div></div></div>
+                        <div class="slide"><div id="performanceContent_@item.Id"><div class="alert-empty"><span>Loading performance…</span></div></div></div>
+                        <div class="slide"><div id="usersContent_@item.Id"><div class="alert-empty"><span>Loading users…</span></div></div></div>
+                        <div class="slide"><div class="health-empty">Health monitoring — coming soon</div></div>
+                    </div>
+                </div>
             </div>
-
             idx++;
         }
     }
 </div>
+@{var serializer = new System.Web.Script.Serialization.JavaScriptSerializer(); serializer.MaxJsonLength = Int32.MaxValue;}
+<script>
+var json=@Html.Raw(serializer.Serialize(Model));
+var dataInterval=parseFloat('@Model.HooterSetting.DataInterval')||30000;
 
-@{
-    var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-    serializer.MaxJsonLength = Int32.MaxValue;
+// ===== Tab nav (manual only, no auto-cycling, dynamic height) =====
+function setCardHeight(card){var vp=card.querySelector('.slide-viewport'),track=card.querySelector('.slide-track');if(!vp||!track)return;var sl=track.children[card._cur||0];if(sl)vp.style.height=sl.offsetHeight+'px';}
+function fitAllCards(){document.querySelectorAll('.station-card').forEach(setCardHeight);}
+
+$(document).ready(function(){
+  if($('#hdnCatListType').val()=='Error'){if($('#hdnCatListMessage').val()=='Forbidden!')window.location.href='/Login/Index';}
+
+  // Tab navigation — manual only, pause on hover
+  $('.station-card').each(function(){
+    var card=this,track=$(card).find('.slide-track')[0],btns=card.querySelectorAll('.card-nav button');
+    card._cur=0;
+    function goTo(i){card._cur=i;track.style.transform='translateX(-'+i*100+'%)';btns.forEach(function(b,j){b.classList.toggle('active',j===i);});setCardHeight(card);}
+    btns.forEach(function(b){b.addEventListener('click',function(){goTo(parseInt(b.dataset.idx));});});
+    goTo(0);
+    // Load slide data
+    var siteId=$(card).data('siteid');
+    fnLoadSlideData(siteId);
+  });
+
+  fitAllCards();setTimeout(fitAllCards,300);
+  $(window).on('resize',fitAllCards);
+
+  updateSummaryCards();
+  fnAllSiteCheckChannelDown();
+  setInterval(fnAllSiteCheckChannelDown,dataInterval);
+});
+
+// ===== Render Now Slide =====
+function renderNowSlide(siteId){
+  var store=(window.wsAlertStore&&window.wsAlertStore[siteId])?window.wsAlertStore[siteId]:[];
+  var $c=$('#nowContent_'+siteId),$h=$('#nowHeading_'+siteId);
+  var active=null;for(var i=0;i<store.length;i++){if(store[i].Status==='Active'){active=store[i];break;}}
+  var a=active||store[0];
+  if(!a){$h.text('Last Event');$c.html('<div class="alert-empty"><span style="font-size:22px">✓</span><span>No alerts received</span></div>');return;}
+  var isA=(a.Status==='Active'),isF=(a.AlertType==='Failure');
+  $h.text(isA?'Active Alert':'Last Event');
+  var ts='';if(a.Time||a.TimestampDevice){var d=new Date(a.TimestampDevice||a.Time);if(!isNaN(d))ts=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);}
+  var dur='';if(isA&&a.Time){var ms=Date.now()-new Date(a.Time).getTime();if(ms>0){var hh=Math.floor(ms/36e5),mm=Math.floor(ms%36e5/6e4),ss=Math.floor(ms%6e4/1e3);dur=('0'+hh).slice(-2)+':'+('0'+mm).slice(-2)+':'+('0'+ss).slice(-2);}}
+  var cnt=0;for(var j=0;j<store.length;j++)if(store[j].Status==='Active')cnt++;
+  $('#statusBadge_'+siteId).text(cnt>0?cnt+' active':'All clear');
+  var msg=a.Message||'';
+  $c.html('<div class="alert-info-box '+(isF?'failure-border':'predictive-border')+'">'+
+    '<div class="ab-top"><span class="alert-type-badge '+(isF?'failure':'predictive')+'">'+a.AlertType+'</span><span class="alert-status-badge '+(isA?'active-st':'cleared-st')+'">'+(isA?'Active':'Cleared')+'</span></div>'+
+    '<div class="alert-asset-row"><div class="alert-asset">'+a.AssetName+'</div></div>'+
+    (msg?'<div class="alert-msg">'+msg+'</div>':'')+
+    '<div class="alert-cause">'+a.CauseCode+'</div>'+
+    '<div class="alert-meta"><span>Started '+ts+'</span>'+(dur?'<span class="dur">Duration '+dur+'</span>':'')+'</div></div>');
+  setTimeout(fitAllCards,50);
 }
 
-<script>
-    var json = @Html.Raw(serializer.Serialize(Model));
-    var dataInterval = parseFloat('@Model.HooterSetting.DataInterval') || 30000;
-    var reminderFrequency = parseFloat('@Model.HooterSetting.ReminderFrequency') || 30000;
+// ===== Render Timeline =====
+function renderTimelineSlide(siteId,alerts){
+  var $c=$('#timelineContent_'+siteId);
+  if(!alerts||!alerts.length){$c.html('<div class="alert-empty"><span>No timeline data</span></div>');return;}
+  var items='';$.each(alerts,function(i,a){var isF=(a.AlertType==='Failure'||a.AlertTypeId===1),cls=isF?'failure':'predictive',st=a.Status||(a.ResetTimeStamp?'Cleared':'Active');
+    var time='',date='',ts=a.Time||a.TimestampDevice||a.SetTimeStamp;if(ts){var d=new Date(ts);if(!isNaN(d)){time=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);date=('0'+d.getDate()).slice(-2)+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];}}
+    items+='<div class="timeline-item"><div class="timeline-dot '+cls+'"></div><div class="timeline-head"><span class="timeline-type '+cls+'">'+(isF?'Failure':'Predictive')+'</span><span class="timeline-time">'+time+' · '+date+'</span><span class="timeline-st '+(st==='Active'?'active-st':'cleared-st')+'">'+st+'</span></div><div class="timeline-asset">'+(a.AssetName||'')+'</div><div class="timeline-cause">'+(a.CauseCode||a.PossibleCause||'')+'</div></div>';
+  });
+  $c.html('<div class="timeline-title">Alert Timeline</div><div class="timeline"><div class="timeline-line"></div>'+items+'</div>');setTimeout(fitAllCards,50);
+}
 
-    // ===== Station Master SVG Generator =====
-    function stationMasterSVG(isAlert) {
-        var flag = isAlert ? '#ef4444' : '#22c55e';
-        var flagDark = isAlert ? '#b91c1c' : '#15803d';
-        var glow = isAlert ? 'rgba(239,68,68,.6)' : 'rgba(34,197,94,.55)';
-        var jTop = isAlert ? '#f87171' : '#4ade80';
-        var jMid = isAlert ? '#ef4444' : '#22c55e';
-        var jBot = isAlert ? '#b91c1c' : '#15803d';
-        var lTop = isAlert ? '#dc2626' : '#16a34a';
-        var lBot = isAlert ? '#991b1b' : '#166534';
-        var a = isAlert ? 1 : 0;
-        var bobAnim = isAlert ? 'tech-bob-alert .9s ease-in-out infinite' : 'tech-bob 3.2s ease-in-out infinite';
-        var armAnim = isAlert ? 'work-arm-alert .7s ease-in-out infinite' : 'work-arm 2.4s ease-in-out infinite';
-        var flagAnim = isAlert ? 'flag-raise .55s ease-in-out infinite' : 'flag-raise 2.6s ease-in-out infinite';
-        var sparkA = isAlert ? 'spark .7s ease-out infinite' : 'spark 2.4s ease-out infinite';
-        var flagWave = isAlert ? '.5s' : '2.4s';
-        var uid = Math.random().toString(36).substr(2, 6);
+// ===== Render Performance =====
+function perfRingSVG(v,color){var r=17,c=2*Math.PI*r,off=c-(c*v/100);return '<svg viewBox="0 0 44 44" width="44" height="44" style="transform:rotate(-90deg)"><circle cx="22" cy="22" r="'+r+'" class="perf-ring-bg"/><circle cx="22" cy="22" r="'+r+'" class="perf-ring-fill" stroke="'+color+'" stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"/></svg>';}
+function renderPerformanceSlide(siteId,perf){
+  var $c=$('#performanceContent_'+siteId);if(!perf){$c.html('<div class="alert-empty"><span>No performance data</span></div>');return;}
+  var m=[{l:'Failure Alert Accuracy',d:'(True+Partial) / Total Failure',v:perf.FailureAccuracy||0,c:'#f87171',b:'failure-bar'},{l:'Predictive Alert Accuracy',d:'(True+Partial) / Total Predictive',v:perf.PredictiveAccuracy||0,c:'#a78bfa',b:'predictive-bar'},{l:'RDPMS Failure Coverage',d:'RDPMS Alerts / Actual Failures',v:perf.RdpmsCoverage||0,c:'#34d399',b:'coverage-bar'}];
+  var html='<div class="perf-slide"><div class="perf-heading">Performance</div>';
+  $.each(m,function(i,x){html+='<div class="perf-card"><div class="perf-ring-wrap">'+perfRingSVG(x.v,x.c)+'<div class="perf-ring-val" style="color:'+x.c+'">'+Math.round(x.v)+'%</div></div><div class="perf-detail"><div class="perf-label">'+x.l+'</div><div class="perf-bar-track"><div class="perf-bar-fill '+x.b+'" style="width:'+x.v+'%"></div></div><div class="perf-sub"><span>'+x.d+'</span></div></div></div>';});
+  $c.html(html+'</div>');setTimeout(fitAllCards,50);
+}
 
-        return '<svg viewBox="0 0 64 72" xmlns="http://www.w3.org/2000/svg">' +
-            '<defs>' +
-            '<linearGradient id="hv-' + uid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + jTop + '"/><stop offset="55%" stop-color="' + jMid + '"/><stop offset="100%" stop-color="' + jBot + '"/></linearGradient>' +
-            '<linearGradient id="hvleg-' + uid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + lTop + '"/><stop offset="100%" stop-color="' + lBot + '"/></linearGradient>' +
-            '<linearGradient id="helm-' + uid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#d4dae0"/></linearGradient>' +
-            '<filter id="fgl-' + uid + '" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="1.4" flood-color="' + glow + '"/></filter>' +
-            '</defs>' +
-            '<ellipse cx="34" cy="69" rx="22" ry="3.2" fill="#000" opacity=".3"/>' +
-            '<path d="M30,52 Q44,50 50,56 Q52,62 46,64 L30,64 Q26,58 30,52 Z" fill="url(#hvleg-' + uid + ')"/>' +
-            '<rect x="33" y="58" width="15" height="2.4" rx="1.2" fill="#e8eef3" opacity=".85"/>' +
-            '<path d="M22,46 Q20,56 24,64 L33,64 Q34,55 31,48 Z" fill="url(#hvleg-' + uid + ')"/>' +
-            '<rect x="22.5" y="57" width="10" height="2.4" rx="1.2" fill="#e8eef3" opacity=".85"/>' +
-            '<path d="M21,63 Q19,67 24,67 L33,67 L33,63 Z" fill="#15171c"/>' +
-            '<ellipse cx="46" cy="64.5" rx="6" ry="2.6" fill="#15171c"/>' +
-            '<g style="transform-origin:34px 50px;animation:' + bobAnim + '">' +
-            '<path d="M22,30 Q34,25 46,31 Q49,40 47,50 Q40,54 30,53 Q22,52 20,46 Q19,37 22,30 Z" fill="url(#hv-' + uid + ')"/>' +
-            '<path d="M22,30 Q34,25 46,31 Q44,34 40,33 Q34,30 28,33 Q24,34 22,30 Z" fill="#1b1d22"/>' +
-            '<path d="M21,44 Q34,47 47,44 L46.5,47 Q34,50 21.5,47 Z" fill="#eef4f8" opacity=".92"/>' +
-            '<path d="M24,38 Q34,40 44,38 L43.7,40 Q34,42 24.3,40 Z" fill="#eef4f8" opacity=".55"/>' +
-            '<line x1="34" y1="31" x2="33" y2="52" stroke="#1b1d22" stroke-width="1" opacity=".5"/>' +
-            '<rect x="31.5" y="22" width="5" height="5" rx="2" fill="#e0a87e"/>' +
-            '<path d="M28.5,16 Q34,13.5 39.5,16 Q41,20 39.5,23.5 Q37.5,26.5 34,26.5 Q30.5,26.5 28.5,23.5 Q27,20 28.5,16 Z" fill="#e8b48a"/>' +
-            '<ellipse cx="39" cy="20.5" rx="1.3" ry="2" fill="#d99c72"/>' +
-            '<path d="M26,16.5 Q34,6 42,16.5 Q42.5,18 40.5,18.2 L27.5,18.2 Q25.5,18 26,16.5 Z" fill="url(#helm-' + uid + ')"/>' +
-            '<rect x="26" y="17.6" width="16" height="2.2" rx="1.1" fill="#eef2f5"/>' +
-            '<path d="M34,7.5 L34,16" stroke="#c2c9cf" stroke-width="1" opacity=".7"/>' +
-            '<path d="M30,9 Q34,7 38,9" stroke="#c2c9cf" stroke-width=".8" fill="none" opacity=".6"/>' +
-            '<ellipse cx="31" cy="12" rx="2" ry="3" fill="#fff" opacity=".5"/>' +
-            '<g style="transform-origin:24px 32px;animation:' + flagAnim + '">' +
-            '<path d="M24,33 Q17,24 13,13 L16,12 Q21,23 28,31 Z" fill="url(#hv-' + uid + ')"/>' +
-            '<path d="M18,20 L21,18.6 L22.6,21.5 L19.6,23 Z" fill="#eef4f8" opacity=".85"/>' +
-            '<circle cx="14.5" cy="13" r="2.4" fill="#e8b48a"/>' +
-            '<g style="transform-origin:13px 9px;animation:flag-wave ' + flagWave + ' ease-in-out infinite" filter="url(#fgl-' + uid + ')">' +
-            '<line x1="13" y1="5" x2="13" y2="14" stroke="#1a1208" stroke-width="2" stroke-linecap="round"/>' +
-            '<path d="M13,5 Q21,3 29,6 Q21,10 13,12 Z" fill="' + flag + '" stroke="' + flagDark + '" stroke-width=".5"/>' +
-            '</g></g>' +
-            '<g style="transform-origin:45px 33px;animation:' + armAnim + '">' +
-            '<path d="M45,33 Q52,38 50,48 L46.5,48 Q47.5,39 42,35 Z" fill="url(#hv-' + uid + ')"/>' +
-            '<path d="M47.5,40 L50.5,39 L51,42 L48,43 Z" fill="#eef4f8" opacity=".7"/>' +
-            '<circle cx="49" cy="48.5" r="2.3" fill="#e8b48a"/>' +
-            '<g style="transform-origin:50px 50px;animation:' + sparkA + '">' +
-            '<circle cx="50" cy="50" r="1.6" fill="#fde68a"/>' +
-            '<line x1="50" y1="46.5" x2="50" y2="48" stroke="#fde68a" stroke-width="1" stroke-linecap="round"/>' +
-            '<line x1="53.5" y1="50" x2="52" y2="50" stroke="#fde68a" stroke-width="1" stroke-linecap="round"/>' +
-            '<line x1="52.4" y1="47.6" x2="51.5" y2="48.5" stroke="#fde68a" stroke-width="1" stroke-linecap="round"/>' +
-            '</g></g></g></svg>';
-    }
+// ===== Render Users =====
+function renderUsersSlide(siteId,users){
+  var $c=$('#usersContent_'+siteId);if(!users||!users.length){$c.html('<div class="alert-empty"><span>No user data</span></div>');return;}
+  var items='';$.each(users,function(i,h){var nm=h.UserName||h.Name||'User',parts=nm.trim().split(' '),ini=parts.length>=2?parts[0][0]+parts[parts.length-1][0]:nm.substring(0,2);ini=ini.toUpperCase();var dur=h.Duration||0;
+    items+='<div class="history-item"><div class="history-avatar">'+ini+'</div><div class="history-info"><div class="history-user">'+nm+'</div><div class="history-action">Total: '+dur+' min</div></div><div class="history-time">'+dur+' min</div></div>';
+  });$c.html('<div class="history-title">User History</div>'+items);setTimeout(fitAllCards,50);
+}
 
-    // ===== Liquid Wave SVG Generator =====
-    function waveSVG(isAlert, siteId) {
-        var deep = isAlert ? '#7f1031' : '#053d2c';
-        var mid = isAlert ? '#be123c' : '#047857';
-        var body = isAlert ? '#e11d48' : '#059669';
-        var light = isAlert ? '#fb7185' : '#10b981';
-        var crest = isAlert ? '#fecdd3' : '#a7f3d0';
+// ===== Load slide data =====
+function fnLoadSlideData(siteId){
+  $.ajax({url:'/FRS25/UserSite/GetTimelineAlerts',type:'Post',data:{siteId:siteId},success:function(d){renderTimelineSlide(siteId,d);}});
+  $.ajax({url:'/FRS25/UserSite/GetPerformanceData',type:'Post',data:{siteId:siteId},success:function(d){renderPerformanceSlide(siteId,d);}});
+  $.ajax({url:'/FRS25/UserSite/GetUserHistoryData',type:'Post',data:{siteId:siteId},success:function(d){renderUsersSlide(siteId,d);}});
+}
 
-        var back = '<svg viewBox="0 0 400 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">' +
-            '<defs><linearGradient id="lb-' + siteId + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + mid + '"/><stop offset="100%" stop-color="' + deep + '"/></linearGradient></defs>' +
-            '<path d="M0,42 C50,30 100,54 150,42 C200,30 250,54 300,42 C350,30 400,54 400,42 L400,90 L0,90 Z" fill="url(#lb-' + siteId + ')"/></svg>';
+// ===== Summary Cards =====
+function updateSummaryCards(){
+  var tot=0,sirens=0;$('.station-card').each(function(){if($(this).hasClass('has-alert'))sirens++;});
+  if(json&&json.mSites)$.each(json.mSites,function(i,s){tot+=(s.TrackCount||0)+(s.PointMachineCount||0)+(s.SignalCount||0);});
+  $('#summary-cards').html(
+    '<div class="summary-card failure"><div class="sc-meta"><div class="num">'+tot+'</div><div class="lbl">Total Alerts</div></div></div>'+
+    '<div class="summary-card predictive"><div class="sc-meta"><div class="num">'+document.querySelectorAll('.station-card').length+'</div><div class="lbl">Sites</div></div></div>'+
+    '<div class="summary-card sc-active"><div class="sc-meta"><div class="num">'+sirens+'</div><div class="lbl">Active Sirens</div></div></div>');
+}
 
-        var midL = '<svg viewBox="0 0 400 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">' +
-            '<defs><linearGradient id="lm-' + siteId + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + body + '"/><stop offset="100%" stop-color="' + mid + '"/></linearGradient></defs>' +
-            '<path d="M0,54 C44,44 88,64 132,54 C176,44 220,64 264,54 C308,44 352,64 400,54 L400,90 L0,90 Z" fill="url(#lm-' + siteId + ')"/></svg>';
+// ===== Set card alert state =====
+function setCardAlert(siteId,isAlert){
+  var $card=$('#divSite_'+siteId),$sl=$('#statusLine_'+siteId);
+  if(isAlert){$card.addClass('has-alert');$sl.removeClass('ok').addClass('alert');$('#statusTxt_'+siteId).text('Alert Active');renderNowSlide(siteId);
+  }else{$card.removeClass('has-alert');$sl.removeClass('alert').addClass('ok');$('#statusTxt_'+siteId).text('Operational');$('#statusBadge_'+siteId).text('All clear');renderNowSlide(siteId);}
+}
 
-        var front = '<svg viewBox="0 0 400 90" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">' +
-            '<defs><linearGradient id="lf-' + siteId + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + light + '"/><stop offset="100%" stop-color="' + body + '"/></linearGradient></defs>' +
-            '<path d="M0,66 C40,58 80,74 120,66 C160,58 200,74 240,66 C280,58 320,74 360,66 C380,62 400,70 400,66 L400,90 L0,90 Z" fill="url(#lf-' + siteId + ')"/>' +
-            '<path d="M0,66 C40,58 80,74 120,66 C160,58 200,74 240,66 C280,58 320,74 360,66 C380,62 400,70 400,66" fill="none" stroke="' + crest + '" stroke-width="1.5" opacity=".75"/></svg>';
-
-        return '<div class="w-back">' + back + '</div><div class="w-mid">' + midL + '</div><div class="w-front">' + front + '</div>';
-    }
-
-    // ===== Initialize all station masters + slide nav =====
-    $(document).ready(function () {
-
-        // Notification handling
-        if ($('#hdnCatListType').val() == 'Success') {
-            CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
-        } else if ($('#hdnCatListType').val() == 'Error') {
-            if ($('#hdnCatListMessage').val() == 'Forbidden!') {
-                window.location.href = "/Login/Index";
-            } else {
-                CommonNotification($("#hdnCatListType").val().toUpperCase(), $("#hdnCatListMessage").val(), $("#hdnCatListType").val());
-            }
-        }
-
-        // Render station masters (all start as OK)
-        $('.station-card').each(function () {
-            var siteId = $(this).data('siteid');
-            $('#master_' + siteId).html(stationMasterSVG(false));
-        });
-
-        // Slide navigation for each card
-        $('.station-card').each(function () {
-            var card = this;
-            var $track = $(card).find('.slide-track');
-            var $btns = $(card).find('.card-nav button');
-            var $fill = $(card).find('.progress-fill');
-            var current = 0, paused = false, pauseTimeout;
-
-            function goTo(i) {
-                current = i;
-                $track.css('transform', 'translateX(-' + (i * 100) + '%)');
-                $btns.removeClass('active-nav');
-                $btns.eq(i).addClass('active-nav');
-                $fill.css('width', (((i + 1) / 4) * 100) + '%');
-            }
-
-            $btns.on('click', function () {
-                goTo(parseInt($(this).data('idx')));
-                paused = true;
-                clearTimeout(pauseTimeout);
-                pauseTimeout = setTimeout(function () { paused = false; }, 12000);
-            });
-
-            setInterval(function () { if (!paused) goTo((current + 1) % 4); }, 6000);
-        });
-
-        // Update summary cards
-        updateSummaryCards();
-
-        // Start polling for alerts
-        fnAllSiteCheckChannelDown();
-        setInterval(function () {
-            fnAllSiteCheckChannelDown();
-        }, dataInterval);
-
-        // Periodic sound announcements
-        setInterval(function () {
-            if (typeof announceAlerts === 'function') announceAlerts();
-        }, reminderFrequency);
-    });
-
-    // ===== Render Alert Cards in Now slide =====
-    function renderAlertCards(siteId, alerts) {
-        var $list = $('#alertList_' + siteId);
-        if (!alerts || alerts.length === 0) {
-            $list.html('<div class="alert-empty"><span style="font-size:22px;">✓</span><span>No active alerts</span></div>');
-            return;
-        }
-        // Show last 4 alerts
-        var last4 = alerts.slice(-4).reverse();
-        var html = '';
-        $.each(last4, function (i, a) {
-            var isFailure = (a.AlertTypeId === 1);
-            var badgeClass = isFailure ? 'failure' : 'predictive';
-            var badgeText = isFailure ? 'FAILURE' : 'PREDICTIVE';
-            var time = '';
-            if (a.SetTimeStamp) {
-                var d = new Date(a.SetTimeStamp);
-                time = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) +
-                       ' · ' + ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2);
-            }
-            var msg = a.SetAlertMessage || a.Description || '';
-            var cause = a.PossibleCause || '';
-            var asset = a.AssetName || '';
-
-            html += '<div class="alert-card">' +
-                '<div class="ac-top">' +
-                    '<span class="ac-badge ' + badgeClass + '">' + badgeText + '</span>' +
-                    '<span class="ac-asset" title="' + asset + '">' + asset + '</span>' +
-                    '<span class="ac-time">' + time + '</span>' +
-                '</div>' +
-                '<div class="ac-msg">' + msg + '</div>' +
-                (cause ? '<div class="ac-cause">' + cause + '</div>' : '') +
-            '</div>';
-        });
-        $list.html(html);
-    }
-
-    // ===== Fetch FRS Alerts for a site =====
-    function fnFetchAlerts(siteId) {
-        $.ajax({
-            url: '/FRS25/UserSite/GetFRSAlertsBySite',
-            type: 'Post',
-            data: { siteId: siteId },
-            success: function (alerts) {
-                renderAlertCards(siteId, alerts);
-            },
-            error: function () {
-                // Silently fail — keep existing content
-            }
-        });
-    }
-
-    // ===== Update Summary Cards =====
-    function updateSummaryCards() {
-        var totalFailure = 0, activeSirens = 0;
-        $('.station-card').each(function () {
-            if ($(this).hasClass('has-alert')) activeSirens++;
-        });
-
-        if (json && json.mSites) {
-            $.each(json.mSites, function (i, site) {
-                totalFailure += (site.TrackCount || 0) + (site.PointMachineCount || 0) + (site.SignalCount || 0);
-            });
-        }
-
-        $('#summary-cards').html(
-            '<div class="summary-card failure"><div class="num">' + totalFailure + '</div><div class="lbl">Total Alerts</div></div>' +
-            '<div class="summary-card predictive"><div class="num">' + document.querySelectorAll('.station-card').length + '</div><div class="lbl">Sites</div></div>' +
-            '<div class="summary-card sc-active"><div class="num">' + activeSirens + '</div><div class="lbl">Active Sirens</div></div>'
-        );
-    }
-
-    // ===== Set card to ALERT state (only called on state TRANSITION) =====
-    function setCardAlert(siteId, isAlert) {
-        var $card = $('#divSite_' + siteId);
-        var $boardWrap = $('#boardWrap_' + siteId);
-        var $liquidPool = $('#liquidPool_' + siteId);
-        var $statusLine = $('#statusLine_' + siteId);
-        var $master = $('#master_' + siteId);
-        var $progressFill = $card.find('.progress-fill');
-
-        if (isAlert) {
-            $card.addClass('has-alert');
-            $boardWrap.removeClass('ok').addClass('alert');
-            $liquidPool.removeClass('ok').addClass('alert');
-            $liquidPool.html(waveSVG(true, siteId));
-            $statusLine.removeClass('ok').addClass('alert');
-            $('#statusTxt_' + siteId).text('Alert Active');
-            $master.html(stationMasterSVG(true));
-            $progressFill.removeClass('normal').addClass('alert');
-            // Fetch alert details only once on transition
-            fnFetchAlerts(siteId);
-        } else {
-            $card.removeClass('has-alert');
-            $boardWrap.removeClass('alert').addClass('ok');
-            $liquidPool.removeClass('alert').addClass('ok');
-            $liquidPool.html(waveSVG(false, siteId));
-            $statusLine.removeClass('alert').addClass('ok');
-            $('#statusTxt_' + siteId).text('All Clear');
-            $('#statusBadge_' + siteId).text('0 active');
-            $master.html(stationMasterSVG(false));
-            $progressFill.removeClass('alert').addClass('normal');
-            renderAlertCards(siteId, []);
-        }
-    }
-
-    // ===== Polling: Check alerts for all sites =====
-    var _isPolling = false;
-
-    function fnAllSiteCheckChannelDown() {
-        // Prevent overlapping calls
-        if (_isPolling) return;
-        _isPolling = true;
-
-        var siteIds = [];
-        if (json && json.mSites) {
-            $.each(json.mSites, function (id, item) {
-                siteIds.push(item.Id);
-            });
-        }
-
-        $.ajax({
-            url: '/FRS25/UserSite/GetSMSLogList',
-            type: 'Post',
-            data: JSON.stringify(siteIds),
-            contentType: 'application/json',
-            success: function (smsSiteIds) {
-                $("#loader").hide();
-                var hasNewAlert = false;
-
-                $('.station-card').each(function () {
-                    var sid = $(this).data('siteid');
-                    var wasAlert = $(this).hasClass('has-alert');
-                    var isNowAlert = smsSiteIds && smsSiteIds.indexOf(sid) > -1;
-
-                    // Only act on STATE CHANGES — don't touch cards that haven't changed
-                    if (isNowAlert && !wasAlert) {
-                        setCardAlert(sid, true);
-                        hasNewAlert = true;
-                    } else if (!isNowAlert && wasAlert) {
-                        setCardAlert(sid, false);
-                    }
-                    // If still alerting (wasAlert && isNowAlert) — do nothing, card stays red
-                });
-
-                // Update badge counts for alerting sites
-                if (smsSiteIds && smsSiteIds.length > 0) {
-                    $.each(smsSiteIds, function (i, sid) {
-                        $('#statusBadge_' + sid).text(smsSiteIds.length + ' active');
-                    });
-                }
-
-                // Play sound ONLY when a NEW alert appears (not every poll)
-                if (hasNewAlert && typeof playStationJingle === 'function' && typeof soundOn !== 'undefined' && soundOn) {
-                    playStationJingle();
-                    setTimeout(function () { if (typeof playAlertHorn === 'function') playAlertHorn(); }, 1000);
-                }
-
-                updateSummaryCards();
-            },
-            error: function () {
-                $("#loader").hide();
-            },
-            complete: function () {
-                // Release lock after request finishes (success or error)
-                _isPolling = false;
-            }
-        });
-    }
+// ===== Polling =====
+var _isPolling=false;
+function fnAllSiteCheckChannelDown(){
+  if(_isPolling)return;_isPolling=true;
+  var siteIds=[];if(json&&json.mSites)$.each(json.mSites,function(i,s){siteIds.push(s.Id);});
+  $.ajax({url:'/FRS25/UserSite/GetSMSLogList',type:'Post',data:JSON.stringify(siteIds),contentType:'application/json',
+    success:function(smsSiteIds){$('#loader').hide();var hasNew=false;
+      $('.station-card').each(function(){var sid=$(this).data('siteid'),was=$(this).hasClass('has-alert'),now=smsSiteIds&&smsSiteIds.indexOf(sid)>-1;
+        var wsA=false;if(window.wsAlertStore&&window.wsAlertStore[sid])for(var k=0;k<window.wsAlertStore[sid].length;k++)if(window.wsAlertStore[sid][k].Status==='Active'){wsA=true;break;}
+        if((now||wsA)&&!was){setCardAlert(sid,true);hasNew=true;}else if(!now&&!wsA&&was){setCardAlert(sid,false);}
+      });
+      if(smsSiteIds&&smsSiteIds.length>0)$.each(smsSiteIds,function(i,sid){$('#statusBadge_'+sid).text(smsSiteIds.length+' active');});
+      if(hasNew&&typeof playSoundCooldown==='function'&&soundOn)playSoundCooldown();
+      updateSummaryCards();
+    },error:function(){$('#loader').hide();},complete:function(){_isPolling=false;}});
+}
 </script>

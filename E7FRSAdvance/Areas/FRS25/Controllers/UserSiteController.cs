@@ -320,7 +320,6 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // ===== REPLACE your existing GetSMSLogList method in FRS25 Area UserSiteController =====
 
         public ActionResult GetSMSLogList(List<int> siteIds)
-
         {
             var smsSiteIds = new List<int>();
             var mHooterSetting = GetSetting();
@@ -385,7 +384,6 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             jsonResult.MaxJsonLength = int.MaxValue;
             return jsonResult;
         }
-
 
         public ActionResult UserHistory(int siteId)
         {
@@ -507,6 +505,197 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             var jsonResult = Json(alerts, JsonRequestBehavior.AllowGet);
             jsonResult.MaxJsonLength = int.MaxValue;
             return jsonResult;
+        }
+
+        // ===== ADD THESE 3 ACTIONS to your FRS25 Area UserSiteController =====
+        // File: Areas/FRS25/Controllers/UserSiteController.cs
+        // Add inside the class body
+
+        // 1. Timeline — returns recent FRS alerts for a site
+        [HttpPost]
+        public JsonResult GetTimelineAlerts(int siteId)
+        {
+            var alerts = new List<FRSAlert>();
+            try
+            {
+                // First check TempData (live alerts from hooter polling)
+                var tempAlerts = TempData.Peek($"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}") as List<FRSAlert>;
+                if (tempAlerts != null && tempAlerts.Count > 0)
+                {
+                    alerts = tempAlerts
+                        .Where(x => x.SiteId == siteId)
+                        .OrderByDescending(x => x.SetTimeStamp)
+                        .Take(10)
+                        .ToList();
+                }
+
+                // If TempData is empty, fetch from API
+                if (alerts.Count == 0)
+                {
+                    Domain.FRSAlertLister mFRSAlertLister = new FRSAlertLister();
+                    mFRSAlertLister.SearchCriteria.FromDate = DateTime.Now.AddDays(-1);
+                    mFRSAlertLister.SearchCriteria.ToDate = DateTime.Now;
+                    mFRSAlertLister.SearchCriteria.SiteId = siteId;
+                    mFRSAlertLister = frsAlertService.GetListerWithTimeFilter(mFRSAlertLister);
+                    if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts != null)
+                    {
+                        alerts = mFRSAlertLister.mFRSAlerts
+                            .Where(x => x.SiteId == siteId)
+                            .OrderByDescending(x => x.SetTimeStamp)
+                            .Take(10)
+                            .ToList();
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            // Map to a simplified object for JS
+            var result = alerts.Select(a => new
+            {
+                AssetName = a.AssetName,
+                AlertType = a.AlertType,
+                AlertTypeId = a.AlertTypeId,
+                CauseCode = a.CauseCode,
+                SetTimeStamp = a.SetTimeStamp,
+                ResetTimeStamp = a.ResetTimeStamp,
+                Status = a.ResetTimeStamp.HasValue ? "Cleared" : "Active",
+                PossibleCause = a.PossibleCause,
+                Description = a.Description
+            }).ToList();
+
+            var jsonResult = Json(result, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
+        }
+
+        // 2. Performance — returns performance metrics for a site
+        [HttpPost]
+        public JsonResult GetPerformanceData(int siteId)
+        {
+            var result = new { FailureAccuracy = 0.0, PredictiveAccuracy = 0.0, RdpmsCoverage = 0.0 };
+            try
+            {
+                var mPerformanceLister = new FRSAlertLister();
+                mPerformanceLister.SearchCriteria.SiteId = siteId;
+                mPerformanceLister = frsAlertService.GetListerWithPagination(mPerformanceLister);
+
+                if (mPerformanceLister != null && mPerformanceLister.mFRSAlerts != null && mPerformanceLister.mFRSAlerts.Count > 0)
+                {
+                    var perf = mPerformanceLister.mFRSAlerts;
+
+                    // Calculate accuracy percentages
+                    // Adjust these calculations based on your actual Performance domain model
+                    double failureTotal = perf.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
+                    double failureTrue = perf.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)).Count();
+                    double predictiveTotal = perf.Where(x => x.AlertType == "Predictive").Count();
+                    double predictiveTrue = perf.Where(x => x.AlertType == "Predictive" && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)).Count();
+
+                    result = new
+                    {
+                        FailureAccuracy = failureTotal > 0 ? Math.Round((failureTrue / failureTotal) * 100, 2) : 0.0,
+                        PredictiveAccuracy = predictiveTotal > 0 ? Math.Round((predictiveTrue / predictiveTotal) * 100, 2) : 0.0,
+                        RdpmsCoverage = failureTotal > 0 ? Math.Round((failureTrue / Math.Max(failureTotal, 1)) * 100, 2) : 0.0
+                    };
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return Json(result, JsonRequestBehavior.AllowGet);
+        }
+
+        // 3. User History — returns recent user activity for a site
+        [HttpPost]
+        public JsonResult GetUserHistoryData(int siteId)
+        {
+            var result = new List<object>();
+            try
+            {
+                var mAppAccessLister = new AppAccessLister();
+                mAppAccessLister.SearchCriteria.SiteId = siteId;
+                mAppAccessLister.SearchCriteria.StartTime = DateTime.Now.AddDays(-7);
+                mAppAccessLister.Pager.Take = 10;
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mAppAccessLister);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync(String.Format("AppAccess/GetAllLister"), str).Result;
+                    if (response.StatusCode == System.Net.HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        mAppAccessLister = JsonConvert.DeserializeObject<AppAccessLister>(jsonString);
+
+                        if (mAppAccessLister != null && mAppAccessLister.mAppAccess != null)
+                        {
+                            //result = mAppAccessLister.mUser
+                            //    .OrderByDescending(x => x.StartTime)
+                            //    .Select(a => (object)new
+                            //    {
+                            //        UserName = a.UserName ?? a.Name ?? "User",
+                            //        Action = a.Remarks ?? a.Action ?? "",
+                            //        StartTime = a.StartTime
+                            //    })
+                            //    .ToList();
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            var jsonResult = Json(result, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
+        }
+
+        public UserLister GetUserLister(UserLister mUserLister)
+        {
+            mUserLister.Pager.Take = -1;
+            mUserLister.SearchCriteria.RoleId = (int)E7FRSAdvance.Utility.Utility.Role.User;
+            mUserLister.SearchCriteria.SiteKeepingSearch = false;
+
+            if (mUserLister.SearchCriteria.FromDate == DateTime.MinValue)
+                mUserLister.SearchCriteria.FromDate = DateTime.Now.AddDays(-7);
+
+            if (mUserLister.SearchCriteria.ToDate == DateTime.MinValue)
+                mUserLister.SearchCriteria.ToDate = DateTime.Now;
+
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mUserLister);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync(String.Format("User/GetUserHistory"), str).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        mUserLister = JsonConvert.DeserializeObject<UserLister>(jsonString);
+
+                    }
+                    else if (response.StatusCode == HttpStatusCode.Forbidden)
+                    {
+                        ViewBag.Type = "Error";
+                        ViewBag.Message = "Forbidden!";
+                    }
+                    else
+                    {
+                        ViewBag.Type = "Error";
+                        ViewBag.Message = "Internal server error!";
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                ViewBag.Type = "Error";
+                ViewBag.Message = "Something went wrong!";
+            }
+            return mUserLister;
         }
     }
 }
