@@ -166,47 +166,23 @@
         return obj.AttrId || obj.AssetAttributeId || obj.AttributeId || '';
     }
 
-    //function sapAliasName(rawKey, attrObj) {
-    //    var aid = String(_assetId || '');
-    //    var attrId = sapAttrIdOf(attrObj);
-
-    //    // Use only AliasName from GetBulkAssetMetadata cache.
-    //    if (typeof window.getBulkAliasName === 'function') {
-    //        var a1 = window.getBulkAliasName(aid, rawKey, attrId);
-    //        if (a1) return a1;
-    //    }
-
-    //    // Fallback scan: userAssetSimpleMap entries are loaded from bulk assetAttributes.
-    //    var map = window.userAssetSimpleMap || {};
-    //    var prefix = aid + '_';
-    //    var rawNorm = String(rawKey || '').trim().toUpperCase();
-
-    //    for (var k in map) {
-    //        if (!map.hasOwnProperty(k)) continue;
-    //        if (aid && k.indexOf(prefix) !== 0) continue;
-
-    //        var e = map[k];
-    //        if (!e || !e.name) continue;
-
-    //        var eRaw = String(e.attributeName || e.AttributeName || e.title || e.Title || '').trim().toUpperCase();
-    //        var eAlias = String(e.name || e.AliasName || '').trim().toUpperCase();
-
-    //        if (eRaw === rawNorm || eAlias === rawNorm) {
-    //            return e.name; // AliasName
-    //        }
-    //    }
-
-    //    if (typeof window.getAttrDisplayName === 'function') {
-    //        var a2 = window.getAttrDisplayName(rawKey, attrId, aid);
-    //        if (a2) return a2;
-    //    }
-
-    //    return rawKey;
-    //}
     function sapAliasName(rawKey, attrObj) {
         var aid = String(_assetId || '');
         var attrId = String(sapAttrIdOf(attrObj) || '').trim();
-
+        if (typeof window.tlResolveDisplayAlias === 'function') {
+            var common = window.tlResolveDisplayAlias(
+                aid,
+                rawKey,
+                attrId,
+                attrObj && attrObj.DataType,
+                attrObj
+            );
+            // tlResolveDisplayAlias echoes rawKey back when nothing matched —
+            // only accept it as a REAL resolution when it differs from rawKey,
+            // otherwise fall through to the userAssetSimpleMap scan below.
+            if (common && String(common).trim().toUpperCase() !==
+                String(rawKey || '').trim().toUpperCase()) return common;
+        }
         // Asset attribute: Id -> AliasName
         var map = window.userAssetSimpleMap || {};
         var exactKey = aid + '_' + attrId;
@@ -1038,6 +1014,10 @@
 
         var prefix = aid + '_';
 
+        /* Self-heal: if alias metadata still isn't loaded (user never
+           searched), retry now — the load callback re-renders this grid. */
+        sapEnsureAliasMetadata();
+
         var dlMap = window.userAssetDataloggerMap || {};
         var simpleMap = window.userAssetSimpleMap || {};
         var dlMeta = {};
@@ -1432,7 +1412,45 @@
             return { found: false, value: '--', rawKey: meta.title || meta.alias || '' };
         }
 
+        // True when `name` matches a configured AliasName for THIS asset
+        // (or a dictionary alias). Used to allow rows whose WS key already
+        // IS the alias (e.g. server sends "TPR" and alias is "TPR").
+        // True when `name` matches a configured AliasName for THIS asset
+        // (or a dictionary alias). Used to allow rows whose WS key already
+        // IS the alias (e.g. server sends "TPR" and alias is "TPR").
+        function isConfiguredAliasName(name) {
+            var n = norm(name);
+            if (!n) return false;
+            if (window.assetAttributeByName && window.assetAttributeByName[name]) return true;
+            for (var ck in simpleMap) {
+                if (!simpleMap.hasOwnProperty(ck)) continue;
+                if (aid && ck.indexOf(prefix) !== 0) continue;
+                var ce = simpleMap[ck] || {};
+                if (norm(ce.AliasName || ce.name || ce.Name) === n) return true;
+            }
+            return false;
+        }
+
+        /* Does the loaded metadata actually cover THIS asset? Only then is
+           it safe to hide unresolved raw rows — their values re-surface on
+           the alias-labelled placeholder rows built below. If metadata does
+           NOT cover the asset yet, we must still show the live data. */
+        var hasMetaForAsset = false;
+        if (aid) {
+            for (var mk in simpleMap) {
+                if (simpleMap.hasOwnProperty(mk) && mk.indexOf(prefix) === 0) { hasMetaForAsset = true; break; }
+            }
+            if (!hasMetaForAsset) {
+                for (var mk2 in dlMap) {
+                    if (dlMap.hasOwnProperty(mk2) && mk2.indexOf(prefix) === 0) { hasMetaForAsset = true; break; }
+                }
+            }
+        }
+
         // Add normal live attributes, but skip DataLogger live keys.
+        // AliasName is preferred. Raw WebSocket keys are hidden ONLY when
+        // alias-labelled placeholder rows will carry the same values.
+        // The popup must NEVER be empty while live data exists.
         if (ra && typeof ra === 'object') {
             for (var k in ra) {
                 if (!ra.hasOwnProperty(k)) continue;
@@ -1443,9 +1461,51 @@
                 var dlIdFromLive = getDlIdFromLiveKeyOrObject(k, obj);
                 if (dlIdFromLive) continue;
 
+                var aliasLabel = sapAliasName(k, obj);
+                var resolved = (aliasLabel && norm(aliasLabel) !== norm(k)) || isConfiguredAliasName(k);
+
+                if (!resolved) {
+                    // Numeric key = DataLogger role/attribute id from the WS.
+                    // Try the DL name chain once more; if it still can't be
+                    // named, hide it — a bare number is meaningless to the
+                    // user, and the DL placeholder loop will render it with
+                    // its proper name once the datalogger map loads.
+                    if (/^\d+$/.test(String(k).trim())) {
+                        var dlName2 = '';
+                        try {
+                            if (typeof window.resolveBulkDataloggerName === 'function')
+                                dlName2 = window.resolveBulkDataloggerName(aid, k, k);
+                        } catch (e) { }
+                        if (dlName2 && !/^\d+$/.test(String(dlName2).trim())) {
+                            aliasLabel = dlName2;
+                            attrs[k] = {
+                                rawKey: k, label: aliasLabel, value: getValue(obj),
+                                attrId: sapAttrIdOf(obj), isDatalogger: true
+                            };
+                        } else {
+                            sapWarnOnce('dlnum:' + k,
+                                'DataLogger role ' + k + ' has no name in userAssetDataloggerMap/dlRoleNameMap — hiding row until metadata loads.');
+                        }
+                        continue;
+                    }
+                    if (hasMetaForAsset) {
+                        // Metadata covers this asset — the placeholder loop
+                        // below shows this value under its real AliasName.
+                        continue;
+                    }
+                    // No metadata for this asset yet: show the value anyway
+                    // with a cleaned label (asset prefix / encoded IDs
+                    // stripped). The next refresh after metadata arrives
+                    // replaces these with proper AliasName rows.
+                    aliasLabel = cleanAliasName(k);
+                    sapWarnOnce('rawattr:' + k,
+                        'Alias metadata not loaded yet — showing "' + k +
+                        '" as "' + aliasLabel + '" until GetBulkAssetMetadata arrives.');
+                }
+
                 attrs[k] = {
                     rawKey: k,
-                    label: sapAliasName(k, obj),
+                    label: aliasLabel,
                     value: getValue(obj),
                     attrId: sapAttrIdOf(obj),
                     isDatalogger: false
@@ -3100,7 +3160,71 @@
        ═══════════════════════════════════════════════════════════════ */
     function setText(id, t) { var e = el(id); if (e) e.textContent = t; }
     function setHtml(id, h) { var e = el(id); if (e) e.innerHTML = h; }
+    /* Load GetBulkAssetMetadata for this asset's type if the AliasName maps
+       don't cover it yet. Guesses the assetTypeId from the #drpAssetType
+       dropdown using the popup's type text (Signal / Track / Point…). */
+    /* Load GetBulkAssetMetadata for this asset's type if the AliasName maps
+       don't cover it yet. Safe: never fires when a Search already loaded
+       metadata (loadBulkAssetMetadata RESETS all global alias maps), and
+       tries each (site, type) combination at most once. Called from both
+       openPopup and every refreshLive tick, so it self-heals when the
+       #drpAssetType options load late. */
+    var _sapMetaLoading = false;
+    var _sapMetaTried = {};   // siteId_typeId → true
 
+    function sapEnsureAliasMetadata() {
+        if (_sapMetaLoading) return;
+        if (typeof window.loadBulkAssetMetadata !== 'function') return;
+
+        // A user-initiated Search already populated the maps — do NOT
+        // reload (the loader wipes every global map on each call).
+        if (window.bulkMetadataLoaded) return;
+
+        var siteId = _siteId || (el('drpSite') ? el('drpSite').value : '');
+        if (!siteId || siteId === '0') return;
+
+        var aid = String(_assetId || '').trim();
+        var map = window.userAssetSimpleMap || {};
+        var dl = window.userAssetDataloggerMap || {};
+        if (aid) {
+            for (var k in map) { if (map.hasOwnProperty(k) && k.indexOf(aid + '_') === 0) return; }
+            for (var k2 in dl) { if (dl.hasOwnProperty(k2) && k2.indexOf(aid + '_') === 0) return; }
+        }
+
+        // Confident type match from the #drpAssetType dropdown only.
+        var dd = document.getElementById('drpAssetType');
+        if (!dd || !dd.options || !dd.options.length) return;
+
+        var want = String(_assetType || '').toUpperCase();
+        var typeId = '';
+        for (var i = 0; i < dd.options.length; i++) {
+            var v = dd.options[i].value;
+            if (!v || v === '0') continue;
+            var t = String(dd.options[i].text || '').toUpperCase();
+            if ((want.indexOf('SIGNAL') >= 0 && t.indexOf('SIGNAL') >= 0) ||
+                (want.indexOf('TRACK') >= 0 && t.indexOf('TRACK') >= 0) ||
+                (want.indexOf('POINT') >= 0 && t.indexOf('POINT') >= 0) ||
+                (want && (want === t || want.indexOf(t) >= 0))) {
+                typeId = v;
+                break;
+            }
+        }
+        if (!typeId) return;
+
+        var tk = siteId + '_' + typeId;
+        if (_sapMetaTried[tk]) return;
+        _sapMetaTried[tk] = true;
+        _sapMetaLoading = true;
+
+        sapLog('Alias metadata not loaded — fetching GetBulkAssetMetadata (site ' +
+            siteId + ', type ' + typeId + ') for "' + (_assetName || aid || '?') + '"…');
+        try {
+            window.loadBulkAssetMetadata(siteId, typeId, function () {
+                _sapMetaLoading = false;
+                sapSafeRefreshLive('alias-metadata-loaded');
+            });
+        } catch (e) { _sapMetaLoading = false; }
+    }
     function openPopup(cellOrCtx, sourceInfo) {
         ensureReady();
 
@@ -3253,6 +3377,11 @@
         overlay.classList.add('sap-show');
         overlay.removeAttribute('inert');
         overlay.setAttribute('aria-hidden', 'false');
+
+        // Ensure AliasName metadata (GetBulkAssetMetadata) is loaded even if
+        // the user never clicked Search — otherwise rows would only be able
+        // to show raw WebSocket names, which we no longer display.
+        sapEnsureAliasMetadata();
 
         activateTab('live');
 

@@ -1,4 +1,3 @@
-
 'use strict';
 
 var chart;
@@ -22,7 +21,6 @@ var wsAttributeNames = [];
 var wsVibrationData = {};
 var wsAttributeOrder = {};
 
-
 var _trackColSeq = [
     'VTC TFC I/P',
     'VTC TFC O/P',
@@ -36,6 +34,22 @@ var _trackColSeq = [
     'VTC 24 DC LOC',
     'VTC 24 DC TPR I/P'
 ];
+
+// Attribute-id sequence in the SAME order as the 616 alias list above:
+// 344=VTC TFC I/P, 569=VTC TFC O/P, 5=ITC TFC O/P, 249=VTC FEED END,
+// 1=ITC FEED END, 4=VTC CH FEED END, 3=VTC RELAY END, 2=ITC RELAY END,
+// 571=VTC TR, 570=VTC 24 DC LOC, 6=VTC 24 DC TPR I/P
+var _trackIdSeq = [344, 569, 5, 249, 1, 4, 3, 2, 571, 570, 6];
+
+// Rank an attribute id by its position in _trackIdSeq. Returns -1 when the id
+// is not in the custom sequence (caller falls through to name-based matching).
+function getTrackIdOrder(attrId) {
+    if (attrId === undefined || attrId === null) return -1;
+    var n = parseInt(attrId, 10);
+    if (isNaN(n)) return -1;
+    return _trackIdSeq.indexOf(n);
+}
+
 
 
 // ===== BLANK-DATA ASSET ORDERING =====
@@ -254,7 +268,17 @@ window.atBuildPmCard = window.atBuildPmCard || function (aid) {
 };
 function getTrackSortOrder(rawName) {
     if (!rawName) return 500;
-    var attrId = wsAttributeOrder[rawName];
+
+    // Step 0: explicit attribute-id sequence (authoritative; same order as 616's alias list).
+    if (typeof wsAttributeOrder !== 'undefined') {
+        var _tid = getTrackIdOrder(wsAttributeOrder[rawName]);
+        if (_tid >= 0) return _tid + 1;   // 1..N — strictly before the name-based ranks below
+    }
+
+    // Step 1 (616 logic): resolve rawName → attrId → display alias, clean it
+    // (strip parentheses/underscores) and match against the 616 alias sequence
+    // with substring matching in both directions.
+    var attrId = (typeof wsAttributeOrder !== 'undefined') ? wsAttributeOrder[rawName] : undefined;
     var dn = rawName;
     if (attrId !== undefined && attrId !== null) {
         dn = assetAttributeMap[attrId] || assetAttributeMap[String(attrId)] || rawName;
@@ -262,15 +286,36 @@ function getTrackSortOrder(rawName) {
     var clean = dn.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase();
     for (var i = 0; i < _trackColSeq.length; i++) {
         var t = _trackColSeq[i].toUpperCase();
-        if (clean === t || clean.indexOf(t) > -1 || t.indexOf(clean) > -1) return i + 1;
+        if (clean === t || clean.indexOf(t) > -1 || t.indexOf(clean) > -1) return 100 + i;
     }
     var rawClean = rawName.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase();
     if (rawClean !== clean) {
         for (var k = 0; k < _trackColSeq.length; k++) {
             var u = _trackColSeq[k].toUpperCase();
-            if (rawClean === u || rawClean.indexOf(u) > -1 || u.indexOf(rawClean) > -1) return k + 1;
+            if (rawClean === u || rawClean.indexOf(u) > -1 || u.indexOf(rawClean) > -1) return 100 + k;
         }
     }
+
+    // Step 2: rawName might be AliasName → map to AttributeName via
+    // userAssetSimpleMap, then clean-match against the sequence.
+    if (typeof userAssetSimpleMap !== 'undefined') {
+        for (var sk in userAssetSimpleMap) {
+            var e = userAssetSimpleMap[sk];
+            if (!e) continue;
+            // e.name = AliasName, e.attributeName = AttributeName
+            if (e.name && e.name.toUpperCase() === rawName.toUpperCase()) {
+                var attrN = String(e.attributeName || '');
+                var aClean = attrN.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase();
+                if (aClean) {
+                    for (var j = 0; j < _trackColSeq.length; j++) {
+                        var tj = _trackColSeq[j].toUpperCase();
+                        if (aClean === tj || aClean.indexOf(tj) > -1 || tj.indexOf(aClean) > -1) return 100 + j;
+                    }
+                }
+            }
+        }
+    }
+
     return 500;
 }
 var wsCurrentAssetTypeId = null;
@@ -868,8 +913,15 @@ var wsAttributeIds = {};          // { "Vr": 1, "If mA": 2, ... } - maps name to
 // These mappings ensure alias names always display correctly
 var fallbackAliasById = {
     // Track Circuit
-    1: 'ITC FEED END(mA)', 2: 'ITC RELAY END(mA)', 3: 'VTC RELAY END(V)', 4: 'VTC CH FEED END(V)',
-    5: 'ITC TFC O/P(mA)', 6: 'VTC 24 DC TPR I/P(V)',
+    //1: 'ITC FEED END(mA)', 2: 'ITC RELAY END(mA)', 3: 'VTC RELAY END(V)', 4: 'VTC CH FEED END(V)',
+    //5: 'ITC TFC O/P(mA)', 6: 'VTC 24 DC TPR I/P(V)',
+
+    // Track Circuit
+    344: 'VTC TFC I/P(V)', 569: 'VTC TFC O/P(V)', 5: 'ITC TFC O/P(mA)', 249: 'VTC FEED END(V)',
+    1: 'ITC FEED END(mA)', 4: 'VTC CH FEED END(V)', 3: 'VTC RELAY END(V)', 2: 'ITC RELAY END(mA)',
+    570: 'VTC 24 DC LOC(V)', 6: 'VTC 24 DC TPR I/P(V)', 571: 'VTC TR',
+
+
     // Signal
     9: 'RG V', 10: 'RG mA', 11: 'DG V', 12: 'DG mA',
     13: 'HG V', 14: 'HG mA', 15: 'HHG V', 16: 'HHG mA',
@@ -2188,7 +2240,7 @@ window.getBulkAssetName = getBulkAssetName;
 window.resolveBulkDataloggerName = resolveBulkDataloggerName;
 
 function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
-    debugger;
+    
     var aid = String(assetId || '');
 
     function clean(v) {
@@ -2295,7 +2347,33 @@ function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
 window.resolveDataloggerDisplayName = resolveDataloggerDisplayName;
 
 
+window.tlResolveDisplayAlias = function (assetId, rawName, attrId, dataType, rawObj) {
+    var dt = String(dataType || '').toLowerCase();
 
+    if (dt === 'datalogger') {
+        if (typeof resolveDataloggerDisplayName === 'function') {
+            var dl = resolveDataloggerDisplayName(assetId, attrId || rawName, rawObj);
+            if (dl) return dl;
+        }
+
+        if (typeof resolveBulkDataloggerName === 'function') {
+            var bdl = resolveBulkDataloggerName(assetId, attrId || rawName, rawName);
+            if (bdl) return bdl;
+        }
+    }
+
+    if (typeof getBulkAliasName === 'function') {
+        var a1 = getBulkAliasName(assetId, rawName, attrId);
+        if (a1) return a1;
+    }
+
+    if (typeof getAttrDisplayName === 'function') {
+        var a2 = getAttrDisplayName(rawName, attrId, assetId);
+        if (a2) return a2;
+    }
+
+    return rawName || '';
+};
 
 
 
@@ -4048,22 +4126,18 @@ function handleViewSwitch(newViewType) {
 
 // Optimized RDPMS update
 function updateRDPMSViewIncremental(assetIds) {
-    var $container = $('#rdpmsMainContainer');
+    var updatedIds = assetIds || Object.keys(wsUpdatedAssets);
+    var needsReorder = false;
 
-    if ($container.length === 0) {
-        renderRDPMSView();
+    if ($('#rdpmsMainContainer').length === 0) {
+        if (typeof renderRDPMSView === 'function') renderRDPMSView();
         return;
     }
 
-    var updatedIds = assetIds || Object.keys(wsUpdatedAssets);
-    var cardsToUpdate = [];
-    var cardsToCreate = [];
-
-    // Sort into buckets
     for (var i = 0; i < updatedIds.length; i++) {
         var aid = String(updatedIds[i]);
 
-        if (!isAssetInBulkWhitelist(aid)) {
+        if (!wsLiveData[aid] || !isAssetInBulkWhitelist(aid)) {
             delete wsLiveData[aid];
             delete wsUpdatedAssets[aid];
             $('#rdpmsCard_' + aid).remove();
@@ -4071,41 +4145,24 @@ function updateRDPMSViewIncremental(assetIds) {
             continue;
         }
 
-        if (!wsLiveData[aid]) continue;
+        var wasReady = isRdpmsCardDomReady(aid);
+        if (!ensureRdpmsCardDom(aid)) continue;
 
-        if (rdpmsCardsBuilt[aid]) {
-            cardsToUpdate.push(aid);
-        } else {
-            cardsToCreate.push(aid);
+        var name = (wsLiveData[aid].AssetName || '').toLowerCase();
+        var isShunt = name.indexOf('sh') > -1;
+
+        if (!isShunt && rdpmsCardsBuilt[aid] !== getCardFingerprint(aid)) {
+            rebuildCard(aid);
+            needsReorder = true;
         }
+
+        if (!wasReady) needsReorder = true;
+
+        if (isShunt) updateShuntSignalLights(aid);
+        else updateMainSignalLights(aid);
     }
 
-    // Create new cards
-    for (var j = 0; j < cardsToCreate.length; j++) {
-        var aid = cardsToCreate[j];
-        var assetName = (wsLiveData[aid].AssetName || '').toLowerCase();
-        if (assetName.indexOf('sh') > -1) {
-            buildShuntSignalCard(aid);
-        } else {
-            buildMainSignalCard(aid);
-        }
-        rdpmsCardsBuilt[aid] = getCardFingerprint(aid);
-    }
-
-    // Update all cards
-    var allCards = cardsToCreate.concat(cardsToUpdate);
-    for (var k = 0; k < allCards.length; k++) {
-        var aid = allCards[k];
-        var assetName = (wsLiveData[aid].AssetName || '').toLowerCase();
-        if (assetName.indexOf('sh') > -1) {
-            updateShuntSignalLights(aid);
-        } else {
-            updateMainSignalLights(aid);
-        }
-    }
-
-    // Reorder once
-    if (typeof window.reorderRdpmsCardsByAspect === 'function') {
+    if (needsReorder && typeof window.reorderRdpmsCardsByAspect === 'function') {
         window.reorderRdpmsCardsByAspect();
     }
 }
@@ -4322,7 +4379,15 @@ function processItemsInternal(items) {
             }
 
             if (typeof processWsDataloggerAttr === 'function') {
-                processWsDataloggerAttr(aid, d.AssetName, attrName, d.Value, timestamp);
+                processWsDataloggerAttr(
+                    aid,
+                    d.AssetName,
+                    attrName,
+                    d.Value,
+                    timestamp,
+                    d.Role || d.role || d.DataloggerRole || d.dataloggerRole || d.AssetAttributeId || d.AttributeId || d.EdgeXAttributeId || attrName,
+                    d
+                );
             }
             continue;
         }
@@ -4388,18 +4453,32 @@ function processItemsInternal(items) {
         var prevVal = existingAttr ? existingAttr.Value : undefined;
         var hasChanged = (prevVal !== undefined && prevVal !== d.Value);
 
-        wsLiveData[aid].attrs[attrName] = {
-            Value: d.Value,
-            AttrId: attrId,
-            AssetAttributeId: d.AssetAttributeId || attrId,  // Store AssetAttributeId for operation ID matching
-            Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
-            TimestampDevice: d.TimestampDevice || null,
-            TimestampLocal: d.TimestampLocal || null,
-            TimestampEdgeX: d.TimestampEdgeX || null,
-            Source: d.DataSource || 'WS',
-            changed: hasChanged,
-            prevValue: prevVal
-        };
+        // SL#1: preserve WebSocket server-freshness fields so the maintained
+        // signal aspect (computeSignalState) can decide fresh-vs-stale. false-preserving.
+        var _rawFresh = (d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh : d.isFresh;
+        var _hasFreshFlag = !(_rawFresh === undefined || _rawFresh === null);
+        var _isFresh = (_rawFresh === true || _rawFresh === 'true' || _rawFresh === 1 || _rawFresh === '1');
+
+        if (parseInt(wsCurrentAssetTypeId) === 2 && typeof storeWsAttribute === 'function') {
+            storeWsAttribute(d);
+        } else {
+            wsLiveData[aid].attrs[attrName] = {
+                Value: d.Value,
+                AttrId: attrId,
+                AssetAttributeId: d.AssetAttributeId || attrId,
+                Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
+                TimestampDevice: d.TimestampDevice || null,
+                TimestampLocal: d.TimestampLocal || null,
+                TimestampEdgeX: d.TimestampEdgeX || null,
+                Source: d.DataSource || 'WS',
+                IsFresh: _hasFreshFlag ? _isFresh : null,
+                RawIsFresh: _hasFreshFlag ? _rawFresh : null,
+                HasIsFresh: _hasFreshFlag,
+                BroadcastKind: String(d.BroadcastKind || '').toLowerCase(),
+                changed: hasChanged,
+                prevValue: prevVal
+            };
+        }
         // NOTE: checkStaleForAsset moved to post-loop (see below) so it fires
         // once per unique asset, not once per attribute message.
 
@@ -4442,6 +4521,18 @@ function processItemsInternal(items) {
                         pendingPmOps[opKey].timestampDevice = opTs;
                     }
                 }
+            }
+        }
+    }
+
+    // ===== SL#1 - BATCH-COHERENT SIGNAL STATE =====
+    // All batch attrs are stored above. Compute the single maintained signalState
+    // ONCE per affected signal asset so RG/DG/HG/HHG from the same batch are
+    // evaluated together and every consumer reads one truth.
+    if (parseInt(wsCurrentAssetTypeId) === 2 && typeof computeSignalState === 'function') {
+        for (var _said in wsUpdatedAssets) {
+            if (wsUpdatedAssets.hasOwnProperty(_said) && wsLiveData[_said]) {
+                signalState[_said] = computeSignalState(_said);
             }
         }
     }
@@ -4493,12 +4584,12 @@ function processItemsInternal(items) {
                         if (wsStaleAttrs[_staleAid][_sk]) { _hasStale = true; break; }
                     }
                     if (_hasStale) {
-                        _fetchLiveValueAndCheckStale(_staleAid);
+                        (parseInt(wsCurrentAssetTypeId) === 2 ? (typeof triggerStaleCheckForAsset === 'function' && triggerStaleCheckForAsset(_staleAid)) : _fetchLiveValueAndCheckStale(_staleAid));
                         continue; // skip debounced batch for this asset
                     }
                 }
 
-                checkStaleForAsset(_staleAid);
+                _staleCheckRouted(_staleAid);
             }
         }
         //else {
@@ -4506,17 +4597,8 @@ function processItemsInternal(items) {
         //}
 
         else {
-            console.log('[Stale] Large batch (' + _staleAssets.length + ' assets) – forcing stale check anyway');
-            // proceed with stale check
-            var _inSignalList = (typeof _isSignalListView === 'function' && _isSignalListView());
-            for (var _si = 0; _si < _staleAssets.length; _si++) {
-                var _staleAid = _staleAssets[_si];
-                if (_inSignalList && wsStaleAttrs[_staleAid] && hasStale) {
-                    _fetchLiveValueAndCheckStale(_staleAid);
-                    continue;
-                }
-                checkStaleForAsset(_staleAid);
-            }
+            console.log('[Stale] Skipping stale check — bulk batch (' +
+                _staleAssets.length + ' assets > threshold ' + STALE_PATCH_THRESHOLD + ')');
         }
     }
 
@@ -4734,10 +4816,21 @@ function connectWebSocket(siteId, assetTypeId, assetIds) {
             wsLastMessageTime = Date.now();
 
             // ── GATE: SIP-only connections (no asset type) must not process
-            //    data into wsLiveData or trigger any rendering. The SIP
-            //    schematic uses its own separate WebSocket via
-            //    SipTelemetry.connectToSite(). ──
-            if (window._wsSipOnlyMode) return;
+            //    data into wsLiveData or trigger any rendering — but frames
+            //    MUST still be forwarded to the SIP schematic. sip-telemetry.js
+            //    relies on this forward when it detects a host site-wide
+            //    socket and skips opening its own. ──
+            if (window._wsSipOnlyMode) {
+                if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
+                    try {
+                        var sipPayload = event.data;
+                        if (typeof sipPayload === 'string') sipPayload = JSON.parse(sipPayload);
+                        if (typeof sipPayload === 'string') sipPayload = JSON.parse(sipPayload);
+                        window.SipTelemetry.applyPayload(sipPayload);
+                    } catch (e) { /* malformed frame — ignore */ }
+                }
+                return;
+            }
 
             try {
                 var rawData = event.data;
@@ -5674,54 +5767,14 @@ function updateMainSignalLights(assetId) {
         hhprVal = _attrVal(attrs, 'HHPR');
 
 
-    var rgActive = rgMa > threshold;
-    var hhgActive = hhgMa > threshold;
-    var hgActive = hgMa > threshold;
-    var dgActive = dgMa > threshold;
-
-    // Debug -- open browser console to verify values vs threshold
-    console.log('[Signal-Debug] Asset=' + assetId +
-        ' | ZeroOffset(threshold)=' + threshold +
-        ' | RG mA=' + rgMa + (rgActive ? ' ✓ACTIVE' : ' ✗off') +
-        ' | HHG mA=' + hhgMa + (hhgActive ? ' ✓ACTIVE' : ' ✗off') +
-        ' | HG mA=' + hgMa + (hgActive ? ' ✓ACTIVE' : ' ✗off') +
-        ' | DG mA=' + dgMa + (dgActive ? ' ✓ACTIVE' : ' ✗off'));
-
-    var currentSignal = 'none';
-
-    if (rgActive || hhgActive || hgActive || dgActive) {
-        // RED: RG must be active AND must be the highest active mA
-        // (guards against residual RG noise when DG/HG is dominant)
-        var maxActiveMa = Math.max(
-            rgActive ? rgMa : 0,
-            hhgActive ? hhgMa : 0,
-            hgActive ? hgMa : 0,
-            dgActive ? dgMa : 0
-        );
-
-        if (rgActive && maxActiveMa === rgMa) {
-            currentSignal = 'red';
-        }
-        // KEY FIX: DOUBLE YELLOW = HHG mA > threshold
-        // If both HHG mA=125 AND HG mA=144 are above threshold,
-        // HHG being active means the Double Yellow aspect is showing --
-        // both HHG and HG lamps are energised.  HG being numerically
-        // higher does NOT make it singleYellow.
-        else if (hhgActive) {
-            currentSignal = 'doubleYellow';
-        }
-        // SINGLE YELLOW: only HG is active, HHG is NOT above threshold
-        else if (hgActive) {
-            currentSignal = 'singleYellow';
-        }
-        // GREEN
-        else if (dgActive) {
-            currentSignal = 'green';
-        }
-    }
-
-    console.log('[Signal-Debug] Asset=' + assetId + ' → Aspect=' + currentSignal);
-
+    // SL#1: aspect now comes from the single maintained, freshness-aware signal
+    // state. RDPMS mA is primary; DataLogger relay is fallback ONLY when mA is
+    // missing/stale; a fresh low/zero mA blocks a stale relay pickup; when IsFresh
+    // is missing the latest-TimestampDevice lamp group decides. This replaces the
+    // old mA-only inline decision so stale RG/HG/DG/HHG can't win during a transition.
+    var _ss = (typeof computeSignalState === 'function') ? computeSignalState(assetId) : null;
+    if (_ss) { signalState[assetId] = _ss; }
+    var currentSignal = _ss ? _signalAspectToPainterKey(_ss.aspect) : 'none';
     if (currentSignal !== 'none') lastSignalState[assetId] = currentSignal;
 
     // ==============================
@@ -6034,7 +6087,7 @@ function fnBindTable() {
 }
 
 function fnSearchView() {
-    debugger;
+    
     var siteId = $('#drpSite').val();
     var assetTypeId = $('#drpAssetType').val();
     var selectedAssetIds = (typeof getSelectedAssetIds === 'function') ? getSelectedAssetIds() : [];
@@ -11289,79 +11342,147 @@ function Demochart(data) {
 function fnShowAspectData(assetId) { $("#loader").show(); $.ajax({ url: '/Telemetry/GetZeroOffsetValue', type: 'POST', data: JSON.stringify({ assetId: assetId }), contentType: 'application/json', dataType: 'html', success: function (data) { $("#loader").hide(); $("#model-div-alert").empty().append(data); $("#modalalertlogs").modal('show'); }, error: function () { $("#loader").hide(); showError('Something went wrong!', 'Error'); } }); }
 function fnShowDigitalSignal(assetId) { var assetTypeId = 2; $("#loader").show(); $.ajax({ url: '/Site/GetDigitalSignalAttribute', type: 'POST', data: JSON.stringify({ assetTypeId: assetTypeId, assetId: assetId }), contentType: 'application/json', success: function (data) { $("#loader").hide(); $('#modelDigitalSignal').find('.modal-body').empty(); var value = '<table class="table table-bordered table-striped">'; if (data != null && data != undefined && data.length > 0) { $(data).each(function (val, attribute) { var gateContectTypeClassName = 'hdndigital' + assetId + '-' + attribute.Id; value += '<tr><td style="width:50%">' + attribute.Title + '</td><td class="' + gateContectTypeClassName + '" style="width:50%"></td></tr>'; }); } value += '</table>'; $('#modelDigitalSignal').find('.modal-body').append(value); $("#modelDigitalSignal").modal('show'); }, error: function () { $("#loader").hide(); showError('Something went wrong!', 'Error'); } }); }
 function fnShowLuxSignal(assetId) { var assetTypeId = 2; $("#loader").show(); $.ajax({ url: '/Site/GetLuxSignalAttribute', type: 'POST', data: JSON.stringify({ assetTypeId: assetTypeId, assetId: assetId }), contentType: 'application/json', success: function (data) { $("#loader").hide(); $('#modelLuxSignal').find('.modal-body').empty(); var value = '<table class="table table-bordered table-striped">'; if (data != null && data != undefined && data.length > 0) { $(data).each(function (val, attribute) { var gateContectTypeClassName = 'hdnLux' + assetId + '-' + attribute.Id; value += '<tr><td style="width:50%">' + attribute.Title + '</td><td class="' + gateContectTypeClassName + '" style="width:50%"></td></tr>'; }); } value += '</table>'; $('#modelLuxSignal').find('.modal-body').append(value); $("#modelLuxSignal").modal('show'); }, error: function () { $("#loader").hide(); showError('Something went wrong!', 'Error'); } }); }
+function _fmtDt24(ts) {
+    if (!ts) return '-';
+    try {
+        var d = new Date(ts);
+        if (isNaN(d.getTime())) return '-';
+        return d.toLocaleString('en-IN', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+    } catch (e) {
+        return String(ts);
+    }
+}
+
 function fnShowDataLoggerEvent(assetId) {
     var asset = wsLiveData[assetId];
     if (!asset) { showWarning('No data available yet.', 'DataLogger'); return; }
 
-    var _mn = asset.AssetName || assetId;
-    if (asset.AssetTypeId == 3 && _mn.indexOf('PT-') !== 0) _mn = 'PT-' + _mn;
+    // AssetTypeId is often missing on wsLiveData because WS messages may not carry it.
+    // Fall back to the currently selected asset type for this view.
+    var _atid = asset.AssetTypeId;
+    if (_atid === undefined || _atid === null || _atid === '') {
+        _atid = (typeof wsCurrentAssetTypeId !== 'undefined' && wsCurrentAssetTypeId)
+            ? wsCurrentAssetTypeId : $('#drpAssetType').val();
+    }
+    var _isPm = (String(_atid) === '3');
 
-    // ── Latest operation from pmEventHistory ──
-    // pmEventHistory rows are pushed in chronological order.
-    // Last entry = most recent operation.
+    var _mn = asset.AssetName || assetId;
+    if (_isPm && _mn.indexOf('PT-') !== 0) _mn = 'PT-' + _mn;
+
+    // Latest operation from pmEventHistory.
     var hist = pmEventHistory && pmEventHistory[assetId];
     var lastRow = (hist && hist.length > 0) ? hist[hist.length - 1] : null;
     var latestOpTs = lastRow ? (lastRow.timestampDevice || null) : null;
     var latestDir = lastRow ? (lastRow.operationType || null) : null;
-    // latestDir is 'Normal' or 'Reverse' -- matches getPmStructuredData keys exactly
 
-    // ── Structured PM data (already split by direction / type / metric) ──
+    // Structured PM/RDPMS data.
     var pm = getPmStructuredData(assetId);
 
     var html = '<div style="padding:10px;">';
     html += '<h5 style="margin-bottom:4px;">All Values \u2014 ' + _mn + '</h5>';
 
     if (latestDir && latestOpTs) {
-        var dtLabel = '';
-        try { dtLabel = new Date(latestOpTs).toLocaleString(); } catch (e) { dtLabel = latestOpTs; }
         html += '<p style="font-size:12px;color:#64748b;margin-top:0;margin-bottom:12px;">'
-            + latestDir + ' Operation &nbsp;•&nbsp; ' + dtLabel + '</p>';
+            + latestDir + ' Operation &nbsp;&bull;&nbsp; ' + _fmtDt24(latestOpTs) + '</p>';
     }
 
-    html += '<h6 style="color:#1a6e74;margin-top:12px;">RDPMS Attributes</h6>';
+    html += '<h6 style="color:#1a6e74;margin-top:12px;">' +
+        (_isPm ? 'RDPMS Attributes' : 'Signal Attributes') + '</h6>';
     html += '<table class="table table-bordered table-sm">'
         + '<thead><tr><th>Attribute</th><th>Value</th><th>Last Updated</th></tr></thead><tbody>';
 
     var rowCount = 0;
 
-    // ── Show only the latest direction's metrics, skip Array ──
-    if (pm && latestDir && pm[latestDir]) {
-        var dirData = pm[latestDir]; // { AC:{}, AV:{}, BC:{}, BV:{} }
-        var typeOrder = ['AC', 'AV', 'BC', 'BV'];
-        var typeLabels = { AC: 'A Current', AV: 'A Voltage', BC: 'B Current', BV: 'B Voltage' };
-        var metOrder = ['Max', 'Avg', 'Min', 'OperationTime', 'Count'];
-        var metLabels = { Max: 'Max', Avg: 'Avg', Min: 'Min', OperationTime: 'Operation Time', Count: 'Count' };
-        // 'Array' is intentionally absent from metOrder -- never shown
+    if (pm && _isPm) {
+        var _d = (latestDir === 'Reverse') ? 'R' : 'N';
+        var _dirKey = (latestDir === 'Reverse') ? 'Reverse' : 'Normal';
+        var _dd = pm[_dirKey] ? pm[_dirKey] : { AC: {}, AV: {}, BC: {}, BV: {} };
 
-        for (var ti = 0; ti < typeOrder.length; ti++) {
-            var typ = typeOrder[ti];
-            if (!dirData[typ]) continue;
-            for (var mi = 0; mi < metOrder.length; mi++) {
-                var met = metOrder[mi];
-                var entry = dirData[typ][met];
-                if (!entry) continue;
-                var v = parseFloat(entry.value);
-                var vs = isNaN(v) ? '\u2014' : v.toFixed(2);
-                var ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '-';
-                html += '<tr><td>' + typeLabels[typ] + ' - ' + metLabels[met]
-                    + '</td><td><b>' + vs + '</b></td><td>' + ts + '</td></tr>';
-                rowCount++;
+        // Find an indication entry by end + relay (nwkr/rwkr) + loc flag.
+        var _ind = function (end, relay, loc) {
+            if (!pm.RDPMS) return null;
+            var ep = (end === 'A') ? 'a end' : 'b end';
+            var ep2 = (end === 'A') ? 'a-end' : 'b-end';
+            for (var k in pm.RDPMS) {
+                if (!pm.RDPMS.hasOwnProperty(k)) continue;
+                var kl = k.toLowerCase();
+                if (kl.indexOf(ep) === -1 && kl.indexOf(ep2) === -1) continue;
+                if (kl.indexOf(relay) === -1) continue;
+                if (loc !== (kl.indexOf('loc') > -1)) continue;
+                return pm.RDPMS[k];
             }
-        }
-    }
+            return null;
+        };
 
-    // ── RDPMS indication attrs (NWKR, RWKR, NW-V …) -- direction-agnostic ──
-    if (pm && pm.RDPMS) {
-        for (var rk2 in pm.RDPMS) {
-            if (!pm.RDPMS.hasOwnProperty(rk2)) continue;
-            var rd = pm.RDPMS[rk2];
-            var aid2 = parseInt((asset.attrs[rk2] && (asset.attrs[rk2].AttrId || asset.attrs[rk2].AssetAttributeId)) || 0);
-            var dn2 = (typeof resolvePmAttrDisplayName === 'function')
-                ? resolvePmAttrDisplayName(rk2, aid2) : rk2;
-            var v2 = parseFloat(rd.value);
-            var vs2 = isNaN(v2) ? '\u2014' : v2.toFixed(2);
-            var ts2 = rd.timestamp ? new Date(rd.timestamp).toLocaleString() : '-';
-            html += '<tr><td>' + dn2 + '</td><td><b>' + vs2 + '</b></td><td>' + ts2 + '</td></tr>';
+        var _row = function (label, entry) {
+            var vs = '\u2014', ts = '-';
+            var lbl = label;
+
+            if (entry) {
+                // Prefer this asset's OWN configured alias; do not let raw fallback overwrite fixed PM label.
+                var _aid = entry.attrId || entry.AttrId;
+                if (_aid && typeof resolveUserAssetName === 'function') {
+                    var _ua = resolveUserAssetName(assetId, _aid, 'PointMachine');
+                    if (_ua && _ua.name) lbl = _ua.name;
+                }
+
+                var n = parseFloat(entry.value);
+                vs = isNaN(n) ? '\u2014' : n.toFixed(2);
+                ts = _fmtDt24(entry.timestamp);
+            }
+
+            html += '<tr><td>' + lbl + '</td><td><b>' + vs + '</b></td><td>' + ts + '</td></tr>';
+            rowCount++;
+        };
+
+        ['A', 'B'].forEach(function (E) {
+            var C = (E === 'A') ? 'AC' : 'BC';
+            var V = (E === 'A') ? 'AV' : 'BV';
+
+            _dd[C] = _dd[C] || {};
+            _dd[V] = _dd[V] || {};
+
+            _row(E + ' IPT ' + _d + ' - Max', _dd[C].Max);
+            _row(E + ' IPT ' + _d + ' - Avg', _dd[C].Avg);
+            _row(E + ' VPT 110 DC LOC ' + _d + ' - Avg', _dd[V].Avg);
+            _row(E + ' TPT ' + _d, _dd[C].OperationTime);
+            _row(E + ' VPT NWKR', _ind(E, 'nwkr', false));
+            _row(E + ' VPT RWKR', _ind(E, 'rwkr', false));
+            _row(E + ' VPT 24 DC LOC N', _ind(E, 'nwkr', true));
+            _row(E + ' VPT 24 DC LOC R', _ind(E, 'rwkr', true));
+        });
+    } else if (pm && pm.RDPMS) {
+        // Signal/generic asset: list its own RDPMS attributes by name.
+        var _names = Object.keys(pm.RDPMS).sort();
+
+        for (var _si = 0; _si < _names.length; _si++) {
+            var _an = _names[_si];
+            var _e = pm.RDPMS[_an];
+
+            var _label = _an;
+            if (typeof getSignalHeaderLabel === 'function') {
+                var _gl = getSignalHeaderLabel(assetId, _an);
+                if (_gl) _label = _gl;
+            } else if (typeof resolveUserAssetName === 'function') {
+                var _rn = resolveUserAssetName(assetId, _e && (_e.AttrId || _e.attrId), _e && _e.DataType);
+                if (_rn) _label = (typeof _rn === 'string') ? _rn : (_rn.name || _label);
+            }
+
+            var _num = parseFloat(_e ? _e.value : NaN);
+            var _vs = isNaN(_num)
+                ? ((_e && _e.value != null && _e.value !== '') ? String(_e.value) : '\u2014')
+                : _num.toFixed(2);
+            var _ts = _fmtDt24(_e ? _e.timestamp : null);
+
+            html += '<tr><td>' + _label + '</td><td><b>' + _vs + '</b></td><td>' + _ts + '</td></tr>';
             rowCount++;
         }
     }
@@ -11372,11 +11493,12 @@ function fnShowDataLoggerEvent(assetId) {
 
     html += '</tbody></table>';
 
-    // ── DataLogger Relays ──
+    // DataLogger relays.
     if (asset.dlRelays && Object.keys(asset.dlRelays).length > 0) {
         html += '<h6 style="color:#7c3aed;margin-top:12px;">DataLogger Relays</h6>';
         html += '<table class="table table-bordered table-sm">'
             + '<thead><tr><th>Relay</th><th>Value</th><th>Status</th><th>Last Updated</th></tr></thead><tbody>';
+
         var rKeys = Object.keys(asset.dlRelays);
         rKeys.sort(function (a, b) {
             var ra = asset.dlRelays[a], rb = asset.dlRelays[b];
@@ -11384,15 +11506,17 @@ function fnShowDataLoggerEvent(assetId) {
             if (!ra.isPickup && rb.isPickup) return 1;
             return 0;
         });
+
         for (var ri = 0; ri < rKeys.length; ri++) {
             var rl = asset.dlRelays[rKeys[ri]];
             var sb = rl.isPickup
                 ? '<span class="rdpms-dl-badge pickup shine-button" style="min-width:60px;text-align:center;">Pickup</span>'
                 : '<span class="rdpms-dl-badge drop shine-button" style="min-width:60px;text-align:center;">Drop</span>';
-            var t3 = rl.timestamp ? new Date(rl.timestamp).toLocaleString() : '-';
+            var t3 = _fmtDt24(rl.timestamp);
             html += '<tr><td>' + (rl.displayName || rKeys[ri]) + '</td><td>' + rl.value
                 + '</td><td>' + sb + '</td><td>' + t3 + '</td></tr>';
         }
+
         html += '</tbody></table>';
     }
 
@@ -11746,36 +11870,75 @@ if (typeof window.fnSearchPointEvent !== 'function') {
 if (typeof fnUnderMaintenance !== 'function') { function fnUnderMaintenance(assetId, element) { $.ajax({ url: '/FRS25/Telemetry/UnderMaintenance', type: 'POST', data: JSON.stringify({ assetId: assetId }), contentType: 'application/json', success: function (data) { if (data && data.Success) { var $icon = $(element); if ($icon.hasClass('fa-bell')) { $icon.removeClass('fa-bell').addClass('fa-bell-slash'); showSuccess('Maintenance mode enabled', 'Maintenance'); } else { $icon.removeClass('fa-bell-slash').addClass('fa-bell'); showSuccess('Maintenance mode disabled', 'Maintenance'); } } }, error: function () { showError('Failed to update maintenance status', 'Error'); } }); } }
 
 // ===== DATALOGGER PROCESSING =====
-function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp) {
-    // FIX-2: Variables must be declared BEFORE use. The original code had
-    // storeKey/numVal/isPickup/displayName referenced on lines above their
-    // declaration — JS hoisting made them 'undefined', so dlRelays entries
-    // were stored with value:undefined on the first write, then silently
-    // overwritten by the second (minified) block. If wsLiveData[assetId]
-    // didn't exist, the first write would also throw a TypeError.
-    if (!wsLiveData[assetId]) return;
+function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp, roleOrAttrId, rawD) {
+    if (!wsLiveData[assetId]) return false;
+
     var numVal = parseFloat(value);
     var isPickup = (numVal === 1);
-    var displayName = attrName;
-    if (assetName && displayName.indexOf(assetName) === 0) {
-        displayName = displayName.substring(assetName.length).trim();
+
+    var displayName = '';
+
+    if (typeof resolveDataloggerDisplayName === 'function') {
+        displayName = resolveDataloggerDisplayName(assetId, roleOrAttrId || attrName, rawD);
     }
+
+    if (!displayName && typeof resolveBulkDataloggerName === 'function') {
+        displayName = resolveBulkDataloggerName(assetId, roleOrAttrId || attrName, attrName);
+    }
+
+    if (!displayName) {
+        displayName = attrName;
+        if (assetName && displayName.indexOf(assetName) === 0) {
+            displayName = displayName.substring(assetName.length).trim();
+        }
+    }
+
     if (!displayName) displayName = attrName;
+
     if (!wsLiveData[assetId].dlRelays) wsLiveData[assetId].dlRelays = {};
 
-    // Store under displayName key so graph panel dlKey and
-    // knownRelayDisplayNames lookup use the same consistent name.
-    var storeKey = displayName || attrName;
-    var relayObj = { value: numVal, isPickup: isPickup, displayName: displayName, attrName: attrName, timestamp: timestamp || new Date().toISOString() };
-    wsLiveData[assetId].dlRelays[storeKey] = relayObj;
-    // Keep attrName as alias if different, so old lookups still work.
-    if (storeKey !== attrName) { wsLiveData[assetId].dlRelays[attrName] = relayObj; }
+    var relayObj = {
+        value: isNaN(numVal) ? value : numVal,
+        isPickup: isPickup,
+        displayName: displayName,
+        attrName: attrName,
+        rawAttrName: attrName,
+        role: roleOrAttrId ? String(roleOrAttrId) : '',
+        timestamp: timestamp || new Date().toISOString()
+    };
+
+    // Store visible row under final alias/display name only.
+    wsLiveData[assetId].dlRelays[displayName] = relayObj;
+
+    // Keep raw key / role lookup as non-enumerable alias so UI does not duplicate badges.
+    function addAliasKey(aliasKey) {
+        aliasKey = String(aliasKey || '').trim();
+        if (!aliasKey || aliasKey === displayName) return;
+
+        try {
+            Object.defineProperty(wsLiveData[assetId].dlRelays, aliasKey, {
+                value: relayObj,
+                enumerable: false,
+                configurable: true,
+                writable: true
+            });
+        } catch (e) {
+            // If defineProperty fails, do not create duplicate enumerable key.
+        }
+    }
+
+    addAliasKey(attrName);
+    addAliasKey(roleOrAttrId);
+
     wsLiveData[assetId].lastUpdated = new Date();
-    // Update Track table DataLogger column if visible
-    var $row = $('#wsLiveTable tbody tr[data-id="' + assetId + '"]');
-    if ($row.length) { var $dlCell = $row.find('td.dl-cell'); if ($dlCell.length) { var dlRelays = wsLiveData[assetId].dlRelays || {}; var dlHtml = ''; var dlKeys = Object.keys(dlRelays); dlKeys.sort(function (a, b) { var ra = dlRelays[a], rb = dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return 0; }); if (dlKeys.length > 0) { for (var di = 0; di < dlKeys.length; di++) { var relay = dlRelays[dlKeys[di]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> '; } } else { dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>'; } $dlCell.html(dlHtml); } }
-    updateMainSignalLights(assetId);
-    renderDataloggerBadgesForAsset(assetId);
+    wsUpdatedAssets[String(assetId)] = true;
+
+    // Signal repaint is batch-coherent; do not force direct signal lamp repaint here.
+    if (parseInt(wsCurrentAssetTypeId) !== 2) {
+        renderDataloggerBadgesForAsset(assetId);
+    }
+
+    return true;
 }
 // Make renderDataloggerBadgesForAsset global so it can be called from processWsDataloggerAttr
 function renderDataloggerBadgesForAsset(assetId) { var asset = wsLiveData[assetId]; if (!asset || !asset.dlRelays) return; var relayKeys = Object.keys(asset.dlRelays); if (relayKeys.length === 0) return; relayKeys.sort(function (a, b) { var ra = asset.dlRelays[a], rb = asset.dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return (ra.displayName || a).localeCompare(rb.displayName || b); }); var $section = $('#rdpmsDL_' + assetId); if (!$section.length) { var $cardBody = $('#rdpmsCard_' + assetId + ' .card-body-signal'); if (!$cardBody.length) return; $cardBody.append(getDataloggerSectionHTML(assetId)); $section = $('#rdpmsDL_' + assetId); if (!$section.length) return; } var maxInline = 2; var html = ''; for (var i = 0; i < relayKeys.length && i < maxInline; i++) { var relay = asset.dlRelays[relayKeys[i]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[i]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } var moreCount = relayKeys.length - maxInline; if (moreCount > 0) { html += '<span id="rdpmsDLToggle_' + assetId + '" onclick="toggleDlMore(\'' + assetId + '\')" style="color:#38bdf8;font-size:10px;cursor:pointer;white-space:nowrap;">+ ' + moreCount + ' more</span>'; } html += '<span class="rdpms-dl-details-btn" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Details</span>'; if (moreCount > 0) { html += '<div id="rdpmsDLMore_' + assetId + '" style="display:none;width:100%;">'; for (var j = maxInline; j < relayKeys.length; j++) { var relay = asset.dlRelays[relayKeys[j]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[j]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } html += '</div>'; } $section.html(html); $section.closest('.rdpms-datalogger-section').show(); }
@@ -17675,11 +17838,19 @@ console.log('[PM] Point Machine view loaded (dynamic ends + table view support).
             window.wsConnection.onmessage = function (event) {
                 window.wsLastMessageTime = Date.now();
 
-                // ── GATE: SIP-only connections (no asset type) must not process
-                //    data into wsLiveData or trigger any rendering. The SIP
-                //    schematic uses its own separate WebSocket via
-                //    SipTelemetry.connectToSite(). ──
-                if (window._wsSipOnlyMode) return;
+                // ── GATE: SIP-only connections must not render into
+                //    wsLiveData/table — but frames are forwarded to the SIP. ──
+                if (window._wsSipOnlyMode) {
+                    if (window.SipTelemetry && typeof window.SipTelemetry.applyPayload === 'function') {
+                        try {
+                            var sipPayload = event.data;
+                            if (typeof sipPayload === 'string') sipPayload = JSON.parse(sipPayload);
+                            if (typeof sipPayload === 'string') sipPayload = JSON.parse(sipPayload);
+                            window.SipTelemetry.applyPayload(sipPayload);
+                        } catch (e) { /* malformed frame — ignore */ }
+                    }
+                    return;
+                }
 
                 try {
                     var rawData = event.data;
@@ -20576,9 +20747,9 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
 
             var ts = dl.TimestampDevice || dl.TimestampLocal || dl.TimestampChange || new Date().toISOString();
 
-            // DataLogger id must come from Role.
-            // If WS does not send Role, resolve Role from GetBulkAssetMetadata using AssetAttributeName.
-            var roleId = dl.Value || dl.value || '';
+            // DataLogger id must come from Role / metadata identity.
+            // Do NOT use dl.Value here because WebSocket Value is 1/0 status.
+            var roleId = dl.Role || dl.role || dl.DataloggerRole || dl.dataloggerRole || '';
 
             if (!roleId && typeof window.resolveBulkDataloggerRole === 'function') {
                 roleId = window.resolveBulkDataloggerRole(dl.AssetId, dl.AssetAttributeName, dl.AssetAttributeName);
@@ -20625,7 +20796,8 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
                     dl.AssetAttributeName,
                     dl.Value,
                     ts,
-                    roleId
+                    roleId,
+                    dl
                 );
             }
 
@@ -20891,3 +21063,1438 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
 
     console.log('[TL-Fix-v4] Applied: A(NumericId) B(DLAssetName) C(roleOrAttrId) D(UIUpdate) E(DedupKeys) F(PerAssetAlias) G(AriaHidden-ClassWatch)');
 })();
+
+// ================================================================================
+// SIGNAL SUBSYSTEM - PORTED FROM telemetrylive616.js (working reference)
+// Appended so these top-level declarations override 617's earlier same-named
+// definitions (last declaration wins at runtime). Non-signal code untouched.
+// Diagnostics that 617 lacks are stubbed no-ops; external RDPMS deps typeof-guarded.
+// ================================================================================
+if (typeof _rdpmsDiag !== 'function') { window._rdpmsDiag = function () { }; }
+function _rdpmsDiag() { }
+function perfMark() { }
+function _rdpmsBatchScan() { return ''; }
+function isPmReplayStale() { return false; }
+var _signalRebuildTimer = null;
+
+// Route stale checking: Signal (asset type 2) uses WS IsFresh only (no GetLiveValue);
+// all other asset types keep 617's existing stale mechanism unchanged.
+function _staleCheckRouted(aid) {
+    if (parseInt(wsCurrentAssetTypeId) === 2) {
+        if (typeof triggerStaleCheckForAsset === 'function') triggerStaleCheckForAsset(aid);
+        return;
+    }
+    if (typeof checkStaleForAsset === 'function') checkStaleForAsset(aid);
+}
+
+// Signal stale check driven purely by WS IsFresh/RawIsFresh (no GetLiveValue).
+// Table/list-only reflection via 617's _applyStaleClassesToUI. DataLogger never stale.
+function _doStaleCheckSingleAsset(assetId) {
+    var aid = String(assetId);
+    var asset = wsLiveData[aid];
+    if (!asset || !asset.attrs) return;
+    if (!wsStaleAttrs[aid]) wsStaleAttrs[aid] = {};
+    var changed = false;
+    for (var an in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(an)) continue;
+        if (typeof _isDataloggerAttr === 'function' && _isDataloggerAttr(aid, an)) continue;
+        var isStale = (typeof isWsAttrStale === 'function') ? isWsAttrStale(asset.attrs[an]) : false;
+        if (wsStaleAttrs[aid][an] !== isStale) { wsStaleAttrs[aid][an] = isStale; changed = true; }
+    }
+    if (changed && typeof _applyStaleClassesToUI === 'function') _applyStaleClassesToUI(aid);
+}
+
+
+// [616:276-285] getRowCellMap
+function getRowCellMap(rowEl) {
+    if (rowEl._cellMap) return rowEl._cellMap;
+    var map = {}, tds = rowEl.getElementsByTagName('td');
+    for (var i = 0; i < tds.length; i++) {
+        var a = tds[i].getAttribute('data-attr');
+        if (a) map[a] = tds[i];
+    }
+    rowEl._cellMap = map;
+    return map;
+}
+
+// [616:306-355] getSignalAspectGlobal
+function getSignalAspectGlobal(assetId) {
+    var asset = wsLiveData[assetId];
+    if (!asset) return { aspect: 'INACTIVE', priority: 99, armCount: 0, lampCount: 0, callingCount: 0, orderScore: 0 };
+
+    var attrs = asset.attrs || {};
+    var dlRelays = asset.dlRelays || {};
+    var threshold = parseFloat(asset.ZeroOffsetValue || RDPMS_DEFAULT_THRESHOLD);
+
+    function val(name) {
+        if (attrs[name] && attrs[name].Value !== null && attrs[name].Value !== undefined) {
+            return parseFloat(attrs[name].Value) || 0;
+        }
+        return 0;
+    }
+    function isRelayPickup(relayName) {
+        for (var key in dlRelays) {
+            if (key.toUpperCase().indexOf(relayName.toUpperCase()) > -1) {
+                return dlRelays[key].isPickup === true || dlRelays[key].value === 1;
+            }
+        }
+        return false;
+    }
+
+    var lampNames = ['RG', 'DG', 'HG', 'HHG'];
+    var lampCount = 0;
+    for (var l = 0; l < lampNames.length; l++) {
+        if (attrs[lampNames[l] + ' mA'] || attrs[lampNames[l] + ' V']) lampCount++;
+    }
+    if (attrs['PILOT mA'] || attrs['PILOT V'] || attrs['PILOTRoot mA'] || attrs['PILOTRoot V']) lampCount++;
+
+    var routeNames = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG'];
+    var armCount = 0;
+    for (var r = 0; r < routeNames.length; r++) {
+        if (attrs[routeNames[r] + ' mA'] || attrs[routeNames[r] + ' V']) armCount++;
+    }
+
+    var callingCount = (attrs['Co_Hg mA'] || attrs['Co_Hg V']) ? 1 : 0;
+    var orderScore = lampCount + armCount + callingCount;
+
+    var rgMa = val('RG mA'), dgMa = val('DG mA'), hgMa = val('HG mA'), hhgMa = val('HHG mA');
+    var recrPickup = isRelayPickup('RECR'), decrPickup = isRelayPickup('DECR'),
+        hecrPickup = isRelayPickup('HECR'), hhecrPickup = isRelayPickup('HHECR');
+
+    var base = { armCount: armCount, lampCount: lampCount, callingCount: callingCount, orderScore: orderScore };
+
+    // SL#1: aspect comes from the single maintained signalState (RDPMS primary, DL fallback).
+    var _ss = getSignalState(assetId);
+    base.aspect = _ss.aspect; base.priority = _signalAspectPriority(_ss.aspect);
+    return base;
+}
+
+// [616:364-395] signalState vars + getSignalThreshold + aspect priority/painter-key
+var signalState = {};                 // assetId -> computeSignalState() result
+var SIGNAL_TS_REL_WINDOW_MS = 15 * 1000;           // IsFresh-MISSING fallback: latest-mA-group margin (Signal aspect only). No absolute Date.now() age check.
+var SIGNAL_STATE_TTL_MS = 2000;       // re-evaluate cached signalState if older than this (time-based expiry)
+
+function getSignalThreshold(assetId) {
+    var z = zeroOffsetCache[assetId];
+    if (z && z.fetched && !isNaN(z.value)) return { value: z.value, source: 'cache' };
+    var a = wsLiveData[assetId];
+    var v = a ? parseFloat(a.ZeroOffsetValue) : NaN;
+    if (!isNaN(v) && v > 0) return { value: v, source: 'asset' };
+    // Match the old updateMainSignalLights() fallback (RDPMS_DEFAULT_THRESHOLD = 5.0).
+    // 0.1 let OFF-lamp residual/leakage currents (0.3–3 mA on HG) register as active,
+    // making SINGLE_YELLOW beat a genuinely lit DG in the most-restrictive-wins pick.
+    return { value: RDPMS_DEFAULT_THRESHOLD, source: 'default' };
+}
+
+function _signalAspectPriority(aspect) {
+    switch (aspect) {
+        case 'RED': return 1;
+        case 'DOUBLE_YELLOW': return 2;
+        case 'SINGLE_YELLOW': return 3;
+        case 'GREEN': return 4;
+        default: return 99;
+    }
+}
+
+function _signalAspectToPainterKey(aspect) {
+    switch (aspect) {
+        case 'RED': return 'red';
+        case 'DOUBLE_YELLOW': return 'doubleYellow';
+        case 'SINGLE_YELLOW': return 'singleYellow';
+        case 'GREEN': return 'green';
+        default: return 'none';
+    }
+}
+
+// [616:401-446] escapeHtml + IsFresh freshness helpers
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+function isWsAttrFresh(attrData) {
+    if (!attrData) return true;
+    if (attrData.RawIsFresh === undefined || attrData.RawIsFresh === null) return true;
+    return attrData.IsFresh === true;
+}
+function isWsAttrStale(attrData) {
+    return !isWsAttrFresh(attrData);
+}
+function _wsStaleTitle(attrData) {
+    var ts = (attrData && attrData.TimestampLocal) || (attrData && attrData.TimestampEdgeX) || (attrData && attrData.TimestampDevice) || '';
+    return 'Timestamp: ' + escapeHtml(ts);
+}
+// For HTML string builders: extra <td> class + title attribute when server-stale.
+function _wsStaleCellAttr(attrData) {
+    if (!isWsAttrStale(attrData)) return { cls: '', title: '' };
+    return { cls: ' ws-value-server-stale', title: ' title="' + _wsStaleTitle(attrData) + '"' };
+}
+// For live DOM updaters: toggle the server-stale class + tooltip on an existing cell.
+function _applyWsServerStale(cell, attrData) {
+    if (!cell) return;
+    var stale = isWsAttrStale(attrData);
+    var has = cell.className.indexOf('ws-value-server-stale') > -1;
+    if (stale && !has) cell.className = (cell.className + ' ws-value-server-stale').replace(/\s+/g, ' ').trim();
+    else if (!stale && has) cell.className = cell.className.replace(/\bws-value-server-stale\b/g, '').replace(/\s+/g, ' ').trim();
+    if (stale) { cell.setAttribute('title', _wsStaleTitle(attrData)); }
+    else if (cell.getAttribute && cell.getAttribute('title') && cell.getAttribute('title').indexOf('TimestampDevice:') === 0) { cell.removeAttribute('title'); }
+}
+// Server freshness flag presence + value. isServerFresh returns null when the flag is absent,
+// which signals that the Signal-aspect TimestampDevice fallback should decide instead.
+function hasServerFreshFlag(attrData) {
+    return !!(attrData && attrData.RawIsFresh !== undefined && attrData.RawIsFresh !== null);
+}
+function isServerFresh(attrData) {
+    if (!attrData) return false;
+    if (hasServerFreshFlag(attrData)) return attrData.IsFresh === true;
+    return null; // no flag -> caller must use the timestamp fallback
+}
+
+// [616:447-458] SIGNAL_MA_ALIASES / SIGNAL_V_ALIASES
+var SIGNAL_MA_ALIASES = {
+    RG: ['RG mA', 'ISIG RG', 'ISIG_RG', 'RG Current', 'RG I'],
+    DG: ['DG mA', 'ISIG DG', 'ISIG_DG', 'DG Current', 'DG I'],
+    HG: ['HG mA', 'ISIG HG', 'ISIG_HG', 'HG Current', 'HG I'],
+    HHG: ['HHG mA', 'ISIG HHG', 'ISIG_HHG', 'HHG Current', 'HHG I']
+};
+var SIGNAL_V_ALIASES = {
+    RG: ['RG V', 'VSIG RG', 'VSIG_RG'],
+    DG: ['DG V', 'VSIG DG', 'VSIG_DG'],
+    HG: ['HG V', 'VSIG HG', 'VSIG_HG'],
+    HHG: ['HHG V', 'VSIG HHG', 'VSIG_HHG']
+};
+
+// [616:461-486] _normSignalKey + getSignalAttrByAliases
+function _normSignalKey(s) {
+    return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function getSignalAttrByAliases(attrs, aliases) {
+    if (!attrs) return null;
+    var i;
+    for (i = 0; i < aliases.length; i++) {
+        if (attrs[aliases[i]]) return attrs[aliases[i]];
+    }
+    var wanted = [];
+    for (i = 0; i < aliases.length; i++) { wanted.push(_normSignalKey(aliases[i])); }
+    for (var key in attrs) {
+        if (!attrs.hasOwnProperty(key)) continue;
+        var nk = _normSignalKey(key);
+        if (wanted.indexOf(nk) >= 0) { return attrs[key]; }
+        var a = attrs[key] || {};
+        var an = _normSignalKey(a.AssetAttributeName || a.AttributeName || a.attrName || a.name || '');
+        if (an && wanted.indexOf(an) >= 0) { return a; }
+    }
+    // Fallback: resolve the lamp via THIS asset's GetBulkAssetData AliasName.
+    // Only runs when nothing above matched, so existing resolutions are untouched.
+    var byBulkAlias = _signalAttrByBulkAlias(attrs, wanted);
+    if (byBulkAlias) return byBulkAlias;
+    return null;
+}
+
+// [616:489-520] bulk alias title map + _signalAttrByBulkAlias
+var _bulkAliasTitleCache = {};
+function _bulkAliasTitleMap(assetId) {
+    var aid = String(assetId || '');
+    if (!aid || typeof userAssetSimpleMap === 'undefined') return null;
+    if (_bulkAliasTitleCache[aid]) return _bulkAliasTitleCache[aid];
+    var map = {}, prefix = aid + '_';
+    for (var sk in userAssetSimpleMap) {
+        if (sk.indexOf(prefix) !== 0) continue;
+        var e = userAssetSimpleMap[sk];
+        if (!e || !e.name) continue;
+        var title = e.attributeName || e.name;     // the WS key (AssetAttributeName = Title)
+        map[_normSignalKey(e.name)] = title;        // keyed by normalized AliasName
+    }
+    _bulkAliasTitleCache[aid] = map;
+    return map;
+}
+
+// Match the lamp's alias group against this asset's AliasName, then read by Title.
+function _signalAttrByBulkAlias(attrs, wantedNorm) {
+    var aid = '';
+    for (var k in attrs) {
+        if (attrs.hasOwnProperty(k) && attrs[k] && attrs[k].AssetId != null) { aid = String(attrs[k].AssetId); break; }
+    }
+    if (!aid) return null;
+    var a2t = _bulkAliasTitleMap(aid);
+    if (!a2t) return null;
+    for (var i = 0; i < wantedNorm.length; i++) {
+        var title = a2t[wantedNorm[i]];
+        if (title && attrs[title]) return attrs[title];
+    }
+    return null;
+}
+
+// [616:523-573] _signalReadMaAttr + _attrValByAliases + rdpmsBind
+function _signalReadMaAttr(a, lampName) {
+
+    if (!a || a.Value === null || a.Value === undefined) {
+        return { lamp: lampName, present: false, value: 0, ts: 0, hasFreshFlag: false, serverFresh: null, timestampFresh: false, effectiveFresh: false, attr: null };
+    }
+    var val = parseFloat(a.Value);
+    if (isNaN(val)) val = 0;
+    var tsRaw = a.TimestampDevice || a.Timestamp || a.TimestampLocal || a.TimestampEdgeX;
+    var ts = tsRaw ? new Date(tsRaw).getTime() : 0;
+    if (!ts || isNaN(ts)) ts = 0;
+    var rawFresh = null, hasFreshFlag = false;
+    if (a.RawIsFresh !== undefined && a.RawIsFresh !== null) { rawFresh = a.RawIsFresh; hasFreshFlag = true; }
+    else if (a.IsFresh !== undefined && a.IsFresh !== null) { rawFresh = a.IsFresh; hasFreshFlag = true; }
+    else if (a.isFresh !== undefined && a.isFresh !== null) { rawFresh = a.isFresh; hasFreshFlag = true; }
+    var serverFresh = (rawFresh === true || rawFresh === 'true' || rawFresh === 1 || rawFresh === '1');
+    return { lamp: lampName, present: true, value: val, ts: ts, hasFreshFlag: hasFreshFlag, serverFresh: hasFreshFlag ? serverFresh : null, timestampFresh: false, effectiveFresh: false, attr: a };
+}
+
+// Read an mA value (number) by alias list; 0 when absent.
+function _attrValByAliases(attrs, aliases) {
+    var a = getSignalAttrByAliases(attrs, aliases);
+    return (a && a.Value !== null && a.Value !== undefined) ? (parseFloat(a.Value) || 0) : 0;
+}
+
+// Bind an RDPMS cell to THIS asset's real attribute name from GetBulkAssetData.
+// Matches the asset's Title or AliasName against the canonical name (+ optional
+// alias list) and returns the Title (= the WS attrs key). Falls back to canonical.
+var _rdpmsBindCache = {};
+function rdpmsBind(assetId, canonical, aliasList) {
+    var aid = String(assetId || '');
+    if (!aid || !canonical) return canonical;
+    var cache = _rdpmsBindCache[aid] || (_rdpmsBindCache[aid] = {});
+    if (cache[canonical] !== undefined) return cache[canonical];
+    var want = aliasList ? [canonical].concat(aliasList) : [canonical];
+    var wantNorm = [];
+    for (var i = 0; i < want.length; i++) wantNorm.push(_normSignalKey(want[i]));
+    var prefix = aid + '_', resolved = canonical;
+    for (var sk in userAssetSimpleMap) {
+        if (sk.indexOf(prefix) !== 0) continue;
+        var e = userAssetSimpleMap[sk]; if (!e) continue;
+        var title = String(e.attributeName || '').trim();
+        var alias = String(e.name || '').trim();
+        if (wantNorm.indexOf(_normSignalKey(title)) >= 0 ||
+            wantNorm.indexOf(_normSignalKey(alias)) >= 0) {
+            resolved = (alias || title || canonical);   // AliasName first, trimmed
+            break;
+        }
+    }
+    cache[canonical] = resolved;
+    return resolved;
+}
+
+// [616:580-648] _aliasTokenMatch + isSignalRelayPickup + _pickBestAspect
+function _aliasTokenMatch(keyNorm, aliasNorm) {
+    if (!aliasNorm) return false;
+    var from = 0;
+    while (true) {
+        var idx = keyNorm.indexOf(aliasNorm, from);
+        if (idx < 0) return false;
+        var before = idx > 0 ? keyNorm.charAt(idx - 1) : '';
+        var after = (idx + aliasNorm.length < keyNorm.length) ? keyNorm.charAt(idx + aliasNorm.length) : '';
+        var beforeOk = (before === '') || (before < 'A' || before > 'Z');
+        var afterOk = (after === '') || (after < 'A' || after > 'Z');
+        if (beforeOk && afterOk) return true;
+        from = idx + 1;
+    }
+}
+
+// DataLogger relay pickup resolver: alias map + boundary-safe matching + many pickup encodings.
+function isSignalRelayPickup(dlRelays, relayName) {
+    if (!dlRelays) return false;
+    var aliases = {
+        RECR: ['RECR', 'RCR', 'RR'],
+        DECR: ['DECR', 'DCR', 'DR'],
+        HECR: ['HECR', 'HCR', 'HR'],
+        HHECR: ['HHECR', 'HHCR', 'HHR']
+    };
+    var list = aliases[relayName] || [relayName];
+    var listNorm = [], i;
+    for (i = 0; i < list.length; i++) { listNorm.push(_normSignalKey(list[i])); }
+    for (var key in dlRelays) {
+        if (!dlRelays.hasOwnProperty(key)) continue;
+        var relay = dlRelays[key] || {};
+        var keyNorm = _normSignalKey(key);
+        var nameNorm = _normSignalKey(relay.name || relay.Name || relay.displayName || relay.AssetAttributeName || relay.AttributeName || '');
+        for (i = 0; i < listNorm.length; i++) {
+            if (_aliasTokenMatch(keyNorm, listNorm[i]) || _aliasTokenMatch(nameNorm, listNorm[i])) {
+                return relay.isPickup === true || relay.IsPickup === true ||
+                    relay.value === 1 || relay.value === '1' ||
+                    relay.Value === 1 || relay.Value === '1' ||
+                    String(relay.Value || '').toUpperCase() === 'PICKUP' ||
+                    String(relay.Status || '').toUpperCase() === 'PICKUP';
+            }
+        }
+    }
+    return false;
+}
+
+// Aspect priority for candidate-based resolution: lower number = more restrictive = wins ties.
+function _aspectPriority(aspect) {
+    switch (aspect) {
+        case 'RED': return 1;
+        case 'DOUBLE_YELLOW': return 2;
+        case 'SINGLE_YELLOW': return 3;
+        case 'GREEN': return 4;
+        default: return 99;
+    }
+}
+// Pick the most-restrictive aspect from a candidate list; tie-break on higher mA value.
+function _pickBestAspect(candidates) {
+    if (!candidates || candidates.length === 0) return null;
+    candidates.sort(function (a, b) {
+        var ap = _aspectPriority(a.aspect);
+        var bp = _aspectPriority(b.aspect);
+        if (ap !== bp) return ap - bp;
+        if ((b.value || 0) !== (a.value || 0)) {
+            return (b.value || 0) - (a.value || 0);
+        }
+        return 0;
+    });
+    return candidates[0];
+}
+
+// [616:654-685] replay-no-IsFresh handling + isRdpmsValueDisplayStale
+var REPLAY_STALE_MS = 3 * 60 * 1000;
+function _getReplayTimestampMs(attrData) {
+    if (!attrData) return 0;
+    var tsRaw = attrData.TimestampLocal || attrData.TimestampEdgeX || null;
+    if (!tsRaw) return 0;
+    var ts = new Date(tsRaw).getTime();
+    return isNaN(ts) ? 0 : ts;
+}
+function _isReplayNoFresh(attrData) {
+    if (!attrData) return false;
+    var hasFresh = attrData.RawIsFresh !== undefined && attrData.RawIsFresh !== null;
+    var kind = String(attrData.BroadcastKind || (attrData.raw && attrData.raw.BroadcastKind) || '').toLowerCase();
+    return !hasFresh && kind === 'replay';
+}
+function isReplayNoFreshDisplayStale(attrData) {
+    if (!_isReplayNoFresh(attrData)) return false;
+    var ts = _getReplayTimestampMs(attrData);
+    if (!ts) return false;
+    return (Date.now() - ts) > REPLAY_STALE_MS;
+}
+// Display-stale decision (UI only): server IsFresh=false is always stale; replay-without-IsFresh is
+// stale only when its TimestampLocal/TimestampEdgeX is older than REPLAY_STALE_MS. Never blocks aspect.
+function isRdpmsValueDisplayStale(attrData, lampInfo) {
+    if (!attrData) return false;
+    if (attrData.RawIsFresh !== undefined && attrData.RawIsFresh !== null) {
+        return attrData.IsFresh !== true;
+    }
+    if (isReplayNoFreshDisplayStale(attrData)) {
+        return true;
+    }
+    return false;
+}
+
+// [616:689-833] computeSignalState
+function computeSignalState(assetId) {
+    var asset = wsLiveData[assetId];
+    if (!asset) {
+        _rdpmsDiag('computeSignalState NO wsLiveData entry -> INACTIVE', { assetId: assetId }, 40);
+        return {
+            aspect: 'INACTIVE', activeLamp: null, source: 'NONE',
+            threshold: 0.1, thresholdSource: 'default',
+            lamps: { RG: {}, DG: {}, HG: {}, HHG: {} }, computedAt: Date.now()
+        };
+    }
+
+    var attrs = asset.attrs || {};
+    var dlRelays = asset.dlRelays || {};
+    var nowMs = Date.now();
+    var t = getSignalThreshold(assetId);
+    var thr = t.value;
+
+    var rg = _signalReadMaAttr(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.RG), 'RG');
+    var dg = _signalReadMaAttr(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.DG), 'DG');
+    var hg = _signalReadMaAttr(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.HG), 'HG');
+    var hhg = _signalReadMaAttr(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.HHG), 'HHG');
+
+    // Latest-lamp-timestamp grouping: the most recently updated lamp defines the latest mA
+    // group. When IsFresh is missing, a lamp is usable only if it is within the relative margin
+    // of the latest lamp ts -- so a stale leftover from before a transition is dropped. There is
+    // NO absolute wall-clock age test (device and browser clocks differ). This lets a fresh DG
+    // beat a stale-high RG on a RED->GREEN transition.
+    var latestTs = 0;
+    if (rg.present && rg.ts > latestTs) latestTs = rg.ts;
+    if (dg.present && dg.ts > latestTs) latestTs = dg.ts;
+    if (hg.present && hg.ts > latestTs) latestTs = hg.ts;
+    if (hhg.present && hhg.ts > latestTs) latestTs = hhg.ts;
+
+    // Effective freshness: the server IsFresh flag is authoritative when present. ONLY when a
+    // lamp has no flag does the Signal-aspect TimestampDevice fallback decide - it selects the
+    // latest mA group (within the relative margin of the latest lamp ts), with NO absolute
+    // Date.now() age check. Fallback is scoped to RG/DG/HG/HHG mA only.
+    function timestampFallbackFresh(x) {
+        if (!x.present || x.ts <= 0) return false;
+        if (x.hasFreshFlag) return false;   // only when IsFresh is missing
+        // No browser Date.now() age check. Use ONLY the relative margin against the latest lamp
+        // TimestampDevice: a lamp is usable iff it is within the latest mA group; older mA values
+        // outside that group are dropped for aspect (and shown with the stale mark).
+        if (latestTs > 0 && (latestTs - x.ts) > SIGNAL_TS_REL_WINDOW_MS) return false;
+        return true;
+    }
+    function effectiveFresh(x) {
+        if (!x.present) return false;
+        if (x.hasFreshFlag) return x.serverFresh === true;   // server flag authoritative
+        if (_isReplayNoFresh(x.attr)) return true;           // replay snapshot w/o IsFresh: aspect allowed by value (stale is display-only)
+        return timestampFallbackFresh(x);                    // fallback only when IsFresh missing
+    }
+    rg.timestampFresh = timestampFallbackFresh(rg); dg.timestampFresh = timestampFallbackFresh(dg);
+    hg.timestampFresh = timestampFallbackFresh(hg); hhg.timestampFresh = timestampFallbackFresh(hhg);
+    rg.effectiveFresh = effectiveFresh(rg); dg.effectiveFresh = effectiveFresh(dg);
+    hg.effectiveFresh = effectiveFresh(hg); hhg.effectiveFresh = effectiveFresh(hhg);
+    var rgF = rg.effectiveFresh, dgF = dg.effectiveFresh, hgF = hg.effectiveFresh, hhgF = hhg.effectiveFresh;
+
+    if (rg.present && !rgF) console.warn('[SignalAspect-StaleLamp]', { assetId: assetId, lamp: 'RG mA', value: rg.value, hasFlag: rg.hasFreshFlag, serverFresh: rg.serverFresh, tsFresh: rg.timestampFresh });
+    if (dg.present && !dgF) console.warn('[SignalAspect-StaleLamp]', { assetId: assetId, lamp: 'DG mA', value: dg.value, hasFlag: dg.hasFreshFlag, serverFresh: dg.serverFresh, tsFresh: dg.timestampFresh });
+    if (hg.present && !hgF) console.warn('[SignalAspect-StaleLamp]', { assetId: assetId, lamp: 'HG mA', value: hg.value, hasFlag: hg.hasFreshFlag, serverFresh: hg.serverFresh, tsFresh: hg.timestampFresh });
+    if (hhg.present && !hhgF) console.warn('[SignalAspect-StaleLamp]', { assetId: assetId, lamp: 'HHG mA', value: hhg.value, hasFlag: hhg.hasFreshFlag, serverFresh: hhg.serverFresh, tsFresh: hhg.timestampFresh });
+
+    var rgA = rgF && rg.value > thr;
+    var dgA = dgF && dg.value > thr;
+    var hgA = hgF && hg.value > thr;
+    var hhgA = hhgF && hhg.value > thr;
+
+    // Per-aspect resolution. Each aspect is resolved independently: when its RDPMS mA is
+    // fresh it is authoritative for that aspect (fresh-and-above => that aspect; fresh-but-
+    // low => that aspect does NOT fall back to its relay); only when that mA is stale or
+    // missing is that aspect's DataLogger relay consulted. There is no global gate, so a
+    // fresh mA on one aspect never blocks another aspect's DataLogger fallback. Aspects are
+    // evaluated most-restrictive-first (RED > DOUBLE_YELLOW > SINGLE_YELLOW > GREEN), the
+    // fail-safe order when more than one aspect would resolve at once.
+    var recr = isSignalRelayPickup(dlRelays, 'RECR');
+    var decr = isSignalRelayPickup(dlRelays, 'DECR');
+    var hecr = isSignalRelayPickup(dlRelays, 'HECR');
+    var hhecr = isSignalRelayPickup(dlRelays, 'HHECR');
+
+    // ============================================================================
+    // Aspect resolution - candidate-based, two-tier (proposal: fresh DG over stale HG fix).
+    // Tier 1 collects ALL fresh/effective RDPMS active currents across every lamp and chooses the
+    // most-restrictive (RED > DOUBLE_YELLOW > SINGLE_YELLOW > GREEN). A DataLogger relay can NEVER
+    // override a fresh active RDPMS current: Tier 2 runs only when Tier 1 yields no candidate. This
+    // fixes stale/low HG + HECR pickup showing SINGLE_YELLOW while DG was fresh and above threshold
+    // (asset 42871: DG 142.4 fresh, HG 1.5 stale => now GREEN/RDPMS, not SINGLE_YELLOW/DL).
+    // ============================================================================
+    var aspect = 'INACTIVE', activeLamp = null, source = 'NONE';
+
+    // Tier 1 - RDPMS active current candidates (effectiveFresh AND value > threshold), all lamps.
+    var rdpmsCandidates = [];
+    if (rgA) { rdpmsCandidates.push({ aspect: 'RED', activeLamp: 'RG', source: 'RDPMS', value: rg.value }); }
+    if (hhgA) { rdpmsCandidates.push({ aspect: 'DOUBLE_YELLOW', activeLamp: 'HHG', source: 'RDPMS', value: hhg.value }); }
+    if (hgA) { rdpmsCandidates.push({ aspect: 'SINGLE_YELLOW', activeLamp: 'HG', source: 'RDPMS', value: hg.value }); }
+    if (dgA) { rdpmsCandidates.push({ aspect: 'GREEN', activeLamp: 'DG', source: 'RDPMS', value: dg.value }); }
+    var chosen = _pickBestAspect(rdpmsCandidates);
+    if (chosen) { aspect = chosen.aspect; activeLamp = chosen.activeLamp; source = chosen.source; }
+
+    // Tier 2 - DataLogger fallback, ONLY when no RDPMS active current candidate exists. The !xF
+    // guard keeps the existing rule that a fresh-but-low mA blocks its OWN aspect's relay.
+    if (aspect === 'INACTIVE') {
+        var dlCandidates = [];
+        if (!rgF && recr) { dlCandidates.push({ aspect: 'RED', activeLamp: 'RG', source: 'DL' }); }
+        if (!hhgF && hecr && hhecr) { dlCandidates.push({ aspect: 'DOUBLE_YELLOW', activeLamp: 'HHG', source: 'DL' }); }
+        if (!hgF && hecr && !hhecr) { dlCandidates.push({ aspect: 'SINGLE_YELLOW', activeLamp: 'HG', source: 'DL' }); }
+        if (!dgF && decr) { dlCandidates.push({ aspect: 'GREEN', activeLamp: 'DG', source: 'DL' }); }
+        chosen = _pickBestAspect(dlCandidates);
+        if (chosen) { aspect = chosen.aspect; activeLamp = chosen.activeLamp; source = chosen.source; }
+    }
+
+    // Tier 3 - RDPMS_ANY_CURRENT: last-resort when IsFresh is MISSING, only after Tier 1 and Tier 2
+    // both fail. Scan ALL no-flag mA and use any value above threshold (even an older value outside
+    // the latest group). Server-flagged lamps are excluded: IsFresh=true is used in Tier 1 and
+    // IsFresh=false must NEVER be used. Most-restrictive wins via _pickBestAspect.
+    if (aspect === 'INACTIVE') {
+        var anyCandidates = [];
+        if (rg.present && !rg.hasFreshFlag && rg.value > thr) { anyCandidates.push({ aspect: 'RED', activeLamp: 'RG', source: 'RDPMS_ANY_CURRENT', value: rg.value }); }
+        if (hhg.present && !hhg.hasFreshFlag && hhg.value > thr) { anyCandidates.push({ aspect: 'DOUBLE_YELLOW', activeLamp: 'HHG', source: 'RDPMS_ANY_CURRENT', value: hhg.value }); }
+        if (hg.present && !hg.hasFreshFlag && hg.value > thr) { anyCandidates.push({ aspect: 'SINGLE_YELLOW', activeLamp: 'HG', source: 'RDPMS_ANY_CURRENT', value: hg.value }); }
+        if (dg.present && !dg.hasFreshFlag && dg.value > thr) { anyCandidates.push({ aspect: 'GREEN', activeLamp: 'DG', source: 'RDPMS_ANY_CURRENT', value: dg.value }); }
+        chosen = _pickBestAspect(anyCandidates);
+        if (chosen) { aspect = chosen.aspect; activeLamp = chosen.activeLamp; source = chosen.source; }
+    }
+
+    // Informational source when no aspect resolved.
+    if (aspect === 'INACTIVE') {
+        source = (rgF || dgF || hgF || hhgF) ? 'RDPMS' : ((dlRelays && Object.keys(dlRelays).length > 0) ? 'DL' : 'NONE');
+    }
+
+    _rdpmsDiag('computeSignalState result', { assetId: assetId, aspect: aspect, src: source, lamp: activeLamp, thr: thr, RG: (rg.present ? (rg.value + (rgF ? ' fresh' : ' STALE')) : 'absent'), DG: (dg.present ? (dg.value + (dgF ? ' fresh' : ' STALE')) : 'absent'), HG: (hg.present ? (hg.value + (hgF ? ' fresh' : ' STALE')) : 'absent'), HHG: (hhg.present ? (hhg.value + (hhgF ? ' fresh' : ' STALE')) : 'absent') }, 80);
+    _rdpmsDiag('computeSignalState decision detail', { assetId: assetId, threshold: thr, rdpmsCandidates: rdpmsCandidates, chosenAspect: aspect, chosenSource: source, chosenLamp: activeLamp, currents: { RG: { value: rg.value, fresh: rgF, active: rgA, hasFlag: rg.hasFreshFlag }, DG: { value: dg.value, fresh: dgF, active: dgA, hasFlag: dg.hasFreshFlag }, HG: { value: hg.value, fresh: hgF, active: hgA, hasFlag: hg.hasFreshFlag }, HHG: { value: hhg.value, fresh: hhgF, active: hhgA, hasFlag: hhg.hasFreshFlag } }, relays: { RECR: recr, DECR: decr, HECR: hecr, HHECR: hhecr } }, 80);
+    return {
+        aspect: aspect, activeLamp: activeLamp, source: source,
+        threshold: thr, thresholdSource: t.source,
+        lamps: {
+            RG: { present: rg.present, effectiveFresh: rg.effectiveFresh, staleForDisplay: isRdpmsValueDisplayStale(rg.attr, rg), value: rg.value, ts: rg.ts, active: rgA },
+            DG: { present: dg.present, effectiveFresh: dg.effectiveFresh, staleForDisplay: isRdpmsValueDisplayStale(dg.attr, dg), value: dg.value, ts: dg.ts, active: dgA },
+            HG: { present: hg.present, effectiveFresh: hg.effectiveFresh, staleForDisplay: isRdpmsValueDisplayStale(hg.attr, hg), value: hg.value, ts: hg.ts, active: hgA },
+            HHG: { present: hhg.present, effectiveFresh: hhg.effectiveFresh, staleForDisplay: isRdpmsValueDisplayStale(hhg.attr, hhg), value: hhg.value, ts: hhg.ts, active: hhgA }
+        },
+        hasFreshRdpms: (rgF || dgF || hgF || hhgF),
+        computedAt: nowMs
+    };
+}
+
+// [616:838-845] getSignalState
+function getSignalState(assetId) {
+    var s = signalState[assetId];
+    if (!s || (Date.now() - s.computedAt) > SIGNAL_STATE_TTL_MS) {
+        s = computeSignalState(assetId);
+        signalState[assetId] = s;
+    }
+    return s;
+}
+
+// [616:912-919] _isDataloggerAttr
+function _isDataloggerAttr(assetId, attrName) {
+    var dl = wsLiveData[String(assetId)] && wsLiveData[String(assetId)].dlRelays;
+    if (!dl) return false;
+    for (var k in dl) {
+        if (k === attrName || (dl[k] && dl[k].displayName === attrName)) return true;
+    }
+    return false;
+}
+
+// [616:928-933] triggerStaleCheckForAsset
+function triggerStaleCheckForAsset(assetId) {
+    if (!assetId || assetId === '' || assetId === '0') return;
+    // Staleness is now just the IsFresh flag — a cheap local read, no API call.
+    // Run it immediately so wsStaleAttrs is current before triggerUIUpdate renders.
+    _doStaleCheckSingleAsset(String(assetId));
+}
+
+// [616:1057-1091] _canonStructAttr + getCardFingerprint
+function _canonStructAttr(key) {
+    if (SIGNAL_STRUCT_ATTRS.indexOf(key) > -1) return key;
+    var nk = _normSignalKey(key), lamp, i;
+    for (lamp in SIGNAL_MA_ALIASES) {
+        if (!SIGNAL_MA_ALIASES.hasOwnProperty(lamp)) continue;
+        for (i = 0; i < SIGNAL_MA_ALIASES[lamp].length; i++) {
+            if (_normSignalKey(SIGNAL_MA_ALIASES[lamp][i]) === nk) return lamp + ' mA';
+        }
+    }
+    for (lamp in SIGNAL_V_ALIASES) {
+        if (!SIGNAL_V_ALIASES.hasOwnProperty(lamp)) continue;
+        for (i = 0; i < SIGNAL_V_ALIASES[lamp].length; i++) {
+            if (_normSignalKey(SIGNAL_V_ALIASES[lamp][i]) === nk) return lamp + ' V';
+        }
+    }
+    return null;
+}
+
+// Fix 3: alias-aware. Folds ISIG/VSIG lamp names onto their canonical 'RG mA'/'RG V' tokens and
+// dedupes, so the fingerprint changes (-> rebuild) when an ISIG/VSIG lamp first arrives, and a
+// card already built under exact 'RG mA' names keeps an identical fingerprint (no spurious rebuild).
+function getCardFingerprint(assetId) {
+    var asset = wsLiveData[assetId];
+    if (!asset) return '';
+    var seen = {};
+    for (var k in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(k)) continue;
+        var canon = _canonStructAttr(k);
+        if (canon) seen[canon] = 1;
+    }
+    var keys = [];
+    for (var c in seen) { if (seen.hasOwnProperty(c)) keys.push(c); }
+    keys.sort();
+    return keys.join(',');
+}
+
+// [616:1095-1098] needsCardRebuild
+function needsCardRebuild(assetId) {
+    if (!rdpmsCardsBuilt.hasOwnProperty(assetId)) return true;
+    return getCardFingerprint(assetId) !== rdpmsCardsBuilt[assetId];
+}
+
+// [616:1108-1209] storeWsAttribute
+function storeWsAttribute(d) {
+    if (!d) return null;
+    var _rawFresh = (d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh : d.isFresh;
+    var _isStaleRaw = (_rawFresh === false || _rawFresh === 'false' || _rawFresh === 0 || _rawFresh === '0');
+    if (_isStaleRaw) {
+        console.log('[STALE RAW SNAPSHOT]', {
+            AssetId: d.AssetId,
+            AssetName: d.AssetName,
+            Attribute: d.AssetAttributeName || d.AttributeName || d.attrName,
+            Value: d.Value,
+            IsFresh: d.IsFresh,
+            BroadcastKind: d.BroadcastKind,
+            TimestampLocal: d.TimestampLocal,
+            TimestampEdgeX: d.TimestampEdgeX,
+            TimestampDevice: d.TimestampDevice,
+            raw: d
+        });
+    }
+    var aid = String(d.AssetId || '').trim();
+    if (!aid) return null;
+    var attrName = String(d.AssetAttributeName || d.AttributeName || d.attrName || '').trim();
+    if (!attrName) { console.warn('[WS Store] Missing AssetAttributeName', d); return null; }
+    var attrId = String(d.AssetAttributeId || '').trim();
+    var edgeXId = String(d.EdgeXAttributeId || '').trim();
+    var tagId = String(d.TagID || '').trim();
+    if (!wsLiveData[aid]) {
+        wsLiveData[aid] = { AssetId: d.AssetId, AssetName: d.AssetName || ('Asset ' + aid), AssetTypeId: d.AssetTypeId, SiteId: d.SiteId, attrs: {}, attrsById: {}, dlRelays: {}, lastUpdated: new Date() };
+    }
+    if (!wsLiveData[aid].attrs) wsLiveData[aid].attrs = {};
+    if (!wsLiveData[aid].attrsById) wsLiveData[aid].attrsById = {};
+    if (!wsLiveData[aid].dlRelays) wsLiveData[aid].dlRelays = {};
+    // false-preserving IsFresh (matches every other ingest path)
+    var rawFresh = (d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh : d.isFresh;
+    var hasFreshFlag = !(rawFresh === undefined || rawFresh === null);
+    var isFresh = (rawFresh === true || rawFresh === 'true' || rawFresh === 1 || rawFresh === '1');
+    var broadcastKind = String(d.BroadcastKind || '').toLowerCase();
+    // change tracking from the existing exact-key attr (preserves batch/single semantics)
+    var existing = wsLiveData[aid].attrs[attrName];
+    var prevVal = existing ? existing.Value : undefined;
+    var hasChanged = (prevVal !== undefined && prevVal !== d.Value);
+    var attrObj = {
+        Value: d.Value,
+        AttrId: d.AssetAttributeId || attrId,
+        AssetAttributeId: d.AssetAttributeId || attrId,
+        Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
+        TimestampDevice: d.TimestampDevice || null,
+        TimestampLocal: d.TimestampLocal || null,
+        TimestampEdgeX: d.TimestampEdgeX || null,
+        Source: d.DataSource || 'WS',
+        IsFresh: hasFreshFlag ? isFresh : null,
+        RawIsFresh: hasFreshFlag ? rawFresh : null,
+        HasIsFresh: hasFreshFlag,
+        BroadcastKind: broadcastKind,
+        changed: hasChanged,
+        prevValue: prevVal,
+        TagID: d.TagID,
+        SiteId: d.SiteId,
+        AssetTypeId: d.AssetTypeId,
+        AssetId: d.AssetId,
+        AssetName: d.AssetName,
+        EdgeXAttributeId: d.EdgeXAttributeId,
+        AssetAttributeName: attrName,
+        AttributeName: attrName,
+        attrName: attrName,
+        value: d.Value,
+        ValueType: d.ValueType,
+        DataSource: d.DataSource,
+        DataType: d.DataType,
+        ThresholdMode: d.ThresholdMode,
+        TimestampChannel: d.TimestampChannel,
+        TimestampPeriodic: d.TimestampPeriodic,
+        TimestampChange: d.TimestampChange,
+        TimestampEvent: d.TimestampEvent,
+        raw: d
+    };
+    // PM Table merge precedence (operation attributes only). Newer wins;
+    // strictly-older non-DL messages are rejected; at equal timestamp a fresh
+    // value wins over replay-stale. Signal/RDPMS/DataLogger ingest unchanged.
+    if (existing && typeof parsePmAttrName === 'function' && parsePmAttrName(attrName)) {
+        var _newTs = Date.parse(d.TimestampDevice || d.TimestampLocal || '') || 0;
+        var _oldTs = Date.parse(existing.TimestampDevice || existing.Timestamp || '') || 0;
+        if (_newTs && _oldTs) {
+            if (_newTs < _oldTs) return existing;
+            if (_newTs === _oldTs && isPmReplayStale(attrObj) && !isPmReplayStale(existing)) return existing;
+        }
+    }
+
+
+    // additive id index (no existing code iterates attrsById)
+    //if (attrId) wsLiveData[aid].attrsById[attrId] = attrObj;
+    //if (edgeXId) wsLiveData[aid].attrsById[edgeXId] = attrObj;
+    //if (tagId) wsLiveData[aid].attrsById[tagId] = attrObj;
+    // Store under the EXACT name only (one key per attribute - never multi-keyed, so the 40+
+    // attrs iterators stay correct). DataLogger relays are included here too (so attrs['RECR']
+    // exists, per the RDPMS proposal); they also remain in dlRelays via processWsDataloggerAttr.
+    wsLiveData[aid].attrs[attrName] = attrObj;
+    wsLiveData[aid].lastUpdated = new Date();
+    if (window._WS_STORE_DEBUG && aid === '1631' && (attrName === 'RG mA' || attrName === 'RG V' || attrName === 'RECR')) {
+        try { console.log('[WS Store Check]', { aid: aid, attrName: attrName, value: d.Value, exact: wsLiveData[aid].attrs[attrName], byId: wsLiveData[aid].attrsById[attrId], dl: wsLiveData[aid].dlRelays[attrName], keys: Object.keys(wsLiveData[aid].attrs) }); } catch (e) { }
+    }
+    return attrObj;
+}
+
+// [616:1213-1246] getStoredAttr
+function getStoredAttr(assetId, aliasesOrName) {
+    var aid = String(assetId);
+    var asset = wsLiveData[aid];
+    if (!asset) return null;
+    var attrs = asset.attrs || {};
+    if (Array.isArray(aliasesOrName)) {
+        if (typeof getSignalAttrByAliases === 'function') {
+            var byAlias = getSignalAttrByAliases(attrs, aliasesOrName);
+            if (byAlias) return byAlias;
+        }
+        for (var i = 0; i < aliasesOrName.length; i++) {
+            var a = getStoredAttr(aid, aliasesOrName[i]);
+            if (a) return a;
+        }
+        return null;
+    }
+    var name = String(aliasesOrName || '').trim();
+    if (!name) return null;
+    if (attrs[name]) return attrs[name];
+    var k;
+    if (typeof _normSignalKey === 'function') {
+        var nk = _normSignalKey(name);
+        for (k in attrs) { if (attrs.hasOwnProperty(k) && _normSignalKey(k) === nk) return attrs[k]; }
+    }
+    if (asset.attrsById && asset.attrsById[name]) return asset.attrsById[name];
+    if (asset.dlRelays) {
+        if (asset.dlRelays[name]) return asset.dlRelays[name];
+        if (typeof _normSignalKey === 'function') {
+            var rnk = _normSignalKey(name);
+            for (k in asset.dlRelays) { if (asset.dlRelays.hasOwnProperty(k) && _normSignalKey(k) === rnk) return asset.dlRelays[k]; }
+        }
+    }
+    return null;
+}
+
+// [616:1248-1250] isRdpmsCardDomReady
+function isRdpmsCardDomReady(assetId) {
+    return $('#rdpmsCard_' + assetId).length > 0 && $('#rdpmsCard_' + assetId + ' .card-border').length > 0;
+}
+
+// [616:1257-1285] isMainSignalDomReady
+function isMainSignalDomReady(assetId) {
+    var aid = String(assetId);
+    var asset = wsLiveData[aid];
+    var attrs = (asset && asset.attrs) ? asset.attrs : {};
+    var hasRG = !!(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.RG) || getSignalAttrByAliases(attrs, SIGNAL_V_ALIASES.RG));
+    var hasDG = !!(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.DG) || getSignalAttrByAliases(attrs, SIGNAL_V_ALIASES.DG));
+    var hasHG = !!(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.HG) || getSignalAttrByAliases(attrs, SIGNAL_V_ALIASES.HG));
+    var hasHHG = !!(getSignalAttrByAliases(attrs, SIGNAL_MA_ALIASES.HHG) || getSignalAttrByAliases(attrs, SIGNAL_V_ALIASES.HHG));
+    return !!(
+        document.getElementById('rdpmsCard_' + aid) &&
+        document.querySelector('#rdpmsCard_' + aid + ' .card-border') &&
+        (!hasRG || document.getElementById('rdpmsRG_' + aid)) &&
+        (!hasDG || document.getElementById('rdpmsDG_' + aid)) &&
+        (!hasHG || document.getElementById('rdpmsHG_' + aid)) &&
+        (!hasHHG || document.getElementById('rdpmsHHG_' + aid)) &&
+        document.getElementById('rdpmsTrRG_' + aid) &&
+        document.getElementById('rdpmsTdRGma_' + aid) &&
+        document.getElementById('rdpmsTdRGv_' + aid) &&
+        document.getElementById('rdpmsTrDG_' + aid) &&
+        document.getElementById('rdpmsTdDGma_' + aid) &&
+        document.getElementById('rdpmsTdDGv_' + aid) &&
+        document.getElementById('rdpmsTrHG_' + aid) &&
+        document.getElementById('rdpmsTdHGma_' + aid) &&
+        document.getElementById('rdpmsTdHGv_' + aid) &&
+        document.getElementById('rdpmsTrHHG_' + aid) &&
+        document.getElementById('rdpmsTdHHGma_' + aid) &&
+        document.getElementById('rdpmsTdHHGv_' + aid)
+    );
+}
+
+// [616:1289-1298] ensureRdpmsCardDom
+function ensureRdpmsCardDom(assetId) {
+    if (isRdpmsCardDomReady(assetId)) return true;
+    if (!wsLiveData[assetId]) { delete rdpmsCardsBuilt[assetId]; return false; }
+    var name = (wsLiveData[assetId].AssetName || '').toLowerCase();
+    if (name.indexOf('sh') > -1) buildShuntSignalCard(assetId);
+    else buildMainSignalCard(assetId);
+    if (!isRdpmsCardDomReady(assetId)) { delete rdpmsCardsBuilt[assetId]; return false; }
+    rdpmsCardsBuilt[assetId] = getCardFingerprint(assetId);
+    return true;
+}
+
+// [616:1300-1318] rebuildCard
+function rebuildCard(assetId) {
+
+    var oldFP = rdpmsCardsBuilt[assetId] || '';
+    var newFP = getCardFingerprint(assetId);
+    var $oldCard = $('#rdpmsCard_' + assetId);
+    var $prev = $oldCard.prev();
+    var $parent = $oldCard.parent();
+    $oldCard.remove();
+    var name = (wsLiveData[assetId].AssetName || '').toLowerCase();
+    if (name.indexOf('sh') > -1) { buildShuntSignalCard(assetId); }
+    else { buildMainSignalCard(assetId); }
+    var $newCard = $('#rdpmsCard_' + assetId);
+    if (!$newCard.length) { delete rdpmsCardsBuilt[assetId]; return; }   // build produced no DOM -> no flag, no paint
+    if ($prev.length) { $prev.after($newCard); }
+    else if ($parent.length) { $parent.prepend($newCard); }
+    rdpmsCardsBuilt[assetId] = getCardFingerprint(assetId);
+    if (name.indexOf('sh') > -1) { updateShuntSignalLights(assetId); }
+    else { updateMainSignalLights(assetId); }
+}
+
+// [616:2841-2859] table scroll snapshot/restore
+function _snapshotTableScroll() {
+    var m = {};
+    try {
+        $('#divTelemetryLive .table-responsive').each(function (i) {
+            var key = ($(this).find('table').attr('id')) || ('idx_' + i);
+            m[key] = { l: this.scrollLeft, t: this.scrollTop };
+        });
+    } catch (e) { }
+    return m;
+}
+function _restoreTableScroll(m) {
+    if (!m) return;
+    try {
+        $('#divTelemetryLive .table-responsive').each(function (i) {
+            var key = ($(this).find('table').attr('id')) || ('idx_' + i);
+            if (m[key]) { this.scrollLeft = m[key].l; this.scrollTop = m[key].t; }
+        });
+    } catch (e) { }
+}
+
+// [616:2979-2991] _signalColSeq
+var _signalColSeq = [
+    'RG mA', 'RG V',
+    'DG mA', 'DG V',
+    'HG mA', 'HG V',
+    'HHG mA', 'HHG V',
+    'PILOT mA', 'PILOT V', 'PILOTRoot mA', 'PILOTRoot V',
+    'Co_Hg mA', 'Co_Hg V',
+    'Root mA', 'Root V',
+    'AUG mA', 'AUG V', 'BUG mA', 'BUG V', 'CUG mA', 'CUG V', 'DUG mA', 'DUG V', 'EUG mA', 'EUG V',
+    'On Aspect mA', 'On Aspect V', 'Off Aspect mA', 'Off Aspect V',
+    'DPR', 'HPR', 'HHPR',
+    'Sh-HPR'
+];
+
+// [616:3000-3048] getSignalHeaderLabel + _getSignalColOrder + _isSignalMetadataAttr
+function getSignalHeaderLabel(assetId, columnTitle) {
+    var aid = String(assetId || '');
+    if (aid && columnTitle && typeof userAssetSimpleMap !== 'undefined') {
+        var prefix = aid + '_';
+        // Normal attribute: match this asset's entry by Title → return AliasName.
+        for (var sk in userAssetSimpleMap) {
+            if (sk.indexOf(prefix) !== 0) continue;
+            var e = userAssetSimpleMap[sk];
+            if (e && (e.attributeName === columnTitle || e.name === columnTitle)) {
+                return e.name || columnTitle;
+            }
+        }
+        // Datalogger: match this asset's entry by Title → return AttributeName.
+        if (typeof userAssetDataloggerMap !== 'undefined') {
+            for (var dk in userAssetDataloggerMap) {
+                if (dk.indexOf(prefix) !== 0) continue;
+                var de = userAssetDataloggerMap[dk];
+                if (de && (de.attributeName === columnTitle || de.name === columnTitle || de.dataloggerAttribute === columnTitle)) {
+                    return de.attributeName || de.name || columnTitle;
+                }
+            }
+        }
+    }
+    return columnTitle;
+}
+
+function _getSignalColOrder(name) {
+    if (!name) return 999;
+    for (var i = 0; i < _signalColSeq.length; i++) {
+        if (name.toUpperCase() === _signalColSeq[i].toUpperCase()) return i;
+    }
+    return 999;
+}
+
+// True only when attrTitle is a real attribute of THIS asset per the
+// GetBulkAssetData response (userAssetSimpleMap is keyed assetId_attrId with
+// attributeName = the response Title). Used so the signal column fallback can
+// never promote a stray live-stream key (e.g. 'HPR' streamed for SH-113, whose
+// configured attribute is 'Sh-HPR') into a column.
+function _isSignalMetadataAttr(assetId, attrTitle) {
+    if (!assetId || !attrTitle || typeof userAssetSimpleMap === 'undefined') return false;
+    var prefix = String(assetId) + '_';
+    for (var sk in userAssetSimpleMap) {
+        if (sk.indexOf(prefix) !== 0) continue;
+        var e = userAssetSimpleMap[sk];
+        if (e && (e.attributeName === attrTitle || e.name === attrTitle)) return true;
+    }
+    return false;
+}
+
+// [616:3057-3081] _signalColumnKeys
+function _signalColumnKeys(assetId) {
+    var asset = wsLiveData[assetId];
+    var seen = {}, keys = [];
+    function add(k) {
+        if (!k || seen[k]) return;
+        if (typeof _isDataloggerAttr === 'function' && _isDataloggerAttr(assetId, k)) return; // dataloggers are badges, not columns
+        seen[k] = 1;
+        keys.push(k);
+    }
+    var cached = (typeof _assetInfoListCache !== 'undefined') ? _assetInfoListCache[assetId] : null;
+    if (cached && cached.length) {
+        for (var i = 0; i < cached.length; i++) add(cached[i]);
+    }
+    if (asset && asset.attrs) {
+        for (var k in asset.attrs) {
+            if (asset.attrs.hasOwnProperty(k)) add(k);
+        }
+    }
+    keys.sort(function (a, b) {
+        var oa = _getSignalColOrder(a), ob = _getSignalColOrder(b);
+        if (oa !== ob) return oa - ob;
+        return String(a).localeCompare(String(b));
+    });
+    return keys;
+}
+
+// [616:3085-3115] _fetchAssetInfoList
+function _fetchAssetInfoList(assetId, callback) {
+    // REFACTORED: No AJAX — reads from _assetInfoListCache pre-populated
+    //    by loadBulkAssetMetadata(). Falls back to wsLiveData keys.
+    if (_assetInfoListCache[assetId] && _assetInfoListCache[assetId].length > 0) {
+        if (callback) callback(_assetInfoListCache[assetId]);
+        return;
+    }
+
+    // Not in cache — fall back to wsLiveData keys, but ONLY keys that are real
+    // GetBulkAssetData attributes for this asset (so stray stream keys like a
+    // phantom 'HPR' never become a column). Keeps any genuine response attribute.
+    var asset = wsLiveData[assetId];
+    var keys = [];
+    if (asset && asset.attrs) {
+        for (var k in asset.attrs) {
+            if (_isSignalMetadataAttr(assetId, k)) keys.push(k);
+        }
+    }
+    keys.sort(function (a, b) { return _getSignalColOrder(a) - _getSignalColOrder(b); });
+    _assetInfoListCache[assetId] = keys;
+
+
+
+    if (keys.length > 0) {
+        console.log('[AssetInfoList] Asset ' + assetId + ' attrs from wsLiveData: ' + keys.join(', '));
+    } else {
+        console.warn('[AssetInfoList] Asset ' + assetId + ' — no attrs in cache or wsLiveData');
+    }
+
+    if (callback) callback(keys);
+}
+
+// [616:3118-3127] _getSignalAttrFingerprint
+function _getSignalAttrFingerprint(assetId) {
+    var asset = wsLiveData[assetId];
+    if (!asset || !asset.attrs) return '';
+    var keys = [];
+    for (var k in asset.attrs) {
+        if (_isSignalMetadataAttr(assetId, k)) keys.push(k);
+    }
+    keys.sort(function (a, b) { return _getSignalColOrder(a) - _getSignalColOrder(b); });
+    return keys.join('|');
+}
+function getSignalGroupColorStyle(groupLabel) {
+    var text = String(groupLabel || '').toLowerCase();
+
+    if (text.indexOf('shunt') > -1) {
+        return {
+            bar: 'linear-gradient(135deg,#475569,#64748b)',
+            icon: 'fa-random'
+        };
+    }
+
+    if (text.indexOf('route') > -1 || text.indexOf('calling') > -1) {
+        return {
+            bar: 'linear-gradient(135deg,#7c3aed,#8b5cf6)',
+            icon: 'fa-project-diagram'
+        };
+    }
+
+    if (text.indexOf('2 aspect') > -1) {
+        return {
+            bar: 'linear-gradient(135deg,#059669,#10b981)',
+            icon: 'fa-traffic-light'
+        };
+    }
+
+    if (text.indexOf('3 aspect') > -1) {
+        return {
+            bar: 'linear-gradient(135deg,#2563eb,#3b82f6)',
+            icon: 'fa-traffic-light'
+        };
+    }
+
+    if (text.indexOf('4 aspect') > -1 || text.indexOf('5 aspect') > -1) {
+        return {
+            bar: 'linear-gradient(135deg,#1e3a5f,#2563eb)',
+            icon: 'fa-traffic-light'
+        };
+    }
+
+    return {
+        bar: 'linear-gradient(135deg,#475569,#64748b)',
+        icon: 'fa-signal'
+    };
+}
+// [616:3130-3196] renderSignalAspectTables + _groupRepName + _signalGroupSeqRank
+function renderSignalAspectTables() {
+    var assetIds = Object.keys(wsLiveData).filter(function (id) {
+        return wsValidAssetIds.length === 0 || wsValidAssetIds.indexOf(String(id)) > -1;
+    });
+    if (assetIds.length === 0) return;
+    $('#wsWaiting').remove();
+
+    // ── Fetch attribute lists for all assets, then render ──
+    var pending = 0;
+    var allFetched = true;
+
+    for (var f = 0; f < assetIds.length; f++) {
+        if (!_assetInfoListCache[assetIds[f]]) {
+            allFetched = false;
+            break;
+        }
+    }
+
+    if (!allFetched) {
+        // Fetch all missing, then re-call render
+        pending = assetIds.length;
+        for (var fi = 0; fi < assetIds.length; fi++) {
+            _fetchAssetInfoList(assetIds[fi], function () {
+                pending--;
+                if (pending <= 0) {
+                    _doRenderSignalTables(assetIds);
+                }
+            });
+        }
+        return;
+    }
+
+    _doRenderSignalTables(assetIds);
+}
+
+// Stable representative name for a group: the natural-lowest AssetName in it.
+// Independent of ingest/push order, so the group's sort position never wobbles.
+function _groupRepName(groupArr) {
+    var best = null;
+    for (var i = 0; i < groupArr.length; i++) {
+        var a = wsLiveData[groupArr[i].id];
+        var nm = (a && a.AssetName) || '';
+        if (best === null || nm.localeCompare(best, undefined, { numeric: true, sensitivity: 'base' }) < 0) best = nm;
+    }
+    return best || '';
+}
+
+// Defined display sequence for a signal GROUP (static — never uses live aspect).
+// Lower rank shows first. This is the "named sequence" for the signal table:
+//   0  Route signals   (fingerprint has AUG/BUG/CUG/DUG/EUG route arms)
+//   10 Main signals    (running signals, no route)
+//   30 Shunt signals   (representative AssetName contains 'sh')  → always LAST
+// Change the numbers here to reorder the sequence (e.g. swap 0 and 10 to put
+// plain main signals ahead of route signals).
+function _signalGroupSeqRank(fpKey, groupArr) {
+    var repName = _groupRepName(groupArr).toLowerCase();
+    if (repName.indexOf('sh') > -1) return 30;               // shunt → last
+
+    var fpAttrs = fpKey ? fpKey.split('|') : [];
+    var routePrefixes = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG'];
+    for (var i = 0; i < fpAttrs.length; i++) {
+        for (var r = 0; r < routePrefixes.length; r++) {
+            if (fpAttrs[i].indexOf(routePrefixes[r]) === 0) return 0;   // route → first
+        }
+    }
+    return 10;                                               // main → middle
+}
+
+// [616:3198-3333] _doRenderSignalTables
+function _doRenderSignalTables(assetIds) {
+    // ── Group by attribute fingerprint from GetAssetInfoList ──
+    var groupMap = {};
+    for (var i = 0; i < assetIds.length; i++) {
+        var aid = assetIds[i];
+        var fp = _getSignalAttrFingerprint(aid);
+        var info = getSignalAspectGlobal(aid);
+        if (!groupMap[fp]) groupMap[fp] = [];
+        groupMap[fp].push({ id: aid, info: info, fp: fp });
+        // Cache STRUCTURAL fingerprint only. The live aspect is intentionally
+        // excluded so an aspect change does not later count as a "group changed"
+        // event and force a rebuild/reorder (see updateSignalAspectTablesIncremental).
+        _signalGroupCache[aid] = fp;
+    }
+
+    // ── Sort groups: STABLE structural order (NEVER the live aspect) so tables do
+    //    not jump up/down as signals change aspect. Ordered by structural
+    //    complexity (orderScore = lamp + arm + calling count) ASC, then column
+    //    count ASC, then a fixed representative signal name. Route signals carry
+    //    more arms (higher orderScore / more columns) and therefore always land in
+    //    the same, defined position in the sequence. ──
+    var groupKeys = Object.keys(groupMap);
+    groupKeys.sort(function (a, b) {
+        var ga = groupMap[a], gb = groupMap[b];
+        // 1) defined category sequence — route first, shunt last (static)
+        var ra = _signalGroupSeqRank(a, ga), rb = _signalGroupSeqRank(b, gb);
+        if (ra !== rb) return ra - rb;
+        // 2) structural complexity within the same category (static)
+        var sa = ga[0].info.orderScore, sb = gb[0].info.orderScore;
+        if (sa !== sb) return sa - sb;
+        // 3) column count (static)
+        var ca = a.split('|').length, cb = b.split('|').length;
+        if (ca !== cb) return ca - cb;
+        // 4) fixed tiebreaker: lowest signal name in each group (natural order)
+        return _groupRepName(ga).localeCompare(_groupRepName(gb), undefined, { numeric: true, sensitivity: 'base' });
+    });
+
+    // ── Sort signals within each group: STABLE order by signal name only.
+    //    Aspect priority is deliberately NOT used here — a signal's row must keep
+    //    its position when its aspect changes (RG ↔ HG ↔ DG ↔ HHG); it must not
+    //    jump up or down. The aspect is still shown via the cell values/colours. ──
+    for (var gk in groupMap) {
+        groupMap[gk].sort(function (a, b) {
+            return (wsLiveData[a.id].AssetName || '').localeCompare(
+                wsLiveData[b.id].AssetName || '', undefined, { numeric: true, sensitivity: 'base' });
+        });
+    }
+
+    // ── Build HTML ──
+    var html = '<div id="signalAspectTablesWrapper" style="padding:5px 0;">';
+    var tableIndex = 0;
+
+    for (var gi = 0; gi < groupKeys.length; gi++) {
+        var fpKey = groupKeys[gi];
+        var signals = groupMap[fpKey];
+        if (!signals || signals.length === 0) continue;
+
+        // Get column list from fingerprint
+        var columns = fpKey ? fpKey.split('|') : [];
+
+        // Determine aspect count from group's attribute fingerprint
+        var fpAttrs = fpKey.split('|');
+        var aspectLamps = ['RG', 'DG', 'HG', 'HHG'];
+        var aspectCount = 0;
+        for (var ac = 0; ac < aspectLamps.length; ac++) {
+            for (var fa = 0; fa < fpAttrs.length; fa++) {
+                if (fpAttrs[fa].indexOf(aspectLamps[ac] + ' ') === 0) { aspectCount++; break; }
+            }
+        }
+        // Check for routes & calling in fingerprint
+        var hasRoute = false, hasCalling = false;
+        var routePrefixes = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG'];
+        for (var rp = 0; rp < fpAttrs.length; rp++) {
+            for (var rn = 0; rn < routePrefixes.length; rn++) {
+                if (fpAttrs[rp].indexOf(routePrefixes[rn]) === 0) { hasRoute = true; break; }
+            }
+            if (fpAttrs[rp].indexOf('Co_Hg') === 0) hasCalling = true;
+        }
+
+        var firstName = (wsLiveData[signals[0].id].AssetName || '').toLowerCase();
+        var isShunt = firstName.indexOf('sh') > -1;
+        var groupLabel = '';
+        if (isShunt) {
+            groupLabel = 'Shunt Signal';
+        } else {
+            groupLabel = aspectCount > 0 ? aspectCount + ' Aspect' : 'Signal';
+            if (hasRoute) groupLabel += ' + Route';
+            if (hasCalling) groupLabel += ' + Calling';
+        }
+
+        // Spacing between tables
+        if (tableIndex > 0) {
+            html += '<div style="height:18px;"></div>';
+        }
+
+        // ── Card container ──
+        html += '<div class="signal-group-card" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+
+        // Colored group label bar
+        var gs = getSignalGroupColorStyle(groupLabel);
+
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:' + gs.bar +
+            ';border-bottom:1px solid rgba(255,255,255,0.12);box-shadow:0 2px 8px rgba(0,0,0,0.12);">';
+        html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.20);color:#fff;">' +
+            '<i class="fas ' + gs.icon + '" style="font-size:13px;"></i></span>';
+        html += '<span style="font-size:13px;font-weight:700;color:#fff;letter-spacing:0.3px;">' + groupLabel + '</span>';
+        html += '<span style="margin-left:auto;font-size:10px;padding:3px 10px;border-radius:12px;background:rgba(255,255,255,0.22);color:#fff;font-weight:700;">' +
+            signals.length + ' Signal' + (signals.length > 1 ? 's' : '') + '</span>';
+        html += '</div>';
+
+        // Table
+        var tableId = 'wsSignalTable_' + tableIndex;
+        html += '<div class="table-responsive" style="overflow-x:auto;">';
+        html += '<table class="table table-sm table-hover mb-0" id="' + tableId + '">';
+        html += '<thead><tr style="background:#f1f5f9;">';
+        html += '<th style="min-width:90px;font-size:12px;padding:8px 12px;border-bottom:2px solid #cbd5e1;">Signal</th>';
+
+        for (var hi = 0; hi < columns.length; hi++) {
+            var dispName = getSignalHeaderLabel(signals[0].id, columns[hi]);
+            var fmtName = formatAliasName(dispName);
+            html += '<th data-col="' + columns[hi] + '" title="' + columns[hi] + '" style="white-space:nowrap;font-size:11px;padding:8px 10px;border-bottom:2px solid #cbd5e1;">' + fmtName + '</th>';
+        }
+        html += '<th style="min-width:100px;font-size:12px;padding:8px 10px;border-bottom:2px solid #cbd5e1;">DataLogger</th>';
+        html += '<th style="min-width:80px;font-size:12px;padding:8px 10px;border-bottom:2px solid #cbd5e1;">Last Update</th>';
+        html += '</tr></thead><tbody>';
+
+        for (var si = 0; si < signals.length; si++) {
+            html += _buildSignalGroupRow(signals[si].id, columns, signals[si].info);
+        }
+
+        html += '</tbody></table></div>';
+        html += '</div>'; // close card
+        tableIndex++;
+    }
+
+    html += '</div>';
+    var _scrollS = _snapshotTableScroll();
+    $('#divTelemetryLive').html(html);
+    _restoreTableScroll(_scrollS);
+    $('#downloadContainer').show();
+    console.log('[Signal Tables] Rendered', assetIds.length, 'signals in', tableIndex, 'tables');
+}
+
+// [616:3335-3394] _buildSignalGroupRow
+function _buildSignalGroupRow(assetId, columns, aspectInfo) {
+    var asset = wsLiveData[assetId];
+    if (!asset) return '';
+    var attrs = asset.attrs || {};
+    var name = asset.AssetName || 'Signal';
+
+    var h = '<tr data-id="' + assetId + '">';
+    h += '<td class="asset-name" style="font-weight:600;white-space:nowrap;font-size:12px;padding:6px 12px;">' + name + '</td>';
+
+    //for (var ci = 0; ci < columns.length; ci++) {
+    //    var an = columns[ci];
+    //    var ad = attrs[an];
+    for (var ci = 0; ci < columns.length; ci++) {
+        var an = columns[ci];
+        // Tolerant lookup (exact key -> normalized key -> attrsById) so a column value still binds when the
+        // stored attribute key differs slightly (case/spacing) from the metadata column key. Falls back to
+        // the plain exact-key read so behaviour is never worse than before.
+        var ad = (typeof getStoredAttr === 'function') ? getStoredAttr(assetId, an) : null;
+        if (!ad) ad = attrs[an];
+        var raw = ad ? ad.Value : null;
+        var cls = '', disp = '';
+        if (raw === null || raw === undefined || raw === '') {
+            disp = '—'; cls = 'val-na';
+        } else {
+            var num = parseFloat(raw);
+            disp = isNaN(num) ? raw : ((num === 0) ? '0.0' : num.toFixed(2));
+        }
+        if (isAttrStale(assetId, an)) cls += ' ws-stale-val';
+        var _wsf = _wsStaleCellAttr(ad);
+        h += '<td class="' + cls + _wsf.cls + '" data-attr="' + an + '" style="font-size:12px;padding:6px 10px;"' + _wsf.title + '>' + disp + '</td>';
+    }
+
+    // DataLogger
+    var dlRelays = asset.dlRelays || {};
+    var dlHtml = '';
+    var dlKeys = Object.keys(dlRelays);
+    if (dlKeys.length > 0) {
+        dlKeys.sort(function (a, b) {
+            var ra = dlRelays[a], rb = dlRelays[b];
+            if (ra.isPickup && !rb.isPickup) return -1;
+            if (!ra.isPickup && rb.isPickup) return 1;
+            return (ra.displayName || a).localeCompare(rb.displayName || b);
+        });
+        for (var di = 0; di < dlKeys.length; di++) {
+            var relay = dlRelays[dlKeys[di]];
+            var bc = relay.isPickup ? 'pickup' : 'drop';
+            var bt = relay.isPickup ? 'Pickup' : 'Drop';
+            dlHtml += '<span class="rdpms-dl-badge ' + bc + '" data-attr="' + dlKeys[di] + '" style="margin:1px;padding:2px 5px;font-size:9px;">' + (relay.displayName || dlKeys[di]) + ': ' + bt + '</span> ';
+        }
+    } else {
+        dlHtml = '<span style="color:#94a3b8;font-size:10px;">—</span>';
+    }
+    h += '<td class="dl-cell" style="padding:6px 10px;">' + dlHtml + '</td>';
+
+    var operationTs = getOperationTimestampDevice(asset);
+    var ts = operationTs ? fmtTimestampDevice(operationTs) : (asset.lastUpdated ? fmtTime(asset.lastUpdated) : '—');
+    h += '<td class="time-cell" data-attr="LastUpdate" style="font-size:11px;padding:6px 10px;color:#64748b;">' + ts + '</td>';
+    h += '</tr>';
+    return h;
+}
+
+// [616:3397-3488] updateSignalAspectTablesIncremental
+function updateSignalAspectTablesIncremental(assetIds) {
+    var $wrapper = $('#signalAspectTablesWrapper');
+    if (!$wrapper.length) { renderSignalAspectTables(); return; }
+
+    var updatedIds = assetIds || Object.keys(wsUpdatedAssets);
+
+    // Does grouping need to change? (structure or aspect changed)
+    var needsFullRebuild = false;
+    for (var i = 0; i < updatedIds.length; i++) {
+        var aid = updatedIds[i];
+        if (!wsLiveData[aid]) continue;
+        // Rebuild only when the STRUCTURE changes (columns / grouping), NOT when the
+        // live aspect flips. Aspect changes are painted in place by the cell updater
+        // below, so a row refreshes its values/colours without moving — this is what
+        // stops the table from continuously jumping up and down.
+        var newKey = _getSignalAttrFingerprint(aid);
+        if (!_signalGroupCache[aid] || _signalGroupCache[aid] !== newKey) {
+            needsFullRebuild = true;
+            break;
+        }
+    }
+
+    // Coalesce rebuilds - rapid aspect toggles must not each rebuild the DOM.
+    if (needsFullRebuild && !_signalRebuildTimer) {
+        _signalRebuildTimer = setTimeout(function () {
+            _signalRebuildTimer = null;
+            renderSignalAspectTables();
+        }, 150);
+    }
+
+    // Always refresh the visible cell values on existing rows (cheap).
+    var wrapEl = $wrapper[0];
+    for (var j = 0; j < updatedIds.length; j++) {
+        var aid2 = updatedIds[j];
+        var asset = wsLiveData[aid2];
+        if (!asset) continue;
+
+        var rowEl = wrapEl.querySelector('tr[data-id="' + aid2 + '"]');
+        if (!rowEl) {
+            if (!_signalRebuildTimer) {
+                _signalRebuildTimer = setTimeout(function () {
+                    _signalRebuildTimer = null;
+                    renderSignalAspectTables();
+                }, 150);
+            }
+            continue;
+        }
+
+        var attrs = asset.attrs || {};
+        var cellMap = getRowCellMap(rowEl);
+
+        for (var an in cellMap) {
+            var cell = cellMap[an];
+            if (an === 'LastUpdate') {
+                var opTs = getOperationTimestampDevice(asset);
+                var ts = opTs ? fmtTimestampDevice(opTs) : (asset.lastUpdated ? fmtTime(asset.lastUpdated) : '\u2014');
+                if (cell.textContent !== ts) cell.textContent = ts;
+                continue;
+            }
+            var ad = (typeof getStoredAttr === 'function') ? getStoredAttr(aid2, an) : null;
+            if (!ad) ad = attrs[an];
+            var raw = ad ? ad.Value : null;
+            var disp;
+            if (raw === null || raw === undefined || raw === '') disp = '\u2014';
+            else { var num = parseFloat(raw); disp = isNaN(num) ? raw : ((num === 0) ? '0.0' : num.toFixed(2)); }
+            if (cell.textContent !== disp) cell.textContent = disp;
+
+            var stale = isAttrStale(aid2, an);
+            var hasStale = cell.className.indexOf('ws-stale-val') > -1;
+            if (stale && !hasStale) cell.className = (cell.className + ' ws-stale-val').trim();
+            else if (!stale && hasStale) cell.className = cell.className.replace(/\bws-stale-val\b/g, '').replace(/\s+/g, ' ').trim();
+            _applyWsServerStale(cell, ad);
+        }
+
+        var dlCell = rowEl.querySelector('td.dl-cell');
+        if (dlCell) {
+            var dlRelays = asset.dlRelays || {};
+            var dlKeys = Object.keys(dlRelays);
+            var dlHtml;
+            if (dlKeys.length > 0) {
+                dlKeys.sort(function (a, b) { var ra = dlRelays[a], rb = dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return 0; });
+                dlHtml = '';
+                for (var di = 0; di < dlKeys.length; di++) {
+                    var relay = dlRelays[dlKeys[di]];
+                    var bc = relay.isPickup ? 'pickup' : 'drop';
+                    var bt = relay.isPickup ? 'Pickup' : 'Drop';
+                    dlHtml += '<span class="rdpms-dl-badge ' + bc + '" data-attr="' + dlKeys[di] + '" style="margin:1px;padding:2px 5px;font-size:9px;">' + (relay.displayName || dlKeys[di]) + ': ' + bt + '</span> ';
+                }
+            } else { dlHtml = '<span style="color:#94a3b8;font-size:10px;">\u2014</span>'; }
+            dlCell.innerHTML = dlHtml;
+        }
+    }
+}
+
+
+
+// Redirect 617's grouped-signal-table entry point to the ported 616 renderer so
+// every existing call site (renderSignalGroupedTables) uses the 616 grouping logic.
+window.renderSignalGroupedTables = function () {
+    if (_signalRebuildTimer) clearTimeout(_signalRebuildTimer);
+    _signalRebuildTimer = setTimeout(function () {
+        _signalRebuildTimer = null;
+        if (typeof renderSignalAspectTables === 'function') renderSignalAspectTables();
+    }, 80);
+};
+// ============================ END SIGNAL SUBSYSTEM (616) =========================

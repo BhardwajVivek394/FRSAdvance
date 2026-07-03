@@ -195,6 +195,49 @@
         _watchdogSiteId: null
     };
 
+
+
+    // SIP duplicate-message guard.
+    // SIP can receive the same live packet from telemetry bridge + its own site-wide WS.
+    // This prevents duplicate re-evaluation/render work.
+    var _sipSeenMsg = {};
+    var SIP_SEEN_MSG_TTL_MS = 10000;
+
+    function sipMsgKey(d) {
+        if (!d) return '';
+
+        return [
+            d.AssetId || d.AssetName || '',
+            d.AssetAttributeId || d.EdgeXAttributeId || d.AssetAttributeName || '',
+            d.TimestampDevice || d.TimestampLocal || d.TimestampEdgeX || d.TimestampChange || '',
+            d.Value
+        ].join('|');
+    }
+
+    function sipIsDuplicateMsg(d) {
+        var k = sipMsgKey(d);
+        if (!k) return false;
+
+        var now = Date.now();
+
+        if (_sipSeenMsg[k] && (now - _sipSeenMsg[k]) < SIP_SEEN_MSG_TTL_MS) {
+            return true;
+        }
+
+        _sipSeenMsg[k] = now;
+
+        for (var x in _sipSeenMsg) {
+            if (_sipSeenMsg.hasOwnProperty(x) &&
+                (now - _sipSeenMsg[x]) > SIP_SEEN_MSG_TTL_MS) {
+                delete _sipSeenMsg[x];
+            }
+        }
+
+        return false;
+    }
+
+
+
     /* ── DOM refs (resolved in init()) ───────────────────────────────────── */
     var canvasEl, statusEl, siteSelectEl;
 
@@ -569,12 +612,177 @@
         return n % 1 === 0 ? String(n) : n.toFixed(2);
     }
 
+    function sipFindLiveAssetByName(assetName) {
+        var target = String(assetName || '').trim();
+        if (!target) return null;
+
+        if (window.wsLiveData) {
+            for (var id in window.wsLiveData) {
+                if (!window.wsLiveData.hasOwnProperty(id)) continue;
+                var a = window.wsLiveData[id];
+                if (!a) continue;
+
+                var nm = String(a.AssetName || a.assetName || a.Name || '').trim();
+                if (nm === target || _normLabel(nm) === _normLabel(target)) {
+                    return { id: String(id), asset: a };
+                }
+            }
+        }
+
+        if (window.bulkAssetMap) {
+            for (var bid in window.bulkAssetMap) {
+                if (!window.bulkAssetMap.hasOwnProperty(bid)) continue;
+                var b = window.bulkAssetMap[bid];
+                var bnm = String((b && (b.Name || b.AssetName)) || '').trim();
+                if (bnm === target || _normLabel(bnm) === _normLabel(target)) {
+                    return {
+                        id: String(bid),
+                        asset: window.wsLiveData ? window.wsLiveData[bid] : null
+                    };
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function sipRelayDisplayValue(relay) {
+        if (!relay) return '\u2014';
+
+        if (relay.isPickup === true || relay.IsPickup === true) return 'Pickup';
+        if (relay.isPickup === false || relay.IsPickup === false) return 'Drop';
+
+        var raw = relay.value;
+        if (raw === undefined) raw = relay.Value;
+
+        var n = parseFloat(raw);
+        if (!isNaN(n)) return n === 1 ? 'Pickup' : 'Drop';
+
+        return String(raw || '\u2014');
+    }
+
+    function sipFindRelayByMeta(dlRelays, meta, fallbackKey) {
+        if (!dlRelays) return null;
+
+        var keys = [];
+        if (meta) {
+            keys.push(meta.name);
+            keys.push(meta.Name);
+            keys.push(meta.attributeName);
+            keys.push(meta.AttributeName);
+            keys.push(meta.dataloggerAttribute);
+            keys.push(meta.DataloggerAttribute);
+            keys.push(meta.role);
+            keys.push(meta.Role);
+        }
+        keys.push(fallbackKey);
+
+        function norm(v) {
+            return String(v == null ? '' : v).trim().toUpperCase();
+        }
+
+        for (var i = 0; i < keys.length; i++) {
+            var k = String(keys[i] || '').trim();
+            if (k && dlRelays[k]) return dlRelays[k];
+        }
+
+        for (var rk in dlRelays) {
+            if (!dlRelays.hasOwnProperty(rk)) continue;
+            var r = dlRelays[rk] || {};
+            var rn = norm(rk);
+            var rd = norm(r.displayName || r.name || r.attrName || r.AttributeName);
+
+            for (var j = 0; j < keys.length; j++) {
+                var wanted = norm(keys[j]);
+                if (wanted && (rn === wanted || rd === wanted)) {
+                    return r;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function sipBuildAliasValueMap(assetName) {
+        var out = {};
+        var found = sipFindLiveAssetByName(assetName);
+        if (!found || !found.id) return out;
+
+        var aid = String(found.id);
+        var live = found.asset || {};
+        var attrs = live.attrs || {};
+        var dlRelays = live.dlRelays || {};
+        var prefix = aid + '_';
+
+        // 1. Show configured analog/RDPMS aliases for this asset.
+        var simpleMap = window.userAssetSimpleMap || {};
+        for (var sk in simpleMap) {
+            if (!simpleMap.hasOwnProperty(sk)) continue;
+            if (sk.indexOf(prefix) !== 0) continue;
+
+            var sm = simpleMap[sk] || {};
+            var rawTitle = sm.attributeName || sm.AttributeName || sm.title || sm.Title || '';
+            var alias = sm.AliasName || sm.aliasName || sm.name || rawTitle;
+
+            if (!alias) continue;
+
+            var attrObj = null;
+            if (rawTitle && attrs[rawTitle]) attrObj = attrs[rawTitle];
+            else if (alias && attrs[alias]) attrObj = attrs[alias];
+            else if (typeof window.getStoredAttr === 'function') {
+                attrObj = window.getStoredAttr(aid, rawTitle || alias);
+            }
+
+            out[alias] = attrObj && attrObj.Value !== undefined ? attrObj.Value : '\u2014';
+        }
+
+        // 2. Show configured DataLogger aliases for this asset.
+        var dlMap = window.userAssetDataloggerMap || {};
+        for (var dk in dlMap) {
+            if (!dlMap.hasOwnProperty(dk)) continue;
+            if (dk.indexOf(prefix) !== 0) continue;
+
+            var dm = dlMap[dk] || {};
+            var dlLabel = dm.name || dm.Name || dm.dataloggerAttribute || dm.DataloggerAttribute || dm.attributeName || dm.AttributeName;
+            if (!dlLabel) continue;
+
+            var relay = sipFindRelayByMeta(dlRelays, dm, dk.substring(prefix.length));
+            out[dlLabel] = sipRelayDisplayValue(relay);
+        }
+
+        // 3. Add live attrs not covered by configured metadata, but resolve display alias.
+        for (var ak in attrs) {
+            if (!attrs.hasOwnProperty(ak)) continue;
+
+            var obj = attrs[ak];
+            var val = obj && typeof obj === 'object' && 'Value' in obj ? obj.Value : obj;
+            var attrId = obj ? (obj.AttrId || obj.AssetAttributeId || obj.AttributeId) : '';
+
+            var label = ak;
+            if (typeof window.tlResolveDisplayAlias === 'function') {
+                label = window.tlResolveDisplayAlias(aid, ak, attrId, obj && obj.DataType, obj);
+            } else {
+                label = resolveAttrName(ak, attrId, aid, obj && obj.DataType);
+            }
+
+            if (!out.hasOwnProperty(label)) out[label] = val;
+        }
+
+        return out;
+    }
+
     function refreshPopupGrid() {
         var grid = document.getElementById('stpGrid');
         if (!grid || !_popupAssetName) return;
 
         /* Pull live values from state.assetValues or wsLiveData */
-        var vals = state.assetValues[_popupAssetName] || {};
+        /* Pull configured AliasName values first. Fallback to live snapshot only if no asset metadata exists. */
+        var vals = sipBuildAliasValueMap(_popupAssetName);
+
+        if (!Object.keys(vals).length) {
+            vals = state.assetValues[_popupAssetName] || {};
+        }
+
         if (!Object.keys(vals).length && window.wsLiveData) {
             for (var id in wsLiveData) {
                 if (wsLiveData[id] && wsLiveData[id].AssetName === _popupAssetName && wsLiveData[id].attrs) {
@@ -608,11 +816,28 @@
         var half = Math.ceil(keys.length / 2);
         var renderRow = function (k) {
             var v = fmtVal(vals[k]);
+
+            if (v === 'Pickup') {
+                return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) +
+                    '</span><span class="stp-val ok">\u2191 Pickup</span></div>';
+            }
+
+            if (v === 'Drop') {
+                return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) +
+                    '</span><span class="stp-val warn">\u2193 Drop</span></div>';
+            }
+
             var cls = 'stp-val';
-            if (v === 'Ok' || v === 'ok') return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) + '</span><span class="stp-val ok">Ok</span></div>';
+            if (v === 'Ok' || v === 'ok') {
+                return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) +
+                    '</span><span class="stp-val ok">Ok</span></div>';
+            }
+
             var num = parseFloat(v);
             if (!isNaN(num) && num < 0) cls += ' warn';
-            return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) + '</span><span class="' + cls + '">' + escHtml(v) + '</span></div>';
+
+            return '<div class="stp-row"><span class="stp-lbl">' + escHtml(k) +
+                '</span><span class="' + cls + '">' + escHtml(v) + '</span></div>';
         };
         grid.innerHTML =
             '<div class="stp-col">' + keys.slice(0, half).map(renderRow).join('') + '</div>' +
@@ -716,6 +941,7 @@
         state.simNoEnrich = {};
         state._bufferedAssets = {};
         state.lastItemAt = 0;
+        _sipSeenMsg = {};
         /* fresh site ⇒ fresh diagnostics — old unmatched/no-attr warnings
            belong to the previous layout */
         clearWarnOnce('nomatch:');
@@ -935,43 +1161,27 @@
        STANDALONE MODE: open our own WS when bridge is not available.         */
 
     function openSocket(siteId) {
-        /* ── SITE-SELECTION-DRIVEN FEED ──────────────────────────────────
-           The SIP live feed must depend ONLY on the selected site — never
-           on the asset-type / Search selection in Telemetry Live.
-
-           Old behaviour: if telemetrylive.js was present, we went
-           "bridge-only" and waited for ITS pipeline. But that pipeline only
-           runs after the user searches an asset type (e.g. Signal), so the
-           SIP stayed silent until a signal was selected.
-
-           New behaviour:
-             1. Install the bridge as a SUPPLEMENT (so Search-filtered
-                streams also reach the SIP) — never as the only source.
-             2. If the host page already holds a SITE-WIDE socket
-                (…/{siteId}/all — not asset-type filtered), rely on it:
-                its SIP-only gate forwards every frame to applyPayload.
-             3. Otherwise open our OWN dedicated site-wide socket NOW —
-                no waiting, no dependency on any selection.
-             4. A watchdog keeps checking: if telemetry goes silent and the
-                host socket disappears or becomes asset-filtered (user
-                clicked Search), we open our own socket so tracks/PMs/
-                signals on the SIP keep updating.                          */
+        /*
+           SIP live feed must depend only on selected site.
+    
+           Do not return early because hostHasSiteWideStream(siteId) is true.
+           The host Telemetry WebSocket may be SIP-only gated, delayed, or later
+           replaced by an asset-type filtered Search WebSocket.
+    
+           Therefore:
+           - keep bridge as supplemental source
+           - always start watchdog
+           - always open SIP's own site-wide socket
+           - duplicate packets are handled by sipIsDuplicateMsg()
+        */
         tryBridge();
         startFeedWatchdog(siteId);
 
-        if (hostHasSiteWideStream(siteId)) {
-            setStatus('Live (host site stream)', 'ok');
-            slog('Site ' + siteId + ': host page already streams site-wide WS — SIP fed via its SIP-only gate' +
-                (state.bridgeInstalled ? ' + bridge for filtered views.' : '.'));
-            return;
-        }
+        setStatus('Live (SIP site stream)', 'ok');
+        slog('Site ' + siteId + ': opening dedicated SIP site-wide socket. Bridge remains supplemental.');
 
-        slog('Site ' + siteId + ': no site-wide WS found (host socket ' +
-            (window.wsConnection ? 'is asset-filtered: ' + String(window.wsConnection.url || '') : 'absent') +
-            ') — opening dedicated SIP socket. Feed is driven purely by site selection.');
         openOwnSocket(siteId);
     }
-
     /* True when the HOST page (telemetrylive.js) holds an open/connecting
        WebSocket subscribed to the WHOLE site (…/{siteId}/all). An asset-
        type-filtered URL (…/{siteId}/{typeId}/all) or single-asset URL does
@@ -990,24 +1200,29 @@
        (missing, closed, or replaced by an asset-filtered URL after Search),
        open the dedicated site-wide socket. Also retries the bridge install
        in case telemetrylive.js loaded late.                              */
-    var WATCHDOG_TICK_MS = 8000;
-    var WATCHDOG_SILENT_MS = 20000;
+    var WATCHDOG_TICK_MS = 3000; var WATCHDOG_SILENT_MS = 6000;
     function startFeedWatchdog(siteId) {
         stopFeedWatchdog();
+
         state._watchdogSiteId = siteId;
+
         state._watchdog = setInterval(function () {
-            tryBridge();   // no-op if already installed
-            if (state.ws && (state.ws.readyState === 0 || state.ws.readyState === 1)) return;
+            tryBridge();
+
+            // Own SIP socket already open/connecting.
+            if (state.ws && (state.ws.readyState === 0 || state.ws.readyState === 1)) {
+                return;
+            }
+
             var silentMs = Date.now() - (state.lastItemAt || 0);
             if (silentMs < WATCHDOG_SILENT_MS) return;
-            if (hostHasSiteWideStream(siteId)) return;   // site stream exists; data may simply be quiet
-            swarn('No SIP telemetry for ' + Math.round(silentMs / 1000) + 's and the host WS is ' +
-                (window.wsConnection ? 'asset-filtered (' + String(window.wsConnection.url || '').split('?')[0] + ')' : 'absent') +
-                ' — opening dedicated site-wide socket for site ' + siteId + '.');
+
+            swarn('No SIP telemetry for ' + Math.round(silentMs / 1000) +
+                's — opening dedicated site-wide socket for site ' + siteId + '.');
+
             openOwnSocket(siteId);
         }, WATCHDOG_TICK_MS);
-    }
-    function stopFeedWatchdog() {
+    }    function stopFeedWatchdog() {
         if (state._watchdog) { clearInterval(state._watchdog); state._watchdog = null; }
         state._watchdogSiteId = null;
     }
@@ -1162,7 +1377,13 @@
             try { state.ws.close(1000); } catch (e) { }
             state.ws = null;
         }
+        if (_sipRenderTimer) {
+            clearTimeout(_sipRenderTimer);
+            _sipRenderTimer = null;
+        }
+        state.renderPending = false;
         state.wsReconnCount = 0;
+        _sipSeenMsg = {};
     }
 
     /* =========================================================================
@@ -1202,6 +1423,8 @@
                     try { d = JSON.parse(d); } catch (e) { continue; }
                 }
             }
+            if (sipIsDuplicateMsg(d)) continue;
+
             if (!d || !d.AssetName) continue;
 
             var assetName = String(d.AssetName).trim();
@@ -1321,6 +1544,10 @@
 
     /* ── Attribute name resolution ───────────────────────────────────────── */
     function resolveAttrName(rawName, attrId, assetId, dataType) {
+        if (typeof window.tlResolveDisplayAlias === 'function') {
+            var common = window.tlResolveDisplayAlias(assetId, rawName, attrId, dataType, null);
+            if (common) return common;
+        }
         // For normal asset attributes, display AliasName from GetBulkAssetMetadata only.
         if (String(dataType || '').toLowerCase() !== 'datalogger') {
             if (typeof window.getBulkAliasName === 'function') {
@@ -1408,19 +1635,91 @@
     /* ── Cell finder ─────────────────────────────────────────────────────── */
     function findCells(assetName) {
         var out = [];
-        var direct = state.byLabel[assetName];
-        if (direct) for (var i = 0; i < direct.length; i++) out.push(direct[i]);
-        var prefix = state.byPrefix[assetName];
-        if (prefix) for (var j = 0; j < prefix.length; j++) if (out.indexOf(prefix[j]) === -1) out.push(prefix[j]);
 
-        /* NEW — tolerant fallback: "S-14" ⇆ "S14", "SH-37" ⇆ "SH37", "S  2" ⇆ "S2" */
-        if (!out.length) {
-            var nk = _normLabel(assetName);
-            var nd = (state.byNorm && state.byNorm[nk]) || [];
-            for (var a = 0; a < nd.length; a++) if (out.indexOf(nd[a]) === -1) out.push(nd[a]);
-            var np = (state.byNormPrefix && state.byNormPrefix[nk]) || [];
-            for (var b = 0; b < np.length; b++) if (out.indexOf(np[b]) === -1) out.push(np[b]);
+        function add(list) {
+            if (!list) return;
+            for (var i = 0; i < list.length; i++) {
+                if (out.indexOf(list[i]) === -1) out.push(list[i]);
+            }
         }
+
+        function addByName(name) {
+            if (!name) return;
+
+            add(state.byLabel[name]);
+            add(state.byPrefix[name]);
+
+            var nk = _normLabel(name);
+            add(state.byNorm && state.byNorm[nk]);
+            add(state.byNormPrefix && state.byNormPrefix[nk]);
+        }
+
+        var raw = String(assetName || '').trim();
+        addByName(raw);
+
+        /*
+           PM labels in SIP layout may be saved as:
+           60
+           PT-60
+           60A IRS
+           60B IRS
+           PT-60A IRS
+           PT-60 A TWS
+    
+           Simulation or WS may send only:
+           60
+           PT-60
+        */
+        var stripped = raw.replace(/^(PT-)+/i, '').trim();
+
+        var candidates = [
+            raw,
+            stripped,
+            'PT-' + stripped
+        ];
+
+        var base = stripped
+            .replace(/\s+/g, ' ')
+            .replace(/\b[AB]\s*(IRS|TWS)\b/ig, '')
+            .replace(/\b(IRS|TWS)\b/ig, '')
+            .replace(/[AB]$/i, '')
+            .trim();
+
+        if (base && base !== stripped) {
+            candidates.push(base);
+            candidates.push('PT-' + base);
+        }
+
+        for (var c = 0; c < candidates.length; c++) {
+            addByName(candidates[c]);
+        }
+
+        // Final tolerant scan across all SIP labels.
+        var want = {};
+        for (var w = 0; w < candidates.length; w++) {
+            want[_normLabel(candidates[w])] = true;
+        }
+
+        for (var lbl in state.byLabel) {
+            if (!state.byLabel.hasOwnProperty(lbl)) continue;
+
+            var cleanLbl = String(lbl || '')
+                .replace(/^(PT-)+/i, '')
+                .replace(/\s+/g, ' ')
+                .replace(/\b[AB]\s*(IRS|TWS)\b/ig, '')
+                .replace(/\b(IRS|TWS)\b/ig, '')
+                .replace(/[AB]$/i, '')
+                .trim();
+
+            if (
+                want[_normLabel(lbl)] ||
+                want[_normLabel(cleanLbl)] ||
+                want[_normLabel('PT-' + cleanLbl)]
+            ) {
+                add(state.byLabel[lbl]);
+            }
+        }
+
         return out;
     }
 
@@ -1663,16 +1962,62 @@
 
     /* Point Machine position — A End wins, mirrors old Sview.cshtml */
     function computePM(s) {
-        var aEN = valOf(s, ['A End - NWKR', 'ANWKR', 'A_NWKR']);
-        var aER = valOf(s, ['A End - RWKR', 'ARWKR', 'A_RWKR']);
-        var bEN = valOf(s, ['B End - NWKR', 'BNWKR', 'B_NWKR']);
-        var bER = valOf(s, ['B End - RWKR', 'BRWKR', 'B_RWKR']);
+        var aEN = valOf(s, [
+            'A End - NWKR',
+            'A End NWKR',
+            'A-End NWKR',
+            'A_NWKR',
+            'ANWKR',
+            'NWKR A End',
+            'NWKR-A',
+            'NWKRA'
+        ]);
+
+        var aER = valOf(s, [
+            'A End - RWKR',
+            'A End RWKR',
+            'A-End RWKR',
+            'A_RWKR',
+            'ARWKR',
+            'RWKR A End',
+            'RWKR-A',
+            'RWKRA'
+        ]);
+
+        var bEN = valOf(s, [
+            'B End - NWKR',
+            'B End NWKR',
+            'B-End NWKR',
+            'B_NWKR',
+            'BNWKR',
+            'NWKR B End',
+            'NWKR-B',
+            'NWKRB'
+        ]);
+
+        var bER = valOf(s, [
+            'B End - RWKR',
+            'B End RWKR',
+            'B-End RWKR',
+            'B_RWKR',
+            'BRWKR',
+            'RWKR B End',
+            'RWKR-B',
+            'RWKRB'
+        ]);
+
         var nw = valOfPrefix(s, ['NWKR']);
         var rw = valOfPrefix(s, ['RWKR']);
+
         var normalV = aEN != null ? aEN : bEN != null ? bEN : nw;
         var reverseV = aER != null ? aER : bER != null ? bER : rw;
-        if (normalV != null && normalV > PM_IND_THR) return 'NORMAL';
-        if (reverseV != null && reverseV > PM_IND_THR) return 'REVERSE';
+
+        var nActive = normalV != null && normalV > PM_IND_THR;
+        var rActive = reverseV != null && reverseV > PM_IND_THR;
+
+        if (nActive) return 'NORMAL';
+        if (rActive) return 'REVERSE';
+
         return 'UNKNOWN';
     }
 
@@ -1977,13 +2322,29 @@
        SECTION 7 — RENDERING
        ========================================================================= */
 
+    var SIP_RENDER_MIN_INTERVAL_MS = 66; // about 15 FPS
+    var _sipLastRenderAt = 0;
+    var _sipRenderTimer = null;
+
     function requestRender() {
         if (state.renderPending) return;
+
+        var now = Date.now();
+        var wait = Math.max(0, SIP_RENDER_MIN_INTERVAL_MS - (now - _sipLastRenderAt));
+
         state.renderPending = true;
-        (window.requestAnimationFrame || function (fn) { setTimeout(fn, 16); })(function () {
-            state.renderPending = false;
-            render();
-        });
+
+        if (_sipRenderTimer) clearTimeout(_sipRenderTimer);
+
+        _sipRenderTimer = setTimeout(function () {
+            _sipRenderTimer = null;
+
+            (window.requestAnimationFrame || function (fn) { setTimeout(fn, 16); })(function () {
+                state.renderPending = false;
+                _sipLastRenderAt = Date.now();
+                render();
+            });
+        }, wait);
     }
 
     function render() {
@@ -2007,15 +2368,21 @@
                 var lbl = cellLabel.toLowerCase();
                 cls += lbl.indexOf(hl) !== -1 ? ' sip-highlight' : ' sip-dim';
             }
-            /* Active-alert flash overlay — mirrors old fnShowActiveAlertSimulation() */
+            /* Active-alert flash overlay — CSS animation, no render interval */
             var flashStyle = '';
             if (hasAlerts) {
                 var flashCol = getAlertFlashColour(cellLabel.trim());
                 if (flashCol) {
-                    flashStyle = ' filter:drop-shadow(0 0 6px ' + flashCol + ');';
+                    cls += ' sip-alert-flash';
+                    flashStyle = '--sip-alert-color:' + flashCol + ';';
                 }
             }
-            frags += '<g class="' + cls + '" data-cell-id="' + escHtml(c.id) + '" data-cell-type="' + escHtml(c.type) + '" data-cell-label="' + escHtml(cellLabel) + '" style="cursor:pointer;pointer-events:all;' + flashStyle + '">' + inner + '</g>';
+
+            frags += '<g class="' + cls + '" data-cell-id="' + escHtml(c.id) +
+                '" data-cell-type="' + escHtml(c.type) +
+                '" data-cell-label="' + escHtml(cellLabel) +
+                '" style="cursor:pointer;pointer-events:all;' + flashStyle + '">' +
+                inner + '</g>';
         }
 
         canvasEl.innerHTML =
@@ -2025,8 +2392,10 @@
             '<style>' +
             //'.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
             //'.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
-            '.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
-            '.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
+        '.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
+        '.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
+        '.sip-alert-flash{animation:sipAlertPulse 1.2s ease-in-out infinite;filter:drop-shadow(0 0 8px var(--sip-alert-color,#7366ff));}' +
+        '@keyframes sipAlertPulse{0%,100%{opacity:1;}50%{opacity:.55;filter:drop-shadow(0 0 2px transparent);}}' +
             '</style>' +
             '<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">' +
             '<stop offset="0%"  stop-color="#0c1530"/>' +
@@ -2124,20 +2493,99 @@
      * and Red wins (computeAspect checks Red first). This matches real WS
      * behaviour where the server sends explicit 0 values for dropped relays.
      */
+
+    function sipPmAttrIdForName(attrName) {
+        var n = _sipNormName(attrName);
+
+        // Specific B-end local variants first, before generic LOC matching.
+        if (n.indexOf('BENDNWKRLOC') > -1 || n.indexOf('BNWKRLOC') > -1) return 578;
+        if (n.indexOf('BENDRWKRLOC') > -1 || n.indexOf('BRWKRLOC') > -1) return 579;
+
+        if (n.indexOf('AENDNWKRLOC') > -1 || n.indexOf('ANWKRLOC') > -1 || n.indexOf('NWKRLOC') > -1) return 576;
+        if (n.indexOf('AENDRWKRLOC') > -1 || n.indexOf('ARWKRLOC') > -1 || n.indexOf('RWKRLOC') > -1) return 577;
+
+        if (n.indexOf('AENDNWKR') > -1 || n.indexOf('ANWKR') > -1 || n.indexOf('NWKRA') > -1) return 25;
+        if (n.indexOf('AENDRWKR') > -1 || n.indexOf('ARWKR') > -1 || n.indexOf('RWKRA') > -1) return 26;
+        if (n.indexOf('BENDNWKR') > -1 || n.indexOf('BNWKR') > -1 || n.indexOf('NWKRB') > -1) return 27;
+        if (n.indexOf('BENDRWKR') > -1 || n.indexOf('BRWKR') > -1 || n.indexOf('RWKRB') > -1) return 28;
+
+        // Generic PM indication fallback.
+        if (n.indexOf('NWKR') > -1) return 25;
+        if (n.indexOf('RWKR') > -1) return 26;
+
+        return null;
+    }
+
+    function sipOppositePmAttrName(attrName) {
+        if (/NWKR/i.test(attrName)) return attrName.replace(/NWKR/i, 'RWKR');
+        if (/RWKR/i.test(attrName)) return attrName.replace(/RWKR/i, 'NWKR');
+        return '';
+    }
+
+    function sipBuildPmSimulationItems(assetName, attrName, value) {
+        var ts = new Date().toISOString();
+        var items = [];
+
+        function add(name, val) {
+            if (!name) return;
+
+            items.push({
+                AssetName: assetName,
+                AssetAttributeName: name,
+                AssetAttributeId: sipPmAttrIdForName(name),
+                AssetId: 0,
+                Value: val,
+                DataType: 'PointMachine',
+                TimestampDevice: ts
+            });
+        }
+
+        add(attrName, value);
+
+        /*
+           Simulate real PM state:
+           - Normal/NWKR active means Reverse/RWKR should drop to 0.
+           - Reverse/RWKR active means Normal/NWKR should drop to 0.
+    
+           Without this, old snapshot value can keep both sides active.
+        */
+        var opposite = sipOppositePmAttrName(attrName);
+        if (opposite) add(opposite, 0);
+
+        return items;
+    }
     function simulate(assetName, attrName, value, reset) {
-        if (!state.cells.length) { console.warn('[sip-telemetry] No layout — select a site first.'); return; }
+        if (!state.cells.length) {
+            console.warn('[sip-telemetry] No layout — select a site first.');
+            return;
+        }
+
+        assetName = String(assetName || '').trim();
+        attrName = String(attrName || '').trim();
+
+        if (!assetName || !attrName) return;
+
         if (reset) {
             if (state.assetValues[assetName]) delete state.assetValues[assetName];
             state.simNoEnrich[assetName] = true;
         }
-        feedItems([{
-            AssetName: assetName, AssetAttributeName: attrName,
-            AssetAttributeId: null, AssetId: 0,
-            Value: value, DataType: 'Simulated',
-            TimestampDevice: new Date().toISOString()
-        }]);
-    }
 
+        var isPmAttr = /NWKR|RWKR/i.test(attrName);
+
+        var items = isPmAttr
+            ? sipBuildPmSimulationItems(assetName, attrName, value)
+            : [{
+                AssetName: assetName,
+                AssetAttributeName: attrName,
+                AssetAttributeId: null,
+                AssetId: 0,
+                Value: value,
+                DataType: 'Simulated',
+                TimestampDevice: new Date().toISOString()
+            }];
+
+        feedItems(items);
+    }
     /* =========================================================================
        SECTION 10 — ACTIVE ALERT FLASH
        Mirrors old fnShowActiveAlertSimulation() from Sview.cshtml.
@@ -2171,16 +2619,8 @@
             contentType: 'application/json',
             success: function (data) {
                 if (data && data.mSMSLogs) {
-                    alertFlashData = data.mSMSLogs;
-                    /* Start a re-render tick so the flash blink is visible */
-                    if (alertFlashData.length > 0 && !alertFlashRenderTimer) {
-                        alertFlashRenderTimer = setInterval(function () {
-                            if (state.cells.length > 0) render();
-                        }, 600);
-                    } else if (alertFlashData.length === 0 && alertFlashRenderTimer) {
-                        clearInterval(alertFlashRenderTimer);
-                        alertFlashRenderTimer = null;
-                    }
+                    alertFlashData = data.mSMSLogs || [];
+                    requestRender();
                 }
             },
             error: function () { /* silent */ }
