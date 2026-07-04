@@ -45,8 +45,8 @@
         --bg3: rgba(255,255,255,.075);
         --bg4: rgba(255,255,255,.105);
         --bg5: rgba(255,255,255,.135);
-        --col-sticky: #0f1a2f;        /* opaque pinned-column base (glass would bleed) */
-        --col-sticky-hdr: #14213b;    /* opaque pinned header cell */
+        --col-sticky: #0f1a2f; /* opaque pinned-column base (glass would bleed) */
+        --col-sticky-hdr: #14213b; /* opaque pinned header cell */
         --bdr: rgba(255,255,255,.105);
         --bdr2: rgba(255,255,255,.18);
         --tx: rgba(255,255,255,.94);
@@ -355,10 +355,13 @@
         border-radius: 14px;
         background: linear-gradient(180deg, var(--bg2), rgba(255,255,255,.025));
         box-shadow: var(--card-shadow);
-        backdrop-filter: var(--glass-blur);
-        -webkit-backdrop-filter: var(--glass-blur);
+        /* NOTE: no backdrop-filter here - blurring a scroll container forces a
+           full re-blur every scrolled frame and was the main scroll-jank source. */
         scrollbar-width: thin;
         scrollbar-color: var(--bdr2) transparent;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
     }
 
         .tbl-wrap > table {
@@ -379,9 +382,7 @@
             position: sticky;
             top: 0;
             z-index: 5;
-            background: var(--bg3);
-            backdrop-filter: var(--glass-blur);
-            -webkit-backdrop-filter: var(--glass-blur);
+            background: var(--col-sticky-hdr); /* opaque: no per-frame blur while scrolling */
         }
 
     .group-row .g-station {
@@ -420,10 +421,8 @@
         white-space: nowrap;
         position: sticky;
         top: 33px;
-        background: var(--bg3);
+        background: var(--col-sticky-hdr); /* opaque: no per-frame blur while scrolling */
         z-index: 4;
-        backdrop-filter: var(--glass-blur);
-        -webkit-backdrop-filter: var(--glass-blur);
     }
 
     .sub-row .sh-svc {
@@ -482,22 +481,221 @@
         border-right: 2px solid rgba(167,139,250,.08)
     }
 
-    .stn-col .zone {
-        font-size: 10px;
-        color: var(--tx3);
-        text-transform: uppercase;
-        letter-spacing: .06em
+    /* ===== STATION COLUMN (revamped) ===== */
+    .stn-col {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 185px;
+        max-width: 255px;
+        padding: 1px 0;
     }
 
-    .stn-col .stn {
+        .stn-col .zone {
+            font-size: 9.5px;
+            color: var(--tx3);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .stn-col .stn-row {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+
+        .stn-col .stn-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+        }
+
+            .stn-col .stn-dot.g {
+                background: var(--grn);
+                box-shadow: 0 0 7px var(--grn);
+            }
+
+            .stn-col .stn-dot.a {
+                background: var(--amb);
+                box-shadow: 0 0 7px var(--amb);
+            }
+
+            .stn-col .stn-dot.r {
+                background: var(--red);
+                box-shadow: 0 0 7px var(--red);
+            }
+
+        .stn-col .stn {
+            font-weight: 700;
+            font-size: 13.5px;
+            color: var(--tx);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+
+        .stn-col .stn-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .stn-col .sid-chip {
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 9.5px;
+            font-weight: 700;
+            color: var(--tx2);
+            background: var(--bg3);
+            border: 1px solid var(--bdr2);
+            border-radius: 5px;
+            padding: 1px 6px;
+            white-space: nowrap;
+        }
+
+        .stn-col .age-chip {
+            font-size: 9.5px;
+            font-weight: 700;
+            color: var(--grn);
+            background: var(--grn-s);
+            border: 1px solid rgba(52,211,153,.28);
+            border-radius: 5px;
+            padding: 1px 6px;
+            white-space: nowrap;
+        }
+
+            .stn-col .age-chip.stale {
+                color: var(--red);
+                background: var(--red-s);
+                border-color: rgba(251,113,133,.32);
+            }
+
+            .stn-col .age-chip.none {
+                color: var(--tx3);
+                background: var(--bg3);
+                border-color: var(--bdr2);
+            }
+
+        .stn-col .last-line {
+            font-size: 9.5px;
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            color: var(--tx3);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+            .stn-col .last-line.stale {
+                color: var(--red);
+            }
+
+            .stn-col .last-line.none {
+                color: var(--tx4);
+                font-family: inherit;
+            }
+
+    /* overall row status accent on the pinned station cell */
+    .tbl-wrap tbody tr.row-g td:first-child {
+        box-shadow: inset 3px 0 0 var(--grn), 8px 0 14px -8px rgba(0,0,0,.5);
+    }
+
+    .tbl-wrap tbody tr.row-a td:first-child {
+        box-shadow: inset 3px 0 0 var(--amb), 8px 0 14px -8px rgba(0,0,0,.5);
+    }
+
+    .tbl-wrap tbody tr.row-r td:first-child {
+        box-shadow: inset 3px 0 0 var(--red), 8px 0 14px -8px rgba(0,0,0,.5);
+    }
+
+    /* ===== TABLE LOADING SKELETON + ERROR STATES ===== */
+    .tbl-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 16px 0 8px;
+        color: var(--tx2);
+        font-size: 12.5px;
         font-weight: 600;
-        color: var(--tx);
-        white-space: nowrap
     }
 
-    .stn-col .sid {
-        font-size: 11px;
-        color: var(--tx3)
+        .tbl-loading .tbl-loading-sub {
+            color: var(--tx3);
+            font-weight: 500;
+            font-size: 11px;
+        }
+
+    .tbl-error {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 24px 0;
+        color: var(--amb);
+        font-size: 12.5px;
+        font-weight: 600;
+        flex-wrap: wrap;
+    }
+
+    .skel-row td {
+        padding: 12px 8px;
+    }
+
+    .skel {
+        height: 11px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, var(--bg3) 25%, var(--bg5, var(--bdr2)) 50%, var(--bg3) 75%);
+        background-size: 200% 100%;
+        animation: skelShimmer 1.3s linear infinite;
+        margin: 0 auto;
+    }
+
+        .skel.tall {
+            height: 14px;
+        }
+
+        .skel.w40 {
+            width: 40%;
+            margin: 0;
+        }
+
+        .skel.w55 {
+            width: 55%;
+            margin: 0;
+        }
+
+        .skel.w70 {
+            width: 70%;
+            margin: 0;
+        }
+
+        .skel.wcell {
+            width: 72%;
+            height: 30px;
+            border-radius: 9px;
+        }
+
+    @@keyframes skelShimmer {
+        0% {
+            background-position: 200% 0
+        }
+
+        100% {
+            background-position: -200% 0
+        }
+    }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .skel {
+            animation: none
+        }
     }
 
     /* ===== pinned STATION column: opaque so scrolling cells never bleed through ===== */
@@ -511,6 +709,7 @@
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
     }
+
     .tbl-wrap tbody tr:hover td:first-child {
         background: var(--col-sticky-hdr);
     }
@@ -525,8 +724,15 @@
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
     }
-    .tbl-wrap thead tr.group-row th:first-child { z-index: 8; }   /* top-left corner: above all */
-    .tbl-wrap thead tr.sub-row th:first-child   { z-index: 6; }   /* below corner, above body */
+
+    .tbl-wrap thead tr.group-row th:first-child {
+        z-index: 8;
+    }
+    /* top-left corner: above all */
+    .tbl-wrap thead tr.sub-row th:first-child {
+        z-index: 6;
+    }
+    /* below corner, above body */
 
     /* ===== SERVICE CHIP ===== */
     .svc-chip {
@@ -1173,6 +1379,126 @@
         scrollbar-width: thin;
         scrollbar-color: var(--bdr2) transparent;
     }
+
+    /* ===== SUBSCRIBE PATH + HEALTH BANNER (top of service modal) ===== */
+    .svc-topic-banner {
+        border: 1px solid var(--bdr2);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--bg2);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+        .svc-topic-banner .stb-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .svc-topic-banner .stb-lbl {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--tx3);
+            min-width: 108px;
+        }
+
+        .svc-topic-banner .stb-topic {
+            font-family: 'JetBrains Mono', Consolas, monospace;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: var(--acc, var(--tx1));
+            background: var(--bg3, rgba(120,120,160,.12));
+            border: 1px solid var(--bdr2);
+            border-radius: 6px;
+            padding: 3px 8px;
+            word-break: break-all;
+            user-select: all;
+        }
+
+        .svc-topic-banner .stb-live {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--grn);
+            white-space: nowrap;
+        }
+
+        .svc-topic-banner .stb-wait {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--amb);
+            white-space: nowrap;
+        }
+
+        .svc-topic-banner .stb-via {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--tx3);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .svc-topic-banner .stb-topic-sm {
+            font-size: 10px;
+            padding: 1px 6px;
+            color: var(--tx2);
+        }
+
+    /* ===== IoT / Network chip bifurcated by TCP / MQTT ===== */
+    .hw-val.hw-split {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 3px 8px;
+    }
+
+        .hw-val.hw-split .hw-proto-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            text-align: left;
+        }
+
+        .hw-val.hw-split .hw-proto {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+            font-size: 9.5px;
+            line-height: 1.25;
+            white-space: nowrap;
+        }
+
+            .hw-val.hw-split .hw-proto .hp-lbl {
+                font-weight: 800;
+                letter-spacing: .05em;
+                color: var(--tx3);
+                min-width: 30px;
+            }
+
+            .hw-val.hw-split .hw-proto .hp-up {
+                color: var(--grn);
+                font-weight: 700;
+            }
+
+            .hw-val.hw-split .hw-proto .hp-dn {
+                color: var(--tx3);
+                font-weight: 700;
+            }
+
+                .hw-val.hw-split .hw-proto .hp-dn.bad {
+                    color: var(--red);
+                }
+
+            .hw-val.hw-split .hw-proto .hp-tot {
+                color: var(--tx3);
+                font-weight: 600;
+            }
 
     .m-sec {
         margin-bottom: 16px
@@ -2315,122 +2641,807 @@
     }
 
     /* ===== IoT modal redesign (ported from healthUpdatedUI) ===== */
-    .iotx-summary{display:grid;grid-template-columns:1.55fr 1fr;gap:12px;margin-bottom:16px}
-    @@media(max-width:760px){.iotx-summary{grid-template-columns:1fr}}
-    .iotx-scard{background:var(--bg2);border:1px solid var(--bdr);border-radius:14px;padding:15px 17px}
-    .iotx-sc-lab{font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);font-weight:600}
-    .iotx-fh-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
-    .iotx-fh-total{font-family:var(--mono);font-size:13px;color:var(--tx3);font-weight:600}
-    .iotx-fh-total b{font-size:30px;color:var(--tx);font-weight:800;margin-right:5px;letter-spacing:-.5px}
-    .iotx-hbar{display:flex;height:14px;border-radius:8px;overflow:hidden;background:var(--bg4);gap:2px}
-    .iotx-hbar span{display:block;transition:width .5s cubic-bezier(.4,0,.2,1)}
-    .iotx-hbar .iotx-on{background:linear-gradient(90deg,var(--grn),#10b981)}
-    .iotx-hbar .iotx-off{background:linear-gradient(90deg,#f43f5e,var(--red))}
-    .iotx-hbar .iotx-warn{background:linear-gradient(90deg,#f59e0b,var(--amb))}
-    .iotx-hbar .iotx-dead{background:linear-gradient(90deg,#f43f5e,var(--red))}
-    .iotx-fh-leg{display:flex;align-items:center;gap:16px;margin-top:11px;font-size:12px;color:var(--tx2);flex-wrap:wrap}
-    .iotx-fh-leg b{font-family:var(--mono);font-weight:700;color:var(--tx);margin-right:3px}
-    .iotx-fh-leg .iotx-d{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:6px;vertical-align:-1px}
-    .iotx-fh-leg .iotx-d.on{background:var(--grn)}
-    .iotx-fh-leg .iotx-d.off{background:var(--red)}
-    .iotx-fh-leg .iotx-d.ok{background:var(--grn)}
-    .iotx-fh-leg .iotx-d.warn{background:var(--amb)}
-    .iotx-fh-leg .iotx-d.dead{background:var(--red)}
-    .iotx-fh-leg .iotx-pct{margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:700}
-    .iotx-ccard{display:flex;flex-direction:column;justify-content:center;gap:15px}
-    .iotx-meter .iotx-m-row{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px}
-    .iotx-meter .iotx-m-lab{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--tx2);font-weight:700;display:flex;align-items:center;gap:7px}
-    .iotx-meter .iotx-m-lab .iotx-dot{width:8px;height:8px;border-radius:50%}
-    .iotx-meter .iotx-m-val{font-family:var(--mono);font-size:13px;color:var(--tx3)}
-    .iotx-meter .iotx-m-val b{font-size:19px;color:var(--tx);font-weight:800;margin-right:1px}
-    .iotx-meter .iotx-m-pct{font-size:12px;font-weight:700;margin-left:5px}
-    .iotx-meter .iotx-m-bar{height:8px;border-radius:5px;background:var(--bg4);overflow:hidden}
-    .iotx-meter .iotx-m-bar span{display:block;height:100%;border-radius:5px;transition:width .5s cubic-bezier(.4,0,.2,1)}
-    .iotx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-    .iotx-cl{position:relative;background:var(--bg2);border:1px solid var(--bdr);border-left:3px solid var(--bdr);border-radius:12px;padding:12px 13px 11px;overflow:hidden;transition:border-color .15s,background .15s}
-    .iotx-cl.iotx-s-red{border-left-color:var(--red);background:linear-gradient(180deg,rgba(251,113,133,.10),transparent 60%),var(--bg2)}
-    .iotx-cl.iotx-s-amb{border-left-color:var(--amb);background:linear-gradient(180deg,rgba(251,191,36,.10),transparent 60%),var(--bg2)}
-    .iotx-cl.iotx-s-grn{border-left-color:var(--grn)}
-    .iotx-cl-hdr{display:flex;align-items:center;gap:8px;margin-bottom:3px}
-    .iotx-cl-ico{width:22px;height:22px;flex:0 0 auto;display:grid;place-items:center;border-radius:6px;background:var(--bg4);font-size:12px}
-    .iotx-cl-name{font-size:13px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto}
-    .iotx-cl-badge{flex:0 0 auto;font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;border-radius:7px;background:var(--bg4);color:var(--tx2)}
-    .iotx-cl.iotx-s-red .iotx-cl-badge{background:rgba(251,113,133,.10);color:var(--red)}
-    .iotx-cl.iotx-s-amb .iotx-cl-badge{background:rgba(251,191,36,.10);color:var(--amb)}
-    .iotx-cl.iotx-s-grn .iotx-cl-badge{background:rgba(52,211,153,.10);color:var(--grn)}
-    .iotx-cl-sub{font-family:var(--mono);font-size:10px;color:var(--tx4);margin:0 0 10px 30px;letter-spacing:.2px}
-    .iotx-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:7px}
-    .iotx-t{background:var(--bg3);border:1px solid var(--bdr);border-radius:8px;padding:6px 6px 5px;cursor:pointer;transition:transform .1s,border-color .12s,background .12s;position:relative}
-    .iotx-t:hover{border-color:var(--blu);transform:translateY(-1px)}
-    .iotx-t.off{border-color:rgba(251,113,133,.30)}
-    .iotx-t-top{display:flex;align-items:center;gap:5px;margin-bottom:5px}
-    .iotx-t-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
-    .iotx-t-dot.on{background:var(--grn)}
-    .iotx-t-dot.off{background:var(--red)}
-    .iotx-t-id{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .iotx-t-sub{font-family:var(--mono);font-size:9px;color:var(--tx4);margin-left:auto;flex:0 0 auto}
-    .iotx-chans{display:grid;grid-template-columns:1fr 1fr;gap:4px}
-    .iotx-ch{font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.4px;text-align:center;padding:2.5px 0;border-radius:4px;border:1px solid transparent}
-    .iotx-ch.up{color:var(--grn);background:rgba(52,211,153,.10);border-color:rgba(52,211,153,.30)}
-    .iotx-ch.down{color:var(--red);background:rgba(251,113,133,.10);border-color:rgba(251,113,133,.30)}
-    .iotx-empty{grid-column:1/-1;text-align:center;color:var(--tx4);font-size:13px;padding:32px 0}
+    .iotx-summary {
+        display: grid;
+        grid-template-columns: 1.55fr 1fr;
+        gap: 12px;
+        margin-bottom: 16px
+    }
+
+    @@media(max-width:760px) {
+        .iotx-summary {
+            grid-template-columns: 1fr
+        }
+    }
+
+    .iotx-scard {
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-radius: 14px;
+        padding: 15px 17px
+    }
+
+    .iotx-sc-lab {
+        font-size: 10.5px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--tx3);
+        font-weight: 600
+    }
+
+    .iotx-fh-top {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 12px
+    }
+
+    .iotx-fh-total {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--tx3);
+        font-weight: 600
+    }
+
+        .iotx-fh-total b {
+            font-size: 30px;
+            color: var(--tx);
+            font-weight: 800;
+            margin-right: 5px;
+            letter-spacing: -.5px
+        }
+
+    .iotx-hbar {
+        display: flex;
+        height: 14px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg4);
+        gap: 2px
+    }
+
+        .iotx-hbar span {
+            display: block;
+            transition: width .5s cubic-bezier(.4,0,.2,1)
+        }
+
+        .iotx-hbar .iotx-on {
+            background: linear-gradient(90deg,var(--grn),#10b981)
+        }
+
+        .iotx-hbar .iotx-off {
+            background: linear-gradient(90deg,#f43f5e,var(--red))
+        }
+
+        .iotx-hbar .iotx-warn {
+            background: linear-gradient(90deg,#f59e0b,var(--amb))
+        }
+
+        .iotx-hbar .iotx-dead {
+            background: linear-gradient(90deg,#f43f5e,var(--red))
+        }
+
+    .iotx-fh-leg {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-top: 11px;
+        font-size: 12px;
+        color: var(--tx2);
+        flex-wrap: wrap
+    }
+
+        .iotx-fh-leg b {
+            font-family: var(--mono);
+            font-weight: 700;
+            color: var(--tx);
+            margin-right: 3px
+        }
+
+        .iotx-fh-leg .iotx-d {
+            width: 9px;
+            height: 9px;
+            border-radius: 3px;
+            display: inline-block;
+            margin-right: 6px;
+            vertical-align: -1px
+        }
+
+            .iotx-fh-leg .iotx-d.on {
+                background: var(--grn)
+            }
+
+            .iotx-fh-leg .iotx-d.off {
+                background: var(--red)
+            }
+
+            .iotx-fh-leg .iotx-d.ok {
+                background: var(--grn)
+            }
+
+            .iotx-fh-leg .iotx-d.warn {
+                background: var(--amb)
+            }
+
+            .iotx-fh-leg .iotx-d.dead {
+                background: var(--red)
+            }
+
+        .iotx-fh-leg .iotx-pct {
+            margin-left: auto;
+            font-family: var(--mono);
+            font-size: 12px;
+            font-weight: 700
+        }
+
+    .iotx-ccard {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 15px
+    }
+
+    .iotx-meter .iotx-m-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 7px
+    }
+
+    .iotx-meter .iotx-m-lab {
+        font-size: 11px;
+        letter-spacing: .6px;
+        text-transform: uppercase;
+        color: var(--tx2);
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 7px
+    }
+
+        .iotx-meter .iotx-m-lab .iotx-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%
+        }
+
+    .iotx-meter .iotx-m-val {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--tx3)
+    }
+
+        .iotx-meter .iotx-m-val b {
+            font-size: 19px;
+            color: var(--tx);
+            font-weight: 800;
+            margin-right: 1px
+        }
+
+    .iotx-meter .iotx-m-pct {
+        font-size: 12px;
+        font-weight: 700;
+        margin-left: 5px
+    }
+
+    .iotx-meter .iotx-m-bar {
+        height: 8px;
+        border-radius: 5px;
+        background: var(--bg4);
+        overflow: hidden
+    }
+
+        .iotx-meter .iotx-m-bar span {
+            display: block;
+            height: 100%;
+            border-radius: 5px;
+            transition: width .5s cubic-bezier(.4,0,.2,1)
+        }
+
+    .iotx-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill,minmax(280px,1fr));
+        gap: 14px
+    }
+
+    .iotx-cl {
+        position: relative;
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-left: 3px solid var(--bdr);
+        border-radius: 12px;
+        padding: 12px 13px 11px;
+        overflow: hidden;
+        transition: border-color .15s,background .15s
+    }
+
+        .iotx-cl.iotx-s-red {
+            border-left-color: var(--red);
+            background: linear-gradient(180deg,rgba(251,113,133,.10),transparent 60%),var(--bg2)
+        }
+
+        .iotx-cl.iotx-s-amb {
+            border-left-color: var(--amb);
+            background: linear-gradient(180deg,rgba(251,191,36,.10),transparent 60%),var(--bg2)
+        }
+
+        .iotx-cl.iotx-s-grn {
+            border-left-color: var(--grn)
+        }
+
+    .iotx-cl-hdr {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 3px
+    }
+
+    .iotx-cl-ico {
+        width: 22px;
+        height: 22px;
+        flex: 0 0 auto;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: var(--bg4);
+        font-size: 12px
+    }
+
+    .iotx-cl-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--tx);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1 1 auto
+    }
+
+    .iotx-cl-badge {
+        flex: 0 0 auto;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 7px;
+        background: var(--bg4);
+        color: var(--tx2)
+    }
+
+    .iotx-cl.iotx-s-red .iotx-cl-badge {
+        background: rgba(251,113,133,.10);
+        color: var(--red)
+    }
+
+    .iotx-cl.iotx-s-amb .iotx-cl-badge {
+        background: rgba(251,191,36,.10);
+        color: var(--amb)
+    }
+
+    .iotx-cl.iotx-s-grn .iotx-cl-badge {
+        background: rgba(52,211,153,.10);
+        color: var(--grn)
+    }
+
+    .iotx-cl-sub {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--tx4);
+        margin: 0 0 10px 30px;
+        letter-spacing: .2px
+    }
+
+    .iotx-tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fill,minmax(86px,1fr));
+        gap: 7px
+    }
+
+    .iotx-t {
+        background: var(--bg3);
+        border: 1px solid var(--bdr);
+        border-radius: 8px;
+        padding: 6px 6px 5px;
+        cursor: pointer;
+        transition: transform .1s,border-color .12s,background .12s;
+        position: relative
+    }
+
+        .iotx-t:hover {
+            border-color: var(--blu);
+            transform: translateY(-1px)
+        }
+
+        .iotx-t.off {
+            border-color: rgba(251,113,133,.30)
+        }
+
+    .iotx-t-top {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-bottom: 5px
+    }
+
+    .iotx-t-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex: 0 0 auto
+    }
+
+        .iotx-t-dot.on {
+            background: var(--grn)
+        }
+
+        .iotx-t-dot.off {
+            background: var(--red)
+        }
+
+    .iotx-t-id {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--tx);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis
+    }
+
+    .iotx-t-sub {
+        font-family: var(--mono);
+        font-size: 9px;
+        color: var(--tx4);
+        margin-left: auto;
+        flex: 0 0 auto
+    }
+
+    .iotx-chans {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px
+    }
+
+    .iotx-ch {
+        font-family: var(--mono);
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: .4px;
+        text-align: center;
+        padding: 2.5px 0;
+        border-radius: 4px;
+        border: 1px solid transparent
+    }
+
+        .iotx-ch.up {
+            color: var(--grn);
+            background: rgba(52,211,153,.10);
+            border-color: rgba(52,211,153,.30)
+        }
+
+        .iotx-ch.down {
+            color: var(--red);
+            background: rgba(251,113,133,.10);
+            border-color: rgba(251,113,133,.30)
+        }
+
+    .iotx-empty {
+        grid-column: 1/-1;
+        text-align: center;
+        color: var(--tx4);
+        font-size: 13px;
+        padding: 32px 0
+    }
     /* --- network modem cards --- */
-    .iotx-md{position:relative;background:var(--bg2);border:1px solid var(--bdr);border-left:3px solid var(--bdr);border-radius:12px;padding:12px 13px 11px;cursor:pointer;overflow:hidden;transition:border-color .15s,background .15s,transform .1s}
-    .iotx-md:hover{transform:translateY(-1px)}
-    .iotx-md.iotx-s-red{border-left-color:var(--red);background:linear-gradient(180deg,rgba(251,113,133,.10),transparent 60%),var(--bg2)}
-    .iotx-md.iotx-s-amb{border-left-color:var(--amb);background:linear-gradient(180deg,rgba(251,191,36,.10),transparent 60%),var(--bg2)}
-    .iotx-md.iotx-s-grn{border-left-color:var(--grn)}
-    .iotx-md-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-    .iotx-md-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-    .iotx-md-dot.grn{background:var(--grn)}.iotx-md-dot.amb{background:var(--amb)}.iotx-md-dot.red{background:var(--red)}
-    .iotx-md-name{font-size:13px;font-weight:700;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto}
-    .iotx-md-ver{flex:0 0 auto;font-family:var(--mono);font-size:9px;font-weight:700;color:var(--tx3);background:var(--bg4);padding:1px 6px;border-radius:5px}
-    .iotx-md-sig{margin-left:auto;flex:0 0 auto;display:flex;align-items:flex-end;gap:6px}
-    .iotx-sig{display:flex;align-items:flex-end;gap:2px;height:13px}
-    .iotx-sig i{width:3px;border-radius:1px;background:var(--bg4);display:block}
-    .iotx-sig i:nth-child(1){height:4px}.iotx-sig i:nth-child(2){height:6px}.iotx-sig i:nth-child(3){height:8px}
-    .iotx-sig i:nth-child(4){height:11px}.iotx-sig i:nth-child(5){height:13px}
-    .iotx-sig.l-grn i.on{background:var(--grn)}.iotx-sig.l-amb i.on{background:var(--amb)}.iotx-sig.l-red i.on{background:var(--red)}
-    .iotx-sig-v{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--tx3)}
-    .iotx-sig-off{font-family:var(--mono);font-size:9.5px;font-weight:700;color:var(--red);letter-spacing:.4px}
-    .iotx-md-meta{font-family:var(--mono);font-size:10px;color:var(--tx4);margin:0 0 10px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .iotx-md-meta b{color:var(--tx3);font-weight:600}
-    .iotx-child{display:flex;align-items:center;gap:9px}
-    .iotx-child .iotx-cl-lab{font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--tx3);font-weight:700;flex:0 0 auto}
-    .iotx-child .iotx-cbar{flex:1 1 auto;height:6px;border-radius:4px;background:var(--bg4);overflow:hidden}
-    .iotx-child .iotx-cbar span{display:block;height:100%;border-radius:4px;transition:width .5s}
-    .iotx-child .iotx-cnt{font-family:var(--mono);font-size:11px;font-weight:700;flex:0 0 auto}
-    .iotx-child .iotx-chev{color:var(--tx4);font-size:10px;flex:0 0 auto}
+    .iotx-md {
+        position: relative;
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-left: 3px solid var(--bdr);
+        border-radius: 12px;
+        padding: 12px 13px 11px;
+        cursor: pointer;
+        overflow: hidden;
+        transition: border-color .15s,background .15s,transform .1s
+    }
+
+        .iotx-md:hover {
+            transform: translateY(-1px)
+        }
+
+        .iotx-md.iotx-s-red {
+            border-left-color: var(--red);
+            background: linear-gradient(180deg,rgba(251,113,133,.10),transparent 60%),var(--bg2)
+        }
+
+        .iotx-md.iotx-s-amb {
+            border-left-color: var(--amb);
+            background: linear-gradient(180deg,rgba(251,191,36,.10),transparent 60%),var(--bg2)
+        }
+
+        .iotx-md.iotx-s-grn {
+            border-left-color: var(--grn)
+        }
+
+    .iotx-md-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px
+    }
+
+    .iotx-md-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: 0 0 auto
+    }
+
+        .iotx-md-dot.grn {
+            background: var(--grn)
+        }
+
+        .iotx-md-dot.amb {
+            background: var(--amb)
+        }
+
+        .iotx-md-dot.red {
+            background: var(--red)
+        }
+
+    .iotx-md-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--tx);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1 1 auto
+    }
+
+    .iotx-md-ver {
+        flex: 0 0 auto;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--tx3);
+        background: var(--bg4);
+        padding: 1px 6px;
+        border-radius: 5px
+    }
+
+    .iotx-md-sig {
+        margin-left: auto;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: flex-end;
+        gap: 6px
+    }
+
+    .iotx-sig {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 13px
+    }
+
+        .iotx-sig i {
+            width: 3px;
+            border-radius: 1px;
+            background: var(--bg4);
+            display: block
+        }
+
+            .iotx-sig i:nth-child(1) {
+                height: 4px
+            }
+
+            .iotx-sig i:nth-child(2) {
+                height: 6px
+            }
+
+            .iotx-sig i:nth-child(3) {
+                height: 8px
+            }
+
+            .iotx-sig i:nth-child(4) {
+                height: 11px
+            }
+
+            .iotx-sig i:nth-child(5) {
+                height: 13px
+            }
+
+        .iotx-sig.l-grn i.on {
+            background: var(--grn)
+        }
+
+        .iotx-sig.l-amb i.on {
+            background: var(--amb)
+        }
+
+        .iotx-sig.l-red i.on {
+            background: var(--red)
+        }
+
+    .iotx-sig-v {
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--tx3)
+    }
+
+    .iotx-sig-off {
+        font-family: var(--mono);
+        font-size: 9.5px;
+        font-weight: 700;
+        color: var(--red);
+        letter-spacing: .4px
+    }
+
+    .iotx-md-meta {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--tx4);
+        margin: 0 0 10px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis
+    }
+
+        .iotx-md-meta b {
+            color: var(--tx3);
+            font-weight: 600
+        }
+
+    .iotx-child {
+        display: flex;
+        align-items: center;
+        gap: 9px
+    }
+
+        .iotx-child .iotx-cl-lab {
+            font-size: 9.5px;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            color: var(--tx3);
+            font-weight: 700;
+            flex: 0 0 auto
+        }
+
+        .iotx-child .iotx-cbar {
+            flex: 1 1 auto;
+            height: 6px;
+            border-radius: 4px;
+            background: var(--bg4);
+            overflow: hidden
+        }
+
+            .iotx-child .iotx-cbar span {
+                display: block;
+                height: 100%;
+                border-radius: 4px;
+                transition: width .5s
+            }
+
+        .iotx-child .iotx-cnt {
+            font-family: var(--mono);
+            font-size: 11px;
+            font-weight: 700;
+            flex: 0 0 auto
+        }
+
+        .iotx-child .iotx-chev {
+            color: var(--tx4);
+            font-size: 10px;
+            flex: 0 0 auto
+        }
     /* --- sensor cards --- */
-    .iotx-rcard .iotx-rrow{display:flex;align-items:center;gap:9px;margin-top:9px}
-    .iotx-rcard .iotx-rname{font-size:11px;font-weight:700;color:var(--tx2);flex:0 0 120px;display:flex;align-items:center;gap:6px}
-    .iotx-rcard .iotx-rname i{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
-    .iotx-rcard .iotx-rbar{flex:1 1 auto;height:8px;border-radius:5px;background:var(--bg4);overflow:hidden}
-    .iotx-rcard .iotx-rbar span{display:block;height:100%;border-radius:5px;transition:width .5s}
-    .iotx-rcard .iotx-rval{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--tx);flex:0 0 auto;width:22px;text-align:right}
-    .iotx-sn{position:relative;background:var(--bg2);border:1px solid var(--bdr);border-left:3px solid var(--bdr);border-radius:11px;padding:11px 13px;cursor:pointer;transition:border-color .15s,transform .1s,background .15s}
-    .iotx-sn:hover{transform:translateY(-1px)}
-    .iotx-sn.s-warn{border-left-color:var(--amb);background:linear-gradient(180deg,rgba(251,191,36,.10),transparent 55%),var(--bg2)}
-    .iotx-sn.s-dead{border-left-color:var(--red);background:linear-gradient(180deg,rgba(251,113,133,.10),transparent 55%),var(--bg2)}
-    .iotx-sn-top{display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap}
-    .iotx-sn-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-    .iotx-sn-dot.warn{background:var(--amb)}.iotx-sn-dot.dead{background:var(--red)}
-    .iotx-sn-asset{font-size:13px;font-weight:800;color:var(--tx)}
-    .iotx-sn-attr{font-size:12px;font-weight:600;color:var(--tx2)}
-    .iotx-sn-state{margin-left:auto;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:5px}
-    .iotx-sn-state.warn{color:var(--amb);background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.3)}
-    .iotx-sn-state.dead{color:var(--red);background:rgba(251,113,133,.10);border:1px solid rgba(251,113,133,.3)}
-    .iotx-sn-ids{font-family:var(--mono);font-size:10px;color:var(--tx4);margin-bottom:9px}
-    .iotx-sn-mid{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}
-    .iotx-sn-reason{font-family:var(--mono);font-size:9.5px;font-weight:700;padding:2.5px 8px;border-radius:6px;border:1px solid transparent}
-    .iotx-r-corr{color:#a78bfa;background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.3)}
-    .iotx-r-oor{color:#fb923c;background:rgba(251,146,60,.12);border-color:rgba(251,146,60,.3)}
-    .iotx-r-dead{color:var(--red);background:rgba(251,113,133,.10);border-color:rgba(251,113,133,.3)}
-    .iotx-r-flat{color:var(--cyan);background:rgba(34,211,238,.10);border-color:rgba(34,211,238,.3)}
-    .iotx-r-spike{color:var(--blu);background:rgba(96,165,250,.10);border-color:rgba(96,165,250,.3)}
-    .iotx-sn-desc{font-size:12px;color:var(--tx2);margin-left:auto;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .iotx-sn-ts{font-family:var(--mono);font-size:10px;color:var(--tx4)}
-    .iotx-sn-ts b{color:var(--tx3);font-weight:600}
+    .iotx-rcard .iotx-rrow {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 9px
+    }
+
+    .iotx-rcard .iotx-rname {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--tx2);
+        flex: 0 0 120px;
+        display: flex;
+        align-items: center;
+        gap: 6px
+    }
+
+        .iotx-rcard .iotx-rname i {
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            flex: 0 0 auto
+        }
+
+    .iotx-rcard .iotx-rbar {
+        flex: 1 1 auto;
+        height: 8px;
+        border-radius: 5px;
+        background: var(--bg4);
+        overflow: hidden
+    }
+
+        .iotx-rcard .iotx-rbar span {
+            display: block;
+            height: 100%;
+            border-radius: 5px;
+            transition: width .5s
+        }
+
+    .iotx-rcard .iotx-rval {
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--tx);
+        flex: 0 0 auto;
+        width: 22px;
+        text-align: right
+    }
+
+    .iotx-sn {
+        position: relative;
+        background: var(--bg2);
+        border: 1px solid var(--bdr);
+        border-left: 3px solid var(--bdr);
+        border-radius: 11px;
+        padding: 11px 13px;
+        cursor: pointer;
+        transition: border-color .15s,transform .1s,background .15s
+    }
+
+        .iotx-sn:hover {
+            transform: translateY(-1px)
+        }
+
+        .iotx-sn.s-warn {
+            border-left-color: var(--amb);
+            background: linear-gradient(180deg,rgba(251,191,36,.10),transparent 55%),var(--bg2)
+        }
+
+        .iotx-sn.s-dead {
+            border-left-color: var(--red);
+            background: linear-gradient(180deg,rgba(251,113,133,.10),transparent 55%),var(--bg2)
+        }
+
+    .iotx-sn-top {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 4px;
+        flex-wrap: wrap
+    }
+
+    .iotx-sn-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex: 0 0 auto
+    }
+
+        .iotx-sn-dot.warn {
+            background: var(--amb)
+        }
+
+        .iotx-sn-dot.dead {
+            background: var(--red)
+        }
+
+    .iotx-sn-asset {
+        font-size: 13px;
+        font-weight: 800;
+        color: var(--tx)
+    }
+
+    .iotx-sn-attr {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--tx2)
+    }
+
+    .iotx-sn-state {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .6px;
+        padding: 2px 7px;
+        border-radius: 5px
+    }
+
+        .iotx-sn-state.warn {
+            color: var(--amb);
+            background: rgba(251,191,36,.10);
+            border: 1px solid rgba(251,191,36,.3)
+        }
+
+        .iotx-sn-state.dead {
+            color: var(--red);
+            background: rgba(251,113,133,.10);
+            border: 1px solid rgba(251,113,133,.3)
+        }
+
+    .iotx-sn-ids {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--tx4);
+        margin-bottom: 9px
+    }
+
+    .iotx-sn-mid {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 7px
+    }
+
+    .iotx-sn-reason {
+        font-family: var(--mono);
+        font-size: 9.5px;
+        font-weight: 700;
+        padding: 2.5px 8px;
+        border-radius: 6px;
+        border: 1px solid transparent
+    }
+
+    .iotx-r-corr {
+        color: #a78bfa;
+        background: rgba(167,139,250,.12);
+        border-color: rgba(167,139,250,.3)
+    }
+
+    .iotx-r-oor {
+        color: #fb923c;
+        background: rgba(251,146,60,.12);
+        border-color: rgba(251,146,60,.3)
+    }
+
+    .iotx-r-dead {
+        color: var(--red);
+        background: rgba(251,113,133,.10);
+        border-color: rgba(251,113,133,.3)
+    }
+
+    .iotx-r-flat {
+        color: var(--cyan);
+        background: rgba(34,211,238,.10);
+        border-color: rgba(34,211,238,.3)
+    }
+
+    .iotx-r-spike {
+        color: var(--blu);
+        background: rgba(96,165,250,.10);
+        border-color: rgba(96,165,250,.3)
+    }
+
+    .iotx-sn-desc {
+        font-size: 12px;
+        color: var(--tx2);
+        margin-left: auto;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap
+    }
+
+    .iotx-sn-ts {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--tx4)
+    }
+
+        .iotx-sn-ts b {
+            color: var(--tx3);
+            font-weight: 600
+        }
 
     /* ===== SENSOR HEALTH MODAL ===== */
     .sensor-asset-group {
@@ -4167,30 +5178,140 @@
     }
 
     /* ===== first-load boot loader ===== */
-    .boot-loader{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;
-        background:radial-gradient(1200px 600px at 20% -10%, rgba(34,211,238,.10), transparent 55%),
-                   radial-gradient(1000px 700px at 90% 0%, rgba(96,165,250,.10), transparent 50%),
-                   var(--boot-bg,#0a0f1a);
-        transition:opacity .5s ease, visibility .5s ease}
-    .boot-loader.hidden{opacity:0;visibility:hidden;pointer-events:none}
-    .bl-card{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;padding:24px}
-    .bl-logo{position:relative;width:84px;height:84px;display:grid;place-items:center;border-radius:22px;
-        background:linear-gradient(135deg, rgba(96,165,250,.18), rgba(34,211,238,.10));
-        border:1px solid var(--bdr2);box-shadow:0 10px 40px rgba(34,211,238,.18)}
-    .bl-ring{position:absolute;inset:-11px;border-radius:50%;border:3px solid transparent;
-        border-top-color:var(--cyan);border-right-color:var(--blu);animation:blspin 1s linear infinite}
-    @@keyframes blspin{to{transform:rotate(360deg)}}
-    .bl-bolt{font-size:34px;line-height:1;filter:drop-shadow(0 0 10px rgba(34,211,238,.55));animation:blpulse 1.6s ease-in-out infinite}
-    @@keyframes blpulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.12);opacity:1}}
-    .bl-title{font-family:var(--sans);font-size:20px;font-weight:800;color:var(--tx);letter-spacing:.3px;margin-top:8px}
-    .bl-title span{color:var(--blu);font-weight:600}
-    .bl-sub{font-family:var(--mono);font-size:12px;color:var(--tx3);min-height:16px;letter-spacing:.3px}
-    .bl-bar{position:relative;width:220px;height:5px;border-radius:4px;background:var(--bg4);overflow:hidden;margin-top:4px}
-    .bl-bar span{position:absolute;top:0;height:100%;width:40%;border-radius:4px;
-        background:linear-gradient(90deg,var(--cyan),var(--blu));animation:blbar 1.15s ease-in-out infinite}
-    @@keyframes blbar{0%{left:-45%}100%{left:105%}}
-    body[data-aurora="light"] .boot-loader{--boot-bg:#eef2f8}
-    @@media (prefers-reduced-motion: reduce){ .bl-ring,.bl-bolt,.bl-bar span{animation:none} }
+    .boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(1200px 600px at 20% -10%, rgba(34,211,238,.10), transparent 55%), radial-gradient(1000px 700px at 90% 0%, rgba(96,165,250,.10), transparent 50%), var(--boot-bg,#0a0f1a);
+        transition: opacity .5s ease, visibility .5s ease
+    }
+
+        .boot-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none
+        }
+
+    .bl-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        text-align: center;
+        padding: 24px
+    }
+
+    .bl-logo {
+        position: relative;
+        width: 84px;
+        height: 84px;
+        display: grid;
+        place-items: center;
+        border-radius: 22px;
+        background: linear-gradient(135deg, rgba(96,165,250,.18), rgba(34,211,238,.10));
+        border: 1px solid var(--bdr2);
+        box-shadow: 0 10px 40px rgba(34,211,238,.18)
+    }
+
+    .bl-ring {
+        position: absolute;
+        inset: -11px;
+        border-radius: 50%;
+        border: 3px solid transparent;
+        border-top-color: var(--cyan);
+        border-right-color: var(--blu);
+        animation: blspin 1s linear infinite
+    }
+
+    @@keyframes blspin {
+        to {
+            transform: rotate(360deg)
+        }
+    }
+
+    .bl-bolt {
+        font-size: 34px;
+        line-height: 1;
+        filter: drop-shadow(0 0 10px rgba(34,211,238,.55));
+        animation: blpulse 1.6s ease-in-out infinite
+    }
+
+    @@keyframes blpulse {
+        0%, 100% {
+            transform: scale(1);
+            opacity: .9
+        }
+
+        50% {
+            transform: scale(1.12);
+            opacity: 1
+        }
+    }
+
+    .bl-title {
+        font-family: var(--sans);
+        font-size: 20px;
+        font-weight: 800;
+        color: var(--tx);
+        letter-spacing: .3px;
+        margin-top: 8px
+    }
+
+        .bl-title span {
+            color: var(--blu);
+            font-weight: 600
+        }
+
+    .bl-sub {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--tx3);
+        min-height: 16px;
+        letter-spacing: .3px
+    }
+
+    .bl-bar {
+        position: relative;
+        width: 220px;
+        height: 5px;
+        border-radius: 4px;
+        background: var(--bg4);
+        overflow: hidden;
+        margin-top: 4px
+    }
+
+        .bl-bar span {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 40%;
+            border-radius: 4px;
+            background: linear-gradient(90deg,var(--cyan),var(--blu));
+            animation: blbar 1.15s ease-in-out infinite
+        }
+
+    @@keyframes blbar {
+        0% {
+            left: -45%
+        }
+
+        100% {
+            left: 105%
+        }
+    }
+
+    body[data-aurora="light"] .boot-loader {
+        --boot-bg: #eef2f8
+    }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .bl-ring, .bl-bolt, .bl-bar span {
+            animation: none
+        }
+    }
 </style>
 
 <div class="shell" id="app"></div>
@@ -5375,7 +6496,9 @@
             hardware: { sensors: { total: 0, unhealthy: 0, issues: [] }, iot: { total: 0, unhealthy: 0, issues: [] }, network: { total: 0, unhealthy: 0, issues: [] } },
             _topic: "", _updatedAt: null, _rawPayloads: {}, _serviceTypes: {},
             _svcUpdatedAt: {},      // { serviceKey: ISO } - last MQTT data per service
-            _svcTypeUpdatedAt: {}   // { serviceKey: { local: ISO, cloud: ISO } } - last data per Local/Cloud node
+            _svcTypeUpdatedAt: {},  // { serviceKey: { local: ISO, cloud: ISO } } - last data per Local/Cloud node
+            _svcTopics: {},         // { serviceKey: topic } - MQTT topic the last data arrived on
+            _svcTypeTopics: {}      // { serviceKey: { local: topic, cloud: topic } } - topic per Local/Cloud node
         };
     }
     function normalizeHardware(hw) {
@@ -5402,15 +6525,59 @@
     // otherwise 0 = all sites (display filtering stays client-side).
     function selectedHealthSiteId() { return filterSiteIds.length === 1 ? (parseInt(filterSiteIds[0], 10) || 0) : 0; }
 
+    var _lastTopicsScope = null;   // last successfully loaded topic scope (siteId or 0)
+    // Topic-load state machine: drives the table's skeleton / error states so the
+    // dashboard never shows a silent blank table while the topics API is slow or down.
+    var _topicsState = "idle";     // idle | loading | loaded | failed
+    var _topicsLastError = null;
+    var _topicsRetryTimer = null, _topicsRetryCount = 0;
+    var TOPICS_FETCH_TIMEOUT_MS = 20000, TOPICS_MAX_RETRIES = 5;
+
+    function scheduleTopicsRetry() {
+        if (_topicsRetryTimer || _topicsRetryCount >= TOPICS_MAX_RETRIES) return;
+        _topicsRetryCount++;
+        var delay = Math.min(3000 * _topicsRetryCount, 12000);
+        log("Health topics failed \u2014 retrying in " + (delay / 1000) + "s (attempt " + _topicsRetryCount + "/" + TOPICS_MAX_RETRIES + ")", "sys");
+        _topicsRetryTimer = setTimeout(function () { _topicsRetryTimer = null; refreshHealthMqttTopics(true); }, delay);
+    }
+
+    function retryTopics() {
+        _topicsRetryCount = 0;
+        if (_topicsRetryTimer) { clearTimeout(_topicsRetryTimer); _topicsRetryTimer = null; }
+        _lastTopicsScope = null;
+        _topicsState = "loading";
+        render();
+        refreshHealthMqttTopics(true);
+    }
+
     async function refreshHealthMqttTopics(autoResubscribe) {
         var siteId = selectedHealthSiteId();
+        // Filter-lag fix: ticking zone/division/site checkboxes usually does NOT
+        // change the MQTT topic scope (it stays "all sites" = 0). Skipping the
+        // topic refetch + full unsubscribe/resubscribe of hundreds of topics in
+        // that case removes the biggest source of UI lag on filter changes.
+        if (autoResubscribe && _lastTopicsScope === String(siteId) && mqttTopics.length) {
+            render();
+            return;
+        }
+        if (_topicsState !== "loaded") { _topicsState = "loading"; renderThrottled(); }
         try {
-            var r = await fetch(HEALTH_TOPICS_URL + "?siteId=" + encodeURIComponent(siteId), { credentials: "same-origin" });
+            // Timeout so a hung topics API cannot leave the dashboard waiting forever
+            var _ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+            var _tmo = _ctrl ? setTimeout(function () { try { _ctrl.abort(); } catch (e) { } }, TOPICS_FETCH_TIMEOUT_MS) : null;
+            var r;
+            try {
+                r = await fetch(HEALTH_TOPICS_URL + "?siteId=" + encodeURIComponent(siteId),
+                    _ctrl ? { credentials: "same-origin", signal: _ctrl.signal } : { credentials: "same-origin" });
+            } finally {
+                if (_tmo) clearTimeout(_tmo);
+            }
             if (!r.ok) throw new Error("HTTP " + r.status);
             var json = await r.json();
             var rows = json && json.data ? json.data : [];
             var topics = [];
             healthTopicMeta = {};
+            _siteMetaCache = {};   // fresh metadata invalidates the site-meta cache
 
             rows.forEach(function (row) {
                 var siteIdValue = firstDefined(row.SiteId, row.siteId, "");
@@ -5437,8 +6604,8 @@
                         "debouncer/" + parsedSid + "/cloud/health",
                         "pointServices/" + parsedSid + "/local/health",
                         "pointServices/" + parsedSid + "/cloud/health",
-                        "alertServices/" + parsedSid + "/local/health",   // Alert Local
-                        "alertServices/" + parsedSid + "/cloud/health",   // Alert Cloud
+                        // Alert Local/Cloud publish on {BasePath}/local|cloud/alerthealth
+                        // (added below from basePathValue) - there is no alertServices topic.
                         "edgex/" + parsedSid + "/local/health",           // EdgeX Local
                         "edgex/" + parsedSid + "/cloud/health",           // EdgeX Cloud
                         "reminderServices/" + parsedSid + "/cloud/health" // Reminder Cloud only
@@ -5469,19 +6636,37 @@
                     };
                 });
 
-                if (parsedSid > 0 && !stations.find(function (s) { return String(s.siteId) === String(parsedSid); })) {
-                    var placeholder = defaultStation(parsedSid);
-                    placeholder.stationName = siteNameValue || placeholder.stationName;
-                    placeholder.zoneId = zoneIdValue || "";
-                    placeholder.zone = zoneNameValue || optionName(masterZones, zoneIdValue) || "Unknown";
-                    placeholder.divisionId = divisionIdValue || "";
-                    placeholder.division = divisionNameValue || optionName(masterDivisions.length ? masterDivisions : divisionOptions, divisionIdValue) || "Unknown";
-                    stations.push(placeholder);
+                if (parsedSid > 0) {
+                    var existing = stations.find(function (s) { return String(s.siteId) === String(parsedSid); });
+                    if (!existing) {
+                        var placeholder = defaultStation(parsedSid);
+                        placeholder.stationName = siteNameValue || optionName(masterSites, parsedSid) || placeholder.stationName;
+                        placeholder.zoneId = zoneIdValue || "";
+                        placeholder.zone = zoneNameValue || optionName(masterZones, zoneIdValue) || "Unknown";
+                        placeholder.divisionId = divisionIdValue || "";
+                        placeholder.division = divisionNameValue || optionName(masterDivisions.length ? masterDivisions : divisionOptions, divisionIdValue) || "Unknown";
+                        stations.push(placeholder);
+                    } else {
+                        // BACKFILL: this station was created from an MQTT payload before
+                        // the topics API finished, so it may still say "Unknown Site" /
+                        // "Site N". Master data always wins - apply it now.
+                        var masterName = siteNameValue || optionName(masterSites, parsedSid);
+                        if (masterName) existing.stationName = masterName;
+                        if (zoneIdValue) existing.zoneId = String(zoneIdValue);
+                        var zName = zoneNameValue || optionName(masterZones, zoneIdValue);
+                        if (zName) existing.zone = zName;
+                        if (divisionIdValue) existing.divisionId = String(divisionIdValue);
+                        var dName = divisionNameValue || optionName(masterDivisions.length ? masterDivisions : divisionOptions, divisionIdValue);
+                        if (dName) existing.division = dName;
+                    }
                 }
             });
 
             mqttTopics = topics;
             mqttTopic = mqttTopics.join(", ");
+            _lastTopicsScope = String(siteId);
+            _topicsState = "loaded"; _topicsLastError = null; _topicsRetryCount = 0;
+            if (_topicsRetryTimer) { clearTimeout(_topicsRetryTimer); _topicsRetryTimer = null; }
             log((siteId ? "Selected site" : "All sites") + " health topics loaded: " + mqttTopics.length + ", stations: " + stations.length, "sys");
 
             if (autoResubscribe && mqttConnected && mqttClient) { subscribeMqtt(); }
@@ -5490,8 +6675,16 @@
             fetchAllSensorData();
             loadVisibleDeviceStatus();
         } catch (e) {
-            mqttTopics = []; mqttTopic = ""; healthTopicMeta = {};
-            log("Health topic bind failed: " + e.message, "err");
+            _lastTopicsScope = null;
+            _topicsLastError = (e && e.name === "AbortError") ? ("timeout after " + (TOPICS_FETCH_TIMEOUT_MS / 1000) + "s") : (e.message || "unknown error");
+            // A transient refetch failure must NOT wipe already-working topics /
+            // subscriptions - only mark failed when nothing was ever loaded.
+            if (_topicsState !== "loaded" || !mqttTopics.length) {
+                mqttTopics = []; mqttTopic = ""; healthTopicMeta = {};
+                _topicsState = "failed";
+            }
+            scheduleTopicsRetry();
+            log("Health topic bind failed: " + _topicsLastError, "err");
             render();
         }
     }
@@ -5682,7 +6875,7 @@
         filterDivisionIds = msDiv.getSelected();
         filterSiteIds = msSite.getSelected();
         var seq = ++_filterSeq;
-        render(); // instant feedback with current data (table filters client-side immediately)
+        renderThrottled(); // near-instant feedback, but coalesced so rapid checkbox clicks repaint once
 
         // Heavy work (cascading option fetches, MQTT re-subscribe, alert/device
         // refresh) is debounced so ticking several checkboxes quickly only
@@ -5773,11 +6966,28 @@
         current.zoneId = String(firstDefined(payload.zoneId, payload.ZoneId, payload.zoneID, current.zoneId, ""));
         current.divisionId = String(firstDefined(payload.divisionId, payload.DivisionId, payload.divisionID, current.divisionId, ""));
         var topicMeta = healthTopicMeta[String(topic || "").replace(/^\/+|\/+$/g, "")] || {};
-        current.zone = str(firstDefined(payload.zone, payload.Zone, (current.zone !== "Unknown" ? current.zone : null), topicMeta.zoneName), "Unknown");
-        current.division = str(firstDefined(payload.division, payload.Division, (current.division !== "Unknown" ? current.division : null), topicMeta.divisionName), "Unknown");
-        if (!current.zoneId && topicMeta.zoneId) current.zoneId = String(topicMeta.zoneId);
-        if (!current.divisionId && topicMeta.divisionId) current.divisionId = String(topicMeta.divisionId);
-        current.stationName = str(firstDefined(payload.stationName, payload.SiteName, payload.siteName, payload.StationName, payload.Name, topicMeta.siteName, current.stationName), current.stationName);
+        // Site-level master meta: if this exact topic has no meta entry (or an
+        // incomplete one), borrow name/zone/division from any other topic of the
+        // same site instead of leaving the row on "Unknown".
+        var siteMeta = siteMetaOf(siteId) || {};
+        var metaZone = str(firstDefined(topicMeta.zoneName, siteMeta.zoneName, null), "");
+        var metaDivision = str(firstDefined(topicMeta.divisionName, siteMeta.divisionName, null), "");
+        current.zone = str(firstDefined(metaZone || null, payload.zone, payload.Zone, (current.zone !== "Unknown" ? current.zone : null)), "Unknown");
+        current.division = str(firstDefined(metaDivision || null, payload.division, payload.Division, (current.division !== "Unknown" ? current.division : null)), "Unknown");
+        if (!current.zoneId) current.zoneId = String(firstDefined(topicMeta.zoneId, siteMeta.zoneId, "") || "");
+        if (!current.divisionId) current.divisionId = String(firstDefined(topicMeta.divisionId, siteMeta.divisionId, "") || "");
+        // Station name: the master-data name (topic metadata / site table) ALWAYS
+        // wins, so the row title no longer flickers between the full station name
+        // and the short station CODE some services put in their payload name
+        // fields. Payload names are used only while no master name is known yet.
+        // masterSites is server-rendered into the page, so this name source is
+        // available from the very start - before the topics API or MQTT respond.
+        var _metaName = str(firstDefined(topicMeta.siteName, siteMeta.siteName, optionName(masterSites, siteId) || null, null), "");
+        if (_metaName) {
+            current.stationName = _metaName;
+        } else if (!current.stationName || current.stationName === "Unknown Site" || current.stationName === ("Site " + siteId)) {
+            current.stationName = str(firstDefined(payload.stationName, payload.SiteName, payload.siteName, payload.StationName, payload.Name, current.stationName), current.stationName);
+        }
         current.siteId = siteId;
         current._topic = topic || current._topic || "";
         current._updatedAt = new Date().toISOString();
@@ -5786,6 +6996,8 @@
         if (!current._serviceTypes) current._serviceTypes = {};   // { serviceKey: { local: data, cloud: data } }
         if (!current._svcUpdatedAt) current._svcUpdatedAt = {};
         if (!current._svcTypeUpdatedAt) current._svcTypeUpdatedAt = {};
+        if (!current._svcTopics) current._svcTopics = {};
+        if (!current._svcTypeTopics) current._svcTypeTopics = {};
 
         // Detect serviceType (local / server) from payload - computed ONCE
         var payloadServiceType = String(firstDefined(payload.serviceType, payload.ServiceType, "") || "").toLowerCase();
@@ -5801,13 +7013,27 @@
             if (topicNode) payloadServiceType = topicNode;
         }
 
-        // Stamp "last data received" for a service (and its local/cloud node).
+        // Stamp "last data received" for a service (and its local/cloud node),
+        // and remember the MQTT topic (subscribe path) the data arrived on so
+        // the service modal can show exactly where its data is coming from.
+        var _cleanTopic = String(topic || "").replace(/^\/+|\/+$/g, "");
+        var _cleanTopicNode = nodeFromTopic(_cleanTopic);   // "local" / "cloud" / ""
         function touchSvc(svcKey) {
             if (!svcKey) return;
             current._svcUpdatedAt[svcKey] = current._updatedAt;
+            if (_cleanTopic) current._svcTopics[svcKey] = _cleanTopic;
             if (payloadServiceType) {
                 if (!current._svcTypeUpdatedAt[svcKey]) current._svcTypeUpdatedAt[svcKey] = {};
                 current._svcTypeUpdatedAt[svcKey][payloadServiceType] = current._updatedAt;
+                // Record as THIS node's subscribe path only when the topic itself is
+                // node-specific (contains /local/ or /cloud/). Typed payloads arriving
+                // on the legacy combined topic (e.g. NWR/SKN/alerthealth) must NOT be
+                // shown as the Local/Cloud path - those are NWR/SKN/local/alerthealth
+                // and NWR/SKN/cloud/alerthealth.
+                if (_cleanTopic && _cleanTopicNode === payloadServiceType) {
+                    if (!current._svcTypeTopics[svcKey]) current._svcTypeTopics[svcKey] = {};
+                    current._svcTypeTopics[svcKey][payloadServiceType] = _cleanTopic;
+                }
             }
         }
 
@@ -6122,6 +7348,52 @@
 
 
 
+    // ===== Direct "health" property from the MQTT payload =====
+    // Requirement: the status must come from the health property returned in
+    // the MQTT response itself - NOT from a calculated status.
+    //   health = "ok"              -> green
+    //   health = "down"/"warning"  -> yellow
+    //   no data received           -> red
+    function rawHealthProp(d) {
+        d = safeObj(d);
+        var v = firstDefined(
+            d.health, d.Health, d.HEALTH, d.healthStatus, d.HealthStatus,
+            safeObj(d.dataloggerHeartbeat).health, safeObj(d.dataloggerHeartbeat).Health,
+            safeObj(d.dataloggerDiagnostic).health, safeObj(d.dataloggerDiagnostic).Health,
+            null);
+        if (v === undefined || v === null || v === "") return null;
+        return String(v);
+    }
+
+    // If the payload carries a health property it OVERRIDES the calculated
+    // status; the raw value is kept in ev.rawHealth so the UI can show the
+    // exact text returned over MQTT.
+    function applyHealthProp(ev, d) {
+        if (!ev) return ev;
+        var hv = rawHealthProp(d);
+        if (hv === null) return ev;
+        ev.rawHealth = hv;
+        var s = hv.toLowerCase().trim();
+        if (s === "ok" || s === "healthy" || s === "up" || s === "good" || s === "green") ev.status = "healthy";
+        else ev.status = "warning";   // down / warning / anything else -> yellow
+        return ev;
+    }
+
+    // Display label + color class for a service evaluation:
+    // label = the raw MQTT health value when present (never a calculated word),
+    // cls   = g (ok) / a (down|warning) / r (no data).
+    function healthDisplayOf(ev) {
+        var label = (ev && (ev.rawHealth || ev.status)) || "no data";
+        var s = String(label).toLowerCase().trim();
+        var cls;
+        if (s === "ok" || s === "healthy" || s === "up" || s === "good" || s === "green") cls = "g";
+        else if (s === "down" || s === "warning" || s === "warn" || s === "degraded") cls = "a";
+        else if (s === "unknown" || s === "no data" || s === "waiting") cls = "r";
+        else if (s === "critical" || s === "error" || s === "fail") cls = "r";
+        else cls = "a";
+        return { label: String(label), cls: cls };
+    }
+
     var EV = { DataRecv: evalDataReceiver, Datalogger: evalDatalogger, Alert: evalAlert, Debouncer: evalDebouncer, Point: evalPoint, EdgeX: evalEdgeX, Reminder: evalReminder };
 
     // Milliseconds since the last MQTT payload for this station (Infinity if never received).
@@ -6155,7 +7427,9 @@
 
     function evalStation(st) {
         var svcs = SVC_ORDER.map(function (s) {
-            var ev = Object.assign(EV[s.key](getSvcData(st.services, s.key)), { key: s.key, label: s.label, icon: s.icon });
+            var _svcData = getSvcData(st.services, s.key);
+            // Health property from the MQTT payload overrides any calculated status
+            var ev = Object.assign(applyHealthProp(EV[s.key](_svcData), _svcData), { key: s.key, label: s.label, icon: s.icon });
             // Last MQTT data received for this service (falls back to station-level timestamp)
             var internalKey = SVC_KEY_TO_INTERNAL[s.key];
             ev.lastReceivedAt = (st._svcUpdatedAt || {})[internalKey] || st._updatedAt || null;
@@ -6169,8 +7443,8 @@
                 ev.localData = types.local || null;
                 ev.cloudData = types.cloud || null;
                 // Evaluate each independently
-                if (types.local) ev.localEval = EV[s.key](types.local);
-                if (types.cloud) ev.cloudEval = EV[s.key](types.cloud);
+                if (types.local) ev.localEval = applyHealthProp(EV[s.key](types.local), types.local);
+                if (types.cloud) ev.cloudEval = applyHealthProp(EV[s.key](types.cloud), types.cloud);
             }
             return ev;
         });
@@ -6431,7 +7705,10 @@
             if (!_renderDirty) return;
             if (document.hidden) return;            // tab in background: stay dirty, repaint on return
             _renderDirty = false;
-            render();
+            // Paint on the next animation frame so batched repaints never land
+            // mid-frame (keeps scrolling and interactions smooth during bursts).
+            if (window.requestAnimationFrame) requestAnimationFrame(function () { render(); });
+            else render();
         }, RENDER_COALESCE_MS);
     }
     document.addEventListener("visibilitychange", function () {
@@ -7037,7 +8314,33 @@
         var tb = document.getElementById("tb");
         if (activeView === "live" && tb) {
         if (!ev.length) {
-            if (_lastRowsHtml !== "__EMPTY__") { tb.innerHTML = '<tr class="empty-row"><td colspan="' + (1 + SVC_ORDER.length + HW_ORDER.length + 1) + '">No health data yet. Connect MQTT or paste JSON.</td></tr>'; _lastRowsHtml = "__EMPTY__"; }
+            var _colCount = 1 + SVC_ORDER.length + HW_ORDER.length + 1;
+            if (_topicsState === "failed") {
+                // Topics API failed after retries kicked in - say so instead of a blank table
+                if (_lastRowsHtml !== "__ERR__") {
+                    tb.innerHTML = '<tr class="empty-row"><td colspan="' + _colCount + '"><div class="tbl-error">\u26A0 Could not load MQTT health topics' +
+                        (_topicsLastError ? ' (' + esc(_topicsLastError) + ')' : '') +
+                        (_topicsRetryTimer ? ' \u2014 retrying automatically\u2026' : '') +
+                        ' <button class="paste-btn" onclick="HealthDash.retryTopics()">Retry now</button></div></td></tr>';
+                    _lastRowsHtml = "__ERR__";
+                }
+            } else if (_topicsState !== "loaded") {
+                // Topics (or first data) still on the way - show a loading skeleton,
+                // never a blank/empty table while API responses are incomplete.
+                if (_lastRowsHtml !== "__SKEL__") {
+                    var _sk = '<tr class="empty-row loading-row"><td colspan="' + _colCount + '"><div class="tbl-loading"><span class="msel-spin"></span> Loading stations\u2026 <span class="tbl-loading-sub">fetching MQTT health topics</span></div></td></tr>';
+                    for (var _sr = 0; _sr < 5; _sr++) {
+                        _sk += '<tr class="skel-row"><td><div class="stn-col"><div class="skel w40"></div><div class="skel w70 tall"></div><div class="skel w55"></div></div></td>';
+                        for (var _sc = 1; _sc < _colCount - 1; _sc++) _sk += '<td><div class="skel wcell"></div></td>';
+                        _sk += '<td><div class="skel w40"></div></td></tr>';
+                    }
+                    tb.innerHTML = _sk;
+                    _lastRowsHtml = "__SKEL__";
+                }
+            } else if (_lastRowsHtml !== "__EMPTY__") {
+                tb.innerHTML = '<tr class="empty-row"><td colspan="' + _colCount + '">No health data yet. Connect MQTT or paste JSON.</td></tr>';
+                _lastRowsHtml = "__EMPTY__";
+            }
         } else {
             var _rows = [];
             ev.forEach(function (item) {
@@ -7057,10 +8360,16 @@
                     // to the combined status (both nodes open the same combined payload).
                     function mqCls(nodeEval, nodeData) {
                         if (stale) return "r";
-                        if (!svc.hasTypes) return svc.status === "healthy" ? "g" : (svc.status === "warning" || svc.status === "unknown" ? "a" : "r");
-                        if (!nodeData && !nodeEval) return "u";
+                        // Color rule (from MQTT health property, applied via applyHealthProp):
+                        // ok -> green; down/warning -> yellow; NO DATA -> red.
+                        if (!svc.hasTypes) {
+                            if (svc.status === "unknown") return "r";   // never received data
+                            return svc.status === "healthy" ? "g" : (svc.status === "warning" ? "a" : "r");
+                        }
+                        if (!nodeData && !nodeEval) return "r";          // this node never sent data
                         var st = (nodeEval || {}).status;
-                        return st === "healthy" ? "g" : (st === "warning" || st === "unknown" || !st ? "a" : "r");
+                        if (st === "unknown" || !st) return "r";
+                        return st === "healthy" ? "g" : (st === "warning" ? "a" : "r");
                     }
                     var lcMq = mqCls(svc.localEval, svc.localData);
                     var clMq = mqCls(svc.cloudEval, svc.cloudData);
@@ -7152,9 +8461,25 @@
                         if (!hw.ds && dsc.loading) {
                             return '<td class="' + cls.join(" ") + '"><div class="hw-val ok" title="Loading device status\u2026"><span class="msel-spin"></span></div></td>';
                         }
-                        var tip = hw.ds
-                            ? (hw.ds.online + " online / " + hw.ds.total + " total \u00B7 TCP " + hw.ds.tcpOnline + " \u00B7 MQTT " + hw.ds.mqttOnline)
-                            : (dsc.error ? ("Device status error: " + dsc.error) : "");
+                        // Bifurcated by protocol: TCP up/down/total and MQTT up/down/total
+                        if (hw.ds && num(hw.ds.total) > 0) {
+                            var dTot = num(hw.ds.total);
+                            var tUp = num(hw.ds.tcpOnline), tDn = dTot - tUp;
+                            var mUp = num(hw.ds.mqttOnline), mDn = dTot - mUp;
+                            var splitTip = h.label + " \u2014 TCP: " + tUp + " up / " + tDn + " down of " + dTot +
+                                " \u00B7 MQTT: " + mUp + " up / " + mDn + " down of " + dTot + " (click for details)";
+                            var protoRow = function (lbl, up, dn, tot) {
+                                return '<div class="hw-proto"><span class="hp-lbl">' + lbl + '</span>' +
+                                    '<span class="hp-up" title="' + lbl + ' up">\u2191' + up + '</span>' +
+                                    '<span class="hp-dn' + (dn > 0 ? ' bad' : '') + '" title="' + lbl + ' down">\u2193' + dn + '</span>' +
+                                    '<span class="hp-tot">/' + tot + '</span></div>';
+                            };
+                            var anyDown = (tDn > 0 || mDn > 0);
+                            return '<td class="' + cls.join(" ") + '"><div class="hw-val hw-split ' + (anyDown ? 'issue' : 'ok hw-clickable') + '" title="' + esc(splitTip) + '" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon +
+                                '<div class="hw-proto-wrap">' + protoRow('TCP', tUp, tDn, dTot) + protoRow('MQTT', mUp, mDn, dTot) + '</div></div></td>';
+                        }
+                        // Device status not loaded yet - fall back to the MQTT hardware counts
+                        var tip = dsc.error ? ("Device status error: " + dsc.error) : "";
                         if (total > 0 && bad > 0) {
                             return '<td class="' + cls.join(" ") + '"><div class="hw-val issue" title="' + esc(tip) + '" onclick="HealthDash.openHW(\'' + escapedSid + '\',\'' + h.key + '\')">' + h.icon + '<span class="hw-count">' + bad + '</span><span class="hw-total">/' + total + '</span></div></td>';
                         }
@@ -7178,10 +8503,23 @@
                 }).join("");
                 var rowLastTs = fmtFullTs(stn._updatedAt);
                 var rowStale = isStationStale(stn);
-                var lastDataHtml = rowLastTs
-                    ? '<div class="sid" style="' + (rowStale ? 'color:var(--red)' : '') + '" title="Last MQTT data received' + (rowStale ? ' \u2014 no new data is coming, showing last received data' : '') + '">\u23F1 Last data: ' + esc(rowLastTs) + ' <span style="color:var(--tx4)">(' + esc(fmtAgo(stn._updatedAt) || '') + ')</span></div>'
-                    : '<div class="sid" style="color:var(--tx4)">\u23F1 No data received yet</div>';
-                _rows.push('<tr>' + ('<td><div class="stn-col"><div class="zone">' + esc(stn.zone) + ' \u203A ' + esc(stn.division) + '</div><div class="stn">' + esc(stn.stationName) + '</div><div class="sid">ID: ' + esc(stn.siteId) + '</div>' + lastDataHtml + '</div></td>' + svcCells + hwCells + '<td><div class="act-cell">' +
+                // Overall row status: no data / stale / any critical -> red,
+                // any warning -> amber, otherwise green. Drives the dot + accent bar.
+                var rowStatus = (rowStale || !rowLastTs) ? "r"
+                    : svcs.some(function (s) { return s.status === "critical"; }) ? "r"
+                    : svcs.some(function (s) { return s.status === "warning" || s.status === "unknown"; }) ? "a" : "g";
+                var ageChip = rowLastTs
+                    ? '<span class="age-chip' + (rowStale ? ' stale' : '') + '" title="Last MQTT data received: ' + esc(rowLastTs) + (rowStale ? ' \u2014 no new data is coming, showing last received data' : '') + '">\u23F1 ' + esc(fmtAgo(stn._updatedAt) || '') + '</span>'
+                    : '<span class="age-chip none">\u23F1 no data yet</span>';
+                var lastLine = rowLastTs
+                    ? '<div class="last-line' + (rowStale ? ' stale' : '') + '" title="Last MQTT data received' + (rowStale ? ' \u2014 no new data is coming' : '') + '">Last: ' + esc(rowLastTs) + '</div>'
+                    : '<div class="last-line none">No data received yet</div>';
+                _rows.push('<tr class="row-' + rowStatus + '">' + ('<td><div class="stn-col">' +
+                    '<div class="zone" title="' + esc(stn.zone) + ' \u203A ' + esc(stn.division) + '">' + esc(stn.zone) + ' \u203A ' + esc(stn.division) + '</div>' +
+                    '<div class="stn-row"><span class="stn-dot ' + rowStatus + '"></span><div class="stn" title="' + esc(stn.stationName) + '">' + esc(stn.stationName) + '</div></div>' +
+                    '<div class="stn-meta"><span class="sid-chip">ID ' + esc(stn.siteId) + '</span>' + ageChip + '</div>' +
+                    lastLine +
+                    '</div></td>' + svcCells + hwCells + '<td><div class="act-cell">' +
                     '<button class="hist-btn" onclick="HealthDash.openHistory(\'' + escapedSid + '\')" title="Watch History \u2014 Modem / A10 / Sensors"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>' +
                     '<button class="wrench-btn ' + (fixes.length ? "has-act" : "") + '" onclick="HealthDash.openWrench(\'' + escapedSid + '\')" title="Fix Actions"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></button>' +
                     '</div></td>') + '</tr>');
@@ -7376,10 +8714,119 @@
             '</div></details>';
     }
 
+    // ===== Subscribe-path resolution for the service modal =====
+    // Maps a service card key to its raw payload key (also used further below).
+    function svcRawKeyOf(svcKey) {
+        if (svcKey === "DataRecv") return "dataReceiverHealth";
+        if (svcKey === "Datalogger") return "dataloggerHeartbeat";
+        if (svcKey === "Alert") return "alertHealth";
+        if (svcKey === "Debouncer") return "debouncerHealth";
+        if (svcKey === "Point") return "pointHealth";
+        if (svcKey === "EdgeX") return "edgexHealth";
+        if (svcKey === "Reminder") return "reminderHealth";
+        return null;
+    }
+
+    // Master metadata (name / zone / division) of a site, resolved from ANY
+    // loaded topic of that site. Used when a message arrives on a topic whose
+    // exact meta entry is missing or has no site name, so rows never sit on
+    // "Unknown Site" while other topics of the same site carry the real name.
+    var _siteMetaCache = {};
+    function siteMetaOf(siteId) {
+        var sid = String(siteId);
+        var hit = _siteMetaCache[sid];
+        if (hit && hit.siteName) return hit;
+        var keys = Object.keys(healthTopicMeta || {});
+        for (var i = 0; i < keys.length; i++) {
+            var m = healthTopicMeta[keys[i]];
+            if (m && String(m.siteId) === sid && m.siteName) { _siteMetaCache[sid] = m; return m; }
+        }
+        return hit || null;
+    }
+
+    // Base path of a site, resolved from the loaded topic metadata.
+    function siteBasePathOf(siteId) {
+        var keys = Object.keys(healthTopicMeta || {});
+        for (var i = 0; i < keys.length; i++) {
+            var m = healthTopicMeta[keys[i]];
+            if (m && String(m.siteId) === String(siteId) && m.basePath)
+                return String(m.basePath).replace(/^\/+|\/+$/g, "");
+        }
+        return "";
+    }
+
+    // The topic the dashboard SUBSCRIBES to for a service + node. Used when
+    // no message has arrived yet, so the modal can still show where the data
+    // will come from. Mirrors the subscription set in refreshHealthMqttTopics().
+    function expectedSvcTopic(st, rawKey, node) {
+        var sid = st.siteId, bp = siteBasePathOf(sid);
+        var nd = node || "local";
+        switch (rawKey) {
+            case "dataReceiverHealth": return "datareceiver/" + sid + "/" + nd + "/health";
+            case "debouncerHealth": return "debouncer/" + sid + "/" + nd + "/health";
+            case "pointHealth": return "pointServices/" + sid + "/" + nd + "/health";
+            case "edgexHealth": return "edgex/" + sid + "/" + nd + "/health";
+            case "reminderHealth": return "reminderServices/" + sid + "/cloud/health";
+            case "alertHealth": return bp ? (bp + "/" + nd + "/alerthealth") : "";
+            case "dataloggerHeartbeat":
+            case "dataloggerDiagnostic": return bp ? (bp + "/mqtt/dl/heartbeat") : "";
+        }
+        return "";
+    }
+
+    // Actual topic the last message of this service (+ Local/Cloud node) was
+    // received on; falls back to the expected subscribed topic when nothing
+    // has arrived yet. Returns { topic, live }.
+    function resolvedSvcTopic(st, rawKey, node) {
+        if (!rawKey) return { topic: "", live: false };
+        var typed = (st._svcTypeTopics || {})[rawKey];
+        if (node) {
+            // Data received on the node's own topic (/local/ or /cloud/) - ideal case
+            if (typed && typed[node]) return { topic: typed[node], live: true };
+            var expected = expectedSvcTopic(st, rawKey, node);
+            // This node's data IS arriving, but on a different (legacy combined)
+            // topic - show the node-specific subscribe path plus a "via" note.
+            var nodeSeen = ((st._svcTypeUpdatedAt || {})[rawKey] || {})[node];
+            var lastTopic = (st._svcTopics || {})[rawKey] || "";
+            if (nodeSeen && lastTopic) {
+                return { topic: expected || lastTopic, live: true, via: (expected && lastTopic !== expected) ? lastTopic : "" };
+            }
+            return { topic: expected, live: false };
+        }
+        if ((st._svcTopics || {})[rawKey]) return { topic: st._svcTopics[rawKey], live: true };
+        if (typed && (typed.local || typed.cloud)) return { topic: typed.local || typed.cloud, live: true };
+        return { topic: expectedSvcTopic(st, rawKey, node), live: false };
+    }
+
+    // Top banner of the service modal: the MQTT subscribe path the data is
+    // coming from + the Health status of this service/node.
+    function subscribeTopicBanner(tInfo, healthDisp) {
+        // healthDisp = { label, cls } from healthDisplayOf(): the label is the
+        // EXACT health value from the MQTT payload (not a calculated status).
+        var st = (healthDisp && healthDisp.label) || "no data";
+        var sc = (healthDisp && healthDisp.cls) || "r";
+        var h = '<div class="m-sec svc-topic-banner" style="margin-bottom:12px">';
+        h += '<div class="stb-row"><span class="stb-lbl">\uD83D\uDCE1 Subscribe path</span>';
+        if (tInfo && tInfo.topic) {
+            h += '<code class="stb-topic" title="' + (tInfo.live ? 'MQTT topic this node\u2019s data comes from' : 'Subscribed topic \u2014 no data received on it yet') + '">' + esc(tInfo.topic) + '</code>';
+            h += tInfo.live ? '<span class="stb-live">\u25CF receiving</span>' : '<span class="stb-wait">\u25CB waiting for data</span>';
+            if (tInfo.via) {
+                h += '<span class="stb-via" title="The service currently publishes this node\u2019s data on the legacy combined topic">via <code class="stb-topic stb-topic-sm">' + esc(tInfo.via) + '</code></span>';
+            }
+        } else {
+            h += '<span style="color:var(--tx3);font-size:11px">\u2014 (topic not resolved)</span>';
+        }
+        h += '</div>';
+        h += '<div class="stb-row"><span class="stb-lbl">Health</span><span class="sbadge ' + sc + '">' + esc(st) + '</span></div>';
+        h += '</div>';
+        return h;
+    }
+
     function openSvc(sid, idx, serviceType) {
         var e = window._healthEv.find(function (d) { return String(d.st.siteId) === String(sid); }); if (!e) return;
         currentModal = { kind: "svc", sid: String(sid), idx: idx, serviceType: serviceType || null };
         var svc = e.svcs[idx];
+        var rawKey = svcRawKeyOf(svc.key);   // raw payload key - also drives the subscribe-path banner
 
         var m = document.getElementById("mo"), o = document.getElementById("ov");
 
@@ -7416,10 +8863,13 @@
                 var ndTs = serviceType === "local" ? svc.localLastAt : svc.cloudLastAt;
                 var otherType = serviceType === "local" ? "cloud" : "local";
                 var otherHas = otherType === "local" ? !!(svc.localEval || svc.localData) : !!(svc.cloudEval || svc.cloudData);
-                var ndHtml = '<div class="modal-hdr"><h3>' + svc.icon + ' ' + esc(svc.label) + ' \u2014 ' + ndLabel + ' \u2014 ' + esc(e.st.stationName) + ' <span class="sbadge a">no data</span></h3>';
+                var ndHtml = '<div class="modal-hdr"><h3>' + svc.icon + ' ' + esc(svc.label) + ' \u2014 ' + ndLabel + ' \u2014 ' + esc(e.st.stationName) + ' <span class="sbadge r">no data</span></h3>';
                 ndHtml += '' + modalFsBtn() + '<button class="modal-close" onclick="HealthDash.closeModal()">&#215;</button></div>';
                 ndHtml += '<div class="modal-body">';
                 ndHtml += typeToggleHtml();
+                // Subscribe path + Health at the top - even with no data yet the
+                // user can see exactly which topic this node's data will come from.
+                ndHtml += subscribeTopicBanner(resolvedSvcTopic(e.st, rawKey, serviceType), { label: "no data", cls: "r" });
                 ndHtml += '<div style="text-align:center;padding:36px 16px;color:var(--tx3)">' +
                     '<div style="font-size:30px;margin-bottom:10px">\uD83D\uDCED</div>' +
                     '<div style="font-size:14px;font-weight:700;color:var(--tx2);margin-bottom:6px">No data found</div>' +
@@ -7448,18 +8898,12 @@
             targetLastAt = svc.cloudLastAt || svc.lastReceivedAt;
         }
 
-        var sc = targetEval.status === "healthy" ? "g" : targetEval.status === "warning" || targetEval.status === "unknown" ? "a" : "r";
+        // Health shown EXACTLY as the MQTT payload returned it (health property).
+        // ok -> green; down/warning -> yellow; no data -> red.
+        var hd = healthDisplayOf(targetEval);
+        var sc = hd.cls;
 
-        // Find the raw payload for detailed view
-        var rawKey = null;
-        if (svc.key === "DataRecv") rawKey = "dataReceiverHealth";
-        else if (svc.key === "Datalogger") rawKey = "dataloggerHeartbeat";
-        else if (svc.key === "Alert") rawKey = "alertHealth";
-        else if (svc.key === "Debouncer") rawKey = "debouncerHealth";
-        else if (svc.key === "Point") rawKey = "pointHealth";
-        else if (svc.key === "EdgeX") rawKey = "edgexHealth";
-        else if (svc.key === "Reminder") rawKey = "reminderHealth";
-
+        // Find the raw payload for detailed view (rawKey resolved at the top of openSvc)
         var rawPayload = null;
         if (serviceType && rawKey) {
             var types = (e.st._serviceTypes || {})[rawKey];
@@ -7469,12 +8913,16 @@
         // fall back to the combined payload. Only the combined view may use it.
         if (!rawPayload && !serviceType) rawPayload = (e.st._rawPayloads || {})[rawKey] || null;
 
-        var html = '<div class="modal-hdr"><h3>' + svc.icon + ' ' + esc(targetLabel) + ' \u2014 ' + esc(e.st.stationName) + ' <span class="sbadge ' + sc + '">' + esc(targetEval.status) + '</span></h3>';
+        var html = '<div class="modal-hdr"><h3>' + svc.icon + ' ' + esc(targetLabel) + ' \u2014 ' + esc(e.st.stationName) + ' <span class="sbadge ' + sc + '">' + esc(hd.label) + '</span></h3>';
         html += '' + modalFsBtn() + '<button class="modal-close" onclick="HealthDash.closeModal()">&#215;</button></div>';
         html += '<div class="modal-body">';
 
         // If service has both types, show a tab-like toggle at top of modal
         html += typeToggleHtml();
+
+        // Subscribe path + Health status at the very top of the modal:
+        // shows the exact MQTT topic this node's data is coming from.
+        html += subscribeTopicBanner(resolvedSvcTopic(e.st, rawKey, serviceType), hd);
 
         // Last data received (full timestamp) - always shown
         html += lastReceivedBanner(targetLastAt);
@@ -10919,7 +12367,7 @@ loadDevices();
     }
 
     window.HealthDash = {
-        openSvc: openSvc, openHW: openHW, openWrench: openWrench,
+        openSvc: openSvc, openHW: openHW, openWrench: openWrench, retryTopics: retryTopics,
         openHistory: openHistory, closeHistory: closeHistory, closeGraphPopup: closeGraphPopup, loadSiteDevices: loadSiteDevices,
         mergePayload: mergeHealthPayload, // debug/integration hook: HealthDash.mergePayload(json, topic)
         openPaste: openPaste, doPaste: doPaste, closeModal: closeModal,

@@ -296,11 +296,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                      $"datareceiver/{site.Id}/cloud/health",
                      $"debouncer/{site.Id}/local/health",
                      $"debouncer/{site.Id}/cloud/health",
-
                      $"pointServices/{site.Id}/local/health",
                      $"pointServices/{site.Id}/cloud/health",
-                     // Alert — keep existing /{basePath}/alerthealth, add Local + Cloud
-                    
                      // EdgeX — Local + Cloud
                      $"edgex/{site.Id}/local/health",
                      $"edgex/{site.Id}/cloud/health",

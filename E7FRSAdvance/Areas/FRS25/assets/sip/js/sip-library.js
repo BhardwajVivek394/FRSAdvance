@@ -69,7 +69,7 @@
         siding: '#e8edf6',
 
         labelDefault: '#d7d7d7',
-        labelHi: '#FFC919',
+        labelHi: '#ffffff',          /* was #FFC919 (yellow) — labels are now white */
         labelFont: "'Plus Jakarta Sans', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
     };
 
@@ -92,8 +92,15 @@
         const l = attrLabel(cell);
         return l.text != null ? String(l.text) : '';
     }
+    /* Legacy yellow label colour (#FFC919) is normalised to white so that
+     * previously saved layouts also pick up the new white label styling. */
+    function normaliseLabelFill(fill) {
+        if (!fill) return fill;
+        const f = String(fill).trim().toLowerCase();
+        return (f === '#ffc919' || f === '#fc0' || f === '#ffcc00') ? '#ffffff' : fill;
+    }
     function attrLabelFill(cell) {
-        return attrLabel(cell).fill || T.labelDefault;
+        return normaliseLabelFill(attrLabel(cell).fill) || T.labelDefault;
     }
     function attrLabelSize(cell) {
         return attrLabel(cell).fontSize || 14;
@@ -254,9 +261,10 @@
 
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
-        const labelFill = labelAttrs.fill && labelAttrs.fill !== 'transparent'
-            ? labelAttrs.fill
-            : '#FFC919';
+        const labelFill = normaliseLabelFill(
+            labelAttrs.fill && labelAttrs.fill !== 'transparent'
+                ? labelAttrs.fill
+                : '#ffffff');   /* was #FFC919 — PM labels are white now */
 
         /* PM display options (set from the SIP editor inspector):
            attrs.pm = {
@@ -274,6 +282,22 @@
            NORMAL ⇆ REVERSE transition; cleared automatically after a few
            seconds. Rendered as an SVG opacity pulse on the lit indicator. */
         const pmBlink = !!(cell.attrs && cell.attrs.pmBlink);
+
+        /* Operate direction + effect style:
+           attrs.pmState  — 'N' (normal) | 'R' (reverse); set by telemetry or
+                            the editor preview. Controls the energy-flow
+                            direction along the diagonal.
+           attrs.pm.effect — which visual plays WHILE OPERATING (pmBlink):
+                'pulse'  → classic opacity blink of the indicator (legacy)
+                'ripple' → expanding sonar rings from the indicator
+                'flow'   → animated energy dashes travelling along the diagonal
+                           (direction follows pmState: N→ one way, R→ other)
+                'all'    → everything (default)                              */
+        const pmState = String((cell.attrs && cell.attrs.pmState) || 'N').toUpperCase() === 'R' ? 'R' : 'N';
+        const pmEffect = String(pmProps.effect || 'all').toLowerCase();
+        const fxPulse = pmBlink && (pmEffect === 'pulse' || pmEffect === 'all');
+        const fxRipple = pmBlink && (pmEffect === 'ripple' || pmEffect === 'all');
+        const fxFlow = pmBlink && (pmEffect === 'flow' || pmEffect === 'all');
 
         /* ---- Diagonal rail strip geometry ---- */
         let x1, y1, x2, y2;
@@ -338,12 +362,42 @@
                 `stroke="${strokeC}" stroke-width="${railW + 6}" opacity="0.2" stroke-linecap="round"/>`;
         }
 
+        /* ---- OPERATE EFFECT: energy flow along the diagonal ---- *
+         *  Animated dashes travel along the point blade while the machine
+         *  is throwing. Direction encodes the target position:
+         *      Normal  (N) → dashes flow x1→x2 (with the diagonal)
+         *      Reverse (R) → dashes flow x2→x1 (against the diagonal)
+         *  Colour matches the indicator when lit, cyan otherwise.        */
+        if (fxFlow) {
+            const dashPeriod = 26;                       // 8 dash + 18 gap
+            const flowTo = pmState === 'R' ? dashPeriod : -dashPeriod;
+            const flowCol = indLit ? indFill : '#22d3ee';
+            svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ` +
+                `stroke="${flowCol}" stroke-width="${Math.max(3, railW * 0.42)}" ` +
+                `stroke-dasharray="8 18" stroke-linecap="round" opacity="0.95">` +
+                `<animate attributeName="stroke-dashoffset" from="0" to="${flowTo}" ` +
+                `dur="0.55s" repeatCount="indefinite"/>` +
+                `</line>`;
+            /* soft glow underneath the dashes */
+            svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ` +
+                `stroke="${flowCol}" stroke-width="${railW + 4}" opacity="0.14" stroke-linecap="round">` +
+                `<animate attributeName="opacity" values="0.14;0.3;0.14" dur="1.1s" repeatCount="indefinite"/>` +
+                `</line>`;
+        }
+
         /* ---- Indicator circle — centred but OFFSET below the diagonal ---- *
          *  The circle sits next to the rail strip on the lower/outer side,
          *  not on top of the track. We offset perpendicular to the diagonal
          *  by enough distance to clear the rail body completely.
          * ------------------------------------------------------------------- */
-        const indR = Math.max(10, Math.min(14, Math.min(w, h) * 0.14));
+        /* Indicator circle radius:
+           auto  → scales with the cell size (old behaviour, 10–14 px)
+           user  → attrs.pm.indRadius (set from the SIP editor inspector),
+                   clamped 4–40 px. 0 / missing = auto. */
+        const indRUser = +(pmProps.indRadius) || 0;
+        const indR = indRUser > 0
+            ? Math.max(4, Math.min(40, indRUser))
+            : Math.max(10, Math.min(14, Math.min(w, h) * 0.14));
         const baseOffset = railW / 2 + indR + 3;  // clear the rail edge + circle radius + gap
 
         /* Perpendicular unit vector to the diagonal direction. */
@@ -363,14 +417,30 @@
         const indCx = x + w / 2 + perpX * offsetDist * sign;
         const indCy = y + h / 2 + perpY * offsetDist * sign;
 
-        const blinkAnim = pmBlink && indLit
+        const blinkAnim = fxPulse && indLit
             ? `<animate attributeName="opacity" values="1;0.12;1" dur="0.7s" repeatCount="indefinite"/>`
             : '';
+
+        /* ---- OPERATE EFFECT: sonar ripple rings from the indicator ---- *
+         *  Two staggered rings expand outward and fade while operating —
+         *  reads as "machine in motion" even from a zoomed-out schematic. */
+        if (fxRipple) {
+            const rippleCol = indLit ? indFill : '#22d3ee';
+            for (let ri = 0; ri < 2; ri++) {
+                svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR}" fill="none" ` +
+                    `stroke="${rippleCol}" stroke-width="2">` +
+                    `<animate attributeName="r" values="${indR};${indR + 20}" ` +
+                    `dur="1.3s" begin="${ri * 0.65}s" repeatCount="indefinite"/>` +
+                    `<animate attributeName="opacity" values="0.75;0" ` +
+                    `dur="1.3s" begin="${ri * 0.65}s" repeatCount="indefinite"/>` +
+                    `</circle>`;
+            }
+        }
 
         /* Static dark ring stays solid; the lit parts (glow + fill + shine)
            are grouped so the blink pulses them together. */
         svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 1.5}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.8"/>`;
-        svg += `<g class="sip-pm-ind${pmBlink && indLit ? ' sip-pm-blink' : ''}">`;
+        svg += `<g class="sip-pm-ind${fxPulse && indLit ? ' sip-pm-blink' : ''}">`;
         if (indLit) {
             svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 6}" fill="${indFill}" opacity="0.15"/>`;
             svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 3}" fill="${indFill}" opacity="0.30"/>`;
@@ -399,10 +469,14 @@
             const lx = midX + perpX * labelOff * labelSign;
             const ly = midY + perpY * labelOff * labelSign;
             /* Rotate text to follow the diagonal angle.
-               Ensure text is always readable (not upside-down). */
+               Ensure text is always readable (not upside-down) — including
+               when the WHOLE cell is rotated (cell.angle), since renderCell
+               wraps this output in an outer rotate(). We normalise against
+               the EFFECTIVE on-screen angle (diagonal + cell rotation). */
+            const cellAngle = (((+cell.angle || 0) % 360) + 360) % 360;
             let rotDeg = angDeg;
-            if (rotDeg > 90) rotDeg -= 180;
-            if (rotDeg < -90) rotDeg += 180;
+            let effDeg = ((rotDeg + cellAngle) % 360 + 360) % 360;
+            if (effDeg > 90 && effDeg < 270) rotDeg -= 180;
             svg += `<text x="${lx}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
                 `font-family="${T.labelFont}" font-size="14" font-weight="800" ` +
                 `text-anchor="middle" dominant-baseline="central" paint-order="stroke" ` +
@@ -2348,6 +2422,45 @@
             '<g transform="translate(' + dx + ' ' + dy + ')">' + m + '</g>');
     }
 
+    /* ------------------------------------------------------------------------ *
+     *  keepTextUpright — counter-rotates label text inside a rotated cell so
+     *  the label always reads in the ACTUAL direction (never mirrored /
+     *  upside-down), e.g. a Route/Calling signal rotated 180° keeps "AUG"
+     *  readable instead of showing it flipped.
+     *
+     *  How it works: renderCell wraps the cell SVG in rotate(angle cx cy).
+     *  For every <text> element that has plain x/y coordinates (and no
+     *  renderer-managed transform of its own), we add rotate(-angle x y).
+     *  The composition of the two rotations leaves the text anchored at its
+     *  rotated position but drawn upright. When the rotation horizontally
+     *  flips the asset (90° < angle < 270°) we also swap start/end anchors
+     *  so the text still extends AWAY from the asset, not across it.
+     *
+     *  Opt-out: attrs.label.keepUpright === false restores the old
+     *  rotate-with-the-asset behaviour for that cell.
+     * ------------------------------------------------------------------------ */
+    function keepTextUpright(inner, angle) {
+        const a = (((+angle || 0) % 360) + 360) % 360;
+        if (a < 0.01 || a > 359.99) return inner;
+        const flipped = a > 90 && a < 270;
+        return inner.replace(/<text\b([^>]*)>/g, function (m, attrs) {
+            // Skip text the renderer already orients itself (has a transform).
+            if (/\btransform\s*=/.test(attrs)) return m;
+            const mx = attrs.match(/\bx="(-?[\d.]+)"/);
+            const my = attrs.match(/\by="(-?[\d.]+)"/);
+            if (!mx || !my) return m;
+            let newAttrs = attrs;
+            if (flipped) {
+                newAttrs = newAttrs
+                    .replace(/text-anchor="start"/g, 'text-anchor="__SWAP__"')
+                    .replace(/text-anchor="end"/g, 'text-anchor="start"')
+                    .replace(/text-anchor="__SWAP__"/g, 'text-anchor="end"');
+            }
+            return '<text' + newAttrs +
+                ' transform="rotate(' + (-a).toFixed(2) + ' ' + mx[1] + ' ' + my[1] + ')">';
+        });
+    }
+
     function renderCell(cell) {
         const s = ASSETS[cell.type];
         let inner;
@@ -2368,6 +2481,12 @@
             const h = (cell.size && cell.size.height) || 60;
             const cx = (cell.position && cell.position.x || 0) + w / 2;
             const cy = (cell.position && cell.position.y || 0) + h / 2;
+            /* Keep label text readable in the actual direction unless the
+               cell explicitly opts out via attrs.label.keepUpright === false */
+            const lblOpts = (cell.attrs && cell.attrs.label) || {};
+            if (lblOpts.keepUpright !== false) {
+                inner = keepTextUpright(inner, cell.angle);
+            }
             return `<g transform="rotate(${cell.angle} ${cx} ${cy})">${inner}</g>`;
         }
         return inner;
@@ -2838,7 +2957,7 @@
         }
 
         /* ---- 2. For each PM, compute endpoints and draw stubs ------------ */
-        var PM_ATTACH_TOL = 120;   // max vertical distance to attempt attachment
+        var PM_ATTACH_TOL = 160;   // max vertical distance to attempt attachment
         var STUB_OVERSHOOT = 12;   // extra px past the rail edge for overlap
         var BED_H = 18;            // must match renderRailLayer's BED_H
 
@@ -2914,6 +3033,7 @@
                 /* Parametric: we need uy * t = deltaY  →  t = deltaY / uy
                    If uy is near zero the endpoint is already at rail level. */
                 var stubEndX, stubEndY;
+                var sideSign = deltaY >= 0 ? 1 : -1;   // +1 rail below, −1 rail above
                 if (Math.abs(uy) > 0.05) {
                     var t = deltaY / uy;
                     if (t < 0) continue;  // rail is behind us — wrong direction
@@ -2936,50 +3056,86 @@
                 var pnx = -Math.sin(ang) * railW / 2;
                 var pny = Math.cos(ang) * railW / 2;
 
-                /* === Draw the stub === */
+                /* === Draw the stub — PROPER TURNOUT MERGE =================== *
+                 *  The stub is split at the rail bed's NEAR edge:
+                 *    Segment A (endpoint → near edge)   full rail styling
+                 *    Segment B (near edge → past centre) grey body ONLY, so it
+                 *      buries into the bed with no white seam crossing it
+                 *  A rounded grey "elbow" disc at the crossing point opens the
+                 *  bed's white edge line smoothly — like a real turnout throat.
+                 * ============================================================= */
                 drewAnything = true;
 
-                /* Body polygon */
-                var poly = [
-                    [epX + pnx, epY + pny],
-                    [stubEndX + pnx, stubEndY + pny],
-                    [stubEndX - pnx, stubEndY - pny],
-                    [epX - pnx, epY - pny]
-                ].map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
-                svg += '<polygon points="' + poly + '" fill="#7E7E7E"/>';
+                var sux = Math.cos(ang);
+                var suy = Math.sin(ang);
 
-                /* White edge lines */
-                svg += '<line x1="' + (epX + pnx) + '" y1="' + (epY + pny) +
-                    '" x2="' + (stubEndX + pnx) + '" y2="' + (stubEndY + pny) +
-                    '" stroke="white" stroke-width="1" opacity="0.7"/>';
-                svg += '<line x1="' + (epX - pnx) + '" y1="' + (epY - pny) +
-                    '" x2="' + (stubEndX - pnx) + '" y2="' + (stubEndY - pny) +
-                    '" stroke="white" stroke-width="1" opacity="0.7"/>';
+                /* Where the stub centreline crosses the bed's NEAR edge */
+                var nearEdgeY = railY - sideSign * (BED_H / 2);
+                var tNear = Math.abs(suy) > 0.05
+                    ? (nearEdgeY - epY) / suy
+                    : segLen;                       // horizontal case: no split
+                tNear = Math.max(0, Math.min(segLen, tNear));
+                var nearX = epX + sux * tNear;
+                var nearY = epY + suy * tNear;
 
-                /* Yellow centreline (matches PM's merge line) */
+                /* Segment B end: overshoot past the centreline into the far
+                   half of the bed so the merge is fully covered. */
+                var tFar = Math.abs(suy) > 0.05
+                    ? (railY + sideSign * (BED_H / 2 - 2) - epY) / suy
+                    : segLen;
+                tFar = Math.max(tNear, Math.min(segLen + BED_H, tFar));
+                var farX = epX + sux * tFar;
+                var farY = epY + suy * tFar;
+
+                /* --- Segment A body + white edges + yellow line ------------- */
+                if (tNear > 1) {
+                    var polyA = [
+                        [epX + pnx, epY + pny],
+                        [nearX + pnx, nearY + pny],
+                        [nearX - pnx, nearY - pny],
+                        [epX - pnx, epY - pny]
+                    ].map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
+                    svg += '<polygon points="' + polyA + '" fill="#7E7E7E"/>';
+                    svg += '<line x1="' + (epX + pnx) + '" y1="' + (epY + pny) +
+                        '" x2="' + (nearX + pnx) + '" y2="' + (nearY + pny) +
+                        '" stroke="white" stroke-width="1" opacity="0.7"/>';
+                    svg += '<line x1="' + (epX - pnx) + '" y1="' + (epY - pny) +
+                        '" x2="' + (nearX - pnx) + '" y2="' + (nearY - pny) +
+                        '" stroke="white" stroke-width="1" opacity="0.7"/>';
+                }
+
+                /* --- Segment B: grey body only, buried into the bed ---------- */
+                if (tFar - tNear > 0.5) {
+                    var polyB = [
+                        [nearX + pnx, nearY + pny],
+                        [farX + pnx, farY + pny],
+                        [farX - pnx, farY - pny],
+                        [nearX - pnx, nearY - pny]
+                    ].map(function (p) { return p[0] + ',' + p[1]; }).join(' ');
+                    svg += '<polygon points="' + polyB + '" fill="#7E7E7E"/>';
+                }
+
+                /* --- Rounded elbow at the throat (opens the bed edge) -------- */
+                svg += '<circle cx="' + nearX + '" cy="' + nearY +
+                    '" r="' + (railW * 0.8) + '" fill="#7E7E7E"/>';
+
+                /* --- Yellow centreline runs the full way to the rail centre - */
                 svg += '<line x1="' + epX + '" y1="' + epY +
                     '" x2="' + stubEndX + '" y2="' + stubEndY +
                     '" stroke="#FFC919" stroke-width="1.5" opacity="0.8" stroke-linecap="round"/>';
 
-                /* Sleeper cross-marks */
+                /* --- Sleeper cross-marks (only on the exposed segment A) ----- */
                 var sleeperGap = Math.max(3, segLen / 12);
                 var sleeperHalf = railW * 0.55;
-                var sux = Math.cos(ang);
-                var suy = Math.sin(ang);
                 var spx = -suy;
                 var spy = sux;
-                for (var st = sleeperGap; st < segLen - sleeperGap * 0.5; st += sleeperGap) {
+                for (var st = sleeperGap; st < tNear - sleeperGap * 0.4; st += sleeperGap) {
                     var scx = epX + sux * st;
                     var scy = epY + suy * st;
                     svg += '<line x1="' + (scx - spx * sleeperHalf) + '" y1="' + (scy - spy * sleeperHalf) +
                         '" x2="' + (scx + spx * sleeperHalf) + '" y2="' + (scy + spy * sleeperHalf) +
                         '" stroke="#515151" stroke-width="1"/>';
                 }
-
-                /* Junction dot — a small circle at the rail-band end to
-                   visually "anchor" the connection point on the rail. */
-                svg += '<circle cx="' + stubEndX + '" cy="' + stubEndY +
-                    '" r="' + (railW / 2 + 1) + '" fill="#7E7E7E" stroke="white" stroke-width="0.8"/>';
             }
         }
         svg += '</g>';

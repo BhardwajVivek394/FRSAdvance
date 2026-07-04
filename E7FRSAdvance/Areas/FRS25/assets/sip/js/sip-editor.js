@@ -760,6 +760,13 @@
                 `style="width:52px;margin-left:4px;" title="Free rotation"/>`;
             html += `</div></div>`;
 
+            /* ---- Keep label upright (readable in the actual direction) ---- */
+            const keepUpright = !(c.attrs && c.attrs.label && c.attrs.label.keepUpright === false);
+            html += `<div class="field" style="display:flex;align-items:center;gap:8px;">` +
+                `<input type="checkbox" id="insp-label-upright" ${keepUpright ? 'checked' : ''} style="width:auto;">` +
+                `<label for="insp-label-upright" style="margin:0;">Keep label readable when rotated</label></div>` +
+                `<small class="muted">On: label text stays upright / un-mirrored at any rotation. Off: label rotates with the asset.</small>`;
+
             /* ---- Stand position: visual compass grid (3×3) ---- *
              *  The 3×3 grid represents 8 attachment positions around the
              *  signal body + centre = none.
@@ -910,6 +917,7 @@
             const pmLabelSide = String(pmProps.labelSide || (c.attrs && c.attrs.label && c.attrs.label.side) || 'auto').toLowerCase();
             const pmLabelOffset = Math.max(0, +pmProps.labelOffset || 0);
             const pmIndOffset = +(pmProps.indOffset) || 0;
+            const pmIndRadius = +(pmProps.indRadius) || 0;   // 0 = auto
             const sideIsOpp = (pmLabelSide === 'opposite' || pmLabelSide === 'reverse' || pmLabelSide === 'flip');
             html += `<div class="tb-group-h" style="margin-top:14px">Point Machine</div>`;
             html += `<div class="field"><label>Name (label) side</label>` +
@@ -927,6 +935,28 @@
                 `<button type="button" id="insp-pm-ind-reset" style="background:rgba(255,46,46,0.12);` +
                 `border:1px solid rgba(255,46,46,0.4);color:#ff8a8a;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:12px;">Reset</button>` +
                 `<span class="muted" style="font-size:11px;">− up · + down</span></div></div>`;
+            html += `<div class="field"><label>Indicator circle radius (px)</label>` +
+                `<input type="range" id="insp-pm-ind-radius" value="${pmIndRadius || 12}" min="4" max="40" step="0.5" style="width:100%;"/>` +
+                `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">` +
+                `<input type="number" id="insp-pm-ind-radius-num" value="${pmIndRadius || ''}" min="4" max="40" step="0.5" style="width:70px;" placeholder="auto"/>` +
+                `<button type="button" id="insp-pm-ind-radius-reset" style="background:rgba(255,46,46,0.12);` +
+                `border:1px solid rgba(255,46,46,0.4);color:#ff8a8a;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:12px;">Auto</button>` +
+                `<span class="muted" style="font-size:11px;">blank / Auto = size-based</span></div></div>`;
+            /* ---- Operate effect (normal ⇆ reverse animation) ---- */
+            const pmEffect = String(pmProps.effect || 'all').toLowerCase();
+            const _fxOpt = (v, t) => `<option value="${v}" ${pmEffect === v ? 'selected' : ''}>${t}</option>`;
+            html += `<div class="field"><label>Operate effect (while throwing N ⇆ R)</label>` +
+                `<select id="insp-pm-effect">` +
+                _fxOpt('all', 'All — pulse + ripple + energy flow') +
+                _fxOpt('pulse', 'Pulse — indicator blink (classic)') +
+                _fxOpt('ripple', 'Ripple — sonar rings from indicator') +
+                _fxOpt('flow', 'Flow — energy dashes along the blade') +
+                `</select>` +
+                `<small class="muted">Flow direction follows the target position: Normal → with the diagonal, Reverse → against it.</small></div>`;
+            html += `<div style="display:flex;align-items:center;gap:8px;margin:2px 0 6px;">` +
+                `<button type="button" id="insp-pm-test-n" class="tb" style="font-size:12px;padding:4px 10px;">▶ Test Normal</button>` +
+                `<button type="button" id="insp-pm-test-r" class="tb" style="font-size:12px;padding:4px 10px;">▶ Test Reverse</button>` +
+                `<span class="muted" style="font-size:11px;">3&nbsp;s preview on canvas</span></div>`;
         }
 
         html += `<div class="insp-actions">`;
@@ -1039,6 +1069,66 @@
                     pushHistory();
                 });
             }
+            // Indicator circle RADIUS — slider and number input stay in sync,
+            // both write attrs.pm.indRadius (0 / blank = auto size-based).
+            const setIndRadius = (v, fromSlider) => {
+                const clamped = Math.max(4, Math.min(40, v));
+                ensurePm().indRadius = clamped;
+                const slider = $('#insp-pm-ind-radius');
+                const num = $('#insp-pm-ind-radius-num');
+                if (slider && !fromSlider) slider.value = clamped;
+                if (num && fromSlider) num.value = clamped;
+                render(true);
+            };
+            const pmRadSlider = $('#insp-pm-ind-radius');
+            if (pmRadSlider) {
+                pmRadSlider.addEventListener('input', () => { const v = parseFloat(pmRadSlider.value); if (!isNaN(v)) setIndRadius(v, true); });
+                pmRadSlider.addEventListener('change', () => { render(); pushHistory(); });
+            }
+            const pmRadNum = $('#insp-pm-ind-radius-num');
+            if (pmRadNum) {
+                pmRadNum.addEventListener('input', () => {
+                    if (pmRadNum.value === '') { delete ensurePm().indRadius; render(true); return; }
+                    const v = parseFloat(pmRadNum.value); if (!isNaN(v)) setIndRadius(v, false);
+                });
+                pmRadNum.addEventListener('change', () => { render(); pushHistory(); });
+            }
+            const pmRadReset = $('#insp-pm-ind-radius-reset');
+            if (pmRadReset) {
+                pmRadReset.addEventListener('click', () => {
+                    delete ensurePm().indRadius;
+                    const slider = $('#insp-pm-ind-radius'); if (slider) slider.value = 12;
+                    const num = $('#insp-pm-ind-radius-num'); if (num) num.value = '';
+                    render();
+                    pushHistory();
+                });
+            }
+            /* ---- Operate effect select + 3s test preview ---- */
+            const pmFxEl = $('#insp-pm-effect');
+            if (pmFxEl) {
+                pmFxEl.addEventListener('change', () => {
+                    ensurePm().effect = pmFxEl.value;
+                    render();
+                    pushHistory();
+                });
+            }
+            const runPmTest = (state) => {
+                c.attrs = c.attrs || {};
+                c.attrs.pmBlink = true;
+                c.attrs.pmState = state;
+                render();
+                if (c._pmTestTimer) clearTimeout(c._pmTestTimer);
+                c._pmTestTimer = setTimeout(() => {
+                    delete c.attrs.pmBlink;
+                    delete c.attrs.pmState;
+                    delete c._pmTestTimer;
+                    render();
+                }, 3000);
+            };
+            const pmTestN = $('#insp-pm-test-n');
+            if (pmTestN) pmTestN.addEventListener('click', () => runPmTest('N'));
+            const pmTestR = $('#insp-pm-test-r');
+            if (pmTestR) pmTestR.addEventListener('click', () => runPmTest('R'));
         }
 
         /* ---- Signal / Shunt inspector bindings ---- */
@@ -1194,6 +1284,22 @@
             bindInspectorInputNum('insp-angle', v => {
                 c.angle = ((v % 360) + 360) % 360;
             });
+
+            /* ---- Keep label upright toggle ---- */
+            const uprightEl = $('#insp-label-upright');
+            if (uprightEl) {
+                uprightEl.addEventListener('change', () => {
+                    c.attrs = c.attrs || {};
+                    c.attrs.label = c.attrs.label || {};
+                    if (uprightEl.checked) {
+                        delete c.attrs.label.keepUpright;   // default = upright
+                    } else {
+                        c.attrs.label.keepUpright = false;  // rotate with asset
+                    }
+                    render();
+                    pushHistory();
+                });
+            }
 
             /* ---- Compass grid: stand position ---- */
             const compassEl = $('#insp-compass');
@@ -1940,7 +2046,7 @@
                     cells.push(newCell(stencil, x, y, w, h, {
                         body: { type: 'path', fill: 'none', stroke: '#6a7596', strokeWidth: 3 },
                         circle1: { cx: isMirror ? 54 : 35, cy: isMirror ? 50 : 54, r: 6, stroke: 'black', fill: '#d4d4d4' },
-                        label: { text: lbl, fill: '#FFC919', fontSize: 14, fontWeight: 'bold' }
+                        label: { text: lbl, fill: '#ffffff', fontSize: 14, fontWeight: 'bold' }
                     }));
                     emittedPM[k] = true;
                     break;
