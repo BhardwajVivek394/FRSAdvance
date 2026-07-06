@@ -319,9 +319,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         // ===== REPLACE your existing GetSMSLogList method in FRS25 Area UserSiteController =====
 
-        public ActionResult GetSMSLogList(List<int> siteIds)
+        [HttpPost]
+        public JsonResult GetSMSLogList(List<int> siteIds)
         {
-            var smsSiteIds = new List<int>();
+            var smsAlerts = new List<FRSAlert>();
             var mHooterSetting = GetSetting();
 
             try
@@ -344,31 +345,23 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         var smsIds = oldSMSLogs.Select(x => x.Id).ToList();
                         var newAlerts = mFRSAlertLister.mFRSAlerts.Where(x => !smsIds.Contains(x.Id)).ToList();
 
-                        // Add only new ones to the existing list
                         oldSMSLogs.AddRange(newAlerts);
                         TempData[$"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}"] = oldSMSLogs;
                         TempData.Keep();
                     }
                     else
                     {
-                        // First time — store all alerts
                         oldSMSLogs = mFRSAlertLister.mFRSAlerts;
                         TempData.Remove($"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}");
                         TempData[$"TempSiteHooterFRSAlert{ClsHttpContent.LoginUser.Id}"] = oldSMSLogs;
                         TempData.Keep();
                     }
 
-                    // FIX: Build site IDs from ALL alerts in TempData (old + new)
-                    // Previously this used mFRSAlertLister.mFRSAlerts which was filtered to new-only
-                    var groupedCustomerList = oldSMSLogs.GroupBy(u => u.SiteId).Select(grp => grp.Key).ToList();
-                    if (groupedCustomerList != null && groupedCustomerList.Count > 0)
-                    {
-                        foreach (var siteId in groupedCustomerList)
-                        {
-                            if (smsSiteIds.Where(x => x == siteId).Count() <= 0)
-                                smsSiteIds.Add(siteId);
-                        }
-                    }
+                    // CHANGED: return the full alert objects (scoped to requested siteIds) instead of bare site IDs
+                    smsAlerts = oldSMSLogs
+                        .Where(x => siteIds == null || siteIds.Count == 0 || siteIds.Contains(x.SiteId))
+                        .OrderByDescending(x => x.SetTimeStamp)
+                        .ToList();
                 }
                 else
                 {
@@ -380,9 +373,41 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             {
             }
 
-            var jsonResult = Json(smsSiteIds, JsonRequestBehavior.AllowGet);
+            var jsonResult = Json(smsAlerts, JsonRequestBehavior.AllowGet);
             jsonResult.MaxJsonLength = int.MaxValue;
             return jsonResult;
+        }
+
+        [HttpPost]
+        public JsonResult GetAssetTelemetry(int siteId, int assetId)
+        {
+            var result = new { Values = new List<double>(), Unit = "" };
+            try
+            {
+                if (assetId > 0)
+                {
+                    using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                    {
+                        // TODO: point this at your real telemetry-history API/route
+                        var response = hcf.client.GetAsync(string.Format("Telemetry/GetAssetHistory/{0}?hours=24", assetId)).Result;
+                        if (response.StatusCode == HttpStatusCode.OK)
+                        {
+                            string jsonString = response.Content.ReadAsStringAsync().Result;
+                            // Expecting something like: [{ "Timestamp": "...", "Value": 12.3, "Unit": "V" }, ...]
+                            var points = JsonConvert.DeserializeObject<List<dynamic>>(jsonString);
+                            if (points != null && points.Count > 0)
+                            {
+                                var values = points.Select(p => (double)p.Value).ToList();
+                                var unit = (string)(points[0].Unit ?? "");
+                                result = new { Values = values, Unit = unit };
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+
+            return Json(result, JsonRequestBehavior.AllowGet);
         }
 
         public ActionResult UserHistory(int siteId)

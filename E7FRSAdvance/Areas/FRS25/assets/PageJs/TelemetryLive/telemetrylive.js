@@ -12910,7 +12910,7 @@ function prependPmOperationRow(assetId, row, showA, showB) {
 
     var dirPrefix = (row.operationType === 'Normal') ? 'N' : 'R';
     var html = '<tr data-ts="' + (row.timestampDevice || '') + '" data-optype="' + (row.operationType || '') + '" class="pm-val-flash-anim">';
-    html += '<td class="pm-date-cell">' + row.date + '</td>';
+    html += '<td class="pm-date-cell" data-hist-id="' + assetId + '">' + row.date + '</td>';
     html += '<td>' + pmEsc(row.name) + '</td>';
     html += '<td>' + row.dir + '</td>';
     html += '<td>'
@@ -13024,7 +13024,7 @@ function refreshPmOperationTable(assetId, hist, showA, showB) {
         var dirPrefix = (r.operationType === 'Normal') ? 'N' : 'R';
         rows += '<tr data-ts="' + (r.timestampDevice || '') + '" data-optype="' + (r.operationType || '') + '"'
             + (i === 0 ? ' class="pm-val-flash-anim"' : '') + '>';
-        rows += '<td class="pm-date-cell">' + r.date + '</td>';
+        rows += '<td class="pm-date-cell" data-hist-id="' + assetId + '">' + r.date + '</td>';
         rows += '<td>' + pmEsc(r.name) + '</td>';
         rows += '<td>' + r.dir + '</td>';
         rows += '<td>'
@@ -14131,7 +14131,7 @@ function buildPmDataRow(assetId, pm) {
         var isLatest = (i === hist.length - 1);
         rows += '<tr' + (isLatest ? ' class="pm-val-flash-anim"' : '') + '>';
         // Col 1: Date
-        rows += '<td class="pm-date-cell">' + r.date + '</td>';
+        rows += '<td class="pm-date-cell" data-hist-id="' + assetId + '">' + r.date + '</td>';
         // Col 2: Name
         rows += '<td>' + pmEsc(r.name) + '</td>';
         // Col 3: Direction
@@ -22498,3 +22498,188 @@ window.renderSignalGroupedTables = function () {
     }, 80);
 };
 // ============================ END SIGNAL SUBSYSTEM (616) =========================
+
+
+
+
+
+
+
+
+
+/* ===================== INLINE POINT-MACHINE DAY HISTORY (plus icon, no modal) ===================== */
+(function () {
+    // ---- styles ----
+    function _pmHistEnsureStyles() {
+        if (document.getElementById('pmHistInlineStyles')) return;
+        var st = document.createElement('style');
+        st.id = 'pmHistInlineStyles';
+        st.textContent = [
+            '.pm-hist-toggle{cursor:pointer;margin-left:7px;font-size:11px;color:#38bdf8;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;transition:transform .15s,background .15s;vertical-align:middle;}',
+            '.pm-hist-toggle:hover{background:rgba(56,189,248,.18);}',
+            '.pm-hist-toggle.open{transform:rotate(45deg);color:#f472b6;}',
+            '.pm-hist-inline{margin:6px 0 4px 0;border:1px solid rgba(56,189,248,.35);border-radius:8px;overflow:hidden;background:#0b1220;box-shadow:0 2px 10px rgba(0,0,0,.25);}',
+            '.pm-hist-inline-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:linear-gradient(90deg,#0f2233,#0b1220);border-bottom:1px solid rgba(56,189,248,.25);}',
+            '.pm-hist-inline-title{font-size:12.5px;font-weight:600;color:#e2e8f0;}',
+            '.pm-hist-inline-close{cursor:pointer;color:#94a3b8;font-size:14px;padding:2px 6px;border-radius:4px;}',
+            '.pm-hist-inline-close:hover{color:#f472b6;background:rgba(244,114,182,.12);}',
+            '.pm-hist-inline-body{max-height:340px;overflow:auto;}',
+            '.pm-hist-loader{padding:26px;text-align:center;color:#94a3b8;font-size:13px;}',
+            '.pm-hist-spinner{width:22px;height:22px;border:3px solid rgba(56,189,248,.25);border-top-color:#38bdf8;border-radius:50%;margin:0 auto 10px;animation:pmHistSpin .8s linear infinite;}',
+            '@keyframes pmHistSpin{to{transform:rotate(360deg);}}',
+            '.pm-hist-tbl{width:100%;border-collapse:collapse;font-size:12px;}',
+            '.pm-hist-tbl th{position:sticky;top:0;background:#0f2233;color:#7dd3fc;font-weight:600;padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(56,189,248,.3);}',
+            '.pm-hist-tbl td{padding:7px 10px;border-bottom:1px solid rgba(148,163,184,.12);color:#e2e8f0;white-space:nowrap;}',
+            '.pm-hist-tbl tr:hover td{background:rgba(56,189,248,.06);}',
+            '.pm-hist-sum{padding:8px 12px;font-size:11.5px;color:#94a3b8;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid rgba(148,163,184,.12);}',
+            '.pm-hist-dir-N{color:#34d399;font-weight:600;}',
+            '.pm-hist-dir-R{color:#fb923c;font-weight:600;}'
+        ].join('');
+        document.head.appendChild(st);
+    }
+
+    // ---- time parse helper ----
+    function pmgParseTime(ts) {
+        if (!ts) return null;
+        var d = new Date(String(ts).replace(' ', 'T'));
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    // ---- build row objects from history API Data ----
+    function buildPmDayHistoryRows(data) {
+        var out = [];
+        if (!data || !data.length) return out;
+        for (var i = 0; i < data.length; i++) {
+            var pt = data[i];
+            var t = pmgParseTime(pt.TimeStamp || pt.timestampDevice || pt.Time);
+            if (!t) continue;
+            var isReverse = decodePmAttribute(pt, PM_BASE_CODES.reverse.AC + 6) > 0 ||
+                (pt.OperationType === 'Reverse');
+            var base = isReverse ? PM_BASE_CODES.reverse : PM_BASE_CODES.normal;
+            out.push({
+                ms: t.getTime(),
+                time: pmPad2(t.getHours()) + ':' + pmPad2(t.getMinutes()) + ':' + pmPad2(t.getSeconds()),
+                direction: isReverse ? 'Reverse' : 'Normal',
+                aCMax: decodePmAttribute(pt, base.AC + 4),
+                aCAvg: decodePmAttribute(pt, base.AC + 2),
+                aVAvg: decodePmAttribute(pt, base.AV + 2),
+                aTOp: decodePmAttribute(pt, base.AC + 5),
+                bCMax: decodePmAttribute(pt, base.BC + 4),
+                bCAvg: decodePmAttribute(pt, base.BC + 2),
+                bVAvg: decodePmAttribute(pt, base.BV + 2),
+                bTOp: decodePmAttribute(pt, base.BC + 5)
+            });
+        }
+        out.sort(function (a, b) { return b.ms - a.ms; });
+        return out;
+    }
+
+    // ---- render table html string ----
+    function renderPmDayHistoryTable(rows) {
+        _pmHistEnsureStyles();
+        if (!rows.length) {
+            return '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;">No operations recorded today for this point machine.</div>';
+        }
+        var nN = 0, nR = 0;
+        for (var c = 0; c < rows.length; c++) { if (rows[c].direction === 'Reverse') nR++; else nN++; }
+        var last = rows[rows.length - 1].time, first = rows[0].time;
+        var html = '<div class="pm-hist-sum"><span>' + rows.length + ' operations \u00b7 Normal ' + nN + ' \u00b7 Reverse ' + nR +
+            '</span><span>' + last + ' \u2013 ' + first + ' \u00b7 newest first</span></div>';
+        html += '<table class="pm-hist-tbl"><thead><tr>' +
+            '<th>Time</th><th>Direction</th><th>A \u00b7 IPT Max/Avg</th><th>A \u00b7 VPT 110</th><th>A \u00b7 TPT ms</th>' +
+            '<th>B \u00b7 IPT Max/Avg</th><th>B \u00b7 VPT 110</th><th>B \u00b7 TPT ms</th></tr></thead><tbody>';
+        function n2(v) { return (v == null || isNaN(v)) ? '-' : Number(v).toFixed(2); }
+        function n0(v) { return (v == null || isNaN(v)) ? '-' : Math.round(v); }
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i], dc = r.direction === 'Reverse' ? 'pm-hist-dir-R' : 'pm-hist-dir-N';
+            html += '<tr><td>' + r.time + '</td><td class="' + dc + '">' + r.direction + '</td>' +
+                '<td>' + n2(r.aCMax) + ' / ' + n2(r.aCAvg) + '</td><td>' + n2(r.aVAvg) + '</td><td>' + n0(r.aTOp) + '</td>' +
+                '<td>' + n2(r.bCMax) + ' / ' + n2(r.bCAvg) + '</td><td>' + n2(r.bVAvg) + '</td><td>' + n0(r.bTOp) + '</td></tr>';
+        }
+        return html + '</tbody></table>';
+    }
+
+    // ---- toggle inline panel inside the card ----
+    window._pmHistInlineReq = window._pmHistInlineReq || {};
+    function fnTogglePmInlineHistory(assetId, dateCell) {
+        var card = dateCell.closest('.pm-card-wrapper') || document.getElementById('pmCard_' + assetId);
+        if (!card) return;
+        var toggleIc = dateCell.querySelector('.pm-hist-toggle');
+        var existing = card.querySelector('.pm-hist-inline');
+        if (existing) {
+            existing.parentNode.removeChild(existing);
+            if (toggleIc) toggleIc.classList.remove('open');
+            return;
+        }
+        if (toggleIc) toggleIc.classList.add('open');
+
+        var asset = wsLiveData[assetId];
+        var baseName = (asset && asset.AssetName) || assetId;
+        var name = (String(baseName).indexOf('PT-') === 0) ? baseName : 'PT-' + baseName;
+        var now = new Date();
+        var start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        var title = name + ' \u2014 Operation History (' + pmPad2(now.getDate()) + '/' + pmPad2(now.getMonth() + 1) + '/' + now.getFullYear() + ')';
+
+        _pmHistEnsureStyles();
+        var panel = document.createElement('div');
+        panel.className = 'pm-hist-inline';
+        panel.setAttribute('data-hist-panel', assetId);
+        panel.innerHTML =
+            '<div class="pm-hist-inline-head">' +
+            '<span class="pm-hist-inline-title">' + title + '</span>' +
+            '<span class="pm-hist-inline-close" title="Collapse"><i class="fas fa-times"></i></span>' +
+            '</div>' +
+            '<div class="pm-hist-inline-body"><div class="pm-hist-loader"><div class="pm-hist-spinner"></div><div>Loading same-day history\u2026</div></div></div>';
+
+        var tblResp = card.querySelector('.table-responsive');
+        if (tblResp && tblResp.parentNode) tblResp.parentNode.insertBefore(panel, tblResp.nextSibling);
+        else card.appendChild(panel);
+
+        panel.querySelector('.pm-hist-inline-close').addEventListener('click', function () {
+            if (panel.parentNode) panel.parentNode.removeChild(panel);
+            if (toggleIc) toggleIc.classList.remove('open');
+        });
+
+        var body = panel.querySelector('.pm-hist-inline-body');
+        var myReq = (window._pmHistInlineReq[assetId] = (window._pmHistInlineReq[assetId] || 0) + 1);
+        var url = HISTORY_API_BASE + '?assetId=' + assetId + '&startDate=' + formatDateForHistoryApi(start) + '&endDate=' + formatDateForHistoryApi(now);
+        $.ajax({ url: url, type: 'GET', dataType: 'json', timeout: 60000 }).then(function (r) {
+            if (myReq !== window._pmHistInlineReq[assetId] || !panel.parentNode) return;
+            var rows = buildPmDayHistoryRows((r && r.Data) ? r.Data : []);
+            var dayStart = start.getTime();
+            rows = rows.filter(function (rw) { return rw.ms >= dayStart; });
+            body.innerHTML = renderPmDayHistoryTable(rows);
+        }, function () {
+            if (myReq !== window._pmHistInlineReq[assetId] || !panel.parentNode) return;
+            body.innerHTML = '<div style="padding:30px;text-align:center;color:#b91c1c;">Failed to load history data. Please try again.</div>';
+        });
+    }
+
+    // ---- put a plus icon on every date cell (idempotent) ----
+    function _pmSyncPlusIcons() {
+        var cells = document.querySelectorAll('td.pm-date-cell[data-hist-id]');
+        for (var i = 0; i < cells.length; i++) {
+            var c = cells[i];
+            if (c.querySelector('.pm-hist-toggle')) continue;
+            var tog = document.createElement('span');
+            tog.className = 'pm-hist-toggle';
+            tog.title = 'Show / hide same-day operation history';
+            tog.innerHTML = '<i class="fas fa-plus"></i>';
+            if (c.closest('.pm-card-wrapper') && c.closest('.pm-card-wrapper').querySelector('.pm-hist-inline')) tog.classList.add('open');
+            c.appendChild(tog);
+        }
+    }
+    window._pmSyncPlusIcons = _pmSyncPlusIcons;
+
+    // ---- delegated click: only the plus toggle opens/closes ----
+    $(document).off('click.pmInlineHist').on('click.pmInlineHist', 'td.pm-date-cell[data-hist-id] .pm-hist-toggle', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var cell = this.closest('td.pm-date-cell');
+        if (cell) fnTogglePmInlineHistory(cell.getAttribute('data-hist-id'), cell);
+    });
+
+    // keep icons present after live re-renders
+    if (window._pmPlusSyncInterval) clearInterval(window._pmPlusSyncInterval);
+    window._pmPlusSyncInterval = setInterval(function () { try { _pmSyncPlusIcons(); } catch (e) { } }, 1500);
+    _pmSyncPlusIcons();
+})();
