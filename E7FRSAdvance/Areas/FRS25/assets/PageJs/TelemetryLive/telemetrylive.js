@@ -5775,6 +5775,20 @@ function updateMainSignalLights(assetId) {
     var _ss = (typeof computeSignalState === 'function') ? computeSignalState(assetId) : null;
     if (_ss) { signalState[assetId] = _ss; }
     var currentSignal = _ss ? _signalAspectToPainterKey(_ss.aspect) : 'none';
+    // ── S-35 painter fallback (clearance item #2) ───────────────────────────────
+    // Never leave the head fully dark when there is positive evidence it should be
+    // lit: an energised RG current / RECR pickup means RED even if computeSignalState
+    // abstained (e.g. ZeroOffset threshold not yet confirmed on the first paint); and
+    // a transient INACTIVE during a WS gap keeps the last painted state.
+    if (currentSignal === 'none') {
+        var _recrPickup = (typeof isSignalRelayPickup === 'function' && asset.dlRelays)
+            ? isSignalRelayPickup(asset.dlRelays, 'RECR') : false;
+        if ((typeof rgMa === 'number' && rgMa > threshold) || _recrPickup) {
+            currentSignal = 'red';
+        } else if (lastSignalState[assetId]) {
+            currentSignal = lastSignalState[assetId];
+        }
+    }
     if (currentSignal !== 'none') lastSignalState[assetId] = currentSignal;
 
     // ==============================
@@ -11098,7 +11112,7 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
 // Ensure the PM-aware loader is reachable from the view's pill handler.
 window.loadAssetNumbersMulti = loadAssetNumbersMulti;
 
-function GetDivisionByZone(zoneId) { if (!zoneId || zoneId === '' || zoneId === '0') { return; } $("#loader").show(); $.ajax({ url: '/FRS25/Telemetry/GetDivisionByZoneId', type: 'POST', data: JSON.stringify({ zoneId: zoneId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $("#drpDivisions").empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpDivisions").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $("#drpSite").empty().append('<option value="">All</option>'); $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); } }); }
+function GetDivisionByZone(zoneId) { if (!zoneId || zoneId === '' || zoneId === '0') { return; } $("#loader").show(); /* clearance item #5: Zone->Division cascade loading state so the Division box never flashes empty mid-request */ var $div = $("#drpDivisions"); $div.prop('disabled', true).empty().append('<option value="">Loading divisions…</option>'); $.ajax({ url: '/FRS25/Telemetry/GetDivisionByZoneId', type: 'POST', data: JSON.stringify({ zoneId: zoneId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $div.empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $div.append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $div.prop('disabled', false); $("#drpSite").empty().append('<option value="">All</option>'); $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); $div.prop('disabled', false).empty().append('<option value="">All</option>'); } }); }
 function GetByDivisionId(divId) { if (!divId || divId === '0' || divId === '') return; $("#loader").show(); $.ajax({ url: '/FRS25/Telemetry/GetSiteByDivisionId', type: 'POST', data: JSON.stringify({ divisionId: divId }), contentType: 'application/json', success: function (d) { $("#loader").hide(); $("#drpSite").empty().append('<option value="">All</option>'); if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpSite").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } $('#listAssetNumber').html('<div class="dropdown-empty">Select Station & Asset Type first</div>'); $('#txtAssetNumber').text('All'); updateViewTypeRestrictions(); }, error: function () { $("#loader").hide(); console.log('[Site] Error loading sites for division: ' + divId); } }); }
 //function GetByAssest(siteId, assetTypeId) { if (!siteId || siteId === '' || siteId === '0' || !assetTypeId || assetTypeId === '' || assetTypeId === '0') return; $("#loader").show(); loadBulkAssetMetadata(siteId, assetTypeId, function () { $("#loader").hide(); $("#drpAsset").empty().append('<option value="">All</option>'); var d = bulkAssetsList; if (d && d.length > 0) { $.each(d, function (k, v) { $("#drpAsset").append('<option value="' + v.Id + '">' + v.Name + '</option>'); }); } }); }
 function GetByAssest(siteId, assetTypeId) {
@@ -12033,7 +12047,9 @@ $(document).ready(function () {
     $('#drpZones').on('change', function () {
         var zoneId = $(this).val();
         if (zoneId && zoneId !== '' && zoneId !== '0') {
-            GetDivisionByZone(zoneId);
+            // clearance item #5: debounce rapid Zone changes so only the final selection fires the cascade
+            if (window._tlZoneCascadeTimer) clearTimeout(window._tlZoneCascadeTimer);
+            window._tlZoneCascadeTimer = setTimeout(function () { GetDivisionByZone(zoneId); }, 180);
         } else {
             // Zone set to "All" - restore initial Division, Site, and Asset Type options
             $('#drpDivisions').html(initialDivisionOptions);
@@ -21614,6 +21630,28 @@ function computeSignalState(assetId) {
         if (chosen) { aspect = chosen.aspect; activeLamp = chosen.activeLamp; source = chosen.source; }
     }
 
+    // ============================================================================
+    // S-35 / 2-ASPECT RESOLVER (clearance item #2). A 2-aspect head exposes only
+    // RG + HG lamps (no DG/HHG). Reusing the 4-aspect ladder above can leave such a
+    // head INACTIVE when every freshness-aware tier abstains (e.g. HG dark and RG's
+    // IsFresh flag withheld on the first paint) even though RECR / an energised RG
+    // clearly mean RED. Resolve explicitly here, and never allow a dark head while
+    // RG is energised. Runs ONLY when nothing above resolved, so it can never
+    // override a real aspect.
+    if (aspect === 'INACTIVE') {
+        var _isTwoAspect = rg.present && hg.present && !dg.present && !hhg.present;
+        var _rgOn = (rg.present && rg.value > thr);   // energised RG current
+        var _hgOn = (hg.present && hg.value > thr);   // energised HG current
+        var _rgEnergised = _rgOn || recr;             // current OR relay pickup
+        var _hgEnergised = _hgOn || hecr;
+        if (_isTwoAspect) {
+            if (_rgEnergised) { aspect = 'RED'; activeLamp = 'RG'; source = _rgOn ? 'RDPMS_2ASP' : 'DL_2ASP'; }
+            else if (_hgEnergised) { aspect = 'SINGLE_YELLOW'; activeLamp = 'HG'; source = _hgOn ? 'RDPMS_2ASP' : 'DL_2ASP'; }
+        }
+        // Fail-safe for ANY head type: an energised RG must never render dark.
+        if (aspect === 'INACTIVE' && _rgEnergised) { aspect = 'RED'; activeLamp = 'RG'; source = 'RG_FAILSAFE'; }
+    }
+
     // Informational source when no aspect resolved.
     if (aspect === 'INACTIVE') {
         source = (rgF || dgF || hgF || hhgF) ? 'RDPMS' : ((dlRelays && Object.keys(dlRelays).length > 0) ? 'DL' : 'NONE');
@@ -21644,6 +21682,12 @@ function getSignalState(assetId) {
     }
     return s;
 }
+// S-35 parity: expose the shared aspect engine so the SIP schematic
+// (sip-telemetry.js) resolves aspects identically to the Signal Card / Live
+// view — including the 2-aspect resolver + RG fail-safe — instead of its own
+// weaker parallel logic.
+window.computeSignalState = window.computeSignalState || computeSignalState;
+window.getSignalState = window.getSignalState || getSignalState;
 
 // [616:912-919] _isDataloggerAttr
 function _isDataloggerAttr(assetId, attrName) {

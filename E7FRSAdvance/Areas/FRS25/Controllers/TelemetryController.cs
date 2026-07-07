@@ -1958,7 +1958,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 {
                     SearchCriteria = new Domain.FRSAlert
                     {
-                        IsAcknowledgement = true,
+                        //IsAcknowledgement = true,
                         AssetIds = new List<int> { request.AssetId },
                         SiteIds = request.SiteId > 0
                             ? new List<int> { request.SiteId }

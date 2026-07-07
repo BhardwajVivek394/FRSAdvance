@@ -522,6 +522,79 @@
     var _popupTimer = null;
     var _popupAssetName = '';
 
+    /* ══════════════════════════════════════════════════════════════════════
+       SIP ASSET ALARMS (clearance item #5) — configurable endpoint + fallback.
+       Enable anywhere before use:
+         window.SIP_ALARM_CONFIG = { endpoint: '/FRS25/Telemetry/GetAssetAlarms', method: 'POST' };
+       Request payload: { assetName }. Response: array of { Severity, Message, Timestamp }
+       (any missing field degrades gracefully). With NO endpoint configured the tab
+       shows a clean "not configured" state and never errors. Dependency-free (fetch).
+       ══════════════════════════════════════════════════════════════════════ */
+    window.SIP_ALARM_CONFIG = window.SIP_ALARM_CONFIG || { endpoint: '', method: 'POST' };
+
+    function sipAlarmState(html) {
+        var grid = document.getElementById('stpGrid');
+        if (grid) grid.innerHTML = html;
+    }
+    function sipShowAssetLive() {
+        var t = document.getElementById('stpTitle'); if (t) t.textContent = 'Live Telemetry';
+        var ab = document.getElementById('stpAlarmBtn'); if (ab) ab.style.display = '';
+        var lb = document.getElementById('stpLiveBtn'); if (lb) lb.style.display = 'none';
+        refreshPopupGrid();
+        clearInterval(_popupTimer);
+        _popupTimer = setInterval(refreshPopupGrid, 3000);
+    }
+    function sipShowAssetAlarms() {
+        clearInterval(_popupTimer);   // pause live refresh so it cannot overwrite the alarm view
+        var t = document.getElementById('stpTitle'); if (t) t.textContent = 'Alarms — ' + _popupAssetName;
+        var ab = document.getElementById('stpAlarmBtn'); if (ab) ab.style.display = 'none';
+        var lb = document.getElementById('stpLiveBtn'); if (lb) lb.style.display = '';
+        var cfg = window.SIP_ALARM_CONFIG || {};
+        if (!cfg.endpoint) {
+            sipAlarmState('<div class="stp-empty">\u26A0 Alarm endpoint not configured.<br><span style="font-size:11px;color:#5a6a8a;">Set window.SIP_ALARM_CONFIG.endpoint to enable live alarms.</span></div>');
+            return;
+        }
+        sipAlarmState('<div class="stp-empty">Loading alarms…</div>');
+        sipFetchAssetAlarms(_popupAssetName, function (res) {
+            if (!res || !res.ok) {
+                sipAlarmState('<div class="stp-empty">Unable to load alarms right now.<br><span style="font-size:11px;color:#5a6a8a;">' + escHtml((res && res.error) || 'Request failed') + '</span></div>');
+                return;
+            }
+            var list = res.alarms || [];
+            if (list.length === 0) { sipAlarmState('<div class="stp-empty">\u2713 No active alarms for this asset.</div>'); return; }
+            var h = '';
+            for (var i = 0; i < list.length; i++) {
+                var a = list[i] || {};
+                var sev = escHtml(String(a.Severity || a.severity || 'INFO'));
+                var msg = escHtml(String(a.Message || a.message || a.Description || '—'));
+                var ts = escHtml(String(a.Timestamp || a.timestamp || a.Time || ''));
+                h += '<div class="stp-row"><span class="stp-lbl">' + sev + (ts ? ' \u00B7 ' + ts : '') + '</span><span class="stp-val warn">' + msg + '</span></div>';
+            }
+            sipAlarmState(h);
+        });
+    }
+    function sipFetchAssetAlarms(assetName, cb) {
+        var cfg = window.SIP_ALARM_CONFIG || {};
+        if (!cfg.endpoint) { cb({ ok: false, configured: false, error: 'not configured' }); return; }
+        var method = (cfg.method || 'POST').toUpperCase();
+        var opts = { method: method, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } };
+        if (method !== 'GET') opts.body = JSON.stringify({ assetName: assetName });
+        var url = cfg.endpoint + (method === 'GET' ? ((cfg.endpoint.indexOf('?') > -1 ? '&' : '?') + 'assetName=' + encodeURIComponent(assetName)) : '');
+        var done = false;
+        var to = setTimeout(function () { if (!done) { done = true; cb({ ok: false, configured: true, error: 'timeout' }); } }, 8000);
+        fetch(url, opts).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function (d) {
+            if (done) return; done = true; clearTimeout(to);
+            var arr = Array.isArray(d) ? d : (d && (d.alarms || d.Alarms || d.data)) || [];
+            cb({ ok: true, configured: true, alarms: arr });
+        }).catch(function (e) {
+            if (done) return; done = true; clearTimeout(to);
+            cb({ ok: false, configured: true, error: (e && e.message) || 'error' });
+        });
+    }
+
     function ensurePopupDOM() {
         if (_popupEl) return _popupEl;
 
@@ -585,7 +658,7 @@
             '<div class="stp-grid" id="stpGrid"><div class="stp-empty">Click an asset to view live attributes</div></div>' +
             '<div class="stp-foot">' +
             '<span id="stpSync">—</span>' +
-            '<div class="stp-foot-r"><button class="stp-btn" id="stpCloseBtn">Close</button></div>' +
+            '<div class="stp-foot-r"><button class="stp-btn" id="stpAlarmBtn">\u26A0 Alarms</button><button class="stp-btn pri" id="stpLiveBtn" style="display:none;">\u25C0 Live</button><button class="stp-btn" id="stpCloseBtn">Close</button></div>' +
             '</div>' +
             '</div>';
         document.body.appendChild(ov);
@@ -596,6 +669,12 @@
         function doClose() { ov.classList.remove('open'); clearInterval(_popupTimer); }
         if (closeBtn) closeBtn.addEventListener('click', doClose);
         if (closeFoot) closeFoot.addEventListener('click', doClose);
+
+        /* Alarm tab (clearance item #5): configurable endpoint + graceful fallback */
+        var alarmBtn = document.getElementById('stpAlarmBtn');
+        var liveBtn = document.getElementById('stpLiveBtn');
+        if (alarmBtn) alarmBtn.addEventListener('click', function () { sipShowAssetAlarms(); });
+        if (liveBtn) liveBtn.addEventListener('click', function () { sipShowAssetLive(); });
         ov.addEventListener('click', function (e) { if (e.target === ov) doClose(); });
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && ov.classList.contains('open')) doClose();
@@ -947,6 +1026,9 @@
         clearWarnOnce('nomatch:');
         clearWarnOnce('sig-noattr:');
         clearWarnOnce('buffering-preload');
+        clearWarnOnce('buffering-info');
+        clearWarnOnce('buffering-stalled');
+        state._bufferingSince = 0;
         state.msgCount = 0;
         state.diag.recv = state.diag.items = state.diag.hits = state.diag.noMatch = 0;
         setStatus('Loading layout…', 'loading');
@@ -1013,9 +1095,13 @@
                         evalRes.matched + ' matched cell(s), ' + evalRes.unmatched + ' unmatched.');
                 }
                 state._bufferedAssets = {};
+                state._bufferingSince = 0;
+                clearWarnOnce('buffering-info');
+                clearWarnOnce('buffering-stalled');
 
                 startAlertFlash();
                 openSocket(siteId);
+                startSharedResync();   // S-35 sync: keep the schematic locked to the shared wsLiveData store
             },
             error: function () {
                 setStatus('Failed to load SIP', 'error');
@@ -1051,6 +1137,40 @@
         }
         if (dirty) requestRender();
         return { matched: matched, unmatched: unmatched };
+    }
+
+    /* ── resyncFromShared (S-35 sync) ────────────────────────────────────
+       Repaint EVERY matched schematic cell from the SHARED window.wsLiveData
+       store, independent of whether that asset streamed through SIP's OWN feed.
+       Telemetry Live keeps wsLiveData current (and the SIP socket mirrors into
+       it), so this guarantees the schematic reflects exactly what Telemetry
+       Live shows — e.g. an S-35 whose RG/RECR only updates on the Telemetry
+       Live feed (not the SIP site-wide stream) still lights RED here. Cheap:
+       processes matched cells only and renders once per pass. */
+    function resyncFromShared() {
+        if (!window.wsLiveData || !state.cells.length) return;
+        var dirty = false;
+        for (var id in window.wsLiveData) {
+            if (!window.wsLiveData.hasOwnProperty(id)) continue;
+            var e = window.wsLiveData[id];
+            if (!e || !e.AssetName) continue;
+            var assetName = String(e.AssetName).trim();
+            if (!assetName) continue;
+            var cells = findCells(assetName);
+            if (!cells.length) continue;
+            var snapshot = state.assetValues[assetName] || (state.assetValues[assetName] = {});
+            enrichFromWsLiveData(assetName, snapshot);
+            for (var i = 0; i < cells.length; i++) {
+                if (reeval(cells[i], assetName, snapshot)) dirty = true;
+            }
+        }
+        if (dirty) requestRender();
+    }
+
+    function startSharedResync() {
+        if (state._resyncTimer) clearInterval(state._resyncTimer);
+        resyncFromShared();                        // immediate first pass
+        state._resyncTimer = setInterval(resyncFromShared, 3000);
     }
 
     /* ── sanitizeLiveBaseline ────────────────────────────────────────────
@@ -1449,6 +1569,45 @@
             setSnapshotValue(bag, attrName, rawAttr, numVal);
             touched[assetName] = true;
 
+            /* ── GUARANTEED DATA SYNC (S-35) ─────────────────────────────────
+               Mirror this asset into the SHARED window.wsLiveData store, in the
+               shape telemetrylive.js consumes, so window.computeSignalState()
+               (the single fixed aspect engine) is authoritative on the SIP page
+               even when the Telemetry Live page/socket is NOT running here.
+               GAP-FILL ONLY: only maintain entries we tagged __sipMirror, so a
+               Telemetry Live-owned entry always wins and the two views can never
+               disagree on the same feed. */
+            if (assetId != null) {
+                try {
+                    window.wsLiveData = window.wsLiveData || {};
+                    var _wid = String(assetId);
+                    var _we = window.wsLiveData[_wid];
+                    if (!_we) {
+                        _we = window.wsLiveData[_wid] = {
+                            __sipMirror: true, AssetName: assetName,
+                            AssetTypeId: (d.AssetTypeId != null ? d.AssetTypeId : 2),
+                            attrs: {}, dlRelays: {}
+                        };
+                    }
+                    if (_we.__sipMirror) {   // never touch a Telemetry Live-owned entry
+                        _we.AssetName = assetName;
+                        if (d.AssetTypeId != null) _we.AssetTypeId = d.AssetTypeId;
+                        var _ts = d.Timestamp || d.TimestampLocal || d.TimestampDevice || null;
+                        if (dataType === 'datalogger') {
+                            _we.dlRelays = _we.dlRelays || {};
+                            _we.dlRelays[rawAttr] = { value: numVal, name: rawAttr, displayName: attrName };
+                        } else {
+                            _we.attrs = _we.attrs || {};
+                            var _ao = { Value: numVal, Timestamp: _ts, AssetAttributeName: rawAttr, AttrId: attrId };
+                            _we.attrs[rawAttr] = _ao;
+                            if (attrName && attrName !== rawAttr) _we.attrs[attrName] = _ao;
+                        }
+                        if (d.ZeroOffsetValue != null && !isNaN(parseFloat(d.ZeroOffsetValue)))
+                            _we.ZeroOffsetValue = parseFloat(d.ZeroOffsetValue);
+                    }
+                } catch (_e) { /* mirror is best-effort; local fallback still applies */ }
+            }
+
             if (d.ZeroOffsetValue != null && !isNaN(parseFloat(d.ZeroOffsetValue)))
                 state.zeroOffset[assetName] = parseFloat(d.ZeroOffsetValue);
         }
@@ -1467,9 +1626,20 @@
             for (var bn in touched) {
                 if (touched.hasOwnProperty(bn)) state._bufferedAssets[bn] = true;
             }
-            swarnOnce('buffering-preload',
-                'Telemetry is arriving before the SIP layout finished loading — ' +
-                'buffering values; they will be evaluated as soon as the layout is in.');
+            /* EXPECTED transient: on site-select the WS stream races the GetSipView
+               layout AJAX. Buffered values are applied the moment the layout is in
+               (reevalAllAbsorbed), so this is NOT a warning — log quietly once.
+               Escalate to a REAL warning only if the layout is still missing after
+               a grace period (a genuinely slow or failed GetSipView). */
+            if (!state._bufferingSince) state._bufferingSince = Date.now();
+            if (Date.now() - state._bufferingSince > 8000) {
+                swarnOnce('buffering-stalled',
+                    'SIP layout still not loaded after 8s while telemetry is streaming — ' +
+                    'check GetSipView for site ' + state.siteId + '.');
+            } else if (!_warnOnceKeys['buffering-info']) {
+                _warnOnceKeys['buffering-info'] = 1;
+                slog('Buffering telemetry until the SIP layout finishes loading (normal on site select).');
+            }
             return;
         }
 
@@ -1836,6 +2006,54 @@
         return 'OFF';
     }
 
+    /* Resolve the SIP AssetId for a schematic asset name (for engine delegation). */
+    function sipAssetIdByName(assetName) {
+        if (!window.wsLiveData) return null;
+        var want = String(assetName || '').trim();
+        for (var id in wsLiveData) {
+            if (!wsLiveData.hasOwnProperty(id)) continue;
+            var e = wsLiveData[id];
+            if (e && String(e.AssetName || '').trim() === want) return id;
+        }
+        return null;
+    }
+
+    /* S-35 PARITY: prefer telemetrylive's shared computeSignalState so the SIP
+       schematic shows exactly what the Signal Card / Live view shows (incl. the
+       2-aspect fix + RG fail-safe). Falls back to the local computeAspect when the
+       engine or the asset id is unavailable, and then applies the SAME 2-aspect
+       fail-safe so an energised RG never leaves the head OFF. */
+    function sipResolveAspect(assetName, s, thr) {
+        if (typeof window.computeSignalState === 'function') {
+            var aid = sipAssetIdByName(assetName);
+            if (aid != null) {
+                try {
+                    var ss = window.computeSignalState(aid);
+                    if (ss && ss.aspect && ss.aspect !== 'INACTIVE') {
+                        if (ss.aspect === 'RED') return 'RG';
+                        if (ss.aspect === 'DOUBLE_YELLOW') return 'HHG';
+                        if (ss.aspect === 'SINGLE_YELLOW') return 'HG';
+                        if (ss.aspect === 'GREEN') return 'DG';
+                    }
+                } catch (e) { /* fall through to local */ }
+            }
+        }
+        var local = computeAspect(s, thr);
+        if (local === 'OFF') {
+            var rgMa = valOf(s, ['RG mA', 'R mA']);
+            var hgMa = valOf(s, ['HG mA', 'H mA']);
+            var dgMa = valOf(s, ['DG mA', 'G mA']);
+            var hhgMa = valOf(s, ['HHG mA']);
+            var recr = relayPicked(s, ['RECR', 'RED CR', 'R E CR']);
+            var hecr = relayPicked(s, ['HECR', 'HE CR']);
+            var rgEnergised = (rgMa != null && rgMa > thr) || recr;
+            var twoAspect = (rgMa != null || recr) && (dgMa == null && hhgMa == null);
+            if (rgEnergised) return 'RG';                              // RG must never stay dark
+            if (twoAspect && ((hgMa != null && hgMa > thr) || hecr)) return 'HG';
+        }
+        return local;
+    }
+
     /* Convert aspect → lit string for composite signal (attrs.signal.lit).
        The renderer accepts multiple chars, so HHG can light Y + X together. */
     function aspectToLit(aspect, lampsStr) {
@@ -2084,7 +2302,7 @@
         var thr = thresholdFor(assetName);
         /* ── Composite signal (examples.Signal / SignalShunt) ── */
         if (COMPOSITE_SIGNAL[cell.type]) {
-            var aspect = computeAspect(s, thr);
+            var aspect = sipResolveAspect(assetName, s, thr);
             var changedSig = false;
 
             /* Telemetry arrived but NOTHING matched a known aspect attribute.
@@ -2100,14 +2318,25 @@
             }
 
             if (cell.type === 'examples.SignalShunt') {
-                /* SignalShunt uses attrs.lit directly (same char as composite) */
-                var litChar = aspectToLit(aspect, 'RYG');   // always has R,Y,G
-                var cur = String((cell.attrs && cell.attrs.lit) || '');
+                /* Combined shunt+signal MAIN HEAD fix: renderSignalShunt reads the
+                   main head from attrs.signal.lit FIRST and only falls back to
+                   attrs.lit when signal.lit is null. The default signal.lit is ''
+                   (NOT null), so writing attrs.lit alone left the main signal dark.
+                   Write BOTH, and use the cell's OWN lamp set instead of a hardcoded
+                   'RYG' so 2-aspect combined heads light the right lamp. */
+                var shA = cell.attrs.signal || {};
+                var shLamps = String(shA.lamps || 'RYG');
+                var litChar = aspectToLit(aspect, shLamps);
+                /* RED must always be visible even if the lamp set omitted 'R'. */
+                if (aspect === 'RG' && litChar.indexOf('R') === -1) { litChar = 'R' + litChar; }
+                var cur = String(shA.lit != null ? shA.lit : ((cell.attrs && cell.attrs.lit) || ''));
                 if (cur !== litChar) {
-                    cell.attrs.lit = litChar;
+                    cell.attrs.signal = cell.attrs.signal || {};
+                    cell.attrs.signal.lit = litChar;   // PRIMARY: what renderSignalShunt reads
+                    cell.attrs.lit = litChar;          // keep legacy field in sync
                     changedSig = true;
-                    slog('Signal ' + assetName + ' aspect → ' + aspect +
-                        ' (lit "' + litChar + '", thr=' + thr + ')');
+                    slog('SignalShunt ' + assetName + ' aspect → ' + aspect +
+                        ' (lit "' + litChar + '" of lamps "' + shLamps + '", thr=' + thr + ')');
                 }
                 return changedSig;
             }
@@ -2116,6 +2345,10 @@
             var sigA = cell.attrs.signal || {};
             var lamps = String(sigA.lamps || 'RYG');
             var newLit = aspectToLit(aspect, lamps);
+            /* S-35 safety: a resolved RED must be visible. If the cell's configured
+               lamp set omitted 'R', still light the red lamp — a real red aspect
+               can never render as a dark head. */
+            if (aspect === 'RG' && newLit.indexOf('R') === -1) { newLit = 'R' + newLit; }
             var curLit = String(sigA.lit || '');
             if (curLit !== newLit) {
                 cell.attrs.signal = cell.attrs.signal || {};
@@ -2149,7 +2382,7 @@
 
         /* ── Legacy per-lamp signal cells ── */
         if (LAMP_SIGNAL[cell.type]) {
-            var aspect2 = computeAspect(s, thr);
+            var aspect2 = sipResolveAspect(assetName, s, thr);
             /* Map cell type to aspect tag */
             var tagMap = {
                 'examples.Signald90': 'RG',
