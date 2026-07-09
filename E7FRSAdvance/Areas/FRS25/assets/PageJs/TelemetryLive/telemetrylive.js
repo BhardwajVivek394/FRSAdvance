@@ -100,10 +100,19 @@ function syncAttributeNamesFromLiveData() {
     }
     return false;
 }
+function isAxcAssetName(name) { return /\bAXC\b/i.test(String(name || '')); }
+function isAxcAsset(assetData) { return !!(assetData && isAxcAssetName(assetData.AssetName)); }
+function isAllAxcSelection(assetIds) {
+    if (!assetIds || assetIds.length === 0) return false;
+    for (var i = 0; i < assetIds.length; i++) { var a = wsLiveData[assetIds[i]]; if (!a || !isAxcAsset(a)) return false; }
+    return true;
+}
+
 function atBuildTrackCard(aid) {
     var a = wsLiveData[aid];
     if (!a) return '';
     var name = a.AssetName || ('Asset ' + aid);
+    var isAxc = (typeof isAxcAsset === 'function') && isAxcAsset(a);
     var attrs = a.attrs || {};
     var dlRelays = a.dlRelays || {};
     var ts = a.lastUpdated ? (typeof fmtTime === 'function' ? fmtTime(a.lastUpdated) : '--') : '--';
@@ -122,7 +131,7 @@ function atBuildTrackCard(aid) {
     // ── Grid of attribute values (same as before) ─────────────────
     var grid = '';
     var attrList = (window.wsAttributeNames && window.wsAttributeNames.length) ? window.wsAttributeNames : Object.keys(attrs);
-    for (var i = 0; i < attrList.length; i++) {
+    for (var i = 0; !isAxc && i < attrList.length; i++) {
         var an = attrList[i];
         var ad = attrs[an];
         var raw = ad ? ad.Value : null;
@@ -146,8 +155,8 @@ function atBuildTrackCard(aid) {
             '</div>';
     }
 
-    // ── Derived values for Track ──────────────────────────────────
-    if (typeof window.calculateDerivedValues === 'function') {
+    // Derived values for Track (skipped for AXC)
+    if (!isAxc && typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
         grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
@@ -174,8 +183,8 @@ function atBuildTrackCard(aid) {
     return '<div class="at-asset-card" data-state="live" data-id="' + aid + '" style="position:relative;">' +
         actionsHtml +
         '<div class="at-card-head">' +
-        '<div><div class="at-card-name">TRACK : ' + name + '</div>' +
-        '<div class="at-card-sub"><span class="at-live-dot"></span> Track Circuit · ' + ts + '</div></div>' +
+        '<div><div class="at-card-name">' + (isAxc ? 'AXLE COUNTER : ' : 'TRACK : ') + name + '</div>' +
+        '<div class="at-card-sub"><span class="at-live-dot"></span> ' + (isAxc ? 'Axle Counter' : 'Track Circuit') + ' \u00B7 ' + ts + '</div></div>' +
         '</div>' +
         '<div class="at-track-grid">' + grid + '</div>' +
         (pills ? '<div class="at-card-foot">' + pills + '</div>' : '') +
@@ -386,8 +395,16 @@ function isAssetInBulkWhitelist(assetId) {
     }
 
     if (selectedType && selectedType !== '0') {
-        return wsValidAssetIds && wsValidAssetIds.length > 0 &&
-            wsValidAssetIds.indexOf(aid) !== -1;
+        if (wsValidAssetIds && wsValidAssetIds.length > 0 && wsValidAssetIds.indexOf(aid) !== -1) return true;
+        // 616-PARITY fallback: allow assets known to legacy UserAssetInfo (userAssetSimpleMap)
+        // that bulk metadata may omit, so no asset 616 rendered is dropped.
+        if (typeof userAssetSimpleMap !== 'undefined' && userAssetSimpleMap) {
+            var _uaiPfx = aid + '_';
+            for (var _uk in userAssetSimpleMap) {
+                if (userAssetSimpleMap.hasOwnProperty(_uk) && _uk.indexOf(_uaiPfx) === 0) return true;
+            }
+        }
+        return false;
     }
 
     // SIP/site-only background connection can still receive site-wide WS data.
@@ -790,19 +807,39 @@ var zeroOffsetCache = {}; // Cache: { assetId: { value: number, fetched: boolean
 // ── OPTIMIZED: No AJAX — reads from zeroOffsetCache pre-populated
 //    by loadBulkAssetMetadata(). Falls back to default if not cached.
 function fetchZeroOffsetForAsset(assetId, callback) {
-    var cached = zeroOffsetCache[assetId];
-    var val = (cached && cached.fetched) ? cached.value : RDPMS_DEFAULT_THRESHOLD;
-
-    // Ensure cache entry exists (so future lookups don't re-trigger)
-    if (!cached || !cached.fetched) {
-        zeroOffsetCache[assetId] = { value: val, fetched: true, fetching: false, pendingCallbacks: [] };
+    // 616-PARITY FALLBACK: fetch real ZeroOffset for assets not covered by bulk.
+    if (zeroOffsetCache[assetId] && zeroOffsetCache[assetId].fetched) {
+        var v0 = zeroOffsetCache[assetId].value;
+        if (wsLiveData[assetId]) wsLiveData[assetId].ZeroOffsetValue = v0;
+        if (callback) { try { callback(v0); } catch (e) { } }
+        return;
     }
-    if (wsLiveData[assetId]) {
-        wsLiveData[assetId].ZeroOffsetValue = val;
+    if (zeroOffsetCache[assetId] && zeroOffsetCache[assetId].fetching) {
+        if (callback) zeroOffsetCache[assetId].pendingCallbacks.push(callback);
+        return;
     }
-    if (callback) {
-        try { callback(val); } catch (e) { console.error('[ZeroOffset] callback error', e); }
-    }
+    zeroOffsetCache[assetId] = { value: RDPMS_DEFAULT_THRESHOLD, fetched: false, fetching: true, pendingCallbacks: callback ? [callback] : [] };
+    $.ajax({
+        url: '/Telemetry/GetZeroOffsetValue', type: 'POST',
+        data: JSON.stringify({ assetId: assetId }), contentType: 'application/json', dataType: 'json',
+        success: function (response) {
+            var offsetValue = RDPMS_DEFAULT_THRESHOLD;
+            if (response && response.success && response.zeroOffset !== undefined) {
+                var parsed = parseFloat(response.zeroOffset);
+                offsetValue = isNaN(parsed) ? RDPMS_DEFAULT_THRESHOLD : parsed;
+            }
+            var pending = (zeroOffsetCache[assetId] && zeroOffsetCache[assetId].pendingCallbacks) || [];
+            zeroOffsetCache[assetId] = { value: offsetValue, fetched: true, fetching: false, pendingCallbacks: [] };
+            if (wsLiveData[assetId]) wsLiveData[assetId].ZeroOffsetValue = offsetValue;
+            for (var ci = 0; ci < pending.length; ci++) { try { pending[ci](offsetValue); } catch (e) { } }
+        },
+        error: function () {
+            var pending = (zeroOffsetCache[assetId] && zeroOffsetCache[assetId].pendingCallbacks) || [];
+            zeroOffsetCache[assetId] = { value: RDPMS_DEFAULT_THRESHOLD, fetched: true, fetching: false, pendingCallbacks: [] };
+            if (wsLiveData[assetId]) wsLiveData[assetId].ZeroOffsetValue = RDPMS_DEFAULT_THRESHOLD;
+            for (var ci = 0; ci < pending.length; ci++) { try { pending[ci](RDPMS_DEFAULT_THRESHOLD); } catch (e) { } }
+        }
+    });
 }
 
 // Get ZeroOffset value (from cache only — bulk preloads all values)
@@ -810,6 +847,7 @@ function getZeroOffsetForAsset(assetId) {
     if (zeroOffsetCache[assetId] && zeroOffsetCache[assetId].fetched) {
         return zeroOffsetCache[assetId].value;
     }
+    fetchZeroOffsetForAsset(assetId); // 616-PARITY
     return RDPMS_DEFAULT_THRESHOLD;
 }
 var rdpmsCardsBuilt = {};
@@ -2240,7 +2278,7 @@ window.getBulkAssetName = getBulkAssetName;
 window.resolveBulkDataloggerName = resolveBulkDataloggerName;
 
 function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
-    
+
     var aid = String(assetId || '');
 
     function clean(v) {
@@ -5755,10 +5793,11 @@ function updateMainSignalLights(assetId) {
     // ==============================
     // READ VALUES (single parseFloat pass each)
     // ==============================
-    var rgMa = _attrVal(attrs, 'RG mA'), dgMa = _attrVal(attrs, 'DG mA'),
-        hgMa = _attrVal(attrs, 'HG mA'), hhgMa = _attrVal(attrs, 'HHG mA');
-    var rgV = _attrVal(attrs, 'RG V'), dgV = _attrVal(attrs, 'DG V'),
-        hgV = _attrVal(attrs, 'HG V'), hhgV = _attrVal(attrs, 'HHG V');
+    // 616-PARITY: alias-based lamp reads.
+    var rgMa = _attrValByAliases(attrs, SIGNAL_MA_ALIASES.RG), dgMa = _attrValByAliases(attrs, SIGNAL_MA_ALIASES.DG),
+        hgMa = _attrValByAliases(attrs, SIGNAL_MA_ALIASES.HG), hhgMa = _attrValByAliases(attrs, SIGNAL_MA_ALIASES.HHG);
+    var rgV = _attrValByAliases(attrs, SIGNAL_V_ALIASES.RG), dgV = _attrValByAliases(attrs, SIGNAL_V_ALIASES.DG),
+        hgV = _attrValByAliases(attrs, SIGNAL_V_ALIASES.HG), hhgV = _attrValByAliases(attrs, SIGNAL_V_ALIASES.HHG);
     var pilotMa = _attrVal(attrs, 'PILOT mA') || _attrVal(attrs, 'PILOTRoot mA');
     var pilotV = _attrVal(attrs, 'PILOT V') || _attrVal(attrs, 'PILOTRoot V');
     var coHgMa = _attrVal(attrs, 'Co_Hg mA'), coHgV = _attrVal(attrs, 'Co_Hg V');
@@ -6101,7 +6140,7 @@ function fnBindTable() {
 }
 
 function fnSearchView() {
-    
+
     var siteId = $('#drpSite').val();
     var assetTypeId = $('#drpAssetType').val();
     var selectedAssetIds = (typeof getSelectedAssetIds === 'function') ? getSelectedAssetIds() : [];
@@ -16867,6 +16906,8 @@ function renderWsTableFixed() {
 
     var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
     var isTrack = (assetTypeId === 1);
+    // 616-PARITY: all-AXC selection hides attribute + derived columns (list view)
+    var allAxc = isTrack && typeof isAllAxcSelection === 'function' && isAllAxcSelection(assetIds);
     var typeName = 'ASSET';
     if (wsAttributeNames.length === 0 && Object.keys(wsLiveData).length > 0) {
         syncAttributeNamesFromLiveData();
@@ -16892,7 +16933,7 @@ function renderWsTableFixed() {
     h += '<th style="min-width:90px;">' + typeName + '</th>';
 
     // Build headers with AliasName
-    for (var ci = 0; ci < wsAttributeNames.length; ci++) {
+    for (var ci = 0; !allAxc && ci < wsAttributeNames.length; ci++) {
         var attrName = wsAttributeNames[ci];
         var attrId = wsAttributeIds && wsAttributeIds[attrName] ? wsAttributeIds[attrName] : null;
         if (!attrId) {
@@ -16909,8 +16950,8 @@ function renderWsTableFixed() {
         var formattedName = formatAliasName(displayName);
         h += '<th data-col="' + attrName + '" title="' + displayName + '">' + formattedName + '</th>';
     }
-    // Add derived value headers for Track assets
-    if (isTrack && typeof getDerivedHeaders === 'function') {
+    // Add derived value headers for Track assets (skipped for all-AXC)
+    if (isTrack && !allAxc && typeof getDerivedHeaders === 'function') {
         h += getDerivedHeaders();
     }
     // DataLogger column for Track and Signal
@@ -16927,8 +16968,10 @@ function renderWsTableFixed() {
         h += '<tr data-id="' + aid + '">';
         h += '<td class="asset-name">' + (asset.AssetName || 'Asset ' + aid) + '</td>';
 
-        for (var ai = 0; ai < wsAttributeNames.length; ai++) {
+        var rowIsAxc = isTrack && typeof isAxcAsset === 'function' && isAxcAsset(asset);
+        for (var ai = 0; !allAxc && ai < wsAttributeNames.length; ai++) {
             var an = wsAttributeNames[ai];
+            if (rowIsAxc) { h += '<td class="val-na" data-attr="' + an + '">--</td>'; continue; }
             var ad = asset.attrs[an];
             var raw = ad ? ad.Value : null;
             var cls = '', disp = '';
@@ -16953,8 +16996,8 @@ function renderWsTableFixed() {
             h += '<td class="' + cls + '" data-attr="' + an + '">' + disp + '</td>';
         }
 
-        if (isTrack && typeof calculateDerivedValues === 'function') {
-            var derived = calculateDerivedValues(asset.attrs);
+        if (isTrack && !allAxc && typeof calculateDerivedValues === 'function') {
+            var derived = calculateDerivedValues(rowIsAxc ? {} : asset.attrs);
             h += getDerivedCells(derived);
         }
 
@@ -21090,7 +21133,21 @@ if (typeof _rdpmsDiag !== 'function') { window._rdpmsDiag = function () { }; }
 function _rdpmsDiag() { }
 function perfMark() { }
 function _rdpmsBatchScan() { return ''; }
-function isPmReplayStale() { return false; }
+function normalizePmFreshFlag(raw) {
+    if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true;
+    if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false;
+    return null;
+}
+function isPmReplayStale(source) {
+    if (!source) return false;
+    var dataType = String(source.DataType || (source.raw && source.raw.DataType) || '').trim().toLowerCase();
+    if (dataType === 'datalogger') return false;
+    var kind = String(source.BroadcastKind || (source.raw && source.raw.BroadcastKind) || '').trim().toLowerCase();
+    var rawFresh = source.RawIsFresh;
+    if (rawFresh === undefined || rawFresh === null) rawFresh = source.IsFresh;
+    if ((rawFresh === undefined || rawFresh === null) && source.raw) rawFresh = source.raw.IsFresh;
+    return kind === 'replay' && normalizePmFreshFlag(rawFresh) === false;
+}
 var _signalRebuildTimer = null;
 
 // Route stale checking: Signal (asset type 2) uses WS IsFresh only (no GetLiveValue);

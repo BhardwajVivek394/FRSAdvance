@@ -1,9 +1,12 @@
 ﻿using Domain;
-using E7FRSAdvance.Utility;
+using Domain.Dto;
 using E7FRSAdvance.Interface;
+using E7FRSAdvance.Service;
+using E7FRSAdvance.Utility;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -18,11 +21,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
     {
         private readonly ISiteKeepingService siteKeepingService;
         private readonly IFRSAlertService frsAlertService;
+        private readonly IAssetAttributeService assetAttributeService;
 
-        public UserSiteController(ISiteKeepingService siteKeepingService, IFRSAlertService frsAlertService)
+        public UserSiteController(ISiteKeepingService siteKeepingService, IFRSAlertService frsAlertService, IAssetAttributeService assetAttributeService)
         {
             this.siteKeepingService = siteKeepingService;
             this.frsAlertService = frsAlertService;
+            this.assetAttributeService = assetAttributeService;
         }
         // GET: FRS25/UserSite
         public ActionResult Index()
@@ -379,27 +384,127 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
         [HttpPost]
-        public JsonResult GetAssetTelemetry(int siteId, int assetId)
+        public JsonResult GetAssetTelemetry(int siteId, int assetId, int frsAlertId = 0)
         {
-            var result = new { Values = new List<double>(), Unit = "" };
+            var series = new List<object>();
+            string rangeLabel = "24h";
             try
             {
                 if (assetId > 0)
                 {
+                    var fromDate = DateTime.Now.AddHours(-24);
+                    var toDate = DateTime.Now;
+                    string pmSortDirection = null; // set below only if this is a Point Machine tied to a real alert
+
+                    Domain.FRSAlert mFRSAlert = null;
+                    if (frsAlertId <= 0)
+                    {
+                        mFRSAlert = GetLastByAssetId(assetId);
+
+                        if (mFRSAlert != null)
+                            frsAlertId = mFRSAlert.Id;
+                    }
+                    if (frsAlertId > 0)
+                    {
+                        mFRSAlert = GetFRSAlertById(frsAlertId);
+                        if (mFRSAlert != null && mFRSAlert.Id > 0)
+                        {
+                            // Window tightly around the actual incident instead of a generic
+                            // last-24h — same intent as AlertLiveController.GetTelemetryHistoryData.
+                            fromDate = mFRSAlert.SetTimeStamp.AddMinutes(-30);
+                            toDate = mFRSAlert.ResetTimeStamp.HasValue ? mFRSAlert.ResetTimeStamp.Value.AddMinutes(30) : DateTime.Now;
+                            rangeLabel = fromDate.ToString("h:mm tt") + " – " + toDate.ToString("h:mm tt");
+
+                            if (!string.IsNullOrEmpty(mFRSAlert.CauseCode))
+                                pmSortDirection = mFRSAlert.CauseCode.ToUpper().Contains(" R ") ? "reverse" : "normal";
+                        }
+                    }
+                    else
+                    {
+
+                    }
+
+                    Asset mAsset = new Asset
+                    {
+                        Id = assetId,
+                        SiteId = siteId,
+                        SortDirection = "Graph", // request mode flag expected by Asset/GenerateGraph
+                        IsGraphLoad = true,
+                        StartDate = fromDate.ToShortDateString(),
+                        StartTime = fromDate.ToShortTimeString(),
+                        EndDate = toDate.ToShortDateString(),
+                        EndTime = toDate.ToShortTimeString()
+                    };
+                    var mAssets = new List<Asset> { mAsset };
+
                     using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                     {
-                        // TODO: point this at your real telemetry-history API/route
-                        var response = hcf.client.GetAsync(string.Format("Telemetry/GetAssetHistory/{0}?hours=24", assetId)).Result;
+                        var jsonStr = JsonConvert.SerializeObject(mAssets);
+                        var content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                        var response = hcf.client.PostAsync("Asset/GenerateGraph", content).Result;
+
                         if (response.StatusCode == HttpStatusCode.OK)
                         {
                             string jsonString = response.Content.ReadAsStringAsync().Result;
-                            // Expecting something like: [{ "Timestamp": "...", "Value": 12.3, "Unit": "V" }, ...]
-                            var points = JsonConvert.DeserializeObject<List<dynamic>>(jsonString);
-                            if (points != null && points.Count > 0)
+                            var assets = JsonConvert.DeserializeObject<List<Asset>>(jsonString);
+                            var asset = assets != null ? assets.FirstOrDefault() : null;
+
+                            if (asset != null)
                             {
-                                var values = points.Select(p => (double)p.Value).ToList();
-                                var unit = (string)(points[0].Unit ?? "");
-                                result = new { Values = values, Unit = unit };
+                                // Point Machine reverse/normal cause-code logic, ported from
+                                // AlertLiveController.GetTelemetryHistoryData — only meaningful
+                                // once we actually know which alert this graph belongs to.
+                                if (pmSortDirection != null && asset.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
+                                    asset.SortDirection = pmSortDirection;
+
+                                if (asset.assetAttributes != null && asset.assetAttributes.Count > 0
+                                    && asset.MultipleLog != null && asset.MultipleLog.Count > 0)
+                                {
+                                    var mAllAssetAttributes = assetAttributeService.GetAll()
+                                        .Where(x => x.AssetTypeId == asset.AssetTypeId)
+                                        .ToList();
+
+                                    var valuesByAttrId = asset.assetAttributes.ToDictionary(a => a.Id, a => new List<Tuple<DateTime, double>>());
+                                    var titleByAttrId = asset.assetAttributes.ToDictionary(a => a.Id, a => a.Title);
+
+                                    foreach (var log in asset.MultipleLog.OrderBy(x => x.TimeStamp))
+                                    {
+                                        if (log == null || log.TimeStamp == DateTime.MinValue || string.IsNullOrEmpty(log.CsvData))
+                                            continue;
+
+                                        var rowAttrs = assetAttributeService.GetGraphAttribute(
+                                            asset.assetAttributes.Select(a => new AssetAttribute
+                                            {
+                                                Id = a.Id,
+                                                Title = a.Title,
+                                                AssetTypeId = a.AssetTypeId,
+                                                AssetTypeName = a.AssetTypeName,
+                                                Data = new List<string>()
+                                            }).ToList(),
+                                            mAllAssetAttributes,
+                                            log.CsvData);
+
+                                        foreach (var attr in rowAttrs)
+                                        {
+                                            var raw = attr.Data != null ? attr.Data.FirstOrDefault() : null;
+                                            double val;
+                                            if (raw != null && double.TryParse(raw, out val) && valuesByAttrId.ContainsKey(attr.Id))
+                                                valuesByAttrId[attr.Id].Add(Tuple.Create(log.TimeStamp, val));
+                                        }
+                                    }
+
+                                    foreach (var kv in valuesByAttrId)
+                                    {
+                                        if (kv.Value.Count < 2) continue;
+                                        series.Add(new
+                                        {
+                                            Name = titleByAttrId[kv.Key],
+                                            Unit = "",
+                                            Labels = kv.Value.Select(p => p.Item1.ToString("h:mm tt")).ToList(),
+                                            Values = kv.Value.Select(p => p.Item2).ToList()
+                                        });
+                                    }
+                                }
                             }
                         }
                     }
@@ -407,7 +512,42 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
             catch (Exception) { }
 
-            return Json(result, JsonRequestBehavior.AllowGet);
+            return Json(new { Series = series, RangeLabel = rangeLabel }, JsonRequestBehavior.AllowGet);
+        }
+
+        // Same direct REST call AlertLiveController.GetFRSAlert uses
+        private Domain.FRSAlert GetFRSAlertById(int id)
+        {
+            var mFRSAlert = new Domain.FRSAlert();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(string.Format("FRSAlert/{0}", id)).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                        mFRSAlert = JsonConvert.DeserializeObject<Domain.FRSAlert>(jsonString) ?? new Domain.FRSAlert();
+                }
+            }
+            catch (Exception) { }
+            return mFRSAlert;
+        }
+
+        private Domain.FRSAlert GetLastByAssetId(int id)
+        {
+            var mFRSAlert = new Domain.FRSAlert();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(string.Format("FRSAlert/GetLastByAssetId/{0}", id)).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                        mFRSAlert = JsonConvert.DeserializeObject<Domain.FRSAlert>(jsonString) ?? new Domain.FRSAlert();
+                }
+            }
+            catch (Exception) { }
+            return mFRSAlert;
         }
 
         public ActionResult UserHistory(int siteId)
@@ -721,6 +861,180 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 ViewBag.Message = "Something went wrong!";
             }
             return mUserLister;
+        }
+
+        // Mirrors HealthController.GetMQTTDetailList — gives the browser the broker
+        // credentials it needs for the live MQTT connection (see Index.cshtml connectHealthMqtt()).
+        [HttpGet]
+        public JsonResult GetMQTTDetail()
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync("User/GetMQTTDetail").Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        var detail = JsonConvert.DeserializeObject<MQTTDetailList>(jsonString);
+                        return Json(detail?.mQTTDetailWeb, JsonRequestBehavior.AllowGet);
+                    }
+                }
+            }
+            catch (Exception) { }
+            return Json(null, JsonRequestBehavior.AllowGet);
+        }
+
+        // Called by SiteList.cshtml's fnLoadSlideData() to populate the Health tab.
+        // Hardware/Fixes come from the same A10Status + CardLine APIs the Health module
+        // uses; Svc is a bootstrap value shown until the first live MQTT packet arrives
+        // (see hBuildSvcForSite() in Index.cshtml, which then takes over).
+        private static readonly Dictionary<string, string> SvcKeyToSourceId = new Dictionary<string, string>
+{
+    { "DataRecv",    "DataReceiverHealth" },
+    { "Datalogger",  "DataloggerHealth"   },
+    { "Alert",       "AlertHealth"        },
+    { "Debouncer",   "DebouncerHealth"    },
+    { "Point",       "PointMachineHealth" }
+};
+
+        [HttpPost]
+        public JsonResult GetSiteHealth(int siteId)
+        {
+            var svc = new Dictionary<string, object>();
+            var hardware = new Dictionary<string, object>();
+            int fixesCount = 0;
+
+            try
+            {
+                string baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                if (!string.IsNullOrWhiteSpace(baseUrl))
+                {
+                    baseUrl = baseUrl.TrimEnd('/');
+                    string apiUrl = string.Format("{0}/api/AlertLive?siteId={1}&alertState=Active", baseUrl, siteId);
+
+                    using (var client = new System.Net.Http.HttpClient())
+                    {
+                        client.Timeout = TimeSpan.FromSeconds(20);
+                        var resp = client.GetAsync(apiUrl).Result;
+                        if (resp.StatusCode == HttpStatusCode.OK)
+                        {
+                            string json = resp.Content.ReadAsStringAsync().Result;
+                            var arr = Newtonsoft.Json.Linq.JArray.Parse(string.IsNullOrWhiteSpace(json) ? "[]" : json);
+
+                            var byService = new Dictionary<string, Dictionary<string, Tuple<string, double?>>>();
+
+                            foreach (var tok in arr)
+                            {
+                                var a = tok as Newtonsoft.Json.Linq.JObject;
+                                if (a == null) continue;
+
+                                string srcId = (string)(a["sourceId"] ?? a["SourceId"]) ?? "";
+                                var svcMatch = SvcKeyToSourceId.FirstOrDefault(kv => kv.Value == srcId);
+                                if (svcMatch.Key == null) continue;
+
+                                string nodeId = ((string)(a["nodeIdentity"] ?? a["NodeIdentity"]) ?? "").ToLowerInvariant();
+                                if (nodeId != "cloud" && nodeId != "local") continue;
+
+                                string identifier = (string)(a["alertIdentifier"] ?? a["AlertIdentifier"]) ?? "";
+                                string status = identifier.ToLowerInvariant().Contains("dead") ? "unhealthy" : "warning";
+
+                                DateTime ts;
+                                double? ago = null;
+                                var tsToken = a["setTimeStamp"] ?? a["SetTimeStamp"];
+                                if (tsToken != null && DateTime.TryParse(tsToken.ToString(), out ts))
+                                    ago = (DateTime.Now - ts).TotalSeconds;
+
+                                if (!byService.ContainsKey(svcMatch.Key)) byService[svcMatch.Key] = new Dictionary<string, Tuple<string, double?>>();
+                                var nodes = byService[svcMatch.Key];
+                                if (!nodes.ContainsKey(nodeId) || (status == "unhealthy" && nodes[nodeId].Item1 != "unhealthy"))
+                                    nodes[nodeId] = Tuple.Create(status, ago);
+                            }
+
+                            foreach (var kv in SvcKeyToSourceId)
+                            {
+                                var nodesOut = new Dictionary<string, object>();
+                                Dictionary<string, Tuple<string, double?>> nodes;
+                                byService.TryGetValue(kv.Key, out nodes);
+
+                                foreach (var node in new[] { "local", "cloud" })
+                                {
+                                    if (nodes != null && nodes.ContainsKey(node))
+                                    {
+                                        var code = nodes[node].Item1 == "unhealthy" ? "r" : "a";
+                                        nodesOut[node] = new { sh = code, mq = code, ago = nodes[node].Item2 };
+                                    }
+                                    else
+                                    {
+                                        nodesOut[node] = new { sh = "g", mq = "g", ago = (double?)0 };
+                                    }
+                                }
+                                svc[kv.Key] = nodesOut;
+                            }
+
+                            fixesCount = byService.Count(s => s.Value.Any(n => n.Value.Item1 == "unhealthy"));
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+
+            svc["EdgeX"] = new { local = new { sh = "u", mq = "u", ago = (double?)null }, cloud = new { sh = "u", mq = "u", ago = (double?)null } };
+            svc["Reminder"] = new { cloud = new { sh = "u", mq = "u", ago = (double?)null } };
+
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    string searchDate = DateTime.Now.ToString("dd-MM-yyyy");
+                    var response = hcf.client.GetAsync(string.Format("A10Status/GetStatus/SiteId/{0}/SearchDate/{1}", siteId, searchDate)).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonResponse = response.Content.ReadAsStringAsync().Result;
+                        var serializer = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                        var apiData = serializer.Deserialize<ApiStatusResponse>(jsonResponse);
+
+                        int netTotal = 0, netOnline = 0, iotTotal = 0, iotOnline = 0;
+                        if (apiData != null && apiData.Modems != null)
+                        {
+                            foreach (var m in apiData.Modems)
+                            {
+                                if (string.IsNullOrEmpty(m.ModemId)) continue;
+                                netTotal++;
+                                if (m.TcpStatus || m.MqttStatus) netOnline++;
+
+                                if (m.A10List != null)
+                                {
+                                    foreach (var a in m.A10List)
+                                    {
+                                        iotTotal++;
+                                        if (a.TcpStatus || a.MQTTStatus) iotOnline++;
+                                    }
+                                }
+                            }
+                        }
+                        hardware["network"] = new { total = netTotal, online = netOnline };
+                        hardware["iot"] = new { total = iotTotal, online = iotOnline };
+                    }
+                }
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(string.Format("CardLine/SiteId/{0}", siteId)).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        var cardLines = JsonConvert.DeserializeObject<List<CardLine>>(jsonString) ?? new List<CardLine>();
+                        hardware["sensors"] = new { total = cardLines.Count, bad = 0 };
+                    }
+                }
+            }
+            catch (Exception) { }
+
+            var result = new { Fixes = fixesCount, Hardware = hardware, Svc = svc };
+            var jsonResult = Json(result, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
         }
     }
 }
