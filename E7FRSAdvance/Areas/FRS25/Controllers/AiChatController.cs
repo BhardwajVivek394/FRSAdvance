@@ -721,8 +721,19 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                  + "e.g. fields like TimestampEdgeX / TimestampLocal / TimestampDevice / TimestampEvent "
                  + "look like \"2026-07-10T19:11:53+05:30\". Do NOT convert these; they are already IST.\n"
                  + "EdgeX timestamp for \"now\" (IST): " + edgexIst + "\n"
+                 + "Current IST 'now' as ISO: " + istNow.ToString("yyyy-MM-ddTHH:mm:ss") + "+05:30\n"
                  + "Interpret the user's 'today', 'yesterday', 'last hour' in IST, and "
                  + "ALWAYS present dates and times to the user in IST (Asia/Kolkata, UTC+05:30).\n"
+                 + "CRITICAL: When a tool accepts a time range / from / to / start / end / window / period "
+                 + "parameter, ALWAYS pass EXPLICIT values computed from the IST 'now' above. "
+                 + "Do NOT rely on a tool's default 'now' or omit the end time - the server computes its "
+                 + "default in UTC, which is 5h30m behind IST and produces a wrong report window and "
+                 + "'Report Generated' stamp. e.g. for 'last 1 hour' pass from="
+                 + istNow.AddHours(-1).ToString("yyyy-MM-ddTHH:mm:ss") + "+05:30 to="
+                 + istNow.ToString("yyyy-MM-ddTHH:mm:ss") + "+05:30 .\n"
+                 + "If a tool result shows a 'Report Period' end or 'Report Generated' time that is about "
+                 + "5.5 hours behind the IST 'now' above, it is a UTC server value: add 5h30m and label it IST "
+                 + "when you present it (do NOT alter the individual alert incidence times, which are already IST).\n"
                  //+ "Ignore any zero/epoch timestamps like \"0001-01-01T00:00:00+00:00\" - they mean the value was never set.\n"
                  + "Do NOT infer a date from training data.\n"
                  + "ALWAYS call a tool before speculating about data availability.\n"
@@ -767,4 +778,3 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return msg;
         }
     }
-}
