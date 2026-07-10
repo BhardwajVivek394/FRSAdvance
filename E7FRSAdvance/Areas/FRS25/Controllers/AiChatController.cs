@@ -691,14 +691,39 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return (int)Math.Ceiling(s.Length / 4.0);
         }
 
+        // Resolve India Standard Time (Asia/Kolkata, UTC+05:30) once, with fallbacks
+        // so it works on Windows ("India Standard Time"), Linux/ICU ("Asia/Kolkata"),
+        // or a hard-coded +05:30 offset if the OS has no tz database entry.
+        private static readonly Lazy<TimeZoneInfo> _istZone =
+            new Lazy<TimeZoneInfo>(ResolveIstZone);
+
+        private static TimeZoneInfo ResolveIstZone()
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById("India Standard Time"); }
+            catch { }
+            try { return TimeZoneInfo.FindSystemTimeZoneById("Asia/Kolkata"); }
+            catch { }
+            return TimeZoneInfo.CreateCustomTimeZone(
+                "IST", TimeSpan.FromMinutes(330), "India Standard Time", "IST");
+        }
+
         private static string BuildDateAnchor()
         {
-            DateTime now = DateTime.UtcNow;
-            string edgex = now.ToString("ddMMyyyy") + "_" + now.ToString("HHmmss");
-            return "\n\n=== CURRENT DATE/TIME ===\nToday is " + now.ToString("yyyy-MM-dd")
-                 + " (" + now.ToString("HH:mm:ss") + " UTC).\n"
-                 + "EdgeX timestamp format for \"now\": " + edgex + "\n"
-                 + "Use this as anchor for today/yesterday/last hour. "
+            DateTime utcNow = DateTime.UtcNow;
+            DateTime istNow = TimeZoneInfo.ConvertTimeFromUtc(utcNow, _istZone.Value);
+
+            string edgexIst = istNow.ToString("ddMMyyyy") + "_" + istNow.ToString("HHmmss");
+
+            return "\n\n=== CURRENT DATE/TIME ===\n"
+                 + "Today in India (Asia/Kolkata, IST, UTC+05:30) is "
+                 + istNow.ToString("yyyy-MM-dd") + " (" + istNow.ToString("HH:mm:ss") + " IST).\n"
+                 + "The EdgeX data source stores and returns ALL timestamps in IST (+05:30) "
+                 + "e.g. fields like TimestampEdgeX / TimestampLocal / TimestampDevice / TimestampEvent "
+                 + "look like \"2026-07-10T19:11:53+05:30\". Do NOT convert these; they are already IST.\n"
+                 + "EdgeX timestamp for \"now\" (IST): " + edgexIst + "\n"
+                 + "Interpret the user's 'today', 'yesterday', 'last hour' in IST, and "
+                 + "ALWAYS present dates and times to the user in IST (Asia/Kolkata, UTC+05:30).\n"
+                 //+ "Ignore any zero/epoch timestamps like \"0001-01-01T00:00:00+00:00\" - they mean the value was never set.\n"
                  + "Do NOT infer a date from training data.\n"
                  + "ALWAYS call a tool before speculating about data availability.\n"
                  + "=== END CURRENT DATE/TIME ===";

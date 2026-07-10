@@ -1,0 +1,445 @@
+﻿@model List<Domain.FRSAttributeRangeHistory>
+
+<div class="modal fade" id="modal-frs-attributerange-history" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bradius4 frs-modal">
+            <div class="modal-header frs-modal-header">
+                <h4 class="modal-title" id="myModalLabel">
+                    <i class="fas fa-history me-2"></i>
+                    <span id="spHeader">Avg Live Value</span>
+                </h4>
+                <button type="button" class="close-btn-custom" data-dismiss="modal" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body frs-modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        @if (Model != null && Model.Any())
+                        {
+                            var timestampData = Model.Where(x => x.StartTime != null && x.StartTime != DateTime.MinValue && x.EndTime != null && x.EndTime != DateTime.MinValue).FirstOrDefault();
+                            @* ===== Look up raw base attribute rows once ===== *@
+                            var chargermAval = Model.Where(x => x.AttributeTitle == "Charger mA").FirstOrDefault();
+                            var ifmAval = Model.Where(x => x.AttributeTitle == "If mA").FirstOrDefault();
+                            var irmAval = Model.Where(x => x.AttributeTitle == "Ir mA").FirstOrDefault();
+                            var chargeropvval = Model.Where(x => x.AttributeTitle == "Charger OP V").FirstOrDefault();
+                            var Vfval = Model.Where(x => x.AttributeTitle == "Vf").FirstOrDefault();
+                            var Chokeval = Model.Where(x => x.AttributeTitle == "Choke V").FirstOrDefault();
+                            var relayResVal = Model.Where(x => x.AttributeTitle == "TrackRelayResistance").FirstOrDefault();
+
+                            @* Default relay resistance = 10 ohms (QTA2_RELAY_RESISTANCE) if not present *@
+                            decimal? trackRelayResistance = relayResVal != null ? relayResVal.AvgValueHistory : 10;
+
+                            @* ===== Compute derived values in dependency order ===== *@
+
+                            @* 1. ITC_BATT_CHARG = Charger_mA - If_mA *@
+                            decimal? itcBattCharg = null;
+                            if (chargermAval != null && ifmAval != null)
+                            {
+                                itcBattCharg = chargermAval.AvgValueHistory - ifmAval.AvgValueHistory;
+                            }
+
+                            @* 2. IBALST = If_mA - Ir_mA *@
+                            decimal? ibalst = null;
+                            if (ifmAval != null && irmAval != null)
+                            {
+                                ibalst = ifmAval.AvgValueHistory - irmAval.AvgValueHistory;
+                            }
+
+                            @* 3. TR_V_Relay = (Ir_mA / 1000) * TrackRelayResistance *@
+                            decimal? trVRelay = null;
+                            if (irmAval != null && trackRelayResistance != null)
+                            {
+                                trVRelay = (irmAval.AvgValueHistory / 1000) * trackRelayResistance;
+                            }
+
+                            @* 4. VTC_VAR_RES = Charger_OP_V - Vf - Choke_V *@
+                            decimal? vtcVarRes = null;
+                            if (chargeropvval != null && Vfval != null && Chokeval != null)
+                            {
+                                vtcVarRes = chargeropvval.AvgValueHistory - Vfval.AvgValueHistory - Chokeval.AvgValueHistory;
+                            }
+
+                            @* 5. RTC_CH_FEED_END = Choke_V / (If_mA / 1000) — divisor must not be zero *@
+                            decimal? rtcChFeedEnd = null;
+                            if (Chokeval != null && ifmAval != null && ifmAval.AvgValueHistory != 0)
+                            {
+                                rtcChFeedEnd = Chokeval.AvgValueHistory / (ifmAval.AvgValueHistory / 1000);
+                            }
+
+                            @* 6. RTC_VAR_RES = VTC_VAR_RES / (If_mA / 1000) — divisor must not be zero *@
+                            decimal? rtcVarRes = null;
+                            if (vtcVarRes != null && ifmAval != null && ifmAval.AvgValueHistory != 0)
+                            {
+                                rtcVarRes = vtcVarRes / (ifmAval.AvgValueHistory / 1000);
+                            }
+
+                            @* 7. RRAIL = 2 * (Vf - TR_V_Relay) / ((If_mA + Ir_mA) / 1000) — divisor must not be zero *@
+                            decimal? rrail = null;
+                            if (Vfval != null && trVRelay != null && ifmAval != null && irmAval != null
+                                && (ifmAval.AvgValueHistory + irmAval.AvgValueHistory) != 0)
+                            {
+                                rrail = 2 * (Vfval.AvgValueHistory - trVRelay) / ((ifmAval.AvgValueHistory + irmAval.AvgValueHistory) / 1000);
+                            }
+
+                            <table class="table frs-table">
+                                <thead>
+                                    <tr>
+                                        <th>Attribute</th>
+                                        <th>Avg Value</th>
+                                        <th>Start Time</th>
+                                        <th>End Time</th>
+                                        <th class="text-center">Json</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in Model)
+                                    {
+                                        var attrvalue = item.AvgValueHistory;
+
+                                        switch (item.AttributeTitle)
+                                        {
+                                            case "ITC BATT CHARG":
+                                                if (itcBattCharg != null) { attrvalue = Math.Round(itcBattCharg.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                            case "IBlAST":
+                                                if (ibalst != null) { attrvalue = Math.Round(ibalst.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                            case "TR V (Relay)":
+                                                if (trVRelay != null) { attrvalue = Math.Round(trVRelay.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                            case "VTC VAR RES":
+                                                if (vtcVarRes != null) { attrvalue = Math.Round(vtcVarRes.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                            case "RTC CH FEED END":
+                                                if (rtcChFeedEnd != null) { attrvalue = Math.Round(rtcChFeedEnd.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                            case "RTC VAR RES":
+                                                if (rtcVarRes != null) { attrvalue = Math.Round(rtcVarRes.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                            case "RRAIL":
+                                                if (rrail != null) { attrvalue = Math.Round(rrail.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                break;
+                                        }
+
+                                        if (item.Timestamp != null && item.Timestamp != DateTime.MinValue)
+                                        {
+                                            <tr>
+                                                <td>@item.Attribute</td>
+                                                <td>@attrvalue</td>
+                                                <td>@item.StartTime</td>
+                                                <td>@item.EndTime</td>
+                                                <td class="text-center">
+                                                    @if (!string.IsNullOrEmpty(item.Json))
+                                                    {
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-view-json"
+                                                                title="View JSON"
+                                                                data-json='@Html.Raw(Json.Encode(item.Json))'
+                                                                data-label="@item.Attribute">
+                                                            <i class="fas fa-eye"></i>
+                                                        </button>
+                                                    }
+
+                                                </td>
+                                            </tr>
+                                        }
+
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <div class="frs-empty-state">
+                                <i class="fas fa-inbox"></i>
+                                <p>No history records found.</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer frs-modal-footer">
+                <button type="button" class="btn-close-modal" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Nested modal: JSON viewer -->
+<div class="modal fade" id="modal-json-viewer" tabindex="-1" role="dialog" aria-labelledby="jsonViewerLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content bradius4 frs-modal">
+            <div class="modal-header frs-modal-header">
+                <h4 class="modal-title" id="jsonViewerLabel">
+                    <i class="fas fa-code me-2"></i>
+                    <span>JSON <span id="jsonViewerAttr" class="frs-json-attr"></span></span>
+                </h4>
+                <button type="button" class="close-btn-custom" data-dismiss="modal" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body frs-modal-body">
+                <div class="frs-json-toolbar">
+                    <button type="button" class="btn-copy-json" id="btnCopyJson">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                    <span class="copy-feedback" id="copyFeedback">Copied!</span>
+                </div>
+                <pre class="frs-json-viewer" id="jsonViewerContent"></pre>
+            </div>
+            <div class="modal-footer frs-modal-footer">
+                <button type="button" class="btn-close-modal" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .frs-modal {
+        border-radius: 10px;
+        overflow: hidden;
+        border: none;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    }
+
+    .frs-modal-header {
+        background: linear-gradient(135deg, #2b5876, #4e4376);
+        color: #fff;
+        padding: 16px 22px;
+        border-bottom: none;
+    }
+
+        .frs-modal-header .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+    .frs-json-attr {
+        font-weight: 400;
+        font-size: 14px;
+        opacity: 0.85;
+    }
+
+    .frs-modal-header .close-btn-custom {
+        color: #fff;
+        opacity: 0.85;
+        background: transparent;
+        border: none;
+        font-size: 16px;
+    }
+
+        .frs-modal-header .close-btn-custom:hover {
+            opacity: 1;
+        }
+
+    .frs-modal-body {
+        padding: 20px 22px;
+        background: #f9fafb;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .frs-table {
+        background: #fff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 0;
+    }
+
+        .frs-table thead tr {
+            background-color: #eef2f7;
+        }
+
+        .frs-table thead th {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6b7280;
+            font-weight: 600;
+            border-bottom: 2px solid #e5e7eb;
+            padding: 10px 12px;
+        }
+
+        .frs-table tbody td {
+            padding: 10px 12px;
+            font-size: 14px;
+            color: #374151;
+            vertical-align: middle;
+            border-bottom: 1px solid #f0f1f3;
+        }
+
+        .frs-table tbody tr:hover {
+            background-color: #f5f7fa;
+        }
+
+    .btn-view-json {
+        background-color: #eef2ff;
+        color: #4338ca;
+        border: 1px solid #c7d2fe;
+        border-radius: 6px;
+        padding: 4px 10px;
+        transition: 0.15s ease;
+    }
+
+        .btn-view-json:hover {
+            background-color: #4338ca;
+            color: #fff;
+            border-color: #4338ca;
+        }
+
+    .frs-empty-state {
+        text-align: center;
+        padding: 40px 0;
+        color: #9ca3af;
+    }
+
+        .frs-empty-state i {
+            font-size: 32px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+    .frs-modal-footer {
+        background: #f9fafb;
+        border-top: 1px solid #eee;
+        padding: 12px 22px;
+    }
+
+    .btn-close-modal {
+        background: #fff;
+        border: 1px solid #d1d5db;
+        color: #374151;
+        border-radius: 6px;
+        padding: 6px 16px;
+        font-size: 14px;
+    }
+
+        .btn-close-modal:hover {
+            background: #f3f4f6;
+        }
+
+    /* JSON viewer specific */
+    .frs-json-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-bottom: 10px;
+        gap: 10px;
+    }
+
+    .btn-copy-json {
+        background: #fff;
+        border: 1px solid #d1d5db;
+        color: #374151;
+        border-radius: 6px;
+        padding: 5px 14px;
+        font-size: 13px;
+        transition: 0.15s ease;
+    }
+
+        .btn-copy-json:hover {
+            background: #f3f4f6;
+        }
+
+    .copy-feedback {
+        font-size: 12px;
+        color: #16a34a;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+
+        .copy-feedback.show {
+            opacity: 1;
+        }
+
+    .frs-json-viewer {
+        background: #1e1e2e;
+        color: #cdd6f4;
+        border-radius: 8px;
+        padding: 16px;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 55vh;
+        overflow-y: auto;
+        margin: 0;
+    }
+
+        /* simple syntax highlight colors */
+        .frs-json-viewer .json-key {
+            color: #89b4fa;
+        }
+
+        .frs-json-viewer .json-string {
+            color: #a6e3a1;
+        }
+
+        .frs-json-viewer .json-number {
+            color: #fab387;
+        }
+
+        .frs-json-viewer .json-boolean {
+            color: #f38ba8;
+        }
+
+        .frs-json-viewer .json-null {
+            color: #f38ba8;
+        }
+</style>
+
+<script>
+    function syntaxHighlightJson(json) {
+        json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return json.replace(
+            /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+            function (match) {
+                var cls = 'json-number';
+                if (/^"/.test(match)) {
+                    cls = /:$/.test(match) ? 'json-key' : 'json-string';
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            }
+        );
+    }
+
+    var currentJsonText = '';
+
+    $(document).on('click', '.btn-view-json', function () {
+        var jsonData = $(this).data('json');
+        var label = $(this).data('label') || '';
+
+        var jsonString;
+        try {
+            var parsed = (typeof jsonData === 'string') ? JSON.parse(jsonData) : jsonData;
+            jsonString = JSON.stringify(parsed, null, 4);
+        } catch (e) {
+            jsonString = String(jsonData);
+        }
+
+        currentJsonText = jsonString;
+
+        $('#jsonViewerAttr').text(label ? ('- ' + label) : '');
+        $('#jsonViewerContent').html(syntaxHighlightJson(jsonString));
+        $('#copyFeedback').removeClass('show');
+
+        $('#modal-json-viewer').modal('show');
+    });
+
+    $('#btnCopyJson').on('click', function () {
+        navigator.clipboard.writeText(currentJsonText).then(function () {
+            $('#copyFeedback').addClass('show');
+            setTimeout(function () {
+                $('#copyFeedback').removeClass('show');
+            }, 1500);
+        });
+    });
+</script>

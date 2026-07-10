@@ -21,11 +21,14 @@
     var _ready = false;
     var _refreshTimer = null;
     var _graphRefreshTimer = null;
-    var _graphPoints = [];          // cached points for live-append
-    var _graphAttrKey = '';         // currently plotted attribute key (wsLiveData key)
-    var _graphAlias = '';           // currently plotted alias name
-    var _graphAttrId = '';          // currently plotted attribute Id (from metadata)
-    var _chartGeo = null;           // { pad, gw, gh, W, H, minV, maxV, points, baseImage }
+    var _graphPoints = [];          // (legacy) kept for compat — main store is _graphSeriesData
+    var _graphAttrKey = '';         // (legacy) first selected attr wsLiveData key
+    var _graphAlias = '';           // (legacy) first selected alias
+    var _graphAttrId = '';          // (legacy) first selected attr Id
+    var _graphSeriesData = {};      // attrId → points[] (multi-series)
+    var _graphAllAttrs = [];        // [{id,title,alias}] — full attribute list for checkboxes
+    var _graphSelectedIds = [];     // attrIds currently checked
+    var _chartGeo = null;           // { pad, gw, gh, W, H, series, baseImage }
     var _chartHoverBound = false;   // prevent double-binding hover events
     var _assetId = null;
     var _assetName = '';
@@ -263,7 +266,7 @@
             "#sipAssetPopupOverlay{--sap-bg-panel:#0f1629;--sap-bg-card:#141b2f;--sap-bg-row-alt:#111827;--sap-bg-row-hover:#1a2340;--sap-bg-header:#0c1220;--sap-border:#1e2a45;--sap-border-glow:#2a3a5c;--sap-text-primary:#e2e8f0;--sap-text-secondary:#8b9dc3;--sap-text-muted:#5a6a8a;--sap-accent-cyan:#00d4ff;--sap-accent-green:#22c55e;--sap-accent-yellow:#f59e0b;--sap-accent-orange:#f97316;--sap-accent-red:#ef4444;--sap-accent-blue:#3b82f6;--sap-gradient-header:linear-gradient(135deg,#1a2744 0%,#0f1629 100%);--sap-shadow-card:0 4px 24px rgba(0,0,0,0.4);--sap-radius:8px;--sap-radius-sm:4px;--sap-radius-lg:12px;position:fixed;inset:0;z-index:9999999;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(5,8,18,0.72);backdrop-filter:blur(6px);font-family:'IBM Plex Sans','Plus Jakarta Sans',sans-serif;color:var(--sap-text-primary);}",
             "#sipAssetPopupOverlay.sap-show{display:flex;}",
             "#sipAssetPopupOverlay *{box-sizing:border-box;margin:0;padding:0;}",
-            "#sipAssetPopupOverlay .sap-popup{width:1060px;max-width:97vw;max-height:70vh;background:var(--sap-bg-panel);border:1px solid var(--sap-border);border-radius:var(--sap-radius-lg);box-shadow:var(--sap-shadow-card),0 0 60px rgba(0,212,255,0.06);display:flex;flex-direction:column;overflow:hidden;animation:sapSlideUp .25s cubic-bezier(.16,1,.3,1);}",
+            "#sipAssetPopupOverlay .sap-popup{width:1240px;max-width:96vw;height:min(780px,92vh);max-height:92vh;background:var(--sap-bg-panel);border:1px solid var(--sap-border);border-radius:var(--sap-radius-lg);box-shadow:var(--sap-shadow-card),0 0 60px rgba(0,212,255,0.06);display:flex;flex-direction:column;overflow:hidden;animation:sapSlideUp .25s cubic-bezier(.16,1,.3,1);}",
             "@keyframes sapSlideUp{from{opacity:0;transform:translateY(20px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}",
             "#sipAssetPopupOverlay .sap-popup-header{background:var(--sap-gradient-header);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--sap-border);flex-shrink:0;}",
             "#sipAssetPopupOverlay .sap-popup-header-left{display:flex;align-items:center;gap:10px;min-width:0;}",
@@ -287,8 +290,8 @@
             "#sipAssetPopupOverlay .sap-tab-alarm{color:var(--sap-accent-red)!important;display:flex;align-items:center;gap:5px;}",
             "#sipAssetPopupOverlay .sap-dot{width:6px;height:6px;border-radius:50%;background:var(--sap-accent-red);animation:sapPulseDot 2s infinite;}",
             "@keyframes sapPulseDot{0%,100%{opacity:1}50%{opacity:.3}}",
-            "#sipAssetPopupOverlay .sap-tab-content{display:none;flex:1;overflow-y:auto;min-height:0;}",
-            "#sipAssetPopupOverlay .sap-tab-content.sap-active{display:flex;flex-direction:column;}",
+            "#sipAssetPopupOverlay .sap-tab-content{display:none;flex:1;overflow:hidden;min-height:0;}",
+            "#sipAssetPopupOverlay .sap-tab-content.sap-active{display:flex;flex-direction:column;min-height:0;overflow:hidden;}",
             "#sipAssetPopupOverlay .sap-tab-content::-webkit-scrollbar{width:5px;}",
             "#sipAssetPopupOverlay .sap-tab-content::-webkit-scrollbar-thumb{background:var(--sap-border);border-radius:4px;}",
             "#sipAssetPopupOverlay .sap-telemetry-header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:linear-gradient(90deg,rgba(0,212,255,0.06),transparent);border-bottom:1px solid var(--sap-border);flex-shrink:0;}",
@@ -331,9 +334,27 @@
             "#sipAssetPopupOverlay .sap-cc-count{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700;}",
             "#sipAssetPopupOverlay .sap-cc-count.sap-hot{color:var(--sap-accent-red);}",
             "#sipAssetPopupOverlay .sap-cc-code{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--sap-text-muted);text-align:right;line-height:1.25;word-break:break-word;}",
-            "#sipAssetPopupOverlay .sap-chart-wrap{flex:1;padding:0 20px 20px;min-height:0;}",
-            "#sipAssetPopupOverlay .sap-chart-area{height:100%;min-height:240px;background:var(--sap-bg-card);border:1px solid var(--sap-border);border-radius:var(--sap-radius);position:relative;overflow:hidden;}",
-            "#sipAssetPopupOverlay .sap-chart-canvas{width:100%;height:100%;}",
+            "#sipAssetPopupOverlay .sap-attr-filter-wrap{position:relative;}",
+            "#sipAssetPopupOverlay .sap-attr-filter-btn{font-family:inherit;font-size:11px;font-weight:500;padding:5px 12px;background:var(--sap-bg-card);border:1px solid var(--sap-border);border-radius:var(--sap-radius-sm);color:var(--sap-text-secondary);cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;}",
+            "#sipAssetPopupOverlay .sap-attr-filter-btn:hover{border-color:var(--sap-border-glow);color:var(--sap-text-primary);}",
+            "#sipAssetPopupOverlay .sap-attr-filter-btn.sap-open{border-color:rgba(0,212,255,0.45);color:var(--sap-accent-cyan);}",
+            "#sipAssetPopupOverlay .sap-attr-dropdown{position:absolute;top:calc(100% + 4px);left:0;z-index:9999;min-width:220px;max-width:320px;background:var(--sap-bg-card);border:1px solid var(--sap-border);border-radius:var(--sap-radius);box-shadow:0 8px 24px rgba(0,0,0,0.45);display:none;flex-direction:column;}",
+            "#sipAssetPopupOverlay .sap-attr-dropdown.sap-open{display:flex;}",
+            "#sipAssetPopupOverlay .sap-attr-dd-header{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--sap-border);flex-shrink:0;}",
+            "#sipAssetPopupOverlay .sap-attr-dd-header span{font-size:10px;font-weight:600;color:var(--sap-text-muted);text-transform:uppercase;letter-spacing:.05em;flex:1;}",
+            "#sipAssetPopupOverlay .sap-attr-dd-header button{font-size:10px;font-weight:500;padding:2px 8px;border-radius:3px;border:1px solid var(--sap-border);background:transparent;color:var(--sap-text-muted);cursor:pointer;}",
+            "#sipAssetPopupOverlay .sap-attr-dd-header button:hover{color:var(--sap-accent-cyan);border-color:rgba(0,212,255,0.35);}",
+            "#sipAssetPopupOverlay .sap-attr-dd-list{max-height:220px;overflow-y:auto;padding:4px 0;}",
+            "#sipAssetPopupOverlay .sap-attr-dd-list::-webkit-scrollbar{width:4px;}",
+            "#sipAssetPopupOverlay .sap-attr-dd-list::-webkit-scrollbar-thumb{background:var(--sap-border);border-radius:2px;}",
+            "#sipAssetPopupOverlay .sap-attr-cb-row{display:flex;align-items:center;gap:8px;padding:5px 12px;cursor:pointer;transition:background .15s;}",
+            "#sipAssetPopupOverlay .sap-attr-cb-row:hover{background:rgba(255,255,255,0.04);}",
+            "#sipAssetPopupOverlay .sap-attr-cb-row input[type=checkbox]{accent-color:var(--sap-accent-cyan);width:13px;height:13px;flex-shrink:0;cursor:pointer;}",
+            "#sipAssetPopupOverlay .sap-attr-cb-label{font-size:11px;color:var(--sap-text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}",
+            "#sipAssetPopupOverlay .sap-attr-cb-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}",
+            "#sipAssetPopupOverlay .sap-chart-wrap{flex:1 1 auto;padding:0 20px 16px;min-height:0;overflow:hidden;display:flex;flex-direction:column;}",
+            "#sipAssetPopupOverlay .sap-chart-area{flex:0 0 clamp(460px,calc(92vh - 240px),620px);height:clamp(460px,calc(92vh - 240px),620px);min-height:460px;max-height:620px;background:var(--sap-bg-card);border:1px solid var(--sap-border);border-radius:var(--sap-radius);position:relative;overflow:hidden;}",
+            "#sipAssetPopupOverlay .sap-chart-canvas{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;max-width:100%;max-height:100%;}",
             "#sipAssetPopupOverlay .sap-event-log{padding:0 20px;flex:1;overflow-y:auto;}",
             "#sipAssetPopupOverlay .sap-event-row{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid rgba(30,42,69,0.4);}",
             "#sipAssetPopupOverlay .sap-event-time{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--sap-text-muted);white-space:nowrap;padding-top:2px;min-width:130px;}",
@@ -353,8 +374,8 @@
             "#sipAssetPopupOverlay .sap-alarm-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:3px 10px;border-radius:12px;background:rgba(239,68,68,0.12);color:var(--sap-accent-red);}",
             "#sipAssetPopupOverlay .sap-alarm-status.sap-cleared{background:rgba(34,197,94,0.12);color:var(--sap-accent-green);}",
             "#sipAssetPopupOverlay .sap-popup-footer{padding:10px 20px;border-top:1px solid var(--sap-border);display:flex;align-items:center;justify-content:space-between;background:var(--sap-bg-header);flex-shrink:0;}",
-            "#sipAssetPopupOverlay .sap-footer-meta{font-size:11px;color:var(--sap-text-muted);display:flex;gap:16px;flex-wrap:wrap;}",
-            "#sipAssetPopupOverlay .sap-footer-actions{display:flex;gap:8px;}",
+            "#sipAssetPopupOverlay .sap-footer-meta{font-size:11px;color:var(--sap-text-muted);display:flex;gap:16px;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}",
+            "#sipAssetPopupOverlay .sap-footer-actions{display:flex;gap:8px;flex-shrink:0;}",
             "#sipAssetPopupOverlay .sap-btn{font-size:12px;font-weight:500;padding:7px 16px;border-radius:var(--sap-radius-sm);border:1px solid var(--sap-border);background:transparent;color:var(--sap-text-secondary);display:flex;align-items:center;gap:6px;}",
             "#sipAssetPopupOverlay .sap-btn:hover{border-color:var(--sap-border-glow);color:var(--sap-text-primary);}",
             "#sipAssetPopupOverlay .sap-btn-primary{background:rgba(0,212,255,0.1);border-color:rgba(0,212,255,0.3);color:var(--sap-accent-cyan);}",
@@ -373,7 +394,7 @@
             "#sipAssetPopupOverlay .sap-m-btn{font-size:13px;font-weight:500;padding:8px 20px;border-radius:var(--sap-radius-sm);border:1px solid var(--sap-border);background:transparent;color:var(--sap-text-secondary);}",
             "#sipAssetPopupOverlay .sap-m-btn:hover{border-color:var(--sap-border-glow);color:var(--sap-text-primary);}",
             "#sipAssetPopupOverlay .sap-m-btn.sap-primary{background:rgba(245,158,11,0.15);border-color:rgba(245,158,11,0.4);color:var(--sap-accent-yellow);}",
-            "@media(max-width:760px){#sipAssetPopupOverlay{padding:10px;}#sipAssetPopupOverlay .sap-popup{max-height:88vh;}#sipAssetPopupOverlay .sap-telemetry-grid{grid-template-columns:1fr;}#sipAssetPopupOverlay .sap-telemetry-col:first-child{border-right:none;}#sipAssetPopupOverlay .sap-tabs-bar{overflow-x:auto;padding:0 10px;}#sipAssetPopupOverlay .sap-popup-footer{align-items:flex-start;flex-direction:column;gap:10px;}}"
+            "@media(max-width:760px){#sipAssetPopupOverlay{padding:10px;}#sipAssetPopupOverlay .sap-popup{height:92vh;max-height:92vh;}#sipAssetPopupOverlay .sap-chart-area{flex-basis:calc(92vh - 260px);height:calc(92vh - 260px);min-height:320px;max-height:none;}#sipAssetPopupOverlay .sap-telemetry-grid{grid-template-columns:1fr;}#sipAssetPopupOverlay .sap-telemetry-col:first-child{border-right:none;}#sipAssetPopupOverlay .sap-tabs-bar{overflow-x:auto;padding:0 10px;}#sipAssetPopupOverlay .sap-popup-footer{align-items:flex-start;flex-direction:column;gap:10px;}}"
         ].join('\n');
         document.head.appendChild(s);
     }
@@ -430,7 +451,7 @@
             /* ANALYTICS */
             '<div class="sap-tab-content" id="sap-tab-analytics"><div class="sap-analytics-bar"><div class="sap-filter-group"><span class="sap-filter-label">From</span><input type="date" class="sap-date-input" id="sipAssetAnalyticsFrom" value="' + td + '"></div><div class="sap-filter-group"><span class="sap-filter-label">To</span><input type="date" class="sap-date-input" id="sipAssetAnalyticsTo" value="' + td + '"></div><button type="button" class="sap-filter-apply">Apply</button><button type="button" class="sap-filter-clear">\u2715 Clear</button></div><div class="sap-panel-body" id="sipAssetAnalyticsBody"><div class="sap-empty-state">Select an asset to view alert analytics.</div></div></div>' +
             /* GRAPH */
-            '<div class="sap-tab-content" id="sap-tab-graph"><div class="sap-graph-bar"><select class="sap-graph-select" id="sipAssetParamSelect"><option>Live Value</option></select><div class="sap-filter-group"><span class="sap-filter-label">Date</span><input type="date" class="sap-date-input" id="sipAssetGraphDate" value="' + td + '"></div><span class="sap-filter-label" id="sipGraphTimeRange" style="margin-left:auto;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--sap-accent-cyan);"></span></div><div class="sap-chart-wrap"><div class="sap-chart-area"><canvas class="sap-chart-canvas" id="sipAssetChartCanvas"></canvas></div></div></div>' +
+            '<div class="sap-tab-content" id="sap-tab-graph"><div class="sap-graph-bar"><div class="sap-attr-filter-wrap"><button type="button" class="sap-attr-filter-btn" id="sipAttrFilterBtn">Attributes <span id="sipAttrCountBadge" style="font-size:10px;opacity:.75;">(all)</span> &#9660;</button><div class="sap-attr-dropdown" id="sipAttrDropdown"><div class="sap-attr-dd-header"><span>Plot Attributes</span><button type="button" id="sipAttrSelectAll">All</button><button type="button" id="sipAttrClearAll">None</button></div><div class="sap-attr-dd-list" id="sipAttrList"><div style="padding:10px 12px;font-size:11px;color:var(--sap-text-muted);">Loading…</div></div></div></div><div class="sap-filter-group"><span class="sap-filter-label">Date</span><input type="date" class="sap-date-input" id="sipAssetGraphDate" value="' + td + '"></div><span class="sap-filter-label" id="sipGraphTimeRange" style="margin-left:auto;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--sap-accent-cyan);"></span></div><div class="sap-chart-wrap"><div class="sap-chart-area"><canvas class="sap-chart-canvas" id="sipAssetChartCanvas"></canvas></div></div></div>' +
             /* EVENTLOG */
             '<div class="sap-tab-content" id="sap-tab-eventlog"><div class="sap-event-bar"><div class="sap-filter-group"><span class="sap-filter-label">From</span><input type="date" class="sap-date-input" id="sipAssetEventFrom" value="' + td + '"></div><div class="sap-filter-group"><span class="sap-filter-label">To</span><input type="date" class="sap-date-input" id="sipAssetEventTo" value="' + td + '"></div><button type="button" class="sap-filter-apply">Apply</button><button type="button" class="sap-filter-clear">\u2715 Clear</button></div><div class="sap-event-log" id="sipAssetEventLog"><div class="sap-empty-state">Select an asset to view events.</div></div></div>' +
             /* ALARM */
@@ -486,13 +507,29 @@
             activateTab(tabName);
         });
 
-        // ── Graph parameter dropdown ────────────────────────
-        var paramSelect = el('sipAssetParamSelect');
-        if (paramSelect) {
-            paramSelect.addEventListener('change', function () {
-                loadGraphHistory();
+        // ── Graph attribute checkbox dropdown ──────────────
+        var attrFilterBtn = el('sipAttrFilterBtn');
+        var attrDropdown  = el('sipAttrDropdown');
+        if (attrFilterBtn && attrDropdown) {
+            attrFilterBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = attrDropdown.classList.toggle('sap-open');
+                attrFilterBtn.classList.toggle('sap-open', open);
+            });
+            document.addEventListener('click', function (e) {
+                var wrap = el('sipAttrDropdown');
+                if (wrap && !wrap.contains(e.target) && e.target !== el('sipAttrFilterBtn')) {
+                    wrap.classList.remove('sap-open');
+                    var btn = el('sipAttrFilterBtn');
+                    if (btn) btn.classList.remove('sap-open');
+                }
             });
         }
+        var selAllBtn  = el('sipAttrSelectAll');
+        var clrAllBtn  = el('sipAttrClearAll');
+        if (selAllBtn) selAllBtn.addEventListener('click', function () { setAllGraphCheckboxes(true);  });
+        if (clrAllBtn) clrAllBtn.addEventListener('click', function () { setAllGraphCheckboxes(false); });
+
         var graphDate = el('sipAssetGraphDate');
         if (graphDate) {
             graphDate.addEventListener('change', function () {
@@ -675,7 +712,7 @@
         }
 
         if (name === 'graph') {
-            _graphPoints = [];
+            _graphPoints = []; _graphSeriesData = {};
             clearInterval(_graphRefreshTimer);
             setTimeout(function () {
                 if (_activeTab === 'graph' && sapIsOverlayVisible()) {
@@ -1799,11 +1836,11 @@
     //    }
     //}
 
-    function populateGraphDropdown() {
-        var sel = el('sipAssetParamSelect');
-        if (!sel) return;
+    /* ── Graph series colours ─────────────────────────── */
+    var GRAPH_COLORS = ['#00d4ff','#ff6b35','#4ade80','#f59e0b','#a78bfa','#f472b6','#34d399','#fb923c'];
 
-        var oldValue = sel.value;
+    /* ── Collect all plottable attributes for checkboxes ─ */
+    function buildGraphAttrList() {
         var aid = String(_assetId || '').trim();
         var prefix = aid + '_';
         var opts = [];
@@ -1814,139 +1851,172 @@
             if (!s || s === '0' || /^null$/i.test(s) || /^undefined$/i.test(s)) return '';
             return s.replace(/^dl_/i, '');
         }
-
         function addOption(o) {
             if (!o || !o.id) return;
             var key = String(o.id).trim().toUpperCase();
-
-            // Deduplicate by canonical dropdown value.
             if (seen[key]) {
-                // Prefer a better title/alias if the first entry was weak.
                 if ((!seen[key].title && o.title) || /^Attr\s/i.test(seen[key].alias || '')) {
                     seen[key].title = o.title || seen[key].title;
                     seen[key].alias = o.alias || seen[key].alias;
                 }
                 return;
             }
-
             seen[key] = o;
             opts.push(o);
         }
 
-        // 1. Asset attributes: AssetAttributeId -> AliasName
+        // 1. Asset attributes
         var uMap = window.userAssetSimpleMap || {};
-
         for (var key in uMap) {
             if (!uMap.hasOwnProperty(key)) continue;
             if (aid && key.indexOf(prefix) !== 0) continue;
-
             var entry = uMap[key] || {};
             var attrId = cleanId(entry.Id || entry.id || entry.AttrId || entry.attrId || key.substring(prefix.length));
-
             if (!attrId) continue;
-
-            addOption({
-                id: attrId,
-                title: entry.title || entry.Title || entry.attributeName || entry.AttributeName || '',
-                alias: entry.AliasName || entry.aliasName || entry.name || entry.Name || ('Attr ' + attrId),
-                seq: parseInt(attrId, 10) || 0
-            });
+            addOption({ id: attrId, title: entry.title || entry.Title || entry.attributeName || entry.AttributeName || '', alias: entry.AliasName || entry.aliasName || entry.name || entry.Name || ('Attr ' + attrId), seq: parseInt(attrId, 10) || 0 });
         }
 
-        // 2. DataLogger attributes: DataloggerAttributeId -> DataloggerAttribute.
-        // userAssetDataloggerMap may have many lookup keys for one relay; collapse them.
+        // 2. DataLogger attributes
         var dlMap = window.userAssetDataloggerMap || {};
         var dlNameIndex = {};
-
-        function norm(v) {
-            return String(v == null ? '' : v).trim().toUpperCase();
-        }
-
+        function norm(v) { return String(v == null ? '' : v).trim().toUpperCase(); }
         for (var dlKey in dlMap) {
             if (!dlMap.hasOwnProperty(dlKey)) continue;
             if (aid && dlKey.indexOf(prefix) !== 0) continue;
-
             var dlEntry = dlMap[dlKey] || {};
-
-            var dlId = cleanId(
-                dlEntry.DataloggerAttributeId ||
-                dlEntry.dataloggerAttributeId ||
-                dlEntry.DlAttributeId ||
-                dlEntry.dlAttributeId
-            );
-
-            var dlName = dlEntry.DataloggerAttribute ||
-                dlEntry.dataloggerAttribute ||
-                dlEntry.attributeName ||
-                dlEntry.AttributeName ||
-                dlEntry.name ||
-                dlEntry.Name ||
-                '';
-
+            var dlId = cleanId(dlEntry.DataloggerAttributeId || dlEntry.dataloggerAttributeId || dlEntry.DlAttributeId || dlEntry.dlAttributeId);
+            var dlName = dlEntry.DataloggerAttribute || dlEntry.dataloggerAttribute || dlEntry.attributeName || dlEntry.AttributeName || dlEntry.name || dlEntry.Name || '';
             var dlAssetName = dlEntry.DataloggerAssetName || dlEntry.dataloggerAssetName || '';
             var nameKey = norm(dlName) + '|' + norm(dlAssetName);
-
             if (!dlId && nameKey !== '|') dlId = dlNameIndex[nameKey] || '';
             if (!dlId) dlId = cleanId(dlKey.substring(prefix.length));
             if (!dlId) continue;
-
-            if (nameKey !== '|' && dlNameIndex[nameKey] && dlNameIndex[nameKey] !== dlId) {
-                dlId = dlNameIndex[nameKey];
-            }
-
+            if (nameKey !== '|' && dlNameIndex[nameKey] && dlNameIndex[nameKey] !== dlId) dlId = dlNameIndex[nameKey];
             if (nameKey !== '|') dlNameIndex[nameKey] = dlId;
-
-            addOption({
-                id: 'dl_' + dlId,
-                title: dlName || dlAssetName || ('DL ' + dlId),
-                alias: dlName || dlAssetName || ('DL ' + dlId),
-                seq: 9000 + (parseInt(dlId, 10) || 999)
-            });
+            addOption({ id: 'dl_' + dlId, title: dlName || dlAssetName || ('DL ' + dlId), alias: dlName || dlAssetName || ('DL ' + dlId), seq: 9000 + (parseInt(dlId, 10) || 999) });
         }
 
-        // 3. Fallback: wsLiveData keys if metadata has not arrived yet.
+        // 3. Fallback: wsLiveData keys
         if (opts.length === 0) {
             var f = findLiveAsset();
             if (f && f.d) {
                 var ra = f.d.attrs || f.d;
-
                 for (var k in ra) {
                     if (!ra.hasOwnProperty(k)) continue;
                     if (/^(AssetName|AssetTypeId|SiteId|lastUpdated|dlRelays|__type)$/i.test(k)) continue;
-
                     var aObj = ra[k];
                     var aId = cleanId(aObj && (aObj.AttrId || aObj.AssetAttributeId || aObj.AttributeId));
-
-                    addOption({
-                        id: aId || k,
-                        title: k,
-                        alias: sapAliasName(k, aObj),
-                        seq: parseInt(aId, 10) || 0
-                    });
+                    addOption({ id: aId || k, title: k, alias: sapAliasName(k, aObj), seq: parseInt(aId, 10) || 0 });
                 }
             }
         }
 
         opts.sort(function (a, b) {
             if (a.seq !== b.seq) return a.seq - b.seq;
-            return String(a.alias).localeCompare(String(b.alias), undefined, {
-                numeric: true,
-                sensitivity: 'base'
-            });
+            return String(a.alias).localeCompare(String(b.alias), undefined, { numeric: true, sensitivity: 'base' });
         });
+        return opts;
+    }
 
-        var sig = opts.map(function (o) { return o.id + ':' + o.alias + ':' + o.title; }).join('|');
-        if (sel.getAttribute('data-key-signature') === sig) return;
+    /* ── Render checkboxes into dropdown; select all by default ── */
+    function populateGraphCheckboxes() {
+        var list = el('sipAttrList');
+        if (!list) return;
 
-        sel.innerHTML = opts.map(function (o) {
-            return '<option value="' + esc(o.id) + '" data-title="' + esc(o.title) + '">' + esc(o.alias) + '</option>';
-        }).join('');
+        var opts = buildGraphAttrList();
+        var sig  = opts.map(function (o) { return o.id + ':' + o.alias; }).join('|');
+        if (list.getAttribute('data-cb-sig') === sig) {
+            _graphAllAttrs = opts;
+            syncSelectedIdsFromDom();
 
-        sel.setAttribute('data-key-signature', sig);
+            // Popup close can reset _graphSelectedIds/_graphAllAttrs while the
+            // dropdown DOM still carries the old signature. Restore state from DOM.
+            if (!_graphSelectedIds.length && opts.length) {
+                var boxes = list.querySelectorAll('input[type=checkbox]');
+                for (var bi = 0; bi < boxes.length; bi++) boxes[bi].checked = true;
+                syncSelectedIdsFromDom();
+            }
 
-        if (oldValue && opts.some(function (o) { return o.id === oldValue; })) {
-            sel.value = oldValue;
+            updateAttrCountBadge();
+            return;
         }
+        list.setAttribute('data-cb-sig', sig);
+
+        // Remember previously checked ids (if user has already interacted)
+        var hadUserSel = _graphSelectedIds.length > 0;
+        var prevChecked = {};
+        _graphSelectedIds.forEach(function (id) { prevChecked[id] = true; });
+
+        _graphAllAttrs = opts;
+
+        if (!opts.length) {
+            list.innerHTML = '<div style="padding:10px 12px;font-size:11px;color:var(--sap-text-muted);">No attributes found.</div>';
+            _graphSelectedIds = [];
+            updateAttrCountBadge();
+            return;
+        }
+
+        var html = '';
+        opts.forEach(function (o, i) {
+            var color = GRAPH_COLORS[i % GRAPH_COLORS.length];
+            var checked = hadUserSel ? (prevChecked[o.id] ? ' checked' : '') : ' checked';
+            html += '<label class="sap-attr-cb-row">'
+                  + '<input type="checkbox" value="' + esc(o.id) + '" data-title="' + esc(o.title) + '"' + checked + ' onchange="window._sipGraphCbChange()">'
+                  + '<span class="sap-attr-cb-dot" style="background:' + color + ';"></span>'
+                  + '<span class="sap-attr-cb-label" title="' + esc(o.alias) + '">' + esc(o.alias) + '</span>'
+                  + '</label>';
+        });
+        list.innerHTML = html;
+
+        // Sync _graphSelectedIds from DOM
+        syncSelectedIdsFromDom();
+        updateAttrCountBadge();
+
+        // Trigger chart reload if graph tab is active
+        if (_activeTab === 'graph' && sapIsOverlayVisible()) {
+            loadGraphHistory();
+        }
+    }
+
+    /* Legacy shim — kept so any call to populateGraphDropdown() still works */
+    function populateGraphDropdown() { populateGraphCheckboxes(); }
+
+    /* Global handler for checkbox change (called via inline onchange) */
+    window._sipGraphCbChange = function () {
+        syncSelectedIdsFromDom();
+        updateAttrCountBadge();
+        if (_activeTab === 'graph' && sapIsOverlayVisible()) loadGraphHistory();
+    };
+
+    function syncSelectedIdsFromDom() {
+        var list = el('sipAttrList');
+        if (!list) return;
+        var boxes = list.querySelectorAll('input[type=checkbox]');
+        _graphSelectedIds = [];
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked) _graphSelectedIds.push(boxes[i].value);
+        }
+        // Keep legacy compat vars pointing at first selected
+        var first = _graphAllAttrs.filter(function (a) { return _graphSelectedIds.indexOf(a.id) >= 0; })[0];
+        _graphAttrId  = first ? first.id    : '';
+        _graphAttrKey = first ? first.title : '';
+        _graphAlias   = first ? first.alias : '';
+    }
+
+    function setAllGraphCheckboxes(checked) {
+        var list = el('sipAttrList');
+        if (!list) return;
+        var boxes = list.querySelectorAll('input[type=checkbox]');
+        for (var i = 0; i < boxes.length; i++) boxes[i].checked = checked;
+        window._sipGraphCbChange();
+    }
+
+    function updateAttrCountBadge() {
+        var badge = el('sipAttrCountBadge');
+        if (!badge) return;
+        var total = _graphAllAttrs.length;
+        var sel   = _graphSelectedIds.length;
+        badge.textContent = total === 0 ? '' : (sel === total ? '(all)' : '(' + sel + '/' + total + ')');
     }
     /* ═══════════════════════════════════════════════════════════════
        SERVER FETCHES
@@ -2419,21 +2489,18 @@
         var canvas = el('sipAssetChartCanvas');
         if (!canvas || !sapNodeExists(canvas)) return;
 
-        var selected = getSelectedGraphAttribute();
+        /* Ensure checkboxes are populated first */
+        if (!_graphAllAttrs.length) populateGraphCheckboxes();
 
-        if (!selected.attrId) {
-            drawGraphMessage('Select an attribute to plot.');
+        if (!_graphSelectedIds.length) {
+            drawGraphMessage('Select at least one attribute to plot.');
             return;
         }
 
         if (!_assetId || parseInt(_assetId, 10) <= 0) {
-            drawGraphMessage('Asset ID not available \u2014 select an asset with live data.');
+            drawGraphMessage('Asset ID not available — select an asset with live data.');
             return;
         }
-
-        _graphAttrKey = selected.title;   // wsLiveData key for live-append
-        _graphAlias = selected.alias;     // AliasName for chart title
-        _graphAttrId = selected.attrId;   // numeric Id for history match
 
         /* ── Always 24 hours. Today → 00:00 to now. Past date → full day. ── */
         var graphDateVal = el('sipAssetGraphDate') ? el('sipAssetGraphDate').value : today();
@@ -2448,17 +2515,17 @@
         if (rangeLabel) {
             rangeLabel.textContent =
                 ('0' + startDate.getHours()).slice(-2) + ':' + ('0' + startDate.getMinutes()).slice(-2) +
-                ' \u2013 ' +
+                ' – ' +
                 ('0' + endDate.getHours()).slice(-2) + ':' + ('0' + endDate.getMinutes()).slice(-2) +
                 (isToday ? ' (live)' : '');
         }
 
         var startStr = formatHistoryControllerDate(fmtDateParts(startDate), fmtTimeParts(startDate));
-        var endStr = formatHistoryControllerDate(fmtDateParts(endDate), fmtTimeParts(endDate));
+        var endStr   = formatHistoryControllerDate(fmtDateParts(endDate),   fmtTimeParts(endDate));
 
         var reqNo = ++_graphRequestNo;
-
-        drawGraphMessage('Loading ' + selected.alias + '\u2026');
+        var selCount = _graphSelectedIds.length;
+        drawGraphMessage('Loading ' + selCount + ' attribute' + (selCount > 1 ? 's' : '') + '…');
 
         $.ajax({
             url: _historyUrl,
@@ -2473,16 +2540,33 @@
             success: function (res) {
                 if (reqNo !== _graphRequestNo || _activeTab !== 'graph' || !sapIsOverlayVisible()) return;
 
-                var points = extractAttributePoints(res, selected.attrId, selected.title, selected.alias);
+                /* Build a series for every selected attribute */
+                _graphSeriesData = {};
+                var seriesList = [];
 
-                _graphPoints = points;   // cache for live-append
+                _graphAllAttrs.forEach(function (attr, i) {
+                    if (_graphSelectedIds.indexOf(attr.id) < 0) return;
+                    var pts = extractAttributePoints(res, attr.id, attr.title, attr.alias);
+                    _graphSeriesData[attr.id] = pts;
+                    seriesList.push({
+                        id:     attr.id,
+                        title:  attr.title,
+                        alias:  attr.alias,
+                        points: pts,
+                        color:  GRAPH_COLORS[i % GRAPH_COLORS.length]
+                    });
+                });
 
-                if (!points.length) {
-                    drawGraphMessage('No data for \u201c' + selected.alias + '\u201d on this date.');
+                /* Legacy compat: keep _graphPoints = first series points */
+                _graphPoints = seriesList.length ? seriesList[0].points : [];
+
+                var hasData = seriesList.some(function (s) { return s.points.length > 0; });
+                if (!hasData) {
+                    drawGraphMessage('No data found for the selected attribute(s) on this date.');
                     return;
                 }
 
-                drawHistoryChart(points, selected.alias);
+                drawHistoryChart(seriesList);
             },
             error: function (xhr) {
                 if (reqNo !== _graphRequestNo || _activeTab !== 'graph' || !sapIsOverlayVisible()) return;
@@ -2490,11 +2574,10 @@
             }
         });
     }
-
-    /* ── LIVE APPEND: read current WS value and add to cached graph ── */
+    /* ── LIVE APPEND: read current WS values and add to all cached series ── */
     function appendLiveToGraph() {
         if (_activeTab !== 'graph' || !sapIsOverlayVisible()) return;
-        if (!_graphAttrKey || !_graphPoints.length) return;
+        if (!_graphSelectedIds.length) return;
 
         /* Only live-append if viewing today */
         var graphDateVal = el('sipAssetGraphDate') ? el('sipAssetGraphDate').value : today();
@@ -2503,35 +2586,46 @@
         var f = findLiveAsset();
         if (!f || !f.d) return;
 
-        var attrs = f.d.attrs || f.d;
-        var raw = attrs[_graphAttrKey];
-        var val = parseNumber(raw);
-        if (val == null) return;
+        var liveAttrs = f.d.attrs || f.d;
+        var now      = new Date();
+        var timeStr  = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+        var nowMs    = now.getTime();
+        var appended = false;
 
-        var now = new Date();
-        var timeStr = ('0' + now.getHours()).slice(-2) + ':' + ('0' + now.getMinutes()).slice(-2);
+        var seriesList = [];
+        _graphAllAttrs.forEach(function (attr, i) {
+            if (_graphSelectedIds.indexOf(attr.id) < 0) return;
+            var pts = _graphSeriesData[attr.id] || [];
 
-        var last = _graphPoints[_graphPoints.length - 1];
-
-        /* Only append if value changed or at least 10 s elapsed */
-        if (last && last.value === val && last.sortKey && (now.getTime() - last.sortKey) < 10000) return;
-
-        _graphPoints.push({
-            time: timeStr,
-            rawTime: now.toISOString(),
-            value: val,
-            sortKey: now.getTime()
+            /* Read live value by wsLiveData key (attr.title) */
+            var raw = liveAttrs[attr.title];
+            var val = parseNumber(raw);
+            if (val != null) {
+                var last = pts[pts.length - 1];
+                if (!last || last.value !== val || (nowMs - (last.sortKey || 0)) >= 10000) {
+                    pts.push({ time: timeStr, rawTime: now.toISOString(), value: val, sortKey: nowMs });
+                    appended = true;
+                }
+            }
+            _graphSeriesData[attr.id] = pts;
+            seriesList.push({ id: attr.id, title: attr.title, alias: attr.alias, points: pts, color: GRAPH_COLORS[i % GRAPH_COLORS.length] });
         });
+
+        if (!appended && seriesList.every(function (s) { return !s.points.length; })) return;
+
+        /* Legacy compat */
+        _graphPoints = seriesList.length ? seriesList[0].points : [];
 
         /* Update time range label */
         var rangeLabel = el('sipGraphTimeRange');
-        if (rangeLabel) {
-            rangeLabel.textContent = '00:00 \u2013 ' + timeStr + ' (live)';
-        }
+        if (rangeLabel) rangeLabel.textContent = '00:00 – ' + timeStr + ' (live)';
 
-        drawHistoryChart(_graphPoints, _graphAlias);
+        if (window.__sipGraphRAF) cancelAnimationFrame(window.__sipGraphRAF);
+        window.__sipGraphRAF = requestAnimationFrame(function () {
+            window.__sipGraphRAF = null;
+            drawHistoryChart(seriesList);
+        });
     }
-
     /* ── Date/time formatting helpers for the controller endpoint ── */
     function fmtDateParts(d) {
         return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
@@ -2824,182 +2918,312 @@
         return -1;
     }
 
+    function lockSapChartHeight(host) {
+        if (!host || !host.style) return;
+
+        var vh = window.innerHeight || document.documentElement.clientHeight || 720;
+        var h = Math.round(Math.max(460, Math.min(620, vh - 240)));
+
+        if (vh < 680) {
+            h = Math.round(Math.max(320, vh - 260));
+        }
+
+        host.style.height = h + 'px';
+        host.style.minHeight = h + 'px';
+        host.style.maxHeight = h + 'px';
+        host.style.flex = '0 0 ' + h + 'px';
+    }
+
     function drawGraphMessage(message) {
         _chartGeo = null;  // disable hover tooltip
         var canvas = el('sipAssetChartCanvas');
         if (!canvas || !sapNodeExists(canvas) || !canvas.parentElement) return;
 
+        var host = canvas.parentElement;
+        lockSapChartHeight(host);
+
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
-        var rect = canvas.parentElement.getBoundingClientRect();
+        var rect = host.getBoundingClientRect();
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
+        var W = Math.floor(rect.width);
+        var H = Math.floor(rect.height);
+        var needW = Math.round(W * dpr);
+        var needH = Math.round(H * dpr);
 
-        ctx.scale(dpr, dpr);
-        ctx.clearRect(0, 0, rect.width, rect.height);
+        // Important: do not write rect.height + 'px' to the canvas style.
+        // That creates a parent/canvas height feedback loop during sync.
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+
+        if (canvas.width !== needW || canvas.height !== needH) {
+            canvas.width = needW;
+            canvas.height = needH;
+        }
+
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, W, H);
 
         ctx.fillStyle = '#5a6a8a';
         ctx.font = '13px IBM Plex Sans, Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(message, rect.width / 2, rect.height / 2);
+        ctx.fillText(message, W / 2, H / 2);
     }
 
-    function drawHistoryChart(points, aliasName) {
+    function drawHistoryChart(seriesList) {
+        /* Accept legacy call signature: drawHistoryChart(points, alias) */
+        if (Array.isArray(seriesList) && seriesList.length && !seriesList[0].hasOwnProperty('points')) {
+            var legacyAlias = arguments[1] || 'Value';
+            seriesList = [{ id: 'legacy', alias: legacyAlias, points: seriesList, color: GRAPH_COLORS[0] }];
+        }
+        if (!Array.isArray(seriesList)) seriesList = [];
+
         var canvas = el('sipAssetChartCanvas');
         if (!canvas || !sapNodeExists(canvas) || !canvas.parentElement || _activeTab !== 'graph') return;
 
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
-        var rect = canvas.parentElement.getBoundingClientRect();
+        var host = canvas.parentElement;
+        lockSapChartHeight(host);
+
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+
+        var rect = host.getBoundingClientRect();
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = rect.width + 'px';
-        canvas.style.height = rect.height + 'px';
+        var W = Math.floor(rect.width);
+        var H = Math.floor(rect.height);
+        var needW = Math.round(W * dpr);
+        var needH = Math.round(H * dpr);
+        if (canvas.width !== needW || canvas.height !== needH) {
+            canvas.width = needW;
+            canvas.height = needH;
+        } else {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        ctx.scale(dpr, dpr);
+        /* Legend height: 18 px per row, max 3 cols */
+        var visibleSeries = seriesList.filter(function (s) { return s.points && s.points.length > 0; });
+        var legendCols    = Math.min(3, visibleSeries.length);
+        var legendRows    = visibleSeries.length > 0 ? Math.ceil(visibleSeries.length / legendCols) : 0;
+        var legendH       = legendRows > 0 ? legendRows * 18 + 8 : 0;
 
-        var W = rect.width;
-        var H = rect.height;
-
-        var pad = { top: 34, right: 24, bottom: 42, left: 58 };
-        var gw = W - pad.left - pad.right;
-        var gh = H - pad.top - pad.bottom;
+        var pad = { top: 34, right: 24, bottom: 42 + legendH, left: 58 };
+        var gw  = W - pad.left - pad.right;
+        var gh  = H - pad.top  - pad.bottom;
 
         ctx.clearRect(0, 0, W, H);
 
-        var values = points.map(function (p) { return p.value; });
-        var minV = Math.min.apply(null, values);
-        var maxV = Math.max.apply(null, values);
+        /* ── Y range model ─────────────────────────────────────
+           Single attribute  : raw/global Y-axis.
+           Multiple attributes: per-series normalized Y-axis so every selected
+           attribute shows its own up/down step movement. Raw values remain in
+           tooltip and legend range. A common raw Y-axis cannot represent mixed
+           units/ranges such as TPR(0/1), current(mA), voltage(V), etc. */
+        var isMultiScale = visibleSeries.length > 1;
+        var allVals = [];
+        visibleSeries.forEach(function (s) {
+            s.points.forEach(function (p) {
+                if (p && p.value !== null && p.value !== undefined && !isNaN(p.value)) allVals.push(p.value);
+            });
+        });
 
+        var minV = allVals.length ? Math.min.apply(null, allVals) : 0;
+        var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
         if (minV === maxV) { minV = minV - 1; maxV = maxV + 1; }
         var range = maxV - minV;
         minV = minV - range * 0.08;
         maxV = maxV + range * 0.08;
 
-        /* ── Title: alias name ── */
+        /* Prepare individual scales for multi-attribute mode. */
+        visibleSeries.forEach(function (s) {
+            var vals = [];
+            (s.points || []).forEach(function (p) {
+                if (p && p.value !== null && p.value !== undefined && !isNaN(p.value)) vals.push(p.value);
+            });
+            var lo = vals.length ? Math.min.apply(null, vals) : 0;
+            var hi = vals.length ? Math.max.apply(null, vals) : 1;
+            s._rawMin = lo;
+            s._rawMax = hi;
+
+            if (lo === hi) {
+                lo = lo - 1;
+                hi = hi + 1;
+            } else {
+                var sr = hi - lo;
+                lo = lo - sr * 0.08;
+                hi = hi + sr * 0.08;
+            }
+            s._sapScale = { min: lo, max: hi };
+        });
+
+        /* ── Title ── */
         ctx.fillStyle = '#e2e8f0';
         ctx.font = '600 13px IBM Plex Sans, Arial, sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(aliasName || 'Selected Attribute', pad.left, 18);
+        var titleText = visibleSeries.length === 1
+            ? (visibleSeries[0].alias || 'Attribute')
+            : (visibleSeries.length + ' Attributes · Multi-scale');
+        ctx.fillText(titleText, pad.left, 18);
 
-        /* ── Record count (top-right) ── */
+        /* ── Record count ── */
+        var totalPts = seriesList.reduce(function (n, s) {
+            return Math.max(n, (s.points ? s.points.length : 0));
+        }, 0);
         ctx.fillStyle = '#5a6a8a';
         ctx.font = '10px IBM Plex Sans, Arial, sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(points.length + ' records', W - pad.right, 18);
+        ctx.fillText(totalPts + ' records', W - pad.right, 18);
 
         /* ── Grid lines + Y-axis labels ── */
         ctx.strokeStyle = 'rgba(90,106,138,0.28)';
         ctx.lineWidth = 1;
-
         for (var i = 0; i <= 4; i++) {
-            var gy = pad.top + (gh / 4) * i;
+            var gy  = pad.top + (gh / 4) * i;
             var val = maxV - ((maxV - minV) * (i / 4));
-
             ctx.beginPath();
             ctx.moveTo(pad.left, gy);
             ctx.lineTo(pad.left + gw, gy);
             ctx.stroke();
-
             ctx.fillStyle = '#5a6a8a';
             ctx.font = '10px JetBrains Mono, monospace';
             ctx.textAlign = 'right';
-            ctx.fillText(formatGraphValue(val), pad.left - 8, gy + 3);
+            var yLabel = isMultiScale ? ((4 - i) * 25 + '%') : formatGraphValue(val);
+            ctx.fillText(yLabel, pad.left - 8, gy + 3);
         }
 
-        /* ── X-axis time labels ── */
-        ctx.fillStyle = '#5a6a8a';
-        ctx.font = '10px JetBrains Mono, monospace';
-        ctx.textAlign = 'center';
-
-        var tickCount = Math.min(7, points.length);
-        for (var t = 0; t < tickCount; t++) {
-            var idx = tickCount === 1 ? 0 : Math.round((points.length - 1) * (t / (tickCount - 1)));
-            var tx = pad.left + (gw * idx / Math.max(1, points.length - 1));
-            ctx.fillText(points[idx].time || '', tx, H - 16);
-        }
-
-        /* ═══════════════════════════════════════════════════════════
-           STEP-LINE: hold value flat → jump vertically at next point.
-           This prevents zig-zag / interpolation between readings.
-           ═══════════════════════════════════════════════════════════ */
-        function px(index) { return pad.left + (gw * index / Math.max(1, points.length - 1)); }
-        function py(v) { return pad.top + gh - ((v - minV) / (maxV - minV)) * gh; }
-
-        ctx.beginPath();
-
-        for (var si = 0; si < points.length; si++) {
-            var sx = px(si);
-            var sy = py(points[si].value);
-
-            if (si === 0) {
-                ctx.moveTo(sx, sy);
-            } else {
-                /* Horizontal line at previous value → then vertical jump */
-                ctx.lineTo(sx, py(points[si - 1].value));
-                ctx.lineTo(sx, sy);
+        /* ── X-axis time labels (use first non-empty series for ticks) ── */
+        var refPts = (visibleSeries[0] && visibleSeries[0].points) || [];
+        if (refPts.length) {
+            ctx.fillStyle = '#5a6a8a';
+            ctx.font = '10px JetBrains Mono, monospace';
+            ctx.textAlign = 'center';
+            var tickCount = Math.min(7, refPts.length);
+            for (var t = 0; t < tickCount; t++) {
+                var idx = tickCount === 1 ? 0 : Math.round((refPts.length - 1) * (t / (tickCount - 1)));
+                var tx  = pad.left + (gw * idx / Math.max(1, refPts.length - 1));
+                ctx.fillText(refPts[idx].time || '', tx, H - legendH - 16);
             }
         }
 
-        /* Extend last value to the right edge (holds current value to "now") */
-        if (points.length > 0) {
-            ctx.lineTo(pad.left + gw, py(points[points.length - 1].value));
+        function px(pts, index) { return pad.left + (gw * index / Math.max(1, pts.length - 1)); }
+        function pyGlobal(v) {
+            var span = (maxV - minV) || 1;
+            return pad.top + gh - ((v - minV) / span) * gh;
+        }
+        function yForSeries(s, v) {
+            if (!isMultiScale) return pyGlobal(v);
+            var sc = (s && s._sapScale) ? s._sapScale : { min: minV, max: maxV };
+            var span = (sc.max - sc.min) || 1;
+            return pad.top + gh - ((v - sc.min) / span) * gh;
         }
 
-        ctx.strokeStyle = '#00d4ff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        /* ── Draw each series as a step-line ── */
+        visibleSeries.forEach(function (s) {
+            var pts = s.points || [];
+            if (!pts.length) return;
 
-        /* ── Fill area under step-line ── */
-        var grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + gh);
-        grad.addColorStop(0, 'rgba(0,212,255,0.14)');
-        grad.addColorStop(1, 'rgba(0,212,255,0.00)');
+            ctx.beginPath();
+            for (var si = 0; si < pts.length; si++) {
+                var sx = px(pts, si);
+                var sy = yForSeries(s, pts[si].value);
+                if (si === 0) {
+                    ctx.moveTo(sx, sy);
+                } else {
+                    /* Step graph: horizontal part must use the SAME scale as the vertical point. */
+                    ctx.lineTo(sx, yForSeries(s, pts[si - 1].value));
+                    ctx.lineTo(sx, sy);
+                }
+            }
+            ctx.lineTo(pad.left + gw, yForSeries(s, pts[pts.length - 1].value));
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = visibleSeries.length === 1 ? 2 : 1.5;
+            ctx.stroke();
 
-        ctx.lineTo(pad.left + gw, pad.top + gh);
-        ctx.lineTo(pad.left, pad.top + gh);
-        ctx.closePath();
-        ctx.fillStyle = grad;
-        ctx.fill();
+            /* Fill for single-series only (too noisy with multiple) */
+            if (visibleSeries.length === 1) {
+                var grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + gh);
+                grad.addColorStop(0, hexAlpha(s.color, 0.14));
+                grad.addColorStop(1, hexAlpha(s.color, 0.00));
+                ctx.lineTo(pad.left + gw, pad.top + gh);
+                ctx.lineTo(pad.left, pad.top + gh);
+                ctx.closePath();
+                ctx.fillStyle = grad;
+                ctx.fill();
+            }
 
-        /* ── Glow dot on last value ── */
-        var last = points[points.length - 1];
-        var lx = pad.left + gw;
-        var ly = py(last.value);
+            /* Glow dot on last value */
+            var last = pts[pts.length - 1];
+            var lx = pad.left + gw;
+            var ly = yForSeries(s, last.value);
+            ctx.beginPath();
+            ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+            ctx.fillStyle = s.color;
+            ctx.fill();
+            if (visibleSeries.length === 1) {
+                ctx.beginPath();
+                ctx.arc(lx, ly, 8, 0, Math.PI * 2);
+                ctx.strokeStyle = hexAlpha(s.color, 0.35);
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.fillStyle = s.color;
+                ctx.font = '600 11px JetBrains Mono, monospace';
+                ctx.textAlign = 'right';
+                ctx.fillText(formatGraphValue(last.value), lx - 14, ly + 4);
+            }
+        });
 
-        ctx.beginPath();
-        ctx.arc(lx, ly, 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#00d4ff';
-        ctx.fill();
+        /* ── Legend (below chart) ── */
+        if (legendRows > 0) {
+            var legY   = H - legendH + 6;
+            var colW   = (W - pad.left - pad.right) / legendCols;
+            visibleSeries.forEach(function (s, li) {
+                var col = li % legendCols;
+                var row = Math.floor(li / legendCols);
+                var lx2 = pad.left + col * colW;
+                var ly2 = legY + row * 18;
+                ctx.beginPath();
+                ctx.moveTo(lx2, ly2 + 6);
+                ctx.lineTo(lx2 + 16, ly2 + 6);
+                ctx.strokeStyle = s.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = '#8b9dc3';
+                ctx.font = '10px IBM Plex Sans, Arial, sans-serif';
+                ctx.textAlign = 'left';
+                var maxLegW = colW - 26;
+                var aliasText = s.alias || s.id;
+                if (isMultiScale) aliasText += ' [' + formatGraphValue(s._rawMin) + '–' + formatGraphValue(s._rawMax) + ']';
+                ctx.fillText(aliasText, lx2 + 22, ly2 + 10);
+            });
+        }
 
-        ctx.beginPath();
-        ctx.arc(lx, ly, 8, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(0,212,255,0.35)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        /* ── Current value label next to glow dot ── */
-        ctx.fillStyle = '#00d4ff';
-        ctx.font = '600 11px JetBrains Mono, monospace';
-        ctx.textAlign = 'right';
-        ctx.fillText(formatGraphValue(last.value), lx - 14, ly + 4);
-
-        /* ── Save geometry + base image for hover tooltip ── */
+        /* ── Save geometry for hover tooltip ── */
         _chartGeo = {
             pad: pad, gw: gw, gh: gh, W: W, H: H,
             minV: minV, maxV: maxV,
-            points: points, alias: aliasName,
-            px: px, py: py,
+            multiScale: isMultiScale,
+            series: visibleSeries,
+            /* Legacy compat */
+            points: visibleSeries.length ? visibleSeries[0].points : [],
+            alias:  visibleSeries.length ? visibleSeries[0].alias  : '',
+            px: function (index) { return px(visibleSeries.length ? visibleSeries[0].points : [], index); },
+            py: pyGlobal,
+            yForSeries: function (s, v) { return yForSeries(s, v); },
             baseImage: ctx.getImageData(0, 0, canvas.width, canvas.height)
         };
     }
 
+    /* ── Helper: hex colour + alpha as rgba ── */
+    function hexAlpha(hex, alpha) {
+        var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
     /* ═══════════════════════════════════════════════════════════════
        HOVER TOOLTIP — crosshair + value/time bubble on mousemove
        ═══════════════════════════════════════════════════════════════ */
@@ -3013,7 +3237,7 @@
             _chartHoverBound = true;
 
             canvas.addEventListener('mousemove', function (e) {
-                if (!_chartGeo || !_chartGeo.points.length || _activeTab !== 'graph') return;
+                var _cg = _chartGeo; var _hasPts = _cg && ((_cg.series && _cg.series.some(function(s){return s.points&&s.points.length;})) || (_cg.points && _cg.points.length)); if (!_hasPts || _activeTab !== 'graph') return;
                 if (!sapNodeExists(canvas)) return;
                 var rect = canvas.getBoundingClientRect();
                 var mx = e.clientX - rect.left;
@@ -3038,101 +3262,94 @@
         var g = _chartGeo;
         if (!g || _activeTab !== 'graph' || !canvas || !sapNodeExists(canvas)) return;
 
+        var allSeries = g.series || (g.points && g.points.length ? [{ points: g.points, alias: g.alias || '', color: '#00d4ff' }] : []);
+        if (!allSeries.length) return;
+
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
 
-        /* Restore clean base image */
         ctx.putImageData(g.baseImage, 0, 0);
-
-        /* Scale context for CSS-pixel drawing */
         ctx.save();
         ctx.scale(dpr, dpr);
 
-        var pts = g.points;
         var pad = g.pad;
-
-        /* Clamp mouseX to chart area */
         if (mouseX < pad.left || mouseX > pad.left + g.gw) { ctx.restore(); return; }
 
-        /* Find nearest point index by x position */
-        var ratio = (mouseX - pad.left) / g.gw;
-        var idx = Math.round(ratio * (pts.length - 1));
-        if (idx < 0) idx = 0;
-        if (idx >= pts.length) idx = pts.length - 1;
+        /* For each series find the nearest point by x */
+        var hits = [];
+        allSeries.forEach(function (s) {
+            var pts = s.points || [];
+            if (!pts.length) return;
+            var ratio = (mouseX - pad.left) / g.gw;
+            var idx = Math.round(ratio * (pts.length - 1));
+            if (idx < 0) idx = 0;
+            if (idx >= pts.length) idx = pts.length - 1;
+            var ptx = pad.left + (g.gw * idx / Math.max(1, pts.length - 1));
+            var pty = (typeof g.yForSeries === 'function') ? g.yForSeries(s, pts[idx].value) : g.py(pts[idx].value);
+            hits.push({ s: s, idx: idx, pt: pts[idx], ptx: ptx, pty: pty });
+        });
 
-        var pt = pts[idx];
-        var ptx = g.px(idx);
-        var pty = g.py(pt.value);
+        if (!hits.length) { ctx.restore(); return; }
 
-        /* ── Vertical crosshair line ── */
+        /* Vertical crosshair at the first series' x (representative) */
+        var refX = hits[0].ptx;
         ctx.strokeStyle = 'rgba(0,212,255,0.35)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 3]);
         ctx.beginPath();
-        ctx.moveTo(ptx, pad.top);
-        ctx.lineTo(ptx, pad.top + g.gh);
+        ctx.moveTo(refX, pad.top);
+        ctx.lineTo(refX, pad.top + g.gh);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        /* ── Horizontal crosshair line ── */
-        ctx.strokeStyle = 'rgba(0,212,255,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(pad.left, pty);
-        ctx.lineTo(pad.left + g.gw, pty);
-        ctx.stroke();
+        /* Draw a dot per series */
+        hits.forEach(function (h) {
+            ctx.beginPath();
+            ctx.arc(h.ptx, h.pty, 4, 0, Math.PI * 2);
+            ctx.fillStyle = h.s.color;
+            ctx.fill();
+        });
 
-        /* ── Point highlight dot ── */
-        ctx.beginPath();
-        ctx.arc(ptx, pty, 5, 0, Math.PI * 2);
-        ctx.fillStyle = '#00d4ff';
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(ptx, pty, 9, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(0,212,255,0.4)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        /* ── Tooltip box ── */
-        var valText = formatGraphValue(pt.value);
-        var timeText = pt.time || '';
-        var aliasText = g.alias || '';
-        var line1 = aliasText + ': ' + valText;
-        var line2 = timeText;
+        /* ── Tooltip box: list all series values ── */
+        var timeText = hits[0].pt.time || '';
+        var lines = hits.map(function (h) {
+            return { text: (h.s.alias || '') + ': ' + formatGraphValue(h.pt.value), color: h.s.color };
+        });
 
         ctx.font = '600 11px JetBrains Mono, monospace';
-        var tw1 = ctx.measureText(line1).width;
+        var maxTW = 0;
+        lines.forEach(function (l) { var tw = ctx.measureText(l.text).width; if (tw > maxTW) maxTW = tw; });
         ctx.font = '10px JetBrains Mono, monospace';
-        var tw2 = ctx.measureText(line2).width;
+        var tw2 = ctx.measureText(timeText).width;
+        maxTW = Math.max(maxTW, tw2);
 
-        var boxW = Math.max(tw1, tw2) + 20;
-        var boxH = 42;
-        var bx = ptx + 14;
-        var by = pty - boxH - 8;
+        var boxW = maxTW + 20;
+        var boxH = lines.length * 16 + 22;
+        var bx   = refX + 14;
+        var by   = hits[0].pty - boxH - 8;
+        if (bx + boxW > pad.left + g.gw) bx = refX - boxW - 14;
+        if (by < pad.top) by = hits[0].pty + 12;
 
-        /* Keep box within chart area */
-        if (bx + boxW > pad.left + g.gw) bx = ptx - boxW - 14;
-        if (by < pad.top) by = pty + 12;
-
-        /* Box background */
         ctx.fillStyle = 'rgba(15,22,41,0.92)';
         ctx.strokeStyle = 'rgba(0,212,255,0.3)';
         ctx.lineWidth = 1;
         roundRect(ctx, bx, by, boxW, boxH, 6);
 
-        /* Line 1: alias + value */
-        ctx.fillStyle = '#00d4ff';
-        ctx.font = '600 11px JetBrains Mono, monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(line1, bx + 10, by + 17);
-
-        /* Line 2: time */
+        /* Time row */
         ctx.fillStyle = '#8b9dc3';
         ctx.font = '10px JetBrains Mono, monospace';
-        ctx.fillText(line2, bx + 10, by + 33);
+        ctx.textAlign = 'left';
+        ctx.fillText(timeText, bx + 10, by + 14);
+
+        /* Series rows */
+        lines.forEach(function (l, li) {
+            ctx.fillStyle = l.color;
+            ctx.font = '600 11px JetBrains Mono, monospace';
+            ctx.fillText(l.text, bx + 10, by + 14 + (li + 1) * 16);
+        });
 
         ctx.restore();
     }
-
     function roundRect(ctx, x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -3404,7 +3621,15 @@
         clearInterval(_refreshTimer);
         clearInterval(_graphRefreshTimer); _graphRefreshTimer = null;
         _chartGeo = null;
+
+        var graphList = el('sipAttrList');
+        if (graphList) {
+            graphList.removeAttribute('data-cb-sig');
+            graphList.innerHTML = '<div style="padding:10px 12px;font-size:11px;color:var(--sap-text-muted);">Loading…</div>';
+        }
+
         _graphPoints = []; _graphAttrKey = ''; _graphAlias = ''; _graphAttrId = '';
+        _graphSeriesData = {}; _graphSelectedIds = []; _graphAllAttrs = [];
         _lastLiveSignature = '';
         _assetId = null; _assetName = '';
     }

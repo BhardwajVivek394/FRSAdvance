@@ -460,9 +460,14 @@ var _WS_INITIAL_STABILISE_MS = 8000;  // 8 s of "no new asset" = dump done
 function _markInitialLoadComplete() {
     if (_wsInitialLoadComplete) return;
     _wsInitialLoadComplete = true;
-    console.log('[Stale] Initial WS load complete — incremental stale checks now enabled');
-    // Start the auto-stale watchdog now that initial data is loaded
-    startAutoStaleCheck();
+    console.log('[Stale] Initial WS load complete — running IsFresh stale backfill');
+    // LG-002: backfill IsFresh-based stale for every asset already in wsLiveData so a
+    // first-dump IsFresh=false is reflected immediately (no wait for the next update).
+    // LG-004: no auto-stale watchdog — stale is IsFresh/RawIsFresh-only and local.
+    try {
+        var _ids = Object.keys(wsLiveData || {});
+        for (var _i = 0; _i < _ids.length; _i++) checkStaleForAsset(_ids[_i]);
+    } catch (e) { }
 }
 
 // Helper: returns true when Signal asset type is selected AND view is List/Table.
@@ -477,32 +482,25 @@ function _isSignalListView() {
 // GUARD 2: Signal assets — only check stale in List view.
 // GUARD 3: _stalePendingSet is capped at STALE_MAX_FLUSH — excess dropped.
 function checkStaleForAsset(assetId) {
+    // PC-11: the ONE stale route for all asset types. Local wsLiveData read only —
+    // no GetLiveValue, no timestamp age, no batch/watchdog. DataLogger excluded (PC-16).
     if (!assetId || assetId === '' || assetId === '0') return;
-
-    // Never fire during the initial bulk load
-    if (!_wsInitialLoadComplete) return;
-
-    // Signal asset type — only check stale when in List/Table view
-    if (typeof isSignalAssetType === 'function' && isSignalAssetType()) {
-        if (!_isSignalListView()) return;
+    var aid = String(assetId);
+    var asset = wsLiveData && wsLiveData[aid];
+    if (!asset || !asset.attrs) return;
+    if (!wsStaleAttrs[aid]) wsStaleAttrs[aid] = {};
+    var changed = false;
+    for (var attrName in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(attrName)) continue;
+        if (typeof _isDataloggerAttr === 'function' && _isDataloggerAttr(aid, attrName)) continue;
+        var isStale = isStaleByFreshFlag(asset.attrs[attrName]);
+        if (wsStaleAttrs[aid][attrName] !== isStale) { wsStaleAttrs[aid][attrName] = isStale; changed = true; }
     }
-
-    // Cap: don't accumulate more than STALE_MAX_FLUSH IDs
-    if (Object.keys(_stalePendingSet).length >= STALE_MAX_FLUSH) return;
-
-    _stalePendingSet[String(assetId)] = true;
-    if (_staleBatchTimer) clearTimeout(_staleBatchTimer);
-    _staleBatchTimer = setTimeout(function () {
-        _staleBatchTimer = null;
-        var ids = Object.keys(_stalePendingSet);
-        _stalePendingSet = {};
-        // Double-check cap on flush
-        if (ids.length > STALE_MAX_FLUSH) ids = ids.slice(0, STALE_MAX_FLUSH);
-        _flushStaleBatch(ids, 0);
-    }, STALE_BATCH_DELAY);
+    if (changed && typeof _applyStaleClassesToUI === 'function') _applyStaleClassesToUI(aid);
 }
 
 function _flushStaleBatch(ids, idx) {
+    return; // PC-07: hard-disabled — stale is IsFresh/RawIsFresh-only (no GetLiveValue, no silence watchdog)
     if (idx >= ids.length) return;
     console.log('[Stale] GetLiveValue for asset ' + ids[idx] + ' (' + (idx + 1) + '/' + ids.length + ')');
     _fetchLiveValueAndCheckStale(ids[idx]);
@@ -512,20 +510,8 @@ function _flushStaleBatch(ids, idx) {
 }
 
 function _fetchLiveValueAndCheckStale(assetId) {
-    var nowMs = Date.now();
-    $.ajax({
-        url: LIVE_VALUE_BASE_URL + '?assetId=' + assetId,
-        type: 'GET',
-        dataType: 'json',
-        timeout: 15000,
-        success: function (data) {
-            if (!Array.isArray(data) || data.length === 0) return;
-            _applyStaleFlags(assetId, data, nowMs);
-        },
-        error: function (xhr, status, err) {
-            console.warn('[Stale] LiveValue error asset=' + assetId, status, err);
-        }
-    });
+    // PC-14: DISABLED. GetLiveValue must not drive stale. Route to local IsFresh check.
+    if (typeof checkStaleForAsset === 'function') checkStaleForAsset(assetId);
 }
 
 function stopStalePoll() {
@@ -537,10 +523,8 @@ function stopStalePoll() {
 
 // ── AUTO STALE: periodically checks if WS went silent ────────────
 function startAutoStaleCheck() {
+    // PC-14: DISABLED. WebSocket silence must not mark stale; stale is IsFresh-only.
     stopAutoStaleCheck();
-    _wsAutoStaleRunning = true;
-    console.log('[AutoStale] Started — will check every ' + (WS_AUTO_STALE_INTERVAL / 1000) + 's for ' + (WS_AUTO_STALE_THRESHOLD / 60000) + 'min silence');
-    _wsAutoStaleTimer = setInterval(_autoStaleCheckTick, WS_AUTO_STALE_INTERVAL);
 }
 
 function stopAutoStaleCheck() {
@@ -549,6 +533,7 @@ function stopAutoStaleCheck() {
 }
 
 function _autoStaleCheckTick() {
+    return; // PC-07: hard-disabled — stale is IsFresh/RawIsFresh-only (no GetLiveValue, no silence watchdog)
     if (!wsIsConnected || !_wsInitialLoadComplete) return;
     var now = Date.now();
     var elapsed = now - (wsLastMessageTime || 0);
@@ -568,6 +553,7 @@ function _autoStaleCheckTick() {
 }
 
 function _flushAutoStaleBatch(batch, idx, remaining) {
+    return; // PC-07: hard-disabled — stale is IsFresh/RawIsFresh-only (no GetLiveValue, no silence watchdog)
     if (idx >= batch.length) {
         // If there are remaining assets, schedule next batch after a gap
         if (remaining.length > 0) {
@@ -636,13 +622,8 @@ function _applyStaleFlags(assetId, apiItems, nowMs) {
 
         if (isDatalogger) return;
 
-        var tsStr = item.TimestampLocal || item.TimestampDevice || null;
-        if (!tsStr) return;
-
-        var tsMs = new Date(tsStr).getTime();
-        if (isNaN(tsMs) || tsMs <= 0) return;
-
-        var isStale = ((nowMs - tsMs) > STALE_THRESHOLD_MS);
+        // PC-08: IsFresh-only (normalized). No timestamp age / 5-min timeout.
+        var isStale = isStaleByFreshFlag(item);
         var wasStale = wsStaleAttrs[aid][attrName];
 
         if (wasStale !== isStale) {
@@ -655,7 +636,7 @@ function _applyStaleFlags(assetId, apiItems, nowMs) {
 }
 
 function _staleMarkerHtml() {
-    return ' <i class="fas fa-clock ws-stale-marker" title="Stale: no update for 5+ min"></i>';
+    return ' <i class="fas fa-exclamation-triangle ws-stale-marker" title="Stale: IsFresh=false (server marked stale)"></i>';
 }
 
 function _warnMarkerHtml(cls) {
@@ -716,57 +697,17 @@ function _applyStaleClassesToUI(aid) {
         });
     }
 
-    // ── RDPMS signal card ──
+    // ── RDPMS signal card: stale chips/badges REMOVED (616 parity — stale shown in Table view only).
+    //    Attributes still render on the card via the card builder / updateMainSignalLights, as in 616.
+    //    Clear any previously-applied stale UI so nothing lingers. ──
     var $card = $('#rdpmsCard_' + aid);
     if ($card.length) {
-        $card.find('[data-attr]').each(function () {
-            var an = $(this).attr('data-attr');
-            if ($(this).hasClass('rdpms-dl-badge')) return;
-            _setStaleCell($(this), !!staleMap[an]);
-        });
-
-        // Collect stale names (excluding DataLogger)
-        var staleNames = [];
-        var dlRelays_ = (wsLiveData[aid] && wsLiveData[aid].dlRelays) || {};
-        for (var sk in staleMap) {
-            if (!staleMap[sk]) continue;
-            var isDl = false;
-            for (var dk in dlRelays_) {
-                if (dk === sk || (dlRelays_[dk].displayName === sk) || (dlRelays_[dk].attrName === sk)) {
-                    isDl = true;
-                    break;
-                }
-            }
-            if (!isDl) staleNames.push(sk);
-        }
-
-        // Remove old stale UI
+        $card.find('.ws-stale-val').removeClass('ws-stale-val');
+        $card.find('.ws-stale-marker').remove();
         $card.find('.ws-stale-badge').remove();
         $card.find('.rdpms-stale-strip').remove();
-
-        if (staleNames.length > 0) {
-            $card.find('.card-header-signal, .rdpms-card-header').first()
-                .append('<span class="ws-stale-badge"><i class="fas fa-clock"></i> ' + staleNames.length + ' Stale</span>');
-
-            var labels = [];
-            for (var si = 0; si < staleNames.length; si++) {
-                var base = staleNames[si].replace(/ mA$/, '').replace(/ V$/, '');
-                if (labels.indexOf(base) === -1) labels.push(base);
-            }
-
-            var stripHtml = '<div class="rdpms-stale-strip">' +
-                '<span class="rdpms-stale-strip-icon"><i class="fas fa-clock"></i></span>' +
-                '<span class="rdpms-stale-strip-text">Stale: ';
-            for (var li = 0; li < labels.length; li++) {
-                stripHtml += '<span class="rdpms-stale-chip">' + labels[li] + '</span>';
-            }
-            stripHtml += '</span></div>';
-
-            var $routeTable = $card.find('.rdpms-route-table');
-            if ($routeTable.length) { $routeTable.after(stripHtml); }
-            else { $card.find('.card-body-signal').append(stripHtml); }
-        }
     }
+
     // ── Point Machine table/cards ──
     var $pmRow = $('#pointMachineContainer tr[data-id="' + aid + '"]');
     if (!$pmRow.length) $pmRow = $('.pm-card[data-id="' + aid + '"]');
@@ -2576,6 +2517,7 @@ $('#drpSite').on('change', function () {
 // ===== WEBSOCKET CONNECT =====
 
 function disconnectWebSocket() {
+    try { if (typeof _stopSignalLinkIssueTimer === 'function') _stopSignalLinkIssueTimer(); } catch (e) { }
     if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
     if (wsRenderTimer) { clearTimeout(wsRenderTimer); wsRenderTimer = null; }
     if (wsSafetyInterval) { clearInterval(wsSafetyInterval); wsSafetyInterval = null; }
@@ -2900,7 +2842,11 @@ function buildPmTableRow(assetId) {
 // ===== RENDER WS TABLE =====
 function renderWsTable() {
     // IPS asset type always renders as a card grid
-    if (isIpsAssetType()) { renderIpsGridView(); return; }
+    if (isIpsAssetType()) {
+        if (($('#drpView').val() || '') === 'Table') { if (typeof renderIpsTableView === 'function') renderIpsTableView(); else renderIpsGridView(); }
+        else { renderIpsGridView(); }   // IPS or Cards -> grid
+        return;
+    }
 
     // Point Machine in table mode → use PM-specific table renderer
     if (window.pmTableMode || isPointAssetType()) { renderPmTableView(); return; }
@@ -3499,7 +3445,7 @@ function _getValueTooltip(attrName, num, cls) {
     else if (cls.indexOf('warn') > -1) parts.push('\u26a0 Approaching limit');
 
     // Stale part (short)
-    if (cls.indexOf('ws-stale-val') > -1) parts.push('\ud83d\udd53 Stale 5+ min');
+    if (cls.indexOf('ws-stale-val') > -1) parts.push('\ud83d\udd53 Server marked stale');
 
     return parts.join(' \u2502 ');
 }
@@ -4079,7 +4025,10 @@ function executeUIUpdate() {
                 }
             }
         } else if (viewType === 'IPS' || (viewType === 'Table' && isIpsAssetType())) {
-            if (typeof window.updateIpsGridIncremental === 'function') {
+            // LG-016: Table mode -> flat-table incremental; IPS/Cards -> grid incremental
+            if (viewType === 'Table' && typeof window.updateIpsTableIncremental === 'function') {
+                window.updateIpsTableIncremental(updatedAssetIds);
+            } else if (typeof window.updateIpsGridIncremental === 'function') {
                 window.updateIpsGridIncremental(updatedAssetIds);
             } else {
                 renderIpsGridView();
@@ -4280,6 +4229,84 @@ function incrementalTableUpdate(assetIds, isTrack) {
 // This function is now called processItemsInternal and only updates data structures
 // UI updates are handled by triggerUIUpdate() after queue processing completes
 window.processItemsInternal = processItemsInternal;
+/* ==================== PC-01/PC-02: COMMON FRESHNESS MODEL (Patch Model) ====================
+   Backend owns freshness. Frontend marks stale ONLY when IsFresh=false OR RawIsFresh=false.
+   No TimestampDevice/Local age, no GetLiveValue, no 5-min/silence watchdog. Missing flag = not stale. */
+function normalizeFreshFlag(flag) {
+    if (flag === true || flag === 'true' || flag === 1 || flag === '1') return true;
+    if (flag === false || flag === 'false' || flag === 0 || flag === '0') return false;
+    return null;
+}
+function getFreshFlag(attrData) {
+    if (!attrData) return null;
+    var flags = [
+        attrData.RawIsFresh, attrData.IsFresh, attrData.rawIsFresh, attrData.isFresh,
+        attrData.raw && attrData.raw.RawIsFresh, attrData.raw && attrData.raw.IsFresh,
+        attrData.raw && attrData.raw.rawIsFresh, attrData.raw && attrData.raw.isFresh
+    ];
+    var sawTrue = false;
+    for (var i = 0; i < flags.length; i++) {
+        var nf = normalizeFreshFlag(flags[i]);
+        if (nf === false) return false;   // false wins
+        if (nf === true) sawTrue = true;
+    }
+    return sawTrue ? true : null;          // null = missing
+}
+function isStaleByFreshFlag(attrData) { return getFreshFlag(attrData) === false; }
+function isFreshByFreshFlag(attrData) { return getFreshFlag(attrData) !== false; }
+function buildWsAttrData(d, existingAttr) {
+    var value = d ? d.Value : null;
+    var rawFlag = null;
+    var freshFlag = getFreshFlag(d);
+    var hasFreshFlag = (freshFlag !== null);
+    if (d) {
+        if (d.RawIsFresh !== undefined && d.RawIsFresh !== null) rawFlag = d.RawIsFresh;
+        else if (d.IsFresh !== undefined && d.IsFresh !== null) rawFlag = d.IsFresh;
+        else if (d.rawIsFresh !== undefined && d.rawIsFresh !== null) rawFlag = d.rawIsFresh;
+        else if (d.isFresh !== undefined && d.isFresh !== null) rawFlag = d.isFresh;
+    }
+    var prevVal = existingAttr ? existingAttr.Value : undefined;
+    var hasChanged = (prevVal !== undefined && prevVal !== value);
+    return {
+        Value: value, value: value,
+        AttrId: d.AssetAttributeId || d.AttrId || '',
+        AssetAttributeId: d.AssetAttributeId || d.AttrId || '',
+        AssetAttributeName: d.AssetAttributeName || d.AttributeName || d.attrName || '',
+        AttributeName: d.AssetAttributeName || d.AttributeName || d.attrName || '',
+        attrName: d.AssetAttributeName || d.AttributeName || d.attrName || '',
+        Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
+        TimestampDevice: d.TimestampDevice || null,
+        TimestampLocal: d.TimestampLocal || null,
+        TimestampEdgeX: d.TimestampEdgeX || null,
+        Source: d.DataSource || 'WS',
+        IsFresh: hasFreshFlag ? freshFlag : null,
+        RawIsFresh: hasFreshFlag ? rawFlag : null,
+        HasIsFresh: hasFreshFlag,
+        BroadcastKind: String(d.BroadcastKind || '').toLowerCase(),
+        changed: hasChanged, prevValue: prevVal,
+        TagID: d.TagID, SiteId: d.SiteId, AssetTypeId: d.AssetTypeId, AssetId: d.AssetId,
+        AssetName: d.AssetName, EdgeXAttributeId: d.EdgeXAttributeId, ValueType: d.ValueType,
+        DataSource: d.DataSource, DataType: d.DataType, TimestampChange: d.TimestampChange,
+        raw: d
+    };
+}
+function writeWsAttrFromItem(d) {
+    if (!d) return null;
+    var aid = String(d.AssetId || '').trim();
+    var attrName = String(d.AssetAttributeName || d.AttributeName || d.attrName || '').trim();
+    if (!aid || !attrName) return null;
+    if (!wsLiveData[aid]) {
+        wsLiveData[aid] = { AssetId: d.AssetId, AssetName: d.AssetName || ('Asset ' + aid), AssetTypeId: d.AssetTypeId, SiteId: d.SiteId, attrs: {}, attrsById: {}, dlRelays: {}, lastUpdated: new Date() };
+    }
+    wsLiveData[aid].attrs = wsLiveData[aid].attrs || {};
+    var existingAttr = wsLiveData[aid].attrs[attrName];
+    var attrObj = buildWsAttrData(d, existingAttr);
+    wsLiveData[aid].attrs[attrName] = attrObj;
+    wsLiveData[aid].lastUpdated = new Date();
+    return attrObj;
+}
+/* ======================= end common freshness model ======================= */
+
 function processItemsInternal(items) {
     var atFilter = wsCurrentAssetTypeId;
     var aidFilter = wsCurrentFilterAssetIds;
@@ -4500,22 +4527,7 @@ function processItemsInternal(items) {
         if (parseInt(wsCurrentAssetTypeId) === 2 && typeof storeWsAttribute === 'function') {
             storeWsAttribute(d);
         } else {
-            wsLiveData[aid].attrs[attrName] = {
-                Value: d.Value,
-                AttrId: attrId,
-                AssetAttributeId: d.AssetAttributeId || attrId,
-                Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
-                TimestampDevice: d.TimestampDevice || null,
-                TimestampLocal: d.TimestampLocal || null,
-                TimestampEdgeX: d.TimestampEdgeX || null,
-                Source: d.DataSource || 'WS',
-                IsFresh: _hasFreshFlag ? _isFresh : null,
-                RawIsFresh: _hasFreshFlag ? _rawFresh : null,
-                HasIsFresh: _hasFreshFlag,
-                BroadcastKind: String(d.BroadcastKind || '').toLowerCase(),
-                changed: hasChanged,
-                prevValue: prevVal
-            };
+            wsLiveData[aid].attrs[attrName] = buildWsAttrData(d, existingAttr); // PC-03: common writer
         }
         // NOTE: checkStaleForAsset moved to post-loop (see below) so it fires
         // once per unique asset, not once per attribute message.
@@ -4609,25 +4621,13 @@ function processItemsInternal(items) {
 
         // GUARD: If this batch updated many assets at once, it is bulk
         // WS data, NOT a small incremental patch. Skip stale checks.
-        if (_staleAssets.length <= STALE_PATCH_THRESHOLD) {
+        if (true) { // PC-12: never skip stale by batch size (local check, no API load)
             var _inSignalList = (typeof _isSignalListView === 'function' && _isSignalListView());
 
             for (var _si = 0; _si < _staleAssets.length; _si++) {
                 var _staleAid = _staleAssets[_si];
 
-                // Signal List view: immediate single-asset re-check when stale data shown
-                if (_inSignalList && wsStaleAttrs[_staleAid]) {
-                    var _hasStale = false;
-                    for (var _sk in wsStaleAttrs[_staleAid]) {
-                        if (wsStaleAttrs[_staleAid][_sk]) { _hasStale = true; break; }
-                    }
-                    if (_hasStale) {
-                        (parseInt(wsCurrentAssetTypeId) === 2 ? (typeof triggerStaleCheckForAsset === 'function' && triggerStaleCheckForAsset(_staleAid)) : _fetchLiveValueAndCheckStale(_staleAid));
-                        continue; // skip debounced batch for this asset
-                    }
-                }
-
-                _staleCheckRouted(_staleAid);
+                _staleCheckRouted(_staleAid); // PC-12: uniform local stale for every updated asset
             }
         }
         //else {
@@ -5764,6 +5764,7 @@ function _text(el, t) { if (el && el.textContent !== t) el.textContent = t; }
 // Make updateMainSignalLights global so it can be called when DataLogger relays change
 function updateMainSignalLights(assetId) {
 
+    if (typeof _startSignalLinkIssueTimer === 'function') _startSignalLinkIssueTimer();
     var asset = wsLiveData[assetId];
     if (!asset) return;
 
@@ -5819,14 +5820,32 @@ function updateMainSignalLights(assetId) {
     // lit: an energised RG current / RECR pickup means RED even if computeSignalState
     // abstained (e.g. ZeroOffset threshold not yet confirmed on the first paint); and
     // a transient INACTIVE during a WS gap keeps the last painted state.
+    // PC-04/05: Link Issue detection + SAFE retention.
+    // computeSignalState/getSignalState remain untouched (SIP contract preserved); link
+    // health is judged separately from the aspect lamp-current timestamps only.
+    var _linkState = (typeof getSignalLampLinkState === 'function')
+        ? getSignalLampLinkState(assetId) : { linkIssue: false, newestTs: 0, ageMs: 0 };
     if (currentSignal === 'none') {
         var _recrPickup = (typeof isSignalRelayPickup === 'function' && asset.dlRelays)
             ? isSignalRelayPickup(asset.dlRelays, 'RECR') : false;
         if ((typeof rgMa === 'number' && rgMa > threshold) || _recrPickup) {
             currentSignal = 'red';
-        } else if (lastSignalState[assetId]) {
+        } else if (_linkState.newestTs <= 0 && lastSignalState[assetId]) {
+            // PC-05: retain the last aspect ONLY during true no-data startup, i.e. when no
+            // usable lamp-current timestamp has EVER arrived. Once real data has been seen
+            // (newestTs > 0), a fresh all-below-threshold reading paints DARK instead of
+            // masking it with the previous aspect.
             currentSignal = lastSignalState[assetId];
         }
+    }
+    // PC-04: a real Link Issue = lamp data was received but has since gone silent beyond
+    // LINK_ISSUE_STALE_MS. Force the head dark, show the badge, and do NOT retain an aspect.
+    if (_linkState.newestTs > 0 && _linkState.linkIssue) {
+        currentSignal = 'none';
+        if (typeof _setSignalLinkIssue === 'function') _setSignalLinkIssue(assetId, true);
+        try { $('#rdpmsTs_' + assetId).text('Link Issue'); } catch (e) { }
+    } else {
+        if (typeof _setSignalLinkIssue === 'function') _setSignalLinkIssue(assetId, false);
     }
     if (currentSignal !== 'none') lastSignalState[assetId] = currentSignal;
 
@@ -6400,6 +6419,7 @@ function fnBindIpsGrid() {
  * Called on first render AND on each incremental update.
  */
 window.renderIpsGridView = function renderIpsGridView() {
+    if (typeof ensureIpsTableStyles === 'function') ensureIpsTableStyles();
     // Guard: only render if IPS is actually selected. Prevents wrong-asset-type
     // cards from appearing during an asset-type switch race.
     if (typeof isIpsAssetType === 'function' && !isIpsAssetType()) {
@@ -6483,7 +6503,7 @@ function buildIpsCard(assetId) {
     // Attribute rows
     h += '<div class="ips-attr-list">';
     if (attrKeys.length === 0) {
-        h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:#94a3b8;font-style:italic;">Waiting for data…</span></div>';
+        h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--at-t4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
     } else {
         for (var k = 0; k < attrKeys.length; k++) {
             var an = attrKeys[k];
@@ -7672,25 +7692,17 @@ function processCircuitWsMessage(d) {
         if (_pmTypeId === 3) {
             if (!wsLiveData[aid]) return;
             if (!wsLiveData[aid].attrs) wsLiveData[aid].attrs = {};
-            wsLiveData[aid].attrs[attrName] = {
-                Value: value,
-                AttrId: d.AssetAttributeId,
-                Timestamp: d.TimestampDevice || new Date().toISOString(),
-                changed: true
-            };
+            // PC-06: route through the single canonical writer (buildWsAttrData) so this
+            // PM-DataLogger attr also carries IsFresh/RawIsFresh/HasIsFresh/BroadcastKind/raw.
+            wsLiveData[aid].attrs[attrName] = buildWsAttrData(d, wsLiveData[aid].attrs[attrName]);
             // Now also trigger the circuit update so PM values render
             updateCircuitFromWebSocket(aid);
         }
         return;
     }
 
-    // Store attribute value
-    wsLiveData[aid].attrs[attrName] = {
-        Value: value,
-        AttrId: attrId,
-        Timestamp: d.TimestampDevice || d.TimestampLocal || new Date().toISOString(),
-        changed: true
-    };
+    // Store attribute value (PC-07: common writer preserves freshness on circuit path)
+    wsLiveData[aid].attrs[attrName] = buildWsAttrData(d, wsLiveData[aid].attrs[attrName]);
     wsLiveData[aid].lastUpdated = new Date();
 
     // Store AssetTypeId from message so updateCircuitFromWebSocket can use it
@@ -12578,6 +12590,43 @@ var PM_RWKR_IDS = [26, 28, 577, 579];
  * @param {object} pm - The structured PM data from getPmStructuredData
  * @returns {object} { direction: 'NORMAL'|'REVERSE', nwkrMax: number, rwkrMax: number, source: string }*@
  */
+// 616-PARITY: newest-KR-relay-wins direction. Returns 'NORMAL'/'REVERSE' only
+// when a KR relay carries a real TimestampDevice AND the fresher relay is above
+// threshold; otherwise null so the caller keeps the existing max-value formula.
+function _pmDirectionByFreshness(asset) {
+    if (!asset || !asset.attrs) return null;
+    var latestNwkr = null, latestRwkr = null;
+    for (var an in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(an)) continue;
+        var ad = asset.attrs[an];
+        var attrId = parseInt(ad.AttrId || ad.AssetAttributeId || 0);
+        var value = parseFloat(ad.Value);
+        if (isNaN(value)) continue;
+        var nl = String(an).toLowerCase();
+        var isN = (PM_NWKR_IDS.indexOf(attrId) !== -1) || (nl.indexOf('nwkr') !== -1);
+        var isR = (PM_RWKR_IDS.indexOf(attrId) !== -1) || (nl.indexOf('rwkr') !== -1);
+        if (!isN && !isR) continue;
+        var tsStr = ad.TimestampDevice || ad.Timestamp || null;
+        var ts = tsStr ? new Date(tsStr).getTime() : 0;
+        if (isN) { if (!latestNwkr || ts > latestNwkr.ts) latestNwkr = { value: value, ts: ts }; }
+        else { if (!latestRwkr || ts > latestRwkr.ts) latestRwkr = { value: value, ts: ts }; }
+    }
+    if (!latestNwkr && !latestRwkr) return null;
+    var nTs = latestNwkr ? latestNwkr.ts : -1, rTs = latestRwkr ? latestRwkr.ts : -1;
+    var nVal = latestNwkr ? latestNwkr.value : 0, rVal = latestRwkr ? latestRwkr.value : 0;
+    if (nTs <= 0 && rTs <= 0) return null;      // no device timestamps -> defer to max-value
+    if (rTs > nTs) {
+        if (rVal > PM_DIRECTION_THRESHOLD) return 'REVERSE';
+        if (nVal > PM_DIRECTION_THRESHOLD) return 'NORMAL';
+        return null;
+    } else if (nTs > rTs) {
+        if (nVal > PM_DIRECTION_THRESHOLD) return 'NORMAL';
+        if (rVal > PM_DIRECTION_THRESHOLD) return 'REVERSE';
+        return null;
+    }
+    return null;                                 // equal timestamps -> defer to max-value
+}
+
 function determinePmDirection(asset, pm) {
     var result = {
         direction: 'NORMAL',
@@ -12653,10 +12702,16 @@ function determinePmDirection(asset, pm) {
     result.nwkrMax = nwkrValues.length > 0 ? Math.max.apply(null, nwkrValues) : 0;
     result.rwkrMax = rwkrValues.length > 0 ? Math.max.apply(null, rwkrValues) : 0;
 
+    // 616-PARITY: freshness-first (newest KR relay wins); falls through to the
+    // existing max-value formula when no fresh KR timestamp is present.
+    var _pmFresh = _pmDirectionByFreshness(asset);
     // Apply backend formula:
     // if NWKR_Max > RWKR_Max && NWKR_Max > 10 → NORMAL
     // if RWKR_Max > NWKR_Max && RWKR_Max > 10 → REVERSE
-    if (result.nwkrMax > result.rwkrMax && result.nwkrMax > PM_DIRECTION_THRESHOLD) {
+    if (_pmFresh) {
+        result.direction = _pmFresh;
+        result.source = 'freshness';
+    } else if (result.nwkrMax > result.rwkrMax && result.nwkrMax > PM_DIRECTION_THRESHOLD) {
         result.direction = 'NORMAL';
         result.source = 'nwkr_dominant';
     } else if (result.rwkrMax > result.nwkrMax && result.rwkrMax > PM_DIRECTION_THRESHOLD) {
@@ -16166,19 +16221,9 @@ function processSingleLiveUpdateFixed(d) {
     var hasChanged = (prevVal !== undefined && prevVal !== d.Value);
 
     // Update attribute value - USE TimestampDevice as primary
-    wsLiveData[aid].attrs[attrName] = {
-        Value: d.Value,
-        AttrId: attrId,
-        AssetAttributeId: d.AssetAttributeId || attrId,  // Store AssetAttributeId for operation ID matching
-        Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
-        TimestampDevice: d.TimestampDevice || null,
-        TimestampLocal: d.TimestampLocal || null,
-        TimestampEdgeX: d.TimestampEdgeX || null,
-        Source: d.DataSource || 'WS',
-        changed: hasChanged,
-        prevValue: prevVal
-    };
+    wsLiveData[aid].attrs[attrName] = buildWsAttrData(d, existingAttr); // PC-04: common writer
     wsLiveData[aid].lastUpdated = new Date();
+    if (typeof checkStaleForAsset === 'function') checkStaleForAsset(aid); // PC-04: immediate local stale
 
     // Track new attribute columns
     var isNewColumn = false;
@@ -16205,13 +16250,19 @@ function processSingleLiveUpdateFixed(d) {
         if (!wsRenderTimer) {
             wsRenderTimer = setTimeout(function () {
                 wsRenderTimer = null;
-                var $grid = $('#ipsCardGrid');
-                if ($grid.length > 0) {
-                    if (typeof window.updateIpsGridIncremental === 'function') {
-                        window.updateIpsGridIncremental(Object.keys(wsUpdatedAssets));
-                    }
+                if (viewType === 'Table') {   // LG-016: IPS Table mode -> flat-table incremental
+                    if (typeof window.updateIpsTableIncremental === 'function') window.updateIpsTableIncremental(Object.keys(wsUpdatedAssets));
+                    else if (typeof renderIpsTableView === 'function') renderIpsTableView();
+                    else renderIpsGridView();
                 } else {
-                    renderIpsGridView();
+                    var $grid = $('#ipsCardGrid');
+                    if ($grid.length > 0) {
+                        if (typeof window.updateIpsGridIncremental === 'function') {
+                            window.updateIpsGridIncremental(Object.keys(wsUpdatedAssets));
+                        }
+                    } else {
+                        renderIpsGridView();
+                    }
                 }
                 wsTableStructureBuilt = true;
             }, 300);
@@ -16547,7 +16598,11 @@ function addNewTableRow(assetId) {
 }
 function rebuildTableStructure() {
     // For IPS, rebuild the card grid instead of the table
-    if (isIpsAssetType()) { renderIpsGridView(); return; }
+    if (isIpsAssetType()) {
+        if (($('#drpView').val() || '') === 'Table') { if (typeof renderIpsTableView === 'function') renderIpsTableView(); else renderIpsGridView(); }
+        else { renderIpsGridView(); }   // IPS or Cards -> grid
+        return;
+    }
     // This is called only when column structure changes
     // Preserve existing data, just rebuild with new columns
     var assetIds = getSortedAssetIds();
@@ -16882,7 +16937,11 @@ function buildNewPMCards() {
 
 function renderWsTableFixed() {
     // IPS asset type always renders as a card grid -- never as a table
-    if (isIpsAssetType()) { renderIpsGridView(); return; }
+    if (isIpsAssetType()) {
+        if (($('#drpView').val() || '') === 'Table') { if (typeof renderIpsTableView === 'function') renderIpsTableView(); else renderIpsGridView(); }
+        else { renderIpsGridView(); }   // IPS or Cards -> grid
+        return;
+    }
 
     // Point Machine → PM-specific table
     if (window.pmTableMode || isPointAssetType()) { renderPmTableView(); return; }
@@ -17153,18 +17212,7 @@ function processItemsFixed(items) {
         var hasChanged = (prevVal !== undefined && prevVal !== d.Value);
 
         // Update attribute - USE TimestampDevice as primary
-        wsLiveData[aid].attrs[attrName] = {
-            Value: d.Value,
-            AttrId: attrId,
-            AssetAttributeId: d.AssetAttributeId || attrId,  // Store AssetAttributeId for operation ID matching
-            Timestamp: d.TimestampDevice || d.TimestampLocal || d.TimestampChange || new Date().toISOString(),
-            TimestampDevice: d.TimestampDevice || null,
-            TimestampLocal: d.TimestampLocal || null,
-            TimestampEdgeX: d.TimestampEdgeX || null,
-            Source: d.DataSource || 'WS',
-            changed: hasChanged,
-            prevValue: prevVal
-        };
+        wsLiveData[aid].attrs[attrName] = buildWsAttrData(d, existingAttr); // PC-05: common writer
         wsLiveData[aid].lastUpdated = new Date();
         wsUpdatedAssets[aid] = true;
     }
@@ -18403,13 +18451,14 @@ window.parseBatchMessages = function (messages) {
 
     // Process regular items + feed into processItemsInternal so SIP bridge sees them
     if (items.length > 0) {
-        if (typeof window.processItemsInternal === 'function') {
-            window.processItemsInternal(items);
-        }
-        // Also schedule UI update via processItems (which calls queueWsMessages + sipRefresh)
-        if (typeof window.processItems === 'function') {
-            window.processItems(items);
-        }
+        // SIP-PC-01/02: ingest normal items ONCE through window.processItemsInternal
+        // (SIP bridge monkey-patches this), then refresh SIP and schedule the UI update.
+        // Removes the duplicate processItems() cache pass (LG-001) while preserving SIP.
+        var _ingest = (typeof window.processItemsInternal === 'function') ? window.processItemsInternal : processItemsInternal;
+        _ingest(items);
+        if (typeof window.sipRefresh === 'function') window.sipRefresh();   // SIP-EV-05: preserve SIP refresh
+        if (typeof triggerUIUpdate === 'function') triggerUIUpdate();
+        else if (typeof scheduleUIUpdate === 'function') scheduleUIUpdate(false);
     }
 };
 
@@ -21152,30 +21201,11 @@ var _signalRebuildTimer = null;
 
 // Route stale checking: Signal (asset type 2) uses WS IsFresh only (no GetLiveValue);
 // all other asset types keep 617's existing stale mechanism unchanged.
-function _staleCheckRouted(aid) {
-    if (parseInt(wsCurrentAssetTypeId) === 2) {
-        if (typeof triggerStaleCheckForAsset === 'function') triggerStaleCheckForAsset(aid);
-        return;
-    }
-    if (typeof checkStaleForAsset === 'function') checkStaleForAsset(aid);
-}
+function _staleCheckRouted(aid) { checkStaleForAsset(aid); } // PC-11: single route
 
 // Signal stale check driven purely by WS IsFresh/RawIsFresh (no GetLiveValue).
 // Table/list-only reflection via 617's _applyStaleClassesToUI. DataLogger never stale.
-function _doStaleCheckSingleAsset(assetId) {
-    var aid = String(assetId);
-    var asset = wsLiveData[aid];
-    if (!asset || !asset.attrs) return;
-    if (!wsStaleAttrs[aid]) wsStaleAttrs[aid] = {};
-    var changed = false;
-    for (var an in asset.attrs) {
-        if (!asset.attrs.hasOwnProperty(an)) continue;
-        if (typeof _isDataloggerAttr === 'function' && _isDataloggerAttr(aid, an)) continue;
-        var isStale = (typeof isWsAttrStale === 'function') ? isWsAttrStale(asset.attrs[an]) : false;
-        if (wsStaleAttrs[aid][an] !== isStale) { wsStaleAttrs[aid][an] = isStale; changed = true; }
-    }
-    if (changed && typeof _applyStaleClassesToUI === 'function') _applyStaleClassesToUI(aid);
-}
+function _doStaleCheckSingleAsset(assetId) { checkStaleForAsset(assetId); } // PC-11: single route
 
 
 // [616:276-285] getRowCellMap
@@ -21289,14 +21319,8 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
-function isWsAttrFresh(attrData) {
-    if (!attrData) return true;
-    if (attrData.RawIsFresh === undefined || attrData.RawIsFresh === null) return true;
-    return attrData.IsFresh === true;
-}
-function isWsAttrStale(attrData) {
-    return !isWsAttrFresh(attrData);
-}
+function isWsAttrFresh(attrData) { return getFreshFlag(attrData) !== false; } // PC-09
+function isWsAttrStale(attrData) { return getFreshFlag(attrData) === false; } // PC-09
 function _wsStaleTitle(attrData) {
     var ts = (attrData && attrData.TimestampLocal) || (attrData && attrData.TimestampEdgeX) || (attrData && attrData.TimestampDevice) || '';
     return 'Timestamp: ' + escapeHtml(ts);
@@ -21318,14 +21342,8 @@ function _applyWsServerStale(cell, attrData) {
 }
 // Server freshness flag presence + value. isServerFresh returns null when the flag is absent,
 // which signals that the Signal-aspect TimestampDevice fallback should decide instead.
-function hasServerFreshFlag(attrData) {
-    return !!(attrData && attrData.RawIsFresh !== undefined && attrData.RawIsFresh !== null);
-}
-function isServerFresh(attrData) {
-    if (!attrData) return false;
-    if (hasServerFreshFlag(attrData)) return attrData.IsFresh === true;
-    return null; // no flag -> caller must use the timestamp fallback
-}
+function hasServerFreshFlag(attrData) { return getFreshFlag(attrData) !== null; } // PC-10
+function isServerFresh(attrData) { return getFreshFlag(attrData); } // PC-10 (true/false/null)
 
 // [616:447-458] SIGNAL_MA_ALIASES / SIGNAL_V_ALIASES
 var SIGNAL_MA_ALIASES = {
@@ -21840,9 +21858,13 @@ function storeWsAttribute(d) {
     if (!wsLiveData[aid].attrsById) wsLiveData[aid].attrsById = {};
     if (!wsLiveData[aid].dlRelays) wsLiveData[aid].dlRelays = {};
     // false-preserving IsFresh (matches every other ingest path)
-    var rawFresh = (d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh : d.isFresh;
-    var hasFreshFlag = !(rawFresh === undefined || rawFresh === null);
-    var isFresh = (rawFresh === true || rawFresh === 'true' || rawFresh === 1 || rawFresh === '1');
+    // PC-06: RawIsFresh-aware freshness via common parser (false wins; string/number handled)
+    var rawFresh = (d.RawIsFresh !== undefined && d.RawIsFresh !== null) ? d.RawIsFresh
+                 : ((d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh
+                 : ((d.rawIsFresh !== undefined && d.rawIsFresh !== null) ? d.rawIsFresh : d.isFresh));
+    var _ff = getFreshFlag(d);
+    var hasFreshFlag = (_ff !== null);
+    var isFresh = (_ff === true);
     var broadcastKind = String(d.BroadcastKind || '').toLowerCase();
     // change tracking from the existing exact-key attr (preserves batch/single semantics)
     var existing = wsLiveData[aid].attrs[attrName];
@@ -22784,3 +22806,1115 @@ window.renderSignalGroupedTables = function () {
     window._pmPlusSyncInterval = setInterval(function () { try { _pmSyncPlusIcons(); } catch (e) { } }, 1500);
     _pmSyncPlusIcons();
 })();
+
+/* ===== LG-012/LG-013: 616 PDF export + FRS range history (append; click-invoked) ===== */
+function expandHeader(table) {
+                var thead = table.querySelector('thead');
+                if (!thead) return null;
+                var headerRows = thead.querySelectorAll('tr');
+                if (headerRows.length === 0) return null;
+
+                var maxCols = 0;
+                headerRows.forEach(function (tr) {
+                    var cols = 0;
+                    tr.querySelectorAll('th').forEach(function (th) {
+                        cols += parseInt(th.getAttribute('colspan')) || 1;
+                    });
+                    if (cols > maxCols) maxCols = cols;
+                });
+
+                var grid = [];
+                for (var r = 0; r < headerRows.length; r++) {
+                    grid[r] = [];
+                    for (var c = 0; c < maxCols; c++) grid[r][c] = '';
+                }
+
+                for (var r = 0; r < headerRows.length; r++) {
+                    var cells = headerRows[r].querySelectorAll('th');
+                    var colIdx = 0;
+                    cells.forEach(function (th) {
+                        var text = th.innerText.trim();
+                        var colspan = parseInt(th.getAttribute('colspan')) || 1;
+                        var rowspan = parseInt(th.getAttribute('rowspan')) || 1;
+                        while (colIdx < maxCols && grid[r][colIdx] !== '') colIdx++;
+                        for (var dr = 0; dr < rowspan; dr++) {
+                            for (var dc = 0; dc < colspan; dc++) {
+                                if (r + dr < headerRows.length && colIdx + dc < maxCols) {
+                                    if (dr === 0 && dc === 0) {
+                                        grid[r + dr][colIdx + dc] = text;
+                                    } else {
+                                        grid[r + dr][colIdx + dc] = null;
+                                    }
+                                }
+                            }
+                        }
+                        colIdx += colspan;
+                    });
+                }
+
+                for (var r = 0; r < grid.length; r++) {
+                    for (var c = 0; c < grid[r].length; c++) {
+                        if (grid[r][c] === null) grid[r][c] = '';
+                    }
+                }
+                return { rows: grid, cols: maxCols };
+            }
+
+function _estHeaderLines(text, colWidth) {
+                if (text == null || text === '') return 1;
+                var per = Math.max(4, Math.floor((colWidth || 10) / 1.2));
+                var total = 0;
+                String(text).split(/\r?\n/).forEach(function (seg) {
+                    total += Math.max(1, Math.ceil(seg.length / per));
+                });
+                return Math.max(1, total);
+            }
+
+function fnDownloadPDF() {
+    // IPS LIVE TABLE — PDF export ("IPS Live Grid" layout)
+    // ================================================================
+    if (typeof isIpsAssetType === 'function' && isIpsAssetType()) {
+        if (!window.wsLiveData || Object.keys(wsLiveData).length === 0) {
+            showWarning('No data available to download. Please search first.', 'No Data');
+            return;
+        }
+        if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+            showError('PDF library not loaded.', 'Error');
+            return;
+        }
+        $("#loader").show();
+        getReportLocationInfo(function (loc) {
+            function pdfSafe(str) {
+                return String(str)
+                    .replace(/\u03a9/g, 'ohm').replace(/\u00a9/g, 'ohm').replace(/\u00b0/g, 'deg')
+                    .replace(/\u00b5/g, 'u').replace(/\u00b1/g, '+/-').replace(/\u00d7/g, 'x')
+                    .replace(/\u00b2/g, '2').replace(/\u00b3/g, '3').replace(/\u2014/g, '-');
+            }
+            var assetType = ($('#drpAssetType option:selected').text() || 'IPS').trim();
+            var rows = window.buildIpsTableRowModels ? window.buildIpsTableRowModels() : [];
+            var jsPDF = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+            var doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            var pageWidth = doc.internal.pageSize.getWidth();
+            var margin = 10;
+
+            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+            doc.text('IPS Live Grid', pageWidth / 2, margin + 6, { align: 'center' });
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+            var infoText = 'Zone: ' + (loc.zone || '-') + '  |  Division: ' + (loc.division || '-') +
+                '  |  Station: ' + (loc.station || '-') + '  |  Asset Type: ' + assetType +
+                '  |  Generated Date: ' + new Date().toLocaleString();
+            doc.text(pdfSafe(infoText), pageWidth / 2, margin + 12, { align: 'center' });
+
+            var body = rows.map(function (r, idx) {
+                return [idx + 1, r.assetName, r.attr, r.value, r.ts].map(pdfSafe);
+            });
+
+            doc.autoTable({
+                head: [['S.No', 'Asset Name', 'Attribute', 'Live Value', 'Timestamp']],
+                body: body,
+                startY: margin + 16,
+                theme: 'grid',
+                tableWidth: pageWidth - 2 * margin,
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [30, 58, 95], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { halign: 'center', cellWidth: 16 }, 3: { halign: 'center' }, 4: { halign: 'center' } },
+                didDrawPage: function () {
+                    doc.setFontSize(7);
+                    doc.text('RDPMS \u2014 IPS Live'.replace(/\u2014/g, '-'), margin, doc.internal.pageSize.getHeight() - 6);
+                    doc.text('Page ' + doc.internal.getCurrentPageInfo().pageNumber,
+                        pageWidth - margin, doc.internal.pageSize.getHeight() - 6, { align: 'right' });
+                }
+            });
+            doc.save('IPS_Live_' + new Date().toISOString().slice(0, 10) + '.pdf');
+            $("#loader").hide();
+            showSuccess('PDF downloaded!', 'Download');
+        });
+        return;
+    }
+    // ================================================================
+
+    // ================================================================
+    // POINT MACHINE TABLE VIEW – FLAT HEADER EXPORT
+    // ================================================================
+    if (isPointAssetType() || window.pmTableMode) {
+        var allTables = document.querySelectorAll('#divTelemetryLive table');
+        if (!allTables || allTables.length === 0) {
+            showWarning('No data available to download. Please search first.', 'No Data');
+            return;
+        }
+        var hasData = false;
+        allTables.forEach(function (t) { if (t.querySelectorAll('tbody tr').length > 0) hasData = true; });
+        if (!hasData) {
+            showWarning('No data available to download. The table is empty.', 'No Data');
+            return;
+        }
+        if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+            showError('PDF library not loaded.', 'Error');
+            return;
+        }
+
+        $("#loader").show();
+        getReportLocationInfo(function (loc) {
+            function pdfSafe(str) {
+                return String(str)
+                    .replace(/©/g, 'ohm')
+                    .replace(/Ω/g, 'ohm')
+                    .replace(/°/g, 'deg')
+                    .replace(/µ/g, 'u')
+                    .replace(/±/g, '+/-')
+                    .replace(/×/g, 'x')
+                    .replace(/²/g, '2')
+                    .replace(/³/g, '3');
+            }
+
+            var jsPDF = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+            var doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            var pageWidth = doc.internal.pageSize.getWidth();
+            var margin = 10;
+
+            var flatHeaders = getPmFlatHeaders();
+            var body = [];
+            var assetIds = Object.keys(wsLiveData).sort(function (a, b) {
+                return (wsLiveData[a].AssetName || '').localeCompare(
+                    wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }
+                );
+            });
+
+            assetIds.forEach(function (aid) {
+                var m = buildPmTableRowModel(aid);
+                var row = [
+                    body.length + 1,
+                    loc.zone,
+                    loc.division,
+                    loc.station,
+                    m.assetName,
+                    m.operationDate,
+                    m.operation.direction
+                ];
+                var aMetrics = [
+                    m.A.iptMax.text + ' / ' + m.A.iptAvg.text,
+                    m.A.vpt110Avg.text,
+                    m.A.tpt.text,
+                    m.A.locIndication.text,
+                    m.A.krIndication.text
+                ];
+                var bMetrics = [
+                    m.B.iptMax.text + ' / ' + m.B.iptAvg.text,
+                    m.B.vpt110Avg.text,
+                    m.B.tpt.text,
+                    m.B.locIndication.text,
+                    m.B.krIndication.text
+                ];
+                var relays = [
+                    m.datalogger.NWKR ? (m.datalogger.NWKR.isPickup ? 'Pickup' : 'Drop') : '—',
+                    m.datalogger.RWKR ? (m.datalogger.RWKR.isPickup ? 'Pickup' : 'Drop') : '—',
+                    m.datalogger.NWCR ? (m.datalogger.NWCR.isPickup ? 'Pickup' : 'Drop') : '—',
+                    m.datalogger.RWCR ? (m.datalogger.RWCR.isPickup ? 'Pickup' : 'Drop') : '—'
+                ];
+                var lastUpdate = m.lastTelemetryTimestamp ? fmtTime(m.lastTelemetryTimestamp) : '—';
+                row = row.concat(aMetrics, bMetrics, relays, lastUpdate);
+                body.push(row);
+            });
+
+            var title = 'Telemetry Live Report';
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(title, pageWidth / 2, margin + 6, { align: 'center' });
+
+            var infoText = 'Zone: ' + loc.zone + '  |  Division: ' + loc.division + '  |  Station: ' + loc.station +
+                '  |  Generated Date: ' + new Date().toLocaleString();
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.text(infoText, pageWidth / 2, margin + 12, { align: 'center' });
+
+            doc.autoTable({
+                head: [flatHeaders.map(pdfSafe)],
+                body: body.map(function (r) { return r.map(pdfSafe); }),
+                startY: margin + 16,
+                theme: 'grid',
+                tableWidth: pageWidth - 2 * margin,
+                styles: { fontSize: 7, cellPadding: 1.5 },
+                headStyles: { fillColor: [30, 58, 95], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { halign: 'center' } },
+                didDrawPage: function (data) {
+                    doc.setFontSize(7);
+                    doc.text('RDPMS — Point Machine', margin, doc.internal.pageSize.getHeight() - 6);
+                    doc.text('Page ' + doc.internal.getCurrentPageInfo().pageNumber,
+                        pageWidth - margin, doc.internal.pageSize.getHeight() - 6, { align: 'right' });
+                }
+            });
+
+            doc.save('TelemetryLive_' + new Date().toISOString().slice(0, 10) + '.pdf');
+            $("#loader").hide();
+            showSuccess('PDF downloaded!', 'Download');
+        });
+        return;
+    }
+    // ================================================================
+    // ORIGINAL CODE FOR TRACK, SIGNAL, AND OTHER VIEWS (unchanged)
+    // ================================================================
+    // --- The following is the original implementation from your file ---
+    var allTables = document.querySelectorAll('#divTelemetryLive table');
+    if (!allTables || allTables.length === 0) {
+        showWarning('No data available to download. Please search first.', 'No Data');
+        return;
+    }
+    var hasData = false;
+    allTables.forEach(function (t) { if (t.querySelectorAll('tbody tr').length > 0) hasData = true; });
+    if (!hasData) {
+        showWarning('No data available to download. The table is empty.', 'No Data');
+        return;
+    }
+    if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+        showError('PDF library not loaded.', 'Error');
+        return;
+    }
+    try {
+        $("#loader").show();
+        getReportLocationInfo(function (loc) {
+            try {
+                var pdfSafe = function (str) {
+                    return String(str)
+                        .replace(/©/g, 'ohm')
+                        .replace(/Ω/g, 'ohm')
+                        .replace(/°/g, 'deg')
+                        .replace(/µ/g, 'u')
+                        .replace(/±/g, '+/-')
+                        .replace(/×/g, 'x')
+                        .replace(/²/g, '2')
+                        .replace(/³/g, '3');
+                };
+
+                var allSections = [];
+                var maxColCount = 0;
+
+                allTables.forEach(function (tbl) {
+                    var groupLabel = '';
+                    var card = tbl.closest('.signal-group-card');
+                    if (card) { var lbl = card.querySelector('span'); if (lbl) groupLabel = lbl.innerText.trim(); }
+
+                    var domHeaderRows = [];
+                    var thead = tbl.querySelector('thead');
+                    if (thead) {
+                        var trs = thead.querySelectorAll('tr');
+                        trs.forEach(function (tr) {
+                            var row = [];
+                            tr.querySelectorAll('th').forEach(function (th) {
+                                var colspan = parseInt(th.getAttribute('colspan')) || 1;
+                                var rowspan = parseInt(th.getAttribute('rowspan')) || 1;
+                                var cell = { content: pdfSafe(th.innerText.replace(/\s*\n\s*/g, '\n').trim()) };
+                                if (colspan > 1) cell.colSpan = colspan;
+                                if (rowspan > 1) cell.rowSpan = rowspan;
+                                row.push(cell);
+                            });
+                            domHeaderRows.push(row);
+                        });
+                    }
+                    var numHeaderRows = domHeaderRows.length || 1;
+
+                    var bodyRows = [];
+                    tbl.querySelectorAll('tbody tr').forEach(function (tr) {
+                        var row = [];
+                        tr.querySelectorAll('td').forEach(function (td) {
+                            row.push(pdfSafe(td.innerText.trim()));
+                        });
+                        if (row.length) bodyRows.push(row);
+                    });
+
+                    if (bodyRows.length === 0) return;
+
+                    var cols = 0;
+                    bodyRows.forEach(function (r) { if (r.length > cols) cols = r.length; });
+                    bodyRows = bodyRows.map(function (r) {
+                        while (r.length < cols) r.push('');
+                        return r;
+                    });
+
+                    var locLabels = ['S.No', 'Zone', 'Division', 'Station'];
+                    var headerRows;
+                    if (domHeaderRows.length) {
+                        headerRows = domHeaderRows.map(function (r) { return r.slice(); });
+                        var locCells = locLabels.map(function (lbl) {
+                            var c = { content: lbl };
+                            if (numHeaderRows > 1) c.rowSpan = numHeaderRows;
+                            return c;
+                        });
+                        headerRows[0] = locCells.concat(headerRows[0]);
+                    } else {
+                        var fb = locLabels.slice();
+                        for (var fi = 0; fi < cols; fi++) fb.push('Col ' + (fi + 1));
+                        headerRows = [fb];
+                    }
+
+                    var _sno = 0;
+                    bodyRows = bodyRows.map(function (r) {
+                        return [++_sno, loc.zone, loc.division, loc.station].concat(r);
+                    });
+
+                    allSections.push({
+                        label: groupLabel,
+                        head: headerRows,
+                        body: bodyRows,
+                        cols: cols + 4
+                    });
+                    if (cols + 4 > maxColCount) maxColCount = cols + 4;
+                });
+
+                if (allSections.length === 0) {
+                    $("#loader").hide();
+                    showWarning('No data rows found.', 'No Data');
+                    return;
+                }
+
+                var orientation = maxColCount > 8 ? 'landscape' : 'portrait';
+                var pageFormat = maxColCount > 14 ? 'a3' : 'a4';
+                var jsPDF = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+                var doc = new jsPDF({ orientation: orientation, unit: 'mm', format: pageFormat });
+                var pageWidth = doc.internal.pageSize.getWidth();
+                var pageHeight = doc.internal.pageSize.getHeight();
+                var margin = 10;
+
+                var primaryColor = [79, 70, 229];
+                var headerBg = [30, 58, 95];
+                var headerBgLoc = [15, 76, 129];
+                var accentLine = [34, 211, 238];
+                var textDark = [30, 41, 59];
+                var textMuted = [100, 116, 139];
+                var rowEven = [248, 250, 252];
+                var rowOdd = [255, 255, 255];
+                var locColEven = [232, 244, 255];
+                var locColOdd = [240, 247, 255];
+
+                var _d = new Date();
+                var _date = ('0' + _d.getDate()).slice(-2) + '/' + ('0' + (_d.getMonth() + 1)).slice(-2) + '/' + _d.getFullYear();
+                var _time = ('0' + _d.getHours()).slice(-2) + ':' + ('0' + _d.getMinutes()).slice(-2) + ':' + ('0' + _d.getSeconds()).slice(-2);
+                var infoText = 'Zone: ' + loc.zone + '  |  Division: ' + loc.division + '  |  Station: ' + loc.station + '  |  Generated Date: ' + _date + ' ' + _time;
+
+                function drawPageHeader(sectionLabel) {
+                    var clearHeight = sectionLabel ? margin + 28 : margin + 21;
+                    doc.setFillColor(255, 255, 255);
+                    doc.rect(0, 0, pageWidth, clearHeight, 'F');
+                    doc.setFillColor.apply(doc, primaryColor);
+                    doc.rect(margin, margin, pageWidth - 2 * margin, 12, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(14);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text('Telemetry Live Report', pageWidth / 2, margin + 8, { align: 'center' });
+                    doc.setDrawColor.apply(doc, accentLine);
+                    doc.setLineWidth(0.8);
+                    doc.line(margin, margin + 12, pageWidth - margin, margin + 12);
+                    doc.setFillColor(238, 242, 255);
+                    doc.rect(margin, margin + 13, pageWidth - 2 * margin, 7, 'F');
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(8);
+                    doc.setTextColor.apply(doc, textMuted);
+                    doc.text(infoText, pageWidth / 2, margin + 17.5, { align: 'center' });
+                    if (sectionLabel) {
+                        doc.setFillColor(26, 58, 107);
+                        doc.rect(margin, margin + 21, pageWidth - 2 * margin, 6, 'F');
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(8);
+                        doc.setTextColor(255, 255, 255);
+                        doc.text(sectionLabel, margin + 3, margin + 25);
+                    }
+                }
+
+                function drawPageFooter() {
+                    doc.setDrawColor(200, 200, 200);
+                    doc.setLineWidth(0.3);
+                    doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor.apply(doc, textMuted);
+                    doc.text('RDPMS — Telemetry Live', margin, pageHeight - 6);
+                    doc.text(_date + ' ' + _time, pageWidth - margin, pageHeight - 6, { align: 'right' });
+                }
+
+                var currentY = margin + 22;
+                var isMultiTable = allSections.length > 1;
+                var _bottomLimit = pageHeight - 14;
+
+                // Report header on the first page; section labels are drawn inline
+                // (per table) so multiple tables can share a page.
+                drawPageHeader('');
+                currentY = margin + 22;
+
+                for (var _ti = 0; _ti < allSections.length; _ti++) {
+                    var _sec = allSections[_ti];
+                    var sectionLabel = isMultiTable ? _sec.label : '';
+                    var _secColCount = _sec.cols;
+
+                    var _secFontSize = 8;
+                    if (_secColCount > 22) _secFontSize = 6;
+                    else if (_secColCount > 16) _secFontSize = 6.5;
+                    else if (_secColCount > 12) _secFontSize = 7;
+                    else if (_secColCount > 8) _secFontSize = 7.5;
+
+                    // Only break to a new page when the section label + table head +
+                    // one body row won't fit in the space left on the current page.
+                    // Otherwise stack this table under the previous one.
+                    var _minNeed = (sectionLabel ? 8 : 0) + 16;
+                    if (currentY + _minNeed > _bottomLimit) {
+                        doc.addPage();
+                        drawPageHeader('');
+                        currentY = margin + 22;
+                    }
+
+                    // Inline section label directly above this table (multi-table only)
+                    if (sectionLabel) {
+                        doc.setFillColor(26, 58, 107);
+                        doc.rect(margin, currentY, pageWidth - 2 * margin, 6, 'F');
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(8);
+                        doc.setTextColor(255, 255, 255);
+                        doc.text(sectionLabel, margin + 3, currentY + 4);
+                        currentY += 8;
+                    }
+
+                    var head = _sec.head;
+                    var body = _sec.body;
+
+                    var colStyles = {};
+                    colStyles[0] = { halign: 'center', fontStyle: 'bold', cellWidth: 10 };
+                    colStyles[1] = { halign: 'center', fontStyle: 'bold' };
+                    colStyles[2] = { halign: 'center', fontStyle: 'bold' };
+                    colStyles[3] = { halign: 'center', fontStyle: 'bold' };
+
+                    doc.autoTable({
+                        startY: currentY,
+                        head: head,
+                        body: body,
+                        theme: 'grid',
+                        tableWidth: pageWidth - 2 * margin,
+                        margin: { left: margin, right: margin, top: margin + 22, bottom: 14 },
+                        styles: {
+                            fontSize: _secFontSize,
+                            cellPadding: _secColCount > 16 ? 1 : 1.5,
+                            lineColor: [226, 232, 240], lineWidth: 0.2,
+                            textColor: textDark, font: 'helvetica',
+                            overflow: 'linebreak', valign: 'middle'
+                        },
+                        headStyles: {
+                            fillColor: headerBg, textColor: [255, 255, 255],
+                            fontStyle: 'bold', halign: 'center', valign: 'middle',
+                            fontSize: _secFontSize,
+                            cellPadding: _secColCount > 16 ? 1 : 2,
+                            lineColor: [59, 89, 152], lineWidth: 0.3
+                        },
+                        columnStyles: colStyles,
+                        didParseCell: function (data) {
+                            if (data.section === 'head' && data.column.index >= 1 && data.column.index < 4) {
+                                data.cell.styles.fillColor = headerBgLoc;
+                            }
+                            if (data.section === 'body') {
+                                var isEven = data.row.index % 2 === 0;
+                                if (data.column.index === 0) {
+                                    data.cell.styles.halign = 'center';
+                                    data.cell.styles.fillColor = isEven ? [245, 247, 250] : [255, 255, 255];
+                                } else if (data.column.index >= 1 && data.column.index < 4) {
+                                    data.cell.styles.fillColor = isEven ? locColEven : locColOdd;
+                                } else {
+                                    data.cell.styles.fillColor = isEven ? rowEven : rowOdd;
+                                }
+                                var val = String(data.cell.raw || '');
+                                if (data.column.index > 3 && val !== '' && val !== '—' && val !== 'N/A' && !isNaN(val.replace(/,/g, ''))) {
+                                    data.cell.styles.halign = 'right';
+                                }
+                            }
+                        },
+                        didDrawCell: function (data) {
+                            if (data.section === 'head') {
+                                doc.setDrawColor.apply(doc, accentLine);
+                                doc.setLineWidth(0.5);
+                                doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+                            }
+                        },
+                        didDrawPage: function (data) {
+                            drawPageHeader('');
+                            drawPageFooter();
+                        }
+                    });
+
+                    currentY = doc.lastAutoTable.finalY + 4;
+                }
+
+                var totalPages = doc.internal.getNumberOfPages();
+                for (var p = 1; p <= totalPages; p++) {
+                    doc.setPage(p);
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor.apply(doc, textMuted);
+                    doc.setFillColor(255, 255, 255);
+                    doc.rect(pageWidth / 2 - 20, pageHeight - 10, 40, 6, 'F');
+                    doc.text('Page ' + p + ' of ' + totalPages, pageWidth / 2, pageHeight - 6, { align: 'center' });
+                }
+
+                var fileName = 'TelemetryLive_' + loc.station.replace(/[^a-zA-Z0-9]/g, '_') + '_' + new Date().toISOString().slice(0, 10) + '.pdf';
+                doc.save(fileName);
+                $("#loader").hide();
+                showSuccess('PDF downloaded!', 'Download');
+            } catch (innerErr) {
+                $("#loader").hide();
+                console.error('[PDF Download] Error:', innerErr);
+                showError('PDF generation failed: ' + innerErr.message, 'Error');
+            }
+        });
+    } catch (e) {
+        $("#loader").hide();
+        console.error('[PDF Download] Error:', e);
+        showError('Download failed: ' + e.message, 'Error');
+    }
+}
+
+function fnShowFRSAttributeRangeHistory(assetId) {
+    if (assetId != null && assetId != undefined && assetId != '') {
+        debugger;
+        $.ajax({
+            url: '/FRS25/Telemetry/_FRSAttributeRangeHistory',
+            type: 'POST',
+            dataType: 'html',
+            data: '{id:' + assetId + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                debugger;
+                $('#divFRSAttributerangeHistory').empty().append(data);
+                $('#modal-frs-attributerange-history').modal('show');
+            },
+            error: function (response) {
+                $("#loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    } else {
+        alert("Remark is required");
+    }
+}
+
+
+/* ================= LG-016: 616 IPS flat-table view (ported) =================
+   Table view -> renderIpsTableView (flat table, export source); IPS/Cards -> grid.
+   Self-contained: uses existing 617 globals + renderIpsGridView/updateIpsGridIncremental. */
+function ipsEscHtml(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function ensureIpsTableStyles() {
+    if (document.getElementById('ipsLiveTableStyles')) return;
+    var css =
+        /* ---- IPS TABLE (Aurora) ---- */
+        '.ips-table-wrap{padding:6px 2px 12px;width:100%;box-sizing:border-box;}' +
+        '.ips-table-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 2px 8px;}' +
+        '.ips-table-head h6{margin:0;font-size:15px;font-weight:600;color:var(--at-t1,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
+        '.ips-table-head .ips-count{background:var(--at-g2,rgba(255,255,255,0.08));color:var(--at-brand,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));}' +
+        '.ips-table-wrap{background:var(--at-bg1,#0a0f24);border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);}' +'.ips-table-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);background:var(--at-bg2,#0e1530);box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}' +
+        'table.ips-live-table{width:100%;border-collapse:collapse;font-size:13px;background:transparent;min-width:560px;color:var(--at-t2,rgba(255,255,255,0.72));}' +
+        'table.ips-live-table thead th{background:linear-gradient(180deg,var(--at-g2,rgba(255,255,255,0.08)),var(--at-g1,rgba(255,255,255,0.04)));color:var(--at-t1,#fff);font-weight:600;padding:10px 12px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:1px solid var(--at-edge-s,rgba(255,255,255,0.18));backdrop-filter:blur(6px);}' +
+        'table.ips-live-table tbody td{padding:8px 12px;border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.10));color:var(--at-t2,rgba(255,255,255,0.72));vertical-align:middle;}' +
+        'table.ips-live-table thead th.ips-c-sno,table.ips-live-table thead th.ips-c-val,table.ips-live-table thead th.ips-c-ts,' +
+        'table.ips-live-table tbody td.ips-sno,table.ips-live-table tbody td.ips-val,table.ips-live-table tbody td.ips-ts{text-align:center;}' +
+        'table.ips-live-table tbody tr:nth-child(even){background:var(--at-g1,rgba(255,255,255,0.04));}' +
+        'table.ips-live-table tbody tr:hover{background:var(--at-g3,rgba(255,255,255,0.10));}' +
+        'table.ips-live-table tbody tr:last-child td{border-bottom:none;}' +
+        'table.ips-live-table td.ips-aname{font-weight:600;color:var(--at-t1,#fff);white-space:nowrap;}' +
+        'table.ips-live-table td.ips-attr{color:var(--at-t3,rgba(255,255,255,0.50));}' +
+        'table.ips-live-table td.ips-val{font-variant-numeric:tabular-nums;font-family:var(--at-font-mono,monospace);font-weight:700;color:var(--at-brand,#22d3ee);white-space:nowrap;}' +
+        'table.ips-live-table td.ips-val.no-data{color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
+        'table.ips-live-table td.ips-ts{font-variant-numeric:tabular-nums;font-family:var(--at-font-mono,monospace);color:var(--at-t3,rgba(255,255,255,0.50));white-space:nowrap;}' +
+        /* ---- IPS CARD GRID (Aurora) ---- */
+        '.ips-grid-container{width:100%;box-sizing:border-box;padding:6px 2px 12px;}' +
+        '.ips-grid-header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 2px 10px;}' +
+        '.ips-grid-header h6{margin:0;font-size:15px;font-weight:600;color:var(--at-t1,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
+        '.ips-grid-badge{background:var(--at-g2,rgba(255,255,255,0.08));color:var(--at-brand,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));}' +
+        '.ips-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;align-items:stretch;}' +
+        '.ips-asset-card{height:100%;background:var(--at-bg2,#0e1530);border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 0 rgba(255,255,255,0.03) inset;}' +
+        '.ips-asset-card:hover{border-color:var(--at-edge-s,rgba(255,255,255,0.18));}' +
+        '.ips-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:var(--at-g1,rgba(255,255,255,0.04));border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.10));}' +
+        '.ips-asset-name{font-weight:600;color:var(--at-t1,#fff);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--at-font-display,inherit);}' +
+        '.ips-status-dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--at-ok,#34d399);box-shadow:0 0 6px var(--at-ok,#34d399);}' +
+        '.ips-attr-list{padding:4px 12px 6px;display:flex;flex-direction:column;flex:1 1 auto;}' +
+        '.ips-attr-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.08));}' +
+        '.ips-attr-row:last-child{border-bottom:none;}' +
+        '.ips-attr-name{color:var(--at-t2,rgba(255,255,255,0.72));font-size:12px;line-height:1.3;white-space:normal;word-break:break-word;overflow-wrap:anywhere;flex:1 1 auto;min-width:0;}' +
+        '.ips-attr-val{color:var(--at-brand,#22d3ee);font-family:var(--at-font-mono,monospace);font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;white-space:nowrap;flex:0 0 auto;text-align:right;line-height:1.3;}' +
+        '.ips-attr-val.no-data{color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
+        '.ips-card-footer{padding:7px 12px;border-top:1px solid var(--at-edge,rgba(255,255,255,0.10));background:var(--at-g1,rgba(255,255,255,0.04));color:var(--at-t3,rgba(255,255,255,0.50));font-size:11px;font-family:var(--at-font-mono,monospace);display:flex;align-items:center;gap:6px;}' +
+        '.ips-card-footer i{color:var(--at-brand,#22d3ee);opacity:0.85;}' +
+        /* ---- stale (Aurora dark) ---- */'.ips-attr-val.ws-stale-val{background:rgba(251,191,36,0.14)!important;color:var(--at-warn,#fbbf24)!important;border:1px solid rgba(251,191,36,0.40)!important;border-left:3px solid var(--at-warn,#fbbf24)!important;border-radius:var(--at-r-sm,8px)!important;padding:1px 6px!important;}' +
+        '.ips-attr-val.ws-stale-val .ws-stale-marker,.ips-attr-val.ws-stale-val i{color:var(--at-warn,#fbbf24)!important;}' +
+        'table.ips-live-table td.ips-val.ws-stale-val{color:var(--at-warn,#fbbf24)!important;}' +
+        'table.ips-live-table td.ips-val.ws-stale-val .ws-stale-marker{color:var(--at-warn,#fbbf24)!important;}' +
+                /* ---- flash on value update ---- */
+        '.ips-val-flash{animation:ipsValFlash 1.2s ease-out;}' +
+        '.ips-card-flash{animation:ipsCardFlash 1s ease-out;}' +
+        '@keyframes ipsValFlash{0%{background:var(--at-brand-glow,rgba(34,211,238,0.45));}100%{background:transparent;}}' +
+        '@keyframes ipsCardFlash{0%{border-color:var(--at-brand,#22d3ee);}100%{border-color:var(--at-edge,rgba(255,255,255,0.10));}}' +
+        '@media (max-width:640px){table.ips-live-table{font-size:12px;}table.ips-live-table thead th,table.ips-live-table tbody td{padding:7px 8px;}.ips-table-head h6{font-size:14px;}.ips-card-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));}}';
+    var st = document.createElement('style');
+    st.id = 'ipsLiveTableStyles';
+    st.textContent = css;
+    document.head.appendChild(st);
+}
+
+// Build flat row models (one row per asset x attribute), sorted by asset name then attribute order.
+function buildIpsTableRowModels() {
+    var rows = [];
+    if (!window.wsLiveData) return rows;
+    var assetIds = Object.keys(wsLiveData);
+    assetIds.sort(function (a, b) {
+        return (wsLiveData[a].AssetName || '').localeCompare(
+            wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' });
+    });
+    for (var i = 0; i < assetIds.length; i++) {
+        var aid = assetIds[i];
+        var asset = wsLiveData[aid];
+        if (!asset) continue;
+        var name = asset.AssetName || ('Asset ' + aid);
+        var attrs = asset.attrs || {};
+        var attrKeys = Object.keys(attrs);
+        attrKeys.sort(function (a, b) {
+            var oA = (attrs[a] && attrs[a].AttrOrder != null) ? parseInt(attrs[a].AttrOrder) : 999;
+            var oB = (attrs[b] && attrs[b].AttrOrder != null) ? parseInt(attrs[b].AttrOrder) : 999;
+            return oA - oB;
+        });
+
+        // Operation / device timestamp for the asset (HH:mm:ss)
+        var ts = '\u2014';
+        if (typeof window.getOperationTimestampDevice === 'function') {
+            var opTs = window.getOperationTimestampDevice(asset);
+            if (opTs && typeof window.fmtTimestampDevice === 'function') ts = window.fmtTimestampDevice(opTs);
+        }
+        if (ts === '\u2014' && asset.lastUpdated && typeof window.fmtTime === 'function') ts = window.fmtTime(asset.lastUpdated);
+
+        if (attrKeys.length === 0) {
+            rows.push({ assetId: aid, assetName: name, attr: '\u2014', attrKey: '', value: '\u2014', ts: ts });
+            continue;
+        }
+        for (var k = 0; k < attrKeys.length; k++) {
+            var an = attrKeys[k];
+            var aObj = attrs[an] || {};
+            var rawVal = aObj.Value;
+            var disp = (rawVal !== null && rawVal !== undefined && rawVal !== '') ? rawVal : '\u2014';
+
+            // Attribute display label (plain text)
+            var label = aObj.AliasName || aObj.AttrName || an;
+            if (typeof window.getAttrDisplayNamePlain === 'function') {
+                label = window.getAttrDisplayNamePlain(an, aObj.AttrId) || label;
+            } else if (typeof window.getAttrDisplayName === 'function') {
+                label = window.getAttrDisplayName(an, aObj.AttrId) || label;
+            }
+            if (typeof window.formatAliasName === 'function') label = window.formatAliasName(label) || label;
+            label = String(label).replace(/<[^>]*>/g, '').trim();
+
+            rows.push({ assetId: aid, assetName: name, attr: label, attrKey: an, value: disp, ts: ts });
+        }
+    }
+    return rows;
+}
+window.buildIpsTableRowModels = buildIpsTableRowModels;
+
+// ---- IPS view mode router -------------------------------------------------
+// Table view  -> IPS flat table (id="ipsLiveTable")
+// IPS view    -> card grid       (id="ipsCardGrid")
+// The flat table is also what the report/download (Excel/CSV/PDF) is built from.
+function ipsTableMode() {
+    try { return $('#drpView').val() === 'Table'; } catch (e) { return false; }
+}
+
+// Real flat-table renderer
+function ipsRenderTable() {
+    ensureIpsTableStyles();
+    var $c = $('#divTelemetryLive');
+    var rows = buildIpsTableRowModels();
+    if (rows.length === 0) {
+        $c.html('<div class="ips-table-wrap"><div class="text-center text-muted p-5">' +
+            '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:#259dab;display:block;"></i>' +
+            'Waiting for live data\u2026</div></div>');
+        return;
+    }
+    var assetCount = (window.wsLiveData ? Object.keys(wsLiveData).length : 0);
+    var h = '<div class="ips-table-wrap">';
+    h += '<div class="ips-table-head">' +
+        '<h6><i class="fas fa-table" style="color:#259dab;"></i> IPS Live Grid</h6>' +
+        '<span class="ips-count">' + assetCount + ' Asset' + (assetCount !== 1 ? 's' : '') + '</span>' +
+        '</div>';
+    h += '<div class="ips-table-scroll"><table id="ipsLiveTable" class="ips-live-table"><thead><tr>' +
+        '<th class="ips-c-sno" style="width:64px;">S.No</th><th>Asset Name</th><th>Attribute</th>' +
+        '<th class="ips-c-val" style="width:140px;">Live Value</th>' +
+        '<th class="ips-c-ts" style="width:120px;">Timestamp</th>' +
+        '</tr></thead><tbody>';
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var noData = (r.value === '\u2014');
+        h += '<tr data-ips-id="' + ipsEscHtml(r.assetId) + '" data-attr="' + ipsEscHtml(r.attrKey) + '">' +
+            '<td class="ips-sno">' + (i + 1) + '</td>' +
+            '<td class="ips-aname">' + ipsEscHtml(r.assetName) + '</td>' +
+            '<td class="ips-attr">' + ipsEscHtml(r.attr) + '</td>' +
+            '<td class="ips-val' + (noData ? ' no-data' : '') + '">' + ipsEscHtml(r.value) + '</td>' +
+            '<td class="ips-ts">' + ipsEscHtml(r.ts) + '</td>' +
+            '</tr>';
+    }
+    h += '</tbody></table></div></div>';
+    $c.html(h);
+}
+
+// Real flat-table incremental updater
+function ipsUpdateTable(updatedAssetIds) {
+    var $table = $('#ipsLiveTable');
+    if ($table.length === 0) { ipsRenderTable(); return; }
+    var rows = buildIpsTableRowModels();
+    var $body = $table.find('tbody');
+    if ($body.find('tr').length !== rows.length) { ipsRenderTable(); return; }
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var $tr = $body.find('tr').eq(i);
+        var $val = $tr.find('.ips-val');
+        if ($val.text() !== String(r.value)) {
+            $val.text(r.value);
+            if (r.value === '\u2014') { $val.addClass('no-data'); }
+            else {
+                $val.removeClass('no-data');
+                $val.addClass('ips-val-flash');
+                (function ($v) { setTimeout(function () { $v.removeClass('ips-val-flash'); }, 1200); })($val);
+            }
+        }
+        var $ts = $tr.find('.ips-ts');
+        if ($ts.text() !== String(r.ts)) $ts.text(r.ts);
+    }
+}
+
+// Mode-aware entry point: self-bootstraps (full render if the current mode's
+// container is missing, else incremental update).
+function ipsRenderSmart(updatedIds) {
+    if (ipsTableMode()) {
+        if ($('#ipsLiveTable').length === 0) return ipsRenderTable();
+        return ipsUpdateTable(updatedIds || []);
+    }
+    if ($('#ipsCardGrid').length === 0) return renderIpsGridView();
+    return (typeof updateIpsGridIncremental === 'function')
+        ? updateIpsGridIncremental(updatedIds || [])
+        : renderIpsGridView();
+}
+
+// Dispatch hooks call these; both route through the mode-aware entry point.
+window.renderIpsTableView = function renderIpsTableView() { return ipsRenderSmart(); };
+window.updateIpsTableIncremental = function updateIpsTableIncremental(updatedAssetIds) { return ipsRenderSmart(updatedAssetIds); };
+
+
+/* ============================================================
+   PC-03: Point Machine PDF/export row-model helpers (ported from 616)
+   Provides getPmFlatHeaders() + buildPmTableRowModel(assetId) used by
+   fnDownloadPDF(); shares getPmStructuredData() with card/table views.
+   ============================================================ */
+function resolveLatestPmIndication(asset) {
+    // Direction = latest KR indication ONLY (NWKR 25/27 vs RWKR 26/28).
+    // LOC attributes (576-579) are NOT considered for direction.
+    // Newest TimestampDevice wins; equal timestamps (same batch) -> higher value wins.
+    var best = { direction: 'Normal', timestampDevice: null, source: null, found: false, _ms: 0, _val: -1 };
+    if (!asset || !asset.attrs) return best;
+    for (var an in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(an)) continue;
+        var ad = asset.attrs[an];
+        var id = parseInt(ad.AttrId || ad.AssetAttributeId || 0);
+        var dir = null;
+        if (PM_NWKR_KR_ONLY_IDS.indexOf(id) !== -1) dir = 'Normal';
+        else if (PM_RWKR_KR_ONLY_IDS.indexOf(id) !== -1) dir = 'Reverse';
+        if (!dir) continue;
+        var tsStr = ad.TimestampDevice || ad.Timestamp;
+        if (!tsStr || String(tsStr).indexOf('0001-01-01') !== -1) continue;
+        var ms = new Date(tsStr).getTime();
+        if (isNaN(ms) || ms <= 0) continue;
+        var val = parseFloat(ad.Value); if (isNaN(val)) val = -1;
+        if (ms > best._ms || (ms === best._ms && val > best._val)) {
+            best._ms = ms; best._val = val;
+            best.direction = dir; best.timestampDevice = tsStr;
+            best.source = ad; best.found = true;
+        }
+    }
+    return best;
+}
+function resolveLatestPmOperation(asset, pm, dirFilter) {
+    var best = { direction: dirFilter || 'Normal', timestampDevice: null, sourceGroup: null, source: null, _ms: 0 };
+    if (!asset || !asset.attrs) return best;
+    for (var an in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(an)) continue;
+        var ad = asset.attrs[an];
+        var p = parsePmAttrName(an);
+        if (!p) continue;
+        var dec = decodePmAttribute(p.attrId);
+        if (!dec) continue;
+        if (dirFilter && dec.direction !== dirFilter) continue;
+        var tsStr = ad.TimestampDevice || ad.Timestamp;
+        if (!tsStr || tsStr.indexOf('0001-01-01') !== -1) continue;
+        var ms = new Date(tsStr).getTime();
+        if (isNaN(ms) || ms <= 0) continue;
+        if (ms > best._ms) {
+            best._ms = ms; best.direction = dec.direction; best.timestampDevice = tsStr;
+            best.sourceGroup = dec.direction + ' ' + dec.type; best.source = ad;
+        }
+    }
+    return best;
+}
+function resolvePmPosition(asset, pm) {
+    var dl = (asset && asset.dlRelays) || {};
+    var nwkr = null, rwkr = null;
+    for (var k in dl) {
+        if (!dl.hasOwnProperty(k)) continue;
+        var nm = (dl[k].displayName || k || '').toLowerCase();
+        if (nm.indexOf('nwkr') !== -1) nwkr = dl[k];
+        else if (nm.indexOf('rwkr') !== -1) rwkr = dl[k];
+    }
+    if (nwkr && nwkr.isPickup && !(rwkr && rwkr.isPickup))
+        return { direction: 'Normal', source: 'datalogger', timestampDevice: nwkr.timestamp || null };
+    if (rwkr && rwkr.isPickup && !(nwkr && nwkr.isPickup))
+        return { direction: 'Reverse', source: 'datalogger', timestampDevice: rwkr.timestamp || null };
+    if (typeof determinePmDirection === 'function') {
+        var d = determinePmDirection(asset, pm);
+        if (d && (d.nwkrMax > PM_DIRECTION_THRESHOLD || d.rwkrMax > PM_DIRECTION_THRESHOLD))
+            return { direction: (d.direction === 'REVERSE') ? 'Reverse' : 'Normal', source: 'rdpms', timestampDevice: null };
+    }
+    return { direction: 'Unknown', source: 'none', timestampDevice: null };
+}
+function determinePmDirectionByFreshness(asset) {
+    var result = { direction: null, source: 'none' };
+    if (!asset || !asset.attrs) return result;
+
+    var latestNwkr = null;
+    var latestRwkr = null;
+
+    for (var attrName in asset.attrs) {
+        if (!asset.attrs.hasOwnProperty(attrName)) continue;
+        var attrData = asset.attrs[attrName];
+        var attrId = parseInt(attrData.AttrId || attrData.AssetAttributeId || 0);
+        var value = parseFloat(attrData.Value);
+        if (isNaN(value)) continue;
+
+        var nameLower = attrName.toLowerCase();
+        var isNwkr = (PM_NWKR_IDS.indexOf(attrId) !== -1) || (nameLower.indexOf('nwkr') !== -1);
+        var isRwkr = (PM_RWKR_IDS.indexOf(attrId) !== -1) || (nameLower.indexOf('rwkr') !== -1);
+        if (!isNwkr && !isRwkr) continue;
+
+        var tsStr = attrData.TimestampDevice || attrData.Timestamp || null;
+        var ts = tsStr ? new Date(tsStr).getTime() : 0;
+
+        if (isNwkr) {
+            if (!latestNwkr || ts > latestNwkr.ts) latestNwkr = { value: value, ts: ts };
+        } else if (isRwkr) {
+            if (!latestRwkr || ts > latestRwkr.ts) latestRwkr = { value: value, ts: ts };
+        }
+    }
+
+    if (!latestNwkr && !latestRwkr) return result;
+
+    var nwkrTs = latestNwkr ? latestNwkr.ts : -1;
+    var rwkrTs = latestRwkr ? latestRwkr.ts : -1;
+    var nwkrVal = latestNwkr ? latestNwkr.value : 0;
+    var rwkrVal = latestRwkr ? latestRwkr.value : 0;
+
+    if (rwkrTs > nwkrTs) {
+        result.direction = (rwkrVal > PM_DIRECTION_THRESHOLD) ? 'REVERSE' : ((nwkrVal > PM_DIRECTION_THRESHOLD) ? 'NORMAL' : 'REVERSE');
+    } else {
+        result.direction = (nwkrVal > PM_DIRECTION_THRESHOLD) ? 'NORMAL' : ((rwkrVal > PM_DIRECTION_THRESHOLD) ? 'REVERSE' : 'NORMAL');
+    }
+    result.source = 'freshness';
+    return result;
+}
+function _pmEntry(metricObj, decimals) {
+    if (!metricObj || metricObj.value === undefined || metricObj.value === null || metricObj.value === '')
+        return { text: '—', source: (metricObj && metricObj.source) || null, present: false };
+    var n = parseFloat(metricObj.value);
+    return { text: isNaN(n) ? String(metricObj.value) : n.toFixed(decimals), source: metricObj.source || null, present: !isNaN(n) };
+}
+function _pmEntryInt(metricObj) {
+    if (!metricObj || metricObj.value === undefined || metricObj.value === null || metricObj.value === '')
+        return { text: '—', source: (metricObj && metricObj.source) || null, present: false };
+    var n = parseFloat(metricObj.value);
+    return { text: isNaN(n) ? String(metricObj.value) : Math.round(n).toString(), source: metricObj.source || null, present: !isNaN(n) };
+}
+function getPmFlatHeaders() {
+    var base = ['S.No', 'Zone', 'Division', 'Station', 'Asset Name', 'Date & Time', 'Direction'];
+    var metrics = [
+        'IPT N/R(A) (Max/Avg)',
+        'VPT 110 DC LOC N/R(V)',
+        'TPT N/R(ms)',
+        'VPT 24 DC LOC N/R(V)',
+        'VPT N/R(V)'
+    ];
+    var relays = ['NWKR', 'RWKR', 'NWCR', 'RWCR'];
+    var headers = base.slice();
+    metrics.forEach(function (m) {
+        headers.push('A-' + m);
+    });
+    metrics.forEach(function (m) {
+        headers.push('B-' + m);
+    });
+    relays.forEach(function (r) {
+        headers.push(r);
+    });
+    headers.push('Last Update');
+    return headers;
+}
+function buildPmTableRowModel(assetId) {
+    var asset = wsLiveData[assetId];
+    var pm = getPmStructuredData(assetId);
+    var baseName = (asset && asset.AssetName) || assetId;
+    var name = (String(baseName).indexOf('PT-') === 0) ? baseName : 'PT-' + baseName;
+    var ind = resolveLatestPmIndication(asset);
+    var op = resolveLatestPmOperation(asset, pm, ind.found ? ind.direction : null);
+    var pos = resolvePmPosition(asset, pm);
+    var freshDir = (typeof determinePmDirectionByFreshness === 'function') ? determinePmDirectionByFreshness(asset) : null;
+    var dir = (freshDir && freshDir.direction) ? (freshDir.direction === 'REVERSE' ? 'Reverse' : 'Normal') : (ind.found ? ind.direction : ((pos && pos.direction && pos.direction !== 'Unknown') ? pos.direction : op.direction));    var isRev = (dir === 'Reverse');
+    var rdById = {};
+    if (pm && pm.RDPMS) {
+        for (var rk in pm.RDPMS) {
+            if (!pm.RDPMS.hasOwnProperty(rk)) continue;
+            var rv = pm.RDPMS[rk];
+            var rid = parseInt((rv.source && (rv.source.AssetAttributeId || rv.source.AttrId)) || rv.AttrId || 0);
+            if (rid && !rdById[rid]) rdById[rid] = rv;
+        }
+    }
+    function rdEntry(id, decimals) {
+        var e = rdById[id];
+        if (!e || e.value === undefined || e.value === null || e.value === '')
+            return { text: '—', source: (e && e.source) || null, present: false };
+        var n = parseFloat(e.value);
+        return { text: isNaN(n) ? String(e.value) : n.toFixed(decimals), source: e.source || null, present: !isNaN(n) };
+    }
+    function endFields(end) {
+        var C = (end === 'A') ? 'AC' : 'BC';
+        var V = (end === 'A') ? 'AV' : 'BV';
+        var d = (pm && pm[dir]) ? pm[dir] : { AC: {}, AV: {}, BC: {}, BV: {} };
+        var locId = (end === 'A') ? (isRev ? 577 : 576) : (isRev ? 579 : 578);
+        var krId = (end === 'A') ? (isRev ? 26 : 25) : (isRev ? 28 : 27);
+        var krLabel = isRev ? 'RWKR' : 'NWKR';
+        function indEntry(id) {                       // show "NWKR: 28.57" / "RWKR: ..." as before
+            var e = rdEntry(id, 2);
+            if (e.present) e.text = krLabel + ': ' + e.text;
+            return e;
+        }
+        return {
+            iptMax: _pmEntry(d[C].Max, 2), iptAvg: _pmEntry(d[C].Avg, 2),
+            vpt110Avg: _pmEntry(d[V].Avg, 2), tpt: _pmEntryInt(d[C].OperationTime),
+            locIndication: indEntry(locId), krIndication: indEntry(krId),
+            krLabel: krLabel
+        };
+    }
+    var opDate = '—';
+    if (op.timestampDevice) {
+        try {
+            var dt = new Date(op.timestampDevice);
+            opDate = pmPad2(dt.getDate()) + '/' + pmPad2(dt.getMonth() + 1) + '/' + dt.getFullYear() +
+                ' ' + pmPad2(dt.getHours()) + ':' + pmPad2(dt.getMinutes()) + ':' + pmPad2(dt.getSeconds());
+        } catch (e) { opDate = '—'; }
+    }
+    function dlBadge(colKey) {
+        var dl = (asset && asset.dlRelays) || {};
+        var accepted = ['Combined-' + colKey, 'A End - ' + colKey, 'B End - ' + colKey, colKey];
+        var keys = Object.keys(dl);
+        for (var a = 0; a < accepted.length; a++) {
+            var want = accepted[a].toLowerCase();
+            for (var i = 0; i < keys.length; i++) {
+                var r = dl[keys[i]];
+                if (!r) continue;
+                if ((r.displayName || keys[i] || '').toLowerCase() === want) return r;
+            }
+        }
+        return null;
+    }
+    return {
+        assetId: assetId, assetName: name,
+        operation: { direction: dir, timestampDevice: op.timestampDevice, sourceGroup: op.sourceGroup, source: op.source },
+        position: { direction: pos.direction, source: pos.source, timestampDevice: pos.timestampDevice, conflict: (pos.direction !== 'Unknown' && pos.direction !== dir) },
+        operationDate: opDate, A: endFields('A'), B: endFields('B'),
+        datalogger: { NWKR: dlBadge('NWKR'), RWKR: dlBadge('RWKR'), NWCR: dlBadge('NWCR'), RWCR: dlBadge('RWCR') },
+        lastTelemetryTimestamp: (asset && asset.lastUpdated) ? asset.lastUpdated : null
+    };
+}
+try{ if(typeof window!=='undefined'){ window.getPmFlatHeaders=getPmFlatHeaders; window.buildPmTableRowModel=buildPmTableRowModel; } }catch(e){}
+
+
+/* ============================================================
+   PC-04: Signal Link Issue model (ported/adapted from 616)
+   Link health is judged from the aspect lamp CURRENT attrs ONLY (RG/DG/HG/HHG mA),
+   using TimestampLocal (fallback TimestampEdgeX). DataLogger relays, route/PR attrs
+   are intentionally NOT considered, so a fresh relay/route value can never clear a
+   Link Issue. computeSignalState()/getSignalState() are deliberately left untouched
+   (SIP contract preserved); the link state is exposed separately.
+   ============================================================ */
+var LINK_ISSUE_STALE_MS = 3 * 60 * 1000;   // 3 minutes silent -> Link Issue
+var SIGNAL_LAMP_CURRENT_ALIAS_GROUPS = (typeof SIGNAL_MA_ALIASES !== 'undefined')
+    ? [SIGNAL_MA_ALIASES.RG, SIGNAL_MA_ALIASES.DG, SIGNAL_MA_ALIASES.HG, SIGNAL_MA_ALIASES.HHG]
+    : [];
+
+function getSignalLampLinkState(assetId) {
+    var out = { linkIssue: true, newestTs: 0, ageMs: Infinity };
+    var asset = wsLiveData[String(assetId)];
+    if (!asset || !asset.attrs) return out;
+    var attrs = asset.attrs;
+    var newestTs = 0;
+    for (var i = 0; i < SIGNAL_LAMP_CURRENT_ALIAS_GROUPS.length; i++) {
+        var a = (typeof getSignalAttrByAliases === 'function')
+            ? getSignalAttrByAliases(attrs, SIGNAL_LAMP_CURRENT_ALIAS_GROUPS[i]) : null;
+        if (!a) continue;
+        var tsRaw = a.TimestampLocal || a.TimestampEdgeX;   // local first, edgex fallback
+        if (!tsRaw) continue;
+        var ts = new Date(tsRaw).getTime();
+        if (isNaN(ts) || ts <= 0) continue;
+        if (ts > newestTs) newestTs = ts;
+    }
+    if (newestTs <= 0) return out;                          // never received -> treat as link issue/waiting
+    out.newestTs = newestTs;
+    out.ageMs = Date.now() - newestTs;
+    out.linkIssue = (out.ageMs > LINK_ISSUE_STALE_MS);      // silent beyond window -> Link Issue
+    return out;
+}
+try { if (typeof window !== 'undefined') window.getSignalLampLinkState = getSignalLampLinkState; } catch (e) { }
+
+function _setSignalLinkIssue(assetId, on) {
+    var $card = $('#rdpmsCard_' + assetId);
+    if (!$card.length) return;
+    if (on) {
+        if (!document.getElementById('signalLinkIssueStyle')) {
+            try {
+                var st = document.createElement('style');
+                st.id = 'signalLinkIssueStyle';
+                st.textContent = '.signal-link-issue-badge{display:inline-block;background:#dc2626;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;margin-left:6px;}';
+                document.head.appendChild(st);
+            } catch (e) { }
+        }
+        if (!$card.find('.signal-link-issue-badge').length) {
+            $card.find('.card-header-right').first()
+                .append('<span class="signal-link-issue-badge"><i class="fas fa-unlink"></i> Link Issue</span>');
+        }
+    } else {
+        $card.find('.signal-link-issue-badge').remove();
+    }
+}
+
+// 30s watchdog: a lamp painter only runs when a WS message for the asset arrives, so a
+// FULLY SILENT lamp link would never flip. Re-evaluate every rendered MAIN signal card
+// (RDPMS view only; shunt skipped) so silent links also surface a Link Issue.
+var _signalLinkIssueTimer = null;
+function _startSignalLinkIssueTimer() {
+    if (_signalLinkIssueTimer) return;
+    _signalLinkIssueTimer = setInterval(function () {
+        try {
+            if (($('#drpView').val() || '') !== 'RDPMS') return;   // RDPMS card view only
+            if (typeof rdpmsCardsBuilt === 'undefined') return;
+            for (var aid in rdpmsCardsBuilt) {
+                if (!rdpmsCardsBuilt.hasOwnProperty(aid)) continue;
+                if (!$('#rdpmsCard_' + aid).length) continue;
+                var asset = wsLiveData[aid];
+                if (!asset) continue;
+                var nm = (asset.AssetName || '').toLowerCase();
+                if (nm.indexOf('sh') > -1) continue;               // main signals only (shunt separate)
+                if (window.updateMainSignalLights) window.updateMainSignalLights(aid);
+            }
+        } catch (e) { }
+    }, 30000);
+}
+function _stopSignalLinkIssueTimer() {
+    if (_signalLinkIssueTimer) { clearInterval(_signalLinkIssueTimer); _signalLinkIssueTimer = null; }
+}
+try { if (typeof window !== 'undefined') { window._startSignalLinkIssueTimer = _startSignalLinkIssueTimer; window._stopSignalLinkIssueTimer = _stopSignalLinkIssueTimer; } } catch (e) { }
