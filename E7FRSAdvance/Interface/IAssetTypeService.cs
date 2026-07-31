@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using Domain;
+using System.Collections.Generic;
 
 namespace E7FRSAdvance.Interface
 {
@@ -7,5 +8,6 @@ namespace E7FRSAdvance.Interface
         List<Domain.AssetType> GetAll();
 
         List<Domain.AssetType> GetBy(int siteId);
+        List<Domain.AssetType> GetLister(AssetTypeLister mAssetTypeLister);
     }
 }

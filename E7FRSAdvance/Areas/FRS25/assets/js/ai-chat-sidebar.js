@@ -207,7 +207,7 @@
   <div class="ai-chat-input-area">
     <div class="e7-input-label" id="e7InputLabel" style="display:none"></div>
     <div class="ai-input-wrapper">
-      <textarea id="aiChatInput" placeholder="Type asset or site name, or ask a question…" rows="1" maxlength="500" aria-label="Message"></textarea>
+      <textarea id="aiChatInput" placeholder="Type asset or site name, or ask a question…" rows="1" maxlength="10000" aria-label="Message"></textarea>
       <button class="ai-send-btn" id="aiSendBtn" disabled title="Send (Enter)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>

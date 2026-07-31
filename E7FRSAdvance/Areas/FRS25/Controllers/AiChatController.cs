@@ -409,10 +409,325 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return new EmptyResult();
         }
 
+        // POST /AiChat/AnalyzeAlert
+        // Scoped single-alert analysis. Reuses the same MCP tools + agentic loop as Chat,
+        // but with an analyze-specific system prompt and raw JSON output (no operational
+        // filter, no out-of-scope gate). Streams the SAME SSE frames as Chat.
+        [HttpPost]
+        public async Task<ActionResult> AnalyzeAlert()
+        {
+            string body;
+            using (System.IO.StreamReader sr = new System.IO.StreamReader(Request.InputStream, Encoding.UTF8))
+            {
+                body = await sr.ReadToEndAsync().ConfigureAwait(false);
+            }
+
+            JObject ctx;
+            try
+            {
+                ctx = JObject.Parse(body);
+            }
+            catch
+            {
+                Response.StatusCode = 400;
+                return Content("Bad JSON", "text/plain");
+            }
+
+            string userMsg = BuildAnalyzeUserMessage(ctx);
+            JArray messages = new JArray();
+            JObject um = new JObject();
+            um["role"] = "user";
+            um["content"] = userMsg;
+            messages.Add(um);
+
+            Response.ContentType = "text/event-stream";
+            Response.Headers["Cache-Control"] = "no-cache";
+            Response.Headers["X-Accel-Buffering"] = "no";
+            Response.Buffer = false;
+            Response.BufferOutput = false;
+
+            try
+            {
+                await RunAgenticLoop(messages, AnalyzeSystemPrompt(), true).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                WriteSse("error", new { message = FriendlyError(ex) });
+            }
+            finally
+            {
+                try { Response.Write("data: [DONE]\n\n"); Response.Flush(); } catch { }
+            }
+
+            return new EmptyResult();
+        }
+
+        private static string GetCtx(JObject o, string key)
+        {
+            JToken t = o[key];
+            if (t == null || t.Type == JTokenType.Null)
+            {
+                return "";
+            }
+            return t.ToString();
+        }
+
+        private static string BuildAnalyzeUserMessage(JObject ctx)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append("Assess this SINGLE railway alert against telemetry and decide whether the ");
+            sb.Append("alert is CONFIRMED (the telemetry supports a genuine field condition) or ");
+            sb.Append("NOT_CONFIRMED (the telemetry does not support a sustained fault). Use the ");
+            sb.Append("MCP tools to pull supporting evidence before deciding. Do NOT describe the ");
+            sb.Append("alert as false or wrong; report what the data shows.").Append("\n\n");
+            sb.Append("ALERT CONTEXT:").Append("\n");
+            sb.Append("- AlertId: ").Append(GetCtx(ctx, "alertId")).Append("\n");
+            sb.Append("- Station/Site: ").Append(GetCtx(ctx, "station")).Append("\n");
+            sb.Append("- Asset: ").Append(GetCtx(ctx, "assetName")).Append("\n");
+            sb.Append("- Cause code: ").Append(GetCtx(ctx, "causeCode")).Append("\n");
+            sb.Append("- Alert type: ").Append(GetCtx(ctx, "alertType")).Append("\n");
+            sb.Append("- Incidence time (IST): ").Append(GetCtx(ctx, "time")).Append("\n");
+            string reset = GetCtx(ctx, "resetTime");
+            if (reset.Length > 0)
+            {
+                sb.Append("- Rectification/reset time (IST): ").Append(reset).Append("\n");
+            }
+            string desc = GetCtx(ctx, "description");
+            if (desc.Length > 0)
+            {
+                sb.Append("- Description: ").Append(desc).Append("\n");
+            }
+            string raw = GetCtx(ctx, "rawMessage");
+            if (raw.Length > 0)
+            {
+                sb.Append("- Alert message: ").Append(raw).Append("\n");
+            }
+            JToken card = ctx["alertCard"];
+            if (card != null && card.Type == JTokenType.Object)
+            {
+                sb.Append("- Alert condition JSON: ").Append(card.ToString(Formatting.None)).Append("\n");
+            }
+            JToken rcard = ctx["resetCard"];
+            if (rcard != null && rcard.Type == JTokenType.Object)
+            {
+                sb.Append("- Reset condition JSON: ").Append(rcard.ToString(Formatting.None)).Append("\n");
+            }
+            sb.Append("\nSteps: (1) resolve the site and asset with search_sites / search_assets; ");
+            sb.Append("(2) get the baseline safe range (min / avg / max) with get_attribute_range for the asset attribute(s); ");
+            sb.Append("(3) pull ONLY the last ~6 samples around the incidence time with a LIMITED COMPACT history call (small Limit; prefer trend_get if it is available, otherwise a compact/limited history_get) - do NOT request a wide date range or full-resolution series, and make just ONE history call; a short compact window is enough to read direction against the threshold; ");
+            sb.Append("(4) check the alert record and any operator remark with get_frs_alerts; ");
+            sb.Append("(5) decide CONFIRMED vs NOT_CONFIRMED using the history shape versus the threshold and baseline. ");
+            sb.Append("If the history window is empty or too short to judge, return INCONCLUSIVE - never guess.").Append("\n");
+            return sb.ToString();
+        }
+
+        private static string AnalyzeSystemPrompt()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append("You are an EdgeX RDPMS railway alert analyst. You analyze ONE alert at a time ");
+            sb.Append("and decide whether the telemetry CONFIRMS a genuine field condition behind the ");
+            sb.Append("alert, or does NOT confirm a sustained fault. You never call the alert 'false' ");
+            sb.Append("or 'wrong'; you report whether the data supports it.").Append("\n");
+            sb.Append("You MUST call the available MCP tools to gather evidence (baseline range, value ");
+            sb.Append("history, alert record). Never invent values. All timestamps are IST (+05:30); ");
+            sb.Append("do not convert them.").Append("\n\n");
+            sb.Append("Categories to choose from: Field HW, Config, Calibration/Threshold, Platform, ");
+            sb.Append("A10 transition, Datalogger, Genuine failure.").Append("\n\n");
+            sb.Append("Return your answer as a SINGLE JSON object and NOTHING else - no prose, no ");
+            sb.Append("markdown, no code fences. Exact shape:").Append("\n");
+            sb.Append("{").Append("\n");
+            sb.Append("  \"verdict\": \"CONFIRMED | NOT_CONFIRMED | INCONCLUSIVE\",").Append("\n");
+            sb.Append("  \"confidence\": 0,").Append("\n");
+            sb.Append("  \"headline\": \"one short line, max 15 words\",").Append("\n");
+            sb.Append("  \"likely_cause\": \"one short sentence, max 18 words - no narrative\",").Append("\n");
+            sb.Append("  \"category\": \"one of the categories above\",").Append("\n");
+            sb.Append("  \"evidence\": [\"3 to 5 short bullets, each ONE line max ~14 words, most important first, no repetition, prefer numbers and units\"],").Append("\n");
+            sb.Append("  \"recommended_action\": \"2 to 4 terse steps, each a short imperative phrase\",").Append("\n");
+            sb.Append("  \"caveats\": \"one short line; omit detail if nothing material\",").Append("\n");
+            sb.Append("  \"viz\": {").Append("\n");
+            sb.Append("    \"metric\": \"short label of the key metric e.g. Ir\", \"unit\": \"e.g. mA\",").Append("\n");
+            sb.Append("    \"value\": 0, \"threshold\": 0, \"baseline\": 0,").Append("\n");
+            sb.Append("    \"direction\": \"declining | rising | flat\", \"pct_change\": 0,").Append("\n");
+            sb.Append("    \"series\": [],").Append("\n");
+            sb.Append("    \"secondary\": { \"label\": \"optional 2nd metric\", \"value\": 0, \"x_threshold\": 0 }").Append("\n");
+            sb.Append("  }").Append("\n");
+            sb.Append("}").Append("\n");
+            sb.Append("BE TERSE AND SCANNABLE: no paragraphs, no narrative, do not restate the alert. ");
+            sb.Append("Keep every field short enough to read at a glance; prefer numbers and units over sentences.").Append("\n");
+            sb.Append("viz drives an on-screen trend chart. Fill value/threshold/baseline/pct_change as NUMBERS ");
+            sb.Append("(never strings) from the tool data; direction is declining/rising/flat. series is the value-history ");
+            sb.Append("samples you pulled, OLDEST FIRST as plain numbers; leave series as [] if you could not pull history. ");
+            sb.Append("secondary is an optional derived metric (e.g. leakage current) with x_threshold = how many times over its limit; ");
+            sb.Append("use null when a number is unknown - never invent viz numbers.").Append("\n");
+            sb.Append("WINDOW NAMING: do NOT attach any day-count to averages or the baseline. Never write 7-day, 15-day, ");
+            sb.Append("or any N-day - just say \"average\", \"baseline\", or \"safe range\" with no number of days.").Append("\n");
+            sb.Append("confidence is an integer 0-100. Use CONFIRMED when the history sustains a real ");
+            sb.Append("deviation past the threshold/baseline; NOT_CONFIRMED when it was momentary, ");
+            sb.Append("within band, or explained by calibration/config rather than a field fault; ");
+            sb.Append("INCONCLUSIVE with low confidence when history is empty or too short. Do NOT ");
+            sb.Append("recommend operational actions like allowing/holding trains or operating points; ");
+            sb.Append("recommend maintenance/inspection steps only.").Append("\n");
+            return sb.ToString();
+        }
+
+        // POST /AiChat/AnalyzeChat
+        // Follow-up chat about ONE alert, continuing after AnalyzeAlert. The browser sends
+        // the alert context, the verdict JSON it received, and the follow-up thread; the
+        // server rebuilds the conversation (context message first, then the thread) and
+        // streams prose answers through the same agentic loop + MCP tools. Same SSE frames.
+        [HttpPost]
+        public async Task<ActionResult> AnalyzeChat()
+        {
+            string body;
+            using (System.IO.StreamReader sr = new System.IO.StreamReader(Request.InputStream, Encoding.UTF8))
+            {
+                body = await sr.ReadToEndAsync().ConfigureAwait(false);
+            }
+
+            JObject root;
+            try
+            {
+                root = JObject.Parse(body);
+            }
+            catch
+            {
+                Response.StatusCode = 400;
+                return Content("Bad JSON", "text/plain");
+            }
+
+            JObject ctx = root["context"] as JObject;
+            if (ctx == null)
+            {
+                ctx = new JObject();
+            }
+            JToken v = root["verdict"];
+            string verdictJson = (v != null && v.Type == JTokenType.Object) ? v.ToString(Formatting.None) : "";
+            JArray thread = root["messages"] as JArray;
+            if (thread == null)
+            {
+                thread = new JArray();
+            }
+
+            JArray messages = new JArray();
+            JObject first = new JObject();
+            first["role"] = "user";
+            first["content"] = BuildFollowupContextMessage(ctx, verdictJson);
+            messages.Add(first);
+
+            foreach (JToken t in thread)
+            {
+                JObject m = t as JObject;
+                if (m == null)
+                {
+                    continue;
+                }
+                string role = m["role"] != null ? m["role"].ToString() : "";
+                string content = m["content"] != null ? m["content"].ToString() : "";
+                if (content.Length == 0)
+                {
+                    continue;
+                }
+                if (content.Length > 4000)
+                {
+                    content = content.Substring(0, 4000);
+                }
+                JObject nm = new JObject();
+                nm["role"] = role == "assistant" ? "assistant" : "user";
+                nm["content"] = content;
+                messages.Add(nm);
+            }
+
+            Response.ContentType = "text/event-stream";
+            Response.Headers["Cache-Control"] = "no-cache";
+            Response.Headers["X-Accel-Buffering"] = "no";
+            Response.Buffer = false;
+            Response.BufferOutput = false;
+
+            try
+            {
+                await RunAgenticLoop(messages, AnalyzeFollowupSystemPrompt(), true).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                WriteSse("error", new { message = FriendlyError(ex) });
+            }
+            finally
+            {
+                try { Response.Write("data: [DONE]\n\n"); Response.Flush(); } catch { }
+            }
+
+            return new EmptyResult();
+        }
+
+        private static string BuildFollowupContextMessage(JObject ctx, string verdictJson)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append("You are continuing a diagnostic conversation about ONE railway alert. ");
+            sb.Append("The alert context and the earlier diagnostic verdict are below; the ");
+            sb.Append("messages after this one are the follow-up conversation.").Append("\n\n");
+            sb.Append("ALERT CONTEXT:").Append("\n");
+            sb.Append("- AlertId: ").Append(GetCtx(ctx, "alertId")).Append("\n");
+            sb.Append("- Station/Site: ").Append(GetCtx(ctx, "station")).Append("\n");
+            sb.Append("- Asset: ").Append(GetCtx(ctx, "assetName")).Append("\n");
+            sb.Append("- Cause code: ").Append(GetCtx(ctx, "causeCode")).Append("\n");
+            sb.Append("- Alert type: ").Append(GetCtx(ctx, "alertType")).Append("\n");
+            sb.Append("- Incidence time (IST): ").Append(GetCtx(ctx, "time")).Append("\n");
+            string reset = GetCtx(ctx, "resetTime");
+            if (reset.Length > 0)
+            {
+                sb.Append("- Rectification/reset time (IST): ").Append(reset).Append("\n");
+            }
+            string desc = GetCtx(ctx, "description");
+            if (desc.Length > 0)
+            {
+                sb.Append("- Description: ").Append(desc).Append("\n");
+            }
+            string raw = GetCtx(ctx, "rawMessage");
+            if (raw.Length > 0)
+            {
+                sb.Append("- Alert message: ").Append(raw).Append("\n");
+            }
+            JToken card = ctx["alertCard"];
+            if (card != null && card.Type == JTokenType.Object)
+            {
+                sb.Append("- Alert condition JSON: ").Append(card.ToString(Formatting.None)).Append("\n");
+            }
+            JToken rcard = ctx["resetCard"];
+            if (rcard != null && rcard.Type == JTokenType.Object)
+            {
+                sb.Append("- Reset condition JSON: ").Append(rcard.ToString(Formatting.None)).Append("\n");
+            }
+            if (verdictJson.Length > 0)
+            {
+                sb.Append("\nEARLIER DIAGNOSTIC VERDICT (JSON): ").Append(verdictJson).Append("\n");
+            }
+            sb.Append("\nAnswer the user's follow-up questions about this alert. Call the MCP tools ");
+            sb.Append("whenever fresh data is needed to answer; never invent values.").Append("\n");
+            return sb.ToString();
+        }
+
+        private static string AnalyzeFollowupSystemPrompt()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.Append("You are an EdgeX RDPMS railway alert analyst answering follow-up questions ");
+            sb.Append("about ONE specific alert whose context and verdict are in the first message.").Append("\n");
+            sb.Append("You MUST call the available MCP tools whenever a question needs data ");
+            sb.Append("(history, baseline, alert records). Never invent values. All timestamps ");
+            sb.Append("are IST (+05:30); do not convert them.").Append("\n\n");
+            sb.Append("Answer in plain concise prose - short paragraphs, or short dash lists when ");
+            sb.Append("listing readings. No JSON, no markdown headings, no code fences.").Append("\n");
+            sb.Append("Ground every claim in tool data or the given context; if the data cannot ");
+            sb.Append("answer the question, say so plainly.").Append("\n");
+            sb.Append("Never describe the alert as false or wrong; report whether telemetry ");
+            sb.Append("confirms it. Do NOT recommend operational actions like allowing/holding ");
+            sb.Append("trains or operating points; recommend maintenance/inspection steps only.").Append("\n");
+            return sb.ToString();
+        }
+
         // ═════════════════════════════════════════════════════════
         //  AGENTIC LOOP
         // ═════════════════════════════════════════════════════════
-        private async Task RunAgenticLoop(JArray incomingMessages)
+        private async Task RunAgenticLoop(JArray incomingMessages, string systemPromptOverride = null, bool rawJsonMode = false)
         {
             List<JObject> messages = new List<JObject>();
             foreach (JToken m in incomingMessages)
@@ -434,7 +749,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
             }
 
-            if (IsOutOfScope(lastUserText))
+            if (!rawJsonMode && IsOutOfScope(lastUserText))
             {
                 WriteSse("text", new
                 {
@@ -472,10 +787,51 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             if (string.IsNullOrWhiteSpace(sysBase))
             {
                 sysBase = "You are an EdgeX industrial data assistant. " +
-                          "You MUST use the available tools to answer — never make up data. " +
-                          "Always call a tool first. Never answer from memory.";
+                          "You MUST use the available tools to answer -- never make up data. " +
+                          "Always call a tool first. Never answer from memory.\n\n" +
+                          "=== PERFORMANCE / HEALTH EVALUATION ===\n" +
+                          "When the user asks about 'performance', 'health', 'status', " +
+                          "'how is X doing/performing', 'behaviour of X', or similar, follow this workflow:\n\n" +
+                          "STEP 1 - IDENTIFY SCOPE: Resolve entity (asset/site/section/division/zone). " +
+                          "Use search_sites to get SiteId. Use search_assets for AssetId.\n\n" +
+                          "STEP 2 - BASELINE: Call get_attribute_range(SiteId) for safe range " +
+                          "(AverageValue, MaxSafeValue, MinSafeValue, MinFailValue per attribute). " +
+                          "Cross-reference AssetId with search_assets to get AssetName.\n\n" +
+                          "STEP 3 - LIVE VALUES: Call get_tag_current(SiteId) or by AssetId.\n\n" +
+                          "STEP 4 - DETERIORATION CHECK: Compare live vs baseline. " +
+                          "Current > MaxSafeValue or < MinSafeValue = YELLOW. " +
+                          "Current beyond MinFailValue or deviation > 50% from AverageValue = RED. " +
+                          "Otherwise = GREEN. Skip attributes where all thresholds are null. " +
+                          "Only report attributes that are NOT green.\n\n" +
+                          "STEP 5 - ALERTS: Call get_frs_alerts with appropriate window: " +
+                          "Asset level: SiteIds + AssetIds, last 5 days. " +
+                          "Site/Section/Division/Zone: SiteIds, last 1 day. " +
+                          "Use pagination (PageSize=50, Skip for next pages).\n\n" +
+                          "STEP 6 - FILTER TESTING ALERTS: Exclude alerts where Remark or " +
+                          "MaintainerRemarks contains (case-insensitive): " +
+                          "'testing', 'test', 'check', 'routine', 'maintenance', 'calibration', " +
+                          "'energy7 staff', 'e7 staff', 'working'. " +
+                          "Count excluded alerts separately.\n\n" +
+                          "STEP 7 - PRODUCE HEALTH VERDICT:\n" +
+                          "ENTITY_NAME - Health: GREEN/YELLOW/RED (N active concerns)\n\n" +
+                          "DETERIORATION FLAGS (only non-GREEN attributes):\n" +
+                          "  Asset Attribute: current X (avg Y, safe Z-W) [% deviation]\n\n" +
+                          "ACTIVE ALERTS (genuine only):\n" +
+                          "  Asset - CauseCode (Failure/Predictive) - since HH:MM (duration)\n" +
+                          "  (N testing/check alerts excluded)\n\n" +
+                          "LAST N-DAY SUMMARY:\n" +
+                          "  N genuine alerts, M testing excluded\n" +
+                          "  Most active: Asset1 (count), Asset2 (count)\n\n" +
+                          "RULES:\n" +
+                          "- Do NOT dump raw alert tables or bare sensor values.\n" +
+                          "- Always show deviation from baseline, not just raw numbers.\n" +
+                          "- Keep concise -- highlight only anomalies and concerns.\n" +
+                          "- For site/division/zone: roll up per asset type (Track/Signal/Point Machine/Power Supply).\n" +
+                          "=== END PERFORMANCE / HEALTH EVALUATION ===";
             }
-            string systemPrompt = sysBase + BuildDateAnchor() + LoadTrainingText();
+            string systemPrompt = !string.IsNullOrWhiteSpace(systemPromptOverride)
+                ? systemPromptOverride + BuildDateAnchor()
+                : sysBase + BuildDateAnchor() + LoadTrainingText();
 
             List<object> workMessages = TrimHistory(messages, _maxHistory).Cast<object>().ToList();
             object[] toolsArray = loaded.Tools.ToObject<object[]>();
@@ -607,7 +963,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     foreach (JToken b in textBlocks)
                         if (b["text"] != null) sb.Append(b["text"].ToString());
 
-                    string fullText = FilterOperationalActions(sb.ToString());
+                    string fullText = rawJsonMode ? sb.ToString() : FilterOperationalActions(sb.ToString());
                     string[] words = fullText.Split(' ');
                     StringBuilder chunk = new StringBuilder();
                     for (int w = 0; w < words.Length; w++)
@@ -778,3 +1134,4 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return msg;
         }
     }
+}

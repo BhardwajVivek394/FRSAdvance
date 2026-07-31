@@ -1855,8 +1855,8 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
 
     var payload = {
         SearchCriteria: {
-            SiteId: parseInt(siteId),
-            AssetTypeId: parseInt(assetTypeId)
+            SiteId: siteId,
+            AssetTypeId: parseInt(assetTypeId, 10)
         }
     };
 

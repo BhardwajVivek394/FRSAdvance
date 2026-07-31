@@ -3,6 +3,7 @@ using E7FRSAdvance.Controllers;
 using Microsoft.VisualBasic.Devices;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Diagnostics;
@@ -21,6 +22,20 @@ namespace E7FRSAdvance.Utility
 
     public static class ExtensionMethod
     {
+        public static string GetDisplayName(this Enum enumValue)
+        {
+            var field = enumValue.GetType().GetField(enumValue.ToString());
+
+            var displayAttr = field.GetCustomAttribute<DisplayAttribute>();
+            if (displayAttr != null && !string.IsNullOrEmpty(displayAttr.Name))
+                return displayAttr.Name;
+
+            var descAttr = field.GetCustomAttribute<DescriptionAttribute>();
+            if (descAttr != null && !string.IsNullOrEmpty(descAttr.Description))
+                return descAttr.Description;
+
+            return enumValue.ToString().Replace("_", " ");
+        }
 
         public static string ToTrim(this string inputtedString)
         {

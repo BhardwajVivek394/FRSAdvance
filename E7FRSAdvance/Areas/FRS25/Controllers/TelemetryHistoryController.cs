@@ -32,10 +32,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // GET: FRS25/TelemetryHistory
         public ActionResult Index()
         {
-            ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
-            ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
-            ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
-            ViewBag.AssetTypes = new SelectList(GetFRSAssetType(), "Id", "Name");
+            // Same shared filter cache used by Alert Live.
+            Helper.FilterCacheHelper.SetFilterViewBag(ViewBag,_siteService,_zoneService,_divisionService,includeAssetType: false);
+            // FRS asset types are enum-based, so retain existing behaviour.
+            ViewBag.AssetTypes = new SelectList(GetFRSAssetType(),"Id","Name");
             return View();
         }
 

@@ -42,10 +42,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult Index()
         {
-            ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
-            ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
-            ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
-            ViewBag.AssetTypes = new SelectList(GetFRSAssetType(), "Id", "Name");
+            Helper.FilterCacheHelper.SetFilterViewBag(ViewBag,_siteService,_zoneService,_divisionService,includeAssetType: false);
+            // FRS asset types are enum-based, so retain existing behaviour.
+            ViewBag.AssetTypes = new SelectList(GetFRSAssetType(),"Id","Name");
             return View();
         }
 
@@ -1751,10 +1750,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 {
                     mAssetLister.SearchCriteria.CreatedBy = ClsHttpContent.LoginUser.Id;
                     mAssetLister.SearchCriteria.IsMobileView = true;
-                    if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.StartDate))
-                        mAssetLister.SearchCriteria.StartDate = DateTime.Now.ToShortDateString();
-                    if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.EndDate))
-                        mAssetLister.SearchCriteria.EndDate = DateTime.Now.ToShortDateString();
+                    //if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.StartDate))
+                    //    mAssetLister.SearchCriteria.StartDate = DateTime.Now.ToShortDateString();
+                    //if (string.IsNullOrEmpty(mAssetLister.SearchCriteria.EndDate))
+                    //    mAssetLister.SearchCriteria.EndDate = DateTime.Now.ToShortDateString();
 
                     var jsonStr = JsonConvert.SerializeObject(mAssetLister);
                     StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");

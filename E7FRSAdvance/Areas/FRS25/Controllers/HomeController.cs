@@ -33,10 +33,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult Index()
         {
-            ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
-            ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
-            ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
-            ViewBag.FRSAssetType = GetFRSAssetType();
+            //ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
+            //ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
+            //ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
+            //ViewBag.FRSAssetType = GetFRSAssetType();
+            Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService);
 
 
             return View();

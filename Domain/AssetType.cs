@@ -25,6 +25,8 @@ namespace Domain
         public decimal? X { get; set; }
         public decimal? Y { get; set; }
         public decimal? Z { get; set; }
+        public int UserId { get; set; }
+        public int RoleId { get; set; }
         public AssetType()
         {
             ColumnName = "Id";

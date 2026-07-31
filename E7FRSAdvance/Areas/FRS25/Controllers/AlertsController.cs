@@ -25,15 +25,17 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private readonly ISiteService _siteService;
         private readonly IZoneService _zoneService;
         private readonly IDivisionService _divisionService;
+        private readonly IAssetTypeService _assetTypeService;
         private readonly IFRSAlertService _frsAlertService;
         private readonly IAssetAttributeService _assetAttributeService;
         private readonly ICardLineService _cardLineService;
 
-        public AlertsController(ISiteService siteService, IZoneService zoneService, IDivisionService divisionService, IFRSAlertService frsAlertService, IAssetAttributeService assetAttributeService, ICardLineService cardLineService)
+        public AlertsController(ISiteService siteService, IZoneService zoneService, IDivisionService divisionService, IAssetTypeService assetTypeService, IFRSAlertService frsAlertService, IAssetAttributeService assetAttributeService, ICardLineService cardLineService)
         {
             _siteService = siteService;
             _zoneService = zoneService;
             _divisionService = divisionService;
+            _assetTypeService = assetTypeService;
             _frsAlertService = frsAlertService;
             _assetAttributeService = assetAttributeService;
             _cardLineService = cardLineService;
@@ -41,13 +43,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult Index()
         {
-            ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
-            ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
-            ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
-            ViewBag.AssetTypes = new SelectList(GetFRSAssetType(), "Id", "Name");
-
-
-            return View();
+            Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService, includeAssetType: false);
+            ViewBag.AssetTypes = new SelectList(Helper.FilterCacheHelper.GetAllAssetTypes(_assetTypeService), "Id", "Name");
+            //ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
+            //ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
+            //ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
+            //ViewBag.AssetTypes = new SelectList(GetFRSAssetType(), "Id", "Name");
+            return View(new Domain.FRSAlertLister());
         }
         public JsonResult GetDivisionByZoneId(DivisionLister mDivisionLister)
         {
