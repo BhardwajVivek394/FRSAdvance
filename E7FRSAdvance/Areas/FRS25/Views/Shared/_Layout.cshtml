@@ -3641,7 +3641,38 @@
     <!-- dark-light-mode.js — single source of truth for theme toggle -->
     <!-- (loaded below in the scripts block, before this inline) -->
     <script>
-        window.E7_API_KEY = '@Html.Raw(E7FRSAdvance.Utility.ClsHttpContent.LoginUser.Password)';
+        // SECURITY: previously exposed logged-in user's raw password to the browser.
+        // Removed — no downstream JS references E7_API_KEY (grep confirmed 1 hit, this line).
+        // If any client code later needs a session identifier, mint a short-lived
+        // bearer token server-side and store it in an HttpOnly cookie instead.
+
+        /*
+         * CommonNotification — used by many FRS25 views (AlertLive, RDPMSHealthLive, etc.)
+         * to surface success/error toasts. Defined in the root Views/Shared/_Layout.cshtml
+         * but not in this Area layout, which caused ReferenceError in AJAX error handlers.
+         * Bootstrap-notify is expected on the page; fall back to console + alert if absent.
+         *
+         * Signature is flexible: existing callers pass either (type, message) or
+         * (type, message, title). Title is ignored (bootstrap-notify doesn't take one here).
+         */
+        if (typeof window.CommonNotification !== 'function') {
+            window.CommonNotification = function (type, message /*, title */) {
+                var t = String(type || 'info').toLowerCase();
+                if (t === 'error') { t = 'danger'; }
+                if ($ && typeof $.notify === 'function') {
+                    $.notify(message, {
+                        type: t,
+                        allow_dismiss: true,
+                        delay: 2000,
+                        showProgressbar: true,
+                        timer: 300,
+                        animate: { enter: 'animated fadeInDown', exit: 'animated fadeOutUp' }
+                    });
+                } else if (window.console) {
+                    console[(t === 'danger' || t === 'warning') ? 'error' : 'log']('[Notify] ' + message);
+                }
+            };
+        }
 
         var isSecure = window.location.protocol === 'https:';
     var APP_CONFIG = {};

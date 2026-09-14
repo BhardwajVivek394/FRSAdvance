@@ -2,9 +2,9 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-    /* ===== CUSTOM CHART STYLES ===== */
+    /* ===== CHART STYLES ===== */
     .rdpms-chart-panel {
         padding: 24px;
         background: #fff;
@@ -23,14 +23,6 @@
         display: flex;
         align-items: center;
         gap: 8px;
-    }
-
-    .rdpms-chart-title {
-        text-align: center;
-        margin-bottom: 20px;
-        font-size: 13px;
-        color: #555;
-        font-style: italic;
     }
 
     /* Legend */
@@ -98,7 +90,7 @@
         position: absolute;
         top: 50%;
         left: 50%;
-        transform: translate(-50%,-50%);
+        transform: translate(-50%, -50%);
         text-align: center;
         pointer-events: none;
     }
@@ -246,7 +238,7 @@
         font-weight: 600;
     }
 
-    /* Canvas graph */
+    /* Canvas */
     #rdpmsLineCanvas1, #rdpmsLineCanvas2 {
         cursor: crosshair;
     }
@@ -283,7 +275,7 @@
             color: #cbd5e1;
         }
 
-    /* Parallel row — Count left, Availability right */
+    /* Parallel row */
     .rdpms-parallel-row {
         display: flex;
         gap: 16px;
@@ -293,14 +285,14 @@
 
         .rdpms-parallel-row .rdpms-chart-panel {
             flex: 1;
-            min-width: 0; /* allow shrink below natural width */
+            min-width: 0;
             margin-bottom: 0;
         }
-        /* Pie grid uses 2-col inside parallel panels (3-col too cramped at 50%) */
+
         .rdpms-parallel-row .rdpms-pie-grid {
             grid-template-columns: repeat(2, 1fr);
         }
-    /* Bar inside parallel: keep chart height, allow horizontal scroll */
+
     /* Tooltip */
     .rdpms-tooltip {
         display: none;
@@ -354,60 +346,708 @@
         border-radius: 2px;
         flex-shrink: 0;
     }
+
+    /* ===== RANGE BAR (always visible) ===== */
+    /* ===== RANGE BAR (always visible) ===== */
+    #selectedRangeBar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px 0;
+        background: linear-gradient(135deg, #f0f4ff 0%, #e8f2ff 100%);
+        border: 1.5px solid #c7d8f8;
+        border-radius: 10px;
+        padding: 10px 20px;
+        margin: 10px 0 10px 10px;
+        box-shadow: 0 2px 8px rgba(59,130,246,0.08);
+        width: fit-content;
+        min-width: 420px;
+        position: relative;
+    }
+
+    .range-bar-accent {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: linear-gradient(180deg, #3b82f6, #6366f1);
+        border-radius: 10px 0 0 10px;
+    }
+
+    .range-bar-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-left: 8px;
+        flex-wrap: wrap;
+    }
+
+    .range-bar-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: #6b7280;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .range-bar-box {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 5px 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .range-bar-value {
+        font-size: 13px;
+        font-weight: 600;
+        color: #1e293b;
+        min-width: 75px;
+        letter-spacing: 0.01em;
+    }
+
+    .range-bar-value-time {
+        min-width: 42px;
+    }
+
+    .range-bar-arrow {
+        margin: 0 14px;
+        display: flex;
+        align-items: center;
+        color: #94a3b8;
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @@media (max-width: 767.98px) {
+        #selectedRangeBar {
+            min-width: 0;
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+            padding: 14px 16px 14px 20px;
+            gap: 12px;
+        }
+
+        .range-bar-group {
+            width: 100%;
+            padding-left: 0;
+        }
+
+        .range-bar-arrow {
+            margin: 0;
+            transform: rotate(90deg);
+            align-self: center;
+        }
+
+        .range-bar-box {
+            flex: 1 1 auto;
+        }
+
+        .range-bar-value {
+            min-width: 0;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .range-bar-group {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .range-bar-box {
+            width: 100%;
+        }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════
+       LIVE MEDIA HEALTH WIDGET
+       Wire/Wireless breakdown for IoT (A10) and Network (Modem).
+       Inspired by Network Dashboard's cluster-uptime-stats widget.
+    ═══════════════════════════════════════════════════════════════════ */
+    .rdpms-lmh-panel {
+        margin: 12px 0 14px;
+        padding: 14px 16px 12px;
+        background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+        border: 1.5px solid #dbeafe;
+        border-radius: 12px;
+        box-shadow: 0 3px 10px rgba(59,130,246,0.06);
+    }
+
+    .rdpms-lmh-refresh-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 0 10px;
+        padding: 6px 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 7px;
+        background: #f8fafc;
+        color: #475569;
+        font-size: 10px;
+        font-weight: 600;
+        flex-wrap: wrap;
+    }
+
+    .rdpms-lmh-refresh-left,
+    .rdpms-lmh-refresh-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .rdpms-lmh-indicator {
+        width: 8px;
+        height: 8px;
+        flex: 0 0 auto;
+        border-radius: 50%;
+        background: #94a3b8;
+    }
+
+        .rdpms-lmh-indicator.is-live {
+            background: #22c55e;
+            box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
+        }
+
+        .rdpms-lmh-indicator.is-loading {
+            background: #3b82f6;
+            animation: rdpmsLmhPulse 1s infinite ease-in-out;
+        }
+
+        .rdpms-lmh-indicator.is-error {
+            background: #ef4444;
+        }
+
+    .rdpms-lmh-sep {
+        color: #cbd5e1;
+    }
+
+    @@keyframes rdpmsLmhPulse {
+        0%, 100% {
+            opacity: 0.45;
+            transform: scale(0.9);
+        }
+
+        50% {
+            opacity: 1;
+            transform: scale(1.15);
+        }
+    }
+
+    /* ── 2-column grid: IoT | Network ── */
+    .rdpms-lmh-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+    }
+
+    @@media (max-width: 767.98px) {
+        .rdpms-lmh-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* ── Category card ── */
+    .rdpms-lmh-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .rdpms-lmh-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #eef2f7;
+        background: #fafbff;
+    }
+
+    .rdpms-lmh-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #1e293b;
+        letter-spacing: 0.02em;
+    }
+
+    .rdpms-lmh-title-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 6px;
+        color: #fff;
+    }
+
+    .rdpms-lmh-card--iot .rdpms-lmh-title-icon {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+    }
+
+    .rdpms-lmh-card--net .rdpms-lmh-title-icon {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+    }
+
+    .rdpms-lmh-total {
+        font-size: 10px;
+        font-weight: 700;
+        color: #475569;
+        background: #eef2ff;
+        padding: 3px 8px;
+        border-radius: 12px;
+    }
+
+    /* ── Bifurcated Wired / Wireless blocks ── */
+    .rdpms-lmh-bifurcated {
+        display: flex;
+        align-items: stretch;
+    }
+
+    .rdpms-lmh-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 10px 12px 12px;
+        position: relative;
+    }
+
+        .rdpms-lmh-block + .rdpms-lmh-block {
+            border-left: 1px dashed #e2e8f0;
+        }
+
+    .rdpms-lmh-block-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+    }
+
+    .rdpms-lmh-proto {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 9.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #64748b;
+    }
+
+    .rdpms-lmh-proto-icon {
+        color: #94a3b8;
+    }
+
+    .rdpms-lmh-pct {
+        font-size: 11px;
+        font-weight: 800;
+        padding: 2px 7px;
+        border-radius: 4px;
+        line-height: 1.3;
+    }
+
+        .rdpms-lmh-pct.good {
+            background: rgba(34,197,94,0.14);
+            color: #15803d;
+        }
+
+        .rdpms-lmh-pct.warn {
+            background: rgba(245,158,11,0.16);
+            color: #b45309;
+        }
+
+        .rdpms-lmh-pct.bad {
+            background: rgba(239,68,68,0.14);
+            color: #b91c1c;
+        }
+
+        .rdpms-lmh-pct.zero {
+            background: rgba(148,163,184,0.15);
+            color: #64748b;
+        }
+
+    /* ── Up / Down counters (borrowed from Network Dashboard style) ── */
+    .rdpms-lmh-durations {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10.5px;
+        line-height: 1.2;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .rdpms-lmh-up {
+        color: #16a34a;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
+
+    .rdpms-lmh-down {
+        color: #dc2626;
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
+
+    .rdpms-lmh-dur-sep {
+        color: #cbd5e1;
+        font-weight: 400;
+    }
+
+    /* ── Slim progress bar under each block (visual availability meter) ── */
+    .rdpms-lmh-meter {
+        position: relative;
+        height: 5px;
+        background: #f1f5f9;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 3px;
+    }
+
+    .rdpms-lmh-meter-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        border-radius: 3px;
+        transition: width 0.4s ease;
+    }
+
+        .rdpms-lmh-meter-fill.good {
+            background: linear-gradient(90deg, #22c55e, #16a34a);
+        }
+
+        .rdpms-lmh-meter-fill.warn {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+
+        .rdpms-lmh-meter-fill.bad {
+            background: linear-gradient(90deg, #ef4444, #b91c1c);
+        }
+
+        .rdpms-lmh-meter-fill.zero {
+            background: #cbd5e1;
+        }
+
+    /* ── Empty / N-A state ── */
+    .rdpms-lmh-block.is-empty .rdpms-lmh-pct,
+    .rdpms-lmh-block.is-empty .rdpms-lmh-up,
+    .rdpms-lmh-block.is-empty .rdpms-lmh-down {
+        opacity: 0.55;
+    }
+
+    /* ── Progress bar shown while cluster discovery + history fan-out run.
+       Two modes:
+         .is-indeterminate → animated stripe sliding across (unknown ETA)
+         width % on .rdpms-lmh-progress-fill → determinate (X / N done) ── */
+    .rdpms-lmh-progress-track {
+        position: relative;
+        height: 3px;
+        margin: 0 0 8px;
+        background: rgba(59,130,246,0.10);
+        border-radius: 3px;
+        overflow: hidden;
+        display: none;
+    }
+
+        .rdpms-lmh-progress-track.is-active {
+            display: block;
+        }
+
+    .rdpms-lmh-progress-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 0%;
+        background: linear-gradient(90deg, #3b82f6, #6366f1, #8b5cf6);
+        background-size: 200% 100%;
+        border-radius: 3px;
+        transition: width 0.25s ease-out;
+        animation: rdpmsLmhProgressShimmer 2s linear infinite;
+    }
+
+        .rdpms-lmh-progress-fill.is-indeterminate {
+            width: 40% !important;
+            animation: rdpmsLmhProgressSlide 1.3s infinite ease-in-out, rdpmsLmhProgressShimmer 2s linear infinite;
+        }
+
+    @@keyframes rdpmsLmhProgressSlide {
+        0% {
+            left: -45%;
+        }
+
+        100% {
+            left: 105%;
+        }
+    }
+
+    @@keyframes rdpmsLmhProgressShimmer {
+        0% {
+            background-position: 0% 0%;
+        }
+
+        100% {
+            background-position: 200% 0%;
+        }
+    }
+
+    .rdpms-lmh-progress-count {
+        font-weight: 700;
+        color: #3b82f6;
+    }
 </style>
 
 <div class="table-border">
     <div class="row">
         <div class="col">
 
-            <!-- List View -->
-            <div id="listView">
-                <div class="row">
-                    <div class="col-6">
-                        <div id="selectedRangeBar" style="display:flex;align-items:center;gap:0;background:linear-gradient(135deg,#f0f4ff 0%,#e8f2ff 100%);border:1.5px solid #c7d8f8;border-radius:10px;padding:10px 20px;margin-top:10px;margin-bottom:10px;box-shadow:0 2px 8px rgba(59,130,246,0.08);width:fit-content;min-width:420px;position:relative;margin-left:10px;">
-                            <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#3b82f6,#6366f1);border-radius:10px 0 0 10px;"></div>
-                            <div style="display:flex;align-items:center;gap:10px;padding-left:8px;">
-                                <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;">From</span>
-                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
-                                    <span id="dispFromDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:75px;letter-spacing:0.01em;">—</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" /><path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" /></svg>
-                                    <span id="dispFromTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:42px;letter-spacing:0.01em;">—</span>
-                                </div>
+            <!-- ================================================================
+                 RANGE BAR — always visible regardless of view mode
+                 ================================================================ -->
+            <div class="row">
+                <div class="col-6">
+                    <div id="selectedRangeBar">
+                        <div class="range-bar-accent"></div>
+                        <div class="range-bar-group">
+                            <span class="range-bar-label">From</span>
+                            <div class="range-bar-box">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                <span id="dispFromDate" class="range-bar-value">—</span>
                             </div>
-                            <div style="margin:0 14px;display:flex;align-items:center;color:#94a3b8;">
-                                <svg width="22" height="12" viewBox="0 0 22 12" fill="none"><path d="M1 6h18M14 1l5 5-5 5" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            <div class="range-bar-box">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" /><path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                <span id="dispFromTime" class="range-bar-value range-bar-value-time">—</span>
                             </div>
-                            <div style="display:flex;align-items:center;gap:10px;">
-                                <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;">To</span>
-                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
-                                    <span id="dispToDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:75px;letter-spacing:0.01em;">—</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" /><path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" /></svg>
-                                    <span id="dispToTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:42px;letter-spacing:0.01em;">—</span>
-                                </div>
+                        </div>
+                        <div class="range-bar-arrow">
+                            <svg width="22" height="12" viewBox="0 0 22 12" fill="none"><path d="M1 6h18M14 1l5 5-5 5" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                        </div>
+                        <div class="range-bar-group">
+                            <span class="range-bar-label">To</span>
+                            <div class="range-bar-box">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                <span id="dispToDate" class="range-bar-value">—</span>
+                            </div>
+                            <div class="range-bar-box">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" /><path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                <span id="dispToTime" class="range-bar-value range-bar-value-time">—</span>
                             </div>
                         </div>
                     </div>
-                    <div class="col-6">
-                        <div class="d-flex justify-content-end px-md-3 px-2 py-2">
+                </div>
+                <div class="col-6">
+                    <div class="d-flex justify-content-end px-md-3 px-2 py-2">
+                        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode())
+                        {
                             <div class="dropdown">
-                                <button class="btn btn-inactive" id="btnPerformanceDownload" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Download">
-                                    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;">
+                                <button class="btn btn-inactive" id="btnPerformanceDownload"
+                                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Download">
+                                    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                                         stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"
+                                         style="width:18px;height:18px;">
                                         <path d="M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12"></path>
                                     </svg>
                                 </button>
                                 <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnPerformanceDownload" style="min-width:130px;">
-                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()"><i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel</a>
-                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()"><i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV</a>
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()">
+                                        <i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel
+                                    </a>
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()">
+                                        <i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV
+                                    </a>
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadPDF()">
+                                        <i class="fa fa-file-pdf mr-2" style="color:#ef4444;"></i> PDF
+                                    </a>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================================================================
+                 MEDIA HEALTH OVERVIEW — Wire / Wireless breakdown for IoT & Network
+                 over the selected date range. Aggregates ModemHistory records
+                 for every (site, cluster) pair and classifies each unique
+                 (DeviceId, TypeId) as online / faulty based on whether any
+                 healthy record was seen during the period.
+                 A10:   TypeId 1 = Wired  , TypeId 2 = Wireless
+                 Modem: TypeId 3 = Wired  , TypeId 2 = Wireless
+                 Design inspired by Network Dashboard's cluster-uptime-stats.
+                 ================================================================ -->
+            <div class="rdpms-lmh-panel" id="rdpmsLmhPanel">
+                <div class="rdpms-lmh-refresh-bar">
+                    <div class="rdpms-lmh-refresh-left">
+                        <span id="rdpmsLmhIndicator" class="rdpms-lmh-indicator"></span>
+                        <span id="rdpmsLmhStatusText">Media health overview loading…</span>
+                        <span class="rdpms-lmh-sep">•</span>
+                        <span id="rdpmsLmhStationCount">0 stations</span>
+                        <span class="rdpms-lmh-sep">•</span>
+                        <span id="rdpmsLmhClusterCount">0 clusters</span>
+                    </div>
+                    <div class="rdpms-lmh-refresh-right">
+                        <span id="rdpmsLmhRangeSummary">Range: —</span>
+                        <span class="rdpms-lmh-sep">•</span>
+                        <a href="javascript:void(0);" id="rdpmsLmhRefreshBtn"
+                           style="color:#3b82f6;text-decoration:none;font-weight:700;">Refresh</a>
+                    </div>
+                </div>
+
+                <!-- Progress bar (shown while cluster discovery + history calls run). -->
+                <div class="rdpms-lmh-progress-track" id="rdpmsLmhProgressTrack">
+                    <div class="rdpms-lmh-progress-fill" id="rdpmsLmhProgressFill"></div>
+                </div>
+
+                <div class="rdpms-lmh-grid">
+                    <!-- ═══ IoT (A10) CARD ═══ -->
+                    <div class="rdpms-lmh-card rdpms-lmh-card--iot">
+                        <div class="rdpms-lmh-card-header">
+                            <div class="rdpms-lmh-title">
+                                <span class="rdpms-lmh-title-icon" title="IoT / A10">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+                                </span>
+                                IoT Devices (A10)
+                            </div>
+                            <span class="rdpms-lmh-total" id="rdpmsLmhIoTTotal">— devices</span>
+                        </div>
+                        <div class="rdpms-lmh-bifurcated">
+                            <!-- IoT — WIRED (TypeId = 1) -->
+                            <div class="rdpms-lmh-block" id="rdpmsLmhIoTWiredBlock">
+                                <div class="rdpms-lmh-block-head">
+                                    <span class="rdpms-lmh-proto">
+                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M5 12l4-4M5 12l4 4M19 12l-4-4M19 12l-4 4" /></svg>
+                                        Wired
+                                    </span>
+                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhIoTWiredPct">—</span>
+                                </div>
+                                <div class="rdpms-lmh-durations">
+                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                                        <span id="rdpmsLmhIoTWiredUp">0</span>
+                                    </span>
+                                    <span class="rdpms-lmh-dur-sep">|</span>
+                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
+                                        <span id="rdpmsLmhIoTWiredDown">0</span>
+                                    </span>
+                                </div>
+                                <div class="rdpms-lmh-meter">
+                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhIoTWiredMeter" style="width:0%;"></div>
+                                </div>
+                            </div>
+
+                            <!-- IoT — WIRELESS (TypeId = 2) -->
+                            <div class="rdpms-lmh-block" id="rdpmsLmhIoTWirelessBlock">
+                                <div class="rdpms-lmh-block-head">
+                                    <span class="rdpms-lmh-proto">
+                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a10.94 10.94 0 0 1 14 0" /><path d="M1.42 9a15.91 15.91 0 0 1 21.16 0" /><path d="M8.53 16.11a5.9 5.9 0 0 1 6.94 0" /><circle cx="12" cy="20" r="1" /></svg>
+                                        Wireless
+                                    </span>
+                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhIoTWirelessPct">—</span>
+                                </div>
+                                <div class="rdpms-lmh-durations">
+                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                                        <span id="rdpmsLmhIoTWirelessUp">0</span>
+                                    </span>
+                                    <span class="rdpms-lmh-dur-sep">|</span>
+                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
+                                        <span id="rdpmsLmhIoTWirelessDown">0</span>
+                                    </span>
+                                </div>
+                                <div class="rdpms-lmh-meter">
+                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhIoTWirelessMeter" style="width:0%;"></div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- ═══ NETWORK (MODEM) CARD ═══ -->
+                    <div class="rdpms-lmh-card rdpms-lmh-card--net">
+                        <div class="rdpms-lmh-card-header">
+                            <div class="rdpms-lmh-title">
+                                <span class="rdpms-lmh-title-icon" title="Network / Modem">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></svg>
+                                </span>
+                                Network Devices (Modem)
+                            </div>
+                            <span class="rdpms-lmh-total" id="rdpmsLmhNetTotal">— devices</span>
+                        </div>
+                        <div class="rdpms-lmh-bifurcated">
+                            <!-- Net — WIRED (TypeId = 3 → OFC / TCP) -->
+                            <div class="rdpms-lmh-block" id="rdpmsLmhNetWiredBlock">
+                                <div class="rdpms-lmh-block-head">
+                                    <span class="rdpms-lmh-proto">
+                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M5 12l4-4M5 12l4 4M19 12l-4-4M19 12l-4 4" /></svg>
+                                        Wired · OFC
+                                    </span>
+                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhNetWiredPct">—</span>
+                                </div>
+                                <div class="rdpms-lmh-durations">
+                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                                        <span id="rdpmsLmhNetWiredUp">0</span>
+                                    </span>
+                                    <span class="rdpms-lmh-dur-sep">|</span>
+                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
+                                        <span id="rdpmsLmhNetWiredDown">0</span>
+                                    </span>
+                                </div>
+                                <div class="rdpms-lmh-meter">
+                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhNetWiredMeter" style="width:0%;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Net — WIRELESS (TypeId = 2 → 4G / MQTT) -->
+                            <div class="rdpms-lmh-block" id="rdpmsLmhNetWirelessBlock">
+                                <div class="rdpms-lmh-block-head">
+                                    <span class="rdpms-lmh-proto">
+                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a10.94 10.94 0 0 1 14 0" /><path d="M1.42 9a15.91 15.91 0 0 1 21.16 0" /><path d="M8.53 16.11a5.9 5.9 0 0 1 6.94 0" /><circle cx="12" cy="20" r="1" /></svg>
+                                        Wireless · 4G
+                                    </span>
+                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhNetWirelessPct">—</span>
+                                </div>
+                                <div class="rdpms-lmh-durations">
+                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+                                        <span id="rdpmsLmhNetWirelessUp">0</span>
+                                    </span>
+                                    <span class="rdpms-lmh-dur-sep">|</span>
+                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
+                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
+                                        <span id="rdpmsLmhNetWirelessDown">0</span>
+                                    </span>
+                                </div>
+                                <div class="rdpms-lmh-meter">
+                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhNetWirelessMeter" style="width:0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ================================================================
+                 TABLE VIEW
+                 ================================================================ -->
+            <div id="listView">
+                <div class="row">
                     <div class="col-12">
                         <div class="table-responsive">
                             <table class="table table-hover" id="tblRDPMSHealthSummary">
@@ -420,8 +1060,8 @@
                                         <th>Asset Type</th>
                                         <th class="text-center">Total number of Sensors</th>
                                         <th class="text-center">% Availability of Sensors</th>
-                                        <th class="text-center">Total Number of IOTs</th>
-                                        <th class="text-center">% Availability of IOTs</th>
+                                        <th class="text-center">Total Number of IoTs</th>
+                                        <th class="text-center">% Availability of IoTs</th>
                                         <th class="text-center">Total Number of Network</th>
                                         <th class="text-center">% Availability of Network</th>
                                         <th class="text-center">Total Number of Station Gateway</th>
@@ -432,52 +1072,33 @@
                                     @if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
                                     {
                                         int counter = 0;
-                                        foreach (var item in Model.mAssets
-                                            .GroupBy(x => new { x.Zone, x.Division, x.SiteId, x.SiteName, x.AssetTypeId, x.AssetTypeName })
-                                            .Select(x => x.Key).ToList())
+                                        foreach (var item in Model.mAssets)
                                         {
                                             counter++;
-                                            var mAssetInfos = Model.mAssetInfos.Where(x => x.SiteId == item.SiteId && x.AssetTypeId == item.AssetTypeId).ToList();
-                                            int totalIoTSensors = 0, totalNetworkSensors = 0;
-                                            List<string> ioTSensors = new List<string>(), networkSensors = new List<string>();
-                                            var assets = Model.mAssets.Where(x => x.SiteId == item.SiteId && x.AssetTypeId == item.AssetTypeId).ToList();
-                                            if (assets != null && assets.Count > 0)
-                                            {
-                                                foreach (var asset in assets)
-                                                {
-                                                    if (!string.IsNullOrEmpty(asset.ModemIdStr))
-                                                    {
-                                                        foreach (var modem in asset.ModemIdStr.Split(',')) { if (!networkSensors.Contains(modem)) { networkSensors.Add(modem); totalNetworkSensors++; } }
-                                                    }
-                                                    if (!string.IsNullOrEmpty(asset.A10IdStr))
-                                                    {
-                                                        foreach (var modem in asset.A10IdStr.Split(',')) { if (!ioTSensors.Contains(modem)) { ioTSensors.Add(modem); totalIoTSensors++; } }
-                                                    }
-                                                }
-                                            }
-                                            decimal network = 0m, iot = 0m;
-                                            if (networkSensors.Count > 0) { var modemHistories = Model.mModemHistories.Where(x => x.SiteId == item.SiteId && x.TypeId == 2 && networkSensors.Contains(x.DeviceId)).ToList(); if (modemHistories.Count > 0) { network = E7FRSAdvance.Utility.ExtensionMethod.CalculateAvailability(modemHistories); } }
-                                            if (ioTSensors.Count > 0) { var modemHistoriesA10 = Model.mA10Histories.Where(x => x.SiteId == item.SiteId && x.TypeId == 2 && ioTSensors.Contains(x.DeviceId)).ToList(); if (modemHistoriesA10.Count > 0) { iot = E7FRSAdvance.Utility.ExtensionMethod.CalculateAvailability(modemHistoriesA10); } }
                                             <tr>
                                                 <td>@counter</td>
                                                 <td>@item.Zone</td>
                                                 <td>@item.Division</td>
                                                 <td>@item.SiteName</td>
                                                 <td>@item.AssetTypeName</td>
-                                                <td class="text-center">@mAssetInfos.Count</td>
-                                                <td class="text-center"></td>
-                                                <td class="text-center">@totalIoTSensors</td>
-                                                <td class="text-center">@iot</td>
-                                                <td class="text-center">@totalNetworkSensors</td>
-                                                <td class="text-center">@network</td>
-                                                <td class="text-center">1</td>
-                                                <td class="text-center"></td>
+                                                <td class="text-center">@item.TotalSensors</td>
+                                                <td class="text-center">@item.PersentageSensors</td>
+                                                <td class="text-center">@item.TotalIoTSensors</td>
+                                                <td class="text-center">@item.PersentageIoTSensors</td>
+                                                <td class="text-center">@item.TotalNetworkSensors</td>
+                                                <td class="text-center">@item.PersentageNetworkSensors</td>
+                                                <td class="text-center">@item.TotalStnGateway</td>
+                                                <td class="text-center">@item.PersentageStnGateway</td>
                                             </tr>
                                         }
                                     }
                                     else
                                     {
-                                        <tr><td colspan="13" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x mb-2"></i><br />No records found.</td></tr>
+                                        <tr>
+                                            <td colspan="13" class="text-center text-muted py-4">
+                                                <i class="fas fa-inbox fa-2x mb-2"></i><br />No records found.
+                                            </td>
+                                        </tr>
                                     }
                                 </tbody>
                             </table>
@@ -496,6 +1117,7 @@
 
             <!-- Chart Container -->
             <div id="rdpmsChartContainer" style="display:none; padding:10px 0;"></div>
+
         </div>
     </div>
 </div>
@@ -525,10 +1147,12 @@
         function renderPager() {
             $pager.find('.page-number,.ellipsis').remove();
             function addPage(p) {
-                $('<li class="page-item page-number ' + (p === currentPage ? 'active' : '') + '"><a class="page-link" href="#">' + p + '</a></li>').insertBefore($pager.find('[data-page="next"]'));
+                $('<li class="page-item page-number ' + (p === currentPage ? 'active' : '') + '"><a class="page-link" href="#">' + p + '</a></li>')
+                    .insertBefore($pager.find('[data-page="next"]'));
             }
             function addEllipsis() {
-                $('<li class="page-item disabled ellipsis"><span class="page-link">...</span></li>').insertBefore($pager.find('[data-page="next"]'));
+                $('<li class="page-item disabled ellipsis"><span class="page-link">...</span></li>')
+                    .insertBefore($pager.find('[data-page="next"]'));
             }
             for (var i = 1; i <= Math.min(3, totalPages); i++) addPage(i);
             if (currentPage > 5) addEllipsis();
@@ -547,61 +1171,60 @@
             else if ($li.data('page') === 'next') showPage(currentPage + 1);
             else showPage(parseInt($(this).text()));
         });
+
         window.goToPage = function (p) { showPage(p); };
         if (totalRows > 0) showPage(1);
     })();
 
     // ==========================================================================
-    // GLOBALS
+    // GLOBALS & COLOR MAP
+    // Cols: 0=Sr 1=Zone 2=Div 3=Station 4=AssetType
+    //       5=TotalSensors  6=%Sensors
+    //       7=TotalIoT      8=%IoT
+    //       9=TotalNetwork  10=%Network
+    //       11=TotalGateway 12=%Gateway
     // ==========================================================================
-    // 4 fixed device-type colors
     var RDPMS_COLORS = {
         sensors: '#6366f1', iot: '#22c55e', network: '#3b82f6', gateway: '#f97316'
     };
-    var RDPMS_LABELS = { sensors: 'Sensors', iot: 'IOTs', network: 'Network', gateway: 'Gateway' };
 
-    // Pie state — station-wise (Total Count)
+    // Pie pagination state
     var _rdpmsStPieItems = [], rdpmsStPiePage = 1, RDPMS_PIE_PER_PAGE = 6;
-    // Pie state — asset-type-wise (Total Count)
     var _rdpmsAtPieItems = [], rdpmsAtPiePage = 1;
-    // Pie state — station-wise (Availability %)
     var _rdpmsStAvailPieItems = [], rdpmsStAvailPiePage = 1;
-    // Pie state — asset-type-wise (Availability %)
     var _rdpmsAtAvailPieItems = [], rdpmsAtAvailPiePage = 1;
-    // Bar state — availability % grouped
-    var rdpmsBarAvailPage = 1;
 
-    // Bar state — station-wise stacked
+    // Bar pagination state
     var _rdpmsBarStations = [], _rdpmsBarMatrix = {}, _rdpmsBarStationMeta = {};
-    var rdpmsBarPage = 1, RDPMS_BAR_PER_PAGE = 8;
+    var rdpmsBarPage = 1, rdpmsBarAvailPage = 1, RDPMS_BAR_PER_PAGE = 8;
 
-    // Graph state — Canvas
+    // Graph state
     var _rdpmsLineSites = [], _rdpmsLineSiteMeta = {}, _rdpmsLineMatrix = {};
-    // 4 fixed series for graph
+
     var RDPMS_SERIES = [
         { key: 'sensors', label: 'Sensors', color: '#6366f1' },
-        { key: 'iot', label: 'IOTs', color: '#22c55e' },
+        { key: 'iot', label: 'IoTs', color: '#22c55e' },
         { key: 'network', label: 'Network Devices', color: '#3b82f6' },
-        { key: 'gateway', label: 'Gateways', color: '#f97316' }
+        { key: 'gateway', label: 'Station Gateways', color: '#f97316' }
     ];
 
     // ==========================================================================
-    // PCT NORMALIZER — CalculateAvailability returns 0–1 fractions; convert to 0–100
+    // PCT NORMALIZER
     // ==========================================================================
     function normalizePct(v) {
         if (!v || isNaN(v)) return 0;
-        // If value is a fraction (0–1), multiply to get percentage
         return (v > 0 && v <= 1) ? Math.round(v * 10000) / 100 : v;
     }
 
     // ==========================================================================
     // EXTRACT DATA FROM TABLE
-    // Cols: 0=Sr 1=Zone 2=Div 3=Station 4=AssetType
-    //       5=TotalSensors 6=%Sensors 7=TotalIOT 8=%IOT
-    //       9=TotalNetwork 10=%Network 11=TotalGateway 12=%Gateway
     // ==========================================================================
     function extractRdpmsData() {
-        var data = { rows: [], stationOrder: [], stationMeta: {}, stationMatrix: {}, assetTypeOrder: [], assetTypeMatrix: {} };
+        var data = {
+            rows: [],
+            stationOrder: [], stationMeta: {}, stationMatrix: {},
+            assetTypeOrder: [], assetTypeMatrix: {}
+        };
         var siteSet = {}, atSet = {};
 
         $('#tblRDPMSHealthSummary tbody tr').each(function () {
@@ -612,26 +1235,32 @@
             var division = $.trim($tds.eq(2).text());
             var station = $.trim($tds.eq(3).text());
             var assetType = $.trim($tds.eq(4).text());
+
             var sensors = parseInt($.trim($tds.eq(5).text())) || 0;
             var iot = parseInt($.trim($tds.eq(7).text())) || 0;
             var network = parseInt($.trim($tds.eq(9).text())) || 0;
             var gateway = parseInt($.trim($tds.eq(11).text())) || 0;
+
+            // ★ NEW: capture % Availability of Sensors (col 6)
+            var pctSensor = normalizePct(parseFloat($.trim($tds.eq(6).text())) || 0);
             var pctIot = normalizePct(parseFloat($.trim($tds.eq(8).text())) || 0);
             var pctNet = normalizePct(parseFloat($.trim($tds.eq(10).text())) || 0);
             var pctGw = normalizePct(parseFloat($.trim($tds.eq(12).text())) || 0);
 
-            data.rows.push({ zone: zone, division: division, station: station, assetType: assetType, sensors: sensors, iot: iot, network: network, gateway: gateway, pctIot: pctIot, pctNet: pctNet, pctGw: pctGw });
+            data.rows.push({ zone, division, station, assetType, sensors, iot, network, gateway, pctSensor, pctIot, pctNet, pctGw });
 
-            // Station key = station + assetType to keep rows unique
+            // Station key
             var stKey = station + ' (' + assetType + ')';
             if (!siteSet[stKey]) {
                 siteSet[stKey] = true;
                 data.stationOrder.push(stKey);
-                data.stationMeta[stKey] = { zone: zone, division: division, assetType: assetType, station: station };
-                data.stationMatrix[stKey] = { sensors: 0, iot: 0, network: 0, gateway: 0, pctIot: [], pctNet: [], pctGw: [] };
+                data.stationMeta[stKey] = { zone, division, assetType, station };
+                // ★ NEW: pctSensor added
+                data.stationMatrix[stKey] = { sensors: 0, iot: 0, network: 0, gateway: 0, pctSensor: [], pctIot: [], pctNet: [], pctGw: [] };
             }
             var sm = data.stationMatrix[stKey];
             sm.sensors += sensors; sm.iot += iot; sm.network += network; sm.gateway += gateway;
+            if (pctSensor > 0) sm.pctSensor.push(pctSensor);
             if (pctIot > 0) sm.pctIot.push(pctIot);
             if (pctNet > 0) sm.pctNet.push(pctNet);
             if (pctGw > 0) sm.pctGw.push(pctGw);
@@ -640,10 +1269,12 @@
             if (!atSet[assetType]) {
                 atSet[assetType] = true;
                 data.assetTypeOrder.push(assetType);
-                data.assetTypeMatrix[assetType] = { sensors: 0, iot: 0, network: 0, gateway: 0, pctIot: [], pctNet: [], pctGw: [] };
+                // ★ NEW: pctSensor added
+                data.assetTypeMatrix[assetType] = { sensors: 0, iot: 0, network: 0, gateway: 0, pctSensor: [], pctIot: [], pctNet: [], pctGw: [] };
             }
             var am = data.assetTypeMatrix[assetType];
             am.sensors += sensors; am.iot += iot; am.network += network; am.gateway += gateway;
+            if (pctSensor > 0) am.pctSensor.push(pctSensor);
             if (pctIot > 0) am.pctIot.push(pctIot);
             if (pctNet > 0) am.pctNet.push(pctNet);
             if (pctGw > 0) am.pctGw.push(pctGw);
@@ -653,7 +1284,7 @@
     }
 
     // ==========================================================================
-    // SHARED BOOTSTRAP PAGER
+    // SHARED PAGER
     // ==========================================================================
     function renderRdpmsPager(selector, currentPg, totalPgs, totalRec, showFrom, showTo, onPageClick) {
         var $wrap = $(selector).empty();
@@ -674,18 +1305,15 @@
             if (pages.indexOf(totalPgs) === -1) pages.push(totalPgs);
         }
         pages.forEach(function (p) {
-            if (p === '...') { $ul.append('<li class="page-item disabled"><span class="page-link">...</span></li>'); }
-            else {
-                var $li = $('<li class="page-item' + (p === currentPg ? ' active' : '') + '"><a class="page-link" href="javascript:void(0);">' + p + '</a></li>');
-                if (p !== currentPg) { (function (pg) { $li.find('a').on('click', function () { onPageClick(pg); }); })(p); }
-                $ul.append($li);
-            }
+            if (p === '...') { $ul.append('<li class="page-item disabled"><span class="page-link">...</span></li>'); return; }
+            var $li = $('<li class="page-item' + (p === currentPg ? ' active' : '') + '"><a class="page-link" href="javascript:void(0);">' + p + '</a></li>');
+            if (p !== currentPg) { (function (pg) { $li.find('a').on('click', function () { onPageClick(pg); }); })(p); }
+            $ul.append($li);
         });
 
         var $next = $('<li class="page-item' + (currentPg >= totalPgs ? ' disabled' : '') + '"><a class="page-link" href="javascript:void(0);">Next <i class="fas fa-chevron-right"></i></a></li>');
         if (currentPg < totalPgs) $next.find('a').on('click', function () { onPageClick(currentPg + 1); });
         $ul.append($next);
-
         $wrap.append($('<nav></nav>').append($ul));
     }
 
@@ -704,9 +1332,9 @@
 
     function rdpmsDeviceTipRows(sensors, iot, network, gateway) {
         return '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#6366f1"></span>Sensors: <strong>' + sensors + '</strong></div>' +
-            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IOTs: <strong>' + iot + '</strong></div>' +
+            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IoTs: <strong>' + iot + '</strong></div>' +
             '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#3b82f6"></span>Network: <strong>' + network + '</strong></div>' +
-            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Gateway: <strong>' + gateway + '</strong></div>';
+            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Station Gateway: <strong>' + gateway + '</strong></div>';
     }
 
     // ==========================================================================
@@ -717,19 +1345,31 @@
     }
 
     // ==========================================================================
-    // LEGEND STRIP (4 device types)
+    // LEGENDS
     // ==========================================================================
     function buildRdpmsLegend() {
         return '<div class="rdpms-legend">' +
             '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#6366f1"></div><span class="rdpms-legend-text">Sensors</span></div>' +
-            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#22c55e"></div><span class="rdpms-legend-text">IOTs</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#22c55e"></div><span class="rdpms-legend-text">IoTs</span></div>' +
             '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#3b82f6"></div><span class="rdpms-legend-text">Network</span></div>' +
-            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#f97316"></div><span class="rdpms-legend-text">Gateway</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#f97316"></div><span class="rdpms-legend-text">Station Gateway</span></div>' +
+            '</div>';
+    }
+
+    // ★ UPDATED: added Sensor Availability
+    function buildRdpmsAvailLegend() {
+        return '<div class="rdpms-legend">' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#6366f1"></div><span class="rdpms-legend-text">Sensor Availability</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#22c55e"></div><span class="rdpms-legend-text">IoT Availability</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#3b82f6"></div><span class="rdpms-legend-text">Network Availability</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#f97316"></div><span class="rdpms-legend-text">Station Gateway Availability</span></div>' +
             '</div>';
     }
 
     // ==========================================================================
     // MAIN DISPATCHER
+    // ★ CHANGE 2: selectedRangeBar is now outside listView, always visible.
+    //             We only toggle listView and rdpmsChartContainer.
     // ==========================================================================
     function renderRdpmsView(view) {
         if (!view || view === 'Table') {
@@ -749,11 +1389,9 @@
     }
 
     // ==========================================================================
-    // PIE — individual donuts
-    // Section 1: Station-wise   — Total Device Count
-    // Section 2: Asset Type-wise — Total Device Count
-    // Section 3: Station-wise   — % Availability (IOT / Network / Gateway)
-    // Section 4: Asset Type-wise — % Availability
+    // PIE CHARTS
+    // Row 1: Station-wise Count | Station-wise Availability  (parallel)
+    // Row 2: AssetType-wise Count | AssetType-wise Availability (parallel)
     // ==========================================================================
     function renderRdpmsPie(data) {
         function avgPct(arr) { return arr.length ? arr.reduce(function (a, b) { return a + b; }, 0) / arr.length : 0; }
@@ -771,25 +1409,25 @@
             return { key: at, label: at, sub: '', sensors: m.sensors, iot: m.iot, network: m.network, gateway: m.gateway };
         });
 
-        // Availability % items
+        // ★ Availability % items — now includes pctSensor
         _rdpmsStAvailPieItems = data.stationOrder.map(function (stKey) {
             var m = data.stationMatrix[stKey], meta = data.stationMeta[stKey];
             return {
                 key: stKey, label: meta.station, sub: meta.assetType, zone: meta.zone, division: meta.division,
-                pctIot: avgPct(m.pctIot), pctNet: avgPct(m.pctNet), pctGw: avgPct(m.pctGw)
+                pctSensor: avgPct(m.pctSensor), pctIot: avgPct(m.pctIot), pctNet: avgPct(m.pctNet), pctGw: avgPct(m.pctGw)
             };
         });
         _rdpmsAtAvailPieItems = data.assetTypeOrder.map(function (at) {
             var m = data.assetTypeMatrix[at];
             return {
                 key: at, label: at, sub: '',
-                pctIot: avgPct(m.pctIot || []), pctNet: avgPct(m.pctNet || []), pctGw: avgPct(m.pctGw || [])
+                pctSensor: avgPct(m.pctSensor || []), pctIot: avgPct(m.pctIot || []), pctNet: avgPct(m.pctNet || []), pctGw: avgPct(m.pctGw || [])
             };
         });
 
         var $c = $('#rdpmsChartContainer').empty();
 
-        // ── Row 1: Station-wise Count | Station-wise Availability — parallel ──
+        // Row 1
         var $row1 = $('<div class="rdpms-parallel-row"></div>');
 
         var $p1 = $('<div class="rdpms-chart-panel"></div>');
@@ -799,7 +1437,7 @@
         $p1.append('<div class="rdpms-pager-wrap" id="rdpmsStPiePager"></div>');
 
         var $p3 = $('<div class="rdpms-chart-panel"></div>');
-        $p3.append('<div class="rdpms-chart-section-title"><i class="fas fa-signal" style="color:#22c55e;"></i>Station-wise — % Availability (IOT / Network / Gateway)</div>');
+        $p3.append('<div class="rdpms-chart-section-title"><i class="fas fa-signal" style="color:#22c55e;"></i>Station-wise — % Availability (Sensor / IoT / Network / Station Gateway)</div>');
         $p3.append(buildRdpmsAvailLegend());
         $p3.append('<div class="rdpms-pie-grid" id="rdpmsStAvailPieGrid"></div>');
         $p3.append('<div class="rdpms-pager-wrap" id="rdpmsStAvailPiePager"></div>');
@@ -809,7 +1447,7 @@
         rdpmsStPiePage = 1; drawRdpmsStPiePage();
         rdpmsStAvailPiePage = 1; drawRdpmsStAvailPiePage();
 
-        // ── Row 2: Asset Type-wise Count | Asset Type-wise Availability — parallel ──
+        // Row 2
         var $row2 = $('<div class="rdpms-parallel-row"></div>');
 
         var $p2 = $('<div class="rdpms-chart-panel"></div>');
@@ -819,7 +1457,7 @@
         $p2.append('<div class="rdpms-pager-wrap" id="rdpmsAtPiePager"></div>');
 
         var $p4 = $('<div class="rdpms-chart-panel"></div>');
-        $p4.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#f97316;"></i>Asset Type-wise — % Availability (IOT / Network / Gateway)</div>');
+        $p4.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#f97316;"></i>Asset Type-wise — % Availability (Sensor / IoT / Network / Station Gateway)</div>');
         $p4.append(buildRdpmsAvailLegend());
         $p4.append('<div class="rdpms-pie-grid" id="rdpmsAtAvailPieGrid"></div>');
         $p4.append('<div class="rdpms-pager-wrap" id="rdpmsAtAvailPiePager"></div>');
@@ -830,20 +1468,11 @@
         rdpmsAtAvailPiePage = 1; drawRdpmsAtAvailPiePage();
     }
 
-    // Legend for Availability % pies
-    function buildRdpmsAvailLegend() {
-        return '<div class="rdpms-legend">' +
-            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#22c55e"></div><span class="rdpms-legend-text">IOT Availability</span></div>' +
-            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#3b82f6"></div><span class="rdpms-legend-text">Network Availability</span></div>' +
-            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#f97316"></div><span class="rdpms-legend-text">Gateway Availability</span></div>' +
-            '</div>';
-    }
-
-    // Helper: donut for Total Device Count (4 segments)
+    // Donut — Total Device Count (4 segments)
     function buildRdpmsPieItem(item) {
         var total = item.sensors + item.iot + item.network + item.gateway;
         if (total <= 0) total = 1;
-        var r = 54, circ = 2 * Math.PI * r;
+        var r = 62, circ = 2 * Math.PI * r;
         var segs = [
             { val: item.sensors, color: '#6366f1' },
             { val: item.iot, color: '#22c55e' },
@@ -861,32 +1490,35 @@
         });
         svg += '</svg>';
 
+        var totalDevices = item.sensors + item.iot + item.network + item.gateway;
         var $pi = $('<div class="rdpms-pie-item"></div>');
-        $pi.append('<div class="rdpms-pie-total-label">Total: ' + (item.sensors + item.iot + item.network + item.gateway) + '</div>');
+        $pi.append('<div class="rdpms-pie-total-label">Total: ' + totalDevices + '</div>');
         var $cont = $('<div class="rdpms-pie-container"></div>').html(svg);
-        $cont.append('<div class="rdpms-pie-center"><div class="rdpms-pie-total-val">' + (item.sensors + item.iot + item.network + item.gateway) + '</div><div class="rdpms-pie-total-sub">devices</div></div>');
+        $cont.append('<div class="rdpms-pie-center"><div class="rdpms-pie-total-val">' + totalDevices + '</div><div class="rdpms-pie-total-sub">devices</div></div>');
         $cont.on('mouseenter', function (e) {
             var html = '<div class="rdpms-tt-title">' + item.label + '</div>';
             if (item.sub) html += '<div class="rdpms-tt-sub">' + item.sub + (item.division ? ' | ' + item.division + ', ' + item.zone : '') + '</div>';
             html += '<div class="rdpms-tt-divider">' + rdpmsDeviceTipRows(item.sensors, item.iot, item.network, item.gateway) + '</div>';
             rdpmsShowTip(html, e);
         }).on('mousemove', rdpmsMoveTip).on('mouseleave', rdpmsHideTip);
+
         var $info = $('<div class="rdpms-pie-info"></div>');
         $info.append('<div class="rdpms-pie-name">' + item.label + '</div>');
         if (item.sub) $info.append('<div class="rdpms-pie-sub-name">' + item.sub + '</div>');
         return $pi.append($cont).append($info);
     }
 
-    // Helper: donut for Availability % (3 segments: IOT / Network / Gateway)
-    // Each segment = its % value as proportion of the sum of all 3 pct values
+    // ★ UPDATED: Donut — Availability % (4 segments: Sensor / IoT / Network / Gateway)
     function buildRdpmsAvailPieItem(item) {
-        var r = 54, circ = 2 * Math.PI * r;
-        var pctIot = item.pctIot || 0, pctNet = item.pctNet || 0, pctGw = item.pctGw || 0;
-        var segsSum = pctIot + pctNet + pctGw;
-        // Avg availability for center display
-        var activeCount = (pctIot > 0 ? 1 : 0) + (pctNet > 0 ? 1 : 0) + (pctGw > 0 ? 1 : 0);
+        var r = 62, circ = 2 * Math.PI * r;
+        var pctSensor = item.pctSensor || 0;
+        var pctIot = item.pctIot || 0;
+        var pctNet = item.pctNet || 0;
+        var pctGw = item.pctGw || 0;
+        var segsSum = pctSensor + pctIot + pctNet + pctGw;
+
+        var activeCount = (pctSensor > 0 ? 1 : 0) + (pctIot > 0 ? 1 : 0) + (pctNet > 0 ? 1 : 0) + (pctGw > 0 ? 1 : 0);
         var avgAvail = activeCount > 0 ? (segsSum / activeCount) : 0;
-        // Color the arc by performance: ≥80% green, 50-79% orange, <50% red
         var avgColor = avgAvail >= 80 ? '#22c55e' : avgAvail >= 50 ? '#f97316' : '#f43f5e';
 
         var svg = '<svg class="rdpms-pie-svg" viewBox="0 0 180 180" style="transform:rotate(-90deg)">';
@@ -894,6 +1526,7 @@
 
         if (segsSum > 0) {
             var segs = [
+                { val: pctSensor, color: '#6366f1' },
                 { val: pctIot, color: '#22c55e' },
                 { val: pctNet, color: '#3b82f6' },
                 { val: pctGw, color: '#f97316' }
@@ -909,17 +1542,18 @@
         svg += '</svg>';
 
         var $pi = $('<div class="rdpms-pie-item"></div>');
-        $pi.append('<div class="rdpms-pie-total-label">Avg: ' + avgAvail.toFixed(1) + '%</div>');
+        $pi.append('<div class="rdpms-pie-total-label">Avg: ' + avgAvail.toFixed(1) + '<span style="font-size:10px;">%</span></div>');
         var $cont = $('<div class="rdpms-pie-container"></div>').html(svg);
-        $cont.append('<div class="rdpms-pie-center"><div class="rdpms-pie-total-val" style="color:' + avgColor + ';font-size:18px;">' + avgAvail.toFixed(1) + '%</div><div class="rdpms-pie-total-sub">avg avail.</div></div>');
+        $cont.append('<div class="rdpms-pie-center"><div class="rdpms-pie-total-val" style="color:' + avgColor + ';font-size:18px;">' + avgAvail.toFixed(1) + '<span style="font-size:11px;font-weight:500;color:' + avgColor + ';">%</span></div><div class="rdpms-pie-total-sub">avg avail.</div></div>');
 
         $cont.on('mouseenter', function (e) {
             var html = '<div class="rdpms-tt-title">' + item.label + '</div>';
             if (item.sub) html += '<div class="rdpms-tt-sub">' + item.sub + (item.division ? ' | ' + item.division + ', ' + item.zone : '') + '</div>';
             html += '<div class="rdpms-tt-divider">';
-            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IOT Availability: <strong>' + pctIot.toFixed(2) + '%</strong></div>';
+            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#6366f1"></span>Sensor Availability: <strong>' + pctSensor.toFixed(2) + '%</strong></div>';
+            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IoT Availability: <strong>' + pctIot.toFixed(2) + '%</strong></div>';
             html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#3b82f6"></span>Network Availability: <strong>' + pctNet.toFixed(2) + '%</strong></div>';
-            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Gateway Availability: <strong>' + pctGw.toFixed(2) + '%</strong></div>';
+            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Station Gateway Availability: <strong>' + pctGw.toFixed(2) + '%</strong></div>';
             html += '<div style="border-top:1px solid #f0f0f0;margin-top:6px;padding-top:6px;font-weight:600;color:' + avgColor + ';">Avg: ' + avgAvail.toFixed(2) + '%</div>';
             html += '</div>';
             rdpmsShowTip(html, e);
@@ -931,14 +1565,14 @@
         return $pi.append($cont).append($info);
     }
 
-    // Draw pages for all 4 pie sections
     function drawRdpmsStPiePage() {
         var start = (rdpmsStPiePage - 1) * RDPMS_PIE_PER_PAGE;
         var items = _rdpmsStPieItems.slice(start, start + RDPMS_PIE_PER_PAGE);
         var $grid = $('#rdpmsStPieGrid').empty();
         items.forEach(function (item) { $grid.append(buildRdpmsPieItem(item)); });
         var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsStPieItems.length);
-        renderRdpmsPager('#rdpmsStPiePager', rdpmsStPiePage, Math.ceil(_rdpmsStPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsStPieItems.length, s, e, function (pg) { rdpmsStPiePage = pg; drawRdpmsStPiePage(); });
+        renderRdpmsPager('#rdpmsStPiePager', rdpmsStPiePage, Math.ceil(_rdpmsStPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsStPieItems.length, s, e,
+            function (pg) { rdpmsStPiePage = pg; drawRdpmsStPiePage(); });
     }
     function drawRdpmsAtPiePage() {
         var start = (rdpmsAtPiePage - 1) * RDPMS_PIE_PER_PAGE;
@@ -946,7 +1580,8 @@
         var $grid = $('#rdpmsAtPieGrid').empty();
         items.forEach(function (item) { $grid.append(buildRdpmsPieItem(item)); });
         var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsAtPieItems.length);
-        renderRdpmsPager('#rdpmsAtPiePager', rdpmsAtPiePage, Math.ceil(_rdpmsAtPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsAtPieItems.length, s, e, function (pg) { rdpmsAtPiePage = pg; drawRdpmsAtPiePage(); });
+        renderRdpmsPager('#rdpmsAtPiePager', rdpmsAtPiePage, Math.ceil(_rdpmsAtPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsAtPieItems.length, s, e,
+            function (pg) { rdpmsAtPiePage = pg; drawRdpmsAtPiePage(); });
     }
     function drawRdpmsStAvailPiePage() {
         var start = (rdpmsStAvailPiePage - 1) * RDPMS_PIE_PER_PAGE;
@@ -954,7 +1589,8 @@
         var $grid = $('#rdpmsStAvailPieGrid').empty();
         items.forEach(function (item) { $grid.append(buildRdpmsAvailPieItem(item)); });
         var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsStAvailPieItems.length);
-        renderRdpmsPager('#rdpmsStAvailPiePager', rdpmsStAvailPiePage, Math.ceil(_rdpmsStAvailPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsStAvailPieItems.length, s, e, function (pg) { rdpmsStAvailPiePage = pg; drawRdpmsStAvailPiePage(); });
+        renderRdpmsPager('#rdpmsStAvailPiePager', rdpmsStAvailPiePage, Math.ceil(_rdpmsStAvailPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsStAvailPieItems.length, s, e,
+            function (pg) { rdpmsStAvailPiePage = pg; drawRdpmsStAvailPiePage(); });
     }
     function drawRdpmsAtAvailPiePage() {
         var start = (rdpmsAtAvailPiePage - 1) * RDPMS_PIE_PER_PAGE;
@@ -962,23 +1598,24 @@
         var $grid = $('#rdpmsAtAvailPieGrid').empty();
         items.forEach(function (item) { $grid.append(buildRdpmsAvailPieItem(item)); });
         var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsAtAvailPieItems.length);
-        renderRdpmsPager('#rdpmsAtAvailPiePager', rdpmsAtAvailPiePage, Math.ceil(_rdpmsAtAvailPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsAtAvailPieItems.length, s, e, function (pg) { rdpmsAtAvailPiePage = pg; drawRdpmsAtAvailPiePage(); });
+        renderRdpmsPager('#rdpmsAtAvailPiePager', rdpmsAtAvailPiePage, Math.ceil(_rdpmsAtAvailPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsAtAvailPieItems.length, s, e,
+            function (pg) { rdpmsAtAvailPiePage = pg; drawRdpmsAtAvailPiePage(); });
     }
 
     // ==========================================================================
-    // BAR
+    // BAR CHARTS
     // Section 1: Station-wise Total Device Count (stacked)
-    // Section 2: Station-wise % Availability (grouped: IOT / Network / Gateway)
+    // Section 2: Station-wise % Availability — ★ now 4 bars: Sensor/IoT/Network/Gateway
     // ==========================================================================
     function renderRdpmsBar(data) {
         _rdpmsBarStations = data.stationOrder;
         _rdpmsBarMatrix = data.stationMatrix;
         _rdpmsBarStationMeta = data.stationMeta;
-
         rdpmsBarPage = 1; rdpmsBarAvailPage = 1;
+
         var $c = $('#rdpmsChartContainer').empty();
 
-        // ── Section 1: Total Count (Stacked) ──
+        // Section 1: Total Count (Stacked)
         var $panel1 = $('<div class="rdpms-chart-panel"></div>');
         $panel1.append('<div class="rdpms-chart-section-title"><i class="fas fa-chart-bar" style="color:#6366f1;"></i>Station-wise — Total Device Count (Stacked)</div>');
         $panel1.append(buildRdpmsLegend());
@@ -992,9 +1629,9 @@
         $c.append($panel1);
         drawRdpmsBarPage();
 
-        // ── Section 2: Availability % (Grouped bars) ──
+        // Section 2: Availability % (Grouped — ★ 4 bars per station)
         var $panel2 = $('<div class="rdpms-chart-panel"></div>');
-        $panel2.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#22c55e;"></i>Station-wise — % Availability (IOT / Network / Gateway)</div>');
+        $panel2.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#22c55e;"></i>Station-wise — % Availability (Sensor / IoT / Network / Station Gateway)</div>');
         $panel2.append(buildRdpmsAvailLegend());
         var $outer2 = $('<div style="position:relative;"></div>');
         $outer2.append('<div class="rdpms-bar-y-label">Availability %</div>');
@@ -1007,24 +1644,21 @@
         drawRdpmsBarAvailPage();
     }
 
-    // ── Section 1: Total Count (stacked) ──
     function drawRdpmsBarPage() {
         var startIdx = (rdpmsBarPage - 1) * RDPMS_BAR_PER_PAGE;
         var pageStations = _rdpmsBarStations.slice(startIdx, startIdx + RDPMS_BAR_PER_PAGE);
-
         var yMax = 1;
         pageStations.forEach(function (stKey) {
             var m = _rdpmsBarMatrix[stKey];
             var t = m.sensors + m.iot + m.network + m.gateway;
             if (t > yMax) yMax = t;
         });
-        yMax = yMax + Math.max(1, Math.ceil(yMax * 0.1));
+        yMax += Math.max(1, Math.ceil(yMax * 0.1));
         var chartH = 320, unitH = chartH / yMax;
         var yStep = yMax <= 10 ? 1 : Math.ceil(yMax / 8);
 
         var $yAxis = $('#rdpmsBarYAxis').empty();
         for (var i = 0; i <= yMax; i += yStep) $yAxis.append('<div class="rdpms-bar-y-tick">' + i + '</div>');
-
         $('#rdpmsBarOuter .rdpms-bar-grid-line').remove();
         for (var g = yStep; g <= yMax; g += yStep) {
             $('#rdpmsBarOuter').append('<div class="rdpms-bar-grid-line" style="bottom:' + (g / yMax * 100) + '%"></div>');
@@ -1038,11 +1672,14 @@
             var $grp = $('<div class="rdpms-bar-group"></div>');
             var $wrap = $('<div class="rdpms-bar-wrapper"></div>');
             if (stTotal > 0) $wrap.append('<div class="rdpms-bar-total-label">' + stTotal + '</div>');
-            [{ val: m.sensors, color: '#6366f1' }, { val: m.iot, color: '#22c55e' }, { val: m.network, color: '#3b82f6' }, { val: m.gateway, color: '#f97316' }].forEach(function (seg) {
+            [{ val: m.sensors, color: '#6366f1' },
+            { val: m.iot, color: '#22c55e' },
+            { val: m.network, color: '#3b82f6' },
+            { val: m.gateway, color: '#f97316' }].forEach(function (seg) {
                 if (!seg.val) return;
                 $wrap.append('<div class="rdpms-bar-seg" style="height:' + (seg.val * unitH) + 'px;background:' + seg.color + ';opacity:0.9;"></div>');
             });
-            var labelText = meta ? meta.station : stKey;
+            var labelText = meta ? meta.station + ' (' + meta.assetType + ')' : stKey;
             $grp.append('<div class="rdpms-bar-x-label">' + labelText + '</div>');
             $wrap.on('mouseenter', function (e) {
                 var html = '<div class="rdpms-tt-title">' + labelText + '</div>';
@@ -1055,56 +1692,55 @@
         });
 
         var s = startIdx + 1, e = Math.min(startIdx + RDPMS_BAR_PER_PAGE, _rdpmsBarStations.length);
-        renderRdpmsPager('#rdpmsBarPager', rdpmsBarPage, Math.ceil(_rdpmsBarStations.length / RDPMS_BAR_PER_PAGE), _rdpmsBarStations.length, s, e, function (pg) { rdpmsBarPage = pg; drawRdpmsBarPage(); });
+        renderRdpmsPager('#rdpmsBarPager', rdpmsBarPage, Math.ceil(_rdpmsBarStations.length / RDPMS_BAR_PER_PAGE), _rdpmsBarStations.length, s, e,
+            function (pg) { rdpmsBarPage = pg; drawRdpmsBarPage(); });
     }
 
-    // ── Section 2: Availability % (grouped bars per station: IOT | Network | Gateway) ──
+    // ★ UPDATED: 4 grouped bars per station (Sensor / IoT / Network / Gateway)
     function drawRdpmsBarAvailPage() {
         var startIdx = (rdpmsBarAvailPage - 1) * RDPMS_BAR_PER_PAGE;
         var pageStations = _rdpmsBarStations.slice(startIdx, startIdx + RDPMS_BAR_PER_PAGE);
 
         function avg(arr) { return arr.length ? arr.reduce(function (a, b) { return a + b; }, 0) / arr.length : 0; }
 
-        var yMax = 100; // always 0–100 for %
-        var chartH = 320, unitH = chartH / yMax;
-        var yStep = 10;
+        var yMax = 100, chartH = 320, unitH = chartH / yMax, yStep = 10;
 
         var $yAxis = $('#rdpmsBarAvailYAxis').empty();
         for (var i = 0; i <= yMax; i += yStep) $yAxis.append('<div class="rdpms-bar-y-tick">' + i + '</div>');
-
         $('#rdpmsBarAvailOuter .rdpms-bar-grid-line').remove();
         for (var g = yStep; g <= yMax; g += yStep) {
             $('#rdpmsBarAvailOuter').append('<div class="rdpms-bar-grid-line" style="bottom:' + (g / yMax * 100) + '%"></div>');
         }
 
-        // Grouped bars: each station has 3 narrow bars side by side
-        var $bars = $('#rdpmsBarAvailBarsInner').empty();
+        // ★ 4 series now includes Sensor
         var AVAIL_SEGS = [
-            { key: 'pctIot', label: 'IOT', color: '#22c55e' },
+            { key: 'pctSensor', label: 'Sensor', color: '#6366f1' },
+            { key: 'pctIot', label: 'IoT', color: '#22c55e' },
             { key: 'pctNet', label: 'Network', color: '#3b82f6' },
-            { key: 'pctGw', label: 'Gateway', color: '#f97316' }
+            { key: 'pctGw', label: 'Station Gateway', color: '#f97316' }
         ];
 
+        var $bars = $('#rdpmsBarAvailBarsInner').empty();
         pageStations.forEach(function (stKey) {
             var m = _rdpmsBarMatrix[stKey];
             var meta = _rdpmsBarStationMeta[stKey];
-            var labelText = meta ? meta.station : stKey;
+            var labelText = meta ? meta.station + ' (' + meta.assetType + ')' : stKey;
+
+            var pctSensor = avg(m.pctSensor);
+            var pctIot = avg(m.pctIot);
+            var pctNet = avg(m.pctNet);
+            var pctGw = avg(m.pctGw);
+            var vals = [pctSensor, pctIot, pctNet, pctGw];
 
             var $grp = $('<div class="rdpms-bar-group" style="flex-direction:column;align-items:center;"></div>');
-
-            // Wrapper holds 3 side-by-side bars
             var $groupWrap = $('<div style="display:flex;align-items:flex-end;gap:3px;cursor:pointer;position:relative;"></div>');
-
-            var pctIot = avg(m.pctIot), pctNet = avg(m.pctNet), pctGw = avg(m.pctGw);
-            var vals = [pctIot, pctNet, pctGw];
 
             AVAIL_SEGS.forEach(function (seg, si) {
                 var val = vals[si];
-                var h = Math.max(val * unitH, val > 0 ? 2 : 0); // min 2px if has value
-                var $bar = $('<div style="width:34px;height:' + h + 'px;background:' + seg.color + ';opacity:0.88;border-radius:3px 3px 0 0;position:relative;"></div>');
-                // Value label on top of each bar
+                var h = Math.max(val * unitH, val > 0 ? 2 : 0);
+                var $bar = $('<div style="width:28px;height:' + h + 'px;background:' + seg.color + ';opacity:0.88;border-radius:3px 3px 0 0;position:relative;"></div>');
                 if (val > 0) {
-                    $bar.append('<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:' + seg.color + ';white-space:nowrap;">' + val.toFixed(1) + '%</div>');
+                    $bar.append('<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:600;color:' + seg.color + ';white-space:nowrap;">' + val.toFixed(1) + '%</div>');
                 }
                 $groupWrap.append($bar);
             });
@@ -1113,9 +1749,10 @@
                 var html = '<div class="rdpms-tt-title">' + labelText + '</div>';
                 if (meta) html += '<div class="rdpms-tt-sub">' + meta.assetType + ' | ' + meta.division + ', ' + meta.zone + '</div>';
                 html += '<div class="rdpms-tt-divider">';
-                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IOT Availability: <strong>' + pctIot.toFixed(2) + '%</strong></div>';
+                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#6366f1"></span>Sensor Availability: <strong>' + pctSensor.toFixed(2) + '%</strong></div>';
+                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IoT Availability: <strong>' + pctIot.toFixed(2) + '%</strong></div>';
                 html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#3b82f6"></span>Network Availability: <strong>' + pctNet.toFixed(2) + '%</strong></div>';
-                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Gateway Availability: <strong>' + pctGw.toFixed(2) + '%</strong></div>';
+                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Station Gateway Availability: <strong>' + pctGw.toFixed(2) + '%</strong></div>';
                 html += '</div>';
                 rdpmsShowTip(html, e);
             }).on('mousemove', rdpmsMoveTip).on('mouseleave', rdpmsHideTip);
@@ -1126,25 +1763,25 @@
         });
 
         var s = startIdx + 1, e = Math.min(startIdx + RDPMS_BAR_PER_PAGE, _rdpmsBarStations.length);
-        renderRdpmsPager('#rdpmsBarAvailPager', rdpmsBarAvailPage, Math.ceil(_rdpmsBarStations.length / RDPMS_BAR_PER_PAGE), _rdpmsBarStations.length, s, e, function (pg) { rdpmsBarAvailPage = pg; drawRdpmsBarAvailPage(); });
+        renderRdpmsPager('#rdpmsBarAvailPager', rdpmsBarAvailPage, Math.ceil(_rdpmsBarStations.length / RDPMS_BAR_PER_PAGE), _rdpmsBarStations.length, s, e,
+            function (pg) { rdpmsBarAvailPage = pg; drawRdpmsBarAvailPage(); });
     }
 
     // ==========================================================================
-    // GRAPH — Canvas | X=Stations | 4 fixed lines (one per device type)
-    // Count chart + % Availability chart
+    // GRAPH — Canvas line charts
     // ==========================================================================
     function renderRdpmsGraph(data) {
         _rdpmsLineSites = data.stationOrder;
         _rdpmsLineSiteMeta = data.stationMeta;
 
-        // Build matrix[seriesKey][stationKey]
-        _rdpmsLineMatrix = { sensors: {}, iot: {}, network: {}, gateway: {}, pctIot: {}, pctNet: {}, pctGw: {} };
+        _rdpmsLineMatrix = { sensors: {}, iot: {}, network: {}, gateway: {}, pctSensor: {}, pctIot: {}, pctNet: {}, pctGw: {} };
         data.stationOrder.forEach(function (stKey) {
             var m = data.stationMatrix[stKey];
             _rdpmsLineMatrix.sensors[stKey] = m.sensors;
             _rdpmsLineMatrix.iot[stKey] = m.iot;
             _rdpmsLineMatrix.network[stKey] = m.network;
             _rdpmsLineMatrix.gateway[stKey] = m.gateway;
+            _rdpmsLineMatrix.pctSensor[stKey] = m.pctSensor.length ? (m.pctSensor.reduce(function (a, b) { return a + b; }, 0) / m.pctSensor.length) : 0;
             _rdpmsLineMatrix.pctIot[stKey] = m.pctIot.length ? (m.pctIot.reduce(function (a, b) { return a + b; }, 0) / m.pctIot.length) : 0;
             _rdpmsLineMatrix.pctNet[stKey] = m.pctNet.length ? (m.pctNet.reduce(function (a, b) { return a + b; }, 0) / m.pctNet.length) : 0;
             _rdpmsLineMatrix.pctGw[stKey] = m.pctGw.length ? (m.pctGw.reduce(function (a, b) { return a + b; }, 0) / m.pctGw.length) : 0;
@@ -1152,43 +1789,253 @@
 
         var $c = $('#rdpmsChartContainer').empty();
 
-        // ── Chart 1: Device Counts ──
-        var $panel1 = $('<div class="rdpms-chart-panel"></div>');
-        $panel1.append('<div class="rdpms-chart-section-title"><i class="fas fa-chart-line" style="color:#6366f1;"></i>Device Counts per Station</div>');
-        var $leg1 = $('<div class="rdpms-legend"></div>');
-        RDPMS_SERIES.forEach(function (s) { $leg1.append('<div class="rdpms-legend-item"><span style="display:inline-block;width:28px;height:3px;background:' + s.color + ';border-radius:2px;flex-shrink:0;"></span><span class="rdpms-legend-text">' + s.label + '</span></div>'); });
-        $panel1.append($leg1);
-        var $wrap1 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
-        var $canvas1 = $('<canvas id="rdpmsLineCanvas1" style="display:block;"></canvas>');
-        $wrap1.append($canvas1);
-        $panel1.append($wrap1);
-        $c.append($panel1);
-
-        // ── Chart 2: % Availability ──
-        var pctSeries = [
-            { key: 'pctIot', label: '% IOT Availability', color: '#22c55e' },
-            { key: 'pctNet', label: '% Network Availability', color: '#3b82f6' },
-            { key: 'pctGw', label: '% Gateway Availability', color: '#f97316' }
+        var countSeries = [
+            { key: 'sensors', label: 'Sensors', color: '#6366f1', dash: [] },
+            { key: 'iot', label: 'IoTs', color: '#22c55e', dash: [6, 3] },
+            { key: 'network', label: 'Network', color: '#f97316', dash: [4, 4] },
+            { key: 'gateway', label: 'Stn Gateway', color: '#3b82f6', dash: [8, 4] }
         ];
-        var $panel2 = $('<div class="rdpms-chart-panel"></div>');
-        $panel2.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#22c55e;"></i>% Availability per Station</div>');
-        var $leg2 = $('<div class="rdpms-legend"></div>');
-        pctSeries.forEach(function (s) { $leg2.append('<div class="rdpms-legend-item"><span style="display:inline-block;width:28px;height:3px;background:' + s.color + ';border-radius:2px;flex-shrink:0;"></span><span class="rdpms-legend-text">' + s.label + '</span></div>'); });
-        $panel2.append($leg2);
-        var $wrap2 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
-        var $canvas2 = $('<canvas id="rdpmsLineCanvas2" style="display:block;"></canvas>');
-        $wrap2.append($canvas2);
-        $panel2.append($wrap2);
-        $c.append($panel2);
 
-        drawRdpmsLineCanvas($canvas1[0], $wrap1[0], RDPMS_SERIES, false);
-        drawRdpmsLineCanvas($canvas2[0], $wrap2[0], pctSeries, true);
+        var pctSeries = [
+            { key: 'pctSensor', label: '% Availability of Sensors', color: '#6366f1', dash: [] },
+            { key: 'pctIot', label: '% Availability of IoT', color: '#22c55e', dash: [6, 3] },
+            { key: 'pctNet', label: '% Availability of Network ', color: '#f97316', dash: [4, 4] },
+            { key: 'pctGw', label: '% Availability of Station Gateway ', color: '#3b82f6', dash: [8, 4] }
+        ];
 
-        $canvas1[0].addEventListener('mousemove', function (e) { handleRdpmsLineHover(e, $canvas1[0], RDPMS_SERIES, false); });
-        $canvas1[0].addEventListener('mouseleave', function () { rdpmsHideTip(); drawRdpmsLineCanvas($canvas1[0], $wrap1[0], RDPMS_SERIES, false); });
+        // ── Group stKeys by station name ──
+        var stationGroups = {}, stationOrder = [];
+        data.stationOrder.forEach(function (stKey) {
+            var meta = data.stationMeta[stKey] || {};
+            var station = meta.station || stKey;
+            if (!stationGroups[station]) {
+                stationGroups[station] = [];
+                stationOrder.push(station);
+            }
+            stationGroups[station].push(stKey);
+        });
 
-        $canvas2[0].addEventListener('mousemove', function (e) { handleRdpmsLineHover(e, $canvas2[0], pctSeries, true); });
-        $canvas2[0].addEventListener('mouseleave', function () { rdpmsHideTip(); drawRdpmsLineCanvas($canvas2[0], $wrap2[0], pctSeries, true); });
+        // ── Render one panel per station ──
+        stationOrder.forEach(function (station, stIdx) {
+            var stKeys = stationGroups[station];
+            var meta = data.stationMeta[stKeys[0]] || {};
+
+            // X-axis labels = assetType for each stKey in this station
+            var xLabels = stKeys.map(function (stKey) {
+                var m = data.stationMeta[stKey] || {};
+                return m.assetType || stKey;
+            });
+
+            // Station panel wrapper
+            var $stPanel = $('<div></div>').css({
+                padding: '24px', background: '#fff', borderRadius: '12px',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.08)', marginBottom: '24px'
+            });
+
+            // Station heading
+            $stPanel.append(
+                '<div style="font-size:16px;font-weight:700;color:#1e293b;border-bottom:2px solid #e5e7eb;' +
+                'padding-bottom:10px;margin-bottom:20px;">' +
+                '<i class="fas fa-map-marker-alt mr-2" style="color:#6366f1;font-size:14px;"></i>' +
+                station +
+                (meta.division ? '<span style="font-size:12px;font-weight:400;color:#64748b;margin-left:10px;">' + meta.division + (meta.zone ? ', ' + meta.zone : '') + '</span>' : '') +
+                '</div>'
+            );
+
+            // ── Chart 1: Total asset counts ──
+            var countChartId = 'rdpmsCountChart_' + stIdx;
+
+            $stPanel.append(
+                '<div style="font-size:14px;font-weight:600;color:#1e293b;margin-bottom:8px;">' +
+                '<i class="fas fa-chart-line mr-1" style="color:#6366f1;font-size:12px;"></i>' +
+                'Total asset counts by type</div>'
+            );
+            $stPanel.append(
+                '<div style="font-size:12px;color:#64748b;margin-bottom:12px;">' +
+                'Number of Sensors, IoTs, Network devices and Station Gateway</div>'
+            );
+
+            var $leg1 = buildRdpmsInteractiveLegend(countSeries, countChartId);
+            $stPanel.append($leg1);
+
+            var $wrap1 = $('<div></div>').css({ position: 'relative', height: '300px', marginBottom: '24px' });
+            var $canvas1 = $('<canvas id="' + countChartId + '"></canvas>');
+            $wrap1.append($canvas1);
+            $stPanel.append($wrap1);
+
+            // ── Chart 2: % Availability ──
+            var pctChartId = 'rdpmsPctChart_' + stIdx;
+
+            $stPanel.append(
+                '<div style="font-size:14px;font-weight:600;color:#1e293b;margin-bottom:8px;' +
+                'border-top:1px solid #e5e7eb;padding-top:20px;">' +
+                '<i class="fas fa-percent mr-1" style="color:#22c55e;font-size:12px;"></i>' +
+                '% Availability per Asset Type</div>'
+            );
+            $stPanel.append(
+                '<div style="font-size:12px;color:#64748b;margin-bottom:12px;">' +
+                'Sensor, IoT, Network and Station Gateway availability %</div>'
+            );
+
+            var $leg2 = buildRdpmsInteractiveLegend(pctSeries, pctChartId);
+            $stPanel.append($leg2);
+
+            var $wrap2 = $('<div></div>').css({ position: 'relative', height: '300px' });
+            var $canvas2 = $('<canvas id="' + pctChartId + '"></canvas>');
+            $wrap2.append($canvas2);
+            $stPanel.append($wrap2);
+
+            $c.append($stPanel);
+
+            // ── Build count chart for this station ──
+            buildRdpmsChartJs(
+                $canvas1[0], xLabels, countSeries,
+                function (s) {
+                    return stKeys.map(function (stKey) {
+                        return _rdpmsLineMatrix[s.key][stKey] || 0;
+                    });
+                },
+                false, 'Device Count'
+            );
+
+            // ── Build pct chart for this station ──
+            buildRdpmsChartJs(
+                $canvas2[0], xLabels, pctSeries,
+                function (s) {
+                    return stKeys.map(function (stKey) {
+                        return _rdpmsLineMatrix[s.key][stKey] || 0;
+                    });
+                },
+                true, 'Availability %'
+            );
+        });
+    }
+
+    // ── Build interactive legend with check/uncheck per series ──
+    function buildRdpmsInteractiveLegend(series, chartId) {
+        var $leg = $('<div></div>').css({
+            display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
+            marginBottom: '16px', padding: '0 4px'
+        });
+
+        series.forEach(function (s, idx) {
+            var $item = $('<label></label>').css({
+                display: 'flex', alignItems: 'center', gap: '8px',
+                cursor: 'pointer', fontSize: '12px', color: '#475569',
+                userSelect: 'none'
+            });
+
+            var $chk = $('<input type="checkbox" checked>').css({
+                accentColor: s.color, width: '14px', height: '14px', cursor: 'pointer'
+            });
+
+            // Dashed line swatch
+            var dashStyle = s.dash && s.dash.length ? 'dashed' : 'solid';
+            var $swatch = $('<span></span>').css({
+                display: 'inline-block', width: '28px', height: '3px',
+                background: s.color, borderRadius: '2px', flexShrink: 0,
+                borderTop: '3px ' + dashStyle + ' ' + s.color
+            });
+
+            $item.append($chk).append($swatch).append($('<span>' + s.label + '</span>'));
+
+            $chk.on('change', function () {
+                var chart = rdpmsChartInstances[chartId];
+                if (!chart) return;
+                var meta = chart.getDatasetMeta(idx);
+                meta.hidden = !$(this).prop('checked');
+                $item.css('opacity', $(this).prop('checked') ? 1 : 0.4);
+                chart.update();
+            });
+
+            $leg.append($item);
+        });
+
+        return $leg;
+    }
+
+    // ── Build Chart.js multi-line chart ──
+    var rdpmsChartInstances = {};
+
+    function buildRdpmsChartJs(canvas, xLabels, series, dataFn, isPct, yLabel) {
+        var chartId = canvas.id;
+        if (rdpmsChartInstances[chartId]) {
+            rdpmsChartInstances[chartId].destroy();
+        }
+
+        var datasets = series.map(function (s) {
+            return {
+                label: s.label,
+                data: dataFn(s),
+                borderColor: s.color,
+                backgroundColor: s.color + '18',
+                borderWidth: 2,
+                borderDash: s.dash || [],
+                pointBackgroundColor: '#fff',
+                pointBorderColor: s.color,
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 7,
+                fill: false,
+                tension: 0.4,
+                spanGaps: true
+            };
+        });
+
+        // For first series (Sensors), add fill under line like the image
+        if (datasets.length > 0) {
+            datasets[0].fill = true;
+            datasets[0].backgroundColor = series[0].color + '15';
+        }
+
+        rdpmsChartInstances[chartId] = new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: { labels: xLabels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.88)',
+                        padding: 12,
+                        cornerRadius: 8,
+                        callbacks: {
+                            title: function (items) {
+                                var idx = items[0].dataIndex;
+                                var stKey = _rdpmsLineSites[idx] || '';
+                                var meta = _rdpmsLineSiteMeta[stKey] || {};
+                                return (meta.station || stKey) + (meta.assetType ? ' (' + meta.assetType + ')' : '');
+                            },
+                            label: function (c) {
+                                if (c.parsed.y === null) return null;
+                                var suffix = isPct ? '%' : '';
+                                return ' ' + c.dataset.label + ': ' + (isPct ? c.parsed.y.toFixed(2) : c.parsed.y) + suffix;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(0,0,0,0.04)' },
+                        ticks: {
+                            font: { size: 11 }, color: '#64748b',
+                            maxRotation: 0, autoSkip: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        title: { display: true, text: yLabel, font: { size: 12 }, color: '#475569' },
+                        ticks: {
+                            font: { size: 11 }, color: '#94a3b8',
+                            callback: function (v) { return isPct ? v + '%' : v; }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     function drawRdpmsLineCanvas(canvas, wrapper, series, isPct, hoverIdx) {
@@ -1204,26 +2051,19 @@
             canvas._layout = { PAD_L: PAD_L, PAD_T: PAD_T, INNER_W: INNER_W, INNER_H: INNER_H, colW: colW };
         }
         var L = canvas._layout;
-
         var ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Y max
         var maxVal = 1;
         series.forEach(function (s) { _rdpmsLineSites.forEach(function (st) { var v = _rdpmsLineMatrix[s.key][st] || 0; if (v > maxVal) maxVal = v; }); });
-        var yMax = isPct
-            ? (maxVal > 0 ? Math.min(100, Math.ceil(maxVal * 1.1)) : 100)
-            : (maxVal + Math.max(1, Math.ceil(maxVal * 0.12)));
-        var yStep = isPct
-            ? (yMax <= 10 ? 1 : yMax <= 25 ? 5 : 10)
-            : (yMax <= 10 ? 1 : Math.ceil(yMax / 8));
+        var yMax = isPct ? (maxVal > 0 ? Math.min(100, Math.ceil(maxVal * 1.1)) : 100) : (maxVal + Math.max(1, Math.ceil(maxVal * 0.12)));
+        var yStep = isPct ? (yMax <= 10 ? 1 : yMax <= 25 ? 5 : 10) : (yMax <= 10 ? 1 : Math.ceil(yMax / 8));
         canvas._yMax = yMax; canvas._isPct = isPct;
 
         var xPos = _rdpmsLineSites.map(function (s, i) { return L.PAD_L + i * L.colW + L.colW / 2; });
         canvas._xPos = xPos;
 
-        // Grid + Y ticks
         ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
         ctx.font = '11px Segoe UI, Arial, sans-serif';
         for (var yv = 0; yv <= yMax; yv += yStep) {
@@ -1234,17 +2074,14 @@
             ctx.fillText(isPct ? yv + '%' : yv, L.PAD_L - 6, gy);
         }
 
-        // Y-axis label
         ctx.save(); ctx.translate(14, L.PAD_T + L.INNER_H / 2); ctx.rotate(-Math.PI / 2);
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.font = '12px Segoe UI, Arial, sans-serif'; ctx.fillStyle = '#475569';
         ctx.fillText(isPct ? 'Availability %' : 'Device Count', 0, 0); ctx.restore();
 
-        // Axes
         ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(L.PAD_L, L.PAD_T); ctx.lineTo(L.PAD_L, L.PAD_T + L.INNER_H); ctx.lineTo(L.PAD_L + L.INNER_W, L.PAD_T + L.INNER_H); ctx.stroke();
 
-        // Hover highlight
         if (hoverIdx !== undefined && hoverIdx >= 0) {
             var hx = xPos[hoverIdx];
             ctx.fillStyle = 'rgba(99,102,241,0.07)'; ctx.fillRect(hx - L.colW / 2, L.PAD_T, L.colW, L.INNER_H);
@@ -1253,13 +2090,11 @@
             ctx.setLineDash([]);
         }
 
-        // X tick marks
         xPos.forEach(function (x) {
             ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(x, L.PAD_T + L.INNER_H); ctx.lineTo(x, L.PAD_T + L.INNER_H + 5); ctx.stroke();
         });
 
-        // Lines
         series.forEach(function (s) {
             var pts = _rdpmsLineSites.map(function (stKey, si) {
                 var val = _rdpmsLineMatrix[s.key][stKey] || 0;
@@ -1281,7 +2116,6 @@
             });
         });
 
-        // X labels (rotated)
         _rdpmsLineSites.forEach(function (stKey, si) {
             var x = xPos[si];
             var meta = _rdpmsLineSiteMeta[stKey] || {};
@@ -1302,13 +2136,11 @@
         var mx = e.clientX - rect.left, my = e.clientY - rect.top;
         var closest = -1, minDist = L.colW;
         canvas._xPos.forEach(function (x, i) { var d = Math.abs(mx - x); if (d < minDist) { minDist = d; closest = i; } });
-
         var wrapper = canvas.parentElement;
         if (closest === -1 || my < L.PAD_T || my > L.PAD_T + L.INNER_H) {
             rdpmsHideTip(); drawRdpmsLineCanvas(canvas, wrapper, series, isPct); return;
         }
         drawRdpmsLineCanvas(canvas, wrapper, series, isPct, closest);
-
         var stKey = _rdpmsLineSites[closest];
         var meta = _rdpmsLineSiteMeta[stKey] || {};
         var html = '<div class="rdpms-tt-title">' + (meta.station || stKey) + '</div>';
@@ -1316,7 +2148,9 @@
         html += '<div class="rdpms-tt-divider">';
         series.forEach(function (s) {
             var val = _rdpmsLineMatrix[s.key][stKey] || 0;
-            html += '<div class="rdpms-tt-row"><span style="display:inline-block;width:12px;height:3px;background:' + s.color + ';border-radius:2px;margin-right:6px;vertical-align:middle;flex-shrink:0;"></span><span style="flex:1;color:#475569;font-size:11px;">' + s.label + '</span><strong style="margin-left:8px;">' + (isPct ? val.toFixed(2) + '%' : val) + '</strong></div>';
+            html += '<div class="rdpms-tt-row"><span style="display:inline-block;width:12px;height:3px;background:' + s.color + ';border-radius:2px;margin-right:6px;vertical-align:middle;flex-shrink:0;"></span>' +
+                '<span style="flex:1;color:#475569;font-size:11px;">' + s.label + '</span>' +
+                '<strong style="margin-left:8px;">' + (isPct ? val.toFixed(2) + '%' : val) + '</strong></div>';
         });
         html += '</div>';
         rdpmsShowTip(html, e);
@@ -1342,13 +2176,19 @@
             titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
             titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
-            var summaryRow = worksheet.addRow(['Total Records: ' + recordCount + ' | Generated: ' + new Date().toLocaleString()]); summaryRow.height = 20;
+            var fromDisplay = formatDateTimeForExport($('#txtFromDate').val(), $('#txtFromTime').val());
+            var toDisplay = formatDateTimeForExport($('#txtToDate').val(), $('#txtToTime').val());
+            var summaryRow = worksheet.addRow(['From: ' + fromDisplay + '  |  To: ' + toDisplay + '  |  Total Records: ' + recordCount + '  |  Generated: ' + formattedNow()]);
             worksheet.mergeCells(2, 1, 2, colCount);
             summaryRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
             summaryRow.getCell(1).alignment = { horizontal: 'center' };
             worksheet.addRow([]);
 
-            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Total number of Sensors', '% Availability of Sensors', 'Total Number of IOTs', '% Availability of IOTs', 'Total Number of Network', '% Availability of Network', 'Total Number of Station Gateway', '% Availability of station gateway'];
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
+                'Total number of Sensors', '% Availability of Sensors',
+                'Total Number of IoTs', '% Availability of IoTs',
+                'Total Number of Network', '% Availability of Network',
+                'Total Number of Station Gateway', '% Availability of station gateway'];
             var headerRow = worksheet.addRow(headers); headerRow.height = 40;
             headerRow.eachCell(function (cell) {
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
@@ -1378,7 +2218,8 @@
 
             workbook.xlsx.writeBuffer().then(function (buffer) {
                 saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), getFileName('xlsx'));
-                $("#loader").hide(); CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
+                $("#loader").hide();
+                CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
             });
         } catch (err) { $("#loader").hide(); console.error('Excel Error:', err); CommonNotification("ERROR", "Error downloading Excel", "Error"); }
     }
@@ -1391,8 +2232,20 @@
         if (!table) { alert('No data available to download'); return; }
         try {
             $("#loader").show();
-            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Total number of Sensors', '% Availability of Sensors', 'Total Number of IOTs', '% Availability of IOTs', 'Total Number of Network', '% Availability of Network', 'Total Number of Station Gateway', '% Availability of station gateway'];
-            var csv = [headers.map(function (h) { return '"' + h + '"'; }).join(',')];
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
+                'Total number of Sensors', '% Availability of Sensors',
+                'Total Number of IoTs', '% Availability of IoTs',
+                'Total Number of Network', '% Availability of Network',
+                'Total Number of Station Gateway', '% Availability of station gateway'];
+            var fromDisplay = formatDateTimeForExport($('#txtFromDate').val(), $('#txtFromTime').val());
+            var toDisplay = formatDateTimeForExport($('#txtToDate').val(), $('#txtToTime').val());
+            var csv = [
+                '"RDPMS Health Summary Report"',
+                '"From: ' + fromDisplay + '","To: ' + toDisplay + '"',
+                '"Generated: ' + formattedNow() + '"',
+                '',
+                headers.map(function (h) { return '"' + h + '"'; }).join(',')
+            ];
             var $allRows = $('#tblRDPMSHealthSummary tbody tr'); $allRows.show();
             $allRows.each(function () {
                 var $tr = $(this); if ($tr.find('td[colspan]').length) return;
@@ -1401,22 +2254,889 @@
             });
             if (typeof goToPage === 'function') goToPage(1);
             saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getFileName('csv'));
-            $("#loader").hide(); CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
         } catch (err) { $("#loader").hide(); console.error('CSV Error:', err); CommonNotification("ERROR", "Error downloading CSV", "Error"); }
+    }
+
+    // ==========================================================================
+    // PDF DOWNLOAD
+    // ==========================================================================
+    function fnDownloadPDF() {
+        var table = document.getElementById('tblRDPMSHealthSummary');
+        if (!table) { alert('No data available to download'); return; }
+        try {
+            $("#loader").show();
+
+            var { jsPDF } = window.jspdf;
+            var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            var pageW = doc.internal.pageSize.getWidth();
+
+            // ── META TEXT ──────────────────────────────────────────────────────
+            var fromDisplay = formatDateTimeForExport($('#txtFromDate').val(), $('#txtFromTime').val());
+            var toDisplay = formatDateTimeForExport($('#txtToDate').val(), $('#txtToTime').val());
+
+            var $allRows = $('#tblRDPMSHealthSummary tbody tr');
+            var recordCount = $allRows.filter(function () {
+                return !$(this).find('td[colspan]').length;
+            }).length;
+
+            // REPLACE WITH THIS:
+            var generatedNow = (function () {
+                var now = new Date();
+                return String(now.getDate()).padStart(2, '0') + '/' +
+                    String(now.getMonth() + 1).padStart(2, '0') + '/' +
+                    now.getFullYear() + '  ' +
+                    String(now.getHours()).padStart(2, '0') + ':' +
+                    String(now.getMinutes()).padStart(2, '0') + ':' +
+                    String(now.getSeconds()).padStart(2, '0');
+            })();
+
+            var metaText = 'Period: ' + fromDisplay + '  To: ' + toDisplay +
+                '   |   Records: ' + recordCount +
+                '   |   Generated: ' + generatedNow;
+
+            // ── COLLECT TABLE DATA ─────────────────────────────────────────────
+            $allRows.show();   // show all rows (pagination may hide some)
+
+            var tableBody = [];
+            $allRows.each(function () {
+                var $tr = $(this);
+                if ($tr.find('td[colspan]').length > 0) return;
+                var row = [];
+                $tr.find('td').each(function (i) {
+                    if (i < 13) row.push($(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim());
+                });
+                tableBody.push(row);
+            });
+
+            if (typeof goToPage === 'function') goToPage(1);
+
+            if (tableBody.length === 0) {
+                $("#loader").hide();
+                alert('No data available to download');
+                return;
+            }
+
+            // ── COLUMN HEADERS ─────────────────────────────────────────────────
+            var headers = [
+                'Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
+                'Total number of Sensors', '% Availability of Sensors',
+                'Total Number of IoTs', '% Availability of IoTs',
+                'Total Number of Network', '% Availability of Network',
+                'Total Number of Station Gateway', '% Availability of station gateway'
+            ];
+
+            // ── autoTable ──────────────────────────────────────────────────────
+            doc.autoTable({
+                startY: 58,
+                head: [headers],
+                body: tableBody,
+                theme: 'grid',
+                tableWidth: 'auto',
+                styles: {
+                    fontSize: 7,
+                    cellPadding: 3,
+                    valign: 'middle',
+                    halign: 'center',
+                    lineColor: [226, 232, 240],
+                    lineWidth: 0.4,
+                    overflow: 'linebreak'
+                },
+                headStyles: {
+                    fillColor: [30, 58, 95],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold',
+                    fontSize: 7,
+                    halign: 'center',
+                    valign: 'middle',
+                    minCellHeight: 30,
+                    cellPadding: { top: 5, bottom: 5, left: 2, right: 2 }
+                },
+                alternateRowStyles: {
+                    fillColor: [241, 245, 249]
+                },
+                bodyStyles: {
+                    textColor: [51, 51, 51]
+                },
+                columnStyles: {
+                    0: { cellWidth: 'auto' },   // Sr.No
+                    1: { cellWidth: 'auto' },   // Zone
+                    2: { cellWidth: 'auto' },   // Division
+                    3: { cellWidth: 'auto' },   // Station
+                    4: { cellWidth: 'auto' },   // Asset Type
+                    5: { cellWidth: 'auto' },   // Total Sensors
+                    6: { cellWidth: 'auto' },   // % Sensor Avail
+                    7: { cellWidth: 'auto' },   // Total IoTs
+                    8: { cellWidth: 'auto' },   // % IoT Avail
+                    9: { cellWidth: 'auto' },   // Total Network
+                    10: { cellWidth: 'auto' },   // % Network Avail
+                    11: { cellWidth: 'auto' },   // Total Gateway
+                    12: { cellWidth: 'auto' }    // % Gateway Avail
+                },
+                tableWidth: 'auto',
+                margin: { top: 58, left: 10, right: 10 },
+                didParseCell: function (data) {
+                    if (data.section === 'body') {
+                        var pctCols = [6, 8, 10, 12];
+                        if (pctCols.indexOf(data.column.index) !== -1) {
+                            var val = parseFloat(data.cell.raw) || 0;
+                            if (val >= 80) {
+                                data.cell.styles.textColor = [4, 120, 87];    // green
+                                data.cell.styles.fontStyle = 'bold';
+                            } else if (val >= 50) {
+                                data.cell.styles.textColor = [180, 83, 9];    // amber
+                                data.cell.styles.fontStyle = 'bold';
+                            } else if (val > 0) {
+                                data.cell.styles.textColor = [220, 38, 38];   // red
+                                data.cell.styles.fontStyle = 'bold';
+                            }
+                        }
+                    }
+                },
+                // Repeat header banner on every page
+                didDrawPage: function (data) {
+                    // Title bar
+                    doc.setFillColor(79, 70, 229);
+                    doc.rect(0, 0, pageW, 36, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(14);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text('RDPMS Health Summary Report', pageW / 2, 23, { align: 'center' });
+
+                    // Meta bar
+                    doc.setFillColor(240, 244, 255);
+                    doc.rect(0, 36, pageW, 18, 'F');
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(8);
+                    doc.setTextColor(71, 85, 105);
+                    doc.text(metaText, pageW / 2, 47, { align: 'center' });
+
+                    // Page number
+                    var pageNum = doc.internal.getCurrentPageInfo().pageNumber;
+                    var totalPg = doc.internal.getNumberOfPages();
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(148, 163, 184);
+                    doc.text(
+                        'Page ' + pageNum + ' of ' + totalPg,
+                        pageW - 14,
+                        doc.internal.pageSize.getHeight() - 8,
+                        { align: 'right' }
+                    );
+                },
+                margin: { top: 58, left: 14, right: 14 }
+            });
+
+            doc.save(getFileName('pdf'));
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "PDF downloaded successfully!", "Success");
+
+        } catch (err) {
+            $("#loader").hide();
+            console.error('PDF Error:', err);
+            CommonNotification("ERROR", "Error downloading PDF", "Error");
+        }
     }
 
     function getFileName(ext) {
         var now = new Date();
-        return 'RDPMSHealthSummary_' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + '.' + ext;
+        return 'RDPMSHealthSummary_' +
+            now.getFullYear() +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0') + '_' +
+            String(now.getHours()).padStart(2, '0') +
+            String(now.getMinutes()).padStart(2, '0') + '.' + ext;
     }
 
+    // ==========================================================================
+    // RANGE BAR UPDATER
+    // ==========================================================================
     function updateRangeBar() {
         var fd = $('#txtFromDate').val(), ft = $('#txtFromTime').val();
         var td = $('#txtToDate').val(), tt = $('#txtToTime').val();
-        function fmt(v) { var p = v.split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : v; }
-        $('#dispFromDate').text(fd ? fmt(fd) : '—');
+        $('#dispFromDate').text(fd || '—');
         $('#dispFromTime').text(ft || '—');
-        $('#dispToDate').text(td ? fmt(td) : '—');
+        $('#dispToDate').text(td || '—');
         $('#dispToTime').text(tt || '—');
     }
+
+    function formatDateTimeForExport(dateVal, timeVal) {
+        if (!dateVal) return '—';
+        var timePart = timeVal || '00:00:00';
+        if (timePart.split(':').length === 2) timePart += ':00';
+        return dateVal + ' ' + timePart;
+    }
+
+    function formattedNow() {
+        var now = new Date();
+        return String(now.getDate()).padStart(2, '0') + '/' +
+            String(now.getMonth() + 1).padStart(2, '0') + '/' +
+            now.getFullYear() + '  ' +
+            String(now.getHours()).padStart(2, '0') + ':' +
+            String(now.getMinutes()).padStart(2, '0') + ':' +
+            String(now.getSeconds()).padStart(2, '0');
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+       MEDIA HEALTH OVERVIEW — Wire / Wireless status for IoT & Network
+       over the summary's date range.
+       ------------------------------------------------------------------
+       Data sourcing lives entirely in the browser because the summary
+       endpoint (Asset/GetRDPMSHealthSummary) doesn't echo back either
+       SearchCriteria or mClusters — only the LIVE endpoint does. So we:
+
+         Dates    ← read from parent form inputs #txtFromDate/#txtFromTime,
+                    #txtToDate/#txtToTime (DD/MM/YYYY + HH:MM), formatted
+                    to ddMMyyyy_HHmmss on the fly.
+         Clusters ← per selected siteId, one call to GetCardLineData
+                    yields the modem/channel config. Deduped ClusterId
+                    values (string codes like "CL01") become the pairs.
+         History  ← per (site, cluster) pair, two calls:
+                       /NetworkDashboard/GetModemHistoryForGraph  (Network)
+                          — reuses the existing Network-Dashboard route,
+                            takes clusterId + dd-MM-yyyy dates.
+                       /FRS25/RDPMSHealthLive/GetA10History      (IoT)
+                          — proxies {ProxyBaseUrl}/api/ModemHistory/A10
+                            with siteId + clusterId + ddMMyyyy_HHmmss.
+
+       TypeId mapping (locked to product spec):
+          IoT (A10)         → 1 = Wired, 2 = Wireless
+          Network (Modem)   → 3 = Wired, 2 = Wireless
+
+       Classification per (DeviceId, TypeId) over the whole period:
+          online  = at least one healthy record was observed
+          faulty  = records exist but none was healthy
+       Devices with no records in the window are ignored.
+
+       Design borrows from Network Dashboard's cluster-uptime-stats.
+    ══════════════════════════════════════════════════════════════════ */
+    (function ($) {
+        'use strict';
+
+        var _lmhRequestRunning = false;
+
+        var SIGNAL_MIN = 0;                     /* > 0 = healthy Modem signal */
+        var TYPE_MODEM_WIRELESS = 2;            /* Modem: 2 = 4G MQTT */
+        var TYPE_MODEM_WIRED = 3;            /* Modem: 3 = OFC TCP */
+        var TYPE_A10_WIRELESS = 2;            /* A10:   2 = Wireless */
+        var TYPE_A10_WIRED = 1;            /* A10:   1 = Wired    */
+
+        /* ── Currently-selected site IDs from the outer filter checkboxes ── */
+        function getSelectedSiteIds() {
+            var ids = [];
+            $('.cb-site:checked').each(function () {
+                var v = parseInt($(this).val(), 10);
+                if (v > 0) ids.push(v);
+            });
+            return ids;
+        }
+
+        /* ── Two-digit pad, ES5-safe (String.padStart is ES2017). ── */
+        function pad2(v) {
+            var s = String(v == null ? '' : v);
+            return s.length >= 2 ? s : ('0' + s).slice(-2);
+        }
+
+        /* ── Read DD/MM/YYYY + HH:MM from the parent form inputs and
+              format as ddMMyyyy_HHmmss. Returns '' when the input is
+              blank or malformed. ── */
+        function readParentDateInput(dateSel, timeSel) {
+            var d = ($(dateSel).val() || '').trim();
+            var t = ($(timeSel).val() || '').trim();
+            if (!d) return '';
+
+            var parts = d.split('/');
+            if (parts.length !== 3) return '';
+
+            var dd = pad2(parts[0]);
+            var mm = pad2(parts[1]);
+            var yyyy = String(parts[2] || '');
+            if (yyyy.length !== 4) return '';
+
+            var tParts = (t || '00:00').split(':');
+            var hh = pad2(tParts[0] || '0');
+            var mi = pad2(tParts[1] || '0');
+            var ss = pad2(tParts[2] || '0');
+
+            return dd + mm + yyyy + '_' + hh + mi + ss;
+        }
+
+        function getDateRange() {
+            return {
+                start: readParentDateInput('#txtFromDate', '#txtFromTime'),
+                end: readParentDateInput('#txtToDate', '#txtToTime')
+            };
+        }
+
+        /* ── Fetch cluster list for every selected site in parallel via the
+              existing GetCardLineData proxy. Returns a Deferred resolving
+              with an array of unique { siteId, clusterId } pairs.
+              Cluster identifier tried in order:
+                 ClusterId → ClusterName → ModemId
+              — matches the user-facing "CL01" style codes and tolerates
+              minor shape differences across payloads. ── */
+        function fetchSiteClusterPairs(siteIds) {
+            if (!siteIds.length) {
+                return $.Deferred().resolve([]).promise();
+            }
+
+            var perSite = siteIds.map(function (sid) {
+                return $.ajax({
+                    url: '/FRS25/RDPMSHealthLive/GetCardLineData',
+                    type: 'GET',
+                    data: { siteId: sid },
+                    dataType: 'json'
+                }).then(
+                    function (d) { return { siteId: sid, data: d }; },
+                    function () { return { siteId: sid, data: [] }; }
+                );
+            });
+
+            return $.when.apply($, perSite).then(function () {
+                /* Normalise arguments across single/multi promise cases. */
+                var results = siteIds.length === 1
+                    ? [arguments[0]]
+                    : Array.prototype.slice.call(arguments);
+
+                var seen = {};
+                var out = [];
+
+                results.forEach(function (r) {
+                    if (!r) return;
+                    var sid = r.siteId;
+                    var arr = r.data;
+                    if (!$.isArray(arr)) return;
+
+                    arr.forEach(function (cl) {
+                        if (!cl) return;
+                        var cid = '';
+                        if (cl.ClusterId != null && String(cl.ClusterId).length) cid = String(cl.ClusterId);
+                        else if (cl.ClusterName != null && String(cl.ClusterName).length) cid = String(cl.ClusterName);
+                        else if (cl.ModemId != null && String(cl.ModemId).length) cid = String(cl.ModemId);
+                        if (!cid) return;
+
+                        var key = sid + '|' + cid;
+                        if (seen[key]) return;
+                        seen[key] = true;
+                        out.push({ siteId: sid, clusterId: cid });
+                    });
+                });
+
+                return out;
+            });
+        }
+
+        /* ── UI helpers ── */
+        function setStatus(msg, state) {
+            var $ind = $('#rdpmsLmhIndicator');
+            $ind.removeClass('is-live is-loading is-error');
+            if (state) $ind.addClass(state);
+            $('#rdpmsLmhStatusText').text(msg);
+        }
+
+        /* ── Progress-bar helpers.
+              Indeterminate: cluster discovery, ETA unknown.
+              Determinate:   history fan-out, one step per completed
+                             $.ajax (2 per (site, cluster) pair).
+              progressDone() fills to 100% for a beat then hides — the
+              micro-animation reads as "finished" instead of vanishing. ── */
+        var _lmhProgTotal = 0;
+        var _lmhProgDone = 0;
+
+        function progressReset(total) {
+            _lmhProgTotal = total || 0;
+            _lmhProgDone = 0;
+            $('#rdpmsLmhProgressFill')
+                .removeClass('is-indeterminate')
+                .css('width', '0%');
+            $('#rdpmsLmhProgressTrack').addClass('is-active');
+        }
+
+        function progressIndeterminate() {
+            $('#rdpmsLmhProgressFill').addClass('is-indeterminate');
+            $('#rdpmsLmhProgressTrack').addClass('is-active');
+        }
+
+        function progressStep() {
+            _lmhProgDone++;
+            if (_lmhProgTotal > 0) {
+                var pct = Math.min(100, (_lmhProgDone / _lmhProgTotal) * 100);
+                $('#rdpmsLmhProgressFill')
+                    .removeClass('is-indeterminate')
+                    .css('width', pct.toFixed(1) + '%');
+                /* Update the status line so users see the running tally. */
+                $('#rdpmsLmhStatusText').text(
+                    'Loading history… ' + _lmhProgDone + ' / ' + _lmhProgTotal
+                );
+            }
+        }
+
+        function progressDone() {
+            $('#rdpmsLmhProgressFill')
+                .removeClass('is-indeterminate')
+                .css('width', '100%');
+            setTimeout(function () {
+                $('#rdpmsLmhProgressTrack').removeClass('is-active');
+                $('#rdpmsLmhProgressFill').css('width', '0%');
+            }, 400);
+        }
+
+        function progressHide() {
+            $('#rdpmsLmhProgressTrack').removeClass('is-active');
+            $('#rdpmsLmhProgressFill')
+                .removeClass('is-indeterminate')
+                .css('width', '0%');
+        }
+
+        function markComplete(siteCount, clusterCount, range) {
+            $('#rdpmsLmhIndicator')
+                .removeClass('is-loading is-error')
+                .addClass('is-live');
+            $('#rdpmsLmhStatusText').text('Media health overview');
+            $('#rdpmsLmhStationCount').text(siteCount + (siteCount === 1 ? ' station' : ' stations'));
+            $('#rdpmsLmhClusterCount').text(clusterCount + (clusterCount === 1 ? ' cluster' : ' clusters'));
+
+            var rangeLabel = 'Range: ' +
+                (range && range.start ? prettyRange(range.start) : '—') +
+                ' → ' +
+                (range && range.end ? prettyRange(range.end) : '—');
+            $('#rdpmsLmhRangeSummary').text(rangeLabel);
+        }
+
+        /* Format ddMMyyyy_HHmmss back to something readable in the bar. */
+        function prettyRange(s) {
+            if (!s || s.length < 15) return s || '—';
+            var dd = s.substr(0, 2), MM = s.substr(2, 2), yyyy = s.substr(4, 4);
+            var hh = s.substr(9, 2), mm = s.substr(11, 2);
+            return dd + '/' + MM + '/' + yyyy + ' ' + hh + ':' + mm;
+        }
+
+        /* ── Paint uptime% + up/down durations into one Wired-or-Wireless
+              block. Empty state (no records for this channel) shows a dash
+              and dims the block; otherwise the % badge, meter width and
+              duration labels are all driven from uptimePct + windowSecs. ── */
+        function paintBlock(prefix, bucket, windowSecs) {
+            var $pct = $('#' + prefix + 'Pct');
+            var $meter = $('#' + prefix + 'Meter');
+            var $block = $('#' + prefix + 'Block');
+            var $up = $('#' + prefix + 'Up');
+            var $down = $('#' + prefix + 'Down');
+
+            $pct.removeClass('good warn bad zero');
+            $meter.removeClass('good warn bad zero');
+            $block.removeClass('is-empty');
+
+            if (!bucket || bucket.total <= 0) {
+                $pct.addClass('zero').text('—');
+                $meter.addClass('zero').css('width', '0%');
+                $up.text('—');
+                $down.text('—');
+                $block.addClass('is-empty');
+                return;
+            }
+
+            var pct = bucket.pct;
+            var cls = pct >= 80 ? 'good' : pct >= 50 ? 'warn' : 'bad';
+            $pct.addClass(cls).text(pct.toFixed(1) + '%');
+            $meter.addClass(cls).css('width', pct.toFixed(1) + '%');
+
+            /* Project uptime% onto the selected date-range so users see the
+               ratio in a wall-clock unit as well as the percentage. */
+            var upSecs = Math.round((pct / 100) * windowSecs);
+            var downSecs = Math.max(0, windowSecs - upSecs);
+            $up.text(formatDuration(upSecs));
+            $down.text(formatDuration(downSecs));
+        }
+
+        /* ── Field-lookup helper: try each candidate name until one hits
+              a non-null / non-empty value. Handles PascalCase (live API)
+              and camelCase (some history payloads) at the same time. ── */
+        function pickField(e) {
+            for (var i = 1; i < arguments.length; i++) {
+                var name = arguments[i];
+                if (e[name] !== undefined && e[name] !== null && e[name] !== '') {
+                    return e[name];
+                }
+            }
+            return undefined;
+        }
+
+        /* ── Was this single history record's payload healthy?
+              Priority order:
+                1. Explicit Status / IsOnline field (0/1, true/false).
+                2. TypeId 1 records: ResponseTime > 0 = healthy (0 means
+                   no response received during the poll).
+                3. TypeId 2/3 records: Uptime > 0 = healthy (device was
+                   alive for at least a moment during the sample).
+                4. Modem fallback: SignalStrength > SIGNAL_MIN. ── */
+        function isRecordHealthy(e, sourceType) {
+            if (!e) return false;
+
+            /* 1) Explicit status. */
+            var status = pickField(e, 'Status', 'status', 'IsOnline', 'isOnline', 'Online', 'online');
+            if (status !== undefined) {
+                if (status === true || status === 1) return true;
+                var s = String(status).trim().toLowerCase();
+                return s === '1' || s === 'true' || s === 'online' || s === 'up' || s === 'ok';
+            }
+
+            var typeId = Number(pickField(e, 'TypeId', 'typeId'));
+
+            /* 2) ResponseTime path (present on TypeId=1 records). */
+            var rt = pickField(e, 'ResponseTime', 'responseTime');
+            if (rt !== undefined) {
+                var n = Number(rt);
+                return !isNaN(n) && n > 0;
+            }
+
+            /* 3) Uptime path (present on TypeId=2 or 3 records). */
+            var up = pickField(e, 'Uptime', 'uptime');
+            if (up !== undefined) {
+                var n2 = Number(up);
+                return !isNaN(n2) && n2 > 0;
+            }
+
+            /* 4) Modem-live style fallback (SignalStrength). */
+            var sig = pickField(e, 'SignalStrength', 'signalStrength', 'Signal', 'signal', 'Rssi', 'rssi');
+            if (sig !== undefined) {
+                var n3 = Number(sig);
+                return !isNaN(n3) && n3 > SIGNAL_MIN;
+            }
+
+            /* Unknown shape — safest default is "not healthy" so it shows
+               up as downtime rather than silently claiming health. */
+            return false;
+        }
+
+        /* ── One-time diagnostic: dump the first record from each stream so
+              schema mismatches can be caught in DevTools without redeploying. */
+        var _lmhDiagDumped = { modem: false, a10: false };
+        function diagOnce(tag, arr) {
+            if (_lmhDiagDumped[tag]) return;
+            if (!arr || !arr.length) return;
+            _lmhDiagDumped[tag] = true;
+            try { console.log('[LMH ' + tag + ' history] sample record:', arr[0]); } catch (e) { }
+        }
+
+        /* ── Bucket history records into wired / wireless per media type
+              and simultaneously count unique devices seen.
+              Returned shape:
+                {
+                  byType: { <typeId>: { healthyRecords, totalRecords } },
+                  devices: { <'id|typeId'>: true }   // for dedup device count
+                }
+              A record's "healthy" verdict comes from isRecordHealthy(); a
+              record without a valid device identifier or an allowed TypeId
+              is discarded rather than counted. ── */
+        function classifyRecords(entries, allowedTypeIds, sourceType) {
+            var byType = {};
+            var devices = {};
+
+            (entries || []).forEach(function (e) {
+                if (!e) return;
+
+                var typeIdRaw = pickField(e, 'TypeId', 'typeId');
+                var typeId = Number(typeIdRaw);
+                if (isNaN(typeId) || allowedTypeIds.indexOf(typeId) === -1) return;
+
+                var idRaw = pickField(e,
+                    'DeviceId', 'deviceId',
+                    'ModemId', 'modemId',
+                    'A10Id', 'a10Id',
+                    'ADCNumber', 'adcNumber',
+                    'Id', 'id');
+                if (idRaw == null) return;
+                var id = String(idRaw).trim();
+                if (!id) return;
+
+                if (!byType[typeId]) byType[typeId] = { healthyRecords: 0, totalRecords: 0 };
+                byType[typeId].totalRecords++;
+                if (isRecordHealthy(e, sourceType)) byType[typeId].healthyRecords++;
+
+                devices[id + '|' + typeId] = true;
+            });
+
+            return { byType: byType, devices: devices };
+        }
+
+        /* Sum healthy/total records across a set of TypeIds. Carries both
+           live (2=wireless / 3=wired) and history (1=wired / 2=wireless)
+           mappings simultaneously so a schema shift in one API alone
+           doesn't nuke a whole card. Returns { healthy, total, pct }. */
+        function bucketFromByType(byType, typeIds) {
+            var healthy = 0, total = 0;
+            typeIds.forEach(function (t) {
+                if (byType[t]) {
+                    healthy += byType[t].healthyRecords;
+                    total += byType[t].totalRecords;
+                }
+            });
+            var pct = total > 0 ? (healthy / total) * 100 : 0;
+            return { healthy: healthy, total: total, pct: pct };
+        }
+
+        /* ── Range → seconds (window length used to project uptime% to a
+              wall-clock duration, e.g. "23h 45m up / 15m down"). ── */
+        function parseRangeToken(s) {
+            if (!s || s.length < 15) return null;
+            var dd = parseInt(s.substr(0, 2), 10);
+            var mm = parseInt(s.substr(2, 2), 10) - 1;
+            var yyyy = parseInt(s.substr(4, 4), 10);
+            var hh = parseInt(s.substr(9, 2), 10);
+            var mi = parseInt(s.substr(11, 2), 10);
+            var ss = parseInt(s.substr(13, 2), 10);
+            var d = new Date(yyyy, mm, dd, hh, mi, ss);
+            return isNaN(d.getTime()) ? null : d;
+        }
+
+        function rangeSeconds(range) {
+            if (!range) return 0;
+            var a = parseRangeToken(range.start);
+            var b = parseRangeToken(range.end);
+            if (!a || !b) return 0;
+            return Math.max(0, Math.floor((b.getTime() - a.getTime()) / 1000));
+        }
+
+        /* NetworkDashboard's GetModemHistoryForGraph expects fromDate/toDate
+           in dd-MM-yyyy form (no time component). Reslice our internal
+           ddMMyyyy_HHmmss token into that shape. */
+        function toDdMmYyyy(rangeToken) {
+            if (!rangeToken || rangeToken.length < 8) return '';
+            return rangeToken.substr(0, 2) + '-' +
+                rangeToken.substr(2, 2) + '-' +
+                rangeToken.substr(4, 4);
+        }
+
+        /* Format seconds compactly — "2d 5h", "5h 12m", "45m", "23s".
+           Never returns more than two units, so the block stays compact. */
+        function formatDuration(seconds) {
+            if (seconds == null || isNaN(seconds) || seconds < 0) return '—';
+            var s = Math.floor(seconds);
+            if (s === 0) return '0m';
+            var d = Math.floor(s / 86400); s %= 86400;
+            var h = Math.floor(s / 3600); s %= 3600;
+            var m = Math.floor(s / 60);
+            var parts = [];
+            if (d) parts.push(d + 'd');
+            if (h) parts.push(h + 'h');
+            if (m && parts.length < 2) parts.push(m + 'm');
+            if (!parts.length) parts.push('<1m');
+            return parts.join(' ');
+        }
+
+        function paintEmpty() {
+            paintBlock('rdpmsLmhIoTWired', null, 0);
+            paintBlock('rdpmsLmhIoTWireless', null, 0);
+            paintBlock('rdpmsLmhNetWired', null, 0);
+            paintBlock('rdpmsLmhNetWireless', null, 0);
+            $('#rdpmsLmhIoTTotal').text('— devices');
+            $('#rdpmsLmhNetTotal').text('— devices');
+        }
+
+        /* ── Fire history requests for every (site, cluster) pair.
+              Runs sequentially:
+                 1. dates from parent form
+                 2. clusters via GetCardLineData per selected site
+                 3. history calls per (site, cluster) pair
+                 4. aggregate + paint
+        ── */
+        function lmhFetch() {
+            var siteIds = getSelectedSiteIds();
+
+            if (!siteIds.length) {
+                setStatus('No station selected', 'is-error');
+                $('#rdpmsLmhStationCount').text('0 stations');
+                $('#rdpmsLmhClusterCount').text('0 clusters');
+                $('#rdpmsLmhRangeSummary').text('Range: —');
+                progressHide();
+                paintEmpty();
+                return;
+            }
+
+            var range = getDateRange();
+            if (!range.start || !range.end) {
+                setStatus('Date range unavailable', 'is-error');
+                $('#rdpmsLmhRangeSummary').text('Range: —');
+                progressHide();
+                paintEmpty();
+                return;
+            }
+
+            if (_lmhRequestRunning) return;
+            _lmhRequestRunning = true;
+
+            setStatus('Discovering clusters…', 'is-loading');
+            progressIndeterminate();
+
+            fetchSiteClusterPairs(siteIds).done(function (pairs) {
+                if (!pairs || !pairs.length) {
+                    _lmhRequestRunning = false;
+                    progressHide();
+                    setStatus('No clusters found for selected stations', 'is-error');
+                    $('#rdpmsLmhStationCount').text(siteIds.length + (siteIds.length === 1 ? ' station' : ' stations'));
+                    $('#rdpmsLmhClusterCount').text('0 clusters');
+                    $('#rdpmsLmhRangeSummary').text(
+                        'Range: ' + prettyRange(range.start) + ' → ' + prettyRange(range.end)
+                    );
+                    paintEmpty();
+                    return;
+                }
+
+                /* Two API calls per pair — one modem history, one a10 history. */
+                progressReset(pairs.length * 2);
+                setStatus('Loading history… 0 / ' + (pairs.length * 2), 'is-loading');
+
+                /* Extract the array payload from either a raw JSON array
+                   response or a wrapped { Data / data / Result } envelope. */
+                function unwrapArrayPayload(d) {
+                    if ($.isArray(d)) return d;
+                    if (d && $.isArray(d.Data)) return d.Data;
+                    if (d && $.isArray(d.data)) return d.data;
+                    if (d && $.isArray(d.Result)) return d.Result;
+                    if (d && $.isArray(d.result)) return d.result;
+                    return [];
+                }
+
+                /* Shared helper: run one ajax call, tick the progress bar
+                   whether it succeeds or fails, and always resolve with an
+                   array so downstream aggregation stays branch-free. */
+                function fetchHistory(url, params) {
+                    var jqxhr = $.ajax({
+                        url: url,
+                        type: 'GET',
+                        data: params,
+                        dataType: 'json'
+                    });
+                    jqxhr.always(progressStep);
+                    return jqxhr.then(
+                        function (d) { return unwrapArrayPayload(d); },
+                        function () { return []; }
+                    );
+                }
+
+                /* A10 (IoT) history — proxied through our FRS25 controller,
+                   backed by {ProxyBaseUrl}/api/ModemHistory/A10. Dates in
+                   ddMMyyyy_HHmmss form. */
+                function fetchA10History(pair) {
+                    return fetchHistory('/FRS25/RDPMSHealthLive/GetA10History', {
+                        siteId: pair.siteId,
+                        clusterId: pair.clusterId,
+                        startDate: range.start,
+                        endDate: range.end
+                    });
+                }
+
+                /* Modem (Network) history — reuses the existing NetworkDashboard
+                   endpoint (which internally calls Product/GetModemHistory).
+                   Only clusterId + dd-MM-yyyy dates are required. */
+                function fetchModemHistory(pair) {
+                    return fetchHistory('/FRS25/RDPMSHealthLive/GetModemHistoryForGraph', {
+                        clusterId: pair.clusterId,
+                        fromDate: toDdMmYyyy(range.start),
+                        toDate: toDdMmYyyy(range.end)
+                    });
+                }
+
+                var modemPromises = pairs.map(fetchModemHistory);
+                var a10Promises = pairs.map(fetchA10History);
+
+                $.when.apply($, modemPromises.concat(a10Promises))
+                    .done(function () {
+                        var args = Array.prototype.slice.call(arguments);
+                        var pairCount = pairs.length;
+                        var totalCalls = modemPromises.length + a10Promises.length;
+
+                        var modemEntries = [];
+                        var a10Entries = [];
+
+                        if (totalCalls === 1) {
+                            /* pairCount=1 & only one API called — degenerate. */
+                            var only = $.isArray(args[0]) ? args[0] : [];
+                            modemEntries = only;
+                        } else if (pairCount === 1) {
+                            /* Two promises, jQuery still passes them as separate
+                               args (first modem, then a10). */
+                            modemEntries = $.isArray(args[0]) ? args[0] : [];
+                            a10Entries = $.isArray(args[1]) ? args[1] : [];
+                        } else {
+                            for (var i = 0; i < pairCount; i++) {
+                                var mArr = args[i];
+                                var aArr = args[i + pairCount];
+                                if ($.isArray(mArr)) modemEntries = modemEntries.concat(mArr);
+                                if ($.isArray(aArr)) a10Entries = a10Entries.concat(aArr);
+                            }
+                        }
+
+                        lmhApply(modemEntries, a10Entries, siteIds.length, pairCount, range);
+                        progressDone();
+                    })
+                    .fail(function () {
+                        setStatus('History fetch failed', 'is-error');
+                        progressHide();
+                    })
+                    .always(function () {
+                        _lmhRequestRunning = false;
+                    });
+            }).fail(function () {
+                _lmhRequestRunning = false;
+                progressHide();
+                setStatus('Cluster lookup failed', 'is-error');
+                paintEmpty();
+            });
+        }
+
+        function lmhApply(modemEntries, a10Entries, siteCount, clusterCount, range) {
+            /* One-time DevTools dump so response shape mismatches surface. */
+            diagOnce('modem', modemEntries);
+            diagOnce('a10', a10Entries);
+
+            /* TypeId mapping per product spec:
+                 IoT (A10):     TypeId 1 = Wired, TypeId 2 = Wireless
+                 Network (Modem): TypeId 3 = Wired, TypeId 2 = Wireless
+               Any other TypeId in the response is intentionally ignored so
+               unrelated channels can't skew a channel's uptime%. */
+            var A10_WIRED_TYPES = [1];
+            var A10_WIRELESS_TYPES = [2];
+            var MODEM_WIRED_TYPES = [3];
+            var MODEM_WIRELESS_TYPES = [2];
+
+            var modemAllowed = MODEM_WIRED_TYPES.concat(MODEM_WIRELESS_TYPES);
+            var a10Allowed = A10_WIRED_TYPES.concat(A10_WIRELESS_TYPES);
+
+            var modemCls = classifyRecords(modemEntries, modemAllowed, 'Modem');
+            var a10Cls = classifyRecords(a10Entries, a10Allowed, 'A10');
+
+            var windowSecs = rangeSeconds(range);
+
+            /* IoT (A10) */
+            paintBlock('rdpmsLmhIoTWired',
+                bucketFromByType(a10Cls.byType, A10_WIRED_TYPES), windowSecs);
+            paintBlock('rdpmsLmhIoTWireless',
+                bucketFromByType(a10Cls.byType, A10_WIRELESS_TYPES), windowSecs);
+            var iotDeviceCount = Object.keys(a10Cls.devices).length;
+            $('#rdpmsLmhIoTTotal').text(iotDeviceCount + (iotDeviceCount === 1 ? ' device' : ' devices'));
+
+            /* Network (Modem) */
+            paintBlock('rdpmsLmhNetWired',
+                bucketFromByType(modemCls.byType, MODEM_WIRED_TYPES), windowSecs);
+            paintBlock('rdpmsLmhNetWireless',
+                bucketFromByType(modemCls.byType, MODEM_WIRELESS_TYPES), windowSecs);
+            var netDeviceCount = Object.keys(modemCls.devices).length;
+            $('#rdpmsLmhNetTotal').text(netDeviceCount + (netDeviceCount === 1 ? ' device' : ' devices'));
+
+            markComplete(siteCount, clusterCount, range);
+        }
+
+        /* Manual refresh button (history for a fixed range doesn't need a
+           timer — but a manual retry is useful on transient failures). */
+        $(document).on('click', '#rdpmsLmhRefreshBtn', function (e) {
+            e.preventDefault();
+            lmhFetch();
+        });
+
+        /* Kick off once the partial is rendered. */
+        $(function () { lmhFetch(); });
+
+    }(jQuery));
 </script>

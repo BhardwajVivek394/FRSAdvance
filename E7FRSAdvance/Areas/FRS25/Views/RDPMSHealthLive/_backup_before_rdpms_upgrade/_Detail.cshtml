@@ -1,0 +1,1422 @@
+﻿@model Domain.RDPMSHealthLiveLister
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+<style>
+    /* ===== CUSTOM CHART STYLES ===== */
+    .rdpms-chart-panel {
+        padding: 24px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        margin: 0 0 20px;
+    }
+
+    .rdpms-chart-section-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0 0 16px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .rdpms-chart-title {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #555;
+        font-style: italic;
+    }
+
+    /* Legend */
+    .rdpms-legend {
+        display: flex;
+        justify-content: center;
+        gap: 24px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+    }
+
+    .rdpms-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    .rdpms-legend-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        flex-shrink: 0;
+    }
+
+    .rdpms-legend-text {
+        font-size: 12px;
+        color: #475569;
+    }
+
+    /* Pie Grid */
+    .rdpms-pie-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 30px 20px;
+        margin-bottom: 16px;
+    }
+
+    .rdpms-pie-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .rdpms-pie-total-label {
+        font-size: 13px;
+        color: #444;
+        font-weight: 500;
+        margin-bottom: 8px;
+        text-align: center;
+    }
+
+    .rdpms-pie-container {
+        position: relative;
+        width: 160px;
+        height: 160px;
+        cursor: pointer;
+    }
+
+    .rdpms-pie-svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    .rdpms-pie-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%,-50%);
+        text-align: center;
+        pointer-events: none;
+    }
+
+    .rdpms-pie-total-val {
+        font-size: 20px;
+        font-weight: 700;
+        color: #1e293b;
+        line-height: 1;
+    }
+
+    .rdpms-pie-total-sub {
+        font-size: 9px;
+        color: #888;
+        margin-top: 2px;
+    }
+
+    .rdpms-pie-info {
+        text-align: center;
+        margin-top: 10px;
+    }
+
+    .rdpms-pie-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: #1e293b;
+        max-width: 160px;
+        word-break: break-word;
+    }
+
+    .rdpms-pie-sub-name {
+        font-size: 10px;
+        color: #64748b;
+    }
+
+    /* Bar Chart */
+    .rdpms-bar-outer {
+        display: flex;
+        align-items: flex-end;
+        position: relative;
+        height: 320px;
+        margin-left: 58px;
+        margin-bottom: 140px;
+        border-left: 1px solid #555;
+        border-bottom: 1px solid #555;
+    }
+
+    .rdpms-bar-y-axis {
+        position: absolute;
+        left: -50px;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column-reverse;
+        justify-content: space-between;
+        pointer-events: none;
+    }
+
+    .rdpms-bar-y-tick {
+        font-size: 11px;
+        color: #555;
+        text-align: right;
+        width: 24px;
+        position: relative;
+    }
+
+        .rdpms-bar-y-tick::after {
+            content: '';
+            position: absolute;
+            right: -8px;
+            top: 50%;
+            width: 5px;
+            height: 1px;
+            background: #555;
+        }
+
+    .rdpms-bar-y-label {
+        position: absolute;
+        left: -55px;
+        top: 50%;
+        transform: rotate(-90deg) translateX(50%);
+        font-size: 12px;
+        color: #333;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .rdpms-bar-grid-line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: #e5e7eb;
+        pointer-events: none;
+    }
+
+    .rdpms-bar-bars-container {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-around;
+        width: 100%;
+        height: 100%;
+        padding: 0 10px;
+    }
+
+    .rdpms-bar-group {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+
+    .rdpms-bar-wrapper {
+        display: flex;
+        flex-direction: column-reverse;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .rdpms-bar-seg {
+        width: 44px;
+    }
+
+    .rdpms-bar-total-label {
+        position: absolute;
+        top: -20px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 11px;
+        font-weight: 600;
+        color: #333;
+        white-space: nowrap;
+    }
+
+    .rdpms-bar-x-label {
+        position: absolute;
+        bottom: -138px;
+        left: 50%;
+        transform: translateX(-50%) rotate(-40deg);
+        transform-origin: top left;
+        font-size: 9px;
+        color: #555;
+        line-height: 1.4;
+        white-space: nowrap;
+        font-weight: 600;
+    }
+
+    /* Canvas graph */
+    #rdpmsLineCanvas1, #rdpmsLineCanvas2 {
+        cursor: crosshair;
+    }
+
+    /* Pager */
+    .rdpms-pager-wrap {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border-top: 1px solid #e5e7eb;
+        margin-top: 12px;
+    }
+
+    .rdpms-pager-info {
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    /* No data */
+    .rdpms-no-data {
+        height: 280px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #94a3b8;
+        font-size: 15px;
+    }
+
+        .rdpms-no-data i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: #cbd5e1;
+        }
+
+    /* Parallel row — Count left, Availability right */
+    .rdpms-parallel-row {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+        align-items: flex-start;
+    }
+
+        .rdpms-parallel-row .rdpms-chart-panel {
+            flex: 1;
+            min-width: 0; /* allow shrink below natural width */
+            margin-bottom: 0;
+        }
+        /* Pie grid uses 2-col inside parallel panels (3-col too cramped at 50%) */
+        .rdpms-parallel-row .rdpms-pie-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    /* Bar inside parallel: keep chart height, allow horizontal scroll */
+    /* Tooltip */
+    .rdpms-tooltip {
+        display: none;
+        position: fixed;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 12px 16px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        font-size: 12px;
+        min-width: 200px;
+        max-height: 320px;
+        overflow-y: auto;
+        z-index: 99999;
+        pointer-events: none;
+    }
+
+        .rdpms-tooltip.show {
+            display: block;
+        }
+
+    .rdpms-tt-title {
+        font-weight: 700;
+        font-size: 13px;
+        color: #1e293b;
+        margin-bottom: 2px;
+    }
+
+    .rdpms-tt-sub {
+        font-size: 11px;
+        color: #64748b;
+        margin-bottom: 8px;
+    }
+
+    .rdpms-tt-divider {
+        border-top: 1px solid #f0f0f0;
+        padding-top: 8px;
+    }
+
+    .rdpms-tt-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 5px;
+        font-size: 12px;
+    }
+
+    .rdpms-tt-swatch {
+        width: 11px;
+        height: 11px;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+</style>
+
+<div class="table-border">
+    <div class="row">
+        <div class="col">
+
+            <!-- List View -->
+            <div id="listView">
+                <div class="row">
+                    <div class="col-6">
+                        <div id="selectedRangeBar" style="display:flex;align-items:center;gap:0;background:linear-gradient(135deg,#f0f4ff 0%,#e8f2ff 100%);border:1.5px solid #c7d8f8;border-radius:10px;padding:10px 20px;margin-top:10px;margin-bottom:10px;box-shadow:0 2px 8px rgba(59,130,246,0.08);width:fit-content;min-width:420px;position:relative;margin-left:10px;">
+                            <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#3b82f6,#6366f1);border-radius:10px 0 0 10px;"></div>
+                            <div style="display:flex;align-items:center;gap:10px;padding-left:8px;">
+                                <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;">From</span>
+                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                    <span id="dispFromDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:75px;letter-spacing:0.01em;">—</span>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" /><path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                    <span id="dispFromTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:42px;letter-spacing:0.01em;">—</span>
+                                </div>
+                            </div>
+                            <div style="margin:0 14px;display:flex;align-items:center;color:#94a3b8;">
+                                <svg width="22" height="12" viewBox="0 0 22 12" fill="none"><path d="M1 6h18M14 1l5 5-5 5" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:10px;">
+                                <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:#6b7280;text-transform:uppercase;">To</span>
+                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                    <span id="dispToDate" style="font-size:13px;font-weight:600;color:#1e293b;min-width:75px;letter-spacing:0.01em;">—</span>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#6366f1" stroke-width="1.4" /><path d="M8 4.5V8l2.5 2" stroke="#6366f1" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                    <span id="dispToTime" style="font-size:13px;font-weight:600;color:#1e293b;min-width:42px;letter-spacing:0.01em;">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="d-flex justify-content-end px-md-3 px-2 py-2">
+                            <div class="dropdown">
+                                <button class="btn btn-inactive" id="btnPerformanceDownload" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Download">
+                                    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;">
+                                        <path d="M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12"></path>
+                                    </svg>
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnPerformanceDownload" style="min-width:130px;">
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()"><i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel</a>
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()"><i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="table-responsive">
+                            <table class="table table-hover" id="tblRDPMSHealthSummary">
+                                <thead class="thead-light2">
+                                    <tr>
+                                        <th>Sr.No</th>
+                                        <th>Zone</th>
+                                        <th>Division</th>
+                                        <th>Station</th>
+                                        <th>Asset Type</th>
+                                        <th class="text-center">Total number of Sensors</th>
+                                        <th class="text-center">% Availability of Sensors</th>
+                                        <th class="text-center">Total Number of IOTs</th>
+                                        <th class="text-center">% Availability of IOTs</th>
+                                        <th class="text-center">Total Number of Network</th>
+                                        <th class="text-center">% Availability of Network</th>
+                                        <th class="text-center">Total Number of Station Gateway</th>
+                                        <th class="text-center">% Availability of station gateway</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
+                                    {
+                                        int counter = 0;
+                                        foreach (var item in Model.mAssets
+                                            .GroupBy(x => new { x.Zone, x.Division, x.SiteId, x.SiteName, x.AssetTypeId, x.AssetTypeName })
+                                            .Select(x => x.Key).ToList())
+                                        {
+                                            counter++;
+                                            var mAssetInfos = Model.mAssetInfos.Where(x => x.SiteId == item.SiteId && x.AssetTypeId == item.AssetTypeId).ToList();
+                                            int totalIoTSensors = 0, totalNetworkSensors = 0;
+                                            List<string> ioTSensors = new List<string>(), networkSensors = new List<string>();
+                                            var assets = Model.mAssets.Where(x => x.SiteId == item.SiteId && x.AssetTypeId == item.AssetTypeId).ToList();
+                                            if (assets != null && assets.Count > 0)
+                                            {
+                                                foreach (var asset in assets)
+                                                {
+                                                    if (!string.IsNullOrEmpty(asset.ModemIdStr))
+                                                    {
+                                                        foreach (var modem in asset.ModemIdStr.Split(',')) { if (!networkSensors.Contains(modem)) { networkSensors.Add(modem); totalNetworkSensors++; } }
+                                                    }
+                                                    if (!string.IsNullOrEmpty(asset.A10IdStr))
+                                                    {
+                                                        foreach (var modem in asset.A10IdStr.Split(',')) { if (!ioTSensors.Contains(modem)) { ioTSensors.Add(modem); totalIoTSensors++; } }
+                                                    }
+                                                }
+                                            }
+                                            decimal network = 0m, iot = 0m;
+                                            if (networkSensors.Count > 0) { var modemHistories = Model.mModemHistories.Where(x => x.SiteId == item.SiteId && x.TypeId == 2 && networkSensors.Contains(x.DeviceId)).ToList(); if (modemHistories.Count > 0) { network = E7FRSAdvance.Utility.ExtensionMethod.CalculateAvailability(modemHistories); } }
+                                            if (ioTSensors.Count > 0) { var modemHistoriesA10 = Model.mA10Histories.Where(x => x.SiteId == item.SiteId && x.TypeId == 2 && ioTSensors.Contains(x.DeviceId)).ToList(); if (modemHistoriesA10.Count > 0) { iot = E7FRSAdvance.Utility.ExtensionMethod.CalculateAvailability(modemHistoriesA10); } }
+                                            <tr>
+                                                <td>@counter</td>
+                                                <td>@item.Zone</td>
+                                                <td>@item.Division</td>
+                                                <td>@item.SiteName</td>
+                                                <td>@item.AssetTypeName</td>
+                                                <td class="text-center">@mAssetInfos.Count</td>
+                                                <td class="text-center"></td>
+                                                <td class="text-center">@totalIoTSensors</td>
+                                                <td class="text-center">@iot</td>
+                                                <td class="text-center">@totalNetworkSensors</td>
+                                                <td class="text-center">@network</td>
+                                                <td class="text-center">1</td>
+                                                <td class="text-center"></td>
+                                            </tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr><td colspan="13" class="text-center text-muted py-4"><i class="fas fa-inbox fa-2x mb-2"></i><br />No records found.</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="px-md-4 px-2">
+                            <nav>
+                                <ul class="pagination justify-content-end mt-3" id="pager">
+                                    <li class="page-item" data-page="prev"><a class="page-link" href="#">Previous</a></li>
+                                    <li class="page-item" data-page="next"><a class="page-link" href="#">Next</a></li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Container -->
+            <div id="rdpmsChartContainer" style="display:none; padding:10px 0;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Shared Tooltip -->
+<div class="rdpms-tooltip" id="rdpmsTooltip"></div>
+
+<script>
+    // ==========================================================================
+    // PAGINATION
+    // ==========================================================================
+    (function () {
+        var rowsPerPage = 10;
+        var $rows = $('#tblRDPMSHealthSummary tbody tr').filter(function () { return !$(this).find('td[colspan]').length; });
+        var totalRows = $rows.length;
+        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var currentPage = 1;
+        var $pager = $('#pager');
+
+        function showPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            $rows.hide().slice((page - 1) * rowsPerPage, page * rowsPerPage).show();
+            renderPager();
+        }
+
+        function renderPager() {
+            $pager.find('.page-number,.ellipsis').remove();
+            function addPage(p) {
+                $('<li class="page-item page-number ' + (p === currentPage ? 'active' : '') + '"><a class="page-link" href="#">' + p + '</a></li>').insertBefore($pager.find('[data-page="next"]'));
+            }
+            function addEllipsis() {
+                $('<li class="page-item disabled ellipsis"><span class="page-link">...</span></li>').insertBefore($pager.find('[data-page="next"]'));
+            }
+            for (var i = 1; i <= Math.min(3, totalPages); i++) addPage(i);
+            if (currentPage > 5) addEllipsis();
+            for (var i = currentPage - 1; i <= currentPage + 1; i++) { if (i > 3 && i < totalPages - 2) addPage(i); }
+            if (currentPage < totalPages - 4) addEllipsis();
+            for (var i = Math.max(totalPages - 2, 4); i <= totalPages; i++) addPage(i);
+            $pager.find('[data-page="prev"]').toggleClass('disabled', currentPage === 1);
+            $pager.find('[data-page="next"]').toggleClass('disabled', currentPage === totalPages);
+        }
+
+        $pager.on('click', '.page-link', function (e) {
+            e.preventDefault();
+            var $li = $(this).parent();
+            if ($li.hasClass('disabled') || $li.hasClass('active')) return;
+            if ($li.data('page') === 'prev') showPage(currentPage - 1);
+            else if ($li.data('page') === 'next') showPage(currentPage + 1);
+            else showPage(parseInt($(this).text()));
+        });
+        window.goToPage = function (p) { showPage(p); };
+        if (totalRows > 0) showPage(1);
+    })();
+
+    // ==========================================================================
+    // GLOBALS
+    // ==========================================================================
+    // 4 fixed device-type colors
+    var RDPMS_COLORS = {
+        sensors: '#6366f1', iot: '#22c55e', network: '#3b82f6', gateway: '#f97316'
+    };
+    var RDPMS_LABELS = { sensors: 'Sensors', iot: 'IOTs', network: 'Network', gateway: 'Gateway' };
+
+    // Pie state — station-wise (Total Count)
+    var _rdpmsStPieItems = [], rdpmsStPiePage = 1, RDPMS_PIE_PER_PAGE = 6;
+    // Pie state — asset-type-wise (Total Count)
+    var _rdpmsAtPieItems = [], rdpmsAtPiePage = 1;
+    // Pie state — station-wise (Availability %)
+    var _rdpmsStAvailPieItems = [], rdpmsStAvailPiePage = 1;
+    // Pie state — asset-type-wise (Availability %)
+    var _rdpmsAtAvailPieItems = [], rdpmsAtAvailPiePage = 1;
+    // Bar state — availability % grouped
+    var rdpmsBarAvailPage = 1;
+
+    // Bar state — station-wise stacked
+    var _rdpmsBarStations = [], _rdpmsBarMatrix = {}, _rdpmsBarStationMeta = {};
+    var rdpmsBarPage = 1, RDPMS_BAR_PER_PAGE = 8;
+
+    // Graph state — Canvas
+    var _rdpmsLineSites = [], _rdpmsLineSiteMeta = {}, _rdpmsLineMatrix = {};
+    // 4 fixed series for graph
+    var RDPMS_SERIES = [
+        { key: 'sensors', label: 'Sensors', color: '#6366f1' },
+        { key: 'iot', label: 'IOTs', color: '#22c55e' },
+        { key: 'network', label: 'Network Devices', color: '#3b82f6' },
+        { key: 'gateway', label: 'Gateways', color: '#f97316' }
+    ];
+
+    // ==========================================================================
+    // PCT NORMALIZER — CalculateAvailability returns 0–1 fractions; convert to 0–100
+    // ==========================================================================
+    function normalizePct(v) {
+        if (!v || isNaN(v)) return 0;
+        // If value is a fraction (0–1), multiply to get percentage
+        return (v > 0 && v <= 1) ? Math.round(v * 10000) / 100 : v;
+    }
+
+    // ==========================================================================
+    // EXTRACT DATA FROM TABLE
+    // Cols: 0=Sr 1=Zone 2=Div 3=Station 4=AssetType
+    //       5=TotalSensors 6=%Sensors 7=TotalIOT 8=%IOT
+    //       9=TotalNetwork 10=%Network 11=TotalGateway 12=%Gateway
+    // ==========================================================================
+    function extractRdpmsData() {
+        var data = { rows: [], stationOrder: [], stationMeta: {}, stationMatrix: {}, assetTypeOrder: [], assetTypeMatrix: {} };
+        var siteSet = {}, atSet = {};
+
+        $('#tblRDPMSHealthSummary tbody tr').each(function () {
+            var $tds = $(this).find('td');
+            if ($tds.length < 13 || $(this).find('td[colspan]').length) return;
+
+            var zone = $.trim($tds.eq(1).text());
+            var division = $.trim($tds.eq(2).text());
+            var station = $.trim($tds.eq(3).text());
+            var assetType = $.trim($tds.eq(4).text());
+            var sensors = parseInt($.trim($tds.eq(5).text())) || 0;
+            var iot = parseInt($.trim($tds.eq(7).text())) || 0;
+            var network = parseInt($.trim($tds.eq(9).text())) || 0;
+            var gateway = parseInt($.trim($tds.eq(11).text())) || 0;
+            var pctIot = normalizePct(parseFloat($.trim($tds.eq(8).text())) || 0);
+            var pctNet = normalizePct(parseFloat($.trim($tds.eq(10).text())) || 0);
+            var pctGw = normalizePct(parseFloat($.trim($tds.eq(12).text())) || 0);
+
+            data.rows.push({ zone: zone, division: division, station: station, assetType: assetType, sensors: sensors, iot: iot, network: network, gateway: gateway, pctIot: pctIot, pctNet: pctNet, pctGw: pctGw });
+
+            // Station key = station + assetType to keep rows unique
+            var stKey = station + ' (' + assetType + ')';
+            if (!siteSet[stKey]) {
+                siteSet[stKey] = true;
+                data.stationOrder.push(stKey);
+                data.stationMeta[stKey] = { zone: zone, division: division, assetType: assetType, station: station };
+                data.stationMatrix[stKey] = { sensors: 0, iot: 0, network: 0, gateway: 0, pctIot: [], pctNet: [], pctGw: [] };
+            }
+            var sm = data.stationMatrix[stKey];
+            sm.sensors += sensors; sm.iot += iot; sm.network += network; sm.gateway += gateway;
+            if (pctIot > 0) sm.pctIot.push(pctIot);
+            if (pctNet > 0) sm.pctNet.push(pctNet);
+            if (pctGw > 0) sm.pctGw.push(pctGw);
+
+            // Asset type
+            if (!atSet[assetType]) {
+                atSet[assetType] = true;
+                data.assetTypeOrder.push(assetType);
+                data.assetTypeMatrix[assetType] = { sensors: 0, iot: 0, network: 0, gateway: 0, pctIot: [], pctNet: [], pctGw: [] };
+            }
+            var am = data.assetTypeMatrix[assetType];
+            am.sensors += sensors; am.iot += iot; am.network += network; am.gateway += gateway;
+            if (pctIot > 0) am.pctIot.push(pctIot);
+            if (pctNet > 0) am.pctNet.push(pctNet);
+            if (pctGw > 0) am.pctGw.push(pctGw);
+        });
+
+        return data;
+    }
+
+    // ==========================================================================
+    // SHARED BOOTSTRAP PAGER
+    // ==========================================================================
+    function renderRdpmsPager(selector, currentPg, totalPgs, totalRec, showFrom, showTo, onPageClick) {
+        var $wrap = $(selector).empty();
+        $wrap.append('<div class="rdpms-pager-info">Showing <strong>' + showFrom + '</strong> to <strong>' + showTo + '</strong> of <strong>' + totalRec + '</strong> records</div>');
+        var $ul = $('<ul class="pagination mb-0"></ul>');
+
+        var $prev = $('<li class="page-item' + (currentPg <= 1 ? ' disabled' : '') + '"><a class="page-link" href="javascript:void(0);"><i class="fas fa-chevron-left"></i> Previous</a></li>');
+        if (currentPg > 1) $prev.find('a').on('click', function () { onPageClick(currentPg - 1); });
+        $ul.append($prev);
+
+        var pages = [];
+        if (totalPgs <= 7) { for (var i = 1; i <= totalPgs; i++) pages.push(i); }
+        else {
+            pages.push(1);
+            if (currentPg > 3) pages.push('...');
+            for (var i = Math.max(2, currentPg - 1); i <= Math.min(totalPgs - 1, currentPg + 1); i++) { if (pages.indexOf(i) === -1) pages.push(i); }
+            if (currentPg < totalPgs - 2) pages.push('...');
+            if (pages.indexOf(totalPgs) === -1) pages.push(totalPgs);
+        }
+        pages.forEach(function (p) {
+            if (p === '...') { $ul.append('<li class="page-item disabled"><span class="page-link">...</span></li>'); }
+            else {
+                var $li = $('<li class="page-item' + (p === currentPg ? ' active' : '') + '"><a class="page-link" href="javascript:void(0);">' + p + '</a></li>');
+                if (p !== currentPg) { (function (pg) { $li.find('a').on('click', function () { onPageClick(pg); }); })(p); }
+                $ul.append($li);
+            }
+        });
+
+        var $next = $('<li class="page-item' + (currentPg >= totalPgs ? ' disabled' : '') + '"><a class="page-link" href="javascript:void(0);">Next <i class="fas fa-chevron-right"></i></a></li>');
+        if (currentPg < totalPgs) $next.find('a').on('click', function () { onPageClick(currentPg + 1); });
+        $ul.append($next);
+
+        $wrap.append($('<nav></nav>').append($ul));
+    }
+
+    // ==========================================================================
+    // TOOLTIP HELPERS
+    // ==========================================================================
+    function rdpmsShowTip(html, e) { $('#rdpmsTooltip').html(html).addClass('show'); rdpmsMoveTip(e); }
+    function rdpmsMoveTip(e) {
+        var $tt = $('#rdpmsTooltip');
+        var x = e.clientX + 16, y = e.clientY + 16;
+        if (x + 230 > window.innerWidth) x = e.clientX - 240;
+        if (y + $tt.outerHeight() > window.innerHeight) y = e.clientY - $tt.outerHeight() - 8;
+        $tt.css({ left: x + 'px', top: y + 'px' });
+    }
+    function rdpmsHideTip() { $('#rdpmsTooltip').removeClass('show'); }
+
+    function rdpmsDeviceTipRows(sensors, iot, network, gateway) {
+        return '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#6366f1"></span>Sensors: <strong>' + sensors + '</strong></div>' +
+            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IOTs: <strong>' + iot + '</strong></div>' +
+            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#3b82f6"></span>Network: <strong>' + network + '</strong></div>' +
+            '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Gateway: <strong>' + gateway + '</strong></div>';
+    }
+
+    // ==========================================================================
+    // NO DATA
+    // ==========================================================================
+    function rdpmsNoData() {
+        $('#rdpmsChartContainer').html('<div class="rdpms-chart-panel"><div class="rdpms-no-data"><i class="fas fa-chart-pie"></i><p>No data available for visualization.</p></div></div>');
+    }
+
+    // ==========================================================================
+    // LEGEND STRIP (4 device types)
+    // ==========================================================================
+    function buildRdpmsLegend() {
+        return '<div class="rdpms-legend">' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#6366f1"></div><span class="rdpms-legend-text">Sensors</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#22c55e"></div><span class="rdpms-legend-text">IOTs</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#3b82f6"></div><span class="rdpms-legend-text">Network</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#f97316"></div><span class="rdpms-legend-text">Gateway</span></div>' +
+            '</div>';
+    }
+
+    // ==========================================================================
+    // MAIN DISPATCHER
+    // ==========================================================================
+    function renderRdpmsView(view) {
+        if (!view || view === 'Table') {
+            $('#listView').show();
+            $('#rdpmsChartContainer').hide().empty();
+            return;
+        }
+        $('#listView').hide();
+        $('#rdpmsChartContainer').show().empty();
+
+        var data = extractRdpmsData();
+        if (!data.rows.length) { rdpmsNoData(); return; }
+
+        if (view === 'Pie') renderRdpmsPie(data);
+        else if (view === 'Bar') renderRdpmsBar(data);
+        else if (view === 'Graph') renderRdpmsGraph(data);
+    }
+
+    // ==========================================================================
+    // PIE — individual donuts
+    // Section 1: Station-wise   — Total Device Count
+    // Section 2: Asset Type-wise — Total Device Count
+    // Section 3: Station-wise   — % Availability (IOT / Network / Gateway)
+    // Section 4: Asset Type-wise — % Availability
+    // ==========================================================================
+    function renderRdpmsPie(data) {
+        function avgPct(arr) { return arr.length ? arr.reduce(function (a, b) { return a + b; }, 0) / arr.length : 0; }
+
+        // Total Count items
+        _rdpmsStPieItems = data.stationOrder.map(function (stKey) {
+            var m = data.stationMatrix[stKey], meta = data.stationMeta[stKey];
+            return {
+                key: stKey, label: meta.station, sub: meta.assetType, zone: meta.zone, division: meta.division,
+                sensors: m.sensors, iot: m.iot, network: m.network, gateway: m.gateway
+            };
+        });
+        _rdpmsAtPieItems = data.assetTypeOrder.map(function (at) {
+            var m = data.assetTypeMatrix[at];
+            return { key: at, label: at, sub: '', sensors: m.sensors, iot: m.iot, network: m.network, gateway: m.gateway };
+        });
+
+        // Availability % items
+        _rdpmsStAvailPieItems = data.stationOrder.map(function (stKey) {
+            var m = data.stationMatrix[stKey], meta = data.stationMeta[stKey];
+            return {
+                key: stKey, label: meta.station, sub: meta.assetType, zone: meta.zone, division: meta.division,
+                pctIot: avgPct(m.pctIot), pctNet: avgPct(m.pctNet), pctGw: avgPct(m.pctGw)
+            };
+        });
+        _rdpmsAtAvailPieItems = data.assetTypeOrder.map(function (at) {
+            var m = data.assetTypeMatrix[at];
+            return {
+                key: at, label: at, sub: '',
+                pctIot: avgPct(m.pctIot || []), pctNet: avgPct(m.pctNet || []), pctGw: avgPct(m.pctGw || [])
+            };
+        });
+
+        var $c = $('#rdpmsChartContainer').empty();
+
+        // ── Row 1: Station-wise Count | Station-wise Availability — parallel ──
+        var $row1 = $('<div class="rdpms-parallel-row"></div>');
+
+        var $p1 = $('<div class="rdpms-chart-panel"></div>');
+        $p1.append('<div class="rdpms-chart-section-title"><i class="fas fa-map-marker-alt" style="color:#6366f1;"></i>Station-wise — Total Device Count</div>');
+        $p1.append(buildRdpmsLegend());
+        $p1.append('<div class="rdpms-pie-grid" id="rdpmsStPieGrid"></div>');
+        $p1.append('<div class="rdpms-pager-wrap" id="rdpmsStPiePager"></div>');
+
+        var $p3 = $('<div class="rdpms-chart-panel"></div>');
+        $p3.append('<div class="rdpms-chart-section-title"><i class="fas fa-signal" style="color:#22c55e;"></i>Station-wise — % Availability (IOT / Network / Gateway)</div>');
+        $p3.append(buildRdpmsAvailLegend());
+        $p3.append('<div class="rdpms-pie-grid" id="rdpmsStAvailPieGrid"></div>');
+        $p3.append('<div class="rdpms-pager-wrap" id="rdpmsStAvailPiePager"></div>');
+
+        $row1.append($p1).append($p3);
+        $c.append($row1);
+        rdpmsStPiePage = 1; drawRdpmsStPiePage();
+        rdpmsStAvailPiePage = 1; drawRdpmsStAvailPiePage();
+
+        // ── Row 2: Asset Type-wise Count | Asset Type-wise Availability — parallel ──
+        var $row2 = $('<div class="rdpms-parallel-row"></div>');
+
+        var $p2 = $('<div class="rdpms-chart-panel"></div>');
+        $p2.append('<div class="rdpms-chart-section-title"><i class="fas fa-layer-group" style="color:#3b82f6;"></i>Asset Type-wise — Total Device Count</div>');
+        $p2.append(buildRdpmsLegend());
+        $p2.append('<div class="rdpms-pie-grid" id="rdpmsAtPieGrid"></div>');
+        $p2.append('<div class="rdpms-pager-wrap" id="rdpmsAtPiePager"></div>');
+
+        var $p4 = $('<div class="rdpms-chart-panel"></div>');
+        $p4.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#f97316;"></i>Asset Type-wise — % Availability (IOT / Network / Gateway)</div>');
+        $p4.append(buildRdpmsAvailLegend());
+        $p4.append('<div class="rdpms-pie-grid" id="rdpmsAtAvailPieGrid"></div>');
+        $p4.append('<div class="rdpms-pager-wrap" id="rdpmsAtAvailPiePager"></div>');
+
+        $row2.append($p2).append($p4);
+        $c.append($row2);
+        rdpmsAtPiePage = 1; drawRdpmsAtPiePage();
+        rdpmsAtAvailPiePage = 1; drawRdpmsAtAvailPiePage();
+    }
+
+    // Legend for Availability % pies
+    function buildRdpmsAvailLegend() {
+        return '<div class="rdpms-legend">' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#22c55e"></div><span class="rdpms-legend-text">IOT Availability</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#3b82f6"></div><span class="rdpms-legend-text">Network Availability</span></div>' +
+            '<div class="rdpms-legend-item"><div class="rdpms-legend-swatch" style="background:#f97316"></div><span class="rdpms-legend-text">Gateway Availability</span></div>' +
+            '</div>';
+    }
+
+    // Helper: donut for Total Device Count (4 segments)
+    function buildRdpmsPieItem(item) {
+        var total = item.sensors + item.iot + item.network + item.gateway;
+        if (total <= 0) total = 1;
+        var r = 54, circ = 2 * Math.PI * r;
+        var segs = [
+            { val: item.sensors, color: '#6366f1' },
+            { val: item.iot, color: '#22c55e' },
+            { val: item.network, color: '#3b82f6' },
+            { val: item.gateway, color: '#f97316' }
+        ];
+        var svg = '<svg class="rdpms-pie-svg" viewBox="0 0 180 180" style="transform:rotate(-90deg)">';
+        svg += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="#f0f0f0" stroke-width="52"/>';
+        var offset = 0;
+        segs.forEach(function (seg) {
+            if (seg.val <= 0) return;
+            var len = (seg.val / total) * circ;
+            svg += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="' + seg.color + '" stroke-width="52" stroke-dasharray="' + len + ' ' + (circ - len) + '" stroke-dashoffset="' + (-offset) + '"/>';
+            offset += len;
+        });
+        svg += '</svg>';
+
+        var $pi = $('<div class="rdpms-pie-item"></div>');
+        $pi.append('<div class="rdpms-pie-total-label">Total: ' + (item.sensors + item.iot + item.network + item.gateway) + '</div>');
+        var $cont = $('<div class="rdpms-pie-container"></div>').html(svg);
+        $cont.append('<div class="rdpms-pie-center"><div class="rdpms-pie-total-val">' + (item.sensors + item.iot + item.network + item.gateway) + '</div><div class="rdpms-pie-total-sub">devices</div></div>');
+        $cont.on('mouseenter', function (e) {
+            var html = '<div class="rdpms-tt-title">' + item.label + '</div>';
+            if (item.sub) html += '<div class="rdpms-tt-sub">' + item.sub + (item.division ? ' | ' + item.division + ', ' + item.zone : '') + '</div>';
+            html += '<div class="rdpms-tt-divider">' + rdpmsDeviceTipRows(item.sensors, item.iot, item.network, item.gateway) + '</div>';
+            rdpmsShowTip(html, e);
+        }).on('mousemove', rdpmsMoveTip).on('mouseleave', rdpmsHideTip);
+        var $info = $('<div class="rdpms-pie-info"></div>');
+        $info.append('<div class="rdpms-pie-name">' + item.label + '</div>');
+        if (item.sub) $info.append('<div class="rdpms-pie-sub-name">' + item.sub + '</div>');
+        return $pi.append($cont).append($info);
+    }
+
+    // Helper: donut for Availability % (3 segments: IOT / Network / Gateway)
+    // Each segment = its % value as proportion of the sum of all 3 pct values
+    function buildRdpmsAvailPieItem(item) {
+        var r = 54, circ = 2 * Math.PI * r;
+        var pctIot = item.pctIot || 0, pctNet = item.pctNet || 0, pctGw = item.pctGw || 0;
+        var segsSum = pctIot + pctNet + pctGw;
+        // Avg availability for center display
+        var activeCount = (pctIot > 0 ? 1 : 0) + (pctNet > 0 ? 1 : 0) + (pctGw > 0 ? 1 : 0);
+        var avgAvail = activeCount > 0 ? (segsSum / activeCount) : 0;
+        // Color the arc by performance: ≥80% green, 50-79% orange, <50% red
+        var avgColor = avgAvail >= 80 ? '#22c55e' : avgAvail >= 50 ? '#f97316' : '#f43f5e';
+
+        var svg = '<svg class="rdpms-pie-svg" viewBox="0 0 180 180" style="transform:rotate(-90deg)">';
+        svg += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="#f0f0f0" stroke-width="52"/>';
+
+        if (segsSum > 0) {
+            var segs = [
+                { val: pctIot, color: '#22c55e' },
+                { val: pctNet, color: '#3b82f6' },
+                { val: pctGw, color: '#f97316' }
+            ];
+            var offset = 0;
+            segs.forEach(function (seg) {
+                if (seg.val <= 0) return;
+                var len = (seg.val / segsSum) * circ;
+                svg += '<circle cx="90" cy="90" r="' + r + '" fill="none" stroke="' + seg.color + '" stroke-width="52" stroke-dasharray="' + len + ' ' + (circ - len) + '" stroke-dashoffset="' + (-offset) + '"/>';
+                offset += len;
+            });
+        }
+        svg += '</svg>';
+
+        var $pi = $('<div class="rdpms-pie-item"></div>');
+        $pi.append('<div class="rdpms-pie-total-label">Avg: ' + avgAvail.toFixed(1) + '%</div>');
+        var $cont = $('<div class="rdpms-pie-container"></div>').html(svg);
+        $cont.append('<div class="rdpms-pie-center"><div class="rdpms-pie-total-val" style="color:' + avgColor + ';font-size:18px;">' + avgAvail.toFixed(1) + '%</div><div class="rdpms-pie-total-sub">avg avail.</div></div>');
+
+        $cont.on('mouseenter', function (e) {
+            var html = '<div class="rdpms-tt-title">' + item.label + '</div>';
+            if (item.sub) html += '<div class="rdpms-tt-sub">' + item.sub + (item.division ? ' | ' + item.division + ', ' + item.zone : '') + '</div>';
+            html += '<div class="rdpms-tt-divider">';
+            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IOT Availability: <strong>' + pctIot.toFixed(2) + '%</strong></div>';
+            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#3b82f6"></span>Network Availability: <strong>' + pctNet.toFixed(2) + '%</strong></div>';
+            html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Gateway Availability: <strong>' + pctGw.toFixed(2) + '%</strong></div>';
+            html += '<div style="border-top:1px solid #f0f0f0;margin-top:6px;padding-top:6px;font-weight:600;color:' + avgColor + ';">Avg: ' + avgAvail.toFixed(2) + '%</div>';
+            html += '</div>';
+            rdpmsShowTip(html, e);
+        }).on('mousemove', rdpmsMoveTip).on('mouseleave', rdpmsHideTip);
+
+        var $info = $('<div class="rdpms-pie-info"></div>');
+        $info.append('<div class="rdpms-pie-name">' + item.label + '</div>');
+        if (item.sub) $info.append('<div class="rdpms-pie-sub-name">' + item.sub + '</div>');
+        return $pi.append($cont).append($info);
+    }
+
+    // Draw pages for all 4 pie sections
+    function drawRdpmsStPiePage() {
+        var start = (rdpmsStPiePage - 1) * RDPMS_PIE_PER_PAGE;
+        var items = _rdpmsStPieItems.slice(start, start + RDPMS_PIE_PER_PAGE);
+        var $grid = $('#rdpmsStPieGrid').empty();
+        items.forEach(function (item) { $grid.append(buildRdpmsPieItem(item)); });
+        var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsStPieItems.length);
+        renderRdpmsPager('#rdpmsStPiePager', rdpmsStPiePage, Math.ceil(_rdpmsStPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsStPieItems.length, s, e, function (pg) { rdpmsStPiePage = pg; drawRdpmsStPiePage(); });
+    }
+    function drawRdpmsAtPiePage() {
+        var start = (rdpmsAtPiePage - 1) * RDPMS_PIE_PER_PAGE;
+        var items = _rdpmsAtPieItems.slice(start, start + RDPMS_PIE_PER_PAGE);
+        var $grid = $('#rdpmsAtPieGrid').empty();
+        items.forEach(function (item) { $grid.append(buildRdpmsPieItem(item)); });
+        var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsAtPieItems.length);
+        renderRdpmsPager('#rdpmsAtPiePager', rdpmsAtPiePage, Math.ceil(_rdpmsAtPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsAtPieItems.length, s, e, function (pg) { rdpmsAtPiePage = pg; drawRdpmsAtPiePage(); });
+    }
+    function drawRdpmsStAvailPiePage() {
+        var start = (rdpmsStAvailPiePage - 1) * RDPMS_PIE_PER_PAGE;
+        var items = _rdpmsStAvailPieItems.slice(start, start + RDPMS_PIE_PER_PAGE);
+        var $grid = $('#rdpmsStAvailPieGrid').empty();
+        items.forEach(function (item) { $grid.append(buildRdpmsAvailPieItem(item)); });
+        var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsStAvailPieItems.length);
+        renderRdpmsPager('#rdpmsStAvailPiePager', rdpmsStAvailPiePage, Math.ceil(_rdpmsStAvailPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsStAvailPieItems.length, s, e, function (pg) { rdpmsStAvailPiePage = pg; drawRdpmsStAvailPiePage(); });
+    }
+    function drawRdpmsAtAvailPiePage() {
+        var start = (rdpmsAtAvailPiePage - 1) * RDPMS_PIE_PER_PAGE;
+        var items = _rdpmsAtAvailPieItems.slice(start, start + RDPMS_PIE_PER_PAGE);
+        var $grid = $('#rdpmsAtAvailPieGrid').empty();
+        items.forEach(function (item) { $grid.append(buildRdpmsAvailPieItem(item)); });
+        var s = start + 1, e = Math.min(start + RDPMS_PIE_PER_PAGE, _rdpmsAtAvailPieItems.length);
+        renderRdpmsPager('#rdpmsAtAvailPiePager', rdpmsAtAvailPiePage, Math.ceil(_rdpmsAtAvailPieItems.length / RDPMS_PIE_PER_PAGE), _rdpmsAtAvailPieItems.length, s, e, function (pg) { rdpmsAtAvailPiePage = pg; drawRdpmsAtAvailPiePage(); });
+    }
+
+    // ==========================================================================
+    // BAR
+    // Section 1: Station-wise Total Device Count (stacked)
+    // Section 2: Station-wise % Availability (grouped: IOT / Network / Gateway)
+    // ==========================================================================
+    function renderRdpmsBar(data) {
+        _rdpmsBarStations = data.stationOrder;
+        _rdpmsBarMatrix = data.stationMatrix;
+        _rdpmsBarStationMeta = data.stationMeta;
+
+        rdpmsBarPage = 1; rdpmsBarAvailPage = 1;
+        var $c = $('#rdpmsChartContainer').empty();
+
+        // ── Section 1: Total Count (Stacked) ──
+        var $panel1 = $('<div class="rdpms-chart-panel"></div>');
+        $panel1.append('<div class="rdpms-chart-section-title"><i class="fas fa-chart-bar" style="color:#6366f1;"></i>Station-wise — Total Device Count (Stacked)</div>');
+        $panel1.append(buildRdpmsLegend());
+        var $outer1 = $('<div style="position:relative;"></div>');
+        $outer1.append('<div class="rdpms-bar-y-label">Device Count</div>');
+        var $area1 = $('<div class="rdpms-bar-outer" id="rdpmsBarOuter"></div>');
+        $area1.append('<div class="rdpms-bar-y-axis" id="rdpmsBarYAxis"></div>');
+        $area1.append('<div class="rdpms-bar-bars-container" id="rdpmsBarBarsInner"></div>');
+        $outer1.append($area1); $panel1.append($outer1);
+        $panel1.append('<div class="rdpms-pager-wrap" id="rdpmsBarPager"></div>');
+        $c.append($panel1);
+        drawRdpmsBarPage();
+
+        // ── Section 2: Availability % (Grouped bars) ──
+        var $panel2 = $('<div class="rdpms-chart-panel"></div>');
+        $panel2.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#22c55e;"></i>Station-wise — % Availability (IOT / Network / Gateway)</div>');
+        $panel2.append(buildRdpmsAvailLegend());
+        var $outer2 = $('<div style="position:relative;"></div>');
+        $outer2.append('<div class="rdpms-bar-y-label">Availability %</div>');
+        var $area2 = $('<div class="rdpms-bar-outer" id="rdpmsBarAvailOuter" style="margin-bottom:140px;height:320px;"></div>');
+        $area2.append('<div class="rdpms-bar-y-axis" id="rdpmsBarAvailYAxis"></div>');
+        $area2.append('<div class="rdpms-bar-bars-container" id="rdpmsBarAvailBarsInner"></div>');
+        $outer2.append($area2); $panel2.append($outer2);
+        $panel2.append('<div class="rdpms-pager-wrap" id="rdpmsBarAvailPager"></div>');
+        $c.append($panel2);
+        drawRdpmsBarAvailPage();
+    }
+
+    // ── Section 1: Total Count (stacked) ──
+    function drawRdpmsBarPage() {
+        var startIdx = (rdpmsBarPage - 1) * RDPMS_BAR_PER_PAGE;
+        var pageStations = _rdpmsBarStations.slice(startIdx, startIdx + RDPMS_BAR_PER_PAGE);
+
+        var yMax = 1;
+        pageStations.forEach(function (stKey) {
+            var m = _rdpmsBarMatrix[stKey];
+            var t = m.sensors + m.iot + m.network + m.gateway;
+            if (t > yMax) yMax = t;
+        });
+        yMax = yMax + Math.max(1, Math.ceil(yMax * 0.1));
+        var chartH = 320, unitH = chartH / yMax;
+        var yStep = yMax <= 10 ? 1 : Math.ceil(yMax / 8);
+
+        var $yAxis = $('#rdpmsBarYAxis').empty();
+        for (var i = 0; i <= yMax; i += yStep) $yAxis.append('<div class="rdpms-bar-y-tick">' + i + '</div>');
+
+        $('#rdpmsBarOuter .rdpms-bar-grid-line').remove();
+        for (var g = yStep; g <= yMax; g += yStep) {
+            $('#rdpmsBarOuter').append('<div class="rdpms-bar-grid-line" style="bottom:' + (g / yMax * 100) + '%"></div>');
+        }
+
+        var $bars = $('#rdpmsBarBarsInner').empty();
+        pageStations.forEach(function (stKey) {
+            var m = _rdpmsBarMatrix[stKey];
+            var meta = _rdpmsBarStationMeta[stKey];
+            var stTotal = m.sensors + m.iot + m.network + m.gateway;
+            var $grp = $('<div class="rdpms-bar-group"></div>');
+            var $wrap = $('<div class="rdpms-bar-wrapper"></div>');
+            if (stTotal > 0) $wrap.append('<div class="rdpms-bar-total-label">' + stTotal + '</div>');
+            [{ val: m.sensors, color: '#6366f1' }, { val: m.iot, color: '#22c55e' }, { val: m.network, color: '#3b82f6' }, { val: m.gateway, color: '#f97316' }].forEach(function (seg) {
+                if (!seg.val) return;
+                $wrap.append('<div class="rdpms-bar-seg" style="height:' + (seg.val * unitH) + 'px;background:' + seg.color + ';opacity:0.9;"></div>');
+            });
+            var labelText = meta ? meta.station : stKey;
+            $grp.append('<div class="rdpms-bar-x-label">' + labelText + '</div>');
+            $wrap.on('mouseenter', function (e) {
+                var html = '<div class="rdpms-tt-title">' + labelText + '</div>';
+                if (meta) html += '<div class="rdpms-tt-sub">' + meta.assetType + ' | ' + meta.division + ', ' + meta.zone + '</div>';
+                html += '<div class="rdpms-tt-divider">' + rdpmsDeviceTipRows(m.sensors, m.iot, m.network, m.gateway);
+                html += '<div style="border-top:1px solid #f0f0f0;margin-top:6px;padding-top:6px;font-weight:600;">Total: ' + stTotal + '</div></div>';
+                rdpmsShowTip(html, e);
+            }).on('mousemove', rdpmsMoveTip).on('mouseleave', rdpmsHideTip);
+            $grp.prepend($wrap); $bars.append($grp);
+        });
+
+        var s = startIdx + 1, e = Math.min(startIdx + RDPMS_BAR_PER_PAGE, _rdpmsBarStations.length);
+        renderRdpmsPager('#rdpmsBarPager', rdpmsBarPage, Math.ceil(_rdpmsBarStations.length / RDPMS_BAR_PER_PAGE), _rdpmsBarStations.length, s, e, function (pg) { rdpmsBarPage = pg; drawRdpmsBarPage(); });
+    }
+
+    // ── Section 2: Availability % (grouped bars per station: IOT | Network | Gateway) ──
+    function drawRdpmsBarAvailPage() {
+        var startIdx = (rdpmsBarAvailPage - 1) * RDPMS_BAR_PER_PAGE;
+        var pageStations = _rdpmsBarStations.slice(startIdx, startIdx + RDPMS_BAR_PER_PAGE);
+
+        function avg(arr) { return arr.length ? arr.reduce(function (a, b) { return a + b; }, 0) / arr.length : 0; }
+
+        var yMax = 100; // always 0–100 for %
+        var chartH = 320, unitH = chartH / yMax;
+        var yStep = 10;
+
+        var $yAxis = $('#rdpmsBarAvailYAxis').empty();
+        for (var i = 0; i <= yMax; i += yStep) $yAxis.append('<div class="rdpms-bar-y-tick">' + i + '</div>');
+
+        $('#rdpmsBarAvailOuter .rdpms-bar-grid-line').remove();
+        for (var g = yStep; g <= yMax; g += yStep) {
+            $('#rdpmsBarAvailOuter').append('<div class="rdpms-bar-grid-line" style="bottom:' + (g / yMax * 100) + '%"></div>');
+        }
+
+        // Grouped bars: each station has 3 narrow bars side by side
+        var $bars = $('#rdpmsBarAvailBarsInner').empty();
+        var AVAIL_SEGS = [
+            { key: 'pctIot', label: 'IOT', color: '#22c55e' },
+            { key: 'pctNet', label: 'Network', color: '#3b82f6' },
+            { key: 'pctGw', label: 'Gateway', color: '#f97316' }
+        ];
+
+        pageStations.forEach(function (stKey) {
+            var m = _rdpmsBarMatrix[stKey];
+            var meta = _rdpmsBarStationMeta[stKey];
+            var labelText = meta ? meta.station : stKey;
+
+            var $grp = $('<div class="rdpms-bar-group" style="flex-direction:column;align-items:center;"></div>');
+
+            // Wrapper holds 3 side-by-side bars
+            var $groupWrap = $('<div style="display:flex;align-items:flex-end;gap:3px;cursor:pointer;position:relative;"></div>');
+
+            var pctIot = avg(m.pctIot), pctNet = avg(m.pctNet), pctGw = avg(m.pctGw);
+            var vals = [pctIot, pctNet, pctGw];
+
+            AVAIL_SEGS.forEach(function (seg, si) {
+                var val = vals[si];
+                var h = Math.max(val * unitH, val > 0 ? 2 : 0); // min 2px if has value
+                var $bar = $('<div style="width:34px;height:' + h + 'px;background:' + seg.color + ';opacity:0.88;border-radius:3px 3px 0 0;position:relative;"></div>');
+                // Value label on top of each bar
+                if (val > 0) {
+                    $bar.append('<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:600;color:' + seg.color + ';white-space:nowrap;">' + val.toFixed(1) + '%</div>');
+                }
+                $groupWrap.append($bar);
+            });
+
+            $groupWrap.on('mouseenter', function (e) {
+                var html = '<div class="rdpms-tt-title">' + labelText + '</div>';
+                if (meta) html += '<div class="rdpms-tt-sub">' + meta.assetType + ' | ' + meta.division + ', ' + meta.zone + '</div>';
+                html += '<div class="rdpms-tt-divider">';
+                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#22c55e"></span>IOT Availability: <strong>' + pctIot.toFixed(2) + '%</strong></div>';
+                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#3b82f6"></span>Network Availability: <strong>' + pctNet.toFixed(2) + '%</strong></div>';
+                html += '<div class="rdpms-tt-row"><span class="rdpms-tt-swatch" style="background:#f97316"></span>Gateway Availability: <strong>' + pctGw.toFixed(2) + '%</strong></div>';
+                html += '</div>';
+                rdpmsShowTip(html, e);
+            }).on('mousemove', rdpmsMoveTip).on('mouseleave', rdpmsHideTip);
+
+            $grp.append($groupWrap);
+            $grp.append('<div class="rdpms-bar-x-label" style="bottom:-138px;">' + labelText + '</div>');
+            $bars.append($grp);
+        });
+
+        var s = startIdx + 1, e = Math.min(startIdx + RDPMS_BAR_PER_PAGE, _rdpmsBarStations.length);
+        renderRdpmsPager('#rdpmsBarAvailPager', rdpmsBarAvailPage, Math.ceil(_rdpmsBarStations.length / RDPMS_BAR_PER_PAGE), _rdpmsBarStations.length, s, e, function (pg) { rdpmsBarAvailPage = pg; drawRdpmsBarAvailPage(); });
+    }
+
+    // ==========================================================================
+    // GRAPH — Canvas | X=Stations | 4 fixed lines (one per device type)
+    // Count chart + % Availability chart
+    // ==========================================================================
+    function renderRdpmsGraph(data) {
+        _rdpmsLineSites = data.stationOrder;
+        _rdpmsLineSiteMeta = data.stationMeta;
+
+        // Build matrix[seriesKey][stationKey]
+        _rdpmsLineMatrix = { sensors: {}, iot: {}, network: {}, gateway: {}, pctIot: {}, pctNet: {}, pctGw: {} };
+        data.stationOrder.forEach(function (stKey) {
+            var m = data.stationMatrix[stKey];
+            _rdpmsLineMatrix.sensors[stKey] = m.sensors;
+            _rdpmsLineMatrix.iot[stKey] = m.iot;
+            _rdpmsLineMatrix.network[stKey] = m.network;
+            _rdpmsLineMatrix.gateway[stKey] = m.gateway;
+            _rdpmsLineMatrix.pctIot[stKey] = m.pctIot.length ? (m.pctIot.reduce(function (a, b) { return a + b; }, 0) / m.pctIot.length) : 0;
+            _rdpmsLineMatrix.pctNet[stKey] = m.pctNet.length ? (m.pctNet.reduce(function (a, b) { return a + b; }, 0) / m.pctNet.length) : 0;
+            _rdpmsLineMatrix.pctGw[stKey] = m.pctGw.length ? (m.pctGw.reduce(function (a, b) { return a + b; }, 0) / m.pctGw.length) : 0;
+        });
+
+        var $c = $('#rdpmsChartContainer').empty();
+
+        // ── Chart 1: Device Counts ──
+        var $panel1 = $('<div class="rdpms-chart-panel"></div>');
+        $panel1.append('<div class="rdpms-chart-section-title"><i class="fas fa-chart-line" style="color:#6366f1;"></i>Device Counts per Station</div>');
+        var $leg1 = $('<div class="rdpms-legend"></div>');
+        RDPMS_SERIES.forEach(function (s) { $leg1.append('<div class="rdpms-legend-item"><span style="display:inline-block;width:28px;height:3px;background:' + s.color + ';border-radius:2px;flex-shrink:0;"></span><span class="rdpms-legend-text">' + s.label + '</span></div>'); });
+        $panel1.append($leg1);
+        var $wrap1 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
+        var $canvas1 = $('<canvas id="rdpmsLineCanvas1" style="display:block;"></canvas>');
+        $wrap1.append($canvas1);
+        $panel1.append($wrap1);
+        $c.append($panel1);
+
+        // ── Chart 2: % Availability ──
+        var pctSeries = [
+            { key: 'pctIot', label: '% IOT Availability', color: '#22c55e' },
+            { key: 'pctNet', label: '% Network Availability', color: '#3b82f6' },
+            { key: 'pctGw', label: '% Gateway Availability', color: '#f97316' }
+        ];
+        var $panel2 = $('<div class="rdpms-chart-panel"></div>');
+        $panel2.append('<div class="rdpms-chart-section-title"><i class="fas fa-percent" style="color:#22c55e;"></i>% Availability per Station</div>');
+        var $leg2 = $('<div class="rdpms-legend"></div>');
+        pctSeries.forEach(function (s) { $leg2.append('<div class="rdpms-legend-item"><span style="display:inline-block;width:28px;height:3px;background:' + s.color + ';border-radius:2px;flex-shrink:0;"></span><span class="rdpms-legend-text">' + s.label + '</span></div>'); });
+        $panel2.append($leg2);
+        var $wrap2 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
+        var $canvas2 = $('<canvas id="rdpmsLineCanvas2" style="display:block;"></canvas>');
+        $wrap2.append($canvas2);
+        $panel2.append($wrap2);
+        $c.append($panel2);
+
+        drawRdpmsLineCanvas($canvas1[0], $wrap1[0], RDPMS_SERIES, false);
+        drawRdpmsLineCanvas($canvas2[0], $wrap2[0], pctSeries, true);
+
+        $canvas1[0].addEventListener('mousemove', function (e) { handleRdpmsLineHover(e, $canvas1[0], RDPMS_SERIES, false); });
+        $canvas1[0].addEventListener('mouseleave', function () { rdpmsHideTip(); drawRdpmsLineCanvas($canvas1[0], $wrap1[0], RDPMS_SERIES, false); });
+
+        $canvas2[0].addEventListener('mousemove', function (e) { handleRdpmsLineHover(e, $canvas2[0], pctSeries, true); });
+        $canvas2[0].addEventListener('mouseleave', function () { rdpmsHideTip(); drawRdpmsLineCanvas($canvas2[0], $wrap2[0], pctSeries, true); });
+    }
+
+    function drawRdpmsLineCanvas(canvas, wrapper, series, isPct, hoverIdx) {
+        var PAD_L = 60, PAD_R = 24, PAD_T = 28, PAD_B = 130, INNER_H = 300;
+        var colW = Math.min(120, Math.max(70, Math.floor(900 / Math.max(_rdpmsLineSites.length, 1))));
+        var INNER_W = colW * _rdpmsLineSites.length;
+        var CW = INNER_W + PAD_L + PAD_R, CH = INNER_H + PAD_T + PAD_B;
+
+        if (!canvas._layout) {
+            canvas.width = CW; canvas.height = CH;
+            canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
+            wrapper.style.height = CH + 'px';
+            canvas._layout = { PAD_L: PAD_L, PAD_T: PAD_T, INNER_W: INNER_W, INNER_H: INNER_H, colW: colW };
+        }
+        var L = canvas._layout;
+
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Y max
+        var maxVal = 1;
+        series.forEach(function (s) { _rdpmsLineSites.forEach(function (st) { var v = _rdpmsLineMatrix[s.key][st] || 0; if (v > maxVal) maxVal = v; }); });
+        var yMax = isPct
+            ? (maxVal > 0 ? Math.min(100, Math.ceil(maxVal * 1.1)) : 100)
+            : (maxVal + Math.max(1, Math.ceil(maxVal * 0.12)));
+        var yStep = isPct
+            ? (yMax <= 10 ? 1 : yMax <= 25 ? 5 : 10)
+            : (yMax <= 10 ? 1 : Math.ceil(yMax / 8));
+        canvas._yMax = yMax; canvas._isPct = isPct;
+
+        var xPos = _rdpmsLineSites.map(function (s, i) { return L.PAD_L + i * L.colW + L.colW / 2; });
+        canvas._xPos = xPos;
+
+        // Grid + Y ticks
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.font = '11px Segoe UI, Arial, sans-serif';
+        for (var yv = 0; yv <= yMax; yv += yStep) {
+            var gy = L.PAD_T + L.INNER_H - (yv / yMax) * L.INNER_H;
+            ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(L.PAD_L, gy); ctx.lineTo(L.PAD_L + L.INNER_W, gy); ctx.stroke();
+            ctx.fillStyle = '#64748b';
+            ctx.fillText(isPct ? yv + '%' : yv, L.PAD_L - 6, gy);
+        }
+
+        // Y-axis label
+        ctx.save(); ctx.translate(14, L.PAD_T + L.INNER_H / 2); ctx.rotate(-Math.PI / 2);
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.font = '12px Segoe UI, Arial, sans-serif'; ctx.fillStyle = '#475569';
+        ctx.fillText(isPct ? 'Availability %' : 'Device Count', 0, 0); ctx.restore();
+
+        // Axes
+        ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(L.PAD_L, L.PAD_T); ctx.lineTo(L.PAD_L, L.PAD_T + L.INNER_H); ctx.lineTo(L.PAD_L + L.INNER_W, L.PAD_T + L.INNER_H); ctx.stroke();
+
+        // Hover highlight
+        if (hoverIdx !== undefined && hoverIdx >= 0) {
+            var hx = xPos[hoverIdx];
+            ctx.fillStyle = 'rgba(99,102,241,0.07)'; ctx.fillRect(hx - L.colW / 2, L.PAD_T, L.colW, L.INNER_H);
+            ctx.strokeStyle = 'rgba(99,102,241,0.3)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(hx, L.PAD_T); ctx.lineTo(hx, L.PAD_T + L.INNER_H); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // X tick marks
+        xPos.forEach(function (x) {
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, L.PAD_T + L.INNER_H); ctx.lineTo(x, L.PAD_T + L.INNER_H + 5); ctx.stroke();
+        });
+
+        // Lines
+        series.forEach(function (s) {
+            var pts = _rdpmsLineSites.map(function (stKey, si) {
+                var val = _rdpmsLineMatrix[s.key][stKey] || 0;
+                return { x: xPos[si], y: L.PAD_T + L.INNER_H - (val / yMax) * L.INNER_H, val: val };
+            });
+            ctx.strokeStyle = s.color; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            pts.forEach(function (p, i) { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
+            ctx.stroke();
+            pts.forEach(function (p) {
+                ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#fff'; ctx.fill();
+                ctx.strokeStyle = s.color; ctx.lineWidth = 2.5; ctx.stroke();
+                if (p.val > 0 && series.length <= 4) {
+                    ctx.fillStyle = s.color; ctx.font = 'bold 10px Segoe UI, Arial, sans-serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    ctx.fillText(isPct ? (+p.val).toFixed(1) + '%' : p.val, p.x, p.y - 8);
+                }
+            });
+        });
+
+        // X labels (rotated)
+        _rdpmsLineSites.forEach(function (stKey, si) {
+            var x = xPos[si];
+            var meta = _rdpmsLineSiteMeta[stKey] || {};
+            ctx.save(); ctx.translate(x, L.PAD_T + L.INNER_H + 10); ctx.rotate(Math.PI / 4);
+            ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+            ctx.font = 'bold 10px Segoe UI, Arial, sans-serif'; ctx.fillStyle = '#1e293b';
+            ctx.fillText(meta.station || stKey, 0, 0);
+            ctx.font = '9px Segoe UI, Arial, sans-serif'; ctx.fillStyle = '#94a3b8';
+            ctx.fillText((meta.assetType || '') + ' | ' + (meta.division || ''), 0, 13);
+            ctx.restore();
+        });
+    }
+
+    function handleRdpmsLineHover(e, canvas, series, isPct) {
+        if (!canvas._layout || !canvas._xPos) return;
+        var L = canvas._layout;
+        var rect = canvas.getBoundingClientRect();
+        var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        var closest = -1, minDist = L.colW;
+        canvas._xPos.forEach(function (x, i) { var d = Math.abs(mx - x); if (d < minDist) { minDist = d; closest = i; } });
+
+        var wrapper = canvas.parentElement;
+        if (closest === -1 || my < L.PAD_T || my > L.PAD_T + L.INNER_H) {
+            rdpmsHideTip(); drawRdpmsLineCanvas(canvas, wrapper, series, isPct); return;
+        }
+        drawRdpmsLineCanvas(canvas, wrapper, series, isPct, closest);
+
+        var stKey = _rdpmsLineSites[closest];
+        var meta = _rdpmsLineSiteMeta[stKey] || {};
+        var html = '<div class="rdpms-tt-title">' + (meta.station || stKey) + '</div>';
+        if (meta.assetType) html += '<div class="rdpms-tt-sub">' + meta.assetType + ' | ' + (meta.division || '') + ', ' + (meta.zone || '') + '</div>';
+        html += '<div class="rdpms-tt-divider">';
+        series.forEach(function (s) {
+            var val = _rdpmsLineMatrix[s.key][stKey] || 0;
+            html += '<div class="rdpms-tt-row"><span style="display:inline-block;width:12px;height:3px;background:' + s.color + ';border-radius:2px;margin-right:6px;vertical-align:middle;flex-shrink:0;"></span><span style="flex:1;color:#475569;font-size:11px;">' + s.label + '</span><strong style="margin-left:8px;">' + (isPct ? val.toFixed(2) + '%' : val) + '</strong></div>';
+        });
+        html += '</div>';
+        rdpmsShowTip(html, e);
+    }
+
+    // ==========================================================================
+    // EXCEL DOWNLOAD
+    // ==========================================================================
+    function fnDownloadExcel() {
+        var table = document.getElementById('tblRDPMSHealthSummary');
+        if (!table) { alert('No data available to download'); return; }
+        try {
+            $("#loader").show();
+            var workbook = new ExcelJS.Workbook(); workbook.creator = 'RDPMS'; workbook.created = new Date();
+            var worksheet = workbook.addWorksheet('RDPMS Health Summary');
+            var colCount = 13;
+            var $allRows = $('#tblRDPMSHealthSummary tbody tr');
+            var recordCount = $allRows.filter(function () { return !$(this).find('td[colspan]').length; }).length;
+
+            var titleRow = worksheet.addRow(['RDPMS Health Summary Report']); titleRow.height = 30;
+            worksheet.mergeCells(1, 1, 1, colCount);
+            titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+            titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
+            titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+            var summaryRow = worksheet.addRow(['Total Records: ' + recordCount + ' | Generated: ' + new Date().toLocaleString()]); summaryRow.height = 20;
+            worksheet.mergeCells(2, 1, 2, colCount);
+            summaryRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+            summaryRow.getCell(1).alignment = { horizontal: 'center' };
+            worksheet.addRow([]);
+
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Total number of Sensors', '% Availability of Sensors', 'Total Number of IOTs', '% Availability of IOTs', 'Total Number of Network', '% Availability of Network', 'Total Number of Station Gateway', '% Availability of station gateway'];
+            var headerRow = worksheet.addRow(headers); headerRow.height = 40;
+            headerRow.eachCell(function (cell) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Calibri' };
+                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                cell.border = { top: { style: 'medium', color: { argb: 'FF1E3A5F' } }, left: { style: 'medium', color: { argb: 'FF1E3A5F' } }, bottom: { style: 'medium', color: { argb: 'FF1E3A5F' } }, right: { style: 'medium', color: { argb: 'FF1E3A5F' } } };
+            });
+
+            $allRows.show();
+            var dataIdx = 0;
+            $allRows.each(function () {
+                var $tr = $(this); if ($tr.find('td[colspan]').length) return; dataIdx++;
+                var rowData = []; $tr.find('td').each(function (i) { if (i < 13) rowData.push($(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim()); });
+                var excelRow = worksheet.addRow(rowData); excelRow.height = 22;
+                excelRow.eachCell(function (cell, col) {
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: dataIdx % 2 === 0 ? 'FFF1F5F9' : 'FFFFFFFF' } };
+                    cell.font = { size: 10, name: 'Calibri' };
+                    cell.alignment = { vertical: 'middle', horizontal: col <= 4 ? (col === 1 ? 'center' : 'left') : 'center' };
+                    cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+                });
+            });
+            if (typeof goToPage === 'function') goToPage(1);
+
+            worksheet.getColumn(1).width = 8; worksheet.getColumn(2).width = 12; worksheet.getColumn(3).width = 15;
+            worksheet.getColumn(4).width = 20; worksheet.getColumn(5).width = 20;
+            for (var c = 6; c <= 13; c++) worksheet.getColumn(c).width = 28;
+
+            workbook.xlsx.writeBuffer().then(function (buffer) {
+                saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), getFileName('xlsx'));
+                $("#loader").hide(); CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
+            });
+        } catch (err) { $("#loader").hide(); console.error('Excel Error:', err); CommonNotification("ERROR", "Error downloading Excel", "Error"); }
+    }
+
+    // ==========================================================================
+    // CSV DOWNLOAD
+    // ==========================================================================
+    function fnDownloadCSV() {
+        var table = document.getElementById('tblRDPMSHealthSummary');
+        if (!table) { alert('No data available to download'); return; }
+        try {
+            $("#loader").show();
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Total number of Sensors', '% Availability of Sensors', 'Total Number of IOTs', '% Availability of IOTs', 'Total Number of Network', '% Availability of Network', 'Total Number of Station Gateway', '% Availability of station gateway'];
+            var csv = [headers.map(function (h) { return '"' + h + '"'; }).join(',')];
+            var $allRows = $('#tblRDPMSHealthSummary tbody tr'); $allRows.show();
+            $allRows.each(function () {
+                var $tr = $(this); if ($tr.find('td[colspan]').length) return;
+                var rowData = []; $tr.find('td').each(function (i) { if (i < 13) rowData.push('"' + $(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim().replace(/"/g, '""') + '"'); });
+                csv.push(rowData.join(','));
+            });
+            if (typeof goToPage === 'function') goToPage(1);
+            saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getFileName('csv'));
+            $("#loader").hide(); CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
+        } catch (err) { $("#loader").hide(); console.error('CSV Error:', err); CommonNotification("ERROR", "Error downloading CSV", "Error"); }
+    }
+
+    function getFileName(ext) {
+        var now = new Date();
+        return 'RDPMSHealthSummary_' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + '.' + ext;
+    }
+
+    function updateRangeBar() {
+        var fd = $('#txtFromDate').val(), ft = $('#txtFromTime').val();
+        var td = $('#txtToDate').val(), tt = $('#txtToTime').val();
+        function fmt(v) { var p = v.split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : v; }
+        $('#dispFromDate').text(fd ? fmt(fd) : '—');
+        $('#dispFromTime').text(ft || '—');
+        $('#dispToDate').text(td ? fmt(td) : '—');
+        $('#dispToTime').text(tt || '—');
+    }
+</script>

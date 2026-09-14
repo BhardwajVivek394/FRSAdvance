@@ -29,6 +29,10 @@ namespace Domain
         public int? Pin { get; set; }
         public int RFClusterId { get; set; }
 
+        // Indoor / Outdoor split used by RDPMSHealthLive/_List.cshtml.
+        // Values map to Utility.ClusterType (Indoor=1, OutDoor=2).
+        public int TypeId { get; set; }
+
         public List<int> CurrentCardNumbers { get; set; } = new List<int>();
         public List<int> V5Numbers { get; set; } = new List<int>();
         public List<int> V82Numbers { get; set; } = new List<int>();

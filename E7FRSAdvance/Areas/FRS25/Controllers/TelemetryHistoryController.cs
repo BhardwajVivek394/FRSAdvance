@@ -120,6 +120,94 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
+        // Server-side proxy to call the new paginated DashboardHistory API.
+        // Used for Track, Signal and all non-Point-Machine asset types.
+        // Query params sent to upstream:
+        //   AssetId, StartDate, EndDate, tsLimit=<pageSize>, sort=<asc|desc>, fillGaps=<true|false>, page=<page>
+        public ActionResult GetDashboardHistoryData(int assetId, string startDate, string endDate,
+            int page = 1, int pageSize = 50, string sort = "desc", bool fillGaps = true)
+        {
+            try
+            {
+                if (page < 1) page = 1;
+                if (pageSize < 1) pageSize = 50;
+                if (string.IsNullOrEmpty(sort)) sort = "desc";
+
+                string baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                string apiUrl = string.Format(
+                    "{0}/api/DashboardHistory?AssetId={1}&StartDate={2}&EndDate={3}&tsLimit={4}&sort={5}&fillGaps={6}&page={7}",
+                    baseUrl, assetId, startDate, endDate, pageSize, sort, fillGaps.ToString().ToLower(), page);
+
+                return _ProxyGet(apiUrl, 120);
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        // Point Machine — OPERATION data.
+        //   http://<proxy>/api/DashboardPMHistoryOperation
+        //     ?AssetId=..&StartDate=..&EndDate=..&sort=<asc|desc>&fillGaps=<bool>
+        // Upstream is NOT paginated (operations are sparse events); the client
+        // slices locally with the standard 10/25/50/100 page-size selector.
+        public ActionResult GetDashboardPMOperationData(int assetId, string startDate, string endDate,
+            string sort = "desc", bool fillGaps = true)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(sort)) sort = "desc";
+                string baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                string apiUrl = string.Format(
+                    "{0}/api/DashboardPMHistoryOperation?AssetId={1}&StartDate={2}&EndDate={3}&sort={4}&fillGaps={5}",
+                    baseUrl, assetId, startDate, endDate, sort, fillGaps.ToString().ToLower());
+                return _ProxyGet(apiUrl, 120);
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        // Point Machine — INDICATION + DATALOGGER data (paginated).
+        //   http://<proxy>/api/DashboardPMHistoryIntegration
+        //     ?AssetId=..&StartDate=..&EndDate=..&tsLimit=<pageSize>&sort=<asc|desc>&fillGaps=<bool>&page=<page>
+        public ActionResult GetDashboardPMIntegrationData(int assetId, string startDate, string endDate,
+            int page = 1, int pageSize = 50, string sort = "desc", bool fillGaps = true)
+        {
+            try
+            {
+                if (page < 1) page = 1;
+                if (pageSize < 1) pageSize = 50;
+                if (string.IsNullOrEmpty(sort)) sort = "desc";
+                string baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                string apiUrl = string.Format(
+                    "{0}/api/DashboardPMHistoryIntegration?AssetId={1}&StartDate={2}&EndDate={3}&tsLimit={4}&sort={5}&fillGaps={6}&page={7}",
+                    baseUrl, assetId, startDate, endDate, pageSize, sort, fillGaps.ToString().ToLower(), page);
+                return _ProxyGet(apiUrl, 120);
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        // Shared HttpClient GET helper — passes upstream JSON through as-is.
+        private ActionResult _ProxyGet(string apiUrl, int timeoutSeconds)
+        {
+            using (var client = new HttpClient())
+            {
+                client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+                var response = client.GetAsync(apiUrl).Result;
+                string jsonString = response.Content.ReadAsStringAsync().Result;
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    return Content(jsonString, "application/json");
+                }
+                return Json(new { error = "API returned status: " + response.StatusCode }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
         public ActionResult GetUserAssetInfoDatalogger(int siteId)
         {
             try

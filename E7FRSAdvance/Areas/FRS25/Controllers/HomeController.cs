@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.Caching;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -23,6 +24,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private readonly IZoneService _zoneService;
         private readonly IDivisionService _divisionService;
         private readonly IFRSAlertService _alertService;
+
+        // Cached CPU counter — keeps a single PerformanceCounter alive between requests
+        // so /GetSystemData does not block for 100–500ms on every call.
+        private static PerformanceCounter _cpuCounter;
+        private static readonly object _cpuLock = new object();
+
         public HomeController(ISiteService siteService, IZoneService zoneService, IDivisionService divisionService, IFRSAlertService alertService)
         {
             _siteService = siteService;
@@ -477,13 +484,30 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             public int FailurCount { get; set; }
         }
 
-        // Controller method
+        // Controller method — cached for 45 seconds to avoid ~1.8s DB hit on every page
         [HttpPost]
         public JsonResult GetIOTCount(Domain.SearchCriteria searchCriteria)
         {
             try
             {
-                var jsonResult = Json(GetRDPMSHealthLive(searchCriteria), JsonRequestBehavior.AllowGet);
+                // Build a cache key from the search criteria that vary per user/filter
+                string cacheKey = "IOTCount_" + ClsHttpContent.LoginUser.Id
+                    + "_" + (searchCriteria.ZoneIds != null ? string.Join(",", searchCriteria.ZoneIds) : "")
+                    + "_" + (searchCriteria.DivisionIds != null ? string.Join(",", searchCriteria.DivisionIds) : "")
+                    + "_" + (searchCriteria.SiteIds != null ? string.Join(",", searchCriteria.SiteIds) : "");
+
+                var cached = MemoryCache.Default.Get(cacheKey);
+                if (cached != null)
+                {
+                    var jsonResultCached = Json(cached, JsonRequestBehavior.AllowGet);
+                    jsonResultCached.MaxJsonLength = Int32.MaxValue;
+                    return jsonResultCached;
+                }
+
+                var data = GetRDPMSHealthLive(searchCriteria);
+                MemoryCache.Default.Set(cacheKey, data, DateTimeOffset.UtcNow.AddSeconds(45));
+
+                var jsonResult = Json(data, JsonRequestBehavior.AllowGet);
                 jsonResult.MaxJsonLength = Int32.MaxValue;
                 return jsonResult;
             }
@@ -493,6 +517,43 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 jsonResult.MaxJsonLength = Int32.MaxValue;
                 return jsonResult;
             }
+        }
+
+        // Sensor live data — polled every 60s from the dashboard.
+        // Backend service: sensorhealth/GetLiveBySiteIds returns a list with ResetTime;
+        // client interprets null ResetTime as "still faulty".
+        [HttpPost]
+        public JsonResult GetSensorLiveData(List<int> siteId)
+        {
+            var data = new List<Domain.SensorHealthLive>();
+            if (siteId == null || (siteId != null && siteId.Count() <= 0))
+            {
+                if (ClsHttpContent.LoginUser.UserSites != null)
+                    siteId = ClsHttpContent.LoginUser.UserSites.Select(x => x.SiteId).ToList();
+            }
+            if (siteId != null && siteId.Count > 0)
+            {
+                try
+                {
+                    using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                    {
+                        var jsonStr = JsonConvert.SerializeObject(siteId);
+                        StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                        var response = hcf.client.PostAsync("sensorhealth/GetLiveBySiteIds", str).Result;
+                        if (response.StatusCode == HttpStatusCode.OK)
+                        {
+                            string jsonString = response.Content.ReadAsStringAsync().Result;
+                            data = JsonConvert.DeserializeObject<List<Domain.SensorHealthLive>>(jsonString);
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    data = new List<Domain.SensorHealthLive>();
+                }
+            }
+
+            return Json(data, JsonRequestBehavior.AllowGet);
         }
         [HttpPost]
         public ActionResult GetAssetData(int ZoneId = 0, int DivisionId = 0, int SiteId = 0, string SearchDate = "")
@@ -611,26 +672,51 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         private static double GetCpuWindows()
         {
-            // PerformanceCounter first NextValue() always returns 0.
-            // Must read twice with a short sleep to get a real sample.
-            PerformanceCounter counter = null;
+            // Try PerformanceCounter first — reuse a single counter across requests so
+            // we don't pay the "first NextValue always returns 0 + sleep" cost every time.
             try
             {
-                counter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
-                counter.NextValue();     // discard — always 0 on first call
-                Thread.Sleep(100);
-                float pct = counter.NextValue();
-                return Math.Round(Math.Min(100.0, Math.Max(0.0, (double)pct)), 1);
+                lock (_cpuLock)
+                {
+                    if (_cpuCounter == null)
+                    {
+                        _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
+                        _cpuCounter.NextValue();      // prime — discard first (always 0)
+                        Thread.Sleep(500);
+                    }
+                    float pct = _cpuCounter.NextValue();
+                    if (pct > 0)
+                        return Math.Round(Math.Min(100.0, Math.Max(0.0, (double)pct)), 1);
+                }
             }
             catch
             {
-                return 0;
+                // Counter may be corrupt / user lacks Performance Monitor Users membership.
+                // Reset so the next call can try re-initialising.
+                try { lock (_cpuLock) { if (_cpuCounter != null) { _cpuCounter.Dispose(); _cpuCounter = null; } } } catch { }
             }
-            finally
+
+            // Fallback: WMI — works even without Performance Monitor Users membership.
+            try
             {
-                if (counter != null)
-                    counter.Dispose();
+                var searcher = new System.Management.ManagementObjectSearcher(
+                    "SELECT LoadPercentage FROM Win32_Processor");
+                double total = 0; int count = 0;
+                foreach (var obj in searcher.Get())
+                {
+                    var val = obj["LoadPercentage"];
+                    if (val != null)
+                    {
+                        total += Convert.ToDouble(val);
+                        count++;
+                    }
+                }
+                if (count > 0)
+                    return Math.Round(total / count, 1);
             }
+            catch { }
+
+            return 0;
         }
 
         private static double GetCpuLinux()
@@ -638,11 +724,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             try
             {
                 long[] s1 = ReadProcStatCpu();
-                Thread.Sleep(200);
+                Thread.Sleep(500); // 500ms window gives a more accurate delta than 200ms
+
                 long[] s2 = ReadProcStatCpu();
 
-                long idle1 = s1[3];
-                long idle2 = s2[3];
+                // idle = idle(3) + iowait(4)  — iowait is also "not doing CPU work"
+                long idle1 = s1[3] + s1[4];
+                long idle2 = s2[3] + s2[4];
+
                 long total1 = 0;
                 long total2 = 0;
 
@@ -662,7 +751,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
-        // Reads the first "cpu " line from /proc/stat, returns 7 time fields.
+        // Reads the first "cpu " line from /proc/stat, returns 10 time fields.
         private static long[] ReadProcStatCpu()
         {
             string cpuLine = null;
@@ -676,15 +765,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
             }
 
-            long[] values = new long[7];
+            // 10 fields: user nice system idle iowait irq softirq steal guest guest_nice
+            long[] values = new long[10];
 
             if (cpuLine == null)
                 return values;
 
             string[] parts = cpuLine.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
-            // parts[0] = "cpu", parts[1..7] = user nice system idle iowait irq softirq
-            for (int i = 0; i < 7; i++)
+            // parts[0] = "cpu", parts[1..10] = the 10 cpu time fields
+            for (int i = 0; i < 10; i++)
             {
                 long val;
                 if ((i + 1) < parts.Length && long.TryParse(parts[i + 1], out val))

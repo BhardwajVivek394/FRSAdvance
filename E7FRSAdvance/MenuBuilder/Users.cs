@@ -44,7 +44,7 @@ namespace E7FRSAdvance.MenuBuilder
 
             //Site Menu
             Menu usersite = new Menu();
-            usersite.Main = usersite.SetMenuAttribute("User Sites", ControllerName.Usersite, ActionName.Index, IconName.Site);
+            usersite.Main = usersite.SetMenuAttribute("Command Control", ControllerName.Usersite, ActionName.Index, IconName.Site);
             menus.Add(usersite);
 
 

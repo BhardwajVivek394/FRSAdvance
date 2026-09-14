@@ -394,6 +394,13 @@ namespace E7FRSAdvance.Utility
             IPS = 34
         }
 
+        // Referenced by RDPMSHealthLive/_List.cshtml (indoor/outdoor cluster split).
+        public enum ClusterType
+        {
+            Indoor = 1,
+            OutDoor = 2
+        }
+
         public enum WorksheetMaterial
         {
             E7 = 1,

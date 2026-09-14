@@ -22,6 +22,11 @@ namespace Domain
         public int TotalNetworkSensors { get; set; }
         public int TotalStnGateway { get; set; }
 
+        public decimal PersentageSensors { get; set; }
+        public decimal PersentageIoTSensors { get; set; }
+        public decimal PersentageNetworkSensors { get; set; }
+        public decimal PersentageStnGateway { get; set; }
+
         public List<int> ZoneIds { get; set; }
         public List<int> DivisionIds { get; set; }
         public List<int> SiteIds { get; set; }
@@ -46,6 +51,7 @@ namespace Domain
             GatewaySiteId = new List<int>();
             mModemHistories = new List<Dto.ModemHistory>();
             mA10Histories = new List<Dto.ModemHistory>();
+            mCardLines = new List<CardLine>();
 
             mAssets = new List<RDPMSHealthLive>();
             SearchCriteria = new RDPMSHealthLive();
@@ -57,6 +63,7 @@ namespace Domain
         public List<Domain.Cluster> mClusters { get; set; }
         public List<Domain.ADC> mADCs { get; set; }
         public List<AssetInfo> mAssetInfos { get; set; }
+        public List<Domain.CardLine> mCardLines { get; set; }
         public List<int> GatewaySiteId { get; set; }
         public List<Domain.Dto.ModemHistory> mModemHistories { get; set; }
         public List<Domain.Dto.ModemHistory> mA10Histories { get; set; }

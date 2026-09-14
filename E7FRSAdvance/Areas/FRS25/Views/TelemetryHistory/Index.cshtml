@@ -1959,12 +1959,30 @@
     var chartColors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#a855f7', '#d946ef', '#f59e0b', '#84cc16', '#0ea5e9', '#e11d48', '#7c3aed', '#059669', '#dc2626', '#2563eb'];
 
     // Pagination
-    var TH_PAGE_SIZE = 50;
-    var thCurrentPage = 1;   // kept for legacy/chart use
+    var TH_PAGE_SIZE = 50;                // user-selectable page size (10, 25, 50, 100)
+    var thCurrentPage = 1;                // kept for legacy/chart use
     var thTotalPages = 1;
-    var thCache = null;       // kept for legacy use
-    var thCaches = [];        // one cache per asset (multi-asset)
-    var thCurrentPages = [];  // current page per asset
+    var thCache = null;                   // kept for legacy use
+    var thCaches = [];                    // one cache per asset (multi-asset)
+    var thCurrentPages = [];              // current page per asset
+    var TH_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
+    // ---- Server-side pagination (DashboardHistory / DashboardPMHistoryIntegration) ----
+    // Non-PM asset types  → DashboardHistory                    (paginated)
+    // Point Machine (Op)  → DashboardPMHistoryOperation         (client-side paginated — API returns all rows)
+    // Point Machine (Ind) → DashboardPMHistoryIntegration       (server-side paginated)
+    // serverSideState[assetIdx] holds per-asset paging metadata + name/id so
+    // page and page-size changes can refetch that specific asset's page.
+    var IS_SERVER_SIDE = false;           // true when the current search uses server-side paging
+    var LAST_SEARCH_PARAMS = null;        // { startDate, endDate, sort, fillGaps, assetIds, assetNameMap, isPM }
+    var serverSideState = [];             // one entry per asset in the current search
+
+    // API-provided PM Direction per (assetId, timestamp-ms) → "Normal" | "Reverse".
+    // Populated by _transformDashboardColumnar when a "Direction" / "Computed"
+    // column is present. `renderAssetTablePage`'s PM direction cell reads this
+    // first and falls back to the legacy `getPMDirection()` calculation only
+    // when the API didn't include a value.
+    var pmDirectionByTs = {};             // { "assetId_tsMs": "Normal"|"Reverse" }
 
     // Point Machine view mode: 'operational' | 'indication'
     var pmViewMode = 'operational';
@@ -2748,10 +2766,55 @@
     }
 
     function setPmView(mode) {
+        if (pmViewMode === mode) return;
         pmViewMode = mode;
         $('#btnPmOperational').toggleClass('active', mode === 'operational');
         $('#btnPmIndication').toggleClass('active', mode === 'indication');
-        if (lastAssetResults) renderHistoryTable(lastAssetResults);
+
+        // The two PM modes come from DIFFERENT upstream endpoints
+        // (DashboardPMHistoryOperation vs DashboardPMHistoryIntegration), so
+        // switching modes requires refetching — the cached data is for the
+        // OTHER endpoint. Only refetch when we have an active PM search.
+        if (LAST_SEARCH_PARAMS && LAST_SEARCH_PARAMS.isPM &&
+            LAST_SEARCH_PARAMS.assetIds && LAST_SEARCH_PARAMS.assetIds.length) {
+            _refetchAllPMAssets();
+        } else if (lastAssetResults) {
+            // Legacy fallback for old cached (non-PM-API) results
+            renderHistoryTable(lastAssetResults);
+        }
+    }
+
+    // Refetch every asset in the current PM search using the newly-selected
+    // pmViewMode. Renders through the same onAllHistoryLoaded → renderByViewType
+    // pipeline so tables / cards / etc. stay consistent.
+    function _refetchAllPMAssets() {
+        var p = LAST_SEARCH_PARAMS;
+        if (!p) return;
+        pmDirectionByTs = {};             // stale — different endpoint
+        serverSideState = [];
+        var assetResults = [];
+        var completed = 0;
+        var total = p.assetIds.length;
+        var hasError = false;
+
+        $("#loader").show();
+        p.assetIds.forEach(function (assetId) {
+            fetchPMHistoryPage(assetId, pmViewMode, 1, TH_PAGE_SIZE, function (parsed, err) {
+                if (err) {
+                    hasError = true;
+                } else if (parsed && parsed.attributes && parsed.attributes.length > 0) {
+                    assetResults.push({
+                        assetId: assetId,
+                        assetName: p.assetNameMap[assetId] || ('Asset ' + assetId),
+                        attributes: parsed.attributes,
+                        _pagination: parsed.pagination
+                    });
+                }
+                completed++;
+                _setLoaderProgress(completed, total);
+                if (completed >= total) onAllHistoryLoaded(assetResults, hasError);
+            });
+        });
     }
 
     function filterColumnsForAssetType(columns, assetType) {
@@ -3190,6 +3253,300 @@
             }
         });
     }
+    // ===== FETCH ONE PAGE FROM DASHBOARD HISTORY API =====
+    // Server-side paginated telemetry-history fetch. Used for every asset type
+    // EXCEPT Point Machine. The .NET controller proxies this to
+    //   http://<ProxyBaseUrl>/api/DashboardHistory?AssetId=..&StartDate=..&EndDate=..
+    //     &tsLimit=<pageSize>&sort=desc&fillGaps=true&page=<page>
+    // Callback signature: cb({ attributes, pagination }, errorMsg)
+    // Pagination fallback logic tolerates unknown wrapper key names.
+    function fetchDashboardHistoryPage(assetId, page, pageSize, cb) {
+        if (!LAST_SEARCH_PARAMS) { cb(null, 'No search params'); return; }
+        var p = LAST_SEARCH_PARAMS;
+        $.ajax({
+            url: '/FRS25/TelemetryHistory/GetDashboardHistoryData',
+            type: 'GET',
+            data: {
+                assetId: assetId,
+                startDate: p.startDate,
+                endDate: p.endDate,
+                page: page,
+                pageSize: pageSize,
+                sort: p.sort || 'desc',
+                fillGaps: (p.fillGaps === false) ? 'false' : 'true'
+            },
+            dataType: 'json',
+            success: function (response) {
+                if (response && response.error) { cb(null, response.error); return; }
+
+                // Detect response shape:
+                //   A) Columnar (DashboardHistory) → { columns:[{tagId,attrId,name,dataType}], rows:[{ts,v:[..]}], ...pagination }
+                //   B) Attribute-oriented (legacy HistoryValue) → [{AttributeId, Values:{k:{Timestamp,Value,DataType}}}]
+                //   C) Wrapped [Data|Rows|Items] with either A or B inside
+                var meta = ($.isArray(response) ? {} : (response || {}));
+                var attributes = null;
+                var payload = response;
+
+                if (!$.isArray(response) && response) {
+                    // Unwrap common envelopes first
+                    var inner = response.Data || response.data ||
+                                response.Result || response.result ||
+                                response.Payload || response.payload;
+                    if (inner && (inner.columns || inner.Columns || $.isArray(inner))) {
+                        payload = inner;
+                        // meta still points at the outer wrapper so we can pick pagination from it
+                    }
+                }
+
+                // ---- Case A: columnar shape ----
+                var cols = null, rowsArr = null;
+                if (payload && !($.isArray(payload))) {
+                    cols = payload.columns || payload.Columns;
+                    rowsArr = payload.rows || payload.Rows;
+                }
+                if (cols && rowsArr) {
+                    attributes = _transformDashboardColumnar(cols, rowsArr, assetId);
+                }
+
+                // ---- Case B / C: array of attribute objects with .Values ----
+                if (!attributes) {
+                    if ($.isArray(payload)) attributes = payload;
+                    else if (payload && $.isArray(payload.Attributes || payload.attributes))
+                        attributes = payload.Attributes || payload.attributes;
+                    else if (payload && $.isArray(payload.Items || payload.items))
+                        attributes = payload.Items || payload.items;
+                }
+
+                if (!attributes) attributes = [];
+
+                // ---- Pagination metadata (tolerant of key names) ----
+                // Look on both the outer response AND the payload — DashboardHistory
+                // may put pagination alongside `columns`/`rows`.
+                var totalPages = _pickNum(meta, ['TotalPages', 'totalPages', 'PageCount', 'pageCount', 'TotalPage', 'totalPage'])
+                              || _pickNum(payload, ['TotalPages', 'totalPages', 'PageCount', 'pageCount', 'TotalPage', 'totalPage', 'pages']);
+                var totalRecords = _pickNum(meta, ['TotalRecords', 'totalRecords', 'TotalCount', 'totalCount', 'Total', 'total', 'RecordCount', 'recordCount'])
+                              || _pickNum(payload, ['TotalRecords', 'totalRecords', 'TotalCount', 'totalCount', 'Total', 'total', 'RecordCount', 'recordCount', 'totalRows', 'TotalRows']);
+                var curPage = _pickNum(meta, ['Page', 'page', 'CurrentPage', 'currentPage'])
+                              || _pickNum(payload, ['Page', 'page', 'CurrentPage', 'currentPage']) || page;
+                var curSize = _pickNum(meta, ['PageSize', 'pageSize', 'tsLimit', 'TsLimit', 'Limit', 'limit'])
+                              || _pickNum(payload, ['PageSize', 'pageSize', 'tsLimit', 'TsLimit', 'Limit', 'limit']) || pageSize;
+
+                // Fallback: derive totals from the returned page itself
+                if (!totalRecords) {
+                    if (rowsArr && rowsArr.length !== undefined) {
+                        // If we got a full page, assume there may be more; if partial, this is the tail.
+                        totalRecords = rowsArr.length < curSize
+                            ? ((curPage - 1) * curSize) + rowsArr.length
+                            : ((curPage) * curSize) + 1;   // "+1" to keep Next enabled until we get a short page
+                    } else {
+                        var _tsSet = {};
+                        attributes.forEach(function (a) {
+                            if (a && a.Values) {
+                                for (var k in a.Values) {
+                                    if (a.Values.hasOwnProperty(k) && a.Values[k] && a.Values[k].Timestamp) {
+                                        _tsSet[a.Values[k].Timestamp.TimestampDevice] = 1;
+                                    }
+                                }
+                            }
+                        });
+                        totalRecords = Object.keys(_tsSet).length;
+                    }
+                }
+                if (!totalPages) {
+                    totalPages = curSize > 0 ? Math.max(1, Math.ceil((totalRecords || 0) / curSize)) : 1;
+                }
+
+                cb({
+                    attributes: attributes,
+                    pagination: {
+                        page: curPage,
+                        pageSize: curSize,
+                        totalPages: totalPages,
+                        totalRecords: totalRecords || 0
+                    }
+                }, null);
+            },
+            error: function () { cb(null, 'AJAX error'); }
+        });
+    }
+
+    // ===== POINT MACHINE — fetch one page from the appropriate PM API ======
+    // pmViewMode === 'operational' → /GetDashboardPMOperationData    (no server pagination)
+    // pmViewMode === 'indication'  → /GetDashboardPMIntegrationData  (server-side paginated)
+    // Callback signature identical to fetchDashboardHistoryPage:
+    //   cb({ attributes, pagination }, errorMsg)
+    // For Operational, upstream returns the full range in one call; we still
+    // synthesize pagination metadata (totalRecords = row count, totalPages =
+    // ceil(rows/pageSize)) so the per-asset page-size selector paginates
+    // client-side using the same code path.
+    function fetchPMHistoryPage(assetId, mode, page, pageSize, cb) {
+        if (!LAST_SEARCH_PARAMS) { cb(null, 'No search params'); return; }
+        var p = LAST_SEARCH_PARAMS;
+        var isInd = (mode === 'indication');
+
+        var url = isInd
+            ? '/FRS25/TelemetryHistory/GetDashboardPMIntegrationData'
+            : '/FRS25/TelemetryHistory/GetDashboardPMOperationData';
+
+        var data = {
+            assetId: assetId,
+            startDate: p.startDate,
+            endDate: p.endDate,
+            sort: p.sort || 'desc',
+            fillGaps: (p.fillGaps === false) ? 'false' : 'true'
+        };
+        if (isInd) { data.page = page; data.pageSize = pageSize; }
+
+        $.ajax({
+            url: url, type: 'GET', data: data, dataType: 'json',
+            success: function (response) {
+                if (response && response.error) { cb(null, response.error); return; }
+
+                // Both PM APIs use the same columnar wrapper as DashboardHistory
+                var payload = response;
+                if (!$.isArray(response) && response) {
+                    var inner = response.Data || response.data || response.Result || response.result;
+                    if (inner && (inner.columns || inner.Columns)) payload = inner;
+                }
+                var cols = null, rowsArr = null;
+                if (payload && !$.isArray(payload)) {
+                    cols = payload.columns || payload.Columns;
+                    rowsArr = payload.rows || payload.Rows;
+                }
+                var attributes = (cols && rowsArr)
+                    ? _transformDashboardColumnar(cols, rowsArr, assetId)
+                    : [];
+
+                if (isInd) {
+                    // Server-side pagination — read metadata like DashboardHistory
+                    var totalPages = _pickNum(payload, ['TotalPages','totalPages','PageCount','pageCount','TotalPage','totalPage','pages']);
+                    var totalRecords = _pickNum(payload, ['TotalRecords','totalRecords','TotalCount','totalCount','Total','total','RecordCount','recordCount','totalRows','TotalRows']);
+                    var curPage = _pickNum(payload, ['Page','page','CurrentPage','currentPage']) || page;
+                    var curSize = _pickNum(payload, ['PageSize','pageSize','tsLimit','TsLimit','Limit','limit']) || pageSize;
+
+                    if (!totalRecords && rowsArr) {
+                        totalRecords = rowsArr.length < curSize
+                            ? ((curPage - 1) * curSize) + rowsArr.length
+                            : ((curPage) * curSize) + 1;
+                    }
+                    if (!totalPages) totalPages = curSize > 0 ? Math.max(1, Math.ceil((totalRecords || 0) / curSize)) : 1;
+
+                    cb({ attributes: attributes, pagination: { page: curPage, pageSize: curSize, totalPages: totalPages, totalRecords: totalRecords || 0 } }, null);
+                } else {
+                    // Operational — upstream returned the full range in one call.
+                    // Synthesize pagination for the client-side slicer.
+                    var rowsLen = (rowsArr && rowsArr.length) || 0;
+                    cb({
+                        attributes: attributes,
+                        pagination: {
+                            page: 1,
+                            pageSize: pageSize,
+                            totalPages: pageSize > 0 ? Math.max(1, Math.ceil(rowsLen / pageSize)) : 1,
+                            totalRecords: rowsLen,
+                            clientSide: true    // signal to renderer: don't refetch on page change
+                        }
+                    }, null);
+                }
+            },
+            error: function () { cb(null, 'AJAX error'); }
+        });
+    }
+
+    // Small helper — return first numeric-valued key from a list, or 0.
+    function _pickNum(obj, keys) {
+        if (!obj) return 0;
+        for (var i = 0; i < keys.length; i++) {
+            var v = obj[keys[i]];
+            if (v !== undefined && v !== null && !isNaN(parseInt(v, 10))) return parseInt(v, 10);
+        }
+        return 0;
+    }
+
+    // Convert DashboardHistory-style columnar payload
+    //   { columns:[{tagId,attrId,name,dataType}], rows:[{ts,v:[...]}] }
+    // to the per-attribute shape parseTableData expects:
+    //   [{ AttributeId, Values: { "0":{Timestamp:{TimestampDevice},Value,DataType}, ... } }]
+    // Also fills in any missing entries in assetAttributeMap (RDPMS names) and
+    // DATALOGGER_RELAY_MAP (DataLogger names) — this backfill is what turns
+    // "DL-<attrId>" back into real relay names when the site's own
+    // DataloggerAttribute fetch didn't cover an id.
+    //
+    // Special-cased column dataTypes:
+    //   "Computed" (name === "Direction") — server-computed PM direction.
+    //     Values are captured into pmDirectionByTs[assetId + "_" + tsMs]
+    //     for renderAssetTablePage to inject as the first PM cell, and the
+    //     column itself is NOT emitted as an attribute (no real attrId).
+    function _transformDashboardColumnar(cols, rowsArr, assetIdForDirection) {
+        var attributes = [];
+        if (!cols || !cols.length) return attributes;
+
+        for (var ci = 0; ci < cols.length; ci++) {
+            var col = cols[ci] || {};
+            var attrId = col.attrId !== undefined ? col.attrId : col.AttrId;
+            var dtype = col.dataType || col.DataType || 'RDPMS';
+            var name = col.name || col.Name || '';
+
+            // ── Server-computed PM Direction column ─────────────────────────
+            // No attrId, dataType === "Computed". Stash its per-row value in
+            // pmDirectionByTs and drop the column from the attribute list.
+            if ((!attrId && attrId !== 0) &&
+                (dtype && dtype.toLowerCase() === 'computed') &&
+                (name && name.toLowerCase() === 'direction')) {
+                if (assetIdForDirection !== undefined && assetIdForDirection !== null) {
+                    for (var rd = 0; rd < rowsArr.length; rd++) {
+                        var rrow = rowsArr[rd];
+                        if (!rrow || !rrow.v) continue;
+                        var dv = rrow.v[ci];
+                        if (dv === null || dv === undefined || dv === '') continue;
+                        var _tsMs = new Date(rrow.ts || rrow.Ts).getTime();
+                        if (isNaN(_tsMs)) continue;
+                        pmDirectionByTs[assetIdForDirection + '_' + _tsMs] = String(dv);
+                    }
+                }
+                continue;
+            }
+
+            // Skip other columns without a real attrId (defensive)
+            if (attrId === null || attrId === undefined) continue;
+
+            // Backfill display-name maps so getAttrDisplayName resolves cleanly
+            if (name) {
+                if (dtype && dtype.toLowerCase() === 'datalogger') {
+                    if (!DATALOGGER_RELAY_MAP[attrId] && !DATALOGGER_RELAY_MAP[String(attrId)]) {
+                        DATALOGGER_RELAY_MAP[attrId] = name;
+                    }
+                } else {
+                    var existing = assetAttributeMap[attrId] || assetAttributeMap[String(attrId)];
+                    if (!existing || (!existing.title && !existing.alias)) {
+                        assetAttributeMap[attrId] = { title: name, alias: name };
+                    }
+                }
+            }
+
+            var values = {};
+            for (var ri = 0; ri < rowsArr.length; ri++) {
+                var row = rowsArr[ri];
+                if (!row || !row.v || row.v.length <= ci) continue;
+                var val = row.v[ci];
+                if (val === null || val === undefined) continue;   // skip nulls
+                values[String(ri)] = {
+                    Timestamp: { TimestampDevice: row.ts || row.Ts },
+                    Value: val,
+                    DataType: dtype
+                };
+            }
+
+            attributes.push({
+                AttributeId: attrId,
+                Values: values,
+                _apiName: name,        // preserved for card / debug use
+                _dataType: dtype,
+                _tagId: col.tagId || col.TagId
+            });
+        }
+        return attributes;
+    }
+
     // ===== SEARCH HISTORY =====
     function fnSearchHistory() {
         var assetIds = msGetValues('asset');
@@ -3215,12 +3572,70 @@
         var selectedSiteId = $('#drpSite').val();
         //$('#divTelemetryHistory').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br/><small class="text-muted mt-2">Loading history data...</small></div>');
 
+        // ─── Decide which API to use ─────────────────────────────────────────
+        // Point Machine + Indication → DashboardPMHistoryIntegration (server-side paginated)
+        // Point Machine + Operational → DashboardPMHistoryOperation  (client-side paginated)
+        // Everything else             → DashboardHistory              (server-side paginated)
+        // Graph view always uses legacy full-range HistoryValue.
+        var _selType = $('#drpAssetType option:selected').text().trim().toUpperCase();
+        var _isPM = (_selType === 'POINT MACHINE' || _selType === 'POINT_MACHINE');
+
+        // Server-side pagination is enabled unless the view genuinely needs
+        // the full range (Graph). PM Operational sets a per-asset clientSide
+        // flag but still uses IS_SERVER_SIDE=true routing.
+        IS_SERVER_SIDE = (selectedViewType !== 'Graph');
+
+        // Reset direction cache on every new search
+        pmDirectionByTs = {};
+
+        // Snapshot filters used for later page/pageSize changes on Table view
+        LAST_SEARCH_PARAMS = {
+            startDate: startDate,
+            endDate: endDate,
+            sort: 'desc',
+            fillGaps: true,
+            assetIds: assetIds.slice(),
+            assetNameMap: assetNameMap,
+            selectedSiteId: selectedSiteId,
+            isPM: _isPM
+        };
+
+        // Reset server-side state
+        serverSideState = [];
+
         var assetResults = [];
         var completed = 0;
         var total = assetIds.length;
         var hasError = false;
 
+        // ─── SERVER-SIDE PATH (DashboardHistory or DashboardPMHistory*) ──────
+        var doSearchServerSide = function () {
+            assetIds.forEach(function (assetId, idx) {
+                var fetchFn = _isPM
+                    ? function (aId, p, sz, cb) { return fetchPMHistoryPage(aId, pmViewMode, p, sz, cb); }
+                    : fetchDashboardHistoryPage;
+
+                fetchFn(assetId, 1, TH_PAGE_SIZE, function (parsed, err) {
+                    if (err) {
+                        hasError = true;
+                    } else if (parsed && parsed.attributes && parsed.attributes.length > 0) {
+                        assetResults.push({
+                            assetId: assetId,
+                            assetName: assetNameMap[assetId] || ('Asset ' + assetId),
+                            attributes: parsed.attributes,
+                            _pagination: parsed.pagination   // { page, pageSize, totalPages, totalRecords, clientSide? }
+                        });
+                    }
+                    completed++;
+                    _setLoaderProgress(completed, total);
+                    if (completed >= total) onAllHistoryLoaded(assetResults, hasError);
+                });
+            });
+        };
+
+        // ─── LEGACY CLIENT-SIDE PATH (Point Machine, Cards / Graph views) ────
         var doSearch = function () {
+            if (IS_SERVER_SIDE) { doSearchServerSide(); return; }
             assetIds.forEach(function (assetId) {
                 $.ajax({
                     url: '/FRS25/TelemetryHistory/GetHistoryData',
@@ -3561,6 +3976,7 @@
         // Reset per-asset cache array
         thCaches = [];
         thCurrentPages = [];
+        serverSideState = [];
 
         var anyData = false;
         var html = '';
@@ -3570,6 +3986,24 @@
             thCaches.push(cache);
             thCurrentPages.push(1);
 
+            // Track server-side state (assetId + pagination) so page / page-size
+            // clicks can refetch this specific asset. clientSide=true means the
+            // API returned everything at once (PM Operational) — page changes
+            // then re-slice locally instead of refetching.
+            if (IS_SERVER_SIDE && assetObj._pagination) {
+                serverSideState.push({
+                    assetId: assetObj.assetId,
+                    assetName: assetObj.assetName,
+                    page: assetObj._pagination.page || 1,
+                    pageSize: assetObj._pagination.pageSize || TH_PAGE_SIZE,
+                    totalPages: assetObj._pagination.totalPages || 1,
+                    totalRecords: assetObj._pagination.totalRecords || cache.allTimestamps.length,
+                    clientSide: !!assetObj._pagination.clientSide
+                });
+            } else {
+                serverSideState.push(null);
+            }
+
             if (cache.allTimestamps.length === 0) {
                 html += '<div class="text-center text-muted p-3" style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;">'
                     + '<i class="fas fa-inbox" style="font-size:24px;margin-bottom:8px;display:block;"></i>'
@@ -3578,8 +4012,10 @@
             }
 
             anyData = true;
-            var totalPages = Math.ceil(cache.allTimestamps.length / TH_PAGE_SIZE) || 1;
-            var totalRows = cache.allTimestamps.length;
+            var ss = serverSideState[idx];
+            var totalRows = ss ? ss.totalRecords : cache.allTimestamps.length;
+            var effPageSize = ss ? ss.pageSize : TH_PAGE_SIZE;
+            var totalPages = ss ? ss.totalPages : (Math.ceil(cache.allTimestamps.length / TH_PAGE_SIZE) || 1);
 
             html += '<div class="asset-table-block" id="assetBlock_' + idx + '" style="margin-bottom:24px;">';
             html += '<div class="history-table-wrapper">';
@@ -3587,13 +4023,20 @@
             html += buildThead(cache);
             html += '<tbody id="tblHistoryBody_' + idx + '"></tbody>';
             html += '</table></div>';
-            // Per-asset pagination
+            // Per-asset pagination + page-size selector
             html += '<div class="px-2 pb-2 pt-1" id="pagination_' + idx + '">';
-            html += '<div class="d-flex justify-content-between align-items-center flex-wrap">';
+            html += '<div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">';
             html += '<div class="showing-records" id="showingRecords_' + idx + '">Showing 1 to '
-                + Math.min(TH_PAGE_SIZE, totalRows) + ' of ' + totalRows + ' records</div>';
-            html += '<nav><ul class="pagination" id="paginationUl_' + idx + '"></ul></nav>';
-            html += '</div></div></div>';
+                + Math.min(effPageSize, totalRows) + ' of ' + totalRows + ' records</div>';
+            html += '<div style="display:flex;align-items:center;gap:8px;">';
+            html += '<label class="mb-0" for="pageSizeSel_' + idx + '" style="font-size:12px;color:#64748b;">Rows per page</label>';
+            html += '<select id="pageSizeSel_' + idx + '" class="form-control form-control-sm" style="width:auto;min-width:70px;" onchange="onPageSizeChange(' + idx + ', this.value)">';
+            TH_PAGE_SIZE_OPTIONS.forEach(function (opt) {
+                html += '<option value="' + opt + '"' + (opt === effPageSize ? ' selected' : '') + '>' + opt + '</option>';
+            });
+            html += '</select>';
+            html += '<nav><ul class="pagination mb-0" id="paginationUl_' + idx + '"></ul></nav>';
+            html += '</div></div></div></div>';
         });
 
         if (!anyData) {
@@ -4378,8 +4821,12 @@
 
                 // PM: inject Direction cell at the START of each asset group
                 if (isPMRow && colsInCurrentAsset === 0) {
-                    var assetColsForDir = columns.filter(function (col2) { return col2.assetId === (assetGroups[currentAssetIdx] ? assetGroups[currentAssetIdx].assetId : null); });
-                    var dirLabel = getPMDirection(assetColsForDir, attributeData, rowTs);
+                    var _dirAId = assetGroups[currentAssetIdx] ? assetGroups[currentAssetIdx].assetId : null;
+                    var assetColsForDir = columns.filter(function (col2) { return col2.assetId === _dirAId; });
+                    // Prefer server-provided Direction (from DashboardPMHistory*
+                    // "Computed" column); fall back to legacy client calc.
+                    var _apiDir = pmDirectionByTs[_dirAId + '_' + rowTs.getTime()];
+                    var dirLabel = _apiDir || getPMDirection(assetColsForDir, attributeData, rowTs);
                     var dirColor = dirLabel.indexOf('Reverse') !== -1 ? '#b45309' : '#1d4ed8';
                     h.push('<td style="color:' + dirColor + ';font-weight:600;white-space:nowrap;">' + dirLabel + '</td>');
                 }
@@ -4430,16 +4877,106 @@
         $('.history-table-wrapper').scrollTop(0);
     }
 
+    // ── User changed page size for a specific asset ─────────────────────────
+    function onPageSizeChange(assetIdx, newSize) {
+        newSize = parseInt(newSize, 10) || TH_PAGE_SIZE;
+        TH_PAGE_SIZE = newSize;   // persist as new default
+        var ss = serverSideState[assetIdx];
+        if (ss && ss.clientSide) {
+            // PM Operational — everything is cached; just re-slice
+            ss.pageSize = newSize;
+            ss.totalPages = newSize > 0 ? Math.max(1, Math.ceil(ss.totalRecords / newSize)) : 1;
+            renderAssetTablePage(assetIdx, 1);
+        } else if (IS_SERVER_SIDE && ss) {
+            ss.pageSize = newSize;
+            ss.page = 1;
+            refetchAssetPage(assetIdx, 1);
+        } else {
+            // Legacy client-side path
+            renderAssetTablePage(assetIdx, 1);
+        }
+    }
+
+    // ── Refetch a single asset's page from the server & re-render ───────────
+    function refetchAssetPage(assetIdx, page) {
+        var ss = serverSideState[assetIdx];
+        if (!ss) return;
+        $("#loader").show();
+        _setLoaderProgress(0, 1);
+        // Choose the appropriate API based on the active search context.
+        var fetchFn = (LAST_SEARCH_PARAMS && LAST_SEARCH_PARAMS.isPM)
+            ? function (aId, p, sz, cb) { return fetchPMHistoryPage(aId, pmViewMode, p, sz, cb); }
+            : fetchDashboardHistoryPage;
+
+        fetchFn(ss.assetId, page, ss.pageSize, function (parsed, err) {
+            $("#loader").hide();
+            _clearLoaderProgress();
+            if (err) { showError('Failed to fetch page ' + page + '.', 'API Error'); return; }
+            if (!parsed) { showError('Empty response.', 'API Error'); return; }
+
+            // Rebuild cache for this asset with the new page of attributes
+            var assetObj = {
+                assetId: ss.assetId,
+                assetName: ss.assetName,
+                attributes: parsed.attributes || []
+            };
+            var newCache = parseTableData([assetObj]);
+            thCaches[assetIdx] = newCache;
+            thCurrentPages[assetIdx] = page;
+
+            // Update pagination metadata
+            ss.page = parsed.pagination.page || page;
+            ss.pageSize = parsed.pagination.pageSize || ss.pageSize;
+            ss.totalPages = parsed.pagination.totalPages || ss.totalPages;
+            ss.totalRecords = parsed.pagination.totalRecords || ss.totalRecords;
+            ss.clientSide = !!parsed.pagination.clientSide;
+
+            // Rebuild thead (columns may differ if attribute list changed)
+            $('#tblHistory_' + assetIdx).html(buildThead(newCache) + '<tbody id="tblHistoryBody_' + assetIdx + '"></tbody>');
+            // Keep the page-size dropdown in sync
+            $('#pageSizeSel_' + assetIdx).val(ss.pageSize);
+
+            renderAssetTablePage(assetIdx, page);
+        });
+    }
+
     // ── Render one page of a specific asset's table ─────────────────────────
     function renderAssetTablePage(assetIdx, page) {
+        var ss = serverSideState[assetIdx];
+
+        // Guard against out-of-bounds clicks (the "disabled" class doesn't
+        // block onclick handlers).
+        page = parseInt(page, 10);
+        if (!page || page < 1) return;
+        if (ss && page > ss.totalPages) return;
+
+        // Server-side pagination → refetch instead of re-slicing the cache.
+        // PM Operational (ss.clientSide === true) already has ALL rows in the
+        // cache so it slices locally below without a network call.
+        if (IS_SERVER_SIDE && ss && !ss.clientSide && page !== thCurrentPages[assetIdx]) {
+            refetchAssetPage(assetIdx, page);
+            return;
+        }
+
         var cache = thCaches[assetIdx];
         if (!cache) return;
 
         thCurrentPages[assetIdx] = page;
-        var totalRows = cache.allTimestamps.length;
-        var totalPages = Math.ceil(totalRows / TH_PAGE_SIZE) || 1;
-        var startIdx = (page - 1) * TH_PAGE_SIZE;
-        var endIdx = Math.min(startIdx + TH_PAGE_SIZE, totalRows);
+
+        // Layout of the cache differs by pagination mode:
+        //   server-side (ss.clientSide=false) → cache IS the current page
+        //   client-side (ss.clientSide=true or !ss) → cache holds ALL rows; slice locally
+        var effPageSize = ss ? ss.pageSize : TH_PAGE_SIZE;
+        var totalRows = ss ? ss.totalRecords : cache.allTimestamps.length;
+        var totalPages = ss ? ss.totalPages : (Math.ceil(totalRows / effPageSize) || 1);
+        var startIdx, endIdx;
+        if (ss && !ss.clientSide) {
+            startIdx = 0;
+            endIdx = cache.allTimestamps.length;
+        } else {
+            startIdx = (page - 1) * effPageSize;
+            endIdx = Math.min(startIdx + effPageSize, totalRows);
+        }
 
         var assetGroups = cache.assetGroups;
         var columns = cache.columns;
@@ -4468,7 +5005,10 @@
                 if (isPMRow && colsInCurrentAsset === 0) {
                     var aId = assetGroups[currentAssetIdx] ? assetGroups[currentAssetIdx].assetId : null;
                     var assetColsForDir = columns.filter(function (col2) { return col2.assetId === aId; });
-                    var dirLabel = getPMDirection(assetColsForDir, attributeData, rowTs);
+                    // Prefer server-provided Direction (from DashboardPMHistory*
+                    // "Computed" column); fall back to legacy client calc.
+                    var _apiDir = pmDirectionByTs[aId + '_' + rowTs.getTime()];
+                    var dirLabel = _apiDir || getPMDirection(assetColsForDir, attributeData, rowTs);
                     var dirColor = dirLabel.indexOf('Reverse') !== -1 ? '#b45309' : '#1d4ed8';
                     h.push('<td style="color:' + dirColor + ';font-weight:600;white-space:nowrap;text-align:center;">' + dirLabel + '</td>');
                 }
@@ -4508,8 +5048,18 @@
         $('#tblHistoryBody_' + assetIdx).html(h.join(''));
 
         // Per-asset pagination
-        var showingFrom = startIdx + 1;
-        var showingTo = endIdx;
+        // Server-side mode (ss && !ss.clientSide): startIdx is always 0 (we only
+        // render the current page's slice) so compute display indices from
+        // page/pageSize. Client-side (ss.clientSide or !ss): use startIdx/endIdx.
+        var showingFrom, showingTo;
+        if (ss && !ss.clientSide) {
+            showingFrom = ((page - 1) * ss.pageSize) + 1;
+            showingTo = Math.min(page * ss.pageSize, totalRows);
+            if (cache.allTimestamps.length === 0) { showingFrom = 0; showingTo = 0; }
+        } else {
+            showingFrom = totalRows > 0 ? startIdx + 1 : 0;
+            showingTo = endIdx;
+        }
         $('#showingRecords_' + assetIdx).text('Showing ' + showingFrom + ' to ' + showingTo + ' of ' + totalRows + ' records');
 
         var pHtml = '';
@@ -5747,7 +6297,7 @@
 
         var html = '<div class="th-cards-grid">';
 
-        assetResults.forEach(function (assetObj) {
+        assetResults.forEach(function (assetObj, idx) {
             var cache = parseTableData([assetObj]);
             var assetName = assetObj.assetName || ('Asset ' + assetObj.assetId);
             var totalRows = cache.allTimestamps.length;
@@ -5823,12 +6373,197 @@
             html += '<div class="th-ts">' + totalRows + ' records</div>';
             html += '</div>';
 
+            // ── View History button (opens modal with paginated history) ─────
+            html += '<div style="padding:8px 12px 12px 12px;border-top:1px solid rgba(255,255,255,0.05);">';
+            html += '<button type="button" class="btn btn-sm btn-block" style="background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.34);color:#a5b4fc;font-weight:600;font-size:12px;border-radius:8px;" ';
+            html += 'onclick="openCardHistoryModal(' + idx + ')">';
+            html += '<i class="fas fa-history" style="margin-right:6px;"></i>View History</button>';
+            html += '</div>';
+
             html += '</div>'; // th-asset-card
         });
 
         html += '</div>';
         $('#divTelemetryHistory').html(html);
         $('#divPagination').hide();
+    }
+
+    // ===== VIEW-HISTORY MODAL (from card view) ==============================
+    // Ensures a single modal exists in the DOM, then renders the paginated
+    // history table for the selected asset inside it. Server-side pagination
+    // via DashboardHistory keeps memory low even for large ranges.
+    function _ensureCardHistoryModal() {
+        if ($('#cardHistoryModal').length) return;
+        var m = ''
+            + '<div id="cardHistoryModal" class="modal" tabindex="-1" role="dialog" aria-hidden="true" style="display:none;">'
+            + '  <div class="modal-dialog modal-xl" role="document" style="max-width:1200px;">'
+            + '    <div class="modal-content" style="background:#0f172a;color:#e2e8f0;border:1px solid rgba(255,255,255,0.08);">'
+            + '      <div class="modal-header" style="border-bottom:1px solid rgba(255,255,255,0.08);">'
+            + '        <h5 class="modal-title" id="cardHistoryModalTitle" style="color:#e2e8f0;"><i class="fas fa-history" style="margin-right:6px;color:#a5b4fc;"></i>History</h5>'
+            + '        <button type="button" class="close" style="color:#e2e8f0;text-shadow:none;opacity:0.7;" onclick="closeCardHistoryModal()"><span>&times;</span></button>'
+            + '      </div>'
+            + '      <div class="modal-body" id="cardHistoryModalBody" style="padding:12px;max-height:75vh;overflow:auto;">'
+            + '        <div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x" style="color:#a5b4fc;"></i></div>'
+            + '      </div>'
+            + '    </div>'
+            + '  </div>'
+            + '  <div id="cardHistoryModalBackdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1049;" onclick="closeCardHistoryModal()"></div>'
+            + '</div>';
+        $('body').append(m);
+        // Position the dialog above the backdrop
+        $('#cardHistoryModal .modal-dialog').css({ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 1050, width: '90%', maxHeight: '90vh' });
+    }
+
+    function closeCardHistoryModal() {
+        $('#cardHistoryModal').hide();
+    }
+
+    // Open the modal, fetch page 1 for the specific asset, then render its
+    // paginated table inside the modal body. Uses IS_SERVER_SIDE_MODAL scope
+    // so page-clicks inside the modal refetch from server without touching
+    // the outer cards view state.
+    var _modalServerState = null;   // { assetId, assetName, page, pageSize, totalPages, totalRecords }
+    var _modalCache = null;         // parseTableData cache for the current page
+
+    function openCardHistoryModal(cardIdx) {
+        if (!lastAssetResults || !lastAssetResults[cardIdx]) return;
+        var assetObj = lastAssetResults[cardIdx];
+        _ensureCardHistoryModal();
+        $('#cardHistoryModalTitle').html('<i class="fas fa-history" style="margin-right:6px;color:#a5b4fc;"></i>History — ' + (assetObj.assetName || ('Asset ' + assetObj.assetId)));
+        $('#cardHistoryModalBody').html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x" style="color:#a5b4fc;"></i></div>');
+        $('#cardHistoryModal').show();
+
+        _modalServerState = {
+            assetId: assetObj.assetId,
+            assetName: assetObj.assetName,
+            page: 1,
+            pageSize: TH_PAGE_SIZE,
+            totalPages: 1,
+            totalRecords: 0
+        };
+        _loadModalPage(1);
+    }
+
+    function _loadModalPage(page) {
+        if (!_modalServerState) return;
+        fetchDashboardHistoryPage(_modalServerState.assetId, page, _modalServerState.pageSize, function (parsed, err) {
+            if (err) {
+                $('#cardHistoryModalBody').html('<div class="text-center text-danger p-4"><i class="fas fa-exclamation-triangle fa-2x"></i><br/>Failed to load: ' + err + '</div>');
+                return;
+            }
+            var assetObj = { assetId: _modalServerState.assetId, assetName: _modalServerState.assetName, attributes: parsed.attributes || [] };
+            _modalCache = parseTableData([assetObj]);
+            _modalServerState.page = parsed.pagination.page || page;
+            _modalServerState.pageSize = parsed.pagination.pageSize || _modalServerState.pageSize;
+            _modalServerState.totalPages = parsed.pagination.totalPages || 1;
+            _modalServerState.totalRecords = parsed.pagination.totalRecords || _modalCache.allTimestamps.length;
+            _renderModalTable();
+        });
+    }
+
+    function _renderModalTable() {
+        if (!_modalCache) return;
+        var cache = _modalCache;
+        var ss = _modalServerState;
+
+        var h = [];
+        h.push('<div class="history-table-wrapper" style="max-height:55vh;overflow:auto;border:1px solid rgba(255,255,255,0.06);border-radius:8px;">');
+        h.push('<table class="history-table" style="width:auto;min-width:100%;">');
+        h.push(buildThead(cache));
+        h.push('<tbody>');
+
+        var columns = cache.columns;
+        var attributeData = cache.attributeData;
+        var assetGroups = cache.assetGroups;
+        var isTrack = cache.isTrack;
+
+        for (var r = 0; r < cache.allTimestamps.length; r++) {
+            var rowTs = cache.allTimestamps[r];
+            h.push('<tr><td>' + formatTimestamp(rowTs) + '</td>');
+            var cells = cache.displayGrid[r];
+            var currentAssetIdx = 0;
+            var colsInCurrentAsset = 0;
+            var pendingDL = [];
+            for (var c = 0; c < cells.length; c++) {
+                var col = columns[c];
+                var gc = assetGroups[currentAssetIdx] ? assetGroups[currentAssetIdx].attrCount : 999;
+                var cell = cells[c];
+                var ch;
+                if (col && col.missing) ch = '<td style="color:#aaa;text-align:center;">-</td>';
+                else ch = (cell.cls ? '<td class="' + cell.cls + '">' : '<td>') + cell.html + '</td>';
+                if (col && col.isDataLogger) pendingDL.push(ch);
+                else h.push(ch);
+                colsInCurrentAsset++;
+                if (colsInCurrentAsset >= gc) {
+                    if (isTrack) {
+                        var aid = assetGroups[currentAssetIdx].assetId;
+                        var derived = calculateDerivedForRow(attributeData, columns, aid, rowTs);
+                        h.push(getDerivedCellsHtml(derived));
+                    }
+                    for (var d = 0; d < pendingDL.length; d++) h.push(pendingDL[d]);
+                    pendingDL = [];
+                    currentAssetIdx++;
+                    colsInCurrentAsset = 0;
+                }
+            }
+            h.push('</tr>');
+        }
+        h.push('</tbody></table></div>');
+
+        // Pagination bar
+        var showingFrom = ((ss.page - 1) * ss.pageSize) + 1;
+        var showingTo = Math.min(ss.page * ss.pageSize, ss.totalRecords);
+        if (cache.allTimestamps.length === 0) { showingFrom = 0; showingTo = 0; }
+
+        h.push('<div class="d-flex justify-content-between align-items-center flex-wrap mt-3" style="gap:8px;">');
+        h.push('<div class="showing-records">Showing ' + showingFrom + ' to ' + showingTo + ' of ' + ss.totalRecords + ' records</div>');
+        h.push('<div style="display:flex;align-items:center;gap:8px;">');
+        h.push('<label class="mb-0" style="font-size:12px;color:#94a3b8;">Rows per page</label>');
+        h.push('<select id="modalPageSizeSel" class="form-control form-control-sm" style="width:auto;min-width:70px;background:#1e293b;color:#e2e8f0;border-color:rgba(255,255,255,0.1);" onchange="onModalPageSizeChange(this.value)">');
+        TH_PAGE_SIZE_OPTIONS.forEach(function (opt) {
+            h.push('<option value="' + opt + '"' + (opt === ss.pageSize ? ' selected' : '') + '>' + opt + '</option>');
+        });
+        h.push('</select>');
+        h.push('<nav><ul class="pagination mb-0" id="modalPaginationUl"></ul></nav>');
+        h.push('</div></div>');
+
+        $('#cardHistoryModalBody').html(h.join(''));
+        _renderModalPager();
+    }
+
+    function _renderModalPager() {
+        var ss = _modalServerState;
+        var page = ss.page, totalPages = ss.totalPages;
+        var pHtml = '';
+        pHtml += '<li class="page-item ' + (page <= 1 ? 'disabled' : '') + '">'
+            + '<a class="page-link" href="javascript:void(0);" onclick="onModalPageChange(' + (page - 1) + ')"><i class="fas fa-chevron-left"></i></a></li>';
+        var startPage = Math.max(1, page - 2);
+        var endPage = Math.min(totalPages, startPage + 4);
+        if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+        for (var p = startPage; p <= endPage; p++) {
+            pHtml += '<li class="page-item ' + (p === page ? 'active' : '') + '">'
+                + '<a class="page-link" href="javascript:void(0);" onclick="onModalPageChange(' + p + ')">' + p + '</a></li>';
+        }
+        pHtml += '<li class="page-item ' + (page >= totalPages ? 'disabled' : '') + '">'
+            + '<a class="page-link" href="javascript:void(0);" onclick="onModalPageChange(' + (page + 1) + ')"><i class="fas fa-chevron-right"></i></a></li>';
+        $('#modalPaginationUl').html(pHtml);
+    }
+
+    function onModalPageChange(page) {
+        page = parseInt(page, 10);
+        if (!_modalServerState) return;
+        if (!page || page < 1) return;
+        if (page > _modalServerState.totalPages) return;
+        _loadModalPage(page);
+    }
+
+    function onModalPageSizeChange(newSize) {
+        newSize = parseInt(newSize, 10) || TH_PAGE_SIZE;
+        TH_PAGE_SIZE = newSize;   // remember for next time
+        if (!_modalServerState) return;
+        _modalServerState.pageSize = newSize;
+        _modalServerState.page = 1;
+        _loadModalPage(1);
     }
 
     // Override renderByViewType to handle Cards view

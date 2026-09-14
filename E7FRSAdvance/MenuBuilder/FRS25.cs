@@ -94,7 +94,7 @@ namespace E7FRSAdvance.MenuBuilder
             menus.Add(health);
 
             Menu usersite = new Menu();
-            usersite.Main = usersite.SetMenuAttribute("User Sites", ControllerName.Usersite, ActionName.Index, IconName.Usersite);
+            usersite.Main = usersite.SetMenuAttribute("Command Control", ControllerName.Usersite, ActionName.Index, IconName.Usersite);
             menus.Add(usersite);
 
             // Telemetry
