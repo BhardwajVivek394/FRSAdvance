@@ -165,9 +165,14 @@
         svg += `<line x1="${x}" y1="${cy + railH / 2 - 0.5}" x2="${x + w}" y2="${cy + railH / 2 - 0.5}" stroke="${T.railEdge}" stroke-width="1"/>`;
         const innerTop = cy - railH / 2 + 1;
         const innerH = Math.max(1, railH - 2);
-        for (let i = 4; i + 1 <= w; i += Math.max(3, Math.round(w / 80))) {
-            svg += `<rect x="${x + i}" y="${innerTop}" width="1" height="${innerH}" fill="${T.sleeper}"/>`;
-        }
+        /* Sleeper cross-marks: one pattern-filled rect instead of ~w/4 individual
+         * <rect>s (same 1px mark every `step` px, same phase) — cuts the yard
+         * SVG size and node count by an order of magnitude on track-heavy layouts. */
+        const step = Math.max(3, Math.round(w / 80));
+        const patId = 'sipSl_' + String(cell.id).replace(/[^A-Za-z0-9_-]/g, '');
+        svg += `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" x="${x + 4}" y="${innerTop}" width="${step}" height="${innerH}">` +
+            `<rect x="0" y="0" width="1" height="${innerH}" fill="${T.sleeper}"/></pattern></defs>`;
+        if (w - 4 >= 1) svg += `<rect x="${x + 4}" y="${innerTop}" width="${w - 4}" height="${innerH}" fill="url(#${patId})"/>`;
 
         /* ---- Merge divider marks at left and right edges ---- *
          *  Short vertical yellow ticks at each end of the track section.
@@ -346,14 +351,16 @@
         const sleeperHalf = railW * 0.55;
         const snx = Math.cos(ang);    // unit direction along rail
         const sny = Math.sin(ang);
-        const pnx = -sny;             // perpendicular to rail
-        const pny = snx;
-        for (let t = sleeperGap; t < len - sleeperGap * 0.5; t += sleeperGap) {
-            const cx = x1 + snx * t;
-            const cy = y1 + sny * t;
-            svg += `<line x1="${cx - pnx * sleeperHalf}" y1="${cy - pny * sleeperHalf}" ` +
-                `x2="${cx + pnx * sleeperHalf}" y2="${cy + pny * sleeperHalf}" ` +
-                `stroke="#515151" stroke-width="1"/>`;
+        /* One dashed stroke along the diagonal draws the same 1px-wide,
+           2*sleeperHalf-tall marks every sleeperGap px as the old per-mark
+           loop (~36 <line>s per point machine) — same look, 1 node. */
+        const sStart = sleeperGap;
+        const sEnd = len - sleeperGap * 0.5;
+        if (sEnd > sStart) {
+            svg += `<line x1="${(x1 + snx * sStart).toFixed(2)}" y1="${(y1 + sny * sStart).toFixed(2)}" ` +
+                `x2="${(x1 + snx * sEnd).toFixed(2)}" y2="${(y1 + sny * sEnd).toFixed(2)}" ` +
+                `stroke="#515151" stroke-width="${(sleeperHalf * 2).toFixed(2)}" ` +
+                `stroke-dasharray="1 ${(sleeperGap - 1).toFixed(2)}"/>`;
         }
 
         /* ---- Glow when the body is lit (occupied / route set) ---- */
@@ -2543,6 +2550,7 @@
             const h = (c.size && c.size.height) || 60;
             const stroke = (c.attrs && c.attrs.path && c.attrs.path.stroke) || '#3c4260';
             items.push({
+                id: c.id,
                 cy: y + h / 2,
                 xLeft: x,
                 xRight: x + w,
@@ -2600,18 +2608,24 @@
             svg += '<line x1="' + minX + '" y1="' + (top + BED_H) + '" x2="' + maxX + '" y2="' + (top + BED_H) + '" ' +
                 'stroke="' + T.railEdge + '" stroke-width="1.2"/>';
 
+            /* Occupied overlay per track section. Always emitted (hidden when
+             * clear) and tagged with the cell id so the live view can toggle
+             * occupancy in place (display + fill) instead of rebuilding the
+             * whole rail layer on every telemetry change. */
             for (const it of band.items) {
-                if (it.lit) {
-                    svg += '<rect x="' + it.xLeft + '" y="' + (top - 3) + '" ' +
-                        'width="' + (it.xRight - it.xLeft) + '" height="' + (BED_H + 6) + '" ' +
-                        'fill="' + it.stroke + '" opacity="0.25" rx="2"/>';
-                    svg += '<rect x="' + it.xLeft + '" y="' + top + '" ' +
-                        'width="' + (it.xRight - it.xLeft) + '" height="' + BED_H + '" ' +
-                        'fill="' + it.stroke + '" opacity="0.85"/>';
-                    svg += '<rect x="' + it.xLeft + '" y="' + top + '" ' +
-                        'width="' + (it.xRight - it.xLeft) + '" height="' + BED_H + '" ' +
-                        'fill="url(#' + patId + ')" opacity="0.30"/>';
-                }
+                const occFill = it.lit ? it.stroke : T.sectionOcc;
+                svg += '<g class="sip-rail-occ" data-rail-cell="' + escapeXml(it.id) + '"' +
+                    (it.lit ? '' : ' style="display:none"') + '>';
+                svg += '<rect x="' + it.xLeft + '" y="' + (top - 3) + '" ' +
+                    'width="' + (it.xRight - it.xLeft) + '" height="' + (BED_H + 6) + '" ' +
+                    'fill="' + occFill + '" data-occ-fill="1" opacity="0.25" rx="2"/>';
+                svg += '<rect x="' + it.xLeft + '" y="' + top + '" ' +
+                    'width="' + (it.xRight - it.xLeft) + '" height="' + BED_H + '" ' +
+                    'fill="' + occFill + '" data-occ-fill="1" opacity="0.85"/>';
+                svg += '<rect x="' + it.xLeft + '" y="' + top + '" ' +
+                    'width="' + (it.xRight - it.xLeft) + '" height="' + BED_H + '" ' +
+                    'fill="url(#' + patId + ')" opacity="0.30"/>';
+                svg += '</g>';
             }
         }
         svg += '</g>';
@@ -3149,7 +3163,7 @@
         GROUPS, PALETTE: Object.keys(ASSETS), ASSETS,
         spec, makeCell, renderCell, renderIcon, renderYard,
         renderRailLayer, prepareRailContext, renderStandLayer, renderBreakerLayer, renderPMConnectorLayer,
-        _uid: uid, _theme: T
+        isLit, _uid: uid, _theme: T
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = { SIP };

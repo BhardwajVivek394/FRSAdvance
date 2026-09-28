@@ -2148,6 +2148,157 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         #endregion
 
+        #region Point Machine / Site metadata
+
+        /// <summary>
+        /// Point Machine per-asset metadata (thick-wave flag and type, A/B direction
+        /// aliases, half-point-machine flag). telemetrylive.js calls this from
+        /// loadPmAssetMeta(); without it the PM renderers fall back to IRS defaults.
+        /// </summary>
+        public ActionResult GetPMAssetMeta(AssetLister mAssetLister)
+        {
+            if (mAssetLister.Pager == null) mAssetLister.Pager = new Pager();
+            mAssetLister.Pager.Take = -1;
+
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    mAssetLister.SearchCriteria.CreatedBy = ClsHttpContent.LoginUser.Id;
+                    mAssetLister.SearchCriteria.IsMobileView = true;
+                    mAssetLister.SearchCriteria.StartDate = DateTime.Now.ToString("M/d/yyyy");
+                    mAssetLister.SearchCriteria.EndDate = DateTime.Now.ToString("M/d/yyyy");
+
+                    var jsonStr = JsonConvert.SerializeObject(mAssetLister);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+
+                    var response = hcf.client.PostAsync("Asset/GetAllSiteDetailsBySiteId", str).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mAssetLister = JsonConvert.DeserializeObject<AssetLister>(jsonString);
+
+                        if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssets.Count > 0)
+                        {
+                            var meta = mAssetLister.mAssets.Select(a => new
+                            {
+                                a.Id,
+                                a.Name,
+                                a.IsThickWave,
+                                a.ThickWaveTypeId,
+                                a.AliasDirectionA,
+                                a.AliasDirectionB,
+                                a.IsHalfPointMachine
+                            }).ToList();
+
+                            return Json(meta, JsonRequestBehavior.AllowGet);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new
+                {
+                    error = ex.Message,
+                    inner = ex.InnerException != null ? ex.InnerException.Message : string.Empty
+                }, JsonRequestBehavior.AllowGet);
+            }
+
+            return Json(new List<object>(), JsonRequestBehavior.AllowGet);
+        }
+
+        /// <summary>
+        /// Single site record. Used to resolve the Zone / Division / Station names
+        /// for export headers when the filters are left on "All".
+        /// </summary>
+        [HttpGet]
+        public ActionResult GetSiteById(int siteId)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync("Site/GetSiteById/" + siteId).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string json = response.Content.ReadAsStringAsync().Result;
+                        return Content(json, "application/json");
+                    }
+
+                    return Json(new { error = "API returned status: " + response.StatusCode },
+                        JsonRequestBehavior.AllowGet);
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        #endregion
+
+        #region FRS Attribute Range
+
+        /// <summary>
+        /// Per-site FRS attribute ranges, returned as raw JSON so the client can
+        /// index whichever attribute it needs. Currently consumed for
+        /// "Track Relay resistance", which feeds the per-asset TR_RES used by the
+        /// derived-value calculations instead of the hard-coded 10 Ohm default.
+        /// </summary>
+        [HttpGet]
+        public ActionResult GetFRSAttributeRangeBySiteId(int siteId)
+        {
+            string jsonString = "[]";
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(String.Format("FRSAttributeRange/SiteId/{0}", siteId)).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        var body = response.Content.ReadAsStringAsync().Result;
+                        if (!String.IsNullOrWhiteSpace(body)) jsonString = body;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ViewBag.Error = ex.Message.ToString();
+                jsonString = "[]";
+            }
+            return Content(jsonString, "application/json");
+        }
+
+        /// <summary>
+        /// Average-value history for an asset, rendered into the
+        /// _FRSAttributeRangeHistory partial that fnShowFRSAttributeRangeHistory() shows.
+        /// </summary>
+        public ActionResult _FRSAttributeRangeHistory(int id)
+        {
+            var mFRSAttributeRangeHistory = new List<Domain.FRSAttributeRangeHistory>();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(String.Format("FRSAttributeRangeHistory/AssetId/{0}", id)).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mFRSAttributeRangeHistory = JsonConvert.DeserializeObject<List<Domain.FRSAttributeRangeHistory>>(jsonString);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                mFRSAttributeRangeHistory = new List<Domain.FRSAttributeRangeHistory>();
+            }
+            return PartialView(mFRSAttributeRangeHistory ?? new List<Domain.FRSAttributeRangeHistory>());
+        }
+
+        #endregion
+
 
         // ═══════════════════════════════════════════════════════════════════════
         // MODELS

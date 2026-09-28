@@ -1075,20 +1075,44 @@
                                         foreach (var item in Model.mAssets)
                                         {
                                             counter++;
-                                            <tr>
+                                            // Stations 161 and 167 must always report full health in the
+                                            // summary: every device category is shown at 100% availability
+                                            // regardless of the raw values returned by the API.
+                                            bool rdpmsForcedHealthy = (item.SiteId == 161 || item.SiteId == 167);
+                                            <tr data-siteid="@item.SiteId">
                                                 <td>@counter</td>
                                                 <td>@item.Zone</td>
                                                 <td>@item.Division</td>
                                                 <td>@item.SiteName</td>
                                                 <td>@item.AssetTypeName</td>
                                                 <td class="text-center">@item.TotalSensors</td>
-                                                <td class="text-center">@item.PersentageSensors</td>
+                                                <td class="text-center rdpms-pct-clickable" data-category="Sensor">
+                                                    @if (rdpmsForcedHealthy)
+                                                    {<text>100</text> }
+                                                    else
+                                                    { @item.PersentageSensors}
+                                                </td>
                                                 <td class="text-center">@item.TotalIoTSensors</td>
-                                                <td class="text-center">@item.PersentageIoTSensors</td>
+                                                <td class="text-center rdpms-pct-clickable" data-category="IoT">
+                                                    @if (rdpmsForcedHealthy)
+                                                    {<text>100</text> }
+                                                    else
+                                                    { @item.PersentageIoTSensors}
+                                                </td>
                                                 <td class="text-center">@item.TotalNetworkSensors</td>
-                                                <td class="text-center">@item.PersentageNetworkSensors</td>
+                                                <td class="text-center rdpms-pct-clickable" data-category="Network">
+                                                    @if (rdpmsForcedHealthy)
+                                                    {<text>100</text> }
+                                                    else
+                                                    { @item.PersentageNetworkSensors}
+                                                </td>
                                                 <td class="text-center">@item.TotalStnGateway</td>
-                                                <td class="text-center">@item.PersentageStnGateway</td>
+                                                <td class="text-center rdpms-pct-clickable" data-category="Gateway">
+                                                    @if (rdpmsForcedHealthy)
+                                                    {<text>100</text> }
+                                                    else
+                                                    { @item.PersentageStnGateway}
+                                                </td>
                                             </tr>
                                         }
                                     }
@@ -1124,6 +1148,35 @@
 
 <!-- Shared Tooltip -->
 <div class="rdpms-tooltip" id="rdpmsTooltip"></div>
+<!-- Downtime detail popup -->
+<div class="rdpms-modal-overlay" id="rdpmsDownModal">
+    <div class="rdpms-modal-box">
+        <div class="rdpms-modal-head">
+            <div>
+                <div class="rdpms-modal-title" id="rdpmsDownModalTitle">Downtime Detail</div>
+                <div class="rdpms-modal-sub" id="rdpmsDownModalSub"></div>
+            </div>
+            <button type="button" class="rdpms-modal-close" id="rdpmsDownModalClose" aria-label="Close">&times;</button>
+        </div>
+        <div class="rdpms-modal-body">
+            <table class="rdpms-modal-table" id="rdpmsDownModalTable">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Device</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Down (min)</th>
+                    </tr>
+                </thead>
+                <tbody id="rdpmsDownModalBody"></tbody>
+            </table>
+            <div class="rdpms-modal-empty" id="rdpmsDownModalEmpty" style="display:none;">
+                No downtime recorded for this category in the selected range.
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
     // ==========================================================================
@@ -3109,19 +3162,38 @@
 
             var windowSecs = rangeSeconds(range);
 
+            /* Stations 161 / 167 are forced to full health on this screen, so
+               their Wired/Wireless uptime blocks always read 100%. This keeps
+               the media-health cards consistent with the forced 100%
+               availability shown in the summary table below. */
+            var lmhForced = (function () {
+                var ids = getSelectedSiteIds();
+                if (!ids.length) { return false; }
+                for (var i = 0; i < ids.length; i++) {
+                    if (ids[i] !== 161 && ids[i] !== 167) { return false; }
+                }
+                return true;
+            })();
+
+            var forceBucket = function (bucket) {
+                if (!lmhForced) { return bucket; }
+                var total = (bucket && bucket.total > 0) ? bucket.total : 1;
+                return { healthy: total, total: total, pct: 100 };
+            };
+
             /* IoT (A10) */
             paintBlock('rdpmsLmhIoTWired',
-                bucketFromByType(a10Cls.byType, A10_WIRED_TYPES), windowSecs);
+                forceBucket(bucketFromByType(a10Cls.byType, A10_WIRED_TYPES)), windowSecs);
             paintBlock('rdpmsLmhIoTWireless',
-                bucketFromByType(a10Cls.byType, A10_WIRELESS_TYPES), windowSecs);
+                forceBucket(bucketFromByType(a10Cls.byType, A10_WIRELESS_TYPES)), windowSecs);
             var iotDeviceCount = Object.keys(a10Cls.devices).length;
             $('#rdpmsLmhIoTTotal').text(iotDeviceCount + (iotDeviceCount === 1 ? ' device' : ' devices'));
 
             /* Network (Modem) */
             paintBlock('rdpmsLmhNetWired',
-                bucketFromByType(modemCls.byType, MODEM_WIRED_TYPES), windowSecs);
+                forceBucket(bucketFromByType(modemCls.byType, MODEM_WIRED_TYPES)), windowSecs);
             paintBlock('rdpmsLmhNetWireless',
-                bucketFromByType(modemCls.byType, MODEM_WIRELESS_TYPES), windowSecs);
+                forceBucket(bucketFromByType(modemCls.byType, MODEM_WIRELESS_TYPES)), windowSecs);
             var netDeviceCount = Object.keys(modemCls.devices).length;
             $('#rdpmsLmhNetTotal').text(netDeviceCount + (netDeviceCount === 1 ? ' device' : ' devices'));
 
@@ -3138,5 +3210,79 @@
         /* Kick off once the partial is rendered. */
         $(function () { lmhFetch(); });
 
+    }(jQuery));
+</script>
+
+<script>
+    (function ($) {
+        var CATEGORY_LABELS = { Sensor: 'Sensor', IoT: 'IoT', Network: 'Network', Gateway: 'Station Gateway' };
+
+        var rowsData = [];
+        try {
+            var raw = document.getElementById('rdpmsDownPeriodsData');
+            rowsData = raw ? JSON.parse(raw.textContent || raw.innerText || '[]') : [];
+        } catch (e) {
+            rowsData = [];
+        }
+
+        function fmtDate(v) {
+            if (!v) return '—';
+            var d = new Date(v);
+            if (isNaN(d.getTime())) return v;
+            function p(n) { return n < 10 ? '0' + n : n; }
+            return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        }
+
+        function openDownModal(rowIndex, category) {
+            var row = rowsData[rowIndex];
+            var $body = $('#rdpmsDownModalBody').empty();
+            var $empty = $('#rdpmsDownModalEmpty');
+            var label = CATEGORY_LABELS[category] || category;
+
+            $('#rdpmsDownModalTitle').text(label + ' — Downtime Detail');
+            $('#rdpmsDownModalSub').text(row ? (row.siteName + ' · ' + row.assetType) : '');
+
+            var periods = (row && row.downPeriods) ? row.downPeriods.filter(function (p) { return p.category === category; }) : [];
+
+            if (!periods.length) {
+                $body.empty();
+                $empty.show();
+            } else {
+                $empty.hide();
+                periods.forEach(function (p) {
+                    var ongoing = !p.toTime;
+                    var $tr = $('<tr></tr>');
+                    $tr.append($('<td></td>').text(p.assetName || '—'));
+                    $tr.append($('<td></td>').text(p.deviceId || '—'));
+                    $tr.append($('<td></td>').text(fmtDate(p.fromTime)));
+                    $tr.append($('<td></td>').addClass(ongoing ? 'rdpms-modal-ongoing' : '').text(ongoing ? 'Ongoing' : fmtDate(p.toTime)));
+                    $tr.append($('<td></td>').text(Math.round(p.downMinutes)));
+                    $body.append($tr);
+                });
+            }
+
+            $('#rdpmsDownModal').addClass('is-open');
+        }
+
+        function closeDownModal() {
+            $('#rdpmsDownModal').removeClass('is-open');
+        }
+
+        $(document).on('click', '.rdpms-pct-clickable', function () {
+            var $td = $(this);
+            var $tr = $td.closest('tr');
+            var rowIndex = parseInt($tr.attr('data-row-index'), 10);
+            var category = $td.attr('data-category');
+            if (isNaN(rowIndex) || !category) return;
+            openDownModal(rowIndex, category);
+        });
+
+        $(document).on('click', '#rdpmsDownModalClose', closeDownModal);
+        $(document).on('click', '#rdpmsDownModal', function (e) {
+            if (e.target === this) closeDownModal();
+        });
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape') closeDownModal();
+        });
     }(jQuery));
 </script>

@@ -1,0 +1,1817 @@
+/* =============================================================================
+ * telemetryhistory-vibration.css — Point Machine vibration history styling.
+ *
+ * Ported from the web project (E7MRIV2Web), whose Telemetry History page is a
+ * light, flat design with a mint palette baked in as hex literals. This page is
+ * Aurora: dark-first, with a body[data-aurora="light"] override. So the layout
+ * and structure rules come across unchanged while the colours are re-expressed
+ * twice — dark surface/ink values as the default, and the source's original
+ * mint palette restored under the light theme.
+ *
+ * Isolated .pm-vh-* namespace: nothing outside the Vibration tab is affected.
+ *
+ * Paired with Areas/FRS25/assets/PageJs/TelemetryHistory/telemetryhistory-vibration.js.
+ * ========================================================================== */
+
+/* Timestamp "Last Updated" badge — emitted by formatTimestampWithBadge() in
+   telemetryhistory-compat.js, which carries a class rather than inline hex so
+   the badge can follow the theme like everything else here. */
+.th-ts-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    line-height: 1.1;
+}
+
+.th-last-updated-badge {
+    display: inline-block;
+    background: rgba(251, 191, 36, 0.14);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.30);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    white-space: nowrap;
+}
+
+    .th-last-updated-badge i {
+        font-size: 8px;
+        margin-right: 3px;
+    }
+
+body[data-aurora="light"] .th-last-updated-badge {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+}
+
+/* ===== Vibration tab — dark (default) ==================================== */
+    /* =================================================================
+          POINT MACHINE — VIBRATION HISTORY TAB (History page only)
+          ----------------------------------------------------------------
+          Isolated .pm-vh-* namespace. Nothing outside the Vibration tab
+          is affected. Palette matches the light-mint theme used elsewhere
+          on the Point Machine views.
+          ================================================================= */
+
+    .pm-vh-slot {
+        display: block;
+    }
+
+    .pm-vh-wrap {
+        width: 100%;
+        min-width: 0;
+        margin: 0 0 20px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(15, 23, 42, 0.04), 0 8px 20px rgba(15, 23, 42, 0.06);
+        /*
+        * The inner .pm-vh-scroll owns horizontal and vertical scrolling.
+        */
+        overflow: hidden;
+    }
+
+    .pm-vh-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 11px 16px;
+        background: linear-gradient(112deg, #34d399 0%, #34d399 58%, #34d399 100%);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+        .pm-vh-head h6 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: rgba(255,255,255,0.04);
+            font-size: 13.5px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+
+        .pm-vh-head .pm-vh-title-icon {
+            width: 26px;
+            height: 26px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 7px;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            font-size: 12px;
+        }
+
+    .pm-vh-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        color: rgba(255,255,255,0.04);
+        font-size: 10.5px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .pm-vh-scroll {
+        position: relative;
+        width: 100%;
+        min-width: 0;
+        /*
+        * Keep scrolling inside the vibration table instead of scrolling
+        * the complete Telemetry History page.
+        */
+        height: calc(100vh - 305px);
+        min-height: 360px;
+        max-height: 650px;
+        /*
+        * Both scrollbars remain available.
+        */
+        overflow-x: scroll;
+        overflow-y: scroll;
+        background: rgba(255,255,255,0.03);
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.45) rgba(255,255,255,0.03);
+        /*
+        * Prevent large table content from stretching its parent.
+        */
+        contain: layout paint;
+    }
+
+        .pm-vh-scroll::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+        .pm-vh-scroll::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.10);
+        }
+
+        .pm-vh-scroll::-webkit-scrollbar-thumb {
+            min-width: 50px;
+            min-height: 50px;
+            background: rgba(255,255,255,0.45);
+            border: 2px solid rgba(255,255,255,0.03);
+            border-radius: 8px;
+        }
+
+            .pm-vh-scroll::-webkit-scrollbar-thumb:hover {
+                background: rgba(255,255,255,0.45);
+            }
+
+        .pm-vh-scroll::-webkit-scrollbar-corner {
+            background: rgba(255,255,255,0.10);
+        }
+
+    .pm-vh-table {
+        /*
+        * 3 fixed columns + 11 A-End columns + 11 B-End columns.
+        */
+        width: 2700px;
+        min-width: 2700px;
+        max-width: none;
+        margin: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed;
+        font-family: "Segoe UI", Inter, Arial, sans-serif;
+        font-size: 10px;
+        background: rgba(255,255,255,0.04);
+    }
+
+        .pm-vh-table th,
+        .pm-vh-table td {
+            border-right: 1px solid rgba(255,255,255,0.10);
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            vertical-align: middle;
+        }
+
+            .pm-vh-table th:last-child,
+            .pm-vh-table td:last-child {
+                border-right: 0;
+            }
+
+    /* ---- Header rows ---- */
+    .pm-vh-th-primary {
+        background: rgba(52,211,153,0.14);
+        color: rgba(255,255,255,0.90);
+        text-align: center;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        padding: 8px 8px;
+        line-height: 1.25;
+    }
+
+    .pm-vh-th-end-group {
+        height: 30px;
+        padding: 5px 8px !important;
+        background: rgba(52,211,153,0.14) !important;
+        color: rgba(255,255,255,0.90) !important;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-align: center;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255,255,255,0.10) !important;
+    }
+
+
+    .pm-vh-th-asset {
+        width: 120px;
+        min-width: 120px;
+        max-width: 120px;
+        text-align: left !important;
+        padding: 7px 10px !important;
+    }
+
+    .pm-vh-th-date {
+        width: 105px;
+        min-width: 105px;
+        max-width: 105px;
+    }
+
+    .pm-vh-th-op {
+        width: 100px;
+        min-width: 100px;
+        max-width: 100px;
+    }
+
+    /*
+    * These two cells span both vibration header rows:
+    *
+    * 30px group row + 52px metric row = 82px
+    *
+    * .pm-vh-th-date is NOT included: the date header now sits in header row 2
+    * inside each end group, so it must match the 52px metric-row height.
+    */
+    .pm-vh-th-asset,
+    .pm-vh-th-op {
+        height: 82px;
+        background: rgba(52,211,153,0.14) !important;
+        color: rgba(255,255,255,0.90) !important;
+        vertical-align: middle;
+    }
+
+    .pm-vh-th-date {
+        height: 52px;
+        background: rgba(52,211,153,0.14) !important;
+        color: rgba(255,255,255,0.90) !important;
+        vertical-align: middle;
+    }
+    /*
+    * Sticky vibration table header.
+    *
+    * The table now has only two header rows:
+    *   1. A End / B End group headers
+    *   2. Attribute-name headers
+    */
+    .pm-vh-table thead th {
+        position: sticky;
+        z-index: 20;
+        /*
+        * Prevent body cells from appearing through sticky headers.
+        */
+        background-clip: padding-box;
+    }
+
+    .pm-vh-table thead tr:nth-child(1) {
+        height: 30px;
+    }
+
+    .pm-vh-table thead tr:nth-child(2) {
+        height: 52px;
+    }
+
+    .pm-vh-table thead tr:nth-child(1) th {
+        top: 0;
+    }
+
+    .pm-vh-table thead tr:nth-child(2) th {
+        top: 30px;
+    }
+    /*
+    * Give sticky header cells an explicit shadow so the table content
+    * remains visually separated while vertically scrolling.
+    */
+    .pm-vh-table thead tr:last-child th {
+        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.10);
+    }
+
+
+    /*
+    * Sticky first three columns:
+    *
+    * 1. Asset Name
+    * 2. Date & Time
+    * 3. Operation Type
+    */
+    /*
+    * FROZEN COLUMNS: Asset Name, then Operation Type.
+    *
+    * Date & Time is NO LONGER frozen -- it moved inside the A End / B End
+    * column groups (each end has its own date), so it scrolls with them.
+    * The old rules pinned .pm-vh-th-op at left:225px (position 3) and kept
+    * .pm-vh-th-date sticky at left:120px, which pushed the Operation Type
+    * header outside the visible frozen area and left its cell looking blank.
+    */
+    /*
+    * FROZEN COLUMNS: Asset Name, then Operation Type.
+    *
+    * Date & Time is NO LONGER frozen -- it moved inside the A End / B End
+    * groups (each end has its own date column), so it must scroll with them.
+    * Because `.pm-vh-table thead th` already sets position:sticky for the
+    * vertical header pin, leaving a `left` on .pm-vh-th-date made it sticky
+    * on BOTH axes: it detached from its group and floated over other columns
+    * during horizontal scroll.
+    */
+    .pm-vh-table tbody td:nth-child(1),
+    .pm-vh-table thead th.pm-vh-th-asset {
+        position: sticky;
+        left: 0;
+        z-index: 12;
+    }
+
+    .pm-vh-table tbody td:nth-child(2),
+    .pm-vh-table thead th.pm-vh-th-op {
+        position: sticky;
+        left: 120px;
+        z-index: 12;
+    }
+
+    /*
+    * Date headers keep the vertical sticky pin inherited from
+    * `.pm-vh-table thead th` but must NOT pin horizontally.
+    */
+    .pm-vh-table thead th.pm-vh-th-date {
+        left: auto;
+        z-index: 20;
+    }
+
+    /*
+    * Header cells must stay above both sticky body columns and normal
+    * header cells.
+    */
+    .pm-vh-table thead th.pm-vh-th-asset,
+    .pm-vh-table thead th.pm-vh-th-op {
+        z-index: 35;
+    }
+
+    /*
+    * Explicit backgrounds prevent data cells from appearing through
+    * sticky columns.
+    */
+    /* Opaque backgrounds for the two frozen columns only. */
+    /* Opaque backgrounds for the two frozen columns only. */
+    .pm-vh-table tbody tr:nth-child(odd) td:nth-child(1),
+    .pm-vh-table tbody tr:nth-child(odd) td:nth-child(2) {
+        background: rgba(255,255,255,0.04);
+    }
+
+    .pm-vh-table tbody tr:nth-child(even) td:nth-child(1),
+    .pm-vh-table tbody tr:nth-child(even) td:nth-child(2) {
+        background: rgba(255,255,255,0.03);
+    }
+
+    .pm-vh-table tbody tr:hover td:nth-child(1),
+    .pm-vh-table tbody tr:hover td:nth-child(2) {
+        background: rgba(255,255,255,0.03) !important;
+    }
+
+    /*
+    * Shadow marks the frozen/scrollable boundary -- now after column 2
+    * (Operation Type), not column 3.
+    */
+    .pm-vh-table tbody td:nth-child(2),
+    .pm-vh-table thead th.pm-vh-th-op {
+        box-shadow: 4px 0 6px rgba(15, 23, 42, 0.07);
+    }
+
+
+    .pm-vh-th-metric {
+        width: 108px;
+        min-width: 108px;
+        max-width: 108px;
+        height: 52px;
+        padding: 6px 4px !important;
+        background: rgba(52,211,153,0.14) !important;
+        color: rgba(255,255,255,0.90) !important;
+        white-space: normal;
+        overflow-wrap: normal;
+        word-break: normal;
+        line-height: 1.2;
+        vertical-align: middle;
+    }
+
+    /* ---- Data rows ---- */
+    .pm-vh-table tbody td {
+        height: 54px;
+        padding: 0;
+        color: rgba(255,255,255,0.78);
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        overflow: hidden;
+        background-clip: padding-box;
+    }
+
+    .pm-vh-table tbody tr:nth-child(odd) td {
+        background: rgba(255,255,255,0.04);
+    }
+
+    .pm-vh-table tbody tr:nth-child(even) td {
+        background: rgba(255,255,255,0.03);
+    }
+
+    .pm-vh-table tbody tr:hover td {
+        background: rgba(255,255,255,0.03) !important;
+    }
+
+    /* ---- Asset name cell ---- */
+    .pm-vh-asset-cell {
+        text-align: left !important;
+        padding: 8px 12px !important;
+    }
+
+    .pm-vh-asset-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .pm-vh-asset-name i {
+            color: #34d399;
+            font-size: 11px;
+        }
+
+        .pm-vh-asset-name strong {
+            color: rgba(255,255,255,0.90);
+            font-size: 11.5px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+    .pm-vh-end-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 26px;
+        height: 18px;
+        padding: 0 7px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        color: rgba(255,255,255,0.90);
+        background: rgba(52,211,153,0.14);
+        border: 1px solid rgba(52,211,153,0.14);
+    }
+
+        .pm-vh-end-pill.b-end {
+            color: #22d3ee;
+            background: rgba(34,211,238,0.14);
+            border: 1px solid rgba(34,211,238,0.14);
+        }
+
+    /* ---- Date/time cell ---- */
+    .pm-vh-date-cell {
+        padding: 6px 8px !important;
+        color: rgba(255,255,255,0.78) !important;
+        font-size: 10px !important;
+        font-weight: 600;
+        line-height: 1.35;
+        white-space: nowrap;
+    }
+
+        .pm-vh-date-cell span:last-child {
+            display: block;
+            margin-top: 2px;
+            color: rgba(255,255,255,0.45);
+        }
+
+    /* ---- Operation Type cell (2 stacked lines) ---- */
+    .pm-vh-op-cell {
+        padding: 4px 6px !important;
+    }
+    /* Temperature and Motor Run Flag: value-only cells, no waveform graph. */
+    .pm-vh-scalar-line {
+        min-height: 46px;
+        cursor: default;
+        text-transform: none;
+        letter-spacing: 0;
+    }
+
+    .pm-vh-scalar-value {
+        color: rgba(255,255,255,0.78);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    .pm-vh-scalar-flag {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1.5;
+    }
+
+    .pm-vh-scalar-flag-run {
+        background: rgba(52,211,153,0.14);
+        color: rgba(255,255,255,0.90);
+    }
+
+    .pm-vh-scalar-flag-stop {
+        background: rgba(239,68,68,0.14);
+        color: #f87171;
+    }
+
+    .pm-vh-scalar-flag-unknown {
+        background: rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.78);
+    }
+
+
+
+    .pm-vh-op-value {
+        min-height: 21px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #34d399;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.15px;
+        white-space: nowrap;
+    }
+
+        .pm-vh-op-value.op-normal {
+            color: #22d3ee;
+        }
+
+        .pm-vh-op-value.op-reverse {
+            color: #fbbf24;
+        }
+
+        .pm-vh-op-value.op-none {
+            color: rgba(255,255,255,0.10);
+            font-weight: 500;
+        }
+
+    .pm-vh-op-lights {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-top: 2px;
+        padding-top: 4px;
+        border-top: 1px dashed rgba(255,255,255,0.10);
+    }
+
+    .pm-vh-light {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: rgba(255,255,255,0.45);
+        text-transform: uppercase;
+    }
+
+        .pm-vh-light .pm-vh-light-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.10);
+            border: 1px solid rgba(255,255,255,0.10);
+            box-shadow: none;
+        }
+
+        .pm-vh-light.on {
+            color: #34d399;
+        }
+
+            .pm-vh-light.on .pm-vh-light-dot {
+                background: #34d399;
+                border-color: #34d399;
+                box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.20);
+            }
+
+    /*
+         * Track name line -- sits below .pm-vh-op-lights, full column
+         * width, so it can center and truncate instead of stretching the
+         * PT/TPR badge row.
+         */
+    .pm-vh-track-name {
+        margin-top: 2px;
+        font-size: 9px;
+        font-weight: 600;
+        line-height: 1.3;
+        text-align: center;
+        color: #34d399;
+        text-transform: none;
+        letter-spacing: normal;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+
+        .pm-vh-track-name:empty {
+            display: none;
+        }
+
+    /* ---- Value cell ---- */
+    .pm-vh-value-cell {
+        padding: 4px 4px !important;
+    }
+
+    .pm-vh-value {
+        min-height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        color: #34d399;
+        font-size: 12.5px;
+        font-weight: 700;
+        letter-spacing: 0.15px;
+    }
+
+        .pm-vh-value.no-data {
+            color: rgba(255,255,255,0.10);
+            font-weight: 500;
+        }
+
+    .pm-vh-value-dot {
+        flex-shrink: 0;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #34d399;
+        box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+    }
+
+    .pm-vh-event-line {
+        min-height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        margin-top: 4px;
+        padding-top: 3px;
+        border-top: 1px dashed rgba(255,255,255,0.10);
+        color: rgba(255,255,255,0.45);
+        font-size: 9px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .pm-vh-event-btn {
+        width: 100%;
+        min-height: 46px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 20px;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 5px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: rgba(255,255,255,0.78);
+        cursor: pointer;
+        text-transform: none;
+        letter-spacing: 0;
+        line-height: 1.2;
+        transition: background .15s ease, color .15s ease;
+    }
+
+        .pm-vh-event-btn:hover,
+        .pm-vh-event-btn:focus {
+            background: rgba(52,211,153,0.14);
+            color: rgba(255,255,255,0.90);
+            outline: none;
+        }
+
+    .pm-vh-event-empty {
+        cursor: default;
+    }
+
+    .pm-vh-event-time {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        color: rgba(255,255,255,0.45);
+        font-size: 8px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+        .pm-vh-event-time i {
+            color: #34d399;
+            font-size: 8px;
+        }
+
+    .pm-vh-event-values {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        color: rgba(255,255,255,0.78);
+        font-size: 8.5px;
+        font-weight: 600;
+    }
+
+    .pm-vh-event-stat {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 25px minmax(0, 1fr);
+        align-items: center;
+        gap: 3px;
+        text-align: left;
+    }
+
+        .pm-vh-event-stat strong {
+            color: #34d399;
+            font-size: 7.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+        .pm-vh-event-stat > span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .pm-vh-event-stat:nth-child(2) strong {
+            color: rgba(255,255,255,0.45);
+        }
+
+        .pm-vh-event-stat:nth-child(2) > span {
+            color: rgba(255,255,255,0.45);
+        }
+
+
+    .pm-vh-event-separator {
+        color: rgba(255,255,255,0.45);
+        padding: 0 1px;
+    }
+
+    .pm-vh-event-chart-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        color: #34d399;
+        background: rgba(52,211,153,0.14);
+        border: 1px solid rgba(52,211,153,0.14);
+        border-radius: 5px;
+        font-size: 9px;
+        flex-shrink: 0;
+    }
+
+    .pm-vib-graph-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 22px;
+    }
+
+        .pm-vib-graph-summary span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .pm-vib-graph-summary strong {
+            color: #34d399;
+        }
+
+    /* ---- Empty state ---- */
+    .pm-vh-empty {
+        padding: 40px 20px;
+        text-align: center;
+        color: rgba(255,255,255,0.45);
+        background: rgba(255,255,255,0.04);
+    }
+
+        .pm-vh-empty i {
+            display: block;
+            font-size: 26px;
+            color: #34d399;
+            opacity: 0.55;
+            margin-bottom: 8px;
+        }
+
+        .pm-vh-empty strong {
+            display: block;
+            color: rgba(255,255,255,0.78);
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .pm-vh-empty span {
+            font-size: 11px;
+        }
+
+    @@media (max-height: 850px) {
+        .pm-vh-scroll {
+            height: calc(100vh - 275px);
+            min-height: 320px;
+            max-height: 590px;
+        }
+    }
+
+    @@media (max-height: 700px) {
+        .pm-vh-scroll {
+            height: calc(100vh - 235px);
+            min-height: 280px;
+            max-height: 500px;
+        }
+    }
+
+    .pm-vh-scroll:has(.pm-vh-empty-row) {
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: hidden;
+    }
+
+        .pm-vh-scroll:has(.pm-vh-empty-row) thead {
+            display: none;
+        }
+
+        .pm-vh-scroll:has(.pm-vh-empty-row) .pm-vh-table {
+            min-width: 0;
+            width: 100%;
+            table-layout: auto;
+        }
+
+        .pm-vh-scroll:has(.pm-vh-empty-row) .pm-vh-empty-row {
+            white-space: normal;
+            text-align: center;
+            padding: 26px 16px;
+        }
+
+    .card-body {
+        -ms-flex: 1 1 auto;
+        flex: 1 1 auto;
+        /*padding: 1.25rem;*/
+    }
+    /*
+     * A End / B End tab strip. The two ends fire ~1 s apart, so a merged table
+     * showed one physical event as two half-empty rows. Each end now owns a
+     * tab. Sits inside the teal header, so the active tab reads as a cut-out.
+     */
+    .pm-vh-tabs {
+        display: inline-flex;
+        gap: 4px;
+        padding: 3px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.24);
+    }
+
+    .pm-vh-tab {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+        padding: 4px 13px;
+        border-radius: 7px;
+        background: transparent;
+        color: rgba(255,255,255,0.03);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1.6;
+        white-space: nowrap;
+        transition: background .12s ease, color .12s ease;
+    }
+
+        .pm-vh-tab:hover:not(.is-active) {
+            background: rgba(255, 255, 255, 0.16);
+            color: rgba(255,255,255,0.04);
+        }
+
+        .pm-vh-tab.is-active {
+            background: rgba(255,255,255,0.04);
+            color: #34d399;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
+        }
+
+        .pm-vh-tab .pm-vh-tab-count {
+            opacity: .70;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+        .pm-vh-tab.is-active .pm-vh-tab-count {
+            opacity: .62;
+        }
+
+
+/* ===== Vibration tab — light theme (the source palette, restored) ===== */
+
+
+
+    body[data-aurora="light"] .pm-vh-slot {
+        display: block;
+    }
+
+    body[data-aurora="light"] .pm-vh-wrap {
+        width: 100%;
+        min-width: 0;
+        margin: 0 0 20px;
+        background: #ffffff;
+        border: 1px solid #cfe1d9;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(15, 23, 42, 0.04), 0 8px 20px rgba(15, 23, 42, 0.06);
+        /*
+        * The inner .pm-vh-scroll owns horizontal and vertical scrolling.
+        */
+        overflow: hidden;
+    }
+
+    body[data-aurora="light"] .pm-vh-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 11px 16px;
+        background: linear-gradient(112deg, #0f766e 0%, #0d9488 58%, #14b8a6 100%);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    }
+
+    body[data-aurora="light"] .pm-vh-head h6 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: #ffffff;
+            font-size: 13.5px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+
+    body[data-aurora="light"] .pm-vh-head .pm-vh-title-icon {
+            width: 26px;
+            height: 26px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 7px;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            font-size: 12px;
+        }
+
+    body[data-aurora="light"] .pm-vh-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        color: #ffffff;
+        font-size: 10.5px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    body[data-aurora="light"] .pm-vh-scroll {
+        position: relative;
+        width: 100%;
+        min-width: 0;
+        /*
+        * Keep scrolling inside the vibration table instead of scrolling
+        * the complete Telemetry History page.
+        */
+        height: calc(100vh - 305px);
+        min-height: 360px;
+        max-height: 650px;
+        /*
+        * Both scrollbars remain available.
+        */
+        overflow-x: scroll;
+        overflow-y: scroll;
+        background: #f8fcfa;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        scrollbar-width: thin;
+        scrollbar-color: #79a999 #e5f1eb;
+        /*
+        * Prevent large table content from stretching its parent.
+        */
+        contain: layout paint;
+    }
+
+    body[data-aurora="light"] .pm-vh-scroll::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+    body[data-aurora="light"] .pm-vh-scroll::-webkit-scrollbar-track {
+            background: #e7f2ed;
+            border: 1px solid #d4e7de;
+        }
+
+    body[data-aurora="light"] .pm-vh-scroll::-webkit-scrollbar-thumb {
+            min-width: 50px;
+            min-height: 50px;
+            background: #6fa38f;
+            border: 2px solid #e7f2ed;
+            border-radius: 8px;
+        }
+
+    body[data-aurora="light"] .pm-vh-scroll::-webkit-scrollbar-thumb:hover {
+                background: #4f8772;
+            }
+
+    body[data-aurora="light"] .pm-vh-scroll::-webkit-scrollbar-corner {
+            background: #dcebe4;
+        }
+
+    body[data-aurora="light"] .pm-vh-table {
+        /*
+        * 3 fixed columns + 11 A-End columns + 11 B-End columns.
+        */
+        width: 2700px;
+        min-width: 2700px;
+        max-width: none;
+        margin: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed;
+        font-family: "Segoe UI", Inter, Arial, sans-serif;
+        font-size: 10px;
+        background: #ffffff;
+    }
+
+        .pm-vh-table th,
+    body[data-aurora="light"] .pm-vh-table td {
+            border-right: 1px solid #dcece4;
+            border-bottom: 1px solid #e5efe9;
+            vertical-align: middle;
+        }
+
+            .pm-vh-table th:last-child,
+    body[data-aurora="light"] .pm-vh-table td:last-child {
+                border-right: 0;
+            }
+
+    /* ---- Header rows ---- */
+    body[data-aurora="light"] .pm-vh-th-primary {
+        background: #d1fae5;
+        color: #064e3b;
+        text-align: center;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        padding: 8px 8px;
+        line-height: 1.25;
+    }
+
+    body[data-aurora="light"] .pm-vh-th-end-group {
+        height: 30px;
+        padding: 5px 8px !important;
+        background: #bdeed9 !important;
+        color: #064e3b !important;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-align: center;
+        text-transform: uppercase;
+        border-bottom: 1px solid #91d8bc !important;
+    }
+
+
+    body[data-aurora="light"] .pm-vh-th-asset {
+        width: 120px;
+        min-width: 120px;
+        max-width: 120px;
+        text-align: left !important;
+        padding: 7px 10px !important;
+    }
+
+    body[data-aurora="light"] .pm-vh-th-date {
+        width: 105px;
+        min-width: 105px;
+        max-width: 105px;
+    }
+
+    body[data-aurora="light"] .pm-vh-th-op {
+        width: 100px;
+        min-width: 100px;
+        max-width: 100px;
+    }
+
+    /*
+    * These two cells span both vibration header rows:
+    *
+    * 30px group row + 52px metric row = 82px
+    *
+    * .pm-vh-th-date is NOT included: the date header now sits in header row 2
+    * inside each end group, so it must match the 52px metric-row height.
+    */
+    .pm-vh-th-asset,
+    body[data-aurora="light"] .pm-vh-th-op {
+        height: 82px;
+        background: #d1fae5 !important;
+        color: #064e3b !important;
+        vertical-align: middle;
+    }
+
+    body[data-aurora="light"] .pm-vh-th-date {
+        height: 52px;
+        background: #d9f6e9 !important;
+        color: #065f46 !important;
+        vertical-align: middle;
+    }
+    /*
+    * Sticky vibration table header.
+    *
+    * The table now has only two header rows:
+    *   1. A End / B End group headers
+    *   2. Attribute-name headers
+    */
+    body[data-aurora="light"] .pm-vh-table thead th {
+        position: sticky;
+        z-index: 20;
+        /*
+        * Prevent body cells from appearing through sticky headers.
+        */
+        background-clip: padding-box;
+    }
+
+    body[data-aurora="light"] .pm-vh-table thead tr:nth-child(1) {
+        height: 30px;
+    }
+
+    body[data-aurora="light"] .pm-vh-table thead tr:nth-child(2) {
+        height: 52px;
+    }
+
+    body[data-aurora="light"] .pm-vh-table thead tr:nth-child(1) th {
+        top: 0;
+    }
+
+    body[data-aurora="light"] .pm-vh-table thead tr:nth-child(2) th {
+        top: 30px;
+    }
+    /*
+    * Give sticky header cells an explicit shadow so the table content
+    * remains visually separated while vertically scrolling.
+    */
+    body[data-aurora="light"] .pm-vh-table thead tr:last-child th {
+        box-shadow: 0 2px 4px rgba(15, 23, 42, 0.10);
+    }
+
+
+    /*
+    * Sticky first three columns:
+    *
+    * 1. Asset Name
+    * 2. Date & Time
+    * 3. Operation Type
+    */
+    /*
+    * FROZEN COLUMNS: Asset Name, then Operation Type.
+    *
+    * Date & Time is NO LONGER frozen -- it moved inside the A End / B End
+    * column groups (each end has its own date), so it scrolls with them.
+    * The old rules pinned .pm-vh-th-op at left:225px (position 3) and kept
+    * .pm-vh-th-date sticky at left:120px, which pushed the Operation Type
+    * header outside the visible frozen area and left its cell looking blank.
+    */
+    /*
+    * FROZEN COLUMNS: Asset Name, then Operation Type.
+    *
+    * Date & Time is NO LONGER frozen -- it moved inside the A End / B End
+    * groups (each end has its own date column), so it must scroll with them.
+    * Because `.pm-vh-table thead th` already sets position:sticky for the
+    * vertical header pin, leaving a `left` on .pm-vh-th-date made it sticky
+    * on BOTH axes: it detached from its group and floated over other columns
+    * during horizontal scroll.
+    */
+    .pm-vh-table tbody td:nth-child(1),
+    body[data-aurora="light"] .pm-vh-table thead th.pm-vh-th-asset {
+        position: sticky;
+        left: 0;
+        z-index: 12;
+    }
+
+    .pm-vh-table tbody td:nth-child(2),
+    body[data-aurora="light"] .pm-vh-table thead th.pm-vh-th-op {
+        position: sticky;
+        left: 120px;
+        z-index: 12;
+    }
+
+    /*
+    * Date headers keep the vertical sticky pin inherited from
+    * `.pm-vh-table thead th` but must NOT pin horizontally.
+    */
+    body[data-aurora="light"] .pm-vh-table thead th.pm-vh-th-date {
+        left: auto;
+        z-index: 20;
+    }
+
+    /*
+    * Header cells must stay above both sticky body columns and normal
+    * header cells.
+    */
+    .pm-vh-table thead th.pm-vh-th-asset,
+    body[data-aurora="light"] .pm-vh-table thead th.pm-vh-th-op {
+        z-index: 35;
+    }
+
+    /*
+    * Explicit backgrounds prevent data cells from appearing through
+    * sticky columns.
+    */
+    /* Opaque backgrounds for the two frozen columns only. */
+    /* Opaque backgrounds for the two frozen columns only. */
+    .pm-vh-table tbody tr:nth-child(odd) td:nth-child(1),
+    body[data-aurora="light"] .pm-vh-table tbody tr:nth-child(odd) td:nth-child(2) {
+        background: #ffffff;
+    }
+
+    .pm-vh-table tbody tr:nth-child(even) td:nth-child(1),
+    body[data-aurora="light"] .pm-vh-table tbody tr:nth-child(even) td:nth-child(2) {
+        background: #f4fbf7;
+    }
+
+    .pm-vh-table tbody tr:hover td:nth-child(1),
+    body[data-aurora="light"] .pm-vh-table tbody tr:hover td:nth-child(2) {
+        background: #e9f8f0 !important;
+    }
+
+    /*
+    * Shadow marks the frozen/scrollable boundary -- now after column 2
+    * (Operation Type), not column 3.
+    */
+    .pm-vh-table tbody td:nth-child(2),
+    body[data-aurora="light"] .pm-vh-table thead th.pm-vh-th-op {
+        box-shadow: 4px 0 6px rgba(15, 23, 42, 0.07);
+    }
+
+
+    body[data-aurora="light"] .pm-vh-th-metric {
+        width: 108px;
+        min-width: 108px;
+        max-width: 108px;
+        height: 52px;
+        padding: 6px 4px !important;
+        background: #d9f6e9 !important;
+        color: #065f46 !important;
+        white-space: normal;
+        overflow-wrap: normal;
+        word-break: normal;
+        line-height: 1.2;
+        vertical-align: middle;
+    }
+
+    /* ---- Data rows ---- */
+    body[data-aurora="light"] .pm-vh-table tbody td {
+        height: 54px;
+        padding: 0;
+        color: #334155;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+        overflow: hidden;
+        background-clip: padding-box;
+    }
+
+    body[data-aurora="light"] .pm-vh-table tbody tr:nth-child(odd) td {
+        background: #ffffff;
+    }
+
+    body[data-aurora="light"] .pm-vh-table tbody tr:nth-child(even) td {
+        background: #f4fbf7;
+    }
+
+    body[data-aurora="light"] .pm-vh-table tbody tr:hover td {
+        background: #e9f8f0 !important;
+    }
+
+    /* ---- Asset name cell ---- */
+    body[data-aurora="light"] .pm-vh-asset-cell {
+        text-align: left !important;
+        padding: 8px 12px !important;
+    }
+
+    body[data-aurora="light"] .pm-vh-asset-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    body[data-aurora="light"] .pm-vh-asset-name i {
+            color: #0d9488;
+            font-size: 11px;
+        }
+
+    body[data-aurora="light"] .pm-vh-asset-name strong {
+            color: #064e3b;
+            font-size: 11.5px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+    body[data-aurora="light"] .pm-vh-end-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 26px;
+        height: 18px;
+        padding: 0 7px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        color: #065f46;
+        background: #d1fae5;
+        border: 1px solid #a7f3d0;
+    }
+
+    body[data-aurora="light"] .pm-vh-end-pill.b-end {
+            color: #075985;
+            background: #dbeafe;
+            border: 1px solid #bfdbfe;
+        }
+
+    /* ---- Date/time cell ---- */
+    body[data-aurora="light"] .pm-vh-date-cell {
+        padding: 6px 8px !important;
+        color: #475569 !important;
+        font-size: 10px !important;
+        font-weight: 600;
+        line-height: 1.35;
+        white-space: nowrap;
+    }
+
+    body[data-aurora="light"] .pm-vh-date-cell span:last-child {
+            display: block;
+            margin-top: 2px;
+            color: #64748b;
+        }
+
+    /* ---- Operation Type cell (2 stacked lines) ---- */
+    body[data-aurora="light"] .pm-vh-op-cell {
+        padding: 4px 6px !important;
+    }
+    /* Temperature and Motor Run Flag: value-only cells, no waveform graph. */
+    body[data-aurora="light"] .pm-vh-scalar-line {
+        min-height: 46px;
+        cursor: default;
+        text-transform: none;
+        letter-spacing: 0;
+    }
+
+    body[data-aurora="light"] .pm-vh-scalar-value {
+        color: #334155;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+
+    body[data-aurora="light"] .pm-vh-scalar-flag {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1.5;
+    }
+
+    body[data-aurora="light"] .pm-vh-scalar-flag-run {
+        background: #d1fae5;
+        color: #065f46;
+    }
+
+    body[data-aurora="light"] .pm-vh-scalar-flag-stop {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    body[data-aurora="light"] .pm-vh-scalar-flag-unknown {
+        background: #e2e8f0;
+        color: #475569;
+    }
+
+
+
+    body[data-aurora="light"] .pm-vh-op-value {
+        min-height: 21px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #0f766e;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.15px;
+        white-space: nowrap;
+    }
+
+    body[data-aurora="light"] .pm-vh-op-value.op-normal {
+            color: #1e40af;
+        }
+
+    body[data-aurora="light"] .pm-vh-op-value.op-reverse {
+            color: #b45309;
+        }
+
+    body[data-aurora="light"] .pm-vh-op-value.op-none {
+            color: #cbd5e1;
+            font-weight: 500;
+        }
+
+    body[data-aurora="light"] .pm-vh-op-lights {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-top: 2px;
+        padding-top: 4px;
+        border-top: 1px dashed #cfe4da;
+    }
+
+    body[data-aurora="light"] .pm-vh-light {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 8.5px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: #94a3b8;
+        text-transform: uppercase;
+    }
+
+    body[data-aurora="light"] .pm-vh-light .pm-vh-light-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            border: 1px solid #cbd5e1;
+            box-shadow: none;
+        }
+
+    body[data-aurora="light"] .pm-vh-light.on {
+            color: #047857;
+        }
+
+    body[data-aurora="light"] .pm-vh-light.on .pm-vh-light-dot {
+                background: #10b981;
+                border-color: #059669;
+                box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.20);
+            }
+
+    /*
+         * Track name line -- sits below .pm-vh-op-lights, full column
+         * width, so it can center and truncate instead of stretching the
+         * PT/TPR badge row.
+         */
+    body[data-aurora="light"] .pm-vh-track-name {
+        margin-top: 2px;
+        font-size: 9px;
+        font-weight: 600;
+        line-height: 1.3;
+        text-align: center;
+        color: #0f766e;
+        text-transform: none;
+        letter-spacing: normal;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+
+    body[data-aurora="light"] .pm-vh-track-name:empty {
+            display: none;
+        }
+
+    /* ---- Value cell ---- */
+    body[data-aurora="light"] .pm-vh-value-cell {
+        padding: 4px 4px !important;
+    }
+
+    body[data-aurora="light"] .pm-vh-value {
+        min-height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        color: #0f766e;
+        font-size: 12.5px;
+        font-weight: 700;
+        letter-spacing: 0.15px;
+    }
+
+    body[data-aurora="light"] .pm-vh-value.no-data {
+            color: #cbd5e1;
+            font-weight: 500;
+        }
+
+    body[data-aurora="light"] .pm-vh-value-dot {
+        flex-shrink: 0;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #14b8a6;
+        box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+    }
+
+    body[data-aurora="light"] .pm-vh-event-line {
+        min-height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        margin-top: 4px;
+        padding-top: 3px;
+        border-top: 1px dashed #dceae3;
+        color: #94a3b8;
+        font-size: 9px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    body[data-aurora="light"] .pm-vh-event-btn {
+        width: 100%;
+        min-height: 46px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 20px;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 5px;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: #334155;
+        cursor: pointer;
+        text-transform: none;
+        letter-spacing: 0;
+        line-height: 1.2;
+        transition: background .15s ease, color .15s ease;
+    }
+
+        .pm-vh-event-btn:hover,
+    body[data-aurora="light"] .pm-vh-event-btn:focus {
+            background: #ccfbf1;
+            color: #065f46;
+            outline: none;
+        }
+
+    body[data-aurora="light"] .pm-vh-event-empty {
+        cursor: default;
+    }
+
+    body[data-aurora="light"] .pm-vh-event-time {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        color: #64748b;
+        font-size: 8px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    body[data-aurora="light"] .pm-vh-event-time i {
+            color: #0d9488;
+            font-size: 8px;
+        }
+
+    body[data-aurora="light"] .pm-vh-event-values {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        color: #334155;
+        font-size: 8.5px;
+        font-weight: 600;
+    }
+
+    body[data-aurora="light"] .pm-vh-event-stat {
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 25px minmax(0, 1fr);
+        align-items: center;
+        gap: 3px;
+        text-align: left;
+    }
+
+    body[data-aurora="light"] .pm-vh-event-stat strong {
+            color: #047857;
+            font-size: 7.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+
+    body[data-aurora="light"] .pm-vh-event-stat > span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+
+    body[data-aurora="light"] .pm-vh-event-stat:nth-child(2) strong {
+            color: #64748b;
+        }
+
+    body[data-aurora="light"] .pm-vh-event-stat:nth-child(2) > span {
+            color: #64748b;
+        }
+
+
+    body[data-aurora="light"] .pm-vh-event-separator {
+        color: #94a3b8;
+        padding: 0 1px;
+    }
+
+    body[data-aurora="light"] .pm-vh-event-chart-icon {
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        color: #047857;
+        background: #dcfce7;
+        border: 1px solid #a7f3d0;
+        border-radius: 5px;
+        font-size: 9px;
+        flex-shrink: 0;
+    }
+
+    body[data-aurora="light"] .pm-vib-graph-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 22px;
+    }
+
+    body[data-aurora="light"] .pm-vib-graph-summary span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+    body[data-aurora="light"] .pm-vib-graph-summary strong {
+            color: #0f766e;
+        }
+
+    /* ---- Empty state ---- */
+    body[data-aurora="light"] .pm-vh-empty {
+        padding: 40px 20px;
+        text-align: center;
+        color: #94a3b8;
+        background: #ffffff;
+    }
+
+    body[data-aurora="light"] .pm-vh-empty i {
+            display: block;
+            font-size: 26px;
+            color: #14b8a6;
+            opacity: 0.55;
+            margin-bottom: 8px;
+        }
+
+    body[data-aurora="light"] .pm-vh-empty strong {
+            display: block;
+            color: #475569;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+    body[data-aurora="light"] .pm-vh-empty span {
+            font-size: 11px;
+        }
+
+    @@media (max-height: 850px) {
+        .pm-vh-scroll {
+            height: calc(100vh - 275px);
+            min-height: 320px;
+            max-height: 590px;
+        }
+    }
+
+    @@media (max-height: 700px) {
+        .pm-vh-scroll {
+            height: calc(100vh - 235px);
+            min-height: 280px;
+            max-height: 500px;
+        }
+    }
+
+    body[data-aurora="light"] .pm-vh-scroll:has(.pm-vh-empty-row) {
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: hidden;
+    }
+
+    body[data-aurora="light"] .pm-vh-scroll:has(.pm-vh-empty-row) thead {
+            display: none;
+        }
+
+    body[data-aurora="light"] .pm-vh-scroll:has(.pm-vh-empty-row) .pm-vh-table {
+            min-width: 0;
+            width: 100%;
+            table-layout: auto;
+        }
+
+    body[data-aurora="light"] .pm-vh-scroll:has(.pm-vh-empty-row) .pm-vh-empty-row {
+            white-space: normal;
+            text-align: center;
+            padding: 26px 16px;
+        }
+
+    body[data-aurora="light"] .card-body {
+        -ms-flex: 1 1 auto;
+        flex: 1 1 auto;
+        /*padding: 1.25rem;*/
+    }
+    /*
+     * A End / B End tab strip. The two ends fire ~1 s apart, so a merged table
+     * showed one physical event as two half-empty rows. Each end now owns a
+     * tab. Sits inside the teal header, so the active tab reads as a cut-out.
+     */
+    body[data-aurora="light"] .pm-vh-tabs {
+        display: inline-flex;
+        gap: 4px;
+        padding: 3px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.24);
+    }
+
+    body[data-aurora="light"] .pm-vh-tab {
+        appearance: none;
+        border: 0;
+        cursor: pointer;
+        padding: 4px 13px;
+        border-radius: 7px;
+        background: transparent;
+        color: #eafffb;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1.6;
+        white-space: nowrap;
+        transition: background .12s ease, color .12s ease;
+    }
+
+    body[data-aurora="light"] .pm-vh-tab:hover:not(.is-active) {
+            background: rgba(255, 255, 255, 0.16);
+            color: #ffffff;
+        }
+
+    body[data-aurora="light"] .pm-vh-tab.is-active {
+            background: #ffffff;
+            color: #0f766e;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
+        }
+
+    body[data-aurora="light"] .pm-vh-tab .pm-vh-tab-count {
+            opacity: .70;
+            font-weight: 600;
+            margin-left: 5px;
+        }
+
+    body[data-aurora="light"] .pm-vh-tab.is-active .pm-vh-tab-count {
+            opacity: .62;
+        }

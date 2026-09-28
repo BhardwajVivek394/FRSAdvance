@@ -281,6 +281,8 @@
 
     .tbl-sensor-wrap {
         display: flex;
+        flex-direction: column; /* stack every faulty sensor of the asset */
+        align-items: center;
         justify-content: center;
     }
 
@@ -326,6 +328,37 @@
         white-space: nowrap;
     }
 
+    /* Network cell — Wired (OFC) / Wireless (4G) bifurcation. One leg per
+       medium so a cluster that has lost only one no longer reads as a single
+       rolled-up badge. */
+    .tbl-net-split {
+        display: inline-block;
+        text-align: left;
+        min-width: 138px;
+    }
+
+    .tbl-net-leg {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        line-height: 1.25;
+    }
+
+    .tbl-net-leg-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: .3px;
+    }
+
+    .tbl-net-leg-wrap + .tbl-net-leg-wrap {
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px dashed #e2e8f0;
+    }
+
     .sensor-clone-row {
         background: #fafbfc;
     }
@@ -335,6 +368,8 @@
         }
 </style>
 
+<!-- Aurora UI refinement overlay for RDPMS Health Live (targets _List markup). Loaded after the inline <style> so it wins ties; ~/ is resolved by Razor. -->
+<link href="~/Areas/FRS25/assets/css/rdpms-health-live-ui.css" rel="stylesheet" />
 <script src="~/assets/js/jquery-3.5.1.min.js"></script>
 
 <section class="section">
@@ -365,7 +400,7 @@
             <div class="card">
                 <div class="card-body p-0">
                     <div class="search-section">
-                        <div class="search-title">Search</div>
+                        @*<div class="search-title">Search</div>*@
 
                         <div class="dropdown-backdrop" id="backdrop"></div>
 
@@ -427,15 +462,15 @@
                         <div class="dropdown-list" id="listZone">
                             @if (ViewBag.Zones != null)
                             {
-                            foreach (var zone in (IEnumerable<SelectListItem>
-                                )ViewBag.Zones)
+                                foreach (var zone in (IEnumerable<SelectListItem>
+                                    )ViewBag.Zones)
                                 {
-                                <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
-                                    <input type="checkbox" class="cb-zone" value="@zone.Value">
-                                    <span>@zone.Text</span>
-                                </div>
+                                    <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
+                                        <input type="checkbox" class="cb-zone" value="@zone.Value">
+                                        <span>@zone.Text</span>
+                                    </div>
                                 }
-                                }
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -446,15 +481,15 @@
                         <div class="dropdown-list" id="listDivision">
                             @if (ViewBag.Divisions != null)
                             {
-                            foreach (var division in (IEnumerable<SelectListItem>
-                                )ViewBag.Divisions)
+                                foreach (var division in (IEnumerable<SelectListItem>
+                                    )ViewBag.Divisions)
                                 {
-                                <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
-                                    <input type="checkbox" class="cb-division" value="@division.Value">
-                                    <span>@division.Text</span>
-                                </div>
+                                    <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
+                                        <input type="checkbox" class="cb-division" value="@division.Value">
+                                        <span>@division.Text</span>
+                                    </div>
                                 }
-                                }
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -465,15 +500,15 @@
                         <div class="dropdown-list" id="listSite">
                             @if (ViewBag.Sites != null)
                             {
-                            foreach (var site in (IEnumerable<SelectListItem>
-                                )ViewBag.Sites)
+                                foreach (var site in (IEnumerable<SelectListItem>
+                                    )ViewBag.Sites)
                                 {
-                                <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
-                                    <input type="checkbox" class="cb-site" value="@site.Value">
-                                    <span>@site.Text</span>
-                                </div>
+                                    <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                                        <input type="checkbox" class="cb-site" value="@site.Value">
+                                        <span>@site.Text</span>
+                                    </div>
                                 }
-                                }
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -484,15 +519,15 @@
                         <div class="dropdown-list" id="listAssetType">
                             @if (ViewBag.AssetTypes != null)
                             {
-                            foreach (var assettype in (IEnumerable<SelectListItem>
-                                )ViewBag.AssetTypes)
+                                foreach (var assettype in (IEnumerable<SelectListItem>
+                                    )ViewBag.AssetTypes)
                                 {
-                                <div class="dropdown-item" data-value="@assettype.Value" data-text="@assettype.Text">
-                                    <input type="checkbox" class="cb-assetType" value="@assettype.Value">
-                                    <span>@assettype.Text</span>
-                                </div>
+                                    <div class="dropdown-item" data-value="@assettype.Value" data-text="@assettype.Text">
+                                        <input type="checkbox" class="cb-assetType" value="@assettype.Value">
+                                        <span>@assettype.Text</span>
+                                    </div>
                                 }
-                                }
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -645,7 +680,17 @@
     function onFilterChange(type) {
         if (type === 'zone') loadDivisions();
         else if (type === 'division') loadSites();
-        else if (type === 'site') loadAssetTypes();  // ← ADD THIS
+        else if (type === 'site') loadAssetTypes();
+       else if (type === 'assetType' &&
+    typeof window.rdpmsRecomputeHeaderCounts === 'function') {
+    /*
+     * Run after the checkbox/select-all click has completely finished.
+     * This guarantees the header reads the FINAL Asset-Type selection.
+     */
+    setTimeout(function () {
+        window.rdpmsRecomputeHeaderCounts();
+    }, 0);
+}
     }
 
     function loadDivisions() {
@@ -714,14 +759,31 @@
                 if (data && data.length > 0) {
                     var html = '';
                     $.each(data, function (key, value) {
-                        html += '<div class="dropdown-item" data-value="' + value.Id +
+                        /*
+                         * Every asset type of the selected Station(s) is
+                         * checked by default, so changing the Station goes
+                         * straight to a complete result without the user
+                         * having to open this dropdown.
+                         *
+                         * The "checked" class on .dropdown-item is what
+                         * selectAll() toggles for the row highlight, so it
+                         * has to be set here as well as the input attribute.
+                         */
+                        html += '<div class="dropdown-item checked" data-value="' + value.Id +
                             '" data-text="' + value.Name + '">';
                         html += '<input type="checkbox" class="cb-assetType" value="' +
-                            value.Id + '">';
+                            value.Id + '" checked>';
                         html += '<span>' + value.Name + '</span>';
                         html += '</div>';
                     });
                     $('#listAssetType').html(html);
+
+                    /*
+                     * Header "Select All" and the button caption must agree
+                     * with the checkboxes that were just rendered.
+                     */
+                    $('#chkAllAssetType').prop('checked', true);
+                    updateText('assetType');
                 } else {
                     $('#listAssetType').html(
                         '<div class="dropdown-empty">No asset types found</div>'
@@ -749,13 +811,24 @@
             contentType: 'application/json', data: JSON.stringify(m), dataType: 'html',
             success: function (data) {
                 $("#loader").hide();
-                $("#divRDPMSHealthLive").empty().append(data);
 
-                /* Close sockets from the previous search first, otherwise every
-                   search stacks another live subscription on the last. */
+                /* Close sockets BEFORE the new partial replaces the DOM, so no
+   in-flight frame can paint rows that are about to be removed.
+   BOTH pools: disconnect() covers deviceHealth, and the sensor
+   pool is separate - leaving it open is what exhausted the
+   browser's WebSocket slots after a few Searches. */
                 if (window.RdpmsHealthLive) {
-                    window.RdpmsHealthLive.disconnect();
-                }
+    /*
+     * disconnect() now owns teardown of BOTH deviceHealth and sensorHealth.
+     */
+    window.RdpmsHealthLive.disconnect();
+}
+
+                /* Clear the previous partial's model so a late frame cannot read
+                   stale mCardLines while the new partial is being injected. */
+                window.json = "";
+
+                $("#divRDPMSHealthLive").empty().append(data);
 
                 /*
  * Device-health WebSocket is opened below through
@@ -779,41 +852,121 @@
  * the new station sockets start sending data.
  */
                     window.__rdpmsNetworkCountsBySite = {};
-                    window.RdpmsHealthLive.connect(m.SearchCriteria.SiteIds, {
-                        onOpen: function (siteId) {
-                            window.__rdpmsWsOpen[siteId] = true;
-                        },
-                        onClose: function (siteId) {
-                            if (window.__rdpmsWsOpen) {
-                                delete window.__rdpmsWsOpen[siteId];
-                            }
-                        },
-                        onSummary: function (siteId, model) {
-                            window.RdpmsHealthLive.bindDom(
-                                siteId, model, '#divRDPMSHealthLive');
-                            if (typeof window.fnBindDeviceHealth === 'function') {
-                                window.fnBindDeviceHealth(siteId, model);
-                            }
-                            /* WS frame = field change → refresh table/
-                               pictorial/sensor data now, not at next 60 s. */
-                            if (typeof window.__rdpmsWsPulse === 'function') {
-                                window.__rdpmsWsPulse();
-                            }
-                        },
-                        onError: function (siteId, message) {
-                            if (window.console) {
-                                console.warn('[DeviceHealth] site ' +
-                                    (siteId || '-') + ': ' + message);
-                            }
+                    window.__rdpmsIotFaultyBySite = {};
+                    window.__rdpmsGwFaultyBySite = {};
+                    window.__rdpmsGroupSummaryBySite = {};
+                    /* Clear IN PLACE. The partial's module captured this object by
+                       reference at first load, so assigning a fresh {} here detached
+                       the global from the store rdpmsBindSummaryTiles reads — every
+                       external reader then saw an empty map for the rest of the session. */
+                    if (!window.__rdpmsSensorSummaryBySite) {
+                        window.__rdpmsSensorSummaryBySite = {};
+                    } else {
+                        Object.keys(window.__rdpmsSensorSummaryBySite)
+                            .forEach(function (k) {
+                                delete window.__rdpmsSensorSummaryBySite[k];
+                            });
+                    }
+                    /* Raw per-channel rows live on window and are now keyed
+                       siteId|deviceType|deviceId|channel, so a previous search's
+                       stations stayed in the store and kept feeding the tiles
+                       and nfBuildClusterNetGate. Clear them with the rest. */
+                    window.__rdpmsChannelRows = {};
+                    var _connectAttempts = 0;
+                    var _openSockets = function () {
+                        var ready = window.json &&
+                            typeof window.json === 'object' &&
+                            $.isArray(window.json.mCardLines);
+
+                        if (!ready && _connectAttempts < 40) {   /* ~2 s max */
+                            _connectAttempts++;
+                            setTimeout(_openSockets, 50);
+                            return;
                         }
-                    });
+
+                        /*
+ * IMPORTANT:
+ * Open deviceHealth FIRST.
+ *
+ * RdpmsHealthLive.connect() internally calls disconnect(), and disconnect()
+ * also closes the sensorHealth socket. Therefore sensorHealth must be started
+ * AFTER deviceHealth has completed its connection setup.
+ */
+window.RdpmsHealthLive.connect(m.SearchCriteria.SiteIds, {
+    onOpen: function (siteId) {
+        window.__rdpmsWsOpen[siteId] = true;
+    },
+    onClose: function (siteId) {
+        if (window.__rdpmsWsOpen) {
+            delete window.__rdpmsWsOpen[siteId];
+        }
+    },
+    onGroupHealth: function (siteId, snap) {
+    if (typeof window.rdpmsApplyGroupHealthSummary === 'function') {
+        window.rdpmsApplyGroupHealthSummary(siteId, snap);
+    }
+
+    if (typeof window.rdpmsTouchLastUpdated === 'function') {
+        window.rdpmsTouchLastUpdated();
+    }
+},
+    onSummary: function (siteId, model) {
+        window.RdpmsHealthLive.bindDom(siteId, model, '#divRDPMSHealthLive');
+
+        if (typeof window.fnBindDeviceHealth === 'function') {
+    window.fnBindDeviceHealth(siteId, model);
+}
+
+if (typeof window.rdpmsTouchLastUpdated === 'function') {
+    window.rdpmsTouchLastUpdated();
+}
+
+if (typeof window.__rdpmsWsPulse === 'function') {
+            window.__rdpmsWsPulse();
+        }
+    },
+    onError: function (siteId, message) {
+        if (window.console) {
+            console.warn('[DeviceHealth] site ' + (siteId || '-') + ': ' + message);
+        }
+    }
+});
+
+/*
+ * Start sensorHealth AFTER deviceHealth.
+ * Otherwise RdpmsHealthLive.connect() -> disconnect() closes it immediately.
+ */
+if (typeof window.__rdpmsSensorStart === 'function') {
+    window.__rdpmsSensorStart();
+}
+                    };
+                    _openSockets();
                 }
 
                 /* re-apply whichever view is currently selected */
                 var cv = $('#selView').val() || 'Table';
                 if (typeof window.fnSwitchView === 'function') window.fnSwitchView(cv);
             },
-            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+            error: function (xhr, status, error) {
+    $("#loader").hide();
+
+    console.error('[RDPMS Health Live] _List request failed', {
+        httpStatus: xhr.status,
+        statusText: xhr.statusText,
+        error: error,
+        responseText: xhr.responseText
+    });
+
+    if (typeof window.CommonNotification === 'function') {
+        window.CommonNotification("ERROR", "Something went wrong!", "Error");
+    }
+    else if (window.toastr && typeof window.toastr.error === 'function') {
+        window.toastr.error("Something went wrong!");
+    }
+    else {
+        alert("Something went wrong!");
+    }
+}
         });
     }
 

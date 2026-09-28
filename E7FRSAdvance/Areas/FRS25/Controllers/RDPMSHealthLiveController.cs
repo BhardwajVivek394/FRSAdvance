@@ -36,10 +36,100 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             _frsAlertService = frsAlertService;
         }
 
+        /// <summary>
+        /// Asset types that RDPMS Health Live does not cover.
+        ///
+        /// These are hidden from the Asset Type dropdown AND stripped from the
+        /// _List response, so they cannot appear when the user searches without
+        /// selecting any asset type (an empty AssetTypeIds list means "all" to
+        /// the API, which would otherwise return them).
+        /// </summary>
+        private static readonly string[] ExcludedAssetTypeNames =
+        {
+            "ELD",
+            "Equipment Room"
+        };
+
+        /// <summary>
+        /// True when the asset type is one this screen must never show.
+        ///
+        /// A null or blank name returns false on purpose: a record whose asset
+        /// type metadata is missing is kept rather than silently dropped.
+        /// </summary>
+        private static bool IsExcludedAssetType(string assetTypeName)
+        {
+            if (string.IsNullOrWhiteSpace(assetTypeName))
+            {
+                return false;
+            }
+
+            string trimmedName = assetTypeName.Trim();
+
+            for (int i = 0; i < ExcludedAssetTypeNames.Length; i++)
+            {
+                if (string.Equals(
+                        trimmedName,
+                        ExcludedAssetTypeNames[i],
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Removes the excluded asset types from a _List response.
+        ///
+        /// Asset rows are filtered by AssetTypeName — the same field the list
+        /// table renders and the same key the dropdown exclusion uses — and the
+        /// attribute rows are then reduced to the surviving assets so no sensor
+        /// row is left pointing at an asset that is no longer in the table.
+        /// </summary>
+        private static void RemoveExcludedAssetTypes(RDPMSHealthLiveLister lister)
+        {
+            if (lister == null)
+            {
+                return;
+            }
+
+            if (lister.mAssets == null || lister.mAssets.Count == 0)
+            {
+                return;
+            }
+
+            int removedCount = lister.mAssets
+                .RemoveAll(x => x != null && IsExcludedAssetType(x.AssetTypeName));
+
+            if (removedCount == 0)
+            {
+                return;
+            }
+
+            if (lister.mAssetInfos != null && lister.mAssetInfos.Count > 0)
+            {
+                var allowedAssetIds = lister.mAssets
+                    .Where(x => x != null)
+                    .Select(x => x.AssetId)
+                    .Distinct()
+                    .ToHashSet();
+
+                lister.mAssetInfos
+                    .RemoveAll(x => x == null || !allowedAssetIds.Contains(x.AssetId));
+            }
+        }
+
         public ActionResult Index()
         {
             Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService, includeAssetType: false);
-            ViewBag.AssetTypes = new SelectList(_assetTypeService.GetLister(new AssetTypeLister()), "Id", "Name");
+
+            var assetTypes = _assetTypeService.GetLister(new AssetTypeLister())
+                .Where(x => !IsExcludedAssetType(x.Name))
+                .ToList();
+
+            ViewBag.AssetTypes = new SelectList(assetTypes, "Id", "Name");
+
             return View();
         }
 
@@ -59,6 +149,19 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     {
                         string jsonString = response.Content.ReadAsStringAsync().Result;
                         mAssetLister = JsonConvert.DeserializeObject<RDPMSHealthLiveLister>(jsonString);
+
+                        /*
+                         * Drop the asset types this screen does not cover.
+                         *
+                         * The dropdown already hides them, but an empty
+                         * AssetTypeIds list is treated as "all" by the API, so
+                         * searching without picking an asset type would still
+                         * bind ELD / Equipment Room rows. Filtering here makes
+                         * the exclusion hold for every request, whatever the
+                         * client sends.
+                         */
+                        RemoveExcludedAssetTypes(mAssetLister);
+
                         if (mAssetLister != null && mAssetLister.mAssetInfos != null && mAssetLister.mAssetInfos.Count > 0)
                         {
                             foreach (var assetInfo in mAssetLister.mAssetInfos)
@@ -66,6 +169,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                                 if (assetInfo.AttributeAliasName.IsNotNullOrEmpty())
                                 {
                                     assetInfo.AttributeName = assetInfo.AttributeAliasName;
+                                }
+                            }
+                            if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssetInfos != null && mAssetLister.mAssetInfos.Count > 0)
+                            {
+                                // Execute only for IPS Asset Type
+                                if (mAssetLister.SearchCriteria.AssetTypeIds != null && mAssetLister.SearchCriteria.AssetTypeIds.Contains(E7FRSAdvance.Utility.Utility.FRSAssetType.IPS.GetHashCode()))
+                                {
+                                    var assetIds = mAssetLister.mAssetInfos.Select(x => x.AssetId).Distinct().ToHashSet();
+
+                                    mAssetLister.mAssets = mAssetLister.mAssets.Where(x => assetIds.Contains(x.AssetId)).ToList();
                                 }
                             }
                         }
@@ -108,6 +221,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mAssetLister.Pager.Take = -1;
                 mAssetLister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
                 mAssetLister.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
+
+                // RDPMS Health Live forces sites 161/167 to full health in the summary.
+                // The summary DTO has no per-row SiteId, and the API response below
+                // overwrites mAssetLister, so capture the selected stations here for the view.
+                ViewBag.RdpmsForceSiteIds = (mAssetLister.SearchCriteria != null && mAssetLister.SearchCriteria.SiteIds != null)
+                    ? mAssetLister.SearchCriteria.SiteIds
+                    : new List<int>();
 
                 if (mAssetLister.SearchCriteria.FromDate != null && mAssetLister.SearchCriteria.FromDate != DateTime.MinValue)
                 {
@@ -172,11 +292,18 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             {
                 var mAssetTypeLister = new AssetTypeLister();
                 mAssetTypeLister.SiteIds = siteIds;
-                mAssetTypes = _assetTypeService.GetLister(mAssetTypeLister);
+                mAssetTypes = _assetTypeService.GetLister(mAssetTypeLister)
+                    .Where(x => !IsExcludedAssetType(x.Name))
+                    .ToList();
             }
             catch (Exception)
             {
-                mAssetTypes = Helper.FilterCacheHelper.GetFRSAssetTypes();
+                // The cached fallback list is unfiltered — apply the same
+                // exclusion so an API failure cannot reintroduce the hidden
+                // asset types into the dropdown.
+                mAssetTypes = Helper.FilterCacheHelper.GetFRSAssetTypes()
+                    .Where(x => x == null || !IsExcludedAssetType(x.Name))
+                    .ToList();
             }
             return Json(mAssetTypes, JsonRequestBehavior.AllowGet);
         }
@@ -393,6 +520,53 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                     // Return an empty array on any non-200 so the frontend's
                     // $.isArray(data) guard keeps working without special casing.
+                    return Json(new List<object>(), JsonRequestBehavior.AllowGet);
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        /// <summary>
+        /// Proxies POST Asset/GetByAssetIds with a List&lt;int&gt; body.
+        ///
+        /// The RDPMS Health Live grid only needs IsHalfPointMachine from the
+        /// response: true means the point machine has an A end only, false
+        /// means it has both A and B ends. The frontend uses that to decide
+        /// whether to hide B-end sensor attributes or to pair them with their
+        /// A-end counterpart as a single "A/B ..." entry.
+        /// </summary>
+        [HttpPost]
+        public ActionResult GetAssetsByIds(List<int> assetIds)
+        {
+            if (assetIds == null || assetIds.Count == 0)
+            {
+                return Json(new List<object>(), JsonRequestBehavior.AllowGet);
+            }
+
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(assetIds);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+
+                    var response = hcf.client.PostAsync("Asset/GetByAssetIds", str).Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string json = response.Content.ReadAsStringAsync().Result;
+                        return Content(json, "application/json");
+                    }
+
+                    /*
+                     * Empty array on any non-200 so the frontend's
+                     * $.isArray(rows) guard keeps working. An absent flag
+                     * simply means "do not collapse", which is the
+                     * pre-change behaviour.
+                     */
                     return Json(new List<object>(), JsonRequestBehavior.AllowGet);
                 }
             }

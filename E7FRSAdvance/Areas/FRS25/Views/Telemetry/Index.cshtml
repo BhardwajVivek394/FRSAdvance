@@ -2543,11 +2543,12 @@
     /* ── Signal card Graph & Circuit buttons ── */
     .sig-card-actions {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
+        flex-wrap: nowrap;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-end;
         gap: 4px;
-        padding: 4px 2px;
+        padding: 2px 4px;
     }
 
     .sig-action-btn {
@@ -2588,12 +2589,19 @@
         }
 
     .rdpms-signal-card .card-header-right:has(.sig-card-actions) {
-        width: 15%;
-        min-width: 44px;
+        width: auto;
+        flex: 0 0 auto;
+        min-width: 100px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 2px 6px 2px 0;
     }
 
     .rdpms-signal-card .card-header-left:has(~ .card-header-right .sig-card-actions) {
-        width: 85%;
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     /* ── Override legacy white backgrounds in old graph modals ── */
@@ -4476,6 +4484,17 @@
             color: #a78bfa;
         }
 
+        /* Avg values (FRS attribute-range history) */
+        .tl-asset-action.tl-aa-avg:hover {
+            background: linear-gradient(135deg, rgba(52,211,153,0.18), rgba(52,211,153,0.06));
+            border-color: rgba(52,211,153,0.45);
+            color: #34d399;
+        }
+
+    .sig-card-actions .sig-action-btn.sig-action-avg:hover {
+        color: #34d399;
+    }
+
     /* List view: place action cell flush-right, narrow */
     #wsLiveTable th.tl-actions-col,
     #wsLiveTable td.tl-actions-cell {
@@ -4507,11 +4526,12 @@
            ══════════════════════════════════════════════════════════════ */
     .sig-card-actions {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
+        flex-wrap: nowrap;
         align-items: center;
-        justify-content: center;
+        justify-content: flex-end;
         gap: 4px;
-        padding: 4px 2px;
+        padding: 2px 4px;
     }
 
     .sig-action-btn {
@@ -4579,12 +4599,19 @@
 
     /* Responsive: widen header-right to fit buttons */
     .rdpms-signal-card .card-header-right:has(.sig-card-actions) {
-        width: 15%;
-        min-width: 44px;
+        width: auto;
+        flex: 0 0 auto;
+        min-width: 100px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 2px 6px 2px 0;
     }
 
     .rdpms-signal-card .card-header-left:has(~ .card-header-right .sig-card-actions) {
-        width: 85%;
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;
     }
 
     /* Back-bar shown only while a per-asset Graph/Circuit overlay is active */
@@ -5144,7 +5171,7 @@
                 color: rgba(255,255,255,0.95) !important;
                 position: sticky;
                 left: 0;
-                background: #0a1628 !important;
+                /*background: #0a1628 !important;*/
                 z-index: 5;
                 border-right: 1px solid rgba(34,211,238,0.15) !important;
             }
@@ -9829,6 +9856,206 @@
             max-width: none !important;
         }
     }
+
+    /* =========================================================
+       RESPONSIVE — container-aware fixes
+       The page lives in a content column roughly 300px narrower
+       than the viewport (the sidebar is fixed), so viewport
+       breakpoints fire far too late: every grid below used a
+       fixed minmax() floor, overflowed its column, and .e7-main's
+       overflow-x:hidden then clipped the right-hand values off
+       the cards. Wrapping each floor in min(100%, …) makes a
+       track collapse to the container instead of overflowing it,
+       which is what the browser should have been doing all along.
+       ========================================================= */
+
+    /* Header row: filters on the left, SIP schematic on the right.
+       auto-fit drops to a single full-width column the moment both
+       columns no longer fit, so the schematic goes full width on
+       small screens instead of being cut off on the right. */
+    .tl-top-row {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)) !important;
+    }
+
+    /* Zone / Division / Station wrap to a second line rather than
+       spilling out of the left column. */
+    .tl-filters-row {
+        flex-wrap: wrap !important;
+    }
+
+    /* ── SIP schematic: fill the canvas width ──
+       The yard SVG is `preserveAspectRatio="xMidYMid meet"` at
+       width:100%/height:100% inside a canvas pinned to height:180px.
+       A yard is far wider than it is tall, so "meet" fitted it to the
+       *height* and left the drawing floating in the middle at about
+       two thirds of the canvas width, with dead space either side
+       (and min-width:900px made the canvas scroll sideways on top of
+       that). Dropping that floor and letting the height come from the
+       viewBox aspect ratio makes the schematic span the full width;
+       the canvas then grows to the height the drawing actually needs,
+       capped so it can't shove the page down. Fullscreen is excluded —
+       there the canvas owns the viewport and height:100% is correct. */
+    .sip-card:not(.fullscreen) .sip-canvas > svg {
+        width: 100% !important;
+        height: auto !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .sip-card.sip-card-topbar:not(.fullscreen) .sip-canvas,
+    body.sip-mini-mode .sip-card.sip-card-topbar:not(.fullscreen) .sip-canvas {
+        height: auto !important;
+        min-height: 120px !important;
+        max-height: 320px !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }
+
+    .tl-f-group {
+        min-width: 0 !important;
+        flex: 0 1 auto !important;
+    }
+
+        .tl-f-group > select {
+            max-width: 100% !important;
+        }
+
+    /* Asset-type pills: below tablet width, wrap instead of being
+       clipped mid-pill by the overflow-hidden single-row layout. */
+    @@media (max-width: 900px) {
+        .atp-pills-row {
+            overflow: visible !important;
+            max-width: 100% !important;
+        }
+
+        .atp-pills-inline {
+            flex-wrap: wrap !important;
+        }
+
+            .atp-pills-inline.atp-expanded {
+                max-width: 100% !important;
+            }
+    }
+
+    /* ── Card grids: never let a track exceed the container ── */
+    .at-cards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)) !important;
+    }
+
+    .sites-cards {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)) !important;
+    }
+
+    .ips-card-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)) !important;
+    }
+
+    .inline-detail-body {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)) !important;
+    }
+
+    /* ── Card metric grids ──
+       A bare `1fr` track sizes its automatic minimum from the cell's
+       min-content, and these cells hold white-space:nowrap labels
+       ("VTC 24 DC TPR I/P(V)"), so each column demanded the full
+       label width. Two of those together were wider than the card,
+       and the card's overflow:hidden then chopped the right-hand
+       column's values in half ("9." instead of "9.78").
+       minmax(0, 1fr) lets the track shrink to its share of the card
+       so the label's own ellipsis does the truncating instead. */
+    .at-track-grid,
+    .at-sig-metrics,
+    .at-pm-ends {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    }
+
+    .at-pm-metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    }
+
+    .at-signal-body {
+        grid-template-columns: 100px minmax(0, 1fr) !important;
+    }
+
+        .at-track-grid > div,
+        .at-sig-metrics > div,
+        .at-pm-metrics > div,
+        .at-pm-ends > div,
+        .at-signal-body > div {
+            min-width: 0;
+        }
+
+    /* ── Track card: the Graph/Circuit buttons are absolutely
+       positioned at the top-right, so the header needs to reserve
+       their width or a long asset name runs underneath them. ── */
+    .at-asset-card .at-card-head {
+        padding-right: 74px;
+    }
+
+    .at-asset-card,
+    .at-cards-grid > * {
+        min-width: 0;
+    }
+
+    /* ── Signal (RDPMS) cards ──
+       #rdpmsMainContainer is a wrapping flex row, and the card was
+       pinned to `flex: 0 1 280px; min-width: 24vw; max-width: 340px`.
+       min-width in vw ignores the sidebar, so on a wide screen it
+       demanded more room than the column had, and on a narrow one
+       the card stayed at 280px inside a ~310px column with its lamp
+       table hanging out of the right edge. Sizing against the flex
+       line instead lets the card fill the row and collapse cleanly
+       to one per row. (buildMainSignalCard also emits a base col-12
+       now, so the Bootstrap classes no longer leave it unsized
+       below 576px.) */
+    .rdpms-signal-card {
+        flex: 1 1 280px !important;
+        min-width: min(100%, 280px) !important;
+        max-width: min(100%, 420px) !important;
+    }
+
+    /* The lamp current/voltage table is white-space:nowrap and was
+       pushing past the card edge, hiding the unit on the last
+       value. Fixed layout keeps both cells at 50% and wraps the
+       label while the number itself stays on one line. */
+    .rdpms-route-table {
+        max-width: 100%;
+    }
+
+        .rdpms-route-table table {
+            table-layout: fixed;
+            width: 100%;
+            white-space: normal;
+        }
+
+            .rdpms-route-table table tr td {
+                overflow-wrap: anywhere;
+            }
+
+                .rdpms-route-table table tr td span {
+                    white-space: nowrap;
+                }
+
+    /* ── Point Machine cards ── */
+    .pm-card-wrapper {
+        min-width: 0;
+    }
+
+    .pm-card-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+        .pm-card-header-left,
+        .pm-card-header-right {
+            min-width: 0;
+        }
+
+    .pm-card-wrapper .table-responsive {
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
 </style>
 
 <link rel="stylesheet" href="~/Areas/FRS25/assets/css/aurora-telemetry.css?v=20260608-aurora-final" />
@@ -9949,7 +10176,6 @@
                         </div>
                         <div class="sip-sub">Real-time from WebSocket · click asset to jump</div>
                     </div>
-                    <div class="sip-sub">Real-time from WebSocket · click asset to jump</div>
                 </div>
                 <div class="sip-controls" id="sipControls" style="display:none;">
                     <button class="sip-clear" id="sipClearBtn" style="display:none;">
@@ -9994,6 +10220,7 @@
     <option value="Cards">Cards</option>
     <option value="RDPMS">RDPMS</option>
     <option value="IPS">IPS</option>
+    <option value="Graph">Graph</option>
 </select>
 
 <div class="inline-details-stack" id="inlineDetailsStack" aria-live="polite"></div>
@@ -10024,6 +10251,9 @@
                 <button type="button" class="tl-vmode-btn" data-vmode="Table" title="Grid view" aria-pressed="false">
                     <i class="fa-solid fa-list"></i>
                 </button>
+                <button type="button" class="tl-vmode-btn" data-vmode="Graph" title="Graph view" aria-pressed="false">
+                    <i class="fa-solid fa-chart-line"></i>
+                </button>
             </div>
 
             <button id="atFullscreenBtn" class="at-btn-sm" title="Full screen asset data">
@@ -10038,6 +10268,95 @@
         </div>
     </div>
 </div>
+
+<!-- Host for the _FRSAttributeRangeHistory partial (Avg values modal).
+     The partial ships its own modal markup; fnShowFRSAttributeRangeHistory()
+     replaces the contents of this div on each open. -->
+<div id="divFRSAttributerangeHistory"></div>
+
+<style>
+    /* ── Avg values modal: re-theme the partial's light skin to Aurora ──
+       _FRSAttributeRangeHistory.cshtml ships a light skin (#fff tables,
+       #f9fafb body). Re-point every surface at the theme tokens so it
+       matches the rest of the page; light mode keeps the fallbacks. */
+    #modal-frs-attributerange-history .frs-modal,
+    #modal-json-viewer .frs-modal {
+        background: var(--at-bg2, #0e1530) !important;
+        color: var(--at-t1, rgba(255,255,255,0.96)) !important;
+        border: 1px solid var(--at-edge, rgba(255,255,255,0.10)) !important;
+    }
+
+    #modal-frs-attributerange-history .frs-modal-body,
+    #modal-json-viewer .frs-modal-body {
+        background: transparent !important;
+    }
+
+    #modal-frs-attributerange-history .frs-modal-footer,
+    #modal-json-viewer .frs-modal-footer {
+        background: transparent !important;
+        border-top: 1px solid var(--at-edge, rgba(255,255,255,0.10)) !important;
+    }
+
+    #modal-frs-attributerange-history .frs-table {
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+        #modal-frs-attributerange-history .frs-table thead tr {
+            background: rgba(6,9,20,0.85) !important;
+        }
+
+        #modal-frs-attributerange-history .frs-table thead th {
+            color: var(--at-t3, rgba(255,255,255,0.50)) !important;
+            border-bottom-color: var(--at-edge, rgba(255,255,255,0.10)) !important;
+        }
+
+        #modal-frs-attributerange-history .frs-table tbody td {
+            color: var(--at-t2, rgba(255,255,255,0.72)) !important;
+            border-bottom-color: var(--at-edge, rgba(255,255,255,0.10)) !important;
+        }
+
+        #modal-frs-attributerange-history .frs-table tbody tr:hover {
+            background: var(--at-g2, rgba(255,255,255,0.06)) !important;
+        }
+
+    #modal-frs-attributerange-history .btn-view-json {
+        background: var(--at-g1, rgba(255,255,255,0.04)) !important;
+        border-color: var(--at-edge, rgba(255,255,255,0.10)) !important;
+        color: var(--at-brand, #22d3ee) !important;
+    }
+
+        #modal-frs-attributerange-history .btn-view-json:hover {
+            background: var(--at-brand, #22d3ee) !important;
+            color: var(--at-bg2, #0e1530) !important;
+        }
+
+    #modal-frs-attributerange-history .btn-close-modal,
+    #modal-json-viewer .btn-close-modal,
+    #modal-json-viewer .btn-copy-json {
+        background: var(--at-g1, rgba(255,255,255,0.04)) !important;
+        border-color: var(--at-edge, rgba(255,255,255,0.10)) !important;
+        color: var(--at-t2, rgba(255,255,255,0.72)) !important;
+    }
+
+        #modal-frs-attributerange-history .btn-close-modal:hover,
+        #modal-json-viewer .btn-close-modal:hover,
+        #modal-json-viewer .btn-copy-json:hover {
+            background: var(--at-g2, rgba(255,255,255,0.06)) !important;
+            color: var(--at-t1, #fff) !important;
+        }
+
+    body[data-aurora="light"] #modal-frs-attributerange-history .frs-modal,
+    body[data-aurora="light"] #modal-json-viewer .frs-modal {
+        background: #fff !important;
+        color: #374151 !important;
+    }
+
+        body[data-aurora="light"] #modal-frs-attributerange-history .frs-table tbody td {
+            color: #374151 !important;
+        }
+</style>
+
 <style>
     /* ── Event Log modal: align with the dark Aurora theme ──────────────
        The block above hard-coded a LIGHT skin (#fff tables, #f8fafc body)
@@ -11005,11 +11324,20 @@
 
 </script>
 
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive.js"></script>
-<script src="~/Areas/FRS25/assets/sip/js/sip-library.js"></script>
-<script src="~/Areas/FRS25/assets/sip/js/sip-asset-popup.js"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive.js?v=617.7"></script>
+<!-- IPS + Point Machine graph panels. Must load after telemetrylive.js:
+     it wraps fnSearchView / _tlApplyViewMode to add the Graph view. -->
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-graphs.js?v=617.6"></script>
+<!-- Point Machine vibration table, per-end resolution and event graph.
+     Must load after telemetrylive.js: it replaces fnUpdateVibrationModal. -->
+<link href="~/Areas/FRS25/assets/css/telemetrylive-pmvibration.css" rel="stylesheet" />
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-pmvibration.js"></script>
+<!-- Telemetry Live extensions (v616 ports, IPS card v2, interactive graph views). Must load after the scripts above. -->
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-ext.js?v=617.7"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=617.6"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-asset-popup.js?v=617.6"></script>
 
-<script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js?v=617.6"></script>
 <script>
     // ═══════════════════════════════════════════════════════════════
     // SIP CARD DRAG-TO-MOVE (header grip)

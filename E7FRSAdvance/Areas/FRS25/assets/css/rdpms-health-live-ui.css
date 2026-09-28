@@ -1,0 +1,1364 @@
+/* =============================================================================
+   RDPMS Health Live — UI refinement overlay
+   Energy7 / FRS25  ·  Areas/FRS25/assets/css/rdpms-health-live-ui.css
+
+   Drop-in stylesheet. Targets the EXISTING markup only (.pic-*, .rdpms-*,
+   #tblRDPMSHealthLive, #picIndoorGrid, #picOutdoorGrid). No .cshtml changes
+   are required beyond the two <link>/<script> lines in the install notes.
+
+   Must be loaded AFTER the page's own inline <style> block so it wins on
+   specificity ties. Theme-aware: follows html[data-theme="dark|light"].
+   ============================================================================= */
+
+/* ---------------------------------------------------------------- tokens -- */
+:root {
+    /* Aligned to the Aurora theme (--e7-*) so Health Live matches the shell.
+       Each token references the real Aurora variable and keeps its previous
+       value as a fallback for when e7-aurora-theme.css is not loaded. */
+    --rhl-card-bg: linear-gradient(162deg, var(--e7-g2, rgba(255,255,255,.05)) 0%, rgba(255,255,255,.012) 100%);
+    --rhl-card-solid: var(--e7-bg-2, #0e1530);
+    --rhl-head-bg: var(--e7-g1, rgba(255,255,255,.030));
+    --rhl-border: var(--e7-edge, rgba(255,255,255,.095));
+    --rhl-border-strong: var(--e7-edge-s, rgba(255,255,255,.200));
+    --rhl-text: var(--e7-t1, #e6ebff);
+    --rhl-text-dim: var(--e7-t2, #94a1c9);
+    --rhl-text-faint: var(--e7-t3, #6b789f);
+    --rhl-ok: var(--e7-ok, #34d399);
+    --rhl-ok-soft: rgba(52, 211, 153, .13);
+    --rhl-bad: var(--e7-bad, #fb7185);
+    --rhl-bad-soft: rgba(251, 113, 133, .13);
+    --rhl-bad-line: rgba(251, 113, 133, .42);
+    --rhl-warn: var(--e7-warn, #fbbf24);
+    --rhl-warn-soft: rgba(251, 191, 36, .13);
+    --rhl-na: var(--e7-t4, #64748b);
+    /* accent is now the Aurora brand cyan (was indigo #818cf8) */
+    --rhl-accent: var(--e7-brand, #22d3ee);
+    --rhl-accent-2: var(--e7-info, #a78bfa);
+    --rhl-accent-soft: rgba(34, 211, 238, .14);
+    --rhl-brand-glow: var(--e7-brand-glow, rgba(34, 211, 238, .45));
+    --rhl-shadow: var(--e7-shadow-r, 0 12px 26px -14px rgba(0, 0, 0, .80));
+    --rhl-zebra: rgba(255, 255, 255, .018);
+    --rhl-r: var(--e7-r-md, 12px);
+}
+
+html[data-theme="light"],
+html[data-aurora="light"] {
+    /* Neutrals follow the Aurora light tokens; status + accent keep light-tuned
+       values for contrast on white (e7 does not ship a light-specific set). */
+    --rhl-card-bg: var(--e7-g2, #ffffff);
+    --rhl-card-solid: var(--e7-bg-2, #ffffff);
+    --rhl-head-bg: var(--e7-g1, #f8fafc);
+    --rhl-border: var(--e7-edge, #e2e8f0);
+    --rhl-border-strong: var(--e7-edge-s, #cbd5e1);
+    --rhl-text: var(--e7-t1, #1e293b);
+    --rhl-text-dim: var(--e7-t2, #64748b);
+    --rhl-text-faint: var(--e7-t3, #94a3b8);
+    --rhl-ok: #059669;
+    --rhl-ok-soft: rgba(5, 150, 105, .10);
+    --rhl-bad: #dc2626;
+    --rhl-bad-soft: rgba(220, 38, 38, .07);
+    --rhl-bad-line: rgba(220, 38, 38, .35);
+    --rhl-warn: #d97706;
+    --rhl-warn-soft: rgba(217, 119, 6, .10);
+    --rhl-na: #94a3b8;
+    /* darkened Aurora brand so it stays cyan-family, not indigo, in light mode */
+    --rhl-accent: var(--e7-brand-d, #0891b2);
+    --rhl-accent-2: var(--e7-info, #7c3aed);
+    --rhl-accent-soft: rgba(8, 145, 178, .10);
+    --rhl-brand-glow: rgba(8, 145, 178, .30);
+    --rhl-shadow: 0 10px 22px -14px rgba(15, 23, 42, .38);
+    --rhl-zebra: #fafbfe;
+}
+
+/* ================================================================= TOOLBAR ==
+   Injected by rdpms-health-live-ui.js, styled here. Sits between the KPI
+   strip and the result area and drives both views.
+   ========================================================================== */
+.rhl-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0 6px;
+}
+
+.rhl-search {
+    position: relative;
+    flex: 1 1 250px;
+    max-width: 380px;
+    min-width: 180px;
+}
+
+    .rhl-search svg {
+        position: absolute;
+        left: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 14px;
+        height: 14px;
+        opacity: .5;
+        pointer-events: none;
+        color: var(--rhl-text-dim);
+    }
+
+    .rhl-search input {
+        width: 100%;
+        height: 34px;
+        padding: 0 30px 0 31px;
+        font-size: 12.5px;
+        color: var(--rhl-text);
+        background: var(--rhl-head-bg);
+        border: 1px solid var(--rhl-border);
+        border-radius: 8px;
+        outline: none;
+        transition: border-color .15s, box-shadow .15s;
+    }
+
+        .rhl-search input::placeholder {
+            color: var(--rhl-text-faint);
+        }
+
+        .rhl-search input:focus {
+            border-color: var(--rhl-accent);
+            box-shadow: 0 0 0 3px var(--rhl-accent-soft);
+        }
+
+.rhl-search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--rhl-text-faint);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+}
+
+.rhl-search.is-filled .rhl-search-clear {
+    display: block;
+}
+
+.rhl-search-clear:hover {
+    color: var(--rhl-text);
+    background: var(--rhl-border);
+}
+
+.rhl-tgl {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    color: var(--rhl-text-dim);
+    background: var(--rhl-head-bg);
+    border: 1px solid var(--rhl-border);
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+}
+
+    .rhl-tgl:hover {
+        color: var(--rhl-text);
+        border-color: var(--rhl-border-strong);
+    }
+
+    .rhl-tgl .rhl-tgl-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: .35;
+    }
+
+    .rhl-tgl[aria-pressed="true"] {
+        color: var(--rhl-text);
+        background: var(--rhl-accent-soft);
+        border-color: var(--rhl-accent);
+    }
+
+        .rhl-tgl[aria-pressed="true"] .rhl-tgl-dot {
+            background: var(--rhl-accent);
+            opacity: 1;
+        }
+
+    .rhl-tgl[data-rhl="faulty"][aria-pressed="true"] {
+        color: var(--rhl-bad);
+        background: var(--rhl-bad-soft);
+        border-color: var(--rhl-bad-line);
+    }
+
+        .rhl-tgl[data-rhl="faulty"][aria-pressed="true"] .rhl-tgl-dot {
+            background: var(--rhl-bad);
+        }
+
+.rhl-spacer {
+    flex: 1 1 auto;
+}
+
+.rhl-result-count {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    color: var(--rhl-text-faint);
+    white-space: nowrap;
+}
+
+    .rhl-result-count b {
+        color: var(--rhl-text);
+        font-weight: 700;
+    }
+
+/* ============================================================ KPI SUMMARY ==
+   Light polish only — structure untouched.
+   ========================================================================== */
+.rdpms-stat-table-wrap {
+    background: var(--rhl-card-bg) !important;
+    border: 1px solid var(--rhl-border) !important;
+    border-radius: var(--rhl-r) !important;
+}
+
+.rdpms-stat-table .rdpms-val-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+/* a non-zero faulty figure should read as a problem, not as a number */
+.rdpms-stat-table .red {
+    color: var(--rhl-bad) !important;
+}
+
+.rdpms-stat-table .rdpms-val-cell .red.rhl-hot {
+    text-shadow: 0 0 18px var(--rhl-bad-soft);
+}
+
+.rdpms-stat-table .green {
+    color: var(--rhl-ok) !important;
+}
+
+/* ============================================================ TAB BAR ===== */
+.pic-tab-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    border-bottom: 1px solid var(--rhl-border);
+    margin-bottom: 14px;
+}
+
+.pic-tab-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px !important;
+    font-size: 12.5px !important;
+    letter-spacing: .3px;
+    color: var(--rhl-text-faint) !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 8px 8px 0 0;
+}
+
+    .pic-tab-btn:hover {
+        color: var(--rhl-text) !important;
+        background: var(--rhl-head-bg);
+    }
+
+    .pic-tab-btn.active {
+        color: var(--rhl-text) !important;
+        border-bottom-color: var(--rhl-accent) !important;
+        background: linear-gradient(180deg, transparent, var(--rhl-accent-soft));
+    }
+
+/* counts injected by the JS companion */
+.rhl-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+    color: var(--rhl-text-dim);
+    background: var(--rhl-head-bg);
+    border: 1px solid var(--rhl-border);
+    border-radius: 999px;
+}
+
+.pic-tab-btn.active .rhl-count {
+    color: var(--rhl-text);
+    border-color: var(--rhl-border-strong);
+}
+
+.rhl-count .rhl-count-bad {
+    color: var(--rhl-bad);
+}
+
+    .rhl-count .rhl-count-bad::before {
+        content: "·";
+        margin: 0 3px 0 1px;
+        color: var(--rhl-text-faint);
+    }
+
+/* ======================================================= PICTORIAL GRID ====
+   Was: flex-wrap with fixed 360px cards → two columns and a dead right half.
+   Now: auto-filling grid that uses the full content width at every breakpoint.
+   ========================================================================== */
+#picIndoorGrid,
+#picOutdoorGrid,
+.pic-modem-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(clamp(228px, 17vw, 278px), 1fr));
+    gap: 12px !important;
+    align-items: stretch !important;
+}
+
+.pic-modem-card {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--rhl-r) !important;
+    border: 1px solid var(--rhl-border) !important;
+    background: var(--rhl-card-bg) !important;
+    background-color: var(--rhl-card-solid) !important;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+    /* status rail down the left edge — readable at a glance from across the room */
+    .pic-modem-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 3px;
+        background: var(--rhl-na);
+        transition: background .2s;
+    }
+
+    .pic-modem-card[data-rhl-status="healthy"]::before {
+        background: var(--rhl-ok);
+    }
+
+    .pic-modem-card[data-rhl-status="faulty"]::before {
+        background: var(--rhl-bad);
+    }
+
+    .pic-modem-card[data-rhl-status="warn"]::before {
+        background: var(--rhl-warn);
+    }
+
+    .pic-modem-card[data-rhl-status="faulty"] {
+        border-color: var(--rhl-bad-line) !important;
+        background-image: linear-gradient(162deg, var(--rhl-bad-soft) 0%, rgba(255, 255, 255, .012) 70%) !important;
+    }
+
+    .pic-modem-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--rhl-shadow);
+        border-color: var(--rhl-border-strong) !important;
+    }
+
+/* ---- card header ---- */
+.pic-modem-header {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 11px 9px 14px !important;
+    border-bottom: 1px solid var(--rhl-border);
+    background: var(--rhl-head-bg);
+    min-width: 0;
+}
+
+.pic-modem-title {
+    display: flex !important;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: .1px;
+    color: var(--rhl-text) !important;
+}
+
+    .pic-modem-title > svg {
+        flex: 0 0 auto;
+        opacity: .5;
+    }
+
+/* JS wraps the bare text node so it can ellipsis instead of wrapping to 2 lines */
+.rhl-title-txt {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+    .rhl-title-txt .rhl-site {
+        color: var(--rhl-text-faint);
+        font-weight: 600;
+    }
+
+.pic-status-dot {
+    flex: 0 0 auto;
+    width: 9px !important;
+    height: 9px !important;
+    border-radius: 50%;
+    border: 0 !important;
+    background: var(--rhl-na);
+    box-shadow: 0 0 0 3px var(--rhl-head-bg), 0 0 0 4px var(--rhl-border);
+}
+
+    .pic-status-dot.pic-dot--healthy {
+        background: var(--rhl-ok) !important;
+        box-shadow: 0 0 0 3px var(--rhl-ok-soft), 0 0 8px var(--rhl-ok);
+    }
+
+    .pic-status-dot.pic-dot--faulty {
+        background: var(--rhl-bad) !important;
+        box-shadow: 0 0 0 3px var(--rhl-bad-soft), 0 0 8px var(--rhl-bad);
+        animation: rhl-pulse 1.8s ease-in-out infinite;
+    }
+
+    .pic-status-dot.pic-dot--na,
+    .pic-status-dot.pic-dot--unknown {
+        background: var(--rhl-na) !important;
+    }
+
+@keyframes rhl-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: .4;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pic-status-dot.pic-dot--faulty {
+        animation: none;
+    }
+
+    .pic-modem-card:hover {
+        transform: none;
+    }
+}
+
+/* ---- card body ---- */
+.pic-modem-health {
+    display: flex !important;
+    align-items: flex-start;
+    gap: 11px !important;
+    padding: 10px 12px 11px 14px !important;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.pic-asset-thumb {
+    flex: 0 0 auto;
+    display: grid !important;
+    place-items: center;
+    width: 54px !important;
+    height: 54px !important;
+    padding: 0 !important;
+    border-radius: 9px;
+    border: 1px solid var(--rhl-border) !important;
+    background: var(--rhl-head-bg) !important;
+    color: var(--rhl-text-dim);
+}
+
+    .pic-asset-thumb svg {
+        width: 30px !important;
+        height: 30px !important;
+        opacity: .6;
+    }
+
+.pic-modem-card[data-rhl-status="faulty"] .pic-asset-thumb {
+    border-color: var(--rhl-bad-line) !important;
+    color: var(--rhl-bad);
+}
+
+.pic-health-rows-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex !important;
+    flex-direction: column;
+    gap: 5px !important;
+}
+
+.pic-health-row {
+    display: flex !important;
+    align-items: center;
+    gap: 6px !important;
+    min-width: 0;
+    margin: 0 !important;
+}
+
+.pic-hi {
+    flex: 0 0 16px;
+    width: 16px !important;
+    height: 16px !important;
+    display: grid !important;
+    place-items: center;
+    border-radius: 5px;
+}
+
+    .pic-hi svg {
+        width: 11px !important;
+        height: 11px !important;
+    }
+
+.pic-hl {
+    flex: 0 0 54px;
+    width: 54px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: var(--rhl-text-dim) !important;
+}
+
+.pic-leg-tag {
+    flex: 0 0 52px;
+    width: 52px !important;
+    text-align: center;
+    padding: 1.5px 0 !important;
+    font-size: 9px !important;
+    font-weight: 800 !important;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+    border-radius: 4px !important;
+}
+
+/* keep IoT / Sensor verdicts in the same column as the Wired / Wireless ones */
+.pic-health-row:not(:has(.pic-leg-tag)) .pic-val {
+    margin-left: 58px;
+}
+
+.pic-val {
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    white-space: nowrap;
+}
+
+.pic-val--healthy {
+    color: var(--rhl-ok) !important;
+}
+
+.pic-val--faulty {
+    color: var(--rhl-bad) !important;
+}
+
+.pic-val--na,
+.pic-val--unknown {
+    color: var(--rhl-na) !important;
+}
+
+.pic-time {
+    margin-left: auto;
+    padding-left: 6px;
+    font-size: 10px !important;
+    font-variant-numeric: tabular-nums;
+    color: var(--rhl-text-faint) !important;
+    white-space: nowrap;
+}
+
+/* filtered-out cards */
+.pic-modem-card.rhl-hide {
+    display: none !important;
+}
+
+/* empty state when a filter removes everything */
+.rhl-empty {
+    grid-column: 1 / -1;
+    padding: 28px 16px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--rhl-text-faint);
+    border: 1px dashed var(--rhl-border);
+    border-radius: var(--rhl-r);
+}
+
+/* ================================================================= TABLE ====
+   Was: tall rows, no sticky header, last columns clipped at the card edge.
+   ========================================================================== */
+.rdpms-list-card {
+    border-radius: var(--rhl-r) !important;
+    border: 1px solid var(--rhl-border) !important;
+    overflow: hidden;
+}
+
+    .rdpms-list-card .table-responsive {
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+        max-height: min(64vh, 760px);
+        scrollbar-width: thin;
+        scrollbar-color: var(--rhl-border-strong) transparent;
+    }
+
+        .rdpms-list-card .table-responsive::-webkit-scrollbar {
+            width: 9px;
+            height: 9px;
+        }
+
+        .rdpms-list-card .table-responsive::-webkit-scrollbar-thumb {
+            background: var(--rhl-border-strong);
+            border-radius: 99px;
+        }
+
+        .rdpms-list-card .table-responsive::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+#tblRDPMSHealthLive {
+    min-width: 1060px;
+    font-size: 12.5px !important;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+    #tblRDPMSHealthLive thead th {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        padding: 9px 12px !important;
+        font-size: 10.5px !important;
+        font-weight: 700 !important;
+        letter-spacing: .55px;
+        text-transform: uppercase;
+        color: var(--rhl-text-dim) !important;
+        background: var(--rhl-card-solid) !important;
+        border-bottom: 1px solid var(--rhl-border) !important;
+        box-shadow: inset 0 -1px 0 var(--rhl-border);
+    }
+
+    #tblRDPMSHealthLive tbody td {
+        padding: 7px 12px !important;
+        border-bottom: 1px solid var(--rhl-border) !important;
+        color: var(--rhl-text);
+    }
+
+    #tblRDPMSHealthLive tbody tr:nth-child(even) > td {
+        background: var(--rhl-zebra);
+    }
+
+    #tblRDPMSHealthLive tbody tr:hover > td {
+        background: var(--rhl-accent-soft) !important;
+    }
+
+    /* Sr.No — quiet, fixed, tabular */
+    #tblRDPMSHealthLive tbody td:nth-child(1) {
+        width: 48px;
+        color: var(--rhl-text-faint) !important;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Zone / Division / Station repeat on every row — de-emphasise them so the
+   eye lands on Asset Number and the verdict columns instead. */
+    #tblRDPMSHealthLive tbody td:nth-child(2),
+    #tblRDPMSHealthLive tbody td:nth-child(3),
+    #tblRDPMSHealthLive tbody td:nth-child(4),
+    #tblRDPMSHealthLive tbody td:nth-child(5) {
+        color: var(--rhl-text-dim) !important;
+        font-size: 11.5px !important;
+        white-space: nowrap;
+    }
+
+    #tblRDPMSHealthLive tbody td:nth-child(6) {
+        font-weight: 600;
+        color: var(--rhl-text) !important;
+    }
+
+    /* faulty rows carry their own rail + wash, matching the pictorial cards */
+    #tblRDPMSHealthLive tbody tr:has(.badge-danger) > td {
+        background: var(--rhl-bad-soft) !important;
+    }
+
+        #tblRDPMSHealthLive tbody tr:has(.badge-danger) > td:first-child {
+            box-shadow: inset 3px 0 0 var(--rhl-bad);
+        }
+
+    #tblRDPMSHealthLive tbody tr.rhl-hide {
+        display: none !important;
+    }
+
+    /* status pills */
+    #tblRDPMSHealthLive .badge {
+        display: inline-block;
+        padding: 3px 9px !important;
+        font-size: 10.5px !important;
+        font-weight: 700 !important;
+        letter-spacing: .25px;
+        border-radius: 999px !important;
+        line-height: 1.5;
+    }
+
+    #tblRDPMSHealthLive .badge-success {
+        color: var(--rhl-ok) !important;
+        background: var(--rhl-ok-soft) !important;
+        border: 1px solid color-mix(in srgb, var(--rhl-ok) 35%, transparent) !important;
+    }
+
+    #tblRDPMSHealthLive .badge-danger {
+        color: var(--rhl-bad) !important;
+        background: var(--rhl-bad-soft) !important;
+        border: 1px solid var(--rhl-bad-line) !important;
+    }
+
+/* the (i) button was competing with the data — reveal on row hover */
+.rdpms-detail-btn {
+    opacity: .35;
+    transition: opacity .15s, color .15s;
+}
+
+    #tblRDPMSHealthLive tbody tr:hover .rdpms-detail-btn,
+    .rdpms-detail-btn:focus-visible {
+        opacity: 1;
+        color: var(--rhl-accent);
+    }
+
+/* ---- highlight for the quick filter ---- */
+mark.rhl-mark {
+    padding: 0 1px;
+    border-radius: 3px;
+    color: inherit;
+    background: color-mix(in srgb, var(--rhl-warn) 34%, transparent);
+}
+
+/* ============================================ TABLE · NETWORK CELL ==========
+   The Wired / Wireless legs are painted by the page's row builder with
+   hard-coded light-theme inline styles (#ffffff / #f0fdf4 / #bbf7d0). On the
+   Aurora dark shell they read as white blobs and they stack two lines high,
+   which is what makes every row ~58px tall. Flatten them onto one line and
+   hand the colour back to the theme. Inline styles need !important here.
+   ========================================================================== */
+#tblRDPMSHealthLive tbody td:nth-child(9) > span > span {
+    gap: 3px !important;
+    flex-wrap: wrap !important;
+}
+
+/* the leg "box" */
+#tblRDPMSHealthLive tbody td:nth-child(9) div[style*="min-width:64px"] {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 5px !important;
+    min-width: 0 !important;
+    padding: 1px 7px !important;
+    border-radius: 999px !important;
+    background: var(--rhl-head-bg) !important;
+    border-color: var(--rhl-border) !important;
+}
+
+/* the inner verdict pill — the box already carries the chrome */
+#tblRDPMSHealthLive tbody td:nth-child(9) span[style*="border-radius:8px"] {
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+}
+
+/* the little icon tiles */
+#tblRDPMSHealthLive tbody td:nth-child(9) span[style*="width:16px"] {
+    width: 14px !important;
+    height: 14px !important;
+    background: transparent !important;
+    color: var(--rhl-text-dim);
+}
+
+/* "Wired" / "Wireless" labels */
+#tblRDPMSHealthLive tbody td:nth-child(9) span[style*="#475569"] {
+    color: var(--rhl-text-dim) !important;
+    text-transform: uppercase;
+    letter-spacing: .4px !important;
+}
+
+/* healthy / faulty verdict text + dot */
+#tblRDPMSHealthLive tbody td:nth-child(9) span[style*="#16a34a"] {
+    color: var(--rhl-ok) !important;
+    background-color: var(--rhl-ok) !important;
+}
+
+    #tblRDPMSHealthLive tbody td:nth-child(9) span[style*="#16a34a"][style*="font-size"] {
+        background-color: transparent !important;
+    }
+
+#tblRDPMSHealthLive tbody td:nth-child(9) span[style*="#dc2626"],
+#tblRDPMSHealthLive tbody td:nth-child(9) span[style*="#ef4444"] {
+    color: var(--rhl-bad) !important;
+}
+
+#tblRDPMSHealthLive tbody td:nth-child(9) div[style*="#fef2f2"],
+#tblRDPMSHealthLive tbody td:nth-child(9) div[style*="#fee2e2"] {
+    background: var(--rhl-bad-soft) !important;
+    border-color: var(--rhl-bad-line) !important;
+}
+
+/* ============================================================== COMPACT ====
+   Toggled by the "Compact" button in the toolbar.
+   ========================================================================== */
+html.rhl-compact #picIndoorGrid,
+html.rhl-compact #picOutdoorGrid,
+html.rhl-compact .pic-modem-grid {
+    grid-template-columns: repeat(auto-fill, minmax(clamp(198px, 13vw, 232px), 1fr));
+    gap: 9px !important;
+}
+
+html.rhl-compact .pic-modem-header {
+    padding: 7px 10px 7px 12px !important;
+}
+
+html.rhl-compact .pic-modem-title {
+    font-size: 11.5px !important;
+}
+
+html.rhl-compact .pic-modem-health {
+    padding: 8px 10px 9px 12px !important;
+    gap: 9px !important;
+}
+
+html.rhl-compact .pic-asset-thumb {
+    width: 42px !important;
+    height: 42px !important;
+}
+
+    html.rhl-compact .pic-asset-thumb svg {
+        width: 23px !important;
+        height: 23px !important;
+    }
+
+html.rhl-compact .pic-health-rows-wrap {
+    gap: 3px !important;
+}
+
+html.rhl-compact .pic-hl {
+    flex-basis: 48px;
+    width: 48px !important;
+    font-size: 10px !important;
+}
+
+html.rhl-compact .pic-val {
+    font-size: 11px !important;
+}
+
+html.rhl-compact .pic-leg-tag {
+    flex-basis: 46px;
+    width: 46px !important;
+}
+
+html.rhl-compact .pic-health-row:not(:has(.pic-leg-tag)) .pic-val {
+    margin-left: 52px;
+}
+
+html.rhl-compact .pic-time {
+    display: none;
+}
+
+html.rhl-compact #tblRDPMSHealthLive tbody td {
+    padding: 4px 10px !important;
+    font-size: 11.5px !important;
+}
+
+html.rhl-compact #tblRDPMSHealthLive thead th {
+    padding: 7px 10px !important;
+}
+
+html.rhl-compact .rdpms-list-card .table-responsive {
+    max-height: min(70vh, 860px);
+}
+
+/* ============================================================ RESPONSIVE ==== */
+@media (max-width: 1200px) {
+    #picIndoorGrid,
+    #picOutdoorGrid,
+    .pic-modem-grid {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    #picIndoorGrid,
+    #picOutdoorGrid,
+    .pic-modem-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .rhl-toolbar {
+        gap: 6px;
+    }
+
+    .rhl-search {
+        flex: 1 1 100%;
+        max-width: none;
+    }
+
+    .rhl-spacer {
+        display: none;
+    }
+
+    .rdpms-list-card .table-responsive {
+        max-height: none;
+    }
+}
+
+/* ================================================================ PRINT ==== */
+@media print {
+    .rhl-toolbar,
+    .rdpms-detail-btn {
+        display: none !important;
+    }
+
+    .rdpms-list-card .table-responsive {
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    #tblRDPMSHealthLive thead th {
+        position: static;
+    }
+
+    .pic-modem-card {
+        break-inside: avoid;
+    }
+}
+
+
+/* ============================================ AURORA REFINEMENTS (added) ====
+   Layout tidy + subtle advanced polish, all keyed to the --rhl-*/ --e7- tokens
+above and the existing markup hooks. CSS-only; no .cshtml changes.
+========================================================================== */
+/* KPI summary strip → one cohesive glass slab with a hairline edge */
+.rdpms-stat-table-wrap {
+    border-radius: var(--rhl-r);
+    border: 1px solid var(--rhl-border);
+    box-shadow: var(--rhl-shadow);
+    overflow: hidden;
+    background: var(--rhl-card-bg);
+}
+
+.rdpms-stat-table .green {
+    color: var(--rhl-ok) !important;
+}
+
+.rdpms-stat-table .red {
+    color: var(--rhl-bad) !important;
+}
+/* a real fault should glow, not just sit there as a number */
+.rdpms-stat-table .rdpms-val-cell .red.rhl-hot {
+    text-shadow: 0 0 16px rgba(251, 113, 133, .45);
+}
+
+/* Tab bar → brand-cyan active pill with a soft underglow (was indigo) */
+.pic-tab-btn {
+    transition: color var(--e7-fast, .18s), background var(--e7-fast, .18s);
+}
+
+    .pic-tab-btn.active {
+        color: var(--rhl-text) !important;
+        background: linear-gradient(135deg, color-mix(in srgb, var(--rhl-accent) 26%, transparent), color-mix(in srgb, var(--rhl-accent-2) 22%, transparent)) !important;
+        box-shadow: inset 0 -2px 0 var(--rhl-accent), 0 6px 18px -8px var(--rhl-brand-glow);
+    }
+
+        .pic-tab-btn.active .rhl-count {
+            color: var(--rhl-accent) !important;
+        }
+
+/* Pictorial cards → gentle lift + brand halo on hover, smoother status rail */
+.pic-modem-card {
+    transition: transform var(--e7-base, .32s) var(--e7-ease, ease), box-shadow var(--e7-base, .32s) var(--e7-ease, ease), border-color var(--e7-base, .32s) var(--e7-ease, ease);
+}
+
+    .pic-modem-card:hover {
+        transform: translateY(-3px);
+        border-color: color-mix(in srgb, var(--rhl-accent) 45%, var(--rhl-border));
+        box-shadow: var(--rhl-shadow), 0 0 0 1px color-mix(in srgb, var(--rhl-accent) 30%, transparent), 0 18px 40px -22px var(--rhl-brand-glow);
+    }
+
+    .pic-modem-card[data-rhl-status="healthy"]::before {
+        box-shadow: 0 0 12px -2px var(--rhl-ok);
+    }
+
+    .pic-modem-card[data-rhl-status="faulty"]::before {
+        box-shadow: 0 0 12px -2px var(--rhl-bad);
+    }
+
+    .pic-modem-card[data-rhl-status="warn"]::before {
+        box-shadow: 0 0 12px -2px var(--rhl-warn);
+    }
+
+/* Results table → brand-tinted sticky header + accent hover wash */
+#tblRDPMSHealthLive thead th {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--rhl-accent) 12%, var(--rhl-card-solid)), var(--rhl-card-solid)) !important;
+    color: var(--rhl-text-dim) !important;
+    border-bottom: 1px solid var(--rhl-border) !important;
+    backdrop-filter: blur(8px);
+}
+
+#tblRDPMSHealthLive tbody tr:hover > td {
+    background: var(--rhl-accent-soft) !important;
+}
+
+
+/* Inputs / search → Aurora focus ring */
+.rhl-toolbar input:focus,
+.rhl-toolbar select:focus {
+    border-color: color-mix(in srgb, var(--rhl-accent) 60%, transparent) !important;
+    box-shadow: 0 0 0 3px var(--rhl-accent-soft) !important;
+    outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pic-modem-card, .pic-tab-btn {
+        transition: none !important;
+    }
+}
+
+/* ========================================= PRESENTATION POLISH (added) ======
+   Tightens the two highest-weight surfaces — the KPI summary strip and the
+   results table — for a more balanced, finished Aurora read. CSS-only, keyed
+   to existing hooks; !important only where it must beat inline/bridge styles.
+   ========================================================================== */
+
+/* --- KPI strip: category header accent + tabular numbers -------------------- */
+.rdpms-stat-table .rdpms-group-header {
+    letter-spacing: .06em;
+    padding-bottom: 8px !important;
+}
+
+    .rdpms-stat-table .rdpms-group-header > svg {
+        vertical-align: -2px;
+        opacity: .95;
+    }
+    /* thin accent under each category, in that category's own icon colour */
+    .rdpms-stat-table .rdpms-group-header::after {
+        content: "";
+        display: block;
+        height: 2px;
+        margin: 7px 14px 0;
+        border-radius: 2px;
+        background: linear-gradient(90deg, currentColor, transparent);
+        opacity: .55;
+    }
+
+.rdpms-stat-table .rdpms-val-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+    .rdpms-stat-table .rdpms-val-cell > span[id^="spn"] {
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .rdpms-stat-table .rdpms-val-cell.green > span {
+        color: var(--rhl-ok);
+    }
+
+    .rdpms-stat-table .rdpms-val-cell.red > span {
+        color: var(--rhl-bad);
+    }
+
+/* IoT / Network mini-metrics → consistent aligned chips with glowing dots */
+.rdpms-stat-table .rdpms-channel-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.rdpms-stat-table .rdpms-channel-metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 11px !important;
+    border-radius: 999px !important;
+    background: var(--e7-g1, rgba(255,255,255,.04)) !important;
+    border: 1px solid var(--rhl-border) !important;
+}
+
+    .rdpms-stat-table .rdpms-channel-metric strong {
+        font-variant-numeric: tabular-nums;
+        font-size: .92rem;
+    }
+
+    .rdpms-stat-table .rdpms-channel-metric.online strong {
+        color: var(--rhl-ok);
+    }
+
+    .rdpms-stat-table .rdpms-channel-metric.faulty strong {
+        color: var(--rhl-bad);
+    }
+
+.rdpms-stat-table .rdpms-channel-caption {
+    font-size: .72rem;
+}
+
+.rdpms-stat-table .rdpms-health-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+    .rdpms-stat-table .rdpms-health-dot.online {
+        background: var(--rhl-ok) !important;
+        box-shadow: 0 0 7px var(--rhl-ok);
+    }
+
+    .rdpms-stat-table .rdpms-health-dot.offline {
+        background: var(--rhl-bad) !important;
+        box-shadow: 0 0 7px var(--rhl-bad);
+    }
+
+/* --- Table: badge shape + N/A chip ---------------------------------------- */
+#tblRDPMSHealthLive .badge {
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    padding: .34em .72em !important;
+    letter-spacing: .01em;
+}
+    /* N/A is a bare .badge with an inline grey (#9ca3af) — retint to a muted glass chip */
+    #tblRDPMSHealthLive .badge:not([class*="badge-"]) {
+        background: var(--e7-g3, rgba(255,255,255,.08)) !important;
+        color: var(--rhl-text-faint) !important;
+        border: 1px solid var(--rhl-border) !important;
+        box-shadow: none !important;
+    }
+
+/* --- Pagination → Aurora pills -------------------------------------------- */
+.rdpms-pager-wrap .pagination {
+    gap: 6px;
+}
+
+.rdpms-pager-wrap .page-link {
+    background: var(--e7-g1, rgba(255,255,255,.04)) !important;
+    border: 1px solid var(--rhl-border) !important;
+    color: var(--rhl-text-dim) !important;
+    border-radius: 9px !important;
+    min-width: 36px;
+    text-align: center;
+    transition: color .16s ease, background .16s ease, border-color .16s ease;
+}
+
+    .rdpms-pager-wrap .page-link:hover {
+        color: var(--rhl-text) !important;
+        background: var(--rhl-accent-soft) !important;
+        border-color: color-mix(in srgb, var(--rhl-accent) 45%, var(--rhl-border)) !important;
+    }
+
+.rdpms-pager-wrap .page-item.active .page-link {
+    background: linear-gradient(135deg, var(--rhl-accent), var(--rhl-accent-2)) !important;
+    border-color: transparent !important;
+    color: #04121a !important;
+    box-shadow: 0 6px 16px -8px var(--rhl-brand-glow) !important;
+}
+
+.rdpms-pager-wrap .page-item.disabled .page-link {
+    opacity: .4 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rdpms-pager-wrap .page-link {
+        transition: none !important;
+    }
+}
+
+/* =========================================== COMPACT REDESIGN (default) =====
+   Promotes the dense presentation to the default state and applies the
+   preview's tile / leg-chip treatment on the real hooks. CSS-only.
+   ========================================================================== */
+
+/* --- KPI: compact, balanced figures --------------------------------------- */
+.rdpms-stat-table .rdpms-group-header {
+    padding-top: 10px !important;
+    font-size: .7rem !important;
+}
+
+.rdpms-stat-table .rdpms-sub-header {
+    font-size: .6rem !important;
+    padding: 5px 10px !important;
+    letter-spacing: .1em;
+}
+
+.rdpms-stat-table .rdpms-val-cell {
+    padding: 9px 12px !important;
+}
+
+    .rdpms-stat-table .rdpms-val-cell > span[id^="spn"] {
+        font-size: 1.55rem !important;
+    }
+/* was ~1.9–2.4rem */
+.rdpms-stat-table .rdpms-channel-metric {
+    padding: 3px 10px !important;
+}
+
+    .rdpms-stat-table .rdpms-channel-metric strong {
+        font-size: .88rem;
+    }
+
+.rdpms-stat-table .rdpms-channel-card {
+    gap: 5px;
+}
+
+/* --- TABLE: compact rows as default --------------------------------------- */
+#tblRDPMSHealthLive thead th {
+    padding: 7px 10px !important;
+    font-size: .64rem !important;
+}
+
+#tblRDPMSHealthLive tbody td {
+    padding: 5px 10px !important;
+    font-size: .78rem !important;
+}
+
+#tblRDPMSHealthLive .badge {
+    padding: .28em .66em !important;
+    font-size: .68rem !important;
+}
+
+.rdpms-list-card .table-responsive {
+    max-height: min(72vh, 900px);
+}
+/* network leg text (JS-injected) → compact single line */
+#tblRDPMSHealthLive tbody td:nth-child(9) {
+    white-space: nowrap;
+}
+
+    #tblRDPMSHealthLive tbody td:nth-child(9) span[style*="#475569"] {
+        font-size: .6rem !important;
+    }
+
+/* --- PICTORIAL: compact tiles as default ---------------------------------- */
+#picIndoorGrid, #picOutdoorGrid, .pic-modem-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)) !important;
+    gap: 11px !important;
+}
+
+.pic-modem-card {
+    border-radius: var(--rhl-r) !important;
+}
+
+.pic-modem-header {
+    padding: 8px 11px 8px 13px !important;
+}
+
+.pic-modem-title {
+    font-size: 11.5px !important;
+    letter-spacing: .01em;
+}
+
+.pic-modem-health {
+    padding: 8px 11px 10px 13px !important;
+    gap: 8px !important;
+}
+
+.pic-asset-thumb {
+    width: 42px !important;
+    height: 42px !important;
+}
+
+    .pic-asset-thumb svg {
+        width: 22px !important;
+        height: 22px !important;
+    }
+
+.pic-health-rows-wrap {
+    gap: 4px !important;
+}
+
+.pic-health-row {
+    align-items: center;
+}
+
+.pic-hl {
+    flex-basis: 56px;
+    width: 56px !important;
+    font-size: 10px !important;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--rhl-text-faint) !important;
+}
+
+.pic-val {
+    font-size: 11px !important;
+    font-weight: 600;
+}
+
+.pic-time {
+    display: none !important;
+}
+
+/* --- PICTORIAL Wired / Wireless → compact leg chips ----------------------- */
+.pic-leg-tag {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+    flex-basis: auto !important;
+    width: auto !important;
+    padding: 1px 8px !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--rhl-border) !important;
+    background: var(--e7-g1, rgba(255,255,255,.04)) !important;
+    font-size: 9.5px !important;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--rhl-text-dim) !important;
+}
+
+.pic-leg-tag--wired::before,
+.pic-leg-tag--wireless::before {
+    content: "";
+    width: 11px;
+    height: 11px;
+    flex: none;
+    background: currentColor;
+    opacity: .85;
+    -webkit-mask: center/contain no-repeat var(--ico);
+    mask: center/contain no-repeat var(--ico);
+}
+
+.pic-leg-tag--wired {
+    --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='2' width='6' height='7' rx='1'/%3E%3Cpath d='M12 9v5M6 22v-4a6 6 0 0 1 12 0v4'/%3E%3C/svg%3E");
+}
+
+.pic-leg-tag--wireless {
+    --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0'/%3E%3Ccircle cx='12' cy='19.5' r='1'/%3E%3C/svg%3E");
+}
+/* keep the health verdict beside each leg readable */
+.pic-hi-net + .pic-hl + .pic-val,
+.pic-health-row .pic-val--healthy {
+    color: var(--rhl-ok) !important;
+}
+
+.pic-health-row .pic-val--faulty {
+    color: var(--rhl-bad) !important;
+}
+
+.pic-health-row .pic-val--na {
+    color: var(--rhl-text-faint) !important;
+}
+
+/* ================================================ PERFORMANCE (added) =======
+   backdrop-filter: blur() on dozens of cards + the large table card is a heavy
+   GPU/compositing cost (slow first paint, janky scroll). Keep the glass look
+   with a solid elevated surface instead — no per-frame blur. The KPI strip
+   (single element) keeps its blur. */
+.pic-modem-card, .pic-gw-card, .pic-empty-state, .rdpms-list-card {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: linear-gradient(var(--e7-g1, rgba(255,255,255,.04)), var(--e7-g1, rgba(255,255,255,.04))), var(--e7-bg-2, #0e1530) !important;
+}
+/* fewer live shadows during scroll */
+.pic-modem-card {
+    will-change: auto;
+}

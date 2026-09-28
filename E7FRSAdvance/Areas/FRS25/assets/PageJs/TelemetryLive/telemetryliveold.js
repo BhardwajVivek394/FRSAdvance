@@ -1,15 +1,5 @@
 'use strict';
 
-// ===== ZERO FLOOR (ported from v616) =====
-// Any live reading <= 0 is a sensor/offset artefact and is displayed/plotted as 0.
-// Non-numeric input is returned unchanged.
-function tlZeroFloor(v) {
-    var n = parseFloat(v);
-    if (isNaN(n)) return v;
-    return (n <= 0) ? 0 : n;
-}
-window.tlZeroFloor = tlZeroFloor;
-
 var chart;
 var openDropdown = null;
 var useApiDataSource = false;
@@ -118,85 +108,6 @@ function isAllAxcSelection(assetIds) {
     return true;
 }
 
-// ===== ELD CARD (617.2.2) =====
-// ELD (Earth Leakage Detector, asset type 31) carries DataLogger relays only.
-// It used to fall through to atBuildTrackCard, which printed the station-wide
-// Track attribute list (ITC/VTC ...), the Track derived values, "TRACK :" and
-// "Track Circuit". This card shows only what the ELD asset itself reports.
-function _eldCardStyles() {
-    if (document.getElementById('at-eld-card-styles')) return;
-    $('head').append('<style id="at-eld-card-styles">' +
-        '.at-eld-list{display:flex;flex-direction:column;gap:1px;background:var(--glass-edge,rgba(255,255,255,.08));padding:1px;}' +
-        '.at-eld-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 11px;background:var(--glass-1,rgba(255,255,255,.04));}' +
-        '.at-eld-row .rdpms-dl-badge{flex-shrink:0;}' +
-        '.at-eld-sec{padding:5px 11px;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--text-3,rgba(255,255,255,.5));background:rgba(0,0,0,.18);}' +
-        '.at-eld-empty{padding:14px 11px;font-size:11px;color:var(--text-3,rgba(255,255,255,.5));}' +
-        '</style>');
-}
-function atBuildEldCard(aid) {
-    var a = wsLiveData[aid];
-    if (!a) return '';
-    _eldCardStyles();
-    var name = a.AssetName || ('Asset ' + aid);
-    var ts = a.lastUpdated ? (typeof fmtTime === 'function' ? fmtTime(a.lastUpdated) : '--') : '--';
-    var siteIdForActions = a.SiteId || $('#drpSite').val();
-    var esc = function (t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
-
-    // Graph only: ELD has no circuit diagram and no Track relay-resistance history.
-    var actionsHtml = '<span class="tl-asset-actions" style="position:absolute; top:8px; right:8px;">' +
-        '<button class="tl-asset-action" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + aid + '\')" title="Graph">' +
-        '<i class="fa-solid fa-chart-line"></i></button></span>';
-
-    // Relays (Pickup first, then by name)
-    var dlRelays = a.dlRelays || {};
-    var dlKeys = Object.keys(dlRelays).sort(function (x, y) {
-        var rx = dlRelays[x], ry = dlRelays[y];
-        if (rx.isPickup && !ry.isPickup) return -1;
-        if (!rx.isPickup && ry.isPickup) return 1;
-        return String(rx.displayName || x).localeCompare(String(ry.displayName || y), undefined, { numeric: true });
-    });
-    var rows = '';
-    for (var d = 0; d < dlKeys.length; d++) {
-        var r = dlRelays[dlKeys[d]];
-        var lbl = r.displayName || dlKeys[d];
-        rows += '<div class="at-eld-row"><span class="at-tdg-lbl" title="' + esc(lbl) + '">' + esc(lbl) + '</span>' +
-            '<span class="rdpms-dl-badge ' + (r.isPickup ? 'pickup' : 'drop') + '">' + (r.isPickup ? 'Pickup' : 'Drop') + '</span></div>';
-    }
-
-    // Only this asset's own non-DataLogger readings (never the station-wide Track list)
-    var attrs = a.attrs || {};
-    var staleMap = (typeof wsStaleAttrs !== 'undefined' && wsStaleAttrs[aid]) || {};
-    var vals = '';
-    Object.keys(attrs).forEach(function (an) {
-        var ad = attrs[an];
-        if (!ad) return;
-        var dt = String(ad.DataType || (ad.raw && ad.raw.DataType) || '').toLowerCase();
-        if (dt === 'datalogger' || dlRelays[an]) return;
-        var raw = ad.Value;
-        var num = parseFloat(raw);
-        var val = (raw === null || raw === undefined || raw === '') ? '--' : (isNaN(num) ? esc(raw) : tlZeroFloor(num).toFixed(2));
-        var attrId = ad.AttrId || ad.AssetAttributeId;
-        var lbl = (typeof getAttrDisplayName === 'function') ? getAttrDisplayName(an, attrId, aid) : an;
-        vals += '<div class="at-eld-row"><span class="at-tdg-lbl" title="' + esc(lbl) + '">' + esc(lbl) + '</span>' +
-            '<span class="at-tdg-val' + (staleMap[an] ? ' ws-stale-val' : '') + '" data-attr="' + esc(an) + '">' + val + '</span></div>';
-    });
-
-    var body = '';
-    if (rows) body += '<div class="at-eld-sec">DataLogger \u00B7 ' + dlKeys.length + '</div>' + rows;
-    if (vals) body += '<div class="at-eld-sec">Values</div>' + vals;
-    if (!body) body = '<div class="at-eld-empty">Waiting for live data\u2026</div>';
-
-    return '<div class="at-asset-card at-eld-card" data-state="live" data-id="' + aid + '" style="position:relative;">' +
-        actionsHtml +
-        '<div class="at-card-head">' +
-        '<div><div class="at-card-name">ELD : ' + esc(name) + '</div>' +
-        '<div class="at-card-sub"><span class="at-live-dot"></span> Earth Leakage Detector \u00B7 ' + ts + '</div></div>' +
-        '</div>' +
-        '<div class="at-eld-list">' + body + '</div>' +
-        '</div>';
-}
-window.atBuildEldCard = atBuildEldCard;
-
 function atBuildTrackCard(aid) {
     var a = wsLiveData[aid];
     if (!a) return '';
@@ -227,7 +138,7 @@ function atBuildTrackCard(aid) {
         var an = attrList[i];
         var ad = attrs[an];
         var raw = ad ? ad.Value : null;
-        var val = (raw !== null && !isNaN(parseFloat(raw))) ? tlZeroFloor(parseFloat(raw)).toFixed(2) : '--';
+        var val = (raw !== null && !isNaN(parseFloat(raw))) ? parseFloat(raw).toFixed(2) : '--';
         var cls = '';
         var num = parseFloat(raw);
         if (an === 'Vr' && ((num > 0.1 && num < 2.5) || num > 4.2)) cls = 'danger';
@@ -247,10 +158,8 @@ function atBuildTrackCard(aid) {
             '</div>';
     }
 
-    // Derived values for Track only (skipped for AXC and every non-Track type)
-    var _selTypeId = parseInt($('#drpAssetType').val() || wsCurrentAssetTypeId || 0, 10);
-    var _isTrackType = (_selTypeId === 1) || (parseInt(a.AssetTypeId, 10) === 1);
-    if (!isAxc && _isTrackType && typeof window.calculateDerivedValues === 'function') {
+    // Derived values for Track (skipped for AXC)
+    if (!isAxc && typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
         grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
@@ -299,7 +208,7 @@ function atBuildTrackCard(aid) {
 //        var an = attrList[i];
 //        var ad = attrs[an];
 //        var raw = ad ? ad.Value : null;
-//        var val = (raw !== null && !isNaN(parseFloat(raw))) ? tlZeroFloor(parseFloat(raw)).toFixed(2) : '--';
+//        var val = (raw !== null && !isNaN(parseFloat(raw))) ? parseFloat(raw).toFixed(2) : '--';
 //        var cls = '';
 //        var num = parseFloat(raw);
 //        if (an === 'Vr' && ((num > 0.1 && num < 2.5) || num > 4.2)) cls = 'danger';
@@ -1372,7 +1281,7 @@ function calculateDerivedValues(attrs, assetIdHint) {
 
 function formatDerivedValue(val) {
     if (val === null || val === undefined || isNaN(val)) return '-';
-    return tlZeroFloor(val).toFixed(2);
+    return val.toFixed(2);
 }
 
 function getDerivedHeaders() {
@@ -2973,7 +2882,7 @@ function buildPmTableRow(assetId) {
     var dirBadge = '<span style="display:inline-block;padding:3px 10px;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:0.03em;' + dirCls + '">' + direction + '</span>';
 
     // A/B end data from pm structured data
-    function fmtA(v) { return (v !== null && v !== undefined && !isNaN(parseFloat(v))) ? tlZeroFloor(parseFloat(v)).toFixed(2) : '--'; }
+    function fmtA(v) { return (v !== null && v !== undefined && !isNaN(parseFloat(v))) ? parseFloat(v).toFixed(2) : '--'; }
     var aMaxC = '--', aAvgC = '--', aVoltAvg = '--', aTime = '--', aCount = '--', aDate = '--';
     var bMaxC = '--', bAvgC = '--', bVoltAvg = '--', bTime = '--', bCount = '--', bDate = '--';
 
@@ -3208,7 +3117,7 @@ function _buildSigTableRow(assetId, cols) {
         var ad = attrs[an];
         var raw = ad ? ad.Value : null;
         var val = (raw !== null && raw !== undefined && raw !== '' && !isNaN(parseFloat(raw)))
-            ? tlZeroFloor(parseFloat(raw)).toFixed(2) : '--';
+            ? parseFloat(raw).toFixed(2) : '--';
         var cls = val === '--' ? 'val-na' : '';
         // Apply stale class during initial build if asset already has stale flags
         var _staleMap = wsStaleAttrs[assetId] || {};
@@ -3568,7 +3477,7 @@ window.updateSignalGroupedTables = function (updatedIds) {
             var ad = attrs[attrName];
             var raw = ad ? ad.Value : null;
             var val = (raw !== null && raw !== undefined && raw !== '' && !isNaN(parseFloat(raw)))
-                ? tlZeroFloor(parseFloat(raw)).toFixed(2) : '--';
+                ? parseFloat(raw).toFixed(2) : '--';
             var cls = val === '--' ? 'val-na' : '';
             var isStale = !!staleMap[attrName];
             if (isStale) cls += (cls ? ' ' : '') + 'ws-stale-val';
@@ -3758,7 +3667,6 @@ function buildTableRow(assetId, isTrack, isNew) {
             var num = parseFloat(raw);
             if (isNaN(num)) { disp = raw; }
             else {
-                if (!isNaN(num) && num <= 0) num = 0;
                 if (num === 0) disp = '0.0';
                 else if (Math.abs(num) >= 100) disp = num.toFixed(2);
                 else disp = num.toFixed(2);
@@ -3866,7 +3774,6 @@ function updateRowCells($row, asset, isTrack) {
             var num = parseFloat(raw);
             if (isNaN(num)) { disp = raw; }
             else {
-                if (!isNaN(num) && num <= 0) num = 0;
                 if (num === 0) disp = '0.0';
                 else if (Math.abs(num) >= 100) disp = num.toFixed(2);
                 else disp = num.toFixed(2);
@@ -4012,7 +3919,6 @@ function updateSingleTableCell(assetId, attrName, value, hasChanged, timestamp) 
         disp = value;
     }
     else {
-        if (!isNaN(num) && num <= 0) num = 0;
         if (num === 0) disp = '0.0';
         else if (Math.abs(num) >= 100) disp = num.toFixed(2);
         else if (Math.abs(num) >= 10) disp = num.toFixed(2);
@@ -4281,34 +4187,16 @@ function executeUIUpdate() {
             updateRDPMSViewIncremental(updatedAssetIds);
         }
         else if (viewType === 'Cards') {
-            // One live-update rule for every asset type, the same one the
-            // dedicated view types use: touch only the cards that changed.
-            //
-            // This branch used to call the FULL renderers (renderRDPMSView /
-            // renderPointMachineView / renderIpsGridView / fnBindTrackCards),
-            // which rebuild the whole container on every WebSocket batch.
-            // Because _tlApplyViewMode only ever sets drpView to 'Cards' or
-            // 'Table', that full rebuild was the only card path that ever ran
-            // in practice — Signal, Point Machine, IPS, Track and ELD cards all
-            // flickered, lost scroll position and dropped hover/expanded state,
-            // while the incremental updaters below were dead code.
-            //
-            // Each updater re-renders the container itself when it isn't
-            // there yet, so the first paint still goes through the full
-            // renderer.
+            // Use the same dispatcher logic as _tlApplyViewMode
             if (isSignalAssetType()) {
-                updateRDPMSViewIncremental(updatedAssetIds);
+                if (typeof renderRDPMSView === 'function') renderRDPMSView();
             } else if (isPointAssetType()) {
-                updatePMViewIncremental(updatedAssetIds);
+                if (typeof renderPointMachineView === 'function') renderPointMachineView();
             } else if (isIpsAssetType()) {
-                if (typeof window.updateIpsGridIncremental === 'function') {
-                    window.updateIpsGridIncremental(updatedAssetIds);
-                } else if (typeof renderIpsGridView === 'function') {
-                    renderIpsGridView();
-                }
+                if (typeof renderIpsGridView === 'function') renderIpsGridView();
             } else {
-                // Track / ELD / Axle Counter / unknown → generic at-cards
-                updateTrackCardsIncremental(updatedAssetIds);
+                // Track or unknown → use the generic card binder
+                if (typeof fnBindTrackCards === 'function') fnBindTrackCards();
             }
         }
         // PointMachine view = Card view for PM assets
@@ -4427,29 +4315,29 @@ function updatePMViewIncremental(assetIds) {
 
     var updatedIds = assetIds || Object.keys(wsUpdatedAssets);
     var cardsToUpdate = [];
-    var hasNewCard = false;
+    var cardsToCreate = [];
 
     for (var i = 0; i < updatedIds.length; i++) {
         var aid = updatedIds[i];
         if (!wsLiveData[aid]) continue;
 
-        if (pmCardsBuilt[aid] && $('#pmCard_' + aid).length > 0) {
+        if (pmCardsBuilt[aid]) {
             cardsToUpdate.push(aid);
         } else {
-            hasNewCard = true;
+            cardsToCreate.push(aid);
         }
     }
 
-    if (hasNewCard) {
-        // buildPmCard() appends, so a card created here would land at the
-        // bottom instead of in AssetName order. renderPointMachineView()
-        // builds only the missing cards and keeps the sort, so let it place
-        // the new ones; it calls updatePmCard() for every card as it goes.
-        renderPointMachineView();
-    } else {
-        for (var k = 0; k < cardsToUpdate.length; k++) {
-            updatePmCard(cardsToUpdate[k]);
-        }
+    // Create new cards
+    for (var j = 0; j < cardsToCreate.length; j++) {
+        buildPmCard(cardsToCreate[j]);
+        pmCardsBuilt[cardsToCreate[j]] = true;
+    }
+
+    // Update all cards
+    var allCards = cardsToCreate.concat(cardsToUpdate);
+    for (var k = 0; k < allCards.length; k++) {
+        updatePmCard(allCards[k]);
     }
 
     // Independently refresh the additive vibration table. PM cards and the
@@ -4458,68 +4346,6 @@ function updatePMViewIncremental(assetIds) {
         updatePointMachineVibrationRows(updatedIds);
     }
 }
-
-// Optimized Track / ELD / Axle-Counter card update
-//
-// The counterpart of updateRDPMSViewIncremental (Signal),
-// updatePMViewIncremental (Point Machine) and updateIpsGridIncremental (IPS)
-// for the generic at-cards grid in #atCardView. fnBindTrackCards() empties and
-// rebuilds the whole grid, so calling it per WebSocket batch made Track and ELD
-// cards flicker and lose scroll position; this replaces only the cards whose
-// assets actually reported.
-function updateTrackCardsIncremental(assetIds) {
-    var $container = $('#atCardView');
-    var $grid = $container.find('.at-cards-grid');
-
-    // Nothing painted yet (first batch), or another renderer wiped the
-    // container → fall back to the full renderer, exactly like the other
-    // incremental updaters do.
-    if ($container.length === 0 || $grid.length === 0) {
-        if (typeof fnBindTrackCards === 'function') fnBindTrackCards();
-        return;
-    }
-
-    var updatedIds = assetIds || Object.keys(wsUpdatedAssets);
-    if (!updatedIds.length) return;
-
-    var isEld = (typeof isEldAssetType === 'function') && isEldAssetType();
-    var buildCard = (isEld && typeof atBuildEldCard === 'function')
-        ? atBuildEldCard
-        : (typeof atBuildTrackCard === 'function' ? atBuildTrackCard : null);
-
-    if (!buildCard) {
-        if (typeof fnBindTrackCards === 'function') fnBindTrackCards();
-        return;
-    }
-
-    // A card that doesn't exist yet has to go in sort order, which only
-    // fnBindTrackCards knows — so one full rebuild covers all new assets.
-    var hasNewCard = false;
-
-    for (var i = 0; i < updatedIds.length; i++) {
-        var aid = String(updatedIds[i]);
-        var asset = wsLiveData[aid];
-
-        // Same whitelist gate the full renderer applies.
-        if (!asset || (typeof isAssetInBulkWhitelist === 'function' && !isAssetInBulkWhitelist(aid))) {
-            $grid.find('.at-asset-card[data-id="' + aid + '"]').remove();
-            continue;
-        }
-        if (typeof assetMatchesSelectedType === 'function' && !assetMatchesSelectedType(aid)) continue;
-
-        var $card = $grid.find('.at-asset-card[data-id="' + aid + '"]');
-        if ($card.length === 0) {
-            hasNewCard = true;
-            continue;
-        }
-
-        var html = buildCard(aid);
-        if (html) $card.replaceWith(html);
-    }
-
-    if (hasNewCard && typeof fnBindTrackCards === 'function') fnBindTrackCards();
-}
-window.updateTrackCardsIncremental = updateTrackCardsIncremental;
 
 // Optimized Table update
 function incrementalTableUpdate(assetIds, isTrack) {
@@ -6131,7 +5957,7 @@ var _sigDomCache = {};
 var _ROUTE_NAMES = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG'];
 
 // Helper - format value: avoids re-parsing an already-numeric result of val()
-function _fv(v) { if (!isNaN(v) && v <= 0) v = 0; return (v === 0) ? '0.0' : v.toFixed(2); }
+function _fv(v) { return (v === 0) ? '0.0' : v.toFixed(2); }
 
 // Helper - read a numeric attr value directly from the attrs map (no parseFloat re-call if already set)
 function _attrVal(attrs, name) {
@@ -6456,7 +6282,7 @@ function updateShuntSignalLights(assetId) {
         ? _szEntry.value
         : parseFloat(asset.ZeroOffsetValue || RDPMS_DEFAULT_THRESHOLD);
     function val(name) { return (attrs[name] && attrs[name].Value !== null && attrs[name].Value !== undefined) ? parseFloat(attrs[name].Value) : 0; }
-    function fv(v) { v = parseFloat(v); if (!isNaN(v) && v <= 0) v = 0; return (v === 0) ? '0.0' : v.toFixed(2); }
+    function fv(v) { return (v === 0) ? '0.0' : parseFloat(v).toFixed(2); }
     var onMa = val('On Aspect mA'), onV = val('On Aspect V'), offMa = val('Off Aspect mA'), offV = val('Off Aspect V');
     var pilotMa = val('PILOT mA') || val('PILOTRoot mA'); var pilotV = val('PILOT V') || val('PILOTRoot V');
     $('#rdpmsShuntTop_' + assetId).addClass('light-off'); $('#rdpmsShuntRight_' + assetId).addClass('light-off'); $('#rdpmsShuntLeft_' + assetId).addClass('light-off');
@@ -6567,7 +6393,7 @@ function renderApiTable(data, assetTypeId) {
         var ifMa = 0, irMa = 0, tprV = 0;
         attrs.forEach(function (a) {
             var v = asset.attrs[a] ? parseFloat(asset.attrs[a].Value) : NaN;
-            var disp = isNaN(v) ? 'N/A' : tlZeroFloor(v).toFixed(2), cls = '';
+            var disp = isNaN(v) ? 'N/A' : v.toFixed(2), cls = '';
             if (a === 'If mA') ifMa = v || 0;
             if (a === 'Ir mA') irMa = v || 0;
             if (a === 'TPR V') tprV = v || 0;
@@ -6740,9 +6566,8 @@ function fnBindTrackCards() {
         isPoint = (atVal === '3' || atText.indexOf('point') !== -1);
         isIps = (atVal === '4' || atText === 'ips');
     }
-    var isEld = !isSignal && !isPoint && !isIps && (typeof isEldAssetType === 'function') && isEldAssetType();
     // Track is the default when nothing else matches (asset type 1)
-    var isTrack = !isSignal && !isPoint && !isIps && !isEld;
+    var isTrack = !isSignal && !isPoint && !isIps;
 
     var atIdLog = (first && first.AssetTypeId) || window.wsCurrentAssetTypeId ||
         $('#drpAssetType').val() || '(none)';
@@ -6791,8 +6616,6 @@ function fnBindTrackCards() {
             html += atBuildPmCard(aid);
         } else if (isIps && typeof buildIpsCard === 'function') {
             html += buildIpsCard(aid);
-        } else if (isEld && typeof atBuildEldCard === 'function') {
-            html += atBuildEldCard(aid);
         } else if (typeof atBuildTrackCard === 'function') {
             html += atBuildTrackCard(aid);
         } else {
@@ -6961,7 +6784,7 @@ function buildIpsCard(assetId) {
             var an = attrKeys[k];
             var aObj = attrs[an] || {};
             var rawVal = aObj.Value;
-            var disp = (rawVal !== null && rawVal !== undefined && rawVal !== '') ? (isNaN(parseFloat(rawVal)) ? rawVal : tlZeroFloor(parseFloat(rawVal)).toFixed(2)) : '--';
+            var disp = (rawVal !== null && rawVal !== undefined && rawVal !== '') ? rawVal : '--';
             var valCls = (disp === '--') ? 'ips-attr-val no-data' : 'ips-attr-val';
 
             // Display name: AliasName → AttrName → raw key.
@@ -7041,7 +6864,7 @@ window.updateIpsGridIncremental = function updateIpsGridIncremental(updatedAsset
                 if (!an) return;
                 var aObj = attrs[an] || {};
                 var raw = aObj.Value;
-                var disp = (raw !== null && raw !== undefined && raw !== '') ? (isNaN(parseFloat(raw)) ? raw : tlZeroFloor(parseFloat(raw)).toFixed(2)) : '--';
+                var disp = (raw !== null && raw !== undefined && raw !== '') ? raw : '--';
                 var isStale = !!_ipsStaleMap[an];
                 var valCls = (disp === '--') ? 'ips-attr-val no-data' : 'ips-attr-val';
                 if (isStale) valCls += ' ws-stale-val';
@@ -7109,7 +6932,6 @@ function fnBindGrph() {
     if (!assetId || assetId === '') { showWarning('Please select an asset', 'Validation'); return; }
     var isSignal = (parseInt(assetTypeId) === 2);
     var isTrack = (parseInt(assetTypeId) === 1);
-    var isEldView = (typeof isEldAssetType === 'function') && isEldAssetType();
     _gChecked = {}; _gColorMap = {};
 
     var g = '<div id="gWrap" style="background:rgba(255,255,255,0.04);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border:1px solid rgba(255,255,255,0.10);border-radius:16px;overflow:hidden;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.36);">';
@@ -7137,7 +6959,7 @@ function fnBindGrph() {
     // Feed End column
     g += '<div id="gColF" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid rgba(255,255,255,0.07);">'
         + '<div style="font-weight:700;color:#34d399;font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
-        + '<i class="fas fa-bolt" style="font-size:9px;"></i>' + (isSignal ? 'Signal Attributes' : (isEldView ? 'ELD Values' : 'Feed End')) + '</div>'
+        + '<i class="fas fa-bolt" style="font-size:9px;"></i>' + (isSignal ? 'Signal Attributes' : 'Feed End') + '</div>'
         + '<div id="gFL"></div></div>';
     // Relay End column
     g += '<div id="gColR" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid rgba(255,255,255,0.07);">'
@@ -7203,7 +7025,7 @@ function fnBindGrph() {
     g += '.gfb2:hover{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.9);}';
     g += '.gfb2.active2{background:rgba(34,211,238,0.18);color:#22d3ee;border-color:rgba(34,211,238,0.4);box-shadow:0 0 8px rgba(34,211,238,0.2);}';
     g += '.gsp2{width:24px;height:24px;border:3px solid rgba(255,255,255,0.12);border-top-color:#22d3ee;border-radius:50%;animation:gs2 .7s linear infinite;}';
-    g += '@keyframes gs2{to{transform:rotate(360deg);}}';
+    g += '@@keyframes gs2{to{transform:rotate(360deg);}}';
     g += '.gSelAll2{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:all .18s;}';
     g += '.gSelAll2:hover{background:rgba(34,211,238,0.12);border-color:rgba(34,211,238,0.35);color:#22d3ee;}';
     g += '.gAttrRow2{display:flex;align-items:center;padding:2px 4px;border-radius:5px;cursor:pointer;gap:5px;transition:background .12s;user-select:none;margin-bottom:1px;}';
@@ -7216,7 +7038,7 @@ function fnBindGrph() {
     g += '.gDlBadge2.pickup{background:#10b981;}';
     g += '.gDlBadge2.drop{background:#f59e0b;}';
     g += '.gDlBadge2::before{content:"";position:absolute;top:0;left:-75%;width:50%;height:100%;background:linear-gradient(120deg,rgba(255,255,255,.1) 0%,rgba(255,255,255,.45) 50%,rgba(255,255,255,.1) 100%);transform:skewX(-20deg);animation:gDlShine 2.5s infinite;}';
-    g += '@keyframes gDlShine{0%{left:-75%;}100%{left:125%;}}';
+    g += '@@keyframes gDlShine{0%{left:-75%;}100%{left:125%;}}';
     g += '.gDerivedRow{display:flex;align-items:center;padding:2px 4px;border-radius:5px;cursor:pointer;gap:5px;transition:background .12s;user-select:none;margin-bottom:1px;}';
     g += '.gDerivedRow:hover{background:rgba(251,191,36,0.08);}';
     g += '.gDerivedRow input[type=checkbox]{cursor:pointer;width:13px;height:13px;accent-color:#fbbf24;flex-shrink:0;margin:0;}';
@@ -7275,9 +7097,7 @@ function _gPop(aid, gd) {
     var fK = ['TFC I/P', 'TFC O/P', 'CH FEED', 'VTC FEED', 'ITC FEED'];
     var rK = ['RELAY END', 'VTC TR', '24 DC LOC', '24 DC TPR', 'TPR'];
     var isSignal = (parseInt($('#drpAssetType').val()) === 2);
-    var isEldG = (typeof isEldAssetType === 'function') && isEldAssetType();
-    if (isEldG) fb = {};   // Track/Signal fallback names must never label ELD attributes
-    function cls(n) { if (isSignal || isEldG) return 'f'; var u = n.toUpperCase().replace(/\s*\([^)]*\)/g, ''); for (var i = 0; i < fK.length; i++)if (u.indexOf(fK[i]) > -1) return 'f'; for (var j = 0; j < rK.length; j++)if (u.indexOf(rK[j]) > -1) return 'r'; return 'f'; }
+    function cls(n) { if (isSignal) return 'f'; var u = n.toUpperCase().replace(/\s*\([^)]*\)/g, ''); for (var i = 0; i < fK.length; i++)if (u.indexOf(fK[i]) > -1) return 'f'; for (var j = 0; j < rK.length; j++)if (u.indexOf(rK[j]) > -1) return 'r'; return 'f'; }
 
     // Analog attribute row (with checkbox)
     function rwAnalog(key, name, val, color) {
@@ -7328,7 +7148,7 @@ function _gPop(aid, gd) {
         for (var k in a.attrs) {
             var at = a.attrs[k], id = parseInt(at.AttrId || at.AssetAttributeId || 0); if (!id) continue;
             var dn = (typeof getAttrDisplayNamePlain === 'function') ? getAttrDisplayNamePlain(k, id) : (fb[id] || k);
-            var v = parseFloat(at.Value), vs = isNaN(v) ? '--' : tlZeroFloor(v).toFixed(2);
+            var v = parseFloat(at.Value), vs = isNaN(v) ? '--' : v.toFixed(2);
             var c = _gColorMap[dn] || (_gColorMap[dn] = _gC[ci % _gC.length]); ci++;
             if (_gChecked[dn] === undefined) _gChecked[dn] = true;
             cls(dn) === 'f' ? $f.append(rwAnalog(dn, dn, vs, c)) : $r.append(rwAnalog(dn, dn, vs, c));
@@ -7342,7 +7162,7 @@ function _gPop(aid, gd) {
             var c = _gColorMap[dn] || (_gColorMap[dn] = _gC[ci % _gC.length]); ci++;
             var lv = null, lt = 0;
             for (var key in at.Values) { var e = at.Values[key]; if (!e || !e.Timestamp) continue; var ts = e.Timestamp.TimestampDevice; if (!ts || ts.indexOf('0001') >= 0) continue; var ms = new Date(ts).getTime(); if (ms > lt) { lt = ms; lv = parseFloat(e.Value); } }
-            var vs = (lv !== null && !isNaN(lv)) ? tlZeroFloor(lv).toFixed(2) : '--';
+            var vs = (lv !== null && !isNaN(lv)) ? lv.toFixed(2) : '--';
             if (_gChecked[dn] === undefined) _gChecked[dn] = true;
             cls(dn) === 'f' ? $f.append(rwAnalog(dn, dn, vs, c)) : $r.append(rwAnalog(dn, dn, vs, c));
         });
@@ -7398,7 +7218,7 @@ function _gPop(aid, gd) {
             var lookupKey = 'DRV:' + d.key;
             if (_gChecked[lookupKey] === undefined) _gChecked[lookupKey] = true;
             var val = dv[d.key];
-            var vs = (val !== undefined && val !== null && !isNaN(val)) ? (typeof formatDerivedValue === 'function' ? formatDerivedValue(val) : tlZeroFloor(val).toFixed(2)) : '--';
+            var vs = (val !== undefined && val !== null && !isNaN(val)) ? (typeof formatDerivedValue === 'function' ? formatDerivedValue(val) : val.toFixed(2)) : '--';
             $dv.append(rwDerived(d.key, d.label + ' (' + d.unit + ')', vs, d.color));
         });
     }
@@ -7474,7 +7294,6 @@ function _gRender(data, aid, filter) {
         35: 'Supply V', 36: 'Modem mV', 154: 'Root V', 155: 'Root mA', 227: 'UG V', 228: 'UG mA',
         327: 'HHPR', 328: 'DPR', 329: 'HPR', 337: 'PILOT mA', 499: 'PILOT V', 610: 'Co_Hg mA', 611: 'Co_Hg V'
     };
-    var isEldR = (typeof isEldAssetType === 'function') && isEldAssetType();
     var isPM = $('#drpAssetType').val() == '3',
         pmOk = { 25: 1, 26: 1, 27: 1, 28: 1, 212: 1, 213: 1, 214: 1, 215: 1, 216: 1, 217: 1, 218: 1, 219: 1 };
 
@@ -7503,11 +7322,7 @@ function _gRender(data, aid, filter) {
         if (!at.Values) return;
 
         var dlName = dlAssetRoleMap[String(aid) + '_' + String(id)] || null;
-        // Fixed fallback names are Track/Signal/PM attribute IDs: never use them for
-        // DataLogger rows (role IDs overlap) or for ELD assets.
-        var _isDlRow = !!(at.Values['1'] && String(at.Values['1'].DataType || '').toLowerCase() === 'datalogger');
-        var _fbName = (_isDlRow || isEldR) ? null : fb[id];
-        var rn = dlName || nm[id] || _fbName || ('Attr ' + id);
+        var rn = dlName || nm[id] || fb[id] || ('Attr ' + id);
         var dn = dlName || ((typeof getAttrDisplayNamePlain === 'function') ? getAttrDisplayNamePlain(rn, id) : rn);
 
 
@@ -7535,7 +7350,6 @@ function _gRender(data, aid, filter) {
             if (!ts || ts.indexOf('0001') >= 0) continue;
             var ms = new Date(ts).getTime();
             if (isNaN(ms) || ms <= 0) continue;
-            val = tlZeroFloor(val);
             valueMap[ms] = val;
             allVals.push(val);
             allTimestamps[ms] = true;
@@ -7672,7 +7486,7 @@ function _gRender(data, aid, filter) {
             _DERIVED_DEFS.forEach(function (def) {
                 var v = dv[def.key];
                 if (v !== undefined && v !== null && !isNaN(v))
-                    derivedPts[def.key].push([t, tlZeroFloor(v)]);
+                    derivedPts[def.key].push([t, v]);
             });
         });
 
@@ -8323,7 +8137,7 @@ function updateCircuitTrack(attrs) {
 
             var num = parseFloat(value);
             // 1 decimal keeps text short enough to fit inside the diagram box
-            var displayValue = isNaN(num) ? value : tlZeroFloor(num).toFixed(1);
+            var displayValue = isNaN(num) ? value : num.toFixed(1);
 
             // Step 1 — try the curated alias map first. This is what bridges
             // legacy short-code diagrams ('If mA', 'Vr', ...) to modern
@@ -8518,7 +8332,7 @@ function updateCircuitSignal(attrs, zeroOffset) {
                 if (value === null || value === undefined) continue;
 
                 var num = parseFloat(value);
-                var displayValue = isNaN(num) ? value : tlZeroFloor(num).toFixed(2);
+                var displayValue = isNaN(num) ? value : num.toFixed(2);
 
                 if (labelText.startsWith(attrName) || labelText.startsWith(attrName.replace(/\s*\([^)]*\)/g, '').trim())) {
                     val.attrs.label.text = attrName + ' : ' + displayValue;
@@ -8661,19 +8475,19 @@ function updateCircuitPointMachine(attrs) {
                 (labelLower.indexOf('rwkr') !== -1 && labelLower.indexOf('b') !== -1 && labelLower.indexOf('loc') === -1));
 
             if (isANWKR) {
-                val.attrs.label.text = '(A)NWKR: ' + tlZeroFloor(aNWKRVal).toFixed(2);
+                val.attrs.label.text = '(A)NWKR: ' + aNWKRVal.toFixed(2);
                 val.attrs.label.fill = aNWKRVal > 5 ? '#006400' : '#222138';
             }
             else if (isARWKR) {
-                val.attrs.label.text = '(A)RWKR: ' + tlZeroFloor(aRWKRVal).toFixed(2);
+                val.attrs.label.text = '(A)RWKR: ' + aRWKRVal.toFixed(2);
                 val.attrs.label.fill = aRWKRVal > 5 ? '#006400' : '#222138';
             }
             else if (isBNWKR) {
-                val.attrs.label.text = '(B)NWKR: ' + tlZeroFloor(bNWKRVal).toFixed(2);
+                val.attrs.label.text = '(B)NWKR: ' + bNWKRVal.toFixed(2);
                 val.attrs.label.fill = bNWKRVal > 5 ? '#006400' : '#222138';
             }
             else if (isBRWKR) {
-                val.attrs.label.text = '(B)RWKR: ' + tlZeroFloor(bRWKRVal).toFixed(2);
+                val.attrs.label.text = '(B)RWKR: ' + bRWKRVal.toFixed(2);
                 val.attrs.label.fill = bRWKRVal > 5 ? '#006400' : '#222138';
             }
             else {
@@ -8688,7 +8502,7 @@ function updateCircuitPointMachine(attrs) {
                     if (value === null || value === undefined) continue;
 
                     var num = parseFloat(value);
-                    var displayValue = isNaN(num) ? value : tlZeroFloor(num).toFixed(2);
+                    var displayValue = isNaN(num) ? value : num.toFixed(2);
                     var cleanAttrName = attrName.replace(/\s*\([^)]*\)/g, '').trim();
 
                     if (labelText.startsWith(cleanAttrName) && cleanAttrName.length > 2) {
@@ -8704,37 +8518,37 @@ function updateCircuitPointMachine(attrs) {
         if (val.type === 'examples.Text') {
             if (labelText.startsWith('(A)NW V') || labelText.startsWith('(A)RW V')) {
                 if (aNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
-                    val.attrs.label.text = '(A)NW V : ' + tlZeroFloor(parseFloat(pointMachineDataJsonN.A_V_AVERAGE || 0)).toFixed(2);
+                    val.attrs.label.text = '(A)NW V : ' + parseFloat(pointMachineDataJsonN.A_V_AVERAGE || 0).toFixed(2);
                     val.attrs.label.fill = '#222138';
                 } else if (aRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
-                    val.attrs.label.text = '(A)RW V : ' + tlZeroFloor(parseFloat(pointMachineDataJsonR.A_V_AVERAGE || 0)).toFixed(2);
+                    val.attrs.label.text = '(A)RW V : ' + parseFloat(pointMachineDataJsonR.A_V_AVERAGE || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(A)NW C') || labelText.startsWith('(A)RW C')) {
                 if (aNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
-                    val.attrs.label.text = '(A)NW C : ' + tlZeroFloor(parseFloat(pointMachineDataJsonN.A_C_MAX || 0)).toFixed(2);
+                    val.attrs.label.text = '(A)NW C : ' + parseFloat(pointMachineDataJsonN.A_C_MAX || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 } else if (aRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
-                    val.attrs.label.text = '(A)RW C : ' + tlZeroFloor(parseFloat(pointMachineDataJsonR.A_C_MAX || 0)).toFixed(2);
+                    val.attrs.label.text = '(A)RW C : ' + parseFloat(pointMachineDataJsonR.A_C_MAX || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(B)NW V') || labelText.startsWith('(B)RW V')) {
                 if (bNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
-                    val.attrs.label.text = '(B)NW V : ' + tlZeroFloor(parseFloat(pointMachineDataJsonN.B_V_AVERAGE || 0)).toFixed(2);
+                    val.attrs.label.text = '(B)NW V : ' + parseFloat(pointMachineDataJsonN.B_V_AVERAGE || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 } else if (bRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
-                    val.attrs.label.text = '(B)RW V : ' + tlZeroFloor(parseFloat(pointMachineDataJsonR.B_V_AVERAGE || 0)).toFixed(2);
+                    val.attrs.label.text = '(B)RW V : ' + parseFloat(pointMachineDataJsonR.B_V_AVERAGE || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 }
             }
             else if (labelText.startsWith('(B)NW C') || labelText.startsWith('(B)RW C')) {
                 if (bNWKRVal > 4.5 && typeof pointMachineDataJsonN !== 'undefined') {
-                    val.attrs.label.text = '(B)NW C : ' + tlZeroFloor(parseFloat(pointMachineDataJsonN.B_C_MAX || 0)).toFixed(2);
+                    val.attrs.label.text = '(B)NW C : ' + parseFloat(pointMachineDataJsonN.B_C_MAX || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 } else if (bRWKRVal > 4.5 && typeof pointMachineDataJsonR !== 'undefined') {
-                    val.attrs.label.text = '(B)RW C : ' + tlZeroFloor(parseFloat(pointMachineDataJsonR.B_C_MAX || 0)).toFixed(2);
+                    val.attrs.label.text = '(B)RW C : ' + parseFloat(pointMachineDataJsonR.B_C_MAX || 0).toFixed(2);
                     //    val.attrs.label.fill = '#222138';
                 }
             }
@@ -8826,7 +8640,6 @@ function formatCircuitValue(value, attrName) {
 
     var num = parseFloat(value);
     if (isNaN(num)) return value;
-    num = tlZeroFloor(num);
 
     // Format based on attribute type -- all values to 2 decimal places
     if (attrName.indexOf('mA') > -1 || attrName.indexOf('mV') > -1) {
@@ -8852,7 +8665,7 @@ function applyCircuitValueStyling($element, attrName, value) {
 if ($('#circuit-ws-styles').length === 0) {
     var circuitStyles = '<style id="circuit-ws-styles">' +
         '.circuit-value-flash { animation: circuitFlash 1.2s ease-out; }' +
-        '@keyframes circuitFlash { 0% { background-color: #bbf7d0 !important; } 100% { background-color: transparent; } }' +
+        '@@keyframes circuitFlash { 0% { background-color: #bbf7d0 !important; } 100% { background-color: transparent; } }' +
         '.circuit-timestamp { font-size: 11px; color: #64748b; margin-top: 8px; }' +
         '</style>';
     $('head').append(circuitStyles);
@@ -9154,14 +8967,14 @@ var PM_INDICATION_COLORS = {
         /* ── Sub-bar ── */
         '.vib-modal-subbar{background:#f8fafc;border-bottom:1px solid rgba(255,255,255,0.10);padding:7px 20px;font-size:11.5px;color:#64748b;display:flex;align-items:center;gap:7px;flex-shrink:0;}' +
         '.vib-live-dot{width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;animation:vibPulse 2s infinite;}' +
-        '@keyframes vibPulse{0%,100%{opacity:1;}50%{opacity:.3;}}' +
+        '@@keyframes vibPulse{0%,100%{opacity:1;}50%{opacity:.3;}}' +
         '.vib-last-ts{margin-left:auto;font-size:11px;color:#94a3b8;}' +
         /* ── Body ── */
         '.vib-modal-body{padding:18px;overflow-y:auto;flex:1;background:#f1f5f9;}' +
         /* ── 4-col card grid ── */
         '.vib-card-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}' +
-        '@media(max-width:900px){.vib-card-grid{grid-template-columns:repeat(3,1fr);}}' +
-        '@media(max-width:620px){.vib-card-grid{grid-template-columns:repeat(2,1fr);}}' +
+        '@@media(max-width:900px){.vib-card-grid{grid-template-columns:repeat(3,1fr);}}' +
+        '@@media(max-width:620px){.vib-card-grid{grid-template-columns:repeat(2,1fr);}}' +
         /* ── Individual card ── */
         '.vib-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07);transition:box-shadow .2s,transform .2s;display:flex;flex-direction:column;}' +
         '.vib-card:hover{box-shadow:0 6px 20px rgba(0,0,0,0.13);transform:translateY(-2px);}' +
@@ -9180,9 +8993,9 @@ var PM_INDICATION_COLORS = {
         '.vib-card-footer i{color:#259dab;font-size:9px;}' +
         /* ── Flash animations ── */
         '.vib-card-flash{animation:vibCardFlash 1.2s ease-out;}' +
-        '@keyframes vibCardFlash{0%{box-shadow:0 0 0 3px rgba(37,157,171,0.5);}100%{box-shadow:0 2px 8px rgba(0,0,0,0.07);}}' +
+        '@@keyframes vibCardFlash{0%{box-shadow:0 0 0 3px rgba(37,157,171,0.5);}100%{box-shadow:0 2px 8px rgba(0,0,0,0.07);}}' +
         '.vib-val-flash{animation:vibValFlash 1.2s ease-out;border-radius:3px;}' +
-        '@keyframes vibValFlash{0%{background:#ccfbf1;}100%{background:transparent;}}' +
+        '@@keyframes vibValFlash{0%{background:#ccfbf1;}100%{background:transparent;}}' +
         /* ── No-data state ── */
         '.vib-no-data{grid-column:1/-1;text-align:center;padding:60px 20px;color:#94a3b8;font-size:13px;}' +
         '</style>');
@@ -9320,7 +9133,7 @@ function fnUpdateVibrationModal(assetId) {
         var valId = 'vibVal_' + _vibModalAssetId + '_' + safeId;
         var tsId = 'vibTs_' + _vibModalAssetId + '_' + safeId;
         var isNull = (attr.value === null || attr.value === undefined);
-        var valDisp = isNull ? '\u2014' : tlZeroFloor(Number(attr.value)).toFixed(3);
+        var valDisp = isNull ? '\u2014' : Number(attr.value).toFixed(3);
         var tsDisp = fnFormatVibTs(attr.timestamp);
         var valCls = isNull ? 'vib-val vib-null' : 'vib-val';
 
@@ -9694,7 +9507,7 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
                         '<div style="display:flex;align-items:center;">' +
                         '<span style="display:inline-block;width:12px;height:3px;border-radius:1px;background:' + p.color + ';margin-right:10px;"></span>' +
                         '<span style="color:rgba(255,255,255,0.72);">' + p.seriesName + '</span></div>' +
-                        '<span style="font-weight:700;color:rgba(255,255,255,0.94);margin-left:15px;">' + tlZeroFloor(p.value[1]).toFixed(2) + ' V</span></div>';
+                        '<span style="font-weight:700;color:rgba(255,255,255,0.94);margin-left:15px;">' + p.value[1].toFixed(2) + ' V</span></div>';
                 });
                 return html;
             }
@@ -9794,7 +9607,7 @@ function renderPmDirChart(data, assetId, filterIds) {
             var ts = e.Timestamp.TimestampDevice; if (!ts || ts.indexOf('0001') >= 0) continue;
             var ms = new Date(ts).getTime(); if (isNaN(ms) || ms <= 0) continue;
             var val = parseFloat(e.Value); if (isNaN(val)) continue;
-            pts.push([ms, tlZeroFloor(val)]);
+            pts.push([ms, val]);
         }
         if (!pts.length) return;
         pts.sort(function (a, b) { return a[0] - b[0]; });
@@ -9823,7 +9636,7 @@ function renderPmDirChart(data, assetId, filterIds) {
                 var timeStr = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
                 var html = '<div style="padding:4px 8px;"><b style="color:#22d3ee;">' + timeStr + '</b><br/>';
                 params.forEach(function (p) {
-                    html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + p.color + ';margin-right:6px;"></span>' + p.seriesName + ': <b>' + tlZeroFloor(p.value[1]).toFixed(2) + ' V</b><br/>';
+                    html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + p.color + ';margin-right:6px;"></span>' + p.seriesName + ': <b>' + p.value[1].toFixed(2) + ' V</b><br/>';
                 });
                 html += '</div>';
                 return html;
@@ -10250,7 +10063,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             // Keep only selected hour range.
             if (time < axisMin || time > axisMax) continue;
 
-            points.push([time, tlZeroFloor(val)]);
+            points.push([time, val]);
         }
 
         if (!points.length) return;
@@ -10341,11 +10154,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
     // time: at every sample instant, carry each raw operand forward and run the same
     // calculateDerivedValues() the live tiles use. Metrics whose operands are not
     // present resolve to null and are simply skipped (no empty series).
-    // Derived metrics (ITC BATT CHARG, VTC VAR RES, ...) are Track formulas.
-    // Only Track assets get them; ELD / other types would otherwise show Track
-    // series computed from unrelated attribute IDs.
-    var _isTrackAssetType = (parseInt(assetTypeId, 10) === 1);
-    if (_isTrackAssetType && typeof calculateDerivedValues === 'function' && derivedOperands.length) {
+    if (typeof calculateDerivedValues === 'function' && derivedOperands.length) {
         var _derivedDefs = [
             { key: 'itcBattCharg', name: 'ITC BATT CHARG (mA)' },
             { key: 'vtcVarRes', name: 'VTC VAR RES (V)' },
@@ -10384,7 +10193,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             _derivedDefs.forEach(function (d) {
                 var val = dv[d.key];
                 if (val !== null && val !== undefined && !isNaN(val)) {
-                    _derivedPoints[d.key].push([tm, tlZeroFloor(val)]);
+                    _derivedPoints[d.key].push([tm, val]);
                 }
             });
         });
@@ -10554,7 +10363,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
                         s.color + ';margin-right:10px;"></span>' +
                         '<span style="flex:1;color:#cbd5e1;">' + s.name + '</span>' +
                         '<span style="font-weight:700;margin-left:15px;color:#fff;">' +
-                        tlZeroFloor(Number(v)).toFixed(2) + suffix +
+                        Number(v).toFixed(2) + suffix +
                         '</span></div>';
                     shown++;
                 });
@@ -11120,7 +10929,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 //                        '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
 //                        p.color + ';margin-right:10px;"></span>' +
 //                        '<span style="flex:1;color:#cbd5e1;">' + p.seriesName + '</span>' +
-//                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' + tlZeroFloor(p.value[1]).toFixed(2) + '</span></div>';
+//                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' + p.value[1].toFixed(2) + '</span></div>';
 //                });
 //                return html;
 //            }
@@ -11758,7 +11567,7 @@ function GetAssetTypeBySiteId(siteId) {
                 });
 
                 $.each(data, function (index, item) {
-                    if (item.IsActive && !(typeof isHiddenAssetTypeName === 'function' && isHiddenAssetTypeName(item.Name))) {
+                    if (item.IsActive) {
                         $("#drpAssetType").append('<option value="' + item.Id + '">' + item.Name + '</option>');
                     }
                 });
@@ -11791,25 +11600,16 @@ function getReportLocationInfo(callback) {
     var divisionIsAll = !divisionTxt || divisionTxt === 'Select' || divisionTxt === 'All';
     if (!zoneIsAll && !divisionIsAll) { callback({ zone: zoneTxt, division: divisionTxt, station: stationTxt }); return; }
     if (!siteId || siteId === '0' || siteId === '') { callback({ zone: zoneTxt, division: divisionTxt, station: stationTxt }); return; }
-    // Route through the selection info bar's cached, in-flight-de-duplicated
-    // fetcher (telemetrylive-ext.js, loaded after this file) so a download does
-    // not re-request a site the bar already has. The inline fallback keeps this
-    // working if the extension script is absent.
-    var fetchSite = (typeof window.fetchSiteDetails === 'function') ? window.fetchSiteDetails :
-        function (id, cb) {
-            $.ajax({
-                url: '/FRS25/Telemetry/GetSiteById?siteId=' + encodeURIComponent(id), type: 'GET',
-                success: function (d) { cb(d && !d.error ? d : null); },
-                error: function () { cb(null); }
+    $.ajax({
+        url: '/FRS25/Telemetry/GetSiteById?siteId=' + siteId, type: 'GET',
+        success: function (data) {
+            callback({
+                zone: zoneIsAll ? (data.ZoneName || data.Zone || zoneTxt) : zoneTxt,
+                division: divisionIsAll ? (data.DivisionName || data.Division || divisionTxt) : divisionTxt,
+                station: data.Name || data.SiteName || stationTxt
             });
-        };
-    fetchSite(siteId, function (data) {
-        if (!data) { callback({ zone: zoneTxt, division: divisionTxt, station: stationTxt }); return; }
-        callback({
-            zone: zoneIsAll ? (data.ZoneName || data.Zone || zoneTxt) : zoneTxt,
-            division: divisionIsAll ? (data.DivisionName || data.Division || divisionTxt) : divisionTxt,
-            station: data.Name || data.SiteName || stationTxt
-        });
+        },
+        error: function () { callback({ zone: zoneTxt, division: divisionTxt, station: stationTxt }); }
     });
 }
 /* ===== EXPORT SOURCE ========================================================
@@ -12163,7 +11963,7 @@ function Demochart(data) {
 
             var vals = [];
             $.each(v.Data, function (j, d) {
-                vals.push(tlZeroFloor(parseFloat(d) || 0));
+                vals.push(parseFloat(d) || 0);
             });
 
             if (v.Title.indexOf('V') <= -1) {
@@ -12328,7 +12128,7 @@ function fnShowDataLoggerEvent(assetId) {
                 }
 
                 var n = parseFloat(entry.value);
-                vs = isNaN(n) ? '\u2014' : tlZeroFloor(n).toFixed(2);
+                vs = isNaN(n) ? '\u2014' : n.toFixed(2);
                 ts = _fmtDt24(entry.timestamp);
             }
 
@@ -12372,7 +12172,7 @@ function fnShowDataLoggerEvent(assetId) {
             var _num = parseFloat(_e ? _e.value : NaN);
             var _vs = isNaN(_num)
                 ? ((_e && _e.value != null && _e.value !== '') ? String(_e.value) : '\u2014')
-                : tlZeroFloor(_num).toFixed(2);
+                : _num.toFixed(2);
             var _ts = _fmtDt24(_e ? _e.timestamp : null);
 
             html += '<tr><td>' + _label + '</td><td><b>' + _vs + '</b></td><td>' + _ts + '</td></tr>';
@@ -13130,7 +12930,6 @@ $(document).ready(function () {
                 var aid = assetIds[i];
                 if (atId === 2) html += atBuildSignalCard(aid);
                 else if (atId === 3) html += atBuildPmCard(aid);
-                else if (atId === 31 || (typeof isEldAssetType === 'function' && isEldAssetType())) html += atBuildEldCard(aid);
                 else html += atBuildTrackCard(aid);
             }
             html += '</div>';
@@ -13142,7 +12941,7 @@ $(document).ready(function () {
         if (v === null || v === undefined || v === '') return '-';
         var n = parseFloat(v);
         if (isNaN(n)) return v;
-        return tlZeroFloor(n).toFixed(dec !== undefined ? dec : 2);
+        return n.toFixed(dec !== undefined ? dec : 2);
     }
 
     var _atCurrentView = $('#drpView').val() || 'Table';
@@ -14037,8 +13836,8 @@ function getPmStructuredData(assetId) {
     return r;
 }
 
-function pmFmt(v, dec) { if (v === null || v === undefined || v === '') return '-'; var n = parseFloat(v); return isNaN(n) ? v : tlZeroFloor(n).toFixed(dec !== undefined ? dec : 2); }
-function pmFmtInt(v) { if (v === null || v === undefined || v === '') return '-'; var n = parseFloat(v); return isNaN(n) ? v : Math.round(tlZeroFloor(n)).toString(); }
+function pmFmt(v, dec) { if (v === null || v === undefined || v === '') return '-'; var n = parseFloat(v); return isNaN(n) ? v : n.toFixed(dec !== undefined ? dec : 2); }
+function pmFmtInt(v) { if (v === null || v === undefined || v === '') return '-'; var n = parseFloat(v); return isNaN(n) ? v : Math.round(n).toString(); }
 function pmEsc(t) { if (!t) return ''; var d = document.createElement('div'); d.appendChild(document.createTextNode(t)); return d.innerHTML; }
 function pmPad2(n) { return n < 10 ? '0' + n : '' + n; }
 
@@ -14853,10 +14652,10 @@ function updatePmCard(assetId) {
     }
 
     // Format display values
-    var nwkrValA = (displayA_Relay !== null) ? tlZeroFloor(displayA_Relay).toFixed(2) : '--';
-    var locValA = (displayA_Loc !== null) ? tlZeroFloor(displayA_Loc).toFixed(2) : '--';
-    var nwkrValB = (displayB_Relay !== null) ? tlZeroFloor(displayB_Relay).toFixed(2) : '--';
-    var locValB = (displayB_Loc !== null) ? tlZeroFloor(displayB_Loc).toFixed(2) : '--';
+    var nwkrValA = (displayA_Relay !== null) ? displayA_Relay.toFixed(2) : '--';
+    var locValA = (displayA_Loc !== null) ? displayA_Loc.toFixed(2) : '--';
+    var nwkrValB = (displayB_Relay !== null) ? displayB_Relay.toFixed(2) : '--';
+    var locValB = (displayB_Loc !== null) ? displayB_Loc.toFixed(2) : '--';
 
 
     // Update voltage header displays + fix label to match actual direction
@@ -15464,7 +15263,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                             '<span style="display:inline-block;width:10px;height:3px;background:' + p.color + ';margin-right:8px;border-radius:2px;"></span>' +
                             '<span style="flex:1;font-size:11px;color:rgba(255,255,255,0.62);">Value:</span>' +
                             '<span style="font-weight:700;margin-left:10px;color:rgba(255,255,255,0.94);">' +
-                            tlZeroFloor(p.value[1]).toFixed(2) + ' ' + unit + '</span></div>';
+                            p.value[1].toFixed(2) + ' ' + unit + '</span></div>';
                     }
                 });
                 return html;
@@ -15628,7 +15427,7 @@ function updatePmWaveforms(assetId, pm) {
             if (arr && arr.value && typeof arr.value === 'string' && arr.value.trim() !== '') {
                 vals = arr.value.split(',').map(function (v) {
                     var num = parseFloat(v.trim());
-                    return isNaN(num) ? 0 : tlZeroFloor(num);
+                    return isNaN(num) ? 0 : num;
                 });
             }
             if (!vals.length) { vals = [0]; }
@@ -15792,7 +15591,7 @@ function updatePmWaveforms(assetId, pm) {
                             '<span style="font-size:11px;color:#94a3b8;">' + timeDisplay + '</span></div>' +
                             '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;">' +
                             '<span style="color:#94a3b8;font-size:11px;">' + p.seriesName.split('--').pop().trim() + '</span>' +
-                            '<span style="font-weight:700;font-size:16px;color:' + chartColor + ';">' + tlZeroFloor(parseFloat(yVal)).toFixed(2) + ' <span style="font-size:11px;font-weight:500;color:#94a3b8;">' + chartUnit + '</span></span></div></div>';
+                            '<span style="font-weight:700;font-size:16px;color:' + chartColor + ';">' + parseFloat(yVal).toFixed(2) + ' <span style="font-size:11px;font-weight:500;color:#94a3b8;">' + chartUnit + '</span></span></div></div>';
                     }
                 },
                 grid: { left: 58, right: 20, top: 40, bottom: 68, containLabel: false },
@@ -15954,7 +15753,7 @@ function pmShowChart(assetId, chartType) {
     var arr = pm[dir][type]['Array'];
     if (!arr || !arr.value) { fnGetAssetGraph(siteId, assetId); return; }
     var title = dir + ' -- ' + type + ' : ' + (asset.AssetName || assetId);
-    var vals = arr.value.split(',').map(function (v) { var n = parseFloat(v.trim()); return isNaN(n) ? n : tlZeroFloor(n); });
+    var vals = arr.value.split(',').map(function (v) { return parseFloat(v.trim()); });
     var lbls = []; for (var i = 0; i < vals.length; i++) lbls.push(i);
     var mh = '<div class="rdpms-graph-overlay" id="rdpmsGraphOverlay" onclick="closeGraphModal(event)">' +
         '<div class="rdpms-graph-modal" onclick="event.stopPropagation()" style="max-width:1100px;">' +
@@ -16316,7 +16115,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
                             '<span style="display:inline-block;width:10px;height:3px;background:' + p.color + ';margin-right:8px;"></span>' +
                             '<span style="flex:1;font-size:11px;">' + p.seriesName + ':</span>' +
-                            '<span style="font-weight:600;margin-left:10px;">' + tlZeroFloor(p.value[1]).toFixed(2) + ' ' + unit + '</span></div>';
+                            '<span style="font-weight:600;margin-left:10px;">' + p.value[1].toFixed(2) + ' ' + unit + '</span></div>';
                     }
                 });
                 return html;
@@ -17285,7 +17084,6 @@ function updateTableCellOnly(assetId, attrName, value, hasChanged, timestamp) {
     } else if (isNaN(num)) {
         disp = value;
     } else {
-        if (!isNaN(num) && num <= 0) num = 0;
         if (num === 0) disp = '0.0';
         else if (Math.abs(num) >= 100) disp = num.toFixed(2);
         else disp = num.toFixed(2);
@@ -17373,7 +17171,6 @@ function addNewTableRow(assetId) {
             var num = parseFloat(raw);
             if (isNaN(num)) { disp = raw; }
             else {
-                if (!isNaN(num) && num <= 0) num = 0;
                 if (num === 0) disp = '0.0';
                 else if (Math.abs(num) >= 100) disp = num.toFixed(2);
                 else disp = num.toFixed(2);
@@ -17579,7 +17376,7 @@ function updateShuntSignalLightsOnly(assetId, attrName, value) {
 }
 
 function updateSignalDataTable(assetId, attrName, value) {
-    var numVal = tlZeroFloor(parseFloat(value) || 0);
+    var numVal = parseFloat(value) || 0;
     var fv = numVal === 0 ? '0.0' : numVal.toFixed(2);
 
     // Map attribute names to table cell IDs
@@ -17691,7 +17488,7 @@ function updatePmVoltageDisplay(assetId, attrName, value) {
     var numVal = parseFloat(value);
     if (isNaN(numVal)) return;
 
-    var formattedVal = tlZeroFloor(numVal).toFixed(2);
+    var formattedVal = numVal.toFixed(2);
     var attrLower = attrName.toLowerCase();
 
     // Update voltage header displays based on attribute name
@@ -17891,7 +17688,6 @@ function renderWsTableFixed() {
                 var num = parseFloat(raw);
                 if (isNaN(num)) { disp = raw; }
                 else {
-                    if (!isNaN(num) && num <= 0) num = 0;
                     if (num === 0) disp = '0.0';
                     else if (Math.abs(num) >= 100) disp = num.toFixed(2);
                     else disp = num.toFixed(2);
@@ -18337,7 +18133,6 @@ function updateExistingRowCells(assetId, $row) {
             var num = parseFloat(raw);
             if (isNaN(num)) { disp = raw; }
             else {
-                if (!isNaN(num) && num <= 0) num = 0;
                 if (num === 0) disp = '0.0';
                 else if (Math.abs(num) >= 100) disp = num.toFixed(2);
                 else disp = num.toFixed(2);
@@ -19457,7 +19252,6 @@ if (typeof _originalBuildTableRow === 'function') {
                 var num = parseFloat(raw);
                 if (isNaN(num)) { disp = raw; }
                 else {
-                    if (!isNaN(num) && num <= 0) num = 0;
                     if (num === 0) disp = '0.0';
                     else if (Math.abs(num) >= 100) disp = num.toFixed(2);
                     else disp = num.toFixed(2);
@@ -19562,7 +19356,7 @@ if ($('#datalogger-badge-styles').length === 0) {
                 transform: skewX(-20deg);
                 animation: dlBadgeShine 2s infinite;
             }
-            @keyframes dlBadgeShine {
+            @@keyframes dlBadgeShine {
                 0% { left: -75%; }
                 100% { left: 125%; }
             }
@@ -19915,18 +19709,13 @@ function tlReturnFromAssetView() {
     window._tlOverlayActive = null;
     window._tlPrevView = null;
 
-    // FIX (P1): siteId / assetTypeId / assetIds were never declared here, so Back threw ReferenceError.
-    $('#tlBackBar').hide();
-    $('#atViewTabBar').show();
-    var siteId = $('#drpSite').val(), assetTypeId = $('#drpAssetType').val();
-    var assetIds = (typeof getSelectedAssetIds === 'function') ? (getSelectedAssetIds() || []) : [];
     if (typeof disconnectWebSocket === 'function') disconnectWebSocket();
 
     loadBulkAssetMetadata(siteId, assetTypeId, function () {
         if (typeof connectWebSocket === 'function') {
             connectWebSocket(siteId, assetTypeId, assetIds);
         }
-        var mode = restore || $('.tl-vmode-btn.active').attr('data-vmode') || 'Cards';
+        var mode = $('.tl-vmode-btn.active').attr('data-vmode') || 'Cards';
         console.log('[AdvSearch] dispatching mode=' + mode + ' for ' + assetIds.length + ' asset(s)');
         window._tlApplyViewMode(mode, { dataAlreadyOpen: false });
     });
@@ -20404,20 +20193,11 @@ window.tlBuildAssetActions = tlBuildAssetActions;
             var _isIps = (typeof isIpsAssetType === 'function' && isIpsAssetType());
             var _isRichType = _isSignal || _isPoint || _isIps;
 
-            // Incremental, same as every other asset type — the inner
-            // executeUIUpdate already refreshed #atCardView, so a second
-            // full fnBindTrackCards() here would rebuild the grid twice
-            // per batch.
             if (!_isRichType &&
                 $('#trackCardContainer').is(':visible') &&
-                Object.keys(window.wsLiveData || {}).length > 0) {
-                try {
-                    if (typeof window.updateTrackCardsIncremental === 'function') {
-                        window.updateTrackCardsIncremental(Object.keys(window.wsUpdatedAssets || {}));
-                    } else if (typeof fnBindTrackCards === 'function') {
-                        fnBindTrackCards();
-                    }
-                }
+                Object.keys(window.wsLiveData || {}).length > 0 &&
+                typeof fnBindTrackCards === 'function') {
+                try { fnBindTrackCards(); }
                 catch (e) { console.warn('[ViewMode] live track refresh', e); }
             }
         };
@@ -23352,7 +23132,6 @@ function _buildSignalGroupRow(assetId, columns, aspectInfo) {
             disp = '—'; cls = 'val-na';
         } else {
             var num = parseFloat(raw);
-            if (!isNaN(num) && num <= 0) num = 0;
             disp = isNaN(num) ? raw : ((num === 0) ? '0.0' : num.toFixed(2));
         }
         if (isAttrStale(assetId, an)) cls += ' ws-stale-val';
@@ -23454,7 +23233,7 @@ function updateSignalAspectTablesIncremental(assetIds) {
             var raw = ad ? ad.Value : null;
             var disp;
             if (raw === null || raw === undefined || raw === '') disp = '\u2014';
-            else { var num = parseFloat(raw); if (!isNaN(num) && num <= 0) num = 0; disp = isNaN(num) ? raw : ((num === 0) ? '0.0' : num.toFixed(2)); }
+            else { var num = parseFloat(raw); disp = isNaN(num) ? raw : ((num === 0) ? '0.0' : num.toFixed(2)); }
             if (cell.textContent !== disp) cell.textContent = disp;
 
             var stale = isAttrStale(aid2, an);
@@ -23586,7 +23365,7 @@ window.renderSignalGroupedTables = function () {
         html += '<table class="pm-hist-tbl"><thead><tr>' +
             '<th>Time</th><th>Direction</th><th>A \u00b7 IPT Max/Avg</th><th>A \u00b7 VPT 110</th><th>A \u00b7 TPT ms</th>' +
             '<th>B \u00b7 IPT Max/Avg</th><th>B \u00b7 VPT 110</th><th>B \u00b7 TPT ms</th></tr></thead><tbody>';
-        function n2(v) { return (v == null || isNaN(v)) ? '-' : tlZeroFloor(Number(v)).toFixed(2); }
+        function n2(v) { return (v == null || isNaN(v)) ? '-' : Number(v).toFixed(2); }
         function n0(v) { return (v == null || isNaN(v)) ? '-' : Math.round(v); }
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i], dc = r.direction === 'Reverse' ? 'pm-hist-dir-R' : 'pm-hist-dir-N';
@@ -23773,7 +23552,7 @@ function fnDownloadPDF() {
             var margin = 10;
 
             doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text('IPS Live Grid' + (typeof window.ipsViewSuffix === 'function' ? window.ipsViewSuffix() : ''), pageWidth / 2, margin + 6, { align: 'center' });
+            doc.text('IPS Live Grid', pageWidth / 2, margin + 6, { align: 'center' });
             doc.setFontSize(8); doc.setFont('helvetica', 'normal');
             var infoText = 'Zone: ' + (loc.zone || '-') + '  |  Division: ' + (loc.division || '-') +
                 '  |  Station: ' + (loc.station || '-') + '  |  Asset Type: ' + assetType +
@@ -23800,7 +23579,7 @@ function fnDownloadPDF() {
                         pageWidth - margin, doc.internal.pageSize.getHeight() - 6, { align: 'right' });
                 }
             });
-            doc.save('IPS_Live_' + (typeof window.ipsActiveTabSlug === 'function' ? window.ipsActiveTabSlug() : '') + new Date().toISOString().slice(0, 10) + '.pdf');
+            doc.save('IPS_Live_' + new Date().toISOString().slice(0, 10) + '.pdf');
             $("#loader").hide();
             showSuccess('PDF downloaded!', 'Download');
         });
@@ -24272,71 +24051,6 @@ function fnDownloadPDF() {
     }
 }
 
-// Pull the real server error out of a failed $.ajax call.
-//
-// Web.config has <customErrors defaultRedirect="..."> with no mode attribute, so the
-// mode is RemoteOnly: on localhost the 500 body is the full ASP.NET error page, and
-// with compilation debug="true" that page names the exception (or the CS#### compiler
-// error and the offending line) exactly. Swallowing the body and showing "something
-// went wrong" throws away the only copy of that.
-function tlDescribeAjaxError(xhr, thrownError) {
-    var status = xhr ? (xhr.status + ' ' + (xhr.statusText || '')) : '(no xhr)';
-    var body = (xhr && xhr.responseText) || '';
-
-    if (!body) {
-        if (xhr && xhr.status === 0) return 'HTTP ' + status + ' — request aborted or blocked (no response).';
-        return 'HTTP ' + status + (thrownError ? ' — ' + thrownError : '');
-    }
-
-    var parts = [];
-    try {
-        var doc = new DOMParser().parseFromString(body, 'text/html');
-
-        // The yellow screen writes each field as a label element followed by loose
-        // text: <b>Exception Details: </b>System.NullReferenceException: ... — and the
-        // compilation page uses <font face="Arial Black">Compiler Error Message: </font>
-        // instead. Read the siblings AFTER the label, stopping at the next label, or the
-        // whole page ends up in every line.
-        function textAfter(el) {
-            var out = '', n = el.nextSibling;
-            while (n) {
-                if (n.nodeType === 1 && /^(b|font|strong|h2|table|hr)$/i.test(n.nodeName)) break;
-                out += n.textContent || '';
-                if (out.length > 400) break;
-                n = n.nextSibling;
-            }
-            return out.replace(/\s+/g, ' ').trim();
-        }
-
-        var labels = doc.querySelectorAll('b, font, strong');
-        for (var i = 0; i < labels.length && parts.length < 4; i++) {
-            var label = (labels[i].textContent || '').replace(/\s+/g, ' ').trim().replace(/:$/, '');
-            if (!/^(Exception Details|Compiler Error Message|Description|Source File|Line)$/i.test(label)) continue;
-            var value = textAfter(labels[i]);
-            if (!value) continue;
-            var entry = (label + ': ' + value).slice(0, 320);
-            if (parts.indexOf(entry) === -1) parts.push(entry);
-        }
-
-        if (!parts.length) {
-            var t = doc.getElementsByTagName('title')[0];
-            var h2 = doc.getElementsByTagName('h2')[0];
-            if (t && t.textContent) parts.push(t.textContent.replace(/\s+/g, ' ').trim());
-            if (h2 && h2.textContent) {
-                var h2t = h2.textContent.replace(/\s+/g, ' ').trim().slice(0, 300);
-                if (parts.indexOf(h2t) === -1) parts.push(h2t);
-            }
-        }
-    } catch (e) { /* not HTML — fall through to the raw strip below */ }
-
-    if (!parts.length) {
-        parts.push(body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400));
-    }
-
-    return 'HTTP ' + status + '\n' + parts.join('\n');
-}
-window.tlDescribeAjaxError = tlDescribeAjaxError;
-
 // Average-value history for an asset ("Avg values" chart icon next to the asset name).
 // Loads the _FRSAttributeRangeHistory partial — it carries its own modal markup — into
 // the #divFRSAttributerangeHistory host and shows it.
@@ -24353,17 +24067,6 @@ function fnShowFRSAttributeRangeHistory(assetId) {
         $host = $('<div id="divFRSAttributerangeHistory"></div>').appendTo('body');
     }
 
-    // The partial's model is a list of attribute rows with no asset field, so the
-    // asset name for the modal header comes from the live cache / bulk metadata.
-    var _assetName = '';
-    try {
-        var _a = window.wsLiveData && window.wsLiveData[assetId];
-        _assetName = (_a && _a.AssetName) || '';
-        if (!_assetName && typeof getBulkAssetName === 'function') {
-            _assetName = getBulkAssetName(assetId, '') || '';
-        }
-    } catch (e) { _assetName = ''; }
-
     $("#loader").show();
     $.ajax({
         url: '/FRS25/Telemetry/_FRSAttributeRangeHistory',
@@ -24374,30 +24077,10 @@ function fnShowFRSAttributeRangeHistory(assetId) {
         success: function (data) {
             $("#loader").hide();
             $host.empty().append(data);
-            if (_assetName) {
-                $host.find('#frsAvgAssetName').text(' — ' + _assetName);
-            }
             $('#modal-frs-attributerange-history').modal('show');
         },
-        error: function (xhr, textStatus, thrownError) {
+        error: function () {
             $("#loader").hide();
-
-            // User-facing message stays generic. The real cause — the CS#### compiler
-            // error or the server stack trace carried in the response body — is logged
-            // to the console only, and the raw page is kept on window.__tlLastAvgError
-            // so it can be reopened with:
-            //   var w = window.open(); w.document.write(window.__tlLastAvgError); w.document.close();
-            try {
-                console.group('[AvgValues] POST /FRS25/Telemetry/_FRSAttributeRangeHistory failed (assetId=' + assetId + ')');
-                console.error(tlDescribeAjaxError(xhr, thrownError));
-                console.log('textStatus:', textStatus, '| thrownError:', thrownError);
-                if (xhr && xhr.responseText) {
-                    window.__tlLastAvgError = xhr.responseText;
-                    console.log('full response body on window.__tlLastAvgError');
-                }
-                console.groupEnd();
-            } catch (e) { /* logging must never break the handler */ }
-
             showError('Could not load average values for this asset.', 'Error');
         }
     });
@@ -24421,7 +24104,7 @@ function ensureIpsTableStyles() {
         '.ips-table-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 2px 8px;}' +
         '.ips-table-head h6{margin:0;font-size:15px;font-weight:600;color:var(--at-t1,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
         '.ips-table-head .ips-count{background:var(--at-g2,rgba(255,255,255,0.08));color:var(--at-brand,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));}' +
-        '.ips-table-wrap{border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);}' +'.ips-table-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}' +
+        '.ips-table-wrap{background:var(--at-bg1,#0a0f24);border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);}' +'.ips-table-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);background:var(--at-bg2,#0e1530);box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}' +
         'table.ips-live-table{width:100%;border-collapse:collapse;font-size:13px;background:transparent;min-width:560px;color:var(--at-t2,rgba(255,255,255,0.72));}' +
         'table.ips-live-table thead th{background:linear-gradient(180deg,var(--at-g2,rgba(255,255,255,0.08)),var(--at-g1,rgba(255,255,255,0.04)));color:var(--at-t1,#fff);font-weight:600;padding:10px 12px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:1px solid var(--at-edge-s,rgba(255,255,255,0.18));backdrop-filter:blur(6px);}' +
         'table.ips-live-table tbody td{padding:8px 12px;border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.10));color:var(--at-t2,rgba(255,255,255,0.72));vertical-align:middle;}' +
@@ -24528,7 +24211,7 @@ function buildIpsTableRowModels() {
             var an = attrKeys[k];
             var aObj = attrs[an] || {};
             var rawVal = aObj.Value;
-            var disp = (rawVal !== null && rawVal !== undefined && rawVal !== '') ? (isNaN(parseFloat(rawVal)) ? rawVal : tlZeroFloor(parseFloat(rawVal)).toFixed(2)) : '\u2014';
+            var disp = (rawVal !== null && rawVal !== undefined && rawVal !== '') ? rawVal : '\u2014';
 
             // Attribute display label (plain text)
             var label = aObj.AliasName || aObj.AttrName || an;
@@ -24771,7 +24454,7 @@ function _pmEntry(metricObj, decimals) {
     if (!metricObj || metricObj.value === undefined || metricObj.value === null || metricObj.value === '')
         return { text: '—', source: (metricObj && metricObj.source) || null, present: false };
     var n = parseFloat(metricObj.value);
-    return { text: isNaN(n) ? String(metricObj.value) : tlZeroFloor(n).toFixed(decimals), source: metricObj.source || null, present: !isNaN(n) };
+    return { text: isNaN(n) ? String(metricObj.value) : n.toFixed(decimals), source: metricObj.source || null, present: !isNaN(n) };
 }
 function _pmEntryInt(metricObj) {
     if (!metricObj || metricObj.value === undefined || metricObj.value === null || metricObj.value === '')
@@ -24826,7 +24509,7 @@ function buildPmTableRowModel(assetId) {
         if (!e || e.value === undefined || e.value === null || e.value === '')
             return { text: '—', source: (e && e.source) || null, present: false };
         var n = parseFloat(e.value);
-        return { text: isNaN(n) ? String(e.value) : tlZeroFloor(n).toFixed(decimals), source: e.source || null, present: !isNaN(n) };
+        return { text: isNaN(n) ? String(e.value) : n.toFixed(decimals), source: e.source || null, present: !isNaN(n) };
     }
     function endFields(end) {
         var C = (end === 'A') ? 'AC' : 'BC';

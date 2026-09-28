@@ -13,5 +13,6 @@
         //Extra
         public string Attribute { get; set; }
         public string AttributeTitle { get; set; }
+        public decimal? AttributeAvgValue { get; set; }
     }
 }

@@ -7,6 +7,9 @@
                 <h4 class="modal-title" id="myModalLabel">
                     <i class="fas fa-history me-2"></i>
                     <span id="spHeader">Avg Live Value</span>
+                    @* Asset name — filled in by fnShowFRSAttributeRangeHistory(); the model
+                       carries attribute rows only, so the name comes from the live cache. *@
+                    <span id="frsAvgAssetName" class="frs-json-attr"></span>
                 </h4>
                 <button type="button" class="close-btn-custom" data-dismiss="modal" aria-label="Close">
                     <i class="fas fa-times"></i>
@@ -25,16 +28,26 @@
                             var chargeropvval = Model.Where(x => x.AttributeTitle == "Charger OP V").FirstOrDefault();
                             var Vfval = Model.Where(x => x.AttributeTitle == "Vf").FirstOrDefault();
                             var Chokeval = Model.Where(x => x.AttributeTitle == "Choke V").FirstOrDefault();
-                            var relayResVal = Model.Where(x => x.AttributeTitle == "TrackRelayResistance").FirstOrDefault();
+                            var relayResVal = Model.Where(x => x.AttributeTitle == "Track Relay resistance").FirstOrDefault();
 
                             @* Default relay resistance = 10 ohms (QTA2_RELAY_RESISTANCE) if not present *@
-                            decimal? trackRelayResistance = relayResVal != null ? relayResVal.AvgValueHistory : 10;
+                            @* v616 parity: configured average when it is a positive number, otherwise 10 ohms *@
+                            decimal? trackRelayResistance = null;
+
+                            if (relayResVal != null && relayResVal.AttributeAvgValue != null && relayResVal.AttributeAvgValue.Value > 0)
+                            {
+                                trackRelayResistance = relayResVal.AttributeAvgValue;
+                            }
+                            else
+                            {
+                                trackRelayResistance = 10;
+                            }
 
                             @* ===== Compute derived values in dependency order ===== *@
 
                             @* 1. ITC_BATT_CHARG = Charger_mA - If_mA *@
                             decimal? itcBattCharg = null;
-                            if (chargermAval != null && ifmAval != null)
+                            if (chargermAval != null && chargermAval.Timestamp != DateTime.MinValue && ifmAval != null && ifmAval.Timestamp != DateTime.MinValue)
                             {
                                 itcBattCharg = chargermAval.AvgValueHistory - ifmAval.AvgValueHistory;
                             }
@@ -48,21 +61,21 @@
 
                             @* 3. TR_V_Relay = (Ir_mA / 1000) * TrackRelayResistance *@
                             decimal? trVRelay = null;
-                            if (irmAval != null && trackRelayResistance != null)
+                            if (irmAval != null && irmAval.Timestamp != DateTime.MinValue && trackRelayResistance != null)
                             {
                                 trVRelay = (irmAval.AvgValueHistory / 1000) * trackRelayResistance;
                             }
 
                             @* 4. VTC_VAR_RES = Charger_OP_V - Vf - Choke_V *@
                             decimal? vtcVarRes = null;
-                            if (chargeropvval != null && Vfval != null && Chokeval != null)
+                            if (chargeropvval != null && chargeropvval.Timestamp != DateTime.MinValue && Vfval != null && Vfval.Timestamp != DateTime.MinValue && Chokeval != null && Chokeval.Timestamp != DateTime.MinValue)
                             {
                                 vtcVarRes = chargeropvval.AvgValueHistory - Vfval.AvgValueHistory - Chokeval.AvgValueHistory;
                             }
 
                             @* 5. RTC_CH_FEED_END = Choke_V / (If_mA / 1000) — divisor must not be zero *@
                             decimal? rtcChFeedEnd = null;
-                            if (Chokeval != null && ifmAval != null && ifmAval.AvgValueHistory != 0)
+                            if (Chokeval != null && Chokeval.Timestamp != DateTime.MinValue && ifmAval != null && ifmAval.AvgValueHistory != 0)
                             {
                                 rtcChFeedEnd = Chokeval.AvgValueHistory / (ifmAval.AvgValueHistory / 1000);
                             }
@@ -97,36 +110,64 @@
                                     {
                                         var attrvalue = item.AvgValueHistory;
 
+                                        @* Asset attribute name, v616 style: "<attribute> - <title>".
+                                           Fall back to whichever of the two the API actually sent, so a
+                                           missing Attribute no longer renders a bare " - Title". *@
+                                        var attrLabel = item.Attribute;
+                                        if (string.IsNullOrWhiteSpace(attrLabel))
+                                        {
+                                            attrLabel = item.AttributeTitle;
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(item.AttributeTitle) &&
+                                                 !string.Equals(item.AttributeTitle, item.Attribute, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            attrLabel = item.Attribute + " - " + item.AttributeTitle;
+                                        }
+
                                         switch (item.AttributeTitle)
                                         {
                                             case "ITC BATT CHARG":
-                                                if (itcBattCharg != null) { attrvalue = Math.Round(itcBattCharg.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (itcBattCharg != null) { attrvalue = Math.Round(itcBattCharg.Value, 2); if (timestampData != null) { item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; } }
                                                 break;
                                             case "IBlAST":
-                                                if (ibalst != null) { attrvalue = Math.Round(ibalst.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (ibalst != null) { attrvalue = Math.Round(ibalst.Value, 2); if (timestampData != null) { item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; } }
                                                 break;
                                             case "TR V (Relay)":
-                                                if (trVRelay != null) { attrvalue = Math.Round(trVRelay.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (trVRelay != null)
+                                                {
+                                                    @* v616 parity: the calculated value only replaces a missing (<= 0) reading *@
+                                                    if (attrvalue <= 0)
+                                                    {
+                                                        attrvalue = Math.Round(trVRelay.Value, 2);
+                                                    }
+                                                    if (timestampData != null)
+                                                    {
+                                                        item.Timestamp = timestampData.Timestamp;
+                                                        item.StartTime = timestampData.StartTime;
+                                                        item.EndTime = timestampData.EndTime;
+                                                    }
+                                                }
                                                 break;
                                             case "VTC VAR RES":
-                                                if (vtcVarRes != null) { attrvalue = Math.Round(vtcVarRes.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (vtcVarRes != null) { attrvalue = Math.Round(vtcVarRes.Value, 2); if (timestampData != null) { item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; } }
                                                 break;
                                             case "RTC CH FEED END":
-                                                if (rtcChFeedEnd != null) { attrvalue = Math.Round(rtcChFeedEnd.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (rtcChFeedEnd != null) { attrvalue = Math.Round(rtcChFeedEnd.Value, 2); if (timestampData != null) { item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; } }
                                                 break;
                                             case "RTC VAR RES":
-                                                if (rtcVarRes != null) { attrvalue = Math.Round(rtcVarRes.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (rtcVarRes != null) { attrvalue = Math.Round(rtcVarRes.Value, 2); if (timestampData != null) { item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; } }
                                                 break;
                                             case "RRAIL":
-                                                if (rrail != null) { attrvalue = Math.Round(rrail.Value, 2); item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; }
+                                                if (rrail != null) { attrvalue = Math.Round(rrail.Value, 2); if (timestampData != null) { item.Timestamp = timestampData.Timestamp; item.StartTime = timestampData.StartTime; item.EndTime = timestampData.EndTime; } }
                                                 break;
                                         }
 
                                         if (item.Timestamp != null && item.Timestamp != DateTime.MinValue)
                                         {
                                             <tr>
-                                                <td>@item.Attribute</td>
-                                                <td>@attrvalue</td>
+                                                <td>@attrLabel</td>
+                                                @* Values <= 0 are shown as 0 *@
+                                                <td>@(attrvalue <= 0 ? 0 : attrvalue)</td>
                                                 <td>@item.StartTime</td>
                                                 <td>@item.EndTime</td>
                                                 <td class="text-center">
@@ -136,7 +177,7 @@
                                                                 class="btn btn-sm btn-view-json"
                                                                 title="View JSON"
                                                                 data-json='@Html.Raw(Json.Encode(item.Json))'
-                                                                data-label="@item.Attribute">
+                                                                data-label="@attrLabel">
                                                             <i class="fas fa-eye"></i>
                                                         </button>
                                                     }

@@ -1698,69 +1698,6 @@
     body[data-aurora="light"] .history-table tbody td.derived-val {
         color: #64748b !important;
     }
-    /* ── Range-based value colors (driven by RangeofAttributes.xlsx) ── */
-    .history-table tbody td.range-critical {
-        background: rgba(239, 68, 68, 0.10) !important;
-        color: #f87171 !important;
-        font-weight: 600;
-        border-left: 2px solid #ef4444 !important;
-    }
-    .history-table tbody td.range-warn {
-        background: rgba(245, 158, 11, 0.10) !important;
-        color: #fbbf24 !important;
-        font-weight: 500;
-        border-left: 2px solid #f59e0b !important;
-    }
-
-    .history-table tbody td.range-ok {
-        background: transparent !important;
-        color: #86efac !important;
-        font-weight: 500;
-    }
-
-
-    .history-table tbody td.range-high {
-        background: transparent !important;
-        color: #7dd3fc !important;
-        font-weight: 500;
-    }
-
-    /* val-changed should still win visually — bump its specificity */
-    .history-table tbody td.val-changed.range-critical {
-        color: #f87171 !important;
-    }
-
-    .history-table tbody td.val-changed.range-warn {
-        color: #fbbf24 !important;
-    }
-
-    .history-table tbody td.val-changed.range-ok {
-        color: #86efac !important;
-    }
-
-    .history-table tbody td.val-changed.range-high {
-        color: #7dd3fc !important;
-    }
-    /* Light theme variants */
-    body[data-aurora="light"] .history-table tbody td.range-critical {
-        background: #fee2e2 !important;
-        color: #b91c1c !important;
-        border-left-color: #dc2626 !important;
-    }
-
-    body[data-aurora="light"] .history-table tbody td.range-warn {
-        background: #fef3c7 !important;
-        color: #b45309 !important;
-        border-left-color: #f59e0b !important;
-    }
-
-    body[data-aurora="light"] .history-table tbody td.range-ok {
-        color: #15803d !important;
-    }
-
-    body[data-aurora="light"] .history-table tbody td.range-high {
-        color: #0369a1 !important;
-    }
     .th-loader-progress {
         position: fixed;
         bottom: 28px;
@@ -1786,6 +1723,175 @@
         color: #0f172a;
     }
 
+
+    /* =====================================================================
+       EXPORT DROPDOWN
+       ---------------------------------------------------------------------
+       #downloadContainer had neither position nor z-index, unlike its sibling
+       filter items. Bootstrap positions .dropdown-menu absolutely, so with no
+       positioned ancestor it resolved against the page and rendered UNDER the
+       Historical Data card below. It also still carried Bootstrap's default
+       light styling on a dark page.
+       ===================================================================== */
+    #downloadContainer {
+        position: relative;
+        z-index: 1200;
+    }
+
+        #downloadContainer .dropdown-menu {
+            z-index: 1200;
+            min-width: 168px;
+            padding: 6px;
+            margin-top: 6px;
+            background: rgba(20, 28, 48, 0.98);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.10);
+            border-radius: 10px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+        }
+
+        #downloadContainer .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 7px;
+            font-size: 12.5px;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.88);
+            background: transparent;
+        }
+
+            #downloadContainer .dropdown-item:hover,
+            #downloadContainer .dropdown-item:focus {
+                background: rgba(255, 255, 255, 0.08);
+                color: #fff;
+            }
+
+    body[data-aurora="light"] #downloadContainer .dropdown-menu {
+        background: #ffffff;
+        border-color: rgba(15, 23, 42, 0.12);
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+    }
+
+    body[data-aurora="light"] #downloadContainer .dropdown-item {
+        color: #1e293b;
+    }
+
+        body[data-aurora="light"] #downloadContainer .dropdown-item:hover,
+        body[data-aurora="light"] #downloadContainer .dropdown-item:focus {
+            background: rgba(15, 23, 42, 0.06);
+            color: #0f172a;
+        }
+
+    /* =====================================================================
+       RESPONSIVE
+       ---------------------------------------------------------------------
+       The page was built desktop-only — there was not a single media query
+       in it, so on a narrow screen the card grid kept a 320px floor and
+       overflowed, the two-column attribute grid squashed label and value
+       into each other, and the filter row, PM toggle and pagination ran off
+       the side.
+
+       Breakpoints follow the content, not device names:
+         1024px - laptop / landscape tablet: tighten gutters
+          768px - portrait tablet: cards go one-per-row-ish, controls wrap
+          560px - phone: single column everywhere, controls go full width
+       ===================================================================== */
+
+    @@media (max-width: 1024px) {
+        .th-cards-grid {
+            grid-template-columns: repeat(auto-fill,minmax(280px,1fr));
+            gap: 12px;
+        }
+
+        .history-table-wrapper {
+            max-height: 65vh;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .th-cards-grid {
+            grid-template-columns: repeat(auto-fill,minmax(240px,1fr));
+            gap: 10px;
+        }
+
+        /* A card narrower than this cannot hold label + value side by side. */
+        .th-attr-grid {
+            grid-template-columns: 1fr;
+        }
+
+        #filterContainer {
+            gap: 6px;
+        }
+
+            /* Let each filter take a sensible share instead of its natural
+               width, so they form even rows rather than one ragged line. */
+            #filterContainer > div {
+                flex: 1 1 160px;
+                min-width: 140px;
+            }
+
+        .history-table-wrapper {
+            max-height: none;
+        }
+
+        /* Keep wide tables scrollable rather than letting them stretch the
+           page and break the whole layout's width. */
+        .history-table {
+            font-size: 11.5px;
+        }
+    }
+
+    @@media (max-width: 560px) {
+        .th-cards-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .th-card-head {
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .th-card-name {
+            font-size: 13px;
+        }
+
+        #filterContainer > div {
+            flex: 1 1 100%;
+        }
+
+        /* Segmented controls become full-width rows; at this size a row of
+           shrunken buttons is harder to hit than a stack of full ones. */
+        #pmViewToggle {
+            width: 100%;
+            flex-wrap: wrap;
+        }
+
+        .pm-toggle-btn {
+            flex: 1 1 auto;
+            justify-content: center;
+        }
+
+        .pagination {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .th-attr-grid > div {
+            padding: 6px 9px;
+        }
+    }
+
+    /* Coarse pointers need a bigger hit target than a mouse does, whatever
+       the viewport width happens to be. */
+    @@media (pointer: coarse) {
+        .pm-toggle-btn,
+        .page-link {
+            min-height: 36px;
+        }
+    }
 </style>
 
 <div class="toast-container" id="toastContainer"></div>
@@ -1866,12 +1972,16 @@
         <i class="fas fa-search"></i> Search
     </button>
     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;align-self:flex-end;">
-        <div id="downloadContainer" style="display:none;">
-            <button class="at-btn at-btn-sm" id="btnDownload" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        @* This app ships Bootstrap 5, which reads data-bs-toggle and ignores
+           Bootstrap 4's data-toggle entirely -- so this menu was never bound and
+           opened/closed only by accident. The .dropdown class is what Bootstrap
+           positions the menu against, and -end replaces v4's -right. *@
+        <div id="downloadContainer" class="dropdown" style="display:none;">
+            <button class="at-btn at-btn-sm" id="btnDownload" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24"><path d="M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12" /></svg>
                 Export
             </button>
-            <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload">
+            <div class="dropdown-menu dropdown-menu-end" aria-labelledby="btnDownload">
                 <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()"><i class="fa fa-file-excel mr-2" style="color:#22c55e;"></i> Excel</a>
                 <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()"><i class="fa fa-file-alt mr-2" style="color:#3b82f6;"></i> CSV</a>
             </div>
@@ -1905,6 +2015,7 @@
             <div id="pmViewToggle">
                 <button type="button" class="pm-toggle-btn active" id="btnPmOperational" onclick="setPmView('operational')"><i class="fas fa-bolt"></i> Operational</button>
                 <button type="button" class="pm-toggle-btn" id="btnPmIndication" onclick="setPmView('indication')"><i class="fas fa-signal"></i> Indication</button>
+                <button type="button" class="pm-toggle-btn" id="btnPmVibration" onclick="setPmView('vibration')"><i class="fas fa-area-chart"></i> Vibration</button>
             </div>
             <span id="dataInfo"></span>
         </div>
@@ -1976,6 +2087,13 @@
     var IS_SERVER_SIDE = false;           // true when the current search uses server-side paging
     var LAST_SEARCH_PARAMS = null;        // { startDate, endDate, sort, fillGaps, assetIds, assetNameMap, isPM }
     var serverSideState = [];             // one entry per asset in the current search
+
+    // Assets that legitimately belong to the current site + asset type, as
+    // returned by GetAssestBy. Published globally so the ported feature
+    // modules can apply the same gate. Empty means "not loaded yet" and every
+    // gate fails open rather than rejecting everything.
+    window.validAssetIds = [];
+    var validAssetIds = window.validAssetIds;
 
     // API-provided PM Direction per (assetId, timestamp-ms) → "Normal" | "Reverse".
     // Populated by _transformDashboardColumnar when a "Direction" / "Computed"
@@ -2109,7 +2227,27 @@
 
                         var role = (item.Role !== undefined ? item.Role : item.role);
                         var assetAttrId = (item.AssetAttributeId !== undefined ? item.AssetAttributeId : item.assetAttributeId);
-                        var attrName = (item.AttributeName !== undefined ? item.AttributeName : item.attributeName) || '';
+                        // GetUserAssetInfo returns BOTH names and they are not
+                        // interchangeable: the canonical Title is what live
+                        // telemetry orders columns by, while AliasName is what
+                        // carries the VIPS / IIPS tokens that say whether an IPS
+                        // attribute is a voltage or a current reading.
+                        //
+                        // Only AttributeName used to be kept here. That left the
+                        // IPS pivot unable to tell the two apart, so every
+                        // selected asset was minted as a placeholder in all three
+                        // tabs (Voltage / Current / Digital) instead of just its
+                        // own. Keep all three, as the web project does.
+                        var canonicalName = String(
+                            (item.AttributeName !== undefined ? item.AttributeName : item.attributeName) || ''
+                        ).trim();
+                        var aliasName = String(
+                            (item.AliasName !== undefined ? item.AliasName : item.aliasName) || ''
+                        ).trim();
+
+                        // AttributeName keeps the value it has always had here,
+                        // so existing Track / Signal column headers are unchanged.
+                        var attrName = canonicalName;
 
                         var key = String(aId);
                         if (!ASSET_INFO_MAP[key]) ASSET_INFO_MAP[key] = [];
@@ -2117,7 +2255,9 @@
                             RoleType: roleType,
                             Role: role,
                             AssetAttributeId: assetAttrId,
-                            AttributeName: attrName
+                            AttributeName: attrName,
+                            CanonicalName: canonicalName || attrName,
+                            AliasName: aliasName || attrName
                         });
                     });
                     console.log('[AssetInfo] Loaded asset info for ' +
@@ -2770,6 +2910,7 @@
         pmViewMode = mode;
         $('#btnPmOperational').toggleClass('active', mode === 'operational');
         $('#btnPmIndication').toggleClass('active', mode === 'indication');
+        $('#btnPmVibration').toggleClass('active', mode === 'vibration');
 
         // The two PM modes come from DIFFERENT upstream endpoints
         // (DashboardPMHistoryOperation vs DashboardPMHistoryIntegration), so
@@ -2799,7 +2940,7 @@
 
         $("#loader").show();
         p.assetIds.forEach(function (assetId) {
-            fetchPMHistoryPage(assetId, pmViewMode, 1, TH_PAGE_SIZE, function (parsed, err) {
+            fetchPMHistoryPage(assetId, pmViewMode, 1, TH_PAGE_SIZE, '', function (parsed, err) {
                 if (err) {
                     hasError = true;
                 } else if (parsed && parsed.attributes && parsed.attributes.length > 0) {
@@ -2864,14 +3005,21 @@
 
             var newSiteId = $(this).val();
             if (newSiteId && newSiteId !== '0' && newSiteId !== '') {
-                // Pre-fetch full AssetInfo for the site so subsequent
-                // renders (for any asset type / asset number) bind
-                // AttributeName purely from cache.
-                loadAssetInfoBySite(newSiteId, function () {
-                    debounceAssetNumbers();
+                // Asset types are per-station, so reload them first: everything
+                // below keys off the (station, asset type) pair and would
+                // otherwise be resolved against the previous station's types.
+                GetAssetTypeBySiteId(newSiteId, function () {
+                    // Pre-fetch full AssetInfo for the site so subsequent
+                    // renders (for any asset type / asset number) bind
+                    // AttributeName purely from cache.
+                    loadAssetInfoBySite(newSiteId, function () {
+                        debounceAssetNumbers();
+                    });
                 });
             } else {
-                debounceAssetNumbers();
+                GetAssetTypeBySiteId('', function () {
+                    debounceAssetNumbers();
+                });
             }
         });
 
@@ -3170,6 +3318,65 @@
             error: function () { $("#loader").hide(); showError('Failed to load sites.', 'Error'); }
         });
     }
+
+    // Asset Type is rendered server-side once from ViewBag.AssetTypes and is not
+    // per-station, so without this it keeps offering the first station's types
+    // after the user picks a different station. Snapshot the initial markup so
+    // clearing the station can restore the unfiltered list.
+    var initialAssetTypeOptions = null;
+
+    // `done` runs once the dropdown has been rebuilt, on success or failure, so
+    // a caller chaining asset-number loading off it never stalls.
+    function GetAssetTypeBySiteId(siteId, done) {
+        if (initialAssetTypeOptions === null) initialAssetTypeOptions = $('#drpAssetType').html();
+        done = done || function () { };
+
+        if (!siteId || siteId === '' || siteId === '0') {
+            $('#drpAssetType').html(initialAssetTypeOptions);
+            done();
+            return;
+        }
+
+        // Keep the user on the same asset type when the new station also has it.
+        var previousTypeId = $('#drpAssetType').val();
+
+        $("#loader").show();
+        $.ajax({
+            url: '/FRS25/TelemetryHistory/GetAssetTypeBySiteId',
+            type: 'POST',
+            data: JSON.stringify({ siteId: siteId }),
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader").hide();
+                $('#drpAssetType').empty().append('<option value="">All</option>');
+                if (data && data.length > 0) {
+                    data.sort(function (a, b) { return String(a.Name || '').localeCompare(String(b.Name || '')); });
+                    $.each(data, function (index, item) {
+                        // Equipment Room is not selectable here, same as v616.
+                        var name = String(item.Name || '').trim().toUpperCase();
+                        if (item.IsActive && name !== 'EQUIPMENT ROOM') {
+                            $('#drpAssetType').append('<option value="' + item.Id + '">' + item.Name + '</option>');
+                        }
+                    });
+                }
+                if (previousTypeId && $('#drpAssetType option[value="' + previousTypeId + '"]').length) {
+                    $('#drpAssetType').val(previousTypeId);
+                }
+                // The asset list belongs to the previous station/type pair.
+                $('#listAsset').html('<div class="ms-dropdown-empty">Select Station &amp; Asset Type first</div>');
+                $('#chkAllAsset').prop('checked', false);
+                $('#txtAsset').text('All');
+                done();
+            },
+            error: function (xhr, status, error) {
+                $("#loader").hide();
+                console.error('[AssetType] Failed for site ' + siteId + ':', error);
+                showError('Failed to load asset types for the selected station.', 'Error');
+                done();
+            }
+        });
+    }
+
     var ASSET_NUMBERS_CACHE = {};      // key "siteId|assetTypeId" -> array
     var _assetNumbersXHR = null;       // last AJAX so we can abort
     var _lastAssetKey = '';
@@ -3183,6 +3390,14 @@
 
     function _renderAssetList(data) {
         var $list = $('#listAsset');
+        // Whitelist of the assets that genuinely belong to the current
+        // site + asset type, straight from GetAssestBy. The history API can
+        // answer with assets outside that set, and without this gate they were
+        // bound as real columns -- which is how an asset that is not an IPS
+        // ended up rendered in the IPS tabs. Rebuilt on every list load.
+        // Truncated in place, not reassigned: window.validAssetIds has to keep
+        // pointing at this same array or the ported modules read a stale one.
+        validAssetIds.length = 0;
         if (!data || data.length === 0) {
             $list.html('<div class="ms-dropdown-empty">No assets found</div>');
             return;
@@ -3191,6 +3406,7 @@
         var frag = document.createDocumentFragment();
         for (var i = 0; i < data.length; i++) {
             var item = data[i];
+            validAssetIds.push(String(item.Id));
             var row = document.createElement('div');
             row.className = 'ms-dropdown-item';
             row.setAttribute('data-value', item.Id);
@@ -3257,24 +3473,62 @@
     // Server-side paginated telemetry-history fetch. Used for every asset type
     // EXCEPT Point Machine. The .NET controller proxies this to
     //   http://<ProxyBaseUrl>/api/DashboardHistory?AssetId=..&StartDate=..&EndDate=..
-    //     &tsLimit=<pageSize>&sort=desc&fillGaps=true&page=<page>
-    // Callback signature: cb({ attributes, pagination }, errorMsg)
-    // Pagination fallback logic tolerates unknown wrapper key names.
-    function fetchDashboardHistoryPage(assetId, page, pageSize, cb) {
+    //     &tsLimit=<pageSize>&sort=desc&fillGaps=true&page=<page>&cursor=<cursor>
+    //
+    // CURSOR PAGINATION: `page` is echoed metadata only and cannot select a
+    // later window -- `cursor` does. Pass the previous page's `nextCursor` as
+    // `cursor`; pass '' for page 1. Sending page=N with no cursor returns
+    // page 1 again, which is why numbered page jumps are not offered.
+    //
+    // Callback signature: cb({ attributes, pagination }, errorMsg) where
+    // pagination = { page, pageSize, totalRecords, hasNextPage, nextCursor }.
+    function fetchDashboardHistoryPage(assetId, page, pageSize, cursor, cb) {
         if (!LAST_SEARCH_PARAMS) { cb(null, 'No search params'); return; }
         var p = LAST_SEARCH_PARAMS;
         $.ajax({
-            url: '/FRS25/TelemetryHistory/GetDashboardHistoryData',
+            // 616's endpoint: assetId is a STRING there, so the IPS/ELD union
+            // ("43431,43432,...") binds. GetDashboardHistoryData takes an int
+            // and silently fails to bind a comma list, which is why only
+            // single-asset searches ever returned rows.
+            url: '/FRS25/TelemetryHistory/GetHistoryDataDashboard',
             type: 'GET',
-            data: {
-                assetId: assetId,
-                startDate: p.startDate,
-                endDate: p.endDate,
-                page: page,
-                pageSize: pageSize,
-                sort: p.sort || 'desc',
-                fillGaps: (p.fillGaps === false) ? 'false' : 'true'
-            },
+            data: (function () {
+                var _payload = {
+                    assetId: assetId,
+                    startDate: p.startDate,
+                    endDate: p.endDate,
+                    page: page,
+                    // Selects the data window for page N+1. Blank = first page;
+                    // the controller omits the parameter entirely when blank.
+                    cursor: cursor || '',
+                    pageSize: pageSize,
+                    sort: p.sort || 'desc',
+                    fillGaps: (p.fillGaps === false) ? 'false' : 'true'
+                };
+
+                /*
+                 * IPS per-tab attribute scoping.
+                 *
+                 * The IPS pivot has three tabs and, without this, ONE payload
+                 * backs all three: every tab then shares the same union of
+                 * timestamps, so rows that exist only because of the Current
+                 * bucket appear on the Voltage tab as rows of "-". Sending the
+                 * active tab's attribute ids makes the API return only what
+                 * this tab actually renders.
+                 *
+                 * _ipsTabAttrIds handles the union: assetId may be a comma
+                 * list, and it gathers the bucket's ids across every one.
+                 * Fails open -- an empty string is not sent, and the server
+                 * falls back to returning everything.
+                 */
+                if (typeof isIpsHistoryAssetType === 'function' && isIpsHistoryAssetType() &&
+                    typeof _ipsTabAttrIds === 'function') {
+                    var _ipsAttrIds = _ipsTabAttrIds(assetId);
+                    if (_ipsAttrIds) { _payload.attrIds = _ipsAttrIds; }
+                }
+
+                return _payload;
+            })(),
             dataType: 'json',
             success: function (response) {
                 if (response && response.error) { cb(null, response.error); return; }
@@ -3331,29 +3585,29 @@
                 var curSize = _pickNum(meta, ['PageSize', 'pageSize', 'tsLimit', 'TsLimit', 'Limit', 'limit'])
                               || _pickNum(payload, ['PageSize', 'pageSize', 'tsLimit', 'TsLimit', 'Limit', 'limit']) || pageSize;
 
-                // Fallback: derive totals from the returned page itself
-                if (!totalRecords) {
-                    if (rowsArr && rowsArr.length !== undefined) {
-                        // If we got a full page, assume there may be more; if partial, this is the tail.
-                        totalRecords = rowsArr.length < curSize
-                            ? ((curPage - 1) * curSize) + rowsArr.length
-                            : ((curPage) * curSize) + 1;   // "+1" to keep Next enabled until we get a short page
-                    } else {
-                        var _tsSet = {};
-                        attributes.forEach(function (a) {
-                            if (a && a.Values) {
-                                for (var k in a.Values) {
-                                    if (a.Values.hasOwnProperty(k) && a.Values[k] && a.Values[k].Timestamp) {
-                                        _tsSet[a.Values[k].Timestamp.TimestampDevice] = 1;
-                                    }
-                                }
-                            }
-                        });
-                        totalRecords = Object.keys(_tsSet).length;
-                    }
+                // ---- Cursor metadata ----
+                // These two drive the whole pager. hasNextPage says whether
+                // another page exists; nextCursor is the ONLY way to reach it.
+                var nextCursor = _pickStr(meta, ['nextCursor', 'NextCursor'])
+                              || _pickStr(payload, ['nextCursor', 'NextCursor']);
+                var hasNextPage = _pickBool(meta, ['hasNextPage', 'HasNextPage'], null);
+                if (hasNextPage === null) hasNextPage = _pickBool(payload, ['hasNextPage', 'HasNextPage'], null);
+                // Older builds may omit hasNextPage: a full page implies more,
+                // a short page is the tail. nextCursor still gates the click.
+                if (hasNextPage === null) {
+                    hasNextPage = !!(rowsArr && curSize > 0 && rowsArr.length >= curSize);
                 }
-                if (!totalPages) {
-                    totalPages = curSize > 0 ? Math.max(1, Math.ceil((totalRecords || 0) / curSize)) : 1;
+                var pageRowCount = (rowsArr && rowsArr.length) || 0;
+
+                // Never fabricate a total. The old "(curPage * curSize) + 1"
+                // guess produced a totalPages that advertised numbered pages
+                // the cursor chain could never reach -- clicking one re-fetched
+                // page 1, because the upstream ignores `page`. Report only what
+                // the upstream actually sent (this backend does send
+                // totalRecords/totalPages); otherwise 0, and the pager falls
+                // back to "Showing X to Y (more available)".
+                if (!totalPages && totalRecords && curSize > 0) {
+                    totalPages = Math.max(1, Math.ceil(totalRecords / curSize));
                 }
 
                 cb({
@@ -3361,8 +3615,11 @@
                     pagination: {
                         page: curPage,
                         pageSize: curSize,
-                        totalPages: totalPages,
-                        totalRecords: totalRecords || 0
+                        totalPages: totalPages || 0,
+                        totalRecords: totalRecords || 0,
+                        pageRowCount: pageRowCount,
+                        hasNextPage: !!hasNextPage,
+                        nextCursor: nextCursor || null
                     }
                 }, null);
             },
@@ -3379,14 +3636,21 @@
     // synthesize pagination metadata (totalRecords = row count, totalPages =
     // ceil(rows/pageSize)) so the per-asset page-size selector paginates
     // client-side using the same code path.
-    function fetchPMHistoryPage(assetId, mode, page, pageSize, cb) {
+    function fetchPMHistoryPage(assetId, mode, page, pageSize, cursor, cb) {
         if (!LAST_SEARCH_PARAMS) { cb(null, 'No search params'); return; }
         var p = LAST_SEARCH_PARAMS;
         var isInd = (mode === 'indication');
+        var isVib = (mode === 'vibration');
 
-        var url = isInd
-            ? '/FRS25/TelemetryHistory/GetDashboardPMIntegrationData'
-            : '/FRS25/TelemetryHistory/GetDashboardPMOperationData';
+        // 616's endpoint name and contract: it defaults fillGaps=false for
+        // vibration. With LOCF on, one real reading is carried onto every
+        // later row in the window, which reads as a column of repeated
+        // values that were never measured.
+        var url = isVib
+            ? '/FRS25/TelemetryHistory/GetPMHistoryVibration'
+            : (isInd
+                ? '/FRS25/TelemetryHistory/GetDashboardPMIntegrationData'
+                : '/FRS25/TelemetryHistory/GetDashboardPMOperationData');
 
         var data = {
             assetId: assetId,
@@ -3395,7 +3659,10 @@
             sort: p.sort || 'desc',
             fillGaps: (p.fillGaps === false) ? 'false' : 'true'
         };
-        if (isInd) { data.page = page; data.pageSize = pageSize; }
+        // Indication is cursor-paginated like DashboardHistory. Operational
+        // returns the whole range in one call, so it takes no page/cursor.
+        // Vibration is cursor-paginated like Indication.
+        if (isInd || isVib) { data.page = page; data.pageSize = pageSize; data.cursor = cursor || ''; }
 
         $.ajax({
             url: url, type: 'GET', data: data, dataType: 'json',
@@ -3418,23 +3685,42 @@
                     : [];
 
                 if (isInd) {
-                    // Server-side pagination — read metadata like DashboardHistory
+                    // Cursor pagination — same metadata contract as DashboardHistory.
                     var totalPages = _pickNum(payload, ['TotalPages','totalPages','PageCount','pageCount','TotalPage','totalPage','pages']);
                     var totalRecords = _pickNum(payload, ['TotalRecords','totalRecords','TotalCount','totalCount','Total','total','RecordCount','recordCount','totalRows','TotalRows']);
                     var curPage = _pickNum(payload, ['Page','page','CurrentPage','currentPage']) || page;
                     var curSize = _pickNum(payload, ['PageSize','pageSize','tsLimit','TsLimit','Limit','limit']) || pageSize;
 
-                    if (!totalRecords && rowsArr) {
-                        totalRecords = rowsArr.length < curSize
-                            ? ((curPage - 1) * curSize) + rowsArr.length
-                            : ((curPage) * curSize) + 1;
+                    var nextCursor = _pickStr(payload, ['nextCursor', 'NextCursor']);
+                    var hasNextPage = _pickBool(payload, ['hasNextPage', 'HasNextPage'], null);
+                    if (hasNextPage === null) {
+                        hasNextPage = !!(rowsArr && curSize > 0 && rowsArr.length >= curSize);
                     }
-                    if (!totalPages) totalPages = curSize > 0 ? Math.max(1, Math.ceil((totalRecords || 0) / curSize)) : 1;
 
-                    cb({ attributes: attributes, pagination: { page: curPage, pageSize: curSize, totalPages: totalPages, totalRecords: totalRecords || 0 } }, null);
+                    // No fabricated totals — see the matching note in
+                    // fetchDashboardHistoryPage. hasNextPage + nextCursor
+                    // are what the pager actually needs.
+                    if (!totalPages && totalRecords && curSize > 0) {
+                        totalPages = Math.max(1, Math.ceil(totalRecords / curSize));
+                    }
+
+                    cb({
+                        attributes: attributes,
+                        pagination: {
+                            page: curPage,
+                            pageSize: curSize,
+                            totalPages: totalPages || 0,
+                            totalRecords: totalRecords || 0,
+                            pageRowCount: (rowsArr && rowsArr.length) || 0,
+                            hasNextPage: !!hasNextPage,
+                            nextCursor: nextCursor || null
+                        }
+                    }, null);
                 } else {
                     // Operational — upstream returned the full range in one call.
-                    // Synthesize pagination for the client-side slicer.
+                    // Synthesize pagination for the client-side slicer. This
+                    // path keeps NUMBERED pages: every row is already cached,
+                    // so any page is reachable without a cursor.
                     var rowsLen = (rowsArr && rowsArr.length) || 0;
                     cb({
                         attributes: attributes,
@@ -3443,6 +3729,9 @@
                             pageSize: pageSize,
                             totalPages: pageSize > 0 ? Math.max(1, Math.ceil(rowsLen / pageSize)) : 1,
                             totalRecords: rowsLen,
+                            pageRowCount: rowsLen,
+                            hasNextPage: false,
+                            nextCursor: null,
                             clientSide: true    // signal to renderer: don't refetch on page change
                         }
                     }, null);
@@ -3460,6 +3749,32 @@
             if (v !== undefined && v !== null && !isNaN(parseInt(v, 10))) return parseInt(v, 10);
         }
         return 0;
+    }
+
+    // First non-empty string value from a list of candidate keys, or ''.
+    // Used for nextCursor, which must be carried forward EXACTLY as received.
+    function _pickStr(obj, keys) {
+        if (!obj) return '';
+        for (var i = 0; i < keys.length; i++) {
+            var v = obj[keys[i]];
+            if (typeof v === 'string' && v.length) return v;
+        }
+        return '';
+    }
+
+    // First present boolean-ish value from a list of candidate keys.
+    // Returns `dflt` when NO key is present at all, so the caller can tell
+    // "upstream said false" apart from "upstream never sent the field".
+    function _pickBool(obj, keys, dflt) {
+        if (!obj) return dflt;
+        for (var i = 0; i < keys.length; i++) {
+            var v = obj[keys[i]];
+            if (v === undefined || v === null) continue;
+            if (typeof v === 'boolean') return v;
+            if (typeof v === 'string') return v.toLowerCase() === 'true';
+            if (typeof v === 'number') return v !== 0;
+        }
+        return dflt;
     }
 
     // Convert DashboardHistory-style columnar payload
@@ -3538,6 +3853,17 @@
 
             attributes.push({
                 AttributeId: attrId,
+                // Multi-AssetId UNION grid: every column carries its OWN
+                // assetId, so bind that per column. Without it the union
+                // payload cannot be split back into per-asset results and the
+                // IPS/ELD pivot has nothing to hang columns on. Single-asset
+                // responses fall back to the requested id exactly as before.
+                AssetId: (col.assetId !== undefined && col.assetId !== null && col.assetId !== '')
+                    ? col.assetId
+                    : (col.AssetId !== undefined && col.AssetId !== null && col.AssetId !== ''
+                        ? col.AssetId
+                        : assetIdForDirection),
+                AttributeName: name || '',
                 Values: values,
                 _apiName: name,        // preserved for card / debug use
                 _dataType: dtype,
@@ -3556,13 +3882,70 @@
         var toTime = $('#txtToTime').val();
 
         if (!assetIds || assetIds.length === 0) { showWarning('Please select at least one Asset Number.', 'Validation'); return; }
+
+        /*
+         * IPS TAB SCOPING (Table view only)
+         *
+         * Keep only the assets whose own ASSET_INFO_MAP metadata places them in
+         * the active tab -- same rule as _pivotAssetBuckets: RoleType 'd' ->
+         * digital, AliasName VIPS -> voltage, IIPS -> current. So the Current
+         * tab fires requests for current assets only, and an asset that belongs
+         * to none of them stops riding along in EVERY tab's request as a dead
+         * id that returns no data and no name.
+         *
+         * Guards, both deliberate:
+         *  - Graph view is left alone: it filters one full-range payload with
+         *    its own unit chips and needs every asset.
+         *  - Fail open. If NOTHING classifies, the metadata simply has not
+         *    loaded yet, so keep the whole list rather than firing an empty
+         *    search. Once any asset classifies the metadata IS loaded, and an
+         *    asset that still classifies nowhere is a genuine non-member.
+         */
+        var _isIpsSearch = (typeof isIpsHistoryAssetType === 'function') && isIpsHistoryAssetType();
+        var _isEldSearch = (typeof isEldHistoryAssetType === 'function') && isEldHistoryAssetType();
+
+        if (_isIpsSearch && selectedViewType !== 'Graph' &&
+            typeof ipsViewMode === 'string' && typeof _pivotAssetBuckets === 'function') {
+
+            var _anyClassified = assetIds.some(function (aid) {
+                var b = _pivotAssetBuckets(aid);
+                return b.voltage || b.current || b.digital;
+            });
+            var _scoped = assetIds.filter(function (aid) {
+                if (!_anyClassified) { return true; }
+                return !!_pivotAssetBuckets(aid)[ipsViewMode];
+            });
+            if (_scoped.length > 0) { assetIds = _scoped; }
+            // An empty result falls through unfiltered so the tab still fires
+            // and the renderer shows its "No <bucket> data" empty state.
+        }
+
+        /*
+         * IPS / ELD MULTI-ASSET UNION (Table view only)
+         *
+         * These two are read ACROSS assets, so the upstream takes one request
+         * carrying a comma-separated asset list and answers with a combined
+         * payload the pivot turns into one column per asset. Fetching them one
+         * at a time is what left the pivot showing a single populated column
+         * with every other asset stuck on "-". Graph view keeps individual ids.
+         */
+        if ((_isIpsSearch || _isEldSearch) && selectedViewType !== 'Graph' && assetIds.length > 1) {
+            assetIds = [assetIds.join(',')];
+        }
         if (!fromDate) { showWarning('Please select From Date.', 'Validation'); return; }
         if (!toDate) { showWarning('Please select To Date.', 'Validation'); return; }
 
         var startDate = formatDateTimeForAPI(fromDate, fromTime);
         var endDate = formatDateTimeForAPI(toDate, toTime);
 
-        var assetNameMap = {};
+        // Published globally, not kept local: the ported IPS/ELD and vibration
+        // modules read assetNameMap to label columns for assets that returned
+        // no rows. In the web project this is a top-level global; keeping it
+        // local here is why those columns came out as "Asset 43431" instead of
+        // the real station name, and why the name-based bucket fallback in
+        // _pivotAssetBuckets never had anything to match on.
+        window.assetNameMap = {};
+        var assetNameMap = window.assetNameMap;
         $('.cb-asset:checked').each(function () {
             var id = $(this).val();
             assetNameMap[id] = $(this).closest('.ms-dropdown-item').data('text') || ('Asset ' + id);
@@ -3612,10 +3995,12 @@
         var doSearchServerSide = function () {
             assetIds.forEach(function (assetId, idx) {
                 var fetchFn = _isPM
-                    ? function (aId, p, sz, cb) { return fetchPMHistoryPage(aId, pmViewMode, p, sz, cb); }
+                    ? function (aId, p, sz, cur, cb) { return fetchPMHistoryPage(aId, pmViewMode, p, sz, cur, cb); }
                     : fetchDashboardHistoryPage;
 
-                fetchFn(assetId, 1, TH_PAGE_SIZE, function (parsed, err) {
+                // Search always fetches PAGE 1, which by definition has no
+                // cursor. Later pages replay the cursor chain built from here.
+                fetchFn(assetId, 1, TH_PAGE_SIZE, '', function (parsed, err) {
                     if (err) {
                         hasError = true;
                     } else if (parsed && parsed.attributes && parsed.attributes.length > 0) {
@@ -3720,6 +4105,24 @@
                                 var seenKeys = {};
                                 var dedupedData = data.filter(function (attr) {
                                     if (!attr) return false;
+
+                                    // HistoryValue can answer a single-asset request with
+                                    // attributes belonging to sibling assets at the same
+                                    // station. Nothing downstream re-checks the owner &mdash;
+                                    // parseChartData buckets every attribute under the
+                                    // requested assetId &mdash; so selecting one asset ended up
+                                    // plotting every asset's series under that one name.
+                                    // Drop foreign attributes here, where both the Cards and
+                                    // Graph views are fed. AssetId is trusted only when the
+                                    // API actually sends it.
+                                    // assetId is a comma list on an IPS/ELD
+                                    // union request, so compare against every
+                                    // id in it rather than the raw string.
+                                    if (attr.AssetId !== undefined && attr.AssetId !== null &&
+                                        String(assetId).split(',').indexOf(String(attr.AssetId)) === -1) {
+                                        return false;
+                                    }
+
                                     var dataType = 'RDPMS';
                                     if (attr.Values) {
                                         for (var k in attr.Values) {
@@ -3956,6 +4359,7 @@
             pmViewMode = 'operational';
             $('#btnPmOperational').addClass('active');
             $('#btnPmIndication').removeClass('active');
+            $('#btnPmVibration').removeClass('active');
         }
 
         if (selectedViewType === 'Table') {
@@ -3966,13 +4370,94 @@
             $('#divTelemetryHistory').hide();
             $('#divPagination').hide();
             $('#divChartContainer').show();
-            renderChart(assetResults, selectedViewType, getSelectedRange());
+            // Third argument is skipFullRangeLoad in the ported graph module.
+            // It used to be getSelectedRange(), whose object return is always
+            // truthy — passing it through would permanently skip the
+            // full-range load and leave the graph showing only the table's
+            // current page. The module reads the range off the filters itself.
+            renderChart(assetResults, selectedViewType);
         }
     }
 
     // ===== RENDER HISTORY TABLE =====
     // For multiple assets: renders one independent table per asset
+    // The cursor that reaches page N+1 is the nextCursor returned with page N,
+    // so seed the chain with just that one entry. Later pages extend it as
+    // they are fetched.
+    function _pagerCursorMap(p) {
+        var m = {};
+        if (p && p.nextCursor) { m[(p.page || 1) + 1] = p.nextCursor; }
+        return m;
+    }
+
     function renderHistoryTable(assetResults) {
+        /*
+         * Publish pagination state BEFORE the dispatch below.
+         *
+         * This page normally builds serverSideState further down, while
+         * rendering the per-asset tables. The IPS/ELD pivot returns from the
+         * dispatch before ever reaching that, so it would have found no
+         * pagination state at all and rendered page 1 behind a dead pager.
+         * Each result already carries the facts as _pagination, so project
+         * them into the asset-id-keyed map the pivot reads.
+         */
+        if (typeof _dashSyncPagerState === 'function') {
+            _dashSyncPagerState((assetResults || []).map(function (a) {
+                if (!a || !a._pagination) return null;
+                var p = a._pagination;
+                return {
+                    assetId: a.assetId,
+                    page: p.page,
+                    pageSize: p.pageSize,
+                    totalPages: p.totalPages,
+                    totalRecords: p.totalRecords,
+                    pageRowCount: p.pageRowCount,
+                    hasNextPage: p.hasNextPage,
+                    nextCursor: p.nextCursor,
+                    cursorByPage: p.nextCursor ? _pagerCursorMap(p) : {}
+                };
+            }).filter(Boolean));
+        }
+
+        // ================================================================
+        // Ported v616 views, each in its own module file and each optional.
+        // Every guard is try/catch + typeof-checked so a module that failed
+        // to load, or threw, falls through to the per-asset renderer below
+        // rather than leaving the user with a blank page.
+        // ================================================================
+
+        // Point Machine → Vibration tab.
+        if (pmViewMode === 'vibration' && typeof renderPmVibrationHistory === 'function') {
+            try {
+                renderPmVibrationHistory(assetResults);
+                $('#divPagination').hide();
+                return;
+            } catch (e) {
+                console.error('[PM Vibration History] render failed; falling back to the normal render:', e);
+            }
+        }
+
+        // ELD / IPS are read ACROSS assets, not per asset, so they render one
+        // shared table pivoted the other way: row = timestamp, column = asset.
+        if (typeof isEldHistoryAssetType === 'function' && isEldHistoryAssetType() &&
+            typeof renderEldHistoryPivot === 'function') {
+            try {
+                renderEldHistoryPivot(assetResults);
+                return;
+            } catch (e) {
+                console.error('[ELD History] pivot render failed; falling back to the normal render:', e);
+            }
+        }
+        if (typeof isIpsHistoryAssetType === 'function' && isIpsHistoryAssetType() &&
+            typeof renderIpsHistoryPivot === 'function') {
+            try {
+                renderIpsHistoryPivot(assetResults);
+                return;
+            } catch (e) {
+                console.error('[IPS History] pivot render failed; falling back to the normal render:', e);
+            }
+        }
+
         // Reset per-asset cache array
         thCaches = [];
         thCurrentPages = [];
@@ -3991,15 +4476,33 @@
             // API returned everything at once (PM Operational) — page changes
             // then re-slice locally instead of refetching.
             if (IS_SERVER_SIDE && assetObj._pagination) {
+                var _pg = assetObj._pagination;
                 serverSideState.push({
                     assetId: assetObj.assetId,
                     assetName: assetObj.assetName,
-                    page: assetObj._pagination.page || 1,
-                    pageSize: assetObj._pagination.pageSize || TH_PAGE_SIZE,
-                    totalPages: assetObj._pagination.totalPages || 1,
-                    totalRecords: assetObj._pagination.totalRecords || cache.allTimestamps.length,
-                    clientSide: !!assetObj._pagination.clientSide
+                    page: _pg.page || 1,
+                    pageSize: _pg.pageSize || TH_PAGE_SIZE,
+                    totalPages: _pg.totalPages || 0,
+                    totalRecords: _pg.totalRecords || 0,
+                    // Rows this page really returned — drives "Showing X to Y"
+                    // when the upstream reports no grand total.
+                    pageRowCount: (_pg.pageRowCount !== undefined)
+                        ? _pg.pageRowCount : cache.allTimestamps.length,
+                    clientSide: !!_pg.clientSide,
+                    // ---- cursor chain ----
+                    // cursorByPage[N] is the cursor that FETCHES page N.
+                    // Page 1 needs none; page 2 needs page 1's nextCursor, and
+                    // so on. A page with no entry here is unreachable, which is
+                    // exactly why the pager offers Next rather than page numbers.
+                    cursorByPage: { 1: '' },
+                    hasNextPage: !!_pg.hasNextPage,
+                    nextCursor: _pg.nextCursor || null,
+                    // Blocks duplicate requests for the same asset and locks
+                    // the rows-per-page selector while a page is in flight.
+                    inFlight: 0
                 });
+                var _seed = serverSideState[serverSideState.length - 1];
+                if (_seed.nextCursor) { _seed.cursorByPage[_seed.page + 1] = _seed.nextCursor; }
             } else {
                 serverSideState.push(null);
             }
@@ -4013,9 +4516,8 @@
 
             anyData = true;
             var ss = serverSideState[idx];
-            var totalRows = ss ? ss.totalRecords : cache.allTimestamps.length;
+            var totalRows = (ss && ss.totalRecords) ? ss.totalRecords : cache.allTimestamps.length;
             var effPageSize = ss ? ss.pageSize : TH_PAGE_SIZE;
-            var totalPages = ss ? ss.totalPages : (Math.ceil(cache.allTimestamps.length / TH_PAGE_SIZE) || 1);
 
             html += '<div class="asset-table-block" id="assetBlock_' + idx + '" style="margin-bottom:24px;">';
             html += '<div class="history-table-wrapper">';
@@ -4527,13 +5029,13 @@
                 }
                 prevRowValues[compositeKey] = displayVal;
 
-                // ── Apply Excel range-based color class (skip DataLogger and PM Max/Avg compound cells) ──
-                if (!col.isDataLogger && rawValue !== null && _pmMaxVal === null) {
-                    var rangeCls = getRangeClass(col.attrId, rawValue);
-                    if (rangeCls) {
-                        cellClass = (cellClass ? cellClass + ' ' : '') + rangeCls;
-                    }
-                }
+                // Cell colour is changed / unchanged only. The range-based
+                // Critical / Warn / OK / High colouring is deliberately not
+                // applied: the table is there to show what moved between rows,
+                // not how each value scores against its threshold, and the two
+                // colour languages fought each other in the same cell.
+                // ATTRIBUTE_RANGES / getRangeClass() are kept below as reference
+                // data but no longer drive any cell class.
 
                 rowCells.push({ cls: cellClass, html: cellContent });
             }
@@ -4882,6 +5384,12 @@
         newSize = parseInt(newSize, 10) || TH_PAGE_SIZE;
         TH_PAGE_SIZE = newSize;   // persist as new default
         var ss = serverSideState[assetIdx];
+        if (ss && ss.inFlight) {
+            // A page is already loading with the OLD size; its cursor belongs
+            // to the old page boundaries. Ignore the change rather than race.
+            $('#pageSizeSel_' + assetIdx).val(ss.pageSize);
+            return;
+        }
         if (ss && ss.clientSide) {
             // PM Operational — everything is cached; just re-slice
             ss.pageSize = newSize;
@@ -4889,7 +5397,20 @@
             renderAssetTablePage(assetIdx, 1);
         } else if (IS_SERVER_SIDE && ss) {
             ss.pageSize = newSize;
+            // Every cursor was minted against the OLD page boundaries, so the
+            // whole chain is now meaningless. Drop it and restart from page 1
+            // (which needs no cursor); the chain rebuilds as the user pages.
+            ss.cursorByPage = { 1: '' };
+            ss.nextCursor = null;
             ss.page = 1;
+            // Keep the estimate consistent with the new size when a real
+            // total is known (the cursor pager ignores it, the counts don't).
+            if (ss.totalRecords > 0 && newSize > 0) {
+                ss.totalPages = Math.max(1, Math.ceil(ss.totalRecords / newSize));
+            }
+            // Force a real fetch: renderAssetTablePage short-circuits when the
+            // requested page equals thCurrentPages[assetIdx].
+            thCurrentPages[assetIdx] = 0;
             refetchAssetPage(assetIdx, 1);
         } else {
             // Legacy client-side path
@@ -4898,21 +5419,43 @@
     }
 
     // ── Refetch a single asset's page from the server & re-render ───────────
+    //
+    // Cursor pagination: the window is selected by ss.cursorByPage[page], NOT
+    // by the page number. A page with no cursor entry is unreachable and the
+    // request is refused here rather than silently re-fetching page 1.
     function refetchAssetPage(assetIdx, page) {
         var ss = serverSideState[assetIdx];
         if (!ss) return;
+
+        page = parseInt(page, 10);
+        if (!page || page < 1) return;
+
+        var cursor = ss.cursorByPage ? ss.cursorByPage[page] : undefined;
+        if (page > 1 && !cursor) {
+            // No cursor for this page — the chain has not reached it yet.
+            // Only ever happens if a stale onclick survives a re-render.
+            return;
+        }
+        // One request per asset at a time: a second click mid-fetch would
+        // race, and a page-size change mid-fetch invalidates the cursor the
+        // in-flight request is using.
+        if (ss.inFlight) return;
+        ss.inFlight = page;
+        _renderAssetPager(assetIdx);   // reflect the disabled/loading state
+
         $("#loader").show();
         _setLoaderProgress(0, 1);
         // Choose the appropriate API based on the active search context.
         var fetchFn = (LAST_SEARCH_PARAMS && LAST_SEARCH_PARAMS.isPM)
-            ? function (aId, p, sz, cb) { return fetchPMHistoryPage(aId, pmViewMode, p, sz, cb); }
+            ? function (aId, p, sz, cur, cb) { return fetchPMHistoryPage(aId, pmViewMode, p, sz, cur, cb); }
             : fetchDashboardHistoryPage;
 
-        fetchFn(ss.assetId, page, ss.pageSize, function (parsed, err) {
+        fetchFn(ss.assetId, page, ss.pageSize, cursor || '', function (parsed, err) {
             $("#loader").hide();
             _clearLoaderProgress();
-            if (err) { showError('Failed to fetch page ' + page + '.', 'API Error'); return; }
-            if (!parsed) { showError('Empty response.', 'API Error'); return; }
+            ss.inFlight = 0;
+            if (err) { showError('Failed to fetch page ' + page + '.', 'API Error'); _renderAssetPager(assetIdx); return; }
+            if (!parsed) { showError('Empty response.', 'API Error'); _renderAssetPager(assetIdx); return; }
 
             // Rebuild cache for this asset with the new page of attributes
             var assetObj = {
@@ -4924,12 +5467,30 @@
             thCaches[assetIdx] = newCache;
             thCurrentPages[assetIdx] = page;
 
-            // Update pagination metadata
-            ss.page = parsed.pagination.page || page;
+            // Update pagination metadata.
+            // `page` is authoritative here, NOT parsed.pagination.page: the
+            // upstream echoes back whatever page number it was sent, so it
+            // can never contradict us, but a build that echoes 1 for every
+            // cursor page would otherwise reset the pager to page 1.
+            ss.page = page;
             ss.pageSize = parsed.pagination.pageSize || ss.pageSize;
-            ss.totalPages = parsed.pagination.totalPages || ss.totalPages;
-            ss.totalRecords = parsed.pagination.totalRecords || ss.totalRecords;
             ss.clientSide = !!parsed.pagination.clientSide;
+            ss.pageRowCount = (parsed.pagination.pageRowCount !== undefined)
+                ? parsed.pagination.pageRowCount : newCache.allTimestamps.length;
+
+            // Page-1 totals are the authoritative ones; later pages report
+            // totals for their own shifted window, so never overwrite a real
+            // total with one of those.
+            if (!(ss.totalRecords > 0)) {
+                ss.totalRecords = parsed.pagination.totalRecords || 0;
+                ss.totalPages = parsed.pagination.totalPages || 0;
+            }
+
+            // Extend the cursor chain so Next on THIS page is reachable.
+            ss.hasNextPage = !!parsed.pagination.hasNextPage;
+            ss.nextCursor = parsed.pagination.nextCursor || null;
+            ss.cursorByPage = ss.cursorByPage || { 1: '' };
+            if (ss.nextCursor) { ss.cursorByPage[page + 1] = ss.nextCursor; }
 
             // Rebuild thead (columns may differ if attribute list changed)
             $('#tblHistory_' + assetIdx).html(buildThead(newCache) + '<tbody id="tblHistoryBody_' + assetIdx + '"></tbody>');
@@ -4948,7 +5509,13 @@
         // block onclick handlers).
         page = parseInt(page, 10);
         if (!page || page < 1) return;
-        if (ss && page > ss.totalPages) return;
+
+        // Bound check depends on the paging mode:
+        //   client-side (PM Operational / no ss) → totalPages is real, use it.
+        //   cursor-paged                         → totalPages is at best an
+        //     estimate, so clamping on it would swallow a legitimate Next.
+        //     Cursor availability is the real gate; refetchAssetPage enforces it.
+        if (ss && (ss.clientSide || !IS_SERVER_SIDE) && ss.totalPages && page > ss.totalPages) return;
 
         // Server-side pagination → refetch instead of re-slicing the cache.
         // PM Operational (ss.clientSide === true) already has ALL rows in the
@@ -4967,8 +5534,9 @@
         //   server-side (ss.clientSide=false) → cache IS the current page
         //   client-side (ss.clientSide=true or !ss) → cache holds ALL rows; slice locally
         var effPageSize = ss ? ss.pageSize : TH_PAGE_SIZE;
-        var totalRows = ss ? ss.totalRecords : cache.allTimestamps.length;
-        var totalPages = ss ? ss.totalPages : (Math.ceil(totalRows / effPageSize) || 1);
+        // A cursor page carries no grand total, so fall back to this page's
+        // own row count rather than letting totalRows go 0 and slice nothing.
+        var totalRows = (ss && ss.totalRecords) ? ss.totalRecords : cache.allTimestamps.length;
         var startIdx, endIdx;
         if (ss && !ss.clientSide) {
             startIdx = 0;
@@ -5047,39 +5615,122 @@
 
         $('#tblHistoryBody_' + assetIdx).html(h.join(''));
 
-        // Per-asset pagination
-        // Server-side mode (ss && !ss.clientSide): startIdx is always 0 (we only
-        // render the current page's slice) so compute display indices from
-        // page/pageSize. Client-side (ss.clientSide or !ss): use startIdx/endIdx.
+        // Per-asset pagination bar (counts + buttons).
+        _renderAssetPager(assetIdx, startIdx, endIdx);
+    }
+
+    /*
+     * ── Per-asset pagination bar ────────────────────────────────────────────
+     *
+     * Two shapes, chosen by how the asset is paged:
+     *
+     *   CURSOR-PAGED (ss && !ss.clientSide) — DashboardHistory and PM
+     *     Indication. Page N+1 is reachable ONLY by replaying page N's
+     *     nextCursor, so an arbitrary page number cannot be jumped to.
+     *     Numbered buttons would advertise pages that silently return page 1
+     *     again (upstream echoes `page` but ignores it). Render
+     *     Previous / current page / Next instead, with Next gated on the
+     *     upstream hasNextPage flag AND the presence of a cursor for it.
+     *
+     *   CLIENT-SIDE (ss.clientSide, e.g. PM Operational, or no ss at all) —
+     *     every row is already cached, so keep the familiar numbered pager.
+     *
+     * Also renders the "Showing X to Y" counts and locks the rows-per-page
+     * selector while a request for this asset is in flight.
+     *
+     * startIdx / endIdx are the client-side slice bounds; they are optional
+     * and only used on the client-side path (refetchAssetPage calls this
+     * without them purely to repaint the loading state).
+     */
+    function _renderAssetPager(assetIdx, startIdx, endIdx) {
+        var ss = serverSideState[assetIdx];
+        var cache = thCaches[assetIdx];
+        var page = thCurrentPages[assetIdx] || 1;
+        var isCursorPaged = !!(IS_SERVER_SIDE && ss && !ss.clientSide);
+        var inFlight = !!(ss && ss.inFlight);
+        var effPageSize = ss ? ss.pageSize : TH_PAGE_SIZE;
+        var cachedRows = cache ? cache.allTimestamps.length : 0;
+        var totalRows = (ss && ss.totalRecords) ? ss.totalRecords : cachedRows;
+
+        // ---- "Showing X to Y" ----
         var showingFrom, showingTo;
-        if (ss && !ss.clientSide) {
-            showingFrom = ((page - 1) * ss.pageSize) + 1;
-            showingTo = Math.min(page * ss.pageSize, totalRows);
-            if (cache.allTimestamps.length === 0) { showingFrom = 0; showingTo = 0; }
+        if (isCursorPaged) {
+            // The cache holds exactly this page, so Y is X + (rows on this
+            // page) - 1, capped at one page's worth. Deriving Y from
+            // page*pageSize instead over-reports the final (short) page.
+            var realRows = Math.min((ss.pageRowCount || cachedRows), effPageSize);
+            showingFrom = ((page - 1) * effPageSize) + 1;
+            showingTo = showingFrom + Math.max(0, realRows - 1);
+            if (totalRows && showingTo > totalRows) showingTo = totalRows;
+            if (cachedRows === 0) { showingFrom = 0; showingTo = 0; }
         } else {
-            showingFrom = totalRows > 0 ? startIdx + 1 : 0;
-            showingTo = endIdx;
+            showingFrom = totalRows > 0 ? (startIdx || 0) + 1 : 0;
+            showingTo = (endIdx !== undefined) ? endIdx
+                      : Math.min(page * effPageSize, totalRows);
         }
-        $('#showingRecords_' + assetIdx).text('Showing ' + showingFrom + ' to ' + showingTo + ' of ' + totalRows + ' records');
+
+        // Only claim a grand total when the upstream actually reported one.
+        // This backend does send totalRecords/totalPages on every cursor page,
+        // but the field is not guaranteed by the envelope contract, so fall
+        // back to "(more available)" rather than printing a fabricated total.
+        var recText;
+        if (totalRows > 0 && (!isCursorPaged || ss.totalRecords > 0)) {
+            recText = 'Showing ' + showingFrom + ' to ' + showingTo + ' of ' + totalRows + ' records';
+        } else {
+            recText = 'Showing ' + showingFrom + ' to ' + showingTo +
+                      (isCursorPaged && ss.hasNextPage ? ' (more available)' : ' records');
+        }
+        $('#showingRecords_' + assetIdx).text(recText);
 
         var pHtml = '';
-        pHtml += '<li class="page-item ' + (page <= 1 ? 'disabled' : '') + '">'
-            + '<a class="page-link" href="javascript:void(0);" onclick="renderAssetTablePage(' + assetIdx + ',' + (page - 1) + ')">'
-            + '<i class="fas fa-chevron-left"></i> Previous</a></li>';
 
-        var startPage = Math.max(1, page - 2);
-        var endPage = Math.min(totalPages, startPage + 4);
-        if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+        if (isCursorPaged) {
+            var prevDisabled = (page <= 1 || inFlight);
+            var nextDisabled = (!ss.hasNextPage || inFlight ||
+                                !(ss.cursorByPage && ss.cursorByPage[page + 1]));
 
-        for (var p = startPage; p <= endPage; p++) {
-            pHtml += '<li class="page-item ' + (p === page ? 'active' : '') + '">'
-                + '<a class="page-link" href="javascript:void(0);" onclick="renderAssetTablePage(' + assetIdx + ',' + p + ')">' + p + '</a></li>';
+            pHtml += '<li class="page-item ' + (prevDisabled ? 'disabled' : '') + '">'
+                + '<a class="page-link" href="javascript:void(0);"'
+                + (prevDisabled ? '' : ' onclick="renderAssetTablePage(' + assetIdx + ',' + (page - 1) + ')"')
+                + '><i class="fas fa-chevron-left"></i> Previous</a></li>';
+
+            // Current-page indicator — a number, not a jump target.
+            pHtml += '<li class="page-item active">'
+                + '<a class="page-link" style="cursor:default;pointer-events:none;">'
+                + page + '</a></li>';
+
+            pHtml += '<li class="page-item ' + (nextDisabled ? 'disabled' : '') + '">'
+                + '<a class="page-link" href="javascript:void(0);"'
+                + (nextDisabled ? '' : ' onclick="renderAssetTablePage(' + assetIdx + ',' + (page + 1) + ')"')
+                + '>Next <i class="fas fa-chevron-right"></i></a></li>';
+        } else {
+            var totalPages = (ss && ss.totalPages)
+                ? ss.totalPages
+                : (Math.ceil(totalRows / effPageSize) || 1);
+
+            pHtml += '<li class="page-item ' + (page <= 1 ? 'disabled' : '') + '">'
+                + '<a class="page-link" href="javascript:void(0);" onclick="renderAssetTablePage(' + assetIdx + ',' + (page - 1) + ')">'
+                + '<i class="fas fa-chevron-left"></i> Previous</a></li>';
+
+            var startPage = Math.max(1, page - 2);
+            var endPage = Math.min(totalPages, startPage + 4);
+            if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+
+            for (var p = startPage; p <= endPage; p++) {
+                pHtml += '<li class="page-item ' + (p === page ? 'active' : '') + '">'
+                    + '<a class="page-link" href="javascript:void(0);" onclick="renderAssetTablePage(' + assetIdx + ',' + p + ')">' + p + '</a></li>';
+            }
+            pHtml += '<li class="page-item ' + (page >= totalPages ? 'disabled' : '') + '">'
+                + '<a class="page-link" href="javascript:void(0);" onclick="renderAssetTablePage(' + assetIdx + ',' + (page + 1) + ')">'
+                + 'Next <i class="fas fa-chevron-right"></i></a></li>';
         }
-        pHtml += '<li class="page-item ' + (page >= totalPages ? 'disabled' : '') + '">'
-            + '<a class="page-link" href="javascript:void(0);" onclick="renderAssetTablePage(' + assetIdx + ',' + (page + 1) + ')">'
-            + 'Next <i class="fas fa-chevron-right"></i></a></li>';
 
         $('#paginationUl_' + assetIdx).html(pHtml);
+
+        // Changing rows/page mid-fetch invalidates the cursor the in-flight
+        // request is using, so lock the selector until it lands.
+        $('#pageSizeSel_' + assetIdx).prop('disabled', inFlight);
+
         $('#pagination_' + assetIdx).show();
     }
 
@@ -5312,6 +5963,14 @@
         var _isPMOpChart = _isPMChart && pmViewMode === 'operational';
         var _isPMIndChart = _isPMChart && pmViewMode === 'indication';
 
+        // IPS / ELD send every selected asset as ONE comma-separated AssetId
+        // and get one combined payload back. Split it into one entry per real
+        // asset first, so every lookup below keys on a real id. No-op
+        // otherwise.
+        if (typeof _ipsExplodeUnionAssetResults === 'function') {
+            assetResults = _ipsExplodeUnionAssetResults(assetResults);
+        }
+
         var allTimestampsSet = {};
         var columns = [];
         var attributeData = {};
@@ -5319,6 +5978,16 @@
         assetResults.forEach(function (assetObj) {
             var aId = assetObj.assetId;
             var aName = assetObj.assetName;
+
+            // WHITELIST: reject any asset that is not in the GetAssestBy list
+            // for the current site + asset type. The history API can answer
+            // with assets outside the selection, and binding those as series is
+            // how assets that are not IPS appeared in the IPS tabs. Fails open
+            // while the list has not loaded.
+            if (validAssetIds && validAssetIds.length > 0 &&
+                validAssetIds.indexOf(String(aId)) === -1) {
+                return;
+            }
 
             // Group entries by (attrId, DataType) &mdash; one column per distinct pair
             // Structure: bucketMap[attrId][dtKey] = { entries, detectedType }
@@ -5346,7 +6015,16 @@
 
                     var dtKey = (_entryDT || 'RDPMS').toLowerCase();
                     if (!bucketMap[attrId]) bucketMap[attrId] = {};
-                    if (!bucketMap[attrId][dtKey]) bucketMap[attrId][dtKey] = { entries: [], detectedType: _entryDT };
+                    if (!bucketMap[attrId][dtKey]) {
+                        bucketMap[attrId][dtKey] = {
+                            entries: [],
+                            detectedType: _entryDT,
+                            // The API's OWN column name, kept so a column whose
+                            // metadata is missing can still be named from the
+                            // response instead of being dropped.
+                            apiAttrName: attr._apiName || attr.AttributeName || ''
+                        };
+                    }
 
                     bucketMap[attrId][dtKey].entries.push({ ts: tsDate, value: entry.Value });
                     allTimestampsSet[tsDate.getTime()] = tsDate;
@@ -5365,14 +6043,55 @@
                     attributeData[compositeKey] = bucket.entries;
 
                     var isDataLogger = (bucket.detectedType || '').toLowerCase() === 'datalogger';
-                    var displayName = getAttrDisplayName(attrId, isDataLogger);
+
+                    /*
+                     * NAME RESOLUTION (matches the web project's chain)
+                     *
+                     * 1. GetUserAssetInfo for this exact asset+attribute, which
+                     *    is the only source of AliasName -- and AliasName is
+                     *    what carries the VIPS / IIPS tokens the IPS tab
+                     *    classifier reads.
+                     * 2. The global attribute map, via getAttrDisplayName.
+                     * 3. The API's own column name from the response.
+                     *
+                     * Step 3 matters: the union grid always sends a real name,
+                     * so a bare "Attr N" here means metadata was missing, NOT
+                     * that the column is junk. Without this fallback such
+                     * columns were unnamed, which hid live data behind the "-"
+                     * placeholders _pivotAddMissingAssetColumns mints.
+                     */
+                    var aliasName = '';
+                    var displayName = '';
+                    if (typeof getAssetInfoAttrEntry === 'function') {
+                        var anaInfo = getAssetInfoAttrEntry(aId, attrId, isDataLogger);
+                        if (anaInfo) {
+                            if (anaInfo.AttributeName) { displayName = anaInfo.AttributeName; }
+                            if (anaInfo.AliasName) { aliasName = anaInfo.AliasName; }
+                        }
+                    }
+                    if (!displayName) { displayName = getAttrDisplayName(attrId, isDataLogger); }
+
+                    // Strip the leading "<AssetName>." the API prefixes onto
+                    // union-grid column names, so this sub-header matches the
+                    // alias-resolved ones and the classifier can still read the
+                    // trailing "...Voltage" / "...Current" token.
+                    if (!displayName || displayName === ('Attr ' + attrId) || displayName === ('DL-' + attrId)) {
+                        var _apiNm = bucket.apiAttrName || '';
+                        if (_apiNm) {
+                            var _dotIx = _apiNm.indexOf('.');
+                            displayName = (_dotIx > -1) ? _apiNm.slice(_dotIx + 1).trim() : _apiNm;
+                        }
+                    }
+
                     columns.push({
                         assetId: aId,
                         assetName: aName,
                         attrId: attrId,
                         compositeKey: compositeKey,
                         isDataLogger: isDataLogger,
-                        displayName: displayName
+                        displayName: displayName,
+                        aliasName: aliasName,
+                        apiName: bucket.apiAttrName || ''
                     });
                 });
             });
@@ -6089,16 +6808,67 @@
     }
 
     // ===== DOWNLOAD FUNCTIONS =====
-    function getReportFilterValues() {
+    /*
+     * Serves BOTH call styles, deliberately.
+     *
+     * This page's own exporters call it synchronously and read the return
+     * value. The ported IPS/ELD pivot exporter calls it the way the web
+     * project does, passing a callback -- and because the synchronous version
+     * simply ignored that argument, the callback never fired, the whole
+     * file-writing body inside it never ran, and the IPS/ELD report silently
+     * failed to download with no error anywhere.
+     *
+     * So: always return the values, and additionally invoke the callback when
+     * one is given. With a callback it also resolves Zone / Division from the
+     * station when those filters are left on "All", which is what the web
+     * project does -- otherwise a station-only search produces a report header
+     * reading "Zone: All | Division: All".
+     */
+    function getReportFilterValues(callback) {
         var zoneName = $('#drpZones option:selected').text() || 'All';
         var divisionName = $('#drpDivisions option:selected').text() || 'All';
         var stationName = $('#drpSite option:selected').text() || 'All';
         var assetTypeName = $('#drpAssetType option:selected').text() || 'All';
+        var siteId = $('#drpSite').val();
         if (!$('#drpZones').val() || $('#drpZones').val() === '0') zoneName = 'All';
         if (!$('#drpDivisions').val() || $('#drpDivisions').val() === '0') divisionName = 'All';
-        if (!$('#drpSite').val() || $('#drpSite').val() === '') stationName = 'All';
+        if (!siteId || siteId === '') stationName = 'All';
         if (!$('#drpAssetType').val() || $('#drpAssetType').val() === '0') assetTypeName = 'All';
-        return { zone: zoneName, division: divisionName, station: stationName, vendorName: 'Energy7', assetType: assetTypeName };
+
+        var values = {
+            zone: zoneName, division: divisionName, station: stationName,
+            vendorName: 'Energy7', assetType: assetTypeName
+        };
+
+        if (typeof callback !== 'function') { return values; }
+
+        var needsApi = siteId && siteId !== '' && siteId !== '0' &&
+            (zoneName === 'All' || divisionName === 'All');
+
+        if (!needsApi) { callback(values); return values; }
+
+        $.ajax({
+            url: '/FRS25/TelemetryHistory/GetSiteById',
+            type: 'GET',
+            data: { siteId: siteId },
+            success: function (data) {
+                if (data && !data.error) {
+                    if (zoneName === 'All') {
+                        values.zone = data.ZoneName || data.Zone || data.ZoneCode || 'All';
+                    }
+                    if (divisionName === 'All') {
+                        values.division = data.DivisionName || data.Division || data.DivisionCode || 'All';
+                    }
+                    values.station = data.Name || data.SiteName || stationName;
+                }
+                callback(values);
+            },
+            // Never leave the caller hanging: a failed lookup still writes the
+            // report, just with the unresolved filter text.
+            error: function () { callback(values); }
+        });
+
+        return values;
     }
 
     function fnDownloadExcel() {
@@ -6438,25 +7208,48 @@
             assetName: assetObj.assetName,
             page: 1,
             pageSize: TH_PAGE_SIZE,
-            totalPages: 1,
-            totalRecords: 0
+            totalPages: 0,
+            totalRecords: 0,
+            pageRowCount: 0,
+            // Same cursor chain as the main grid — see refetchAssetPage.
+            cursorByPage: { 1: '' },
+            hasNextPage: false,
+            nextCursor: null,
+            inFlight: 0
         };
         _loadModalPage(1);
     }
 
     function _loadModalPage(page) {
         if (!_modalServerState) return;
-        fetchDashboardHistoryPage(_modalServerState.assetId, page, _modalServerState.pageSize, function (parsed, err) {
+        var ss = _modalServerState;
+
+        var cursor = ss.cursorByPage ? ss.cursorByPage[page] : undefined;
+        if (page > 1 && !cursor) return;   // unreachable page — see refetchAssetPage
+        if (ss.inFlight) return;
+        ss.inFlight = page;
+
+        fetchDashboardHistoryPage(ss.assetId, page, ss.pageSize, cursor || '', function (parsed, err) {
+            ss.inFlight = 0;
             if (err) {
                 $('#cardHistoryModalBody').html('<div class="text-center text-danger p-4"><i class="fas fa-exclamation-triangle fa-2x"></i><br/>Failed to load: ' + err + '</div>');
                 return;
             }
-            var assetObj = { assetId: _modalServerState.assetId, assetName: _modalServerState.assetName, attributes: parsed.attributes || [] };
+            var assetObj = { assetId: ss.assetId, assetName: ss.assetName, attributes: parsed.attributes || [] };
             _modalCache = parseTableData([assetObj]);
-            _modalServerState.page = parsed.pagination.page || page;
-            _modalServerState.pageSize = parsed.pagination.pageSize || _modalServerState.pageSize;
-            _modalServerState.totalPages = parsed.pagination.totalPages || 1;
-            _modalServerState.totalRecords = parsed.pagination.totalRecords || _modalCache.allTimestamps.length;
+            // `page` is authoritative, not the echoed pagination.page.
+            ss.page = page;
+            ss.pageSize = parsed.pagination.pageSize || ss.pageSize;
+            ss.pageRowCount = (parsed.pagination.pageRowCount !== undefined)
+                ? parsed.pagination.pageRowCount : _modalCache.allTimestamps.length;
+            if (!(ss.totalRecords > 0)) {
+                ss.totalRecords = parsed.pagination.totalRecords || 0;
+                ss.totalPages = parsed.pagination.totalPages || 0;
+            }
+            ss.hasNextPage = !!parsed.pagination.hasNextPage;
+            ss.nextCursor = parsed.pagination.nextCursor || null;
+            ss.cursorByPage = ss.cursorByPage || { 1: '' };
+            if (ss.nextCursor) { ss.cursorByPage[page + 1] = ss.nextCursor; }
             _renderModalTable();
         });
     }
@@ -6510,13 +7303,22 @@
         }
         h.push('</tbody></table></div>');
 
-        // Pagination bar
+        // Pagination bar. The cache holds exactly this cursor page, so Y comes
+        // from the rows actually returned, not from page * pageSize (which
+        // over-reports the final short page). A grand total is shown only when
+        // the upstream sent one — the cursor envelope usually does not.
+        var _modalRealRows = Math.min((ss.pageRowCount || cache.allTimestamps.length), ss.pageSize);
         var showingFrom = ((ss.page - 1) * ss.pageSize) + 1;
-        var showingTo = Math.min(ss.page * ss.pageSize, ss.totalRecords);
+        var showingTo = showingFrom + Math.max(0, _modalRealRows - 1);
+        if (ss.totalRecords && showingTo > ss.totalRecords) showingTo = ss.totalRecords;
         if (cache.allTimestamps.length === 0) { showingFrom = 0; showingTo = 0; }
 
+        var _modalRecText = (ss.totalRecords > 0)
+            ? ('Showing ' + showingFrom + ' to ' + showingTo + ' of ' + ss.totalRecords + ' records')
+            : ('Showing ' + showingFrom + ' to ' + showingTo + (ss.hasNextPage ? ' (more available)' : ' records'));
+
         h.push('<div class="d-flex justify-content-between align-items-center flex-wrap mt-3" style="gap:8px;">');
-        h.push('<div class="showing-records">Showing ' + showingFrom + ' to ' + showingTo + ' of ' + ss.totalRecords + ' records</div>');
+        h.push('<div class="showing-records">' + _modalRecText + '</div>');
         h.push('<div style="display:flex;align-items:center;gap:8px;">');
         h.push('<label class="mb-0" style="font-size:12px;color:#94a3b8;">Rows per page</label>');
         h.push('<select id="modalPageSizeSel" class="form-control form-control-sm" style="width:auto;min-width:70px;background:#1e293b;color:#e2e8f0;border-color:rgba(255,255,255,0.1);" onchange="onModalPageSizeChange(this.value)">');
@@ -6531,29 +7333,40 @@
         _renderModalPager();
     }
 
+    // Previous / current page / Next — numbered jumps are impossible under
+    // cursor pagination (see _renderAssetPager for the full rationale).
     function _renderModalPager() {
         var ss = _modalServerState;
-        var page = ss.page, totalPages = ss.totalPages;
+        var page = ss.page;
+        var inFlight = !!ss.inFlight;
+        var prevDisabled = (page <= 1 || inFlight);
+        var nextDisabled = (!ss.hasNextPage || inFlight ||
+                            !(ss.cursorByPage && ss.cursorByPage[page + 1]));
+
         var pHtml = '';
-        pHtml += '<li class="page-item ' + (page <= 1 ? 'disabled' : '') + '">'
-            + '<a class="page-link" href="javascript:void(0);" onclick="onModalPageChange(' + (page - 1) + ')"><i class="fas fa-chevron-left"></i></a></li>';
-        var startPage = Math.max(1, page - 2);
-        var endPage = Math.min(totalPages, startPage + 4);
-        if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
-        for (var p = startPage; p <= endPage; p++) {
-            pHtml += '<li class="page-item ' + (p === page ? 'active' : '') + '">'
-                + '<a class="page-link" href="javascript:void(0);" onclick="onModalPageChange(' + p + ')">' + p + '</a></li>';
-        }
-        pHtml += '<li class="page-item ' + (page >= totalPages ? 'disabled' : '') + '">'
-            + '<a class="page-link" href="javascript:void(0);" onclick="onModalPageChange(' + (page + 1) + ')"><i class="fas fa-chevron-right"></i></a></li>';
+        pHtml += '<li class="page-item ' + (prevDisabled ? 'disabled' : '') + '">'
+            + '<a class="page-link" href="javascript:void(0);"'
+            + (prevDisabled ? '' : ' onclick="onModalPageChange(' + (page - 1) + ')"')
+            + '><i class="fas fa-chevron-left"></i></a></li>';
+
+        pHtml += '<li class="page-item active">'
+            + '<a class="page-link" style="cursor:default;pointer-events:none;">' + page + '</a></li>';
+
+        pHtml += '<li class="page-item ' + (nextDisabled ? 'disabled' : '') + '">'
+            + '<a class="page-link" href="javascript:void(0);"'
+            + (nextDisabled ? '' : ' onclick="onModalPageChange(' + (page + 1) + ')"')
+            + '><i class="fas fa-chevron-right"></i></a></li>';
+
         $('#modalPaginationUl').html(pHtml);
+        $('#modalPageSizeSel').prop('disabled', inFlight);
     }
 
     function onModalPageChange(page) {
         page = parseInt(page, 10);
         if (!_modalServerState) return;
         if (!page || page < 1) return;
-        if (page > _modalServerState.totalPages) return;
+        // Cursor availability is the bound, not totalPages (an estimate).
+        if (page > 1 && !(_modalServerState.cursorByPage && _modalServerState.cursorByPage[page])) return;
         _loadModalPage(page);
     }
 
@@ -6561,8 +7374,15 @@
         newSize = parseInt(newSize, 10) || TH_PAGE_SIZE;
         TH_PAGE_SIZE = newSize;   // remember for next time
         if (!_modalServerState) return;
+        if (_modalServerState.inFlight) {
+            $('#modalPageSizeSel').val(_modalServerState.pageSize);
+            return;
+        }
         _modalServerState.pageSize = newSize;
         _modalServerState.page = 1;
+        // Cursors were minted against the old page boundaries — drop the chain.
+        _modalServerState.cursorByPage = { 1: '' };
+        _modalServerState.nextCursor = null;
         _loadModalPage(1);
     }
 
@@ -6682,3 +7502,30 @@
     }
 
 </script>
+
+@* ============================================================================
+   Ported v616 Telemetry History features.
+
+   These live in their own files rather than inline in this view on purpose.
+   This file is already ~320KB; Razor emits each markup run as a single
+   WriteLiteral, which CodeDom re-splits into 80-char pieces joined by '+',
+   and past roughly 4200 pieces csc fails with CS1647 ("expression is too long
+   or complex to compile") and the page returns HTTP 500 with nothing useful in
+   the view. Adding ~250KB of inline script would have walked into exactly that.
+
+   Load order matters:
+     compat  — helpers the ported code calls that this page never grew, plus
+               pager shims written against serverSideState (FRS Advance keys
+               pagination by asset INDEX; the source keyed it by asset ID).
+     feature — must come after compat, and after the inline script above,
+               because they wrap functions the inline script defines
+               (fnDownloadExcel / fnDownloadCSV).
+   ========================================================================= *@
+<link href="~/Areas/FRS25/assets/css/telemetryhistory-vibration.css" rel="stylesheet" />
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryHistory/telemetryhistory-compat.js?v=617.1"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryHistory/telemetryhistory-vibration.js?v=617.1"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryHistory/telemetryhistory-ipseld.js?v=617.1"></script>
+@* Graphs come last: this one REPLACES renderChart from the inline script above,
+   and its IPS stacked mode calls _ipsGroupChargingColumns from the ipseld
+   module, so both must already be in place. *@
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryHistory/telemetryhistory-graphs.js?v=617.1"></script>
