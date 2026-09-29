@@ -828,7 +828,36 @@
                    stale mCardLines while the new partial is being injected. */
                 window.json = "";
 
+                /* Must be set BEFORE append: the partial's script runs during
+                   append and reads this to decide whether fallbacks may paint. */
+                window.__rdpmsSearchStartedAt = Date.now();
+
+                /* Freeze what was SEARCHED. Tiles read this, not the live dropdowns,
+                   so they change only on Search. On the first search the Asset Type
+                   dropdown is still being built, and reading it live flipped tile
+                   ownership between 'summary' and 'rows' - two writers taking turns
+                   on the Sensor Total, which is the Point Machine flicker. */
+                var _typeTotal = $('.cb-assetType').length;
+                var _typeSel = (m.SearchCriteria.AssetTypeIds || []).map(String);
+                window.__rdpmsSearchScope = {
+                    siteIds: (m.SearchCriteria.SiteIds || []).map(String)
+                        .filter(function (s) { return parseInt(s, 10) > 0; }),
+                    owner: !_typeTotal ? 'none'
+                        : (_typeSel.length === _typeTotal ? 'summary' : 'rows'),
+                    assetTypeIds: (!_typeSel.length || _typeSel.length === _typeTotal)
+                        ? null : _typeSel
+                };
+
                 $("#divRDPMSHealthLive").empty().append(data);
+
+                /* Safety net: if no sensorHealthSummary lands within the grace
+                   window, re-bind once so the row/inventory fallback can paint. */
+                clearTimeout(window.__rdpmsSensorGraceTimer);
+                window.__rdpmsSensorGraceTimer = setTimeout(function () {
+                    if (typeof window.rdpmsBindSummaryTiles === 'function') {
+                        window.rdpmsBindSummaryTiles();
+                    }
+                }, 8100);
 
                 /*
  * Device-health WebSocket is opened below through

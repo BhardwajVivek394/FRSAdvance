@@ -52,9 +52,9 @@ var E7Theme = (function () {
     }
 
     // ── Apply theme to a wrapper ────────────────────────────────
-    function applyTheme(wrapper, theme) {
+    function applyTheme(wrapper, theme, skipSave) {
         wrapper.setAttribute('data-theme', theme);
-        saveTheme(theme);
+        if (!skipSave) saveTheme(theme);   // page load must not lock in the OS default
         // update any toggle buttons inside this wrapper
         wrapper.querySelectorAll('.e7-theme-toggle').forEach(function (btn) {
             var icon = btn.querySelector('i');
@@ -153,7 +153,7 @@ var E7Theme = (function () {
         document.querySelectorAll('.e7-aurora').forEach(function (wrapper) {
             // Apply saved or system theme
             var theme = getSavedTheme() || getSystemTheme();
-            applyTheme(wrapper, theme);
+            applyTheme(wrapper, theme, true);
 
             // Listen for clicks on any .e7-theme-toggle already in the DOM
             wrapper.addEventListener('click', function (e) {

@@ -1,5 +1,8 @@
 ﻿@model Domain.RDPMSHealthLiveLister
 
+@using System.Linq
+@using System.Collections.Generic
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -361,7 +364,13 @@
         margin: 10px 0 10px 10px;
         box-shadow: 0 2px 8px rgba(59,130,246,0.08);
         width: fit-content;
-        min-width: 420px;
+        /* No fixed min-width: the bar sat in a fixed col-6 with min-width
+           420px, so whenever half the content area was narrower than that it
+           overflowed into the Download column. Shrink with the column and
+           wrap From / To instead. */
+        min-width: 0;
+        max-width: calc(100% - 10px);
+        box-sizing: border-box;
         position: relative;
     }
 
@@ -426,6 +435,8 @@
         #selectedRangeBar {
             min-width: 0;
             width: 100%;
+            max-width: 100%;
+            margin: 10px 0;
             flex-direction: column;
             align-items: stretch;
             padding: 14px 16px 14px 20px;
@@ -816,10 +827,10 @@
         <div class="col">
 
             <!-- ================================================================
-                 RANGE BAR — always visible regardless of view mode
-                 ================================================================ -->
-            <div class="row">
-                <div class="col-6">
+            RANGE BAR — always visible regardless of view mode
+            ================================================================ -->
+            <div class="row align-items-center rdpms-range-row">
+                <div class="col-12 col-xl-8">
                     <div id="selectedRangeBar">
                         <div class="range-bar-accent"></div>
                         <div class="range-bar-group">
@@ -849,7 +860,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-6">
+                <div class="col-12 col-xl-4">
                     <div class="d-flex justify-content-end px-md-3 px-2 py-2">
                         @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode())
                         {
@@ -879,174 +890,29 @@
                 </div>
             </div>
 
-            <!-- ================================================================
-                 MEDIA HEALTH OVERVIEW — Wire / Wireless breakdown for IoT & Network
-                 over the selected date range. Aggregates ModemHistory records
-                 for every (site, cluster) pair and classifies each unique
-                 (DeviceId, TypeId) as online / faulty based on whether any
-                 healthy record was seen during the period.
-                 A10:   TypeId 1 = Wired  , TypeId 2 = Wireless
-                 Modem: TypeId 3 = Wired  , TypeId 2 = Wireless
-                 Design inspired by Network Dashboard's cluster-uptime-stats.
-                 ================================================================ -->
-            <div class="rdpms-lmh-panel" id="rdpmsLmhPanel">
-                <div class="rdpms-lmh-refresh-bar">
-                    <div class="rdpms-lmh-refresh-left">
-                        <span id="rdpmsLmhIndicator" class="rdpms-lmh-indicator"></span>
-                        <span id="rdpmsLmhStatusText">Media health overview loading…</span>
-                        <span class="rdpms-lmh-sep">•</span>
-                        <span id="rdpmsLmhStationCount">0 stations</span>
-                        <span class="rdpms-lmh-sep">•</span>
-                        <span id="rdpmsLmhClusterCount">0 clusters</span>
-                    </div>
-                    <div class="rdpms-lmh-refresh-right">
-                        <span id="rdpmsLmhRangeSummary">Range: —</span>
-                        <span class="rdpms-lmh-sep">•</span>
-                        <a href="javascript:void(0);" id="rdpmsLmhRefreshBtn"
-                           style="color:#3b82f6;text-decoration:none;font-weight:700;">Refresh</a>
-                    </div>
-                </div>
-
-                <!-- Progress bar (shown while cluster discovery + history calls run). -->
-                <div class="rdpms-lmh-progress-track" id="rdpmsLmhProgressTrack">
-                    <div class="rdpms-lmh-progress-fill" id="rdpmsLmhProgressFill"></div>
-                </div>
-
-                <div class="rdpms-lmh-grid">
-                    <!-- ═══ IoT (A10) CARD ═══ -->
-                    <div class="rdpms-lmh-card rdpms-lmh-card--iot">
-                        <div class="rdpms-lmh-card-header">
-                            <div class="rdpms-lmh-title">
-                                <span class="rdpms-lmh-title-icon" title="IoT / A10">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
-                                </span>
-                                IoT Devices (A10)
-                            </div>
-                            <span class="rdpms-lmh-total" id="rdpmsLmhIoTTotal">— devices</span>
-                        </div>
-                        <div class="rdpms-lmh-bifurcated">
-                            <!-- IoT — WIRED (TypeId = 1) -->
-                            <div class="rdpms-lmh-block" id="rdpmsLmhIoTWiredBlock">
-                                <div class="rdpms-lmh-block-head">
-                                    <span class="rdpms-lmh-proto">
-                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M5 12l4-4M5 12l4 4M19 12l-4-4M19 12l-4 4" /></svg>
-                                        Wired
-                                    </span>
-                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhIoTWiredPct">—</span>
-                                </div>
-                                <div class="rdpms-lmh-durations">
-                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-                                        <span id="rdpmsLmhIoTWiredUp">0</span>
-                                    </span>
-                                    <span class="rdpms-lmh-dur-sep">|</span>
-                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
-                                        <span id="rdpmsLmhIoTWiredDown">0</span>
-                                    </span>
-                                </div>
-                                <div class="rdpms-lmh-meter">
-                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhIoTWiredMeter" style="width:0%;"></div>
-                                </div>
-                            </div>
-
-                            <!-- IoT — WIRELESS (TypeId = 2) -->
-                            <div class="rdpms-lmh-block" id="rdpmsLmhIoTWirelessBlock">
-                                <div class="rdpms-lmh-block-head">
-                                    <span class="rdpms-lmh-proto">
-                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a10.94 10.94 0 0 1 14 0" /><path d="M1.42 9a15.91 15.91 0 0 1 21.16 0" /><path d="M8.53 16.11a5.9 5.9 0 0 1 6.94 0" /><circle cx="12" cy="20" r="1" /></svg>
-                                        Wireless
-                                    </span>
-                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhIoTWirelessPct">—</span>
-                                </div>
-                                <div class="rdpms-lmh-durations">
-                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-                                        <span id="rdpmsLmhIoTWirelessUp">0</span>
-                                    </span>
-                                    <span class="rdpms-lmh-dur-sep">|</span>
-                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
-                                        <span id="rdpmsLmhIoTWirelessDown">0</span>
-                                    </span>
-                                </div>
-                                <div class="rdpms-lmh-meter">
-                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhIoTWirelessMeter" style="width:0%;"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ═══ NETWORK (MODEM) CARD ═══ -->
-                    <div class="rdpms-lmh-card rdpms-lmh-card--net">
-                        <div class="rdpms-lmh-card-header">
-                            <div class="rdpms-lmh-title">
-                                <span class="rdpms-lmh-title-icon" title="Network / Modem">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></svg>
-                                </span>
-                                Network Devices (Modem)
-                            </div>
-                            <span class="rdpms-lmh-total" id="rdpmsLmhNetTotal">— devices</span>
-                        </div>
-                        <div class="rdpms-lmh-bifurcated">
-                            <!-- Net — WIRED (TypeId = 3 → OFC / TCP) -->
-                            <div class="rdpms-lmh-block" id="rdpmsLmhNetWiredBlock">
-                                <div class="rdpms-lmh-block-head">
-                                    <span class="rdpms-lmh-proto">
-                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M5 12l4-4M5 12l4 4M19 12l-4-4M19 12l-4 4" /></svg>
-                                        Wired · OFC
-                                    </span>
-                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhNetWiredPct">—</span>
-                                </div>
-                                <div class="rdpms-lmh-durations">
-                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-                                        <span id="rdpmsLmhNetWiredUp">0</span>
-                                    </span>
-                                    <span class="rdpms-lmh-dur-sep">|</span>
-                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
-                                        <span id="rdpmsLmhNetWiredDown">0</span>
-                                    </span>
-                                </div>
-                                <div class="rdpms-lmh-meter">
-                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhNetWiredMeter" style="width:0%;"></div>
-                                </div>
-                            </div>
-
-                            <!-- Net — WIRELESS (TypeId = 2 → 4G / MQTT) -->
-                            <div class="rdpms-lmh-block" id="rdpmsLmhNetWirelessBlock">
-                                <div class="rdpms-lmh-block-head">
-                                    <span class="rdpms-lmh-proto">
-                                        <svg class="rdpms-lmh-proto-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a10.94 10.94 0 0 1 14 0" /><path d="M1.42 9a15.91 15.91 0 0 1 21.16 0" /><path d="M8.53 16.11a5.9 5.9 0 0 1 6.94 0" /><circle cx="12" cy="20" r="1" /></svg>
-                                        Wireless · 4G
-                                    </span>
-                                    <span class="rdpms-lmh-pct zero" id="rdpmsLmhNetWirelessPct">—</span>
-                                </div>
-                                <div class="rdpms-lmh-durations">
-                                    <span class="rdpms-lmh-up" title="Uptime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-                                        <span id="rdpmsLmhNetWirelessUp">0</span>
-                                    </span>
-                                    <span class="rdpms-lmh-dur-sep">|</span>
-                                    <span class="rdpms-lmh-down" title="Downtime during selected range">
-                                        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
-                                        <span id="rdpmsLmhNetWirelessDown">0</span>
-                                    </span>
-                                </div>
-                                <div class="rdpms-lmh-meter">
-                                    <div class="rdpms-lmh-meter-fill zero" id="rdpmsLmhNetWirelessMeter" style="width:0%;"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ================================================================
-                 TABLE VIEW
-                 ================================================================ -->
             <div id="listView">
+                @{
+                    var rdpmsRows = (Model != null && Model.mAssets != null) ? Model.mAssets : new List<Domain.RDPMSHealthLive>();
+                    var rdpmsDownPeriodsJson = Newtonsoft.Json.JsonConvert.SerializeObject(
+                        rdpmsRows.Select((item, idx) => new
+                        {
+                            idx = idx,
+                            siteName = item.SiteName,
+                            assetType = item.AssetTypeName,
+                            downPeriods = (item.DownPeriods ?? new List<Domain.RDPMSDownPeriod>()).Select(d => new
+                            {
+                                assetName = d.AssetName,
+                                deviceId = d.DeviceId,
+                                deviceType = d.DeviceType,
+                                category = d.Category,
+                                fromTime = d.FromTime,
+                                toTime = d.ToTime,
+                                downMinutes = d.DownMinutes
+                            })
+                        })
+                    );
+                }
+                <script type="application/json" id="rdpmsDownPeriodsData">@Html.Raw(rdpmsDownPeriodsJson)</script>
                 <div class="row">
                     <div class="col-12">
                         <div class="table-responsive">
@@ -1075,11 +941,12 @@
                                         foreach (var item in Model.mAssets)
                                         {
                                             counter++;
+                                            int rowIndex = counter - 1;
                                             // Stations 161 and 167 must always report full health in the
                                             // summary: every device category is shown at 100% availability
                                             // regardless of the raw values returned by the API.
                                             bool rdpmsForcedHealthy = (item.SiteId == 161 || item.SiteId == 167);
-                                            <tr data-siteid="@item.SiteId">
+                                            <tr data-siteid="@item.SiteId" data-row-index="@rowIndex">
                                                 <td>@counter</td>
                                                 <td>@item.Zone</td>
                                                 <td>@item.Division</td>
@@ -1089,29 +956,29 @@
                                                 <td class="text-center rdpms-pct-clickable" data-category="Sensor">
                                                     @if (rdpmsForcedHealthy)
                                                     {<text>100</text> }
-                                                    else
-                                                    { @item.PersentageSensors}
+                                                else
+                                                { @item.PersentageSensors}
                                                 </td>
                                                 <td class="text-center">@item.TotalIoTSensors</td>
                                                 <td class="text-center rdpms-pct-clickable" data-category="IoT">
                                                     @if (rdpmsForcedHealthy)
                                                     {<text>100</text> }
-                                                    else
-                                                    { @item.PersentageIoTSensors}
+                                                else
+                                                { @item.PersentageIoTSensors}
                                                 </td>
                                                 <td class="text-center">@item.TotalNetworkSensors</td>
                                                 <td class="text-center rdpms-pct-clickable" data-category="Network">
                                                     @if (rdpmsForcedHealthy)
                                                     {<text>100</text> }
-                                                    else
-                                                    { @item.PersentageNetworkSensors}
+                                                else
+                                                { @item.PersentageNetworkSensors}
                                                 </td>
                                                 <td class="text-center">@item.TotalStnGateway</td>
                                                 <td class="text-center rdpms-pct-clickable" data-category="Gateway">
                                                     @if (rdpmsForcedHealthy)
                                                     {<text>100</text> }
-                                                    else
-                                                    { @item.PersentageStnGateway}
+                                                else
+                                                { @item.PersentageStnGateway}
                                                 </td>
                                             </tr>
                                         }
@@ -1162,8 +1029,8 @@
             <table class="rdpms-modal-table" id="rdpmsDownModalTable">
                 <thead>
                     <tr>
-                        <th>Asset</th>
-                        <th>Device</th>
+                        <th id="rdpmsDownModalColAsset">Asset</th>
+                        <th id="rdpmsDownModalColDevice">Device</th>
                         <th>From</th>
                         <th>To</th>
                         <th>Down (min)</th>
@@ -3202,13 +3069,13 @@
 
         /* Manual refresh button (history for a fixed range doesn't need a
            timer — but a manual retry is useful on transient failures). */
-        $(document).on('click', '#rdpmsLmhRefreshBtn', function (e) {
-            e.preventDefault();
-            lmhFetch();
-        });
+        //$(document).on('click', '#rdpmsLmhRefreshBtn', function (e) {
+        //    e.preventDefault();
+        //    lmhFetch();
+        //});
 
-        /* Kick off once the partial is rendered. */
-        $(function () { lmhFetch(); });
+        ///* Kick off once the partial is rendered. */
+        //$(function () { lmhFetch(); });
 
     }(jQuery));
 </script>
@@ -3216,6 +3083,12 @@
 <script>
     (function ($) {
         var CATEGORY_LABELS = { Sensor: 'Sensor', IoT: 'IoT', Network: 'Network', Gateway: 'Station Gateway' };
+
+        // The popup is position:fixed, but a filtered/transformed ancestor in the
+        // themed layout can trap it inside the results panel, so it rendered below
+        // the table. Mount it on <body>, dropping the copy left by the previous search.
+        $('body > #rdpmsDownModal').remove();
+        $('#rdpmsDownModal').appendTo(document.body);
 
         var rowsData = [];
         try {
@@ -3233,6 +3106,13 @@
             return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
         }
 
+        var COLUMN_LABELS = {
+            Sensor: { asset: 'Asset', device: 'Attribute' },   // CHANGED: 'Device' → 'Attribute'
+            IoT: { asset: 'Location Name', device: 'IOT Id' },
+            Network: { asset: 'Location Name', device: 'Network Id' },
+            Gateway: { asset: 'Location Name', device: 'Gateway Id' }
+        };
+
         function openDownModal(rowIndex, category) {
             var row = rowsData[rowIndex];
             var $body = $('#rdpmsDownModalBody').empty();
@@ -3240,6 +3120,9 @@
             var label = CATEGORY_LABELS[category] || category;
 
             $('#rdpmsDownModalTitle').text(label + ' — Downtime Detail');
+            var cols = COLUMN_LABELS[category] || { asset: 'Asset', device: 'Device' };
+            $('#rdpmsDownModalColAsset').text(cols.asset);
+            $('#rdpmsDownModalColDevice').text(cols.device);
             $('#rdpmsDownModalSub').text(row ? (row.siteName + ' · ' + row.assetType) : '');
 
             var periods = (row && row.downPeriods) ? row.downPeriods.filter(function (p) { return p.category === category; }) : [];
@@ -3268,7 +3151,11 @@
             $('#rdpmsDownModal').removeClass('is-open');
         }
 
-        $(document).on('click', '.rdpms-pct-clickable', function () {
+        // _Detail reloads on every search; namespace the handlers so they are
+        // replaced rather than stacked on top of the previous search's data.
+        $(document).off('.rdpmsDown');
+
+        $(document).on('click.rdpmsDown', '.rdpms-pct-clickable', function () {
             var $td = $(this);
             var $tr = $td.closest('tr');
             var rowIndex = parseInt($tr.attr('data-row-index'), 10);
@@ -3277,11 +3164,11 @@
             openDownModal(rowIndex, category);
         });
 
-        $(document).on('click', '#rdpmsDownModalClose', closeDownModal);
-        $(document).on('click', '#rdpmsDownModal', function (e) {
+        $(document).on('click.rdpmsDown', '#rdpmsDownModalClose', closeDownModal);
+        $(document).on('click.rdpmsDown', '#rdpmsDownModal', function (e) {
             if (e.target === this) closeDownModal();
         });
-        $(document).on('keydown', function (e) {
+        $(document).on('keydown.rdpmsDown', function (e) {
             if (e.key === 'Escape') closeDownModal();
         });
     }(jQuery));

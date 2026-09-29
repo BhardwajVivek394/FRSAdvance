@@ -3,6 +3,18 @@ using System.Collections.Generic;
 
 namespace Domain
 {
+    public class RDPMSDownPeriod
+    {
+        public int AssetId { get; set; }
+        public string AssetName { get; set; }
+        public string DeviceType { get; set; }
+        public string DeviceId { get; set; }       // ModemId / A10 / DeviceId from SiteHealthEvent, or sensor's AttId
+        public string Category { get; set; }        // "Sensor" | "IoT" | "Network" | "Gateway"
+        public DateTime FromTime { get; set; }       // clamped SetTime (>= FromDate)
+        public DateTime? ToTime { get; set; }        // clamped ResetTime; null = still down as of ToDate
+        public double DownMinutes { get; set; }
+    }
+
     public class RDPMSHealthLive
     {
         public int ZoneId { get; set; }
@@ -38,6 +50,7 @@ namespace Domain
         public string FromTime { get; set; }
         public DateTime ToDate { get; set; }
         public string ToTime { get; set; }
+        public List<RDPMSDownPeriod> DownPeriods { get; set; } = new List<RDPMSDownPeriod>();
 
     }
 

@@ -1,0 +1,2665 @@
+/* ============================================================
+   e7-energy7-theme.css
+   Energy7 RDPMS — flat card theme (from "Energy7 Dashboard 2")
+
+   A soft grey page, a white application shell, a turquoise → blue
+   gradient rail, flat white cards with hairline borders and pastel
+   accents on summary surfaces. Light and dark schemes.
+
+   HOW IT PLUGS IN
+   ---------------
+   • Loaded LAST in _Layout.cshtml (after every inline <style>), so it
+     wins over the Aurora Glass layout, aurora-bridge.css and page CSS.
+   • The scheme follows the existing toggle: html/body[data-aurora].
+   • Shell rules are scoped under #e7Body (the <body> id). The id beats
+     the Aurora rules' class/attribute selectors, and !important is
+     only used where the Aurora rule it replaces also used it.
+   • Page tokens (--glass-*, --text-1..4, --ok/--warn/--bad, --bg-card,
+     --text-primary …) are remapped on #e7App, so every page built on
+     those tokens picks up the new palette without markup changes.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. Theme tokens
+   ------------------------------------------------------------ */
+
+/* Shell geometry — the same in both schemes. Keep these on plain :root only:
+   the responsive @media blocks override them with :root, and a more specific
+   scheme selector here (html[data-aurora="light"]) would win over those and
+   make the sidebar / spacing change size when the theme is toggled. */
+:root {
+    --e7-frame: 18px;   /* grey page margin around the white shell */
+    --e7-inset: 14px;   /* white shell padding */
+    --sidebar-width: 258px;
+    --sidebar-width-mini: 76px;
+}
+
+:root,
+html[data-aurora="light"] {
+    --e7-page: #e7e9ec;
+    --e7-shell: #ffffff;
+    --e7-surface: #ffffff;
+    --e7-surface-2: #f6f8fa;
+    --e7-surface-3: #eef2f6;
+
+    --e7-border: #e7ebf1;
+    --e7-border-2: #dde3ec;
+    --e7-shadow-shell: 0 26px 60px rgba(20, 44, 74, .10);
+    --e7-shadow-card: 0 1px 2px rgba(20, 44, 74, .05), 0 6px 16px rgba(20, 44, 74, .045);
+    --e7-shadow-soft: 0 1px 2px rgba(20, 44, 74, .05);
+    --e7-shadow-pop: 0 18px 40px rgba(20, 44, 74, .14);
+    --e7-shadow-hover: 0 10px 24px rgba(20, 44, 74, .12), 0 2px 6px rgba(20, 44, 74, .06);
+    --e7-shadow-rail: 0 14px 30px rgba(52, 150, 186, .28);
+
+    --e7-rail-from: #54c9c8;
+    --e7-rail-mid: #56b9d6;
+    --e7-rail-to: #5ba0e2;
+    --e7-rail-text: rgba(255, 255, 255, .90);
+    --e7-rail-text-dim: rgba(255, 255, 255, .74);
+    --e7-rail-icon: rgba(255, 255, 255, .92);
+    --e7-rail-hover: rgba(255, 255, 255, .16);
+    --e7-rail-active-bg: #ffffff;
+    --e7-rail-active-fg: #1b3c55;
+    --e7-rail-active-icon: #2f9ec4;
+    --e7-rail-chip: rgba(255, 255, 255, .95);
+    --e7-rail-divider: rgba(255, 255, 255, .22);
+
+    --e7-text: #22303f;
+    --e7-text-2: #55657a;
+    --e7-text-3: #8b98a8;
+    --e7-text-4: #b3bdc9;
+    --e7-heading: #1b3c55;
+    --e7-footer-text: #93a0af;
+
+    --e7-accent: #2f9ec4;
+    --e7-accent-2: #4fc4c1;
+    --e7-accent-ink: #1d6f8d;
+    --e7-accent-soft: rgba(47, 158, 196, .12);
+    --e7-ask-from: #4fc9c6;
+    --e7-ask-to: #4f9fe4;
+    --e7-grid-line: #eef2f7;
+
+    --e7-green: #0f9c74;
+    --e7-amber: #9d700a;
+    --e7-red: #d1394f;
+    --e7-dot-green: #16b988;
+    --e7-dot-amber: #f0ad12;
+    --e7-dot-red: #ef5b72;
+    --e7-live-bg: #def7ee;
+    --e7-live-fg: #0e9a6f;
+
+    --e7-p-aqua: #d7f2f1;
+    --e7-p-aqua-2: #f0fbfa;
+    --e7-p-blue: #e1ebfb;
+    --e7-p-blue-2: #f2f6fe;
+    --e7-p-lilac: #e9e5fa;
+    --e7-p-lilac-2: #f5f3fd;
+    --e7-wash: rgba(6, 6, 6, .05);
+
+    --e7-c1: #0f93a6;
+    --e7-c2: #6f4fd0;
+    --e7-c3: #1f8f60;
+    --e7-c4: #c34173;
+    --e7-c5: #a97a10;
+    --e7-c6: #3a7fd0;
+
+    --e7-focus: #0a84d8;
+}
+
+html[data-aurora="dark"],
+html:not([data-aurora="light"]) {
+    --e7-page: #12171f;
+    --e7-shell: #1a2029;
+    --e7-surface: #212934;
+    --e7-surface-2: #1d242e;
+    --e7-surface-3: #262f3b;
+
+    --e7-border: #2c3644;
+    --e7-border-2: #36424f;
+    --e7-shadow-shell: 0 26px 60px rgba(0, 0, 0, .45);
+    --e7-shadow-card: 0 1px 2px rgba(0, 0, 0, .3);
+    --e7-shadow-soft: 0 1px 2px rgba(0, 0, 0, .3);
+    --e7-shadow-pop: 0 18px 40px rgba(0, 0, 0, .5);
+    --e7-shadow-hover: 0 10px 24px rgba(0, 0, 0, .45), 0 2px 6px rgba(0, 0, 0, .3);
+    --e7-shadow-rail: 0 14px 30px rgba(0, 0, 0, .38);
+
+    --e7-rail-from: #1c6a72;
+    --e7-rail-mid: #1d5c7d;
+    --e7-rail-to: #234f80;
+    --e7-rail-text: rgba(255, 255, 255, .88);
+    --e7-rail-text-dim: rgba(255, 255, 255, .68);
+    --e7-rail-icon: rgba(255, 255, 255, .88);
+    --e7-rail-hover: rgba(255, 255, 255, .12);
+    --e7-rail-active-bg: rgba(255, 255, 255, .94);
+    --e7-rail-active-fg: #16303f;
+    --e7-rail-active-icon: #1d7f9e;
+    --e7-rail-chip: rgba(255, 255, 255, .92);
+    --e7-rail-divider: rgba(255, 255, 255, .16);
+
+    --e7-text: #dce4ee;
+    --e7-text-2: #aab6c6;
+    --e7-text-3: #8391a3;
+    --e7-text-4: #5d6a7b;
+    --e7-heading: #eaf1f8;
+    --e7-footer-text: #7d8a9b;
+
+    --e7-accent: #5cc0e2;
+    --e7-accent-2: #4fd0cb;
+    --e7-accent-ink: #8fd8ee;
+    --e7-accent-soft: rgba(92, 192, 226, .14);
+    --e7-ask-from: #2f9aa0;
+    --e7-ask-to: #3573b8;
+    --e7-grid-line: rgba(140, 175, 235, .12);
+
+    --e7-green: #2fd6a3;
+    --e7-amber: #f0b429;
+    --e7-red: #ff7a90;
+    --e7-dot-green: #2fd6a3;
+    --e7-dot-amber: #f0b429;
+    --e7-dot-red: #ff7a90;
+    --e7-live-bg: rgba(47, 214, 163, .16);
+    --e7-live-fg: #47e0b4;
+
+    --e7-p-aqua: rgba(47, 197, 197, .16);
+    --e7-p-aqua-2: rgba(47, 197, 197, .07);
+    --e7-p-blue: rgba(91, 160, 226, .18);
+    --e7-p-blue-2: rgba(91, 160, 226, .08);
+    --e7-p-lilac: rgba(150, 130, 235, .18);
+    --e7-p-lilac-2: rgba(150, 130, 235, .08);
+    --e7-wash: rgba(255, 255, 255, .03);
+
+    --e7-c1: #2ec4d8;
+    --e7-c2: #a58cff;
+    --e7-c3: #3fc48c;
+    --e7-c4: #ff85ac;
+    --e7-c5: #edc04a;
+    --e7-c6: #6fb0f0;
+
+    --e7-focus: #5cc0e2;
+}
+
+/* ------------------------------------------------------------
+   2. Page-token bridge
+   Pages (dashboard, alerts, performance, telemetry …) are built on
+   the Aurora tokens. Remapping them here — on <html> for first paint
+   and on #e7App so they beat the pages' own [data-theme] blocks —
+   re-skins every page in one place. Both schemes read the --e7-*
+   tokens above, so this block is written once.
+   ------------------------------------------------------------ */
+
+html[data-aurora],
+html[data-aurora] #e7App {
+    /* dashboard (Home/Index) */
+    --bg-0: var(--e7-shell);
+    --bg-1: var(--e7-surface);
+    --bg-2: var(--e7-surface-2);
+    --glass-1: var(--e7-surface-2);
+    --glass-2: var(--e7-surface);
+    --glass-3: var(--e7-surface-3);
+    --glass-4: var(--e7-border);
+    --glass-edge: var(--e7-border);
+    --glass-edge-strong: var(--e7-border-2);
+    --glass-inset: none;
+    --text-1: var(--e7-heading);
+    --text-2: var(--e7-text-2);
+    --text-3: var(--e7-text-3);
+    --text-4: var(--e7-text-4);
+    --shadow-glass: var(--e7-shadow-card);
+    --shadow-raised: var(--e7-shadow-pop);
+    --shadow-glow-cyan: none;
+    --brand: var(--e7-accent);
+    --brand-deep: var(--e7-accent-ink);
+    --brand-glow: transparent;
+    --aurora-cyan: var(--e7-accent);
+    --aurora-blue: var(--e7-rail-to);
+    --aurora-violet: var(--e7-c2);
+    --aurora-magenta: var(--e7-c4);
+    --aurora-emerald: var(--e7-c3);
+    --ok: var(--e7-green);
+    --warn: var(--e7-amber);
+    --bad: var(--e7-red);
+    --info: var(--e7-c2);
+    --blue: var(--e7-accent);
+    --blue-bright: var(--e7-accent-ink);
+    --blue-dim: var(--e7-accent-soft);
+    --primary: var(--e7-accent);
+    --primary-light: var(--e7-accent-2);
+    --primary-50: var(--e7-accent-soft);
+    --primary-100: var(--e7-accent-soft);
+
+    /* status */
+    --green: var(--e7-green);
+    --amber: var(--e7-amber);
+    --red: var(--e7-red);
+
+    /* generic page tokens (layout + aurora-bridge) */
+    --bg-page: transparent;
+    --bg-base: transparent;
+    --bg-surface: var(--e7-surface);
+    --bg-elevated: var(--e7-surface-2);
+    --bg-card: var(--e7-surface);
+    --border: var(--e7-border);
+    --border-light: var(--e7-border);
+    --border-bright: var(--e7-border-2);
+    --text-primary: var(--e7-text);
+    --text-secondary: var(--e7-text-2);
+    --text-muted: var(--e7-text-3);
+    --text-light: var(--e7-text-4);
+    --shadow-sm: var(--e7-shadow-soft);
+    --shadow: var(--e7-shadow-card);
+    --shadow-md: var(--e7-shadow-card);
+    --shadow-lg: var(--e7-shadow-pop);
+    --shadow-card: var(--e7-shadow-card);
+
+    --alrt-surface: var(--e7-surface);
+    --alrt-card-bg: var(--e7-surface);
+    --alrt-border: var(--e7-border);
+    --alrt-text: var(--e7-text);
+    --alrt-text-muted: var(--e7-text-3);
+    --perf-card: var(--e7-surface);
+    --perf-border: var(--e7-border);
+    --perf-text: var(--e7-text);
+    --perf-muted: var(--e7-text-3);
+    --cb-bg: var(--e7-surface);
+    --cb-border: var(--e7-border);
+    --cb-text: var(--e7-text);
+    --cb-hover: var(--e7-surface-3);
+    --um-bg: var(--e7-surface);
+    --um-border: var(--e7-border);
+    --um-text: var(--e7-text);
+}
+
+/* ------------------------------------------------------------
+   3. Page + application shell
+   ------------------------------------------------------------ */
+
+html body#e7Body {
+    background: var(--e7-page) !important;
+    color: var(--e7-text) !important;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-size: 13px;
+    line-height: 1.45;
+    letter-spacing: normal;      /* some pages (Command Control) tighten <body>, which leaked into the shell */
+    -webkit-font-smoothing: antialiased;
+    transition: background-color .25s ease, color .25s ease;
+}
+
+/* One typeface everywhere; beats the dashboard's Manrope/Bricolage rules.
+   Icon fonts are excluded so Font Awesome glyphs keep rendering. */
+#e7Body *:not(.fa):not(.fas):not(.far):not(.fab):not(.fal):not(.fad):not(.fa-solid):not(.fa-regular):not(.fa-brands):not([class*="fa-"]):not(code):not(pre):not(kbd):not(samp) {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+#e7Body h1, #e7Body h2, #e7Body h3, #e7Body h4, #e7Body h5, #e7Body h6 {
+    letter-spacing: -.01em;
+}
+
+/* Numbers line up column to column. */
+#e7Body .e7-body {
+    font-variant-numeric: tabular-nums;
+}
+
+/* The Aurora canvases are retired — the shell is flat. */
+#e7Body #auroraCanvas,
+#e7Body .at-canvas,
+#e7Body .aurora-bg,
+#e7Body .e7-grain {
+    display: none !important;
+}
+
+#e7Body .e7-app {
+    margin: var(--e7-frame);
+    width: auto;
+    min-height: calc(100vh - (var(--e7-frame) * 2));
+    background: var(--e7-shell) !important;
+    border-radius: 26px;
+    box-shadow: var(--e7-shadow-shell);
+    transition: background-color .25s ease;
+}
+
+/* ---- sidebar rail ------------------------------------------ */
+
+#e7Body .e7-sidebar {
+    top: calc(var(--e7-frame) + var(--e7-inset));
+    left: calc(var(--e7-frame) + var(--e7-inset));
+    bottom: calc(var(--e7-frame) + var(--e7-inset));
+    width: var(--sidebar-width);
+    padding: 18px 12px 14px;
+    background: linear-gradient(168deg, var(--e7-rail-from) 0%, var(--e7-rail-mid) 46%, var(--e7-rail-to) 100%) !important;
+    border: none !important;
+    border-radius: 22px;
+    box-shadow: var(--e7-shadow-rail) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: width .28s ease, transform .28s ease;
+}
+
+#e7Body .e7-brand {
+    display: block;
+    padding: 4px 8px 16px;
+    border-bottom: none !important;
+    text-align: center;
+}
+
+/* The ENERGY7 mark is navy + charcoal, so it sits on a white chip
+   to stay legible against the coloured rail. */
+#e7Body .e7-logo-chip {
+    display: block;
+    background: var(--e7-rail-chip);
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 8px rgba(12, 46, 72, .12);
+}
+
+#e7Body .e7-logo-chip img {
+    display: block;
+    width: 100%;
+    max-width: 176px;
+    height: auto;
+    margin: 0 auto;
+}
+
+#e7Body .e7-brand-tag {
+    display: block;
+    margin-top: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2.4px;
+    text-transform: uppercase;
+    color: var(--e7-rail-text-dim) !important;
+    white-space: nowrap;
+}
+
+#e7Body .e7-nav {
+    padding: 4px 6px 4px 2px;
+    margin-right: -4px;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, .4) transparent;
+}
+
+#e7Body .e7-nav::-webkit-scrollbar { width: 6px; }
+#e7Body .e7-nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .35); border-radius: 6px; }
+#e7Body .e7-nav::-webkit-scrollbar-track { background: transparent; }
+
+#e7Body .e7-nav-section {
+    color: var(--e7-rail-text-dim) !important;
+}
+
+#e7Body .e7-nav-item {
+    min-height: 42px;
+    padding: 0 14px;
+    margin: 3px 0;
+    gap: 10px;
+    border-radius: 11px;
+    font-size: 14.5px;
+    font-weight: 500;
+    letter-spacing: .1px;
+    color: var(--e7-rail-text) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    transition: background-color .16s ease, color .16s ease;
+}
+
+#e7Body .e7-nav-item i {
+    width: 22px;
+    font-size: 13px;
+    color: var(--e7-rail-icon) !important;
+}
+
+#e7Body .e7-nav-item:hover {
+    background: var(--e7-rail-hover) !important;
+    color: #fff !important;
+}
+
+#e7Body .e7-nav-item:hover i {
+    color: #fff !important;
+}
+
+#e7Body .e7-nav-item.active {
+    background: var(--e7-rail-active-bg) !important;
+    color: var(--e7-rail-active-fg) !important;
+    font-weight: 700;
+    box-shadow: 0 3px 10px rgba(11, 46, 72, .18) !important;
+}
+
+#e7Body .e7-nav-item.active i {
+    color: var(--e7-rail-active-icon) !important;
+}
+
+#e7Body .e7-nav-item.active::before {
+    display: none;
+}
+
+#e7Body .e7-nav-item i.e7-chevron {
+    width: auto;
+    font-size: 10px;
+    opacity: .75;
+}
+
+/* submenu: a hairline guide instead of glowing bullets */
+#e7Body .e7-submenu {
+    padding-left: 22px;
+    margin-left: 16px;
+    border-left: 1px solid var(--e7-rail-divider);
+}
+
+#e7Body .e7-submenu .e7-nav-item {
+    min-height: 36px;
+    padding: 0 12px;
+    margin: 2px 0;
+    font-size: 13.5px;
+    color: var(--e7-rail-text-dim) !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item::after {
+    left: -25px;
+    background: var(--e7-rail-divider) !important;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item:hover {
+    background: var(--e7-rail-hover) !important;
+    color: #fff !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item:hover::after,
+#e7Body .e7-submenu .e7-nav-item.active::after {
+    background: #fff !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item.active {
+    background: rgba(255, 255, 255, .22) !important;
+    color: #fff !important;
+    font-weight: 700;
+    box-shadow: none !important;
+}
+
+/* profile card */
+#e7Body .e7-sidebar-footer {
+    padding: 12px 0 0;
+    border-top: none !important;
+}
+
+#e7Body .e7-sidebar-user {
+    padding: 11px 12px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .16) !important;
+    border: 1px solid var(--e7-rail-divider) !important;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-sidebar-user:hover {
+    background: rgba(255, 255, 255, .24) !important;
+}
+
+#e7Body .e7-sidebar-user-avatar {
+    width: 34px;
+    height: 34px;
+    background: rgba(255, 255, 255, .95);
+    color: var(--e7-rail-active-fg);
+    font-size: 14px;
+    box-shadow: none;
+}
+
+#e7Body .e7-sidebar-user-avatar::after {
+    background: var(--e7-dot-green);
+    border-color: var(--e7-rail-mid) !important;
+    box-shadow: none;
+}
+
+#e7Body .e7-sidebar-user-name { color: #fff !important; font-size: 13px; font-weight: 700; }
+#e7Body .e7-sidebar-user-role { color: var(--e7-rail-text-dim) !important; font-size: 11px; }
+#e7Body .e7-sidebar-user-caret { color: var(--e7-rail-text-dim) !important; }
+
+/* collapsed rail: keep the E7 roundel from the logo */
+body#e7Body.sidebar-mini .e7-sidebar {
+    width: var(--sidebar-width-mini);
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+body#e7Body.sidebar-mini .e7-brand {
+    padding: 4px 0 14px;
+}
+
+body#e7Body.sidebar-mini .e7-logo-chip {
+    padding: 8px 6px;
+    border-radius: 12px;
+}
+
+body#e7Body.sidebar-mini .e7-logo-chip img {
+    width: 30px;
+    height: 30px;
+    max-width: none;
+    object-fit: cover;
+    object-position: left center;
+}
+
+body#e7Body.sidebar-mini .e7-brand-tag,
+body#e7Body.sidebar-mini .e7-nav-item i.e7-chevron,
+body#e7Body.sidebar-mini .e7-submenu {
+    display: none;
+}
+
+body#e7Body.sidebar-mini .e7-nav-item {
+    justify-content: center;
+    padding: 0;
+}
+
+body#e7Body.sidebar-mini .e7-sidebar-user {
+    justify-content: center;
+    padding: 6px;
+}
+
+/* ---- main column ------------------------------------------- */
+
+#e7Body .e7-main {
+    margin-left: calc(var(--sidebar-width) + var(--e7-inset) + var(--e7-frame));
+    width: calc(100% - var(--sidebar-width) - var(--e7-inset) - var(--e7-frame));
+    min-height: calc(100vh - (var(--e7-frame) * 2));
+    background: transparent !important;
+}
+
+body#e7Body.sidebar-mini .e7-main {
+    margin-left: calc(var(--sidebar-width-mini) + var(--e7-inset) + var(--e7-frame));
+    width: calc(100% - var(--sidebar-width-mini) - var(--e7-inset) - var(--e7-frame));
+}
+
+#e7Body .e7-body {
+    padding: 14px var(--e7-inset) 0 0;
+    background: transparent !important;
+}
+
+/* ---- top bar ------------------------------------------------ */
+/* The zip's .topbar / .hamb / .title / .top-actions / .pill rules, applied to
+   the layout header (which also carries those class names). !important only
+   where the Aurora layout's own day/night rules for these elements use it. */
+
+#e7Body .e7-header,
+#e7Body .e7-header.topbar {
+    position: relative;            /* the zip's top bar scrolls with the page */
+    top: auto;
+    z-index: 300;
+    height: auto;
+    min-height: 62px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: var(--e7-inset) var(--e7-inset) 0 0;
+    padding: 11px 14px;
+    border-radius: 16px;
+    background: var(--e7-surface-2) !important;
+    border: 1px solid var(--e7-border) !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* .hamb — only shown when the rail is off-canvas */
+#e7Body .e7-menu-toggle.hamb {
+    display: none;
+    font-size: 18px;
+    line-height: 1;
+    background: var(--e7-surface) !important;
+    color: var(--e7-text-2) !important;
+    border: 1px solid var(--e7-border-2) !important;
+    border-radius: 11px;
+    width: 38px;
+    height: 38px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    flex: 0 0 auto;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-header-title.title {
+    font-size: 15px;
+    margin-left: 2px;
+    color: var(--e7-heading) !important;
+    font-weight: 700;
+    letter-spacing: -.2px;
+    line-height: 1.2;
+    min-width: 0;
+}
+
+#e7Body .e7-header-right.top-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* .pill — every control on the right */
+#e7Body .e7-header .pill {
+    border: 1px solid var(--e7-border-2) !important;
+    background: var(--e7-surface) !important;
+    color: var(--e7-text) !important;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1;
+    border-radius: 999px;
+    padding: 0 13px;
+    height: 36px;
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: var(--e7-shadow-soft) !important;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+
+#e7Body .e7-header .pill i {
+    color: var(--e7-text-2) !important;
+    font-size: 13px;
+    width: auto;
+}
+
+#e7Body .e7-header .pill:hover {
+    background: var(--e7-surface-3) !important;
+    border-color: var(--e7-border-2) !important;
+    box-shadow: var(--e7-shadow-soft) !important;
+}
+
+/* the clock reads as data, not as a control */
+#e7Body .e7-header .pill.clock {
+    background: var(--e7-p-aqua-2) !important;
+    border-color: var(--e7-p-aqua) !important;
+    color: var(--e7-accent-ink) !important;
+    font-weight: 700;
+    letter-spacing: .3px;
+    cursor: default;
+}
+
+#e7Body .e7-header .pill.clock .e7-live-dot { display: none; }
+
+/* icon-only actions are circles */
+#e7Body .e7-header .pill.icon-btn {
+    position: relative;
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+#e7Body .e7-notif-count { box-shadow: 0 0 0 2px var(--e7-surface-2); }
+
+/* Dark / Light */
+#e7Body .e7-header .pill.theme-toggle i { color: var(--e7-accent) !important; }
+
+/* Ask AI */
+#e7Body .e7-header .pill.ask {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to)) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(56, 158, 206, .3) !important;
+    transform: none;
+}
+
+#e7Body .e7-header .pill.ask:hover {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to)) !important;
+    filter: brightness(1.05);
+}
+
+/* user: "👤 Admin  Yunush" on one line */
+#e7Body .e7-header .pill.user-pill { position: relative; }
+
+#e7Body .e7-header .pill.user-pill .e7-user-role {
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    margin-left: 5px;
+    color: var(--e7-text) !important;
+}
+
+#e7Body .e7-header .pill.user-pill .e7-user-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--e7-text) !important;
+}
+
+/* dropdowns in the top bar */
+#e7Body .e7-user-dropdown,
+#e7Body .e7-notif-dropdown {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    box-shadow: var(--e7-shadow-pop) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+#e7Body .e7-user-dropdown a { color: var(--e7-text) !important; }
+#e7Body .e7-user-dropdown a i { color: var(--e7-text-3) !important; }
+#e7Body .e7-user-dropdown a:hover { background: var(--e7-surface-3) !important; }
+#e7Body .e7-user-dropdown a:hover i { color: var(--e7-accent) !important; }
+#e7Body .e7-user-dropdown a.danger,
+#e7Body .e7-user-dropdown a.danger i { color: var(--e7-red) !important; }
+#e7Body .e7-user-dropdown .divider { background: var(--e7-border) !important; }
+
+#e7Body .e7-notif-head { border-bottom-color: var(--e7-border) !important; background: var(--e7-surface-2) !important; }
+#e7Body .e7-notif-head h6 { color: var(--e7-heading) !important; }
+#e7Body .e7-notif-head h6 i { color: var(--e7-accent) !important; }
+#e7Body #e7NotifHeadCount { color: var(--e7-text-3) !important; }
+#e7Body .e7-notif-clear { color: var(--e7-accent) !important; }
+#e7Body .e7-notif-item { border-bottom-color: var(--e7-border) !important; }
+#e7Body .e7-notif-item:hover { background: var(--e7-surface-3) !important; }
+#e7Body .e7-notif-item.unread { background: var(--e7-p-aqua-2) !important; }
+#e7Body .e7-notif-title { color: var(--e7-text) !important; }
+#e7Body .e7-notif-title .e7-notif-time { color: var(--e7-text-3) !important; }
+#e7Body .e7-notif-desc { color: var(--e7-text-2) !important; }
+#e7Body .e7-notif-empty { color: var(--e7-text-3) !important; }
+#e7Body .e7-notif-foot { border-top-color: var(--e7-border) !important; background: var(--e7-surface-2) !important; }
+#e7Body .e7-notif-foot a { color: var(--e7-accent) !important; }
+
+/* ---- footer ------------------------------------------------- */
+
+#e7Body .e7-footer {
+    margin: 22px var(--e7-inset) var(--e7-inset) 0;
+    padding: 13px;
+    background: var(--e7-surface-2) !important;
+    border: 1px solid var(--e7-border) !important;
+    border-radius: 14px;
+    color: var(--e7-footer-text) !important;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .2px;
+    box-shadow: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* ---- focus -------------------------------------------------- */
+
+#e7Body .e7-nav-item:focus-visible,
+#e7Body .e7-sidebar-user:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+#e7Body .e7-header button:focus-visible,
+#e7Body .e7-body button:focus-visible {
+    outline: 2px solid var(--e7-focus);
+    outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------
+   4. Shared page surfaces (cards, tables, forms, modals)
+   The Aurora bridge paints these as translucent glass with
+   !important; here they become flat theme surfaces.
+   ------------------------------------------------------------ */
+
+#e7Body .e7-body .card {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    border-radius: 18px;
+    box-shadow: var(--e7-shadow-card) !important;
+    color: var(--e7-text) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#e7Body .e7-body .card-header {
+    background: transparent !important;
+    border-bottom: 1px solid var(--e7-border) !important;
+    color: var(--e7-heading) !important;
+    font-weight: 700;
+}
+
+#e7Body .e7-body .card-footer {
+    background: var(--e7-surface-2) !important;
+    border-top: 1px solid var(--e7-border) !important;
+}
+
+#e7Body .e7-body h1, #e7Body .e7-body h2, #e7Body .e7-body h3,
+#e7Body .e7-body h4, #e7Body .e7-body h5, #e7Body .e7-body h6 {
+    color: var(--e7-heading) !important;
+}
+
+#e7Body .e7-body .breadcrumb-item a { color: var(--e7-accent) !important; }
+#e7Body .e7-body .breadcrumb-item.active { color: var(--e7-text-3) !important; }
+
+#e7Body .e7-body .table { color: var(--e7-text) !important; }
+#e7Body .e7-body .table thead th {
+    background: var(--e7-surface-2) !important;
+    color: var(--e7-text-2) !important;
+    border-color: var(--e7-border) !important;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .4px;
+}
+#e7Body .e7-body .table td,
+#e7Body .e7-body .table th { border-color: var(--e7-border) !important; }
+#e7Body .e7-body .table tbody tr:hover > td { background: var(--e7-surface-2) !important; }
+
+#e7Body .form-control,
+#e7Body .form-select,
+#e7Body .e7-body input[type="text"]:not([class*="e7-"]),
+#e7Body .e7-body input[type="date"]:not([class*="e7-"]),
+#e7Body .e7-body input[type="number"]:not([class*="e7-"]),
+#e7Body .e7-body input[type="email"]:not([class*="e7-"]),
+#e7Body .e7-body input[type="password"]:not([class*="e7-"]),
+#e7Body .e7-body input[type="time"]:not([class*="e7-"]),
+#e7Body .e7-body select:not([class*="e7-"]),
+#e7Body .e7-body textarea {
+    background-color: var(--e7-surface-2) !important;
+    border-color: var(--e7-border-2) !important;
+    color: var(--e7-text) !important;
+}
+
+#e7Body .form-control:focus,
+#e7Body .form-select:focus,
+#e7Body .e7-body input:focus,
+#e7Body .e7-body select:focus,
+#e7Body .e7-body textarea:focus {
+    background-color: var(--e7-surface) !important;
+    border-color: var(--e7-accent) !important;
+    box-shadow: 0 0 0 3px var(--e7-accent-soft) !important;
+    color: var(--e7-text) !important;
+}
+
+#e7Body .e7-body select option { background: var(--e7-surface); color: var(--e7-text); }
+
+#e7Body .e7-body .btn-primary {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to)) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+}
+
+#e7Body .modal-content {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    border-radius: 18px;
+    box-shadow: var(--e7-shadow-pop) !important;
+    color: var(--e7-text) !important;
+    backdrop-filter: none !important;
+}
+
+#e7Body .modal-header,
+#e7Body .modal-footer {
+    background: var(--e7-surface-2) !important;
+    border-color: var(--e7-border) !important;
+}
+
+#e7Body .modal-header h5,
+#e7Body .modal-title { color: var(--e7-heading) !important; }
+#e7Body .modal-body { color: var(--e7-text) !important; }
+#e7Body .modal-backdrop { background: rgba(16, 32, 50, .42) !important; }
+
+/* Bootstrap utilities ship fixed light colours with !important */
+#e7Body .text-success, #e7Body .e7-body .text-success { color: var(--e7-green) !important; }
+#e7Body .text-warning, #e7Body .e7-body .text-warning { color: var(--e7-amber) !important; }
+#e7Body .text-danger, #e7Body .e7-body .text-danger { color: var(--e7-red) !important; }
+#e7Body .text-muted, #e7Body .e7-body .text-muted { color: var(--e7-text-3) !important; }
+
+/* ---- AI assistant floating button (#aiChatTrigger) ----------------
+   Injected into <body> by ai-chat-sidebar.js (so it sits outside #e7App).
+   Styled like the header's .pill.ask: the Ask-AI gradient, a soft shadow,
+   and the chat-bubble icon from its own markup. The layout's Aurora version
+   (wand icon drawn over the SVG, sparkle dot, float + glow animations) is
+   switched off. The layout rules use !important, hence the same here. */
+#e7Body #aiChatTrigger {
+    width: 52px !important;
+    height: 52px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to)) !important;
+    border: 3px solid var(--e7-shell) !important;       /* separates it from whatever it floats over */
+    color: #fff !important;
+    box-shadow: 0 8px 20px rgba(56, 158, 206, .35), 0 2px 6px rgba(20, 44, 74, .12) !important;
+    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, opacity .2s ease !important;
+}
+
+#e7Body #aiChatTrigger:hover {
+    transform: translateY(-2px) !important;
+    filter: brightness(1.05);
+    box-shadow: 0 12px 26px rgba(56, 158, 206, .42), 0 2px 6px rgba(20, 44, 74, .12) !important;
+}
+
+#e7Body #aiChatTrigger:focus-visible {
+    outline: 2px solid var(--e7-focus);
+    outline-offset: 3px;
+}
+
+/* the button's own chat icon, instead of the layout's wand overlay */
+#e7Body #aiChatTrigger svg {
+    display: block !important;
+    width: 22px;
+    height: 22px;
+}
+
+#e7Body #aiChatTrigger::before,
+#e7Body #aiChatTrigger .e7-fab-spark {
+    display: none !important;
+    animation: none !important;
+}
+
+/* a quiet "available" ring in the theme accent, instead of the cyan glow */
+#e7Body #aiChatTrigger::after {
+    content: '' !important;
+    position: absolute !important;
+    inset: -3px !important;
+    border-radius: 50% !important;
+    border: none !important;
+    box-shadow: 0 0 0 0 var(--e7-accent-soft);
+    animation: e7AskPulse 3s ease-out infinite !important;
+    pointer-events: none;
+}
+
+@keyframes e7AskPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(79, 159, 228, .35); }
+    70%  { box-shadow: 0 0 0 12px rgba(79, 159, 228, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(79, 159, 228, 0); }
+}
+
+/* hidden while the panel is open (ai-chat-sidebar.js toggles .chat-open) */
+#e7Body #aiChatTrigger.chat-open {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: scale(.8) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #e7Body #aiChatTrigger::after { animation: none !important; }
+}
+
+/* ---- same size in both schemes -------------------------------------
+   aurora-bridge.css restyles typography, padding and scrollbars for DARK
+   mode only (body:not([data-aurora="light"]) …), so these elements changed
+   size — and the content shifted by a scrollbar's width — every time the
+   theme was toggled. The size-related values are repeated here for both
+   schemes (colours stay per-scheme); font-family is already Inter everywhere. */
+
+/* scrollbars: 5px in both schemes (dark was 5px, light the ~15px default) */
+#e7Body::-webkit-scrollbar,
+#e7Body ::-webkit-scrollbar { width: 5px; height: 5px; }
+#e7Body::-webkit-scrollbar-track,
+#e7Body ::-webkit-scrollbar-track { background: transparent; }
+#e7Body::-webkit-scrollbar-thumb,
+#e7Body ::-webkit-scrollbar-thumb { background: var(--e7-border-2); border-radius: 3px; }
+#e7Body::-webkit-scrollbar-thumb:hover,
+#e7Body ::-webkit-scrollbar-thumb:hover { background: var(--e7-text-4); }
+
+/* page titles, breadcrumbs, filters */
+#e7Body .page-name,
+#e7Body .search-title { font-weight: 700 !important; letter-spacing: -.01em !important; }
+#e7Body .breadcrumb-item a { font-size: 12.5px !important; letter-spacing: .02em !important; }
+#e7Body .filter-row label,
+#e7Body .filter-item label:not(.dropdown-header label) {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+}
+
+/* RDPMS Health */
+#e7Body .rdpms-sub-header { font-size: 10.5px !important; font-weight: 700 !important; letter-spacing: .07em !important; text-transform: uppercase !important; }
+#e7Body .rdpms-val-cell { font-size: 22px !important; font-weight: 700 !important; letter-spacing: -.02em !important; }
+#e7Body .rdpms-channel-metric { font-size: 15px !important; font-weight: 700 !important; }
+#e7Body .rdpms-channel-caption { font-size: 9.5px !important; font-weight: 700 !important; letter-spacing: .05em !important; }
+#e7Body .rdpms-refresh-right * { font-size: 10.5px !important; }
+#e7Body .rdpms-refresh-left { font-size: 10.5px !important; letter-spacing: .05em !important; text-transform: uppercase !important; }
+#e7Body .rdpms-table thead th { font-size: 11px !important; font-weight: 700 !important; letter-spacing: .07em !important; text-transform: uppercase !important; }
+#e7Body .rdpms-table tbody td { font-size: 13px !important; }
+#e7Body .rdpms-pager-wrap ul.pagination li.page-item a.page-link { font-size: 12.5px !important; }
+#e7Body .rdpms-pager-wrap ul.pagination li.page-item.active a.page-link { font-weight: 700 !important; }
+
+/* modem / sensor / gateway panels and network tables */
+#e7Body .pic-tab-btn { font-size: 12.5px !important; font-weight: 700 !important; letter-spacing: .05em !important; text-transform: uppercase !important; }
+#e7Body .pic-modem-title { font-weight: 700 !important; letter-spacing: -.005em !important; }
+#e7Body .pic-sensor-time,
+#e7Body .tbl-net-time { font-size: 10.5px !important; }
+#e7Body .pic-sensor-badge,
+#e7Body .tbl-sensor-badge { letter-spacing: .05em !important; }
+#e7Body .pic-gw-icon { padding: 4px !important; }
+
+/* ------------------------------------------------------------
+   5. Dashboard (Home/Index) — Energy7 Dashboard 2 components
+   A 1:1 port of the mockup's style.css component rules
+   (.filters .selectx .search .sys .gauge .crumb .panel .phead
+    .asset-grid .asset .reports .report .bottom .summary .chartbox
+    .bg-Up .bg-down), with the mockup's tokens renamed to --e7-*
+   and every rule scoped to the page body (#e7Body .e7-body) so the
+   generic names (.panel, .bottom, .bg-Up …) cannot leak into the
+   shell or other pages. Values are unchanged from the mockup.
+   ------------------------------------------------------------ */
+
+/* shared surface for the top-level blocks (mockup: .filters,.crumb,.panel) */
+#e7Body .e7-body .filters,
+#e7Body .e7-body .crumb,
+#e7Body .e7-body .panel {
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+/* ---- filter bar ---------------------------------------------- */
+
+#e7Body .e7-body .filters,
+#e7Body .e7-body .filters.bg-Up {
+    position: relative;
+    z-index: 200;               /* dropdowns open above the panels below */
+    height: auto;
+    min-height: 64px;
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .e7-body .filters > b.h6 {
+    margin: 0 8px 0 0 !important;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--e7-heading) !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#e7Body .e7-body .filters > b.h6 i { color: var(--e7-accent); }
+
+#e7Body .e7-body .filter-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#e7Body .e7-body .selectx,
+#e7Body .e7-body .selectx.bg-Up {
+    min-width: 118px;
+    height: 36px;
+    /* !important: aurora-bridge.css forces .select-btn colours with !important */
+    border: 1px solid var(--e7-border-2) !important;
+    border-radius: 999px;
+    background: var(--e7-surface-2) !important;
+    margin-right: 0;
+    padding: 0 14px;
+    color: var(--e7-text) !important;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    box-shadow: none;
+    cursor: pointer;
+    transition: background-color .16s ease, border-color .16s ease;
+}
+
+#e7Body .e7-body .selectx i { color: var(--e7-text-3) !important; font-size: 12px; }
+#e7Body .e7-body .selectx i.fa-angle-down { margin-left: auto; transition: transform .2s; }
+#e7Body .e7-body .selectx .text { color: var(--e7-text); }
+
+#e7Body .e7-body .selectx:hover,
+#e7Body .e7-body .selectx.bg-Up:hover {
+    background: var(--e7-surface-3) !important;
+    border-color: var(--e7-accent) !important;
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+/* open dropdown (page script toggles .active) */
+#e7Body .e7-body .selectx.active {
+    background: var(--e7-accent-soft) !important;
+    border-color: var(--e7-accent) !important;
+}
+
+#e7Body .e7-body .selectx.active i.fa-angle-down { transform: rotate(180deg); }
+
+#e7Body .e7-body .filter-dropdown {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    border-radius: 14px;
+    box-shadow: var(--e7-shadow-pop) !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    overflow: hidden;
+}
+
+/* Dropdown hover states. The page's own :hover rules paint var(--glass-2),
+   which this theme maps to the card white — the same colour as the menu — so
+   the hover was invisible. Give every menu row a real hover / selected tone. */
+#e7Body .e7-body .filter-dropdown .dropdown-header {
+    background: var(--e7-surface-2);
+    border-bottom-color: var(--e7-border);
+}
+
+/* "Select All" — aurora-bridge.css restyles every .filter-item label in DARK
+   mode only (11px, uppercase, wide tracking), so it changed size on toggle.
+   Pin it to one style for both schemes. */
+#e7Body .e7-body .filter-dropdown .dropdown-header label {
+    font-family: inherit !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    color: var(--e7-text-2) !important;
+}
+
+#e7Body .e7-body .filter-dropdown .dropdown-item {
+    border-bottom-color: var(--e7-border);
+    transition: background-color .12s ease;
+}
+
+#e7Body .e7-body .filter-dropdown .dropdown-item span { color: var(--e7-text); }
+
+#e7Body .e7-body .filter-dropdown .dropdown-item:hover { background: var(--e7-surface-3) !important; }
+#e7Body .e7-body .filter-dropdown .dropdown-item:hover span { color: var(--e7-heading); }
+
+#e7Body .e7-body .filter-dropdown .dropdown-item.checked { background: var(--e7-accent-soft) !important; }
+#e7Body .e7-body .filter-dropdown .dropdown-item.checked span { color: var(--e7-accent-ink); font-weight: 600; }
+#e7Body .e7-body .filter-dropdown .dropdown-item.checked:hover { background: var(--e7-p-aqua) !important; }
+
+#e7Body .e7-body .filter-dropdown .dropdown-search input {
+    background: var(--e7-surface-2) !important;
+    border: 1px solid var(--e7-border-2) !important;
+    border-radius: 999px;
+    padding: 7px 12px;
+}
+
+/* Total Assets date presets (Today / Yesterday / Last 7 days / Custom) */
+#e7Body .e7-body .date-picker-dropdown .dp-option { color: var(--e7-text); }
+#e7Body .e7-body .date-picker-dropdown .dp-option:hover { background: var(--e7-surface-3); color: var(--e7-heading); }
+#e7Body .e7-body .date-picker-dropdown .dp-option.active { background: var(--e7-accent-soft); color: var(--e7-accent-ink); }
+
+/* alert rows inside the dashboard's alert modal */
+#e7Body .alert-modal .alert-item:hover { background: var(--e7-surface-3); }
+
+#e7Body .e7-body .search,
+#e7Body .e7-body .search.bg-Up {
+    border: none;
+    color: #fff;
+    font-size: 13px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+    box-shadow: 0 4px 12px rgba(56, 158, 206, .28);
+    cursor: pointer;
+}
+
+#e7Body .e7-body .search i { color: #fff; }
+
+#e7Body .e7-body .search:hover,
+#e7Body .e7-body .search.bg-Up:hover {
+    filter: brightness(1.06);
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+    border-radius: 50%;
+}
+
+#e7Body .e7-body .sys {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#e7Body .e7-body .gauge,
+#e7Body .e7-body .gauge.bg-down {
+    width: 74px;
+    text-align: center;
+    border: 1px solid var(--e7-border);
+    background: var(--e7-surface-2);
+    border-radius: 12px;
+    padding: 7px 6px;
+    box-shadow: none;
+}
+
+#e7Body .e7-body .gauge strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--e7-heading);
+    line-height: 1.2;
+}
+
+#e7Body .e7-body .gauge small {
+    font-size: 9.5px;
+    letter-spacing: .8px;
+    color: var(--e7-text-3) !important;
+    font-weight: 600;
+}
+
+/* The tile's border is the gauge: the pastel 1px border is the track, and the
+   .gauge-ring outline drawn exactly on top of it fills clockwise to the usage
+   (pathLength = 100, so --percent maps 1:1 to the share of the edge coloured). */
+#e7Body .e7-body .gauge,
+#e7Body .e7-body .gauge.bg-down {
+    position: relative;
+}
+
+#e7Body .e7-body .gauge strong { font-variant-numeric: tabular-nums; }
+
+#e7Body .e7-body .gauge .gauge-ring {
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    width: calc(100% + 2px);       /* cover the border box, border included */
+    height: calc(100% + 2px);
+    overflow: visible;
+    pointer-events: none;
+}
+
+#e7Body .e7-body .gauge .gauge-ring rect {
+    x: 1px;
+    y: 1px;
+    width: calc(100% - 2px);
+    height: calc(100% - 2px);
+    rx: 11px;                      /* tile radius 12px, drawn 1px in */
+    fill: none;
+    stroke: var(--e7-dot-green);
+    stroke-width: 2px;
+    stroke-linecap: butt;
+    stroke-dasharray: var(--percent, 0) 100;
+    transition: stroke-dasharray .5s ease, stroke .3s ease;
+}
+
+#e7Body .e7-body .sys .gauge:nth-child(1) { background: var(--e7-p-aqua-2); border-color: var(--e7-p-aqua); }
+#e7Body .e7-body .sys .gauge:nth-child(2) { background: var(--e7-p-blue-2); border-color: var(--e7-p-blue); }
+#e7Body .e7-body .sys .gauge:nth-child(3) { background: var(--e7-p-lilac-2); border-color: var(--e7-p-lilac); }
+
+/* status from updateProgressCircle(): under 50% ok · under 80% warn · otherwise
+   bad. The border progress uses the bright dot tone, the percentage the darker
+   text tone so it stays readable on the pastel. */
+#e7Body .e7-body .sys .gauge[data-status="ok"] .gauge-ring rect   { stroke: var(--e7-dot-green); }
+#e7Body .e7-body .sys .gauge[data-status="warn"] .gauge-ring rect { stroke: var(--e7-dot-amber); }
+#e7Body .e7-body .sys .gauge[data-status="bad"] .gauge-ring rect  { stroke: var(--e7-dot-red); }
+
+#e7Body .e7-body .sys .gauge[data-status="ok"] strong   { color: var(--e7-green); }
+#e7Body .e7-body .sys .gauge[data-status="warn"] strong { color: var(--e7-amber); }
+#e7Body .e7-body .sys .gauge[data-status="bad"] strong  { color: var(--e7-red); }
+
+/* ---- breadcrumb / station tabs ------------------------------- */
+
+#e7Body .e7-body .crumb,
+#e7Body .e7-body .crumb.bg-Up {
+    height: auto;
+    margin-top: 12px;
+    margin-bottom: 0;
+    color: var(--e7-accent-ink);
+    background: var(--e7-p-aqua-2);
+    border: 1px solid var(--e7-p-aqua);
+    border-radius: 12px;
+    padding: 9px 14px;
+    font-size: 12.5px !important;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: none;
+    overflow-x: auto;
+}
+
+/* Station tabs rendered by the page script into the crumb. In the zip the
+   crumb is plain text — "<icon> All Sites" — so the tabs read as crumb text:
+   no pill, no background; the current one is bold, the rest are lighter and
+   separated by a hairline. */
+#e7Body .e7-body .crumb #pills-tab {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    list-style: none;
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-item + .nav-item .nav-link {
+    border-left: 1px solid var(--e7-p-aqua) !important;
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-link,
+#e7Body .e7-body .crumb #pills-tab .nav-link.active,
+#e7Body .e7-body .crumb #pills-tab .nav-link:hover {
+    padding: 0 10px;
+    border: 0;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none;
+    font-family: inherit;
+    font-size: 12.5px;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-item:first-child .nav-link { padding-left: 0; }
+
+#e7Body .e7-body .crumb #pills-tab .nav-link {
+    font-weight: 500;
+    color: var(--e7-text-2) !important;
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-link:hover { color: var(--e7-accent-ink) !important; }
+
+#e7Body .e7-body .crumb #pills-tab .nav-link.active {
+    font-weight: 600;
+    color: var(--e7-accent-ink) !important;
+}
+
+/* ---- panels + panel head ------------------------------------- */
+
+#e7Body .e7-body .panel,
+#e7Body .e7-body .panel.bg-Up {
+    border-radius: 18px;
+    margin-top: 14px;
+    margin-bottom: 0;
+    overflow: hidden;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-card);
+    padding: 16px;
+}
+
+#e7Body .e7-body .TopBottom-padding { padding: 16px !important; }
+
+#e7Body .e7-body .phead,
+#e7Body .e7-body .phead.bg-down {
+    height: auto;
+    min-height: 0;
+    padding: 0 2px 13px;
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--e7-heading);
+    letter-spacing: -.1px;
+    border: none;
+    border-bottom: 1px solid var(--e7-border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#e7Body .e7-body .phead i { color: var(--e7-accent); }
+
+#e7Body .e7-body .phead .badge {
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border-2);
+    color: var(--e7-text-2);
+    box-shadow: none;
+}
+
+#e7Body .e7-body .phead .badge i { color: var(--e7-text-3); }
+
+#e7Body .e7-body .phead .live,
+#e7Body .e7-body .phead .live.bg-down {
+    margin-left: auto;
+    background: var(--e7-live-bg);
+    color: var(--e7-live-fg);
+    border: 1px solid transparent;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    box-shadow: none;
+}
+
+#e7Body .e7-body .phead .text-muted {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+#e7Body .e7-body .HoverB:hover {
+    cursor: pointer;
+    background: var(--e7-surface-3);
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+/* ---- asset cards --------------------------------------------- */
+
+#e7Body .e7-body .asset-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+#e7Body .e7-body .asset {
+    position: relative;
+    border: 1px solid var(--e7-border);
+    background: var(--e7-surface);
+    padding: 14px 14px 12px;
+    border-radius: 14px;
+    box-shadow: var(--e7-shadow-soft);
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+/* clickable tile (opens the alert list): lift + tinted edge so the hover reads */
+#e7Body .e7-body .asset:hover {
+    transform: translateY(-2px);
+    border-color: var(--e7-p-aqua);
+    box-shadow: var(--e7-shadow-hover);
+}
+
+/* a soft wash across the top of every tile */
+#e7Body .e7-body .asset::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 66px;
+    background: linear-gradient(180deg, var(--e7-wash), transparent);
+    pointer-events: none;
+}
+
+#e7Body .e7-body .asset h6 {
+    position: relative;
+    font-size: 11px;
+    letter-spacing: .6px;
+    color: var(--e7-text-2) !important;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+#e7Body .e7-body .asset h6 i { font-size: 10px; color: var(--e7-green); }
+
+#e7Body .e7-body .big {
+    position: relative;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -.6px;
+    line-height: 1.15;
+    margin-bottom: 8px;
+    color: var(--e7-heading);
+}
+
+#e7Body .e7-body .asset p {
+    position: relative;
+    margin: 0;
+    padding: 5px 0;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+    font-weight: 500;
+    color: var(--e7-text-2) !important;
+    border-top: 1px solid var(--e7-border);
+}
+
+#e7Body .e7-body .asset p:first-of-type { border-top: 0; }
+#e7Body .e7-body .asset p span:last-child { font-weight: 700; }
+
+#e7Body .e7-body .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 7px;
+    vertical-align: middle;
+}
+
+#e7Body .e7-body .dgreen { background: var(--e7-dot-green); }
+#e7Body .e7-body .dyellow { background: var(--e7-dot-amber); }
+#e7Body .e7-body .dred { background: var(--e7-dot-red); }
+#e7Body .e7-body .green { color: var(--e7-green) !important; }
+
+/* ---- report cards -------------------------------------------- */
+
+#e7Body .e7-body .reports {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+#e7Body .e7-body .report {
+    border: 1px solid var(--e7-border);
+    background: var(--e7-surface);
+    padding: 14px 16px 16px;
+    border-radius: 14px;
+    box-shadow: var(--e7-shadow-soft);
+    transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+#e7Body .e7-body .report:hover {
+    border-color: var(--e7-border-2);
+    box-shadow: var(--e7-shadow-hover);
+}
+
+#e7Body .e7-body .report-title {
+    margin-bottom: 14px;
+    font-size: 12px;
+    letter-spacing: .5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+#e7Body .e7-body .report-title.c1 { color: var(--e7-c1); }
+#e7Body .e7-body .report-title.c2 { color: var(--e7-c2); }
+#e7Body .e7-body .report-title.c3 { color: var(--e7-c3); }
+#e7Body .e7-body .report-title.c4 { color: var(--e7-c4); }
+
+#e7Body .e7-body .rbody {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* the ECharts donut takes the mockup's 120px .donut slot */
+#e7Body .e7-body .report .gaph-assetType {
+    flex: 0 0 120px;
+    width: 120px !important;
+    height: 120px !important;
+    max-width: 120px !important;
+    min-height: 120px !important;
+    aspect-ratio: auto;
+}
+
+#e7Body .e7-body .legend {
+    flex: 1 1 130px;
+    min-width: 120px;
+}
+
+#e7Body .e7-body .legend p {
+    margin: 0;
+    padding: 6px 0;
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
+    color: var(--e7-text-2) !important;
+    border-top: 1px solid var(--e7-border);
+}
+
+#e7Body .e7-body .legend p:first-child { border-top: 0; }
+#e7Body .e7-body .legend p span { font-weight: 700; white-space: nowrap; }
+#e7Body .e7-body .legend p span:first-child { font-weight: 500; }
+
+/* asset count beside the % (kept from the live dashboard) */
+#e7Body .e7-body .legend p small {
+    margin-right: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--e7-text-3) !important;
+}
+
+/* ---- bottom row ---------------------------------------------- */
+
+#e7Body .e7-body .bottom {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+    align-items: stretch;
+}
+
+/* each column is summary + chart; the chart takes the slack so the
+   columns finish on the same baseline */
+#e7Body .e7-body .bottom > div {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#e7Body .e7-body .bottom > div > .chartbox {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+#e7Body .e7-body .summary {
+    min-height: 0;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    padding: 16px 18px;
+    border-radius: 18px;
+    box-shadow: var(--e7-shadow-soft);
+    margin-top: 0;
+    transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+}
+
+#e7Body .e7-body .summary.shm-clickable { cursor: pointer; }
+#e7Body .e7-body .summary.shm-clickable:hover {
+    transform: translateY(-2px);
+    border-color: var(--e7-p-aqua);
+    box-shadow: var(--e7-shadow-hover);
+}
+
+#e7Body .e7-body .totalHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+#e7Body .e7-body .totalHead b {
+    font-size: 11.5px;
+    letter-spacing: .8px;
+    color: var(--e7-text-2);
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+#e7Body .e7-body .totalHead b i { font-size: 10px; }
+
+/* the page script adds text-success/-danger to the number; the mockup keeps
+   the total neutral and lets the trend arrow carry the status */
+#e7Body .e7-body .summary .num,
+#e7Body .e7-body .summary .num.text-success,
+#e7Body .e7-body .summary .num.text-warning,
+#e7Body .e7-body .summary .num.text-danger {
+    font-size: 28px !important;
+    font-weight: 800;
+    letter-spacing: -.8px;
+    color: var(--e7-heading) !important;
+    line-height: 1.1;
+}
+
+#e7Body .e7-body .summary p {
+    font-size: 12.5px;
+    font-weight: 500 !important;
+    margin: 0;
+    padding: 7px 0;
+    border-top: 1px solid rgba(20, 44, 74, .09);
+}
+
+html[data-aurora="dark"] #e7Body .e7-body .summary p,
+html:not([data-aurora="light"]) #e7Body .e7-body .summary p {
+    border-top-color: rgba(255, 255, 255, .08);
+}
+
+#e7Body .e7-body .summary p.mt-3 { margin-top: 12px !important; }
+#e7Body .e7-body .summary p .float-right { font-weight: 700; }
+
+#e7Body .e7-body .chartbox,
+#e7Body .e7-body .chartbox.bg-Up {
+    height: auto;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    padding: 16px;
+    border-radius: 18px;
+    box-shadow: var(--e7-shadow-card);
+    margin-top: 14px;
+    overflow: visible;          /* the Total Assets date-picker drops out of it */
+}
+
+/* mockup .chart holds CSS bars; here it holds an ECharts canvas, so it keeps
+   the size and baseline but drops the padding the bars needed */
+#e7Body .e7-body .chartbox .chart {
+    flex: 1 1 auto;
+    width: 100%;
+    height: 300px;
+    min-height: 300px;
+    margin-top: 16px;
+    padding: 0;
+    border-bottom: 1px solid var(--e7-border-2);
+    border-radius: 10px 10px 0 0;
+}
+
+#e7Body .e7-body .chartbox .date-picker-wrap { position: relative; }
+
+#e7Body .e7-body .date-picker-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+#e7Body .e7-body .date-picker-dropdown,
+#e7Body .alert-modal,
+#e7Body .shm-modal {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    box-shadow: var(--e7-shadow-pop) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#e7Body .e7-body .date-picker-dropdown { right: 0; left: auto; z-index: 50; }
+
+/* ---- neutralise the page's own rules on the hook classes kept for its script
+   (.asset-type-card / .pie-chart-box / .select-btn still carry Aurora styles) ---- */
+
+#e7Body .e7-body .asset.asset-type-card:hover { background: var(--e7-surface); }
+#e7Body .e7-body .asset.asset-type-card::after { display: none; }
+
+#e7Body .e7-body .report.pie-chart-box,
+#e7Body .e7-body .report.pie-chart-box:hover {
+    display: block;
+    background: var(--e7-surface) !important;
+    background-color: var(--e7-surface) !important;
+    border-radius: 14px !important;
+    box-shadow: var(--e7-shadow-soft) !important;
+}
+
+#e7Body .e7-body .report.pie-chart-box:hover { box-shadow: var(--e7-shadow-hover) !important; }
+#e7Body .e7-body .report.pie-chart-box::before,
+#e7Body .e7-body .report.pie-chart-box::after { display: none; }
+
+#e7Body .e7-body .selectx.active i { transform: none; }
+#e7Body .e7-body .selectx.active i.fa-angle-down { transform: rotate(180deg); }
+
+/* ---- legacy neumorphic helpers, flat (mockup: .bg-Up / .bg-down) ---- */
+
+#e7Body .e7-body .bg-Up {
+    background: var(--e7-surface);
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .e7-body .bg-down {
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: none;
+}
+
+#e7Body .e7-body .badge-light {
+    color: var(--e7-text-2);
+    background-color: transparent;
+}
+
+/* ------------------------------------------------------------
+   5b. Command Control (FRS25 / UserSite / Index + SiteList)
+   The page ships a dark-only "Station Board" design: its own palette on
+   :root (--bg, --surface, --line, --text-*, --ok/--warn/--alert/--pred …),
+   aura backgrounds, and white-on-dark glass gradients. Everything here is
+   scoped to .cc-page (the page root), so the page's generic class names
+   (.topbar, .pill, .grid, .summary-card …) cannot leak anywhere else.
+     1. its palette is re-pointed at the theme tokens, per scheme;
+     2. the hard-coded glass / glow / colour values get theme surfaces.
+   ------------------------------------------------------------ */
+
+/* the page's fixed aura / grain / vignette layers sit behind the shell */
+#e7Body .bg-aura,
+#e7Body .bg-grain,
+#e7Body .bg-vignette { display: none !important; }
+
+/* 1 — palette (light) */
+html[data-aurora="light"] #e7Body .cc-page {
+    --bg: var(--e7-shell);
+    --surface: var(--e7-surface);
+    --surface-2: var(--e7-surface-2);
+    --surface-3: var(--e7-surface-3);
+    --line: var(--e7-border);
+    --line-2: var(--e7-border-2);
+    --line-3: #cfd7e2;
+    --text: var(--e7-heading);
+    --text-2: var(--e7-text-2);
+    --text-3: var(--e7-text-3);
+    --text-4: #97a3b2;
+    --accent: var(--e7-accent);
+    --accent2: var(--e7-ask-to);
+    --node-l: var(--e7-c6);
+    --node-c: var(--e7-c1);
+    --ok: var(--e7-green);
+    --ok-soft: rgba(22, 185, 136, .12);
+    --ok-line: rgba(22, 185, 136, .32);
+    --ok-glow: rgba(22, 185, 136, .28);
+    --warn: var(--e7-amber);
+    --warn-soft: rgba(240, 173, 18, .14);
+    --warn-line: rgba(240, 173, 18, .36);
+    --warn-glow: rgba(240, 173, 18, .28);
+    --alert: var(--e7-red);
+    --alert-soft: rgba(239, 91, 114, .11);
+    --alert-line: rgba(239, 91, 114, .32);
+    --alert-glow: rgba(239, 91, 114, .26);
+    --pred: #3a7fd0;
+    --pred-soft: rgba(58, 127, 208, .11);
+    --pred-line: rgba(58, 127, 208, .30);
+}
+
+/* 1 — palette (dark) */
+html:not([data-aurora="light"]) #e7Body .cc-page {
+    --bg: var(--e7-shell);
+    --surface: var(--e7-surface);
+    --surface-2: var(--e7-surface-2);
+    --surface-3: var(--e7-surface-3);
+    --line: var(--e7-border);
+    --line-2: var(--e7-border-2);
+    --line-3: #45515f;
+    --text: var(--e7-heading);
+    --text-2: var(--e7-text-2);
+    --text-3: var(--e7-text-3);
+    --text-4: #6f7c8e;
+    --accent: var(--e7-accent);
+    --accent2: var(--e7-accent-2);
+    --node-l: var(--e7-c6);
+    --node-c: var(--e7-c1);
+    --ok: var(--e7-green);
+    --ok-soft: rgba(47, 214, 163, .13);
+    --ok-line: rgba(47, 214, 163, .32);
+    --ok-glow: rgba(47, 214, 163, .40);
+    --warn: var(--e7-amber);
+    --warn-soft: rgba(240, 180, 41, .13);
+    --warn-line: rgba(240, 180, 41, .34);
+    --warn-glow: rgba(240, 180, 41, .40);
+    --alert: var(--e7-red);
+    --alert-soft: rgba(255, 122, 144, .13);
+    --alert-line: rgba(255, 122, 144, .34);
+    --alert-glow: rgba(255, 122, 144, .45);
+    --pred: #6fb0f0;
+    --pred-soft: rgba(111, 176, 240, .13);
+    --pred-line: rgba(111, 176, 240, .32);
+}
+
+/* shared flat surfaces for the page's glass pieces */
+#e7Body .cc-page .alert-info-box,
+#e7Body .cc-page .perf-card,
+#e7Body .cc-page .history-item,
+#e7Body .cc-page .tele,
+#e7Body .cc-page .hg-wrap {
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border);
+    box-shadow: none;
+}
+
+/* ---- page top bar → a flat card like the zip's .filters ---------- */
+#e7Body .cc-page > .topbar {
+    position: relative;
+    top: auto;
+    z-index: 60;
+    padding: 12px 14px;
+    margin: 0 0 14px;
+    border: 1px solid var(--e7-border);
+    border-radius: 16px;
+    background: var(--e7-surface);
+    box-shadow: var(--e7-shadow-soft);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+#e7Body .cc-page .topbar-logo .icon {
+    border-radius: 11px;
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+    box-shadow: 0 4px 12px rgba(56, 158, 206, .3);
+}
+
+#e7Body .cc-page .topbar-logo .title { font-size: 15px; font-weight: 700; color: var(--e7-heading); }
+#e7Body .cc-page .topbar-logo .sub { font-size: 12px; color: var(--e7-text-3); }
+
+/* the page's .pill = the zip's header pill */
+#e7Body .cc-page .pill {
+    height: 36px;
+    padding: 0 13px;
+    border-radius: 999px;
+    border: 1px solid var(--e7-border-2);
+    background: var(--e7-surface);
+    color: var(--e7-text);
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .cc-page .pill.clock {
+    background: var(--e7-p-aqua-2);
+    border-color: var(--e7-p-aqua);
+    color: var(--e7-accent-ink);
+    font-weight: 700;
+    letter-spacing: .3px;
+}
+
+#e7Body .cc-page .sound-toggle { cursor: pointer; }
+#e7Body .cc-page .sound-toggle:hover { background: var(--e7-surface-3); color: var(--e7-heading); }
+#e7Body .cc-page .sound-toggle.muted { color: var(--e7-text-3); }
+
+#e7Body .cc-page .user-chip { padding-left: 4px; }
+
+#e7Body .cc-page .user-avatar {
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--e7-rail-from), var(--e7-rail-to));
+    color: #fff;
+    box-shadow: none;
+}
+
+#e7Body .cc-page .user-name { font-size: 12px; font-weight: 700; color: var(--e7-text); }
+#e7Body .cc-page .user-role { font-size: 10.5px; color: var(--e7-text-3); }
+
+/* alarm-sound pop-up */
+#e7Body .cc-page .sound-pop {
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-pop);
+}
+
+#e7Body .cc-page .sp-title { color: var(--e7-text-2); }
+#e7Body .cc-page .sp-switch { background: var(--e7-surface-3); border-color: var(--e7-border-2); }
+#e7Body .cc-page .sp-switch.on { background: var(--e7-dot-green); border-color: transparent; box-shadow: none; }
+#e7Body .cc-page .sp-switch::after { box-shadow: 0 1px 3px rgba(20, 44, 74, .3); }
+#e7Body .cc-page .sp-opt:hover { background: var(--e7-surface-3); }
+#e7Body .cc-page .sp-opt.sel { background: var(--e7-accent-soft); border-color: var(--e7-p-aqua); }
+#e7Body .cc-page .sp-play { background: var(--e7-surface-2); border-color: var(--e7-border-2); color: var(--e7-text-2); }
+#e7Body .cc-page .sp-play:hover { color: var(--e7-accent); border-color: var(--e7-accent); }
+#e7Body .cc-page .sp-check { color: var(--e7-accent); }
+#e7Body .cc-page .sp-vol input[type=range] { background: var(--e7-surface-3); }
+#e7Body .cc-page .sp-vol input[type=range]::-webkit-slider-thumb { background: var(--e7-accent); border-color: var(--e7-surface); box-shadow: none; }
+#e7Body .cc-page .sp-note { color: var(--e7-text-3); border-top-color: var(--e7-border); }
+
+/* ---- filter bar ----------------------------------------------------- */
+#e7Body .cc-page .filter-bar {
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    gap: 12px;
+    border: 1px solid var(--e7-border);
+    border-radius: 16px;
+    background: var(--e7-surface);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .cc-page .filter-group label {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+    color: var(--e7-text-3) !important;
+}
+
+/* Zone / Division selects = the zip's .selectx pills */
+#e7Body .cc-page .filter-value {
+    height: 36px;
+    min-width: 150px;
+    padding: 0 34px 0 14px;
+    border: 1px solid var(--e7-border-2) !important;
+    border-radius: 999px;
+    background-color: var(--e7-surface-2) !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%238b98a8' d='M6 8L1.5 3.5h9z'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 13px center !important;
+    background-size: 10px 10px !important;
+    color: var(--e7-text) !important;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+#e7Body .cc-page .filter-value:hover { background-color: var(--e7-surface-3) !important; border-color: var(--e7-accent) !important; }
+#e7Body .cc-page .filter-value:focus { border-color: var(--e7-accent) !important; box-shadow: 0 0 0 3px var(--e7-accent-soft) !important; }
+#e7Body .cc-page .filter-value option { background: var(--e7-surface); color: var(--e7-text); }
+
+#e7Body .cc-page .btn-search {
+    height: 36px;
+    padding: 0 20px;
+    border-radius: 999px;
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    box-shadow: 0 4px 12px rgba(56, 158, 206, .28);
+}
+
+#e7Body .cc-page .btn-search:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    box-shadow: 0 8px 18px rgba(56, 158, 206, .34);
+}
+
+/* summary cards (Total alerts · Sites · Active sirens) */
+#e7Body .cc-page .summary-card {
+    min-width: 128px;
+    padding: 10px 16px 10px 18px;
+    border: 1px solid var(--e7-border);
+    border-radius: 14px;
+    background: var(--e7-surface-2);
+    box-shadow: none;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+#e7Body .cc-page .summary-card:hover { transform: translateY(-2px); border-color: var(--e7-border-2); box-shadow: var(--e7-shadow-hover); }
+#e7Body .cc-page .summary-card::before { width: 3px; box-shadow: none; }
+#e7Body .cc-page .summary-card.failure::before { background: var(--alert); }
+#e7Body .cc-page .summary-card.predictive::before { background: var(--pred); }
+#e7Body .cc-page .summary-card.sc-active::before { background: var(--ok); }
+#e7Body .cc-page .summary-card .num { font-size: 24px; font-weight: 800; }
+#e7Body .cc-page .summary-card.failure .num { color: var(--alert); }
+#e7Body .cc-page .summary-card.predictive .num { color: var(--pred); }
+#e7Body .cc-page .summary-card.sc-active .num { color: var(--ok); }
+#e7Body .cc-page .summary-card .lbl { color: var(--e7-text-3); }
+
+/* ---- station cards ---------------------------------------------------- */
+#e7Body .cc-page .grid { gap: 14px; }
+
+#e7Body .cc-page .station-card {
+    border: 1px solid var(--e7-border);
+    border-radius: 18px;
+    background: var(--e7-surface);
+    box-shadow: var(--e7-shadow-card);
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+/* the zip's soft top wash instead of the white highlight */
+#e7Body .cc-page .station-card::after {
+    border-radius: 18px;
+    height: 90px;
+    bottom: auto;
+    background: linear-gradient(180deg, var(--e7-wash), transparent);
+}
+
+#e7Body .cc-page .station-card::before { height: 3px; opacity: 1; }
+
+#e7Body .cc-page .station-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--e7-border-2);
+    box-shadow: var(--e7-shadow-hover);
+}
+
+#e7Body .cc-page .station-card.has-alert {
+    border-color: var(--alert-line);
+    box-shadow: var(--e7-shadow-card), 0 0 0 3px var(--alert-soft);
+}
+
+#e7Body .cc-page .card-head { border-bottom-color: var(--e7-border); }
+#e7Body .cc-page .ch-name { font-size: 18px; font-weight: 700; color: var(--e7-heading); }
+#e7Body .cc-page .ch-sub { font-size: 12px; color: var(--e7-text-3); }
+#e7Body .cc-page .ch-mark { box-shadow: none !important; }
+
+#e7Body .cc-page .ch-code {
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border-2);
+    color: var(--e7-text-2);
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+
+#e7Body .cc-page .status-line .lamp { box-shadow: 0 0 0 3px var(--ok-soft); }
+#e7Body .cc-page .status-line.alert .lamp { box-shadow: 0 0 0 3px var(--alert-soft); }
+#e7Body .cc-page .live-chip { color: var(--ok); }
+
+#e7Body .cc-page .status-line .badge {
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border-2);
+    color: var(--e7-text-2);
+}
+
+/* card tabs: Now · Timeline · Performance · Users · Health */
+#e7Body .cc-page .card-nav { border-bottom-color: var(--e7-border); }
+#e7Body .cc-page .card-nav button { color: var(--e7-text-3); }
+#e7Body .cc-page .card-nav button:hover { color: var(--e7-heading); }
+#e7Body .cc-page .card-nav button.active { color: var(--e7-heading); font-weight: 700; }
+#e7Body .cc-page .card-nav button.active::after { background: linear-gradient(90deg, var(--e7-ask-from), var(--e7-ask-to)); box-shadow: none; }
+#e7Body .cc-page .station-card.has-alert .card-nav button.active::after { background: var(--alert); box-shadow: none; }
+
+/* Now / Timeline */
+#e7Body .cc-page .alert-info-box.failure-border { border-color: var(--alert-line); box-shadow: 0 0 0 3px var(--alert-soft); }
+#e7Body .cc-page .alert-info-box.predictive-border { border-color: var(--pred-line); box-shadow: none; }
+
+#e7Body .cc-page .alert-type-badge.failure { background: var(--alert-soft); color: var(--alert); box-shadow: inset 0 0 0 1px var(--alert-line); }
+#e7Body .cc-page .alert-type-badge.predictive { background: var(--pred-soft); color: var(--pred); box-shadow: inset 0 0 0 1px var(--pred-line); }
+#e7Body .cc-page .alert-status-badge.active-st,
+#e7Body .cc-page .timeline-st.active-st { background: var(--ok-soft); color: var(--ok); }
+#e7Body .cc-page .alert-status-badge.cleared-st,
+#e7Body .cc-page .timeline-st.cleared-st { background: var(--e7-surface-3); color: var(--e7-text-3); }
+
+#e7Body .cc-page .alert-cause { color: var(--warn); }
+#e7Body .cc-page .alert-meta .dur,
+#e7Body .cc-page .timeline-cause { color: var(--warn); }
+
+#e7Body .cc-page .timeline-dot { border-color: var(--e7-surface); box-shadow: none !important; }
+#e7Body .cc-page .timeline-type.failure { color: var(--alert); }
+#e7Body .cc-page .timeline-type.predictive { color: var(--pred); }
+
+/* Telemetry sparklines: grid lines + axis labels drawn by the page script */
+#e7Body .cc-page .tele-chart .tg-line { stroke: var(--e7-border); }
+#e7Body .cc-page .tele-chart .tg-lbl { fill: var(--e7-text-3); }
+
+/* Performance */
+#e7Body .cc-page .perf-ring-bg { stroke: var(--e7-border-2); }
+#e7Body .cc-page .perf-ring-fill { filter: none; }
+#e7Body .cc-page .perf-bar-track { background: var(--e7-surface-3); }
+#e7Body .cc-page .perf-bar-fill { box-shadow: none !important; }
+#e7Body .cc-page .perf-bar-fill.failure-bar { background: var(--e7-dot-red); }
+#e7Body .cc-page .perf-bar-fill.predictive-bar { background: var(--pred); }
+#e7Body .cc-page .perf-bar-fill.coverage-bar { background: var(--e7-dot-green); }
+
+/* Users */
+#e7Body .cc-page .history-avatar {
+    border-radius: 50%;
+    background: var(--e7-accent-soft);
+    border: 1px solid var(--e7-p-aqua);
+    color: var(--e7-accent-ink);
+}
+
+/* Health scan-grid */
+#e7Body .cc-page .hg-h { background: var(--e7-surface-3); border-bottom-color: var(--e7-border); }
+#e7Body .cc-page .hg-c { border-bottom-color: var(--e7-border); }
+#e7Body .cc-page .hg-row:hover .hg-c { background: var(--e7-surface-3); }
+#e7Body .cc-page .st { box-shadow: none !important; }
+
+#e7Body .cc-page .hwc {
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border-2);
+    border-radius: 999px;
+}
+
+#e7Body .cc-page .hwc.ok { color: var(--ok); }
+#e7Body .cc-page .hwc.issue { color: var(--alert); background: var(--alert-soft); border-color: var(--alert-line); box-shadow: none; }
+
+#e7Body .cc-page .hist-btn,
+#e7Body .cc-page .wrench-btn {
+    border-radius: 50%;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border-2);
+    color: var(--e7-text-2);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .cc-page .hist-btn:hover { color: var(--e7-accent); background: var(--e7-surface-3); box-shadow: var(--e7-shadow-soft); }
+#e7Body .cc-page .wrench-btn:hover { color: var(--warn); background: var(--e7-surface-3); }
+#e7Body .cc-page .wrench-btn.has-act { color: var(--warn); background: var(--warn-soft); border-color: var(--warn-line); box-shadow: none; }
+
+/* glows read as smudges on the light scheme */
+html[data-aurora="light"] #e7Body .cc-page .ch-mark,
+html[data-aurora="light"] #e7Body .cc-page .hg-legend .dot { box-shadow: none !important; }
+
+@media (max-width: 640px) {
+    #e7Body .cc-page .filter-value { min-width: 0; width: 100%; }
+    #e7Body .cc-page .filter-group { flex: 1 1 100%; }
+    #e7Body .cc-page .grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ------------------------------------------------------------
+   5c. SIP — yard editor (.sip-app) and every SIP yard drawing (svg.sip-yard)
+   sip-editor.css, sip-library.js and sip-telemetry.js were built for a dark
+   navy canvas only: the editor's palette lives on .sip-app, and the SVG is
+   drawn with literal colour attributes (fill="#0a0f1e", a navy #sipBg
+   gradient, pale label text…). CSS properties beat SVG presentation
+   attributes, so the canvas is re-coloured here by matching those exact
+   values — no change to the drawing code, and it applies wherever the yard
+   is drawn (SIP editor, Telemetry live SIP, …).
+   Railway symbology (signal aspects, sections, rails, point machines,
+   bus bars) keeps its own colours in both schemes.
+   ------------------------------------------------------------ */
+
+/* canvas tokens */
+html[data-aurora="light"] #e7Body {
+    --sip-bg-1: #ffffff;
+    --sip-bg-2: #f7f9fb;
+    --sip-bg-3: #eef2f6;
+    --sip-knock: #f7f9fb;               /* gaps / label halos = canvas colour */
+    --sip-grid-minor: rgba(20, 44, 74, .05);
+    --sip-grid-major: rgba(20, 44, 74, .11);
+    --sip-label: #1b3c55;
+    --sip-accent: #2f9ec4;
+}
+
+html:not([data-aurora="light"]) #e7Body {
+    --sip-bg-1: #202833;
+    --sip-bg-2: #1a2029;
+    --sip-bg-3: #161b23;
+    --sip-knock: #1a2029;
+    --sip-grid-minor: rgba(140, 175, 235, .06);
+    --sip-grid-major: rgba(140, 175, 235, .13);
+    --sip-label: #dce4ee;
+    --sip-accent: #5cc0e2;
+}
+
+/* ---- the yard canvas ------------------------------------------------ */
+#e7Body svg.sip-yard #sipBg stop:nth-child(1) { stop-color: var(--sip-bg-1); }
+#e7Body svg.sip-yard #sipBg stop:nth-child(2) { stop-color: var(--sip-bg-2); }
+#e7Body svg.sip-yard #sipBg stop:nth-child(3) { stop-color: var(--sip-bg-3); }
+
+#e7Body svg.sip-yard .grid line[stroke="rgba(127,197,255,0.05)"] { stroke: var(--sip-grid-minor); }
+#e7Body svg.sip-yard .grid line[stroke="rgba(127,197,255,0.12)"] { stroke: var(--sip-grid-major); }
+
+/* knock-outs: shapes filled with the old navy to read as "canvas" */
+#e7Body svg.sip-yard :not(text)[fill="#0a0f1e" i] { fill: var(--sip-knock); }
+/* label halos (text drawn in navy with a navy stroke behind the label) */
+#e7Body svg.sip-yard text[fill="#0a0f1e" i][stroke="#0a0f1e" i] { fill: var(--sip-knock); stroke: var(--sip-knock); }
+/* the label drawn right after its halo — only the pale defaults (white / light
+   grey) that were picked for a dark canvas; a colour the user set in the
+   Inspector (red, yellow…) is left as chosen */
+#e7Body svg.sip-yard text[stroke="#0a0f1e" i] + text:is([fill="#fff" i], [fill="#ffffff" i], [fill="white" i], [fill="#d7d7d7" i], [fill="#dcd7d7" i], [fill="#e8edf6" i], [fill^="rgba(220,228,245" i]) { fill: var(--sip-label); }
+/* white rings / white text inside knock-out circles */
+#e7Body svg.sip-yard [fill="#0a0f1e" i][stroke="#fff" i],
+#e7Body svg.sip-yard [fill="#0a0f1e" i][stroke="#ffffff" i] { stroke: var(--sip-label); }
+#e7Body svg.sip-yard circle[fill="#0a0f1e" i] + text:is([fill="#fff" i], [fill="#ffffff" i]) { fill: var(--sip-label); }
+/* pale default labels that are not on a coloured badge */
+#e7Body svg.sip-yard text:is([fill="#d7d7d7" i], [fill="#dcd7d7" i], [fill^="rgba(220,228,245" i]) { fill: var(--sip-label); }
+/* selection / indicator accent */
+#e7Body svg.sip-yard [stroke="#22d3ee" i] { stroke: var(--sip-accent); }
+
+/* ---- editor chrome (.sip-app) ---------------------------------------- */
+#e7Body .sip-app {
+    --bg: var(--sip-bg-2);
+    --panel: var(--e7-surface);
+    --panel-2: var(--e7-surface-2);
+    --line: var(--e7-border);
+    --text: var(--e7-text);
+    --muted: var(--e7-text-3);
+    --accent: var(--e7-accent);
+    --accent-2: var(--e7-ask-to);
+    --selection: var(--e7-accent);
+    border: 1px solid var(--e7-border);
+    border-radius: 18px;
+    box-shadow: var(--e7-shadow-card);
+}
+
+#e7Body .sip-app .topbar {
+    background: var(--e7-surface-2);
+    border-bottom: 1px solid var(--e7-border);
+}
+
+#e7Body .sip-app .brand { color: var(--e7-heading); letter-spacing: .6px; }
+#e7Body .sip-app .brand .accent { color: var(--e7-accent); }
+
+/* toolbar buttons = the zip's pills */
+#e7Body .sip-app .tb {
+    height: 32px;
+    padding: 0 13px;
+    border-radius: 999px;
+    border: 1px solid var(--e7-border-2);
+    background: var(--e7-surface);
+    color: var(--e7-text);
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .sip-app .tb:hover { background: var(--e7-surface-3); border-color: var(--e7-accent); }
+
+#e7Body .sip-app .tb.primary {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(56, 158, 206, .28);
+}
+
+#e7Body .sip-app .tb.danger { background: var(--e7-surface); border-color: var(--e7-dot-red); color: var(--e7-red); }
+#e7Body .sip-app .tb.danger:hover { background: rgba(239, 91, 114, .10); }
+
+/* Zone / Division / Site bar (its colours are inline on the element) */
+#e7Body .sip-app .filterbar {
+    background: var(--e7-surface) !important;
+    border-bottom: 1px solid var(--e7-border) !important;
+}
+
+#e7Body .sip-app .filterbar > div:last-child { color: var(--e7-text-3) !important; }
+#e7Body .sip-app #site-id-readout { color: var(--e7-accent-ink) !important; font-weight: 700; }
+
+/* fields: selects/inputs as the zip's pills (filter bar) and soft boxes (panels) */
+#e7Body .sip-app .field label { color: var(--e7-text-3); }
+
+#e7Body .sip-app .field input,
+#e7Body .sip-app .field select {
+    background-color: var(--e7-surface-2) !important;
+    border: 1px solid var(--e7-border-2) !important;
+    color: var(--e7-text) !important;
+    border-radius: 8px;
+}
+
+#e7Body .sip-app .filterbar .field select {
+    height: 34px;
+    border-radius: 999px;
+    padding: 0 12px;
+}
+
+#e7Body .sip-app .field input:focus,
+#e7Body .sip-app .field select:focus {
+    border-color: var(--e7-accent) !important;
+    box-shadow: 0 0 0 3px var(--e7-accent-soft) !important;
+}
+
+#e7Body .sip-app .field select option { background: var(--e7-surface); color: var(--e7-text); }
+
+/* toolbox */
+#e7Body .sip-app .toolbox,
+#e7Body .sip-app .inspector { background: var(--e7-surface); border-color: var(--e7-border); }
+#e7Body .sip-app .toolbox h3,
+#e7Body .sip-app .inspector h3 { color: var(--e7-text-3); }
+#e7Body .sip-app .tb-group-h { color: var(--e7-accent-ink); }
+
+#e7Body .sip-app .tb-item {
+    background: var(--e7-surface-2);
+    border: 1px solid var(--e7-border);
+    border-radius: 10px;
+}
+
+#e7Body .sip-app .tb-item:hover {
+    background: var(--e7-surface);
+    border-color: var(--e7-accent);
+    box-shadow: var(--e7-shadow-hover);
+}
+
+#e7Body .sip-app .tb-item.wizard-highlight { border-color: var(--e7-accent); box-shadow: 0 0 0 3px var(--e7-accent-soft); }
+#e7Body .sip-app .tb-name { color: var(--e7-text-2); }
+
+/* toolbox icons are drawn like the canvas: re-colour their pale labels */
+#e7Body .sip-app .tb-icon svg text:is([fill="#d7d7d7" i], [fill="#e8edf6" i], [fill="#888" i]) { fill: var(--sip-label); }
+#e7Body .sip-app .tb-icon svg :not(text)[fill="#0a0f1e" i] { fill: var(--e7-surface-2); }
+#e7Body .sip-app .tb-icon svg [stroke="#22d3ee" i] { stroke: var(--sip-accent); }
+
+#e7Body .sip-app .toolbox-info { background: var(--e7-surface-2); color: var(--e7-text-3); border: 1px solid var(--e7-border); }
+
+#e7Body .sip-app .kbd {
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border-2);
+    color: var(--e7-text);
+    box-shadow: 0 1px 0 var(--e7-border-2);
+}
+
+#e7Body .sip-app .checkbox-row { color: var(--e7-text-2); }
+
+/* canvas frame + status bar */
+#e7Body .sip-app .canvas-wrap { background: var(--sip-bg-2); }
+#e7Body .sip-app .statusbar { background: var(--e7-surface-2); border-top-color: var(--e7-border); color: var(--e7-text-3); }
+
+/* inspector */
+#e7Body .sip-app .inspector .muted { color: var(--e7-text-3); }
+#e7Body .sip-app .insp-row { border-bottom-color: var(--e7-border); }
+#e7Body .sip-app .insp-row b { color: var(--e7-text-3); }
+#e7Body .sip-app .insp-row code { color: var(--e7-accent-ink); }
+
+/* modal (Import / Export) + toast */
+#e7Body .sip-app .modal-backdrop { background: rgba(16, 32, 50, .42); }
+#e7Body .sip-app .modal { background: var(--e7-surface); border: 1px solid var(--e7-border); box-shadow: var(--e7-shadow-pop); color: var(--e7-text); }
+#e7Body .sip-app .modal-head,
+#e7Body .sip-app .modal-foot { background: var(--e7-surface-2); border-color: var(--e7-border); }
+#e7Body .sip-app .modal-body textarea { background: var(--e7-surface-2); color: var(--e7-text); border-color: var(--e7-border-2); }
+#e7Body .sip-app .toast { background: var(--e7-heading); color: #fff; border-color: transparent; box-shadow: var(--e7-shadow-pop); }
+
+/* right-click context menu (appended to <body>) */
+#e7Body .sip-ctx-menu {
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-pop);
+    color: var(--e7-text);
+}
+
+#e7Body .sip-ctx-menu .ctx-sep { background: var(--e7-border); }
+#e7Body .sip-ctx-menu .ctx-item:hover,
+#e7Body .sip-ctx-menu .ctx-subitem:hover,
+#e7Body .sip-ctx-menu .ctx-group-label:hover { background: var(--e7-surface-3); }
+#e7Body .sip-ctx-menu .ctx-item.ctx-danger:hover { background: rgba(239, 91, 114, .10); }
+#e7Body .sip-ctx-menu .ctx-subitem { color: var(--e7-text-2); border-left-color: var(--e7-border-2); }
+#e7Body .sip-ctx-menu .ctx-subitem:hover { color: var(--e7-heading); border-left-color: var(--e7-accent); }
+#e7Body .sip-ctx-menu .ctx-key { background: var(--e7-surface-2); border-color: var(--e7-border-2); color: var(--e7-text-3); }
+#e7Body .sip-ctx-menu .ctx-group-label,
+#e7Body .sip-ctx-menu .ctx-accent { color: var(--e7-accent-ink); }
+
+/* ---- Telemetry Live · SIP schematic card (#sipCardSection) ----------
+   The canvas itself is themed by the svg.sip-yard rules above; this is the
+   card around it. Telemetry runs it in "mini mode" (body.sip-mini-mode, set
+   by telemetrylive.js) and as a top-bar card (.sip-card-topbar), and both
+   hard-code a navy card, white text, a black canvas overlay and a black
+   fullscreen — several with !important, hence the same here. */
+#e7Body .sip-card,
+body#e7Body.sip-mini-mode .sip-card,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--e7-shadow-card) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#e7Body .sip-card::before,
+body#e7Body.sip-mini-mode .sip-card::before { display: none !important; }
+
+body#e7Body.sip-mini-mode .sip-card:hover,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar:hover {
+    border-color: var(--e7-border-2) !important;
+    box-shadow: var(--e7-shadow-hover) !important;
+}
+
+#e7Body .sip-card .sip-card-head,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar .sip-card-head {
+    border-bottom: 1px solid var(--e7-border) !important;
+}
+
+#e7Body .sip-card .sip-title,
+body#e7Body.sip-mini-mode .sip-card .sip-title,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar .sip-title {
+    color: var(--e7-heading) !important;
+    font-weight: 700;
+}
+
+#e7Body .sip-card .sip-title i,
+body#e7Body.sip-mini-mode .sip-card .sip-title i { color: var(--e7-accent) !important; }
+
+/* "· Select a site" / site name, and the empty-state text (inline white-alpha) */
+#e7Body .sip-card .sip-title > span[style],
+#e7Body .sip-card #sipSiteName { color: var(--e7-text-3) !important; }
+#e7Body .sip-card #sipWaiting { color: var(--e7-text-3) !important; }
+
+#e7Body .sip-card .sip-sub { color: var(--e7-text-3) !important; }
+#e7Body .sip-card .sip-sub kbd { background: var(--e7-surface-2); border-color: var(--e7-border-2); color: var(--e7-text-2); }
+
+#e7Body .sip-card .sip-mini-pulse,
+body#e7Body.sip-mini-mode .sip-card .sip-mini-pulse,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar .sip-mini-pulse { background: var(--e7-dot-green) !important; }
+body#e7Body.sip-mini-mode .sip-card.sip-no-data .sip-mini-pulse { background: var(--e7-text-4) !important; }
+
+/* controls: Clear · Compare · Fullscreen = the zip's pills */
+#e7Body .sip-card .compare-toggle {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border-2);
+    color: var(--e7-text-2);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .sip-card .compare-toggle:hover { background: var(--e7-surface-3); color: var(--e7-heading); }
+#e7Body .sip-card .compare-toggle strong { color: var(--e7-text-3); }
+#e7Body .sip-card .compare-toggle.on { background: var(--e7-accent-soft); border-color: var(--e7-accent); color: var(--e7-accent-ink); box-shadow: none; }
+#e7Body .sip-card .compare-toggle.on strong { color: var(--e7-accent-ink); }
+
+#e7Body .sip-card .sip-clear { border-radius: 999px; background: var(--e7-surface); border: 1px solid var(--e7-dot-red); color: var(--e7-red); }
+#e7Body .sip-card .sip-clear:hover { background: rgba(239, 91, 114, .10); }
+
+#e7Body .sip-card #sipFullscreenBtn,
+#e7Body .sip-card .sip-fullscreen-btn,
+body#e7Body.sip-mini-mode #sipFullscreenBtn,
+body#e7Body .sip-card.sip-card-topbar #sipFullscreenBtn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50% !important;
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border-2) !important;
+    color: var(--e7-text-2) !important;
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .sip-card #sipFullscreenBtn:hover,
+body#e7Body.sip-mini-mode .sip-card:hover #sipFullscreenBtn,
+body#e7Body .sip-card.sip-card-topbar #sipFullscreenBtn:hover {
+    background: var(--e7-surface-3) !important;
+    border-color: var(--e7-accent) !important;
+    color: var(--e7-accent) !important;
+}
+
+/* the canvas frame: no black overlay — the yard paints its own themed background */
+#e7Body .sip-card .sip-canvas,
+body#e7Body.sip-mini-mode .sip-card .sip-canvas,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar .sip-canvas {
+    background: var(--sip-bg-2) !important;
+    border-radius: 10px;
+}
+
+#e7Body .sip-card .sip-canvas::-webkit-scrollbar-track { background: transparent; }
+#e7Body .sip-card .sip-canvas::-webkit-scrollbar-thumb { background: var(--e7-border-2); }
+#e7Body .sip-card .sip-canvas::-webkit-scrollbar-thumb:hover { background: var(--e7-accent); }
+
+/* mini thumbnail + footer ("N assets · live") */
+body#e7Body.sip-mini-mode .sip-card .sip-mini-thumb {
+    border-color: var(--e7-border) !important;
+    background-color: var(--sip-bg-2) !important;
+}
+
+body#e7Body.sip-mini-mode .sip-card .sip-mini-thumb::before { background: var(--e7-border-2) !important; }
+body#e7Body.sip-mini-mode .sip-card .sip-mini-thumb::after { background: var(--e7-border) !important; }
+
+#e7Body .sip-card .sip-mini-foot,
+body#e7Body.sip-mini-mode .sip-card .sip-mini-foot,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar .sip-mini-foot { color: var(--e7-text-3) !important; }
+
+#e7Body .sip-card .sip-mini-foot strong,
+body#e7Body.sip-mini-mode .sip-card .sip-mini-foot strong,
+body#e7Body .sip-card.sip-card-topbar .sip-mini-foot strong { color: var(--e7-heading) !important; }
+
+/* legend */
+#e7Body .sip-card .sip-legend { color: var(--e7-text-2); border-top-color: var(--e7-border); }
+#e7Body .sip-card .sip-legend .legend-item { color: var(--e7-text-2); }
+
+/* hover tooltip over an asset */
+#e7Body .sip-tooltip {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    color: var(--e7-text) !important;
+    box-shadow: var(--e7-shadow-pop) !important;
+    backdrop-filter: none;
+}
+
+#e7Body .sip-tooltip strong { color: var(--e7-heading); }
+#e7Body .sip-tooltip .tt-meta { color: var(--e7-text-3); }
+
+/* fullscreen + drag */
+#e7Body .sip-card.fullscreen,
+body#e7Body.sip-mini-mode .sip-card.fullscreen,
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar.fullscreen {
+    background: var(--e7-shell) !important;
+    border-radius: 0 !important;
+}
+
+body#e7Body.sip-mini-mode .sip-card.fullscreen .sip-card-head { border-bottom-color: var(--e7-border) !important; }
+#e7Body .sip-card.sip-card-topbar.sip-dragging { box-shadow: var(--e7-shadow-pop) !important; }
+
+/* live highlight glows: theme accent instead of cyan */
+#e7Body svg.sip-yard .sip-highlight { filter: drop-shadow(0 0 6px var(--sip-accent)); }
+
+/* ------------------------------------------------------------
+   6. Responsive
+   ------------------------------------------------------------ */
+
+/* dashboard grids — the mockup's breakpoints */
+@media (max-width: 1500px) {
+    #e7Body .e7-body .asset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1280px) {
+    :root { --sidebar-width: 226px; }
+    #e7Body .e7-nav-item { font-size: 13px; padding: 0 11px; }
+    #e7Body .e7-body .bottom { grid-template-columns: minmax(0, 1fr); }
+    #e7Body .e7-body .reports { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* off-canvas rail (matches the layout's existing 991px breakpoint) */
+@media (max-width: 991px) {
+    :root { --e7-frame: 12px; --e7-inset: 12px; }
+
+    #e7Body .e7-app { border-radius: 20px; }
+
+    #e7Body .e7-sidebar {
+        width: 262px;
+        z-index: 1060;
+        transform: translateX(calc(-100% - 40px));
+        box-shadow: 0 24px 50px rgba(12, 34, 56, .32) !important;
+    }
+
+    #e7Body .e7-sidebar.open { transform: translateX(0); }
+
+    #e7Body .e7-main,
+    body#e7Body.sidebar-mini .e7-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        padding-left: var(--e7-inset);
+    }
+
+    #e7Body .e7-body .asset-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    /* .hamb appears once the rail is off-canvas */
+    #e7Body .e7-menu-toggle.hamb { display: inline-flex; }
+}
+
+@media (max-width: 860px) {
+    #e7Body .e7-header-title.title {
+        font-size: 13.5px;
+        flex: 1 1 100%;
+        order: 3;
+        margin-left: 0;
+    }
+
+    #e7Body .e7-header-right.top-actions { margin-left: auto; order: 2; }
+
+    #e7Body .e7-body .asset-grid,
+    #e7Body .e7-body .reports { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #e7Body .e7-body .sys { margin-left: 0; width: 100%; }
+    #e7Body .e7-body .sys .gauge { flex: 1 1 0; width: auto; }
+}
+
+@media (max-width: 640px) {
+    :root { --e7-frame: 8px; --e7-inset: 10px; }
+
+    #e7Body .e7-app { border-radius: 18px; }
+    #e7Body .e7-header,
+    #e7Body .e7-header.topbar { padding: 10px; }
+    #e7Body .e7-header-right.top-actions { gap: 6px; }
+    #e7Body .e7-header .pill { height: 34px; font-size: 11.5px; padding: 0 11px; }
+    #e7Body .e7-header .pill.icon-btn { width: 34px; padding: 0; }
+    #e7Body .e7-sidebar { width: min(262px, calc(100% - 40px)); }
+
+    #e7Body .e7-body .asset-grid,
+    #e7Body .e7-body .reports { grid-template-columns: minmax(0, 1fr); }
+    #e7Body .e7-body .filters,
+    #e7Body .e7-body .filters.bg-Up { padding: 10px; }
+    #e7Body .e7-body .filter-container { width: 100%; }
+    #e7Body .e7-body .filter-item { flex: 1 1 108px; min-width: 0; }
+    #e7Body .e7-body .selectx,
+    #e7Body .e7-body .selectx.bg-Up { min-width: 0; width: 100%; }
+    #e7Body .e7-body .panel,
+    #e7Body .e7-body .panel.bg-Up,
+    #e7Body .e7-body .TopBottom-padding { padding: 13px !important; border-radius: 15px; }
+    #e7Body .e7-body .summary { padding: 14px; }
+    #e7Body .e7-body .rbody { gap: 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #e7Body,
+    #e7Body .e7-sidebar,
+    #e7Body .e7-nav-item,
+    #e7Body .e7-body .asset,
+    #e7Body .e7-body .report {
+        transition: none;
+    }
+
+    #e7Body .e7-live-dot { animation: none; }
+}

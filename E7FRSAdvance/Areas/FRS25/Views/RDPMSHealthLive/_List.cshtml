@@ -3866,6 +3866,7 @@ function resolveRdpmsHealthPmAttributeName(attributeId) {
     /* Fetch IsHalfPointMachine for every point machine in the current result
        set. One POST for all of them; the flag is asset configuration, so it is
        cached for the life of the page. */
+    window.__rdpmsPmFlagsAsked = window.__rdpmsPmFlagsAsked || {};
     window.rdpmsFetchPointMachineFlags = function () {
         var assets = (window.json && $.isArray(window.json.mAssets))
             ? window.json.mAssets : [];
@@ -3885,6 +3886,10 @@ function resolveRdpmsHealthPmAttributeName(attributeId) {
             seen[aid] = true;
             /* Already known from an earlier search - do not ask again. */
             if (window.__rdpmsHalfPmByAsset[String(aid)] !== undefined) { continue; }
+            /* Asked already and the response did not carry it - asking again
+               on every repaint returns the same answer and re-opens the
+               "pending" window that holds the Sensor tile. */
+            if (window.__rdpmsPmFlagsAsked[String(aid)]) { continue; }
             ids.push(aid);
         }
 
@@ -3902,6 +3907,8 @@ function resolveRdpmsHealthPmAttributeName(attributeId) {
         if (window.__rdpmsPmFlagsRequest) {
             return window.__rdpmsPmFlagsRequest;
         }
+
+        ids.forEach(function (x) { window.__rdpmsPmFlagsAsked[String(x)] = true; });
 
         var req = $.ajax({
             url: '/FRS25/RDPMSHealthLive/GetAssetsByIds',
@@ -3942,6 +3949,13 @@ function resolveRdpmsHealthPmAttributeName(attributeId) {
             return $.Deferred().resolve().promise();
         }).always(function () {
             window.__rdpmsPmFlagsRequest = null;
+            /* The filtered Sensor tile holds while this request is pending.
+               Repaint once it is cleared - success or failure - so an asset
+               missing from the response, or a failed POST, cannot leave the
+               tile waiting forever. */
+            if (typeof nfBindFilteredSensorCounts === 'function') {
+                try { nfBindFilteredSensorCounts(); } catch (e) { }
+            }
         });
 
         window.__rdpmsPmFlagsRequest = req;
@@ -8470,7 +8484,11 @@ sensorFaults = _picSensorFaults;
     var st = (leg && leg.state) || 'unknown';
     var subLabel = iconType === 'wired' ? 'OFC / TCP' : '4G / MQTT';
 
-    return '<div class="rdpms-popup-net-section">' +
+    /* Label on top, status pill on its own row - in BOTH cards. Letting the
+       pill sit inline and wrap only when it did not fit gave the two cards
+       different layouts, and the grid then stretched the shorter one, which
+       left an empty band under its header. is-<state> tints the accent edge. */
+    return '<div class="rdpms-popup-net-section rdpms-net-card is-' + st + '">' +
         '<div class="rdpms-popup-net-head">' +
         '<div class="rdpms-popup-net-label-wrap">' +
         '<span class="rdpms-popup-net-icon ' + iconType + '">' +
@@ -8481,8 +8499,8 @@ sensorFaults = _picSensorFaults;
         '<div class="rdpms-popup-net-label-sub">' + subLabel + '</div>' +
         '</div>' +
         '</div>' +
-        rdpmsNetBadge(st) +
         '</div>' +
+        '<div class="rdpms-net-card-status">' + rdpmsNetBadge(st) + '</div>' +
         '</div>';
 }
 
@@ -8909,8 +8927,10 @@ function _lzStateFor(id) {
                nameless. Silently skipped when mAssetInfos has no rows. */
             if (payload.attributes && payload.attributes.length) {
                 bodyHtml +=
-                    '<div class="rdpms-popup-attr-head">Sensor attributes (' +
-                    payload.attributes.length + ')</div>' +
+                    '<div class="rdpms-popup-section-title">' +
+                    '<span>Sensor Attributes</span>' +
+                    '<span class="rdpms-popup-section-count">' + payload.attributes.length + '</span>' +
+                    '</div>' +
                     '<div class="rdpms-popup-chip-wrap">';
 
                 for (var ax = 0; ax < payload.attributes.length; ax++) {
@@ -8958,7 +8978,7 @@ function _lzStateFor(id) {
                     '</div>' +
                     '<div class="rdpms-popup-healthy-card">' +
                     '<i class="fas fa-check-circle" style="font-size:16px;"></i>' +
-                    'All A10 devices are communicating normally.' +
+                    'All IoT devices are communicating normally.' +
                     '</div>';
 
                 if (payload.deviceIds && payload.deviceIds.length) {
@@ -8974,7 +8994,7 @@ function _lzStateFor(id) {
                             '>' +
                             '<i class="fas ' + (_hM ? 'fa-question-circle' : 'fa-broadcast-tower') +
                             '" style="color:' + (_hM ? window.RDPMS_MASK_COLOR.dot : '#1d9e75') + ';font-size:11px;"></i>' +
-                            'A10 ID : <strong>' + _hId + '</strong>' +
+                            'IoT ID : <strong>' + _hId + '</strong>' +
                             '</span>';
                     }
                     bodyHtml += '</div>';
@@ -9059,7 +9079,7 @@ function _lzStateFor(id) {
                             '>' +
                             '<i class="fas ' + _dIcon +
                             '" style="font-size:11px;color:' + _dColor + ';"></i>' +
-                            'A10 ID : <strong>' + _did + '</strong>' +
+                            'IoT ID : <strong>' + _did + '</strong>' +
                             '</span>';
                     }
                     bodyHtml += '</div>';
@@ -9197,7 +9217,7 @@ for (var _nfi = 0; _nfi < _nwFaultyModems.length; _nfi++) {
         '<div class="rdpms-popup-fault-body">' +
         '<div class="rdpms-popup-fault-name">' +
         '<i class="fas fa-server" style="margin-right:6px;color:#dc2626;"></i>' +
-        'Modem ID : ' + _fm.modemId +
+        'Network ID : ' + _fm.modemId +
         '</div>' +
         (_fm.time
             ? '<div class="rdpms-popup-fault-time">' +
@@ -9218,7 +9238,7 @@ if (_nwHealthyModems.length) {
         /* The list also carries masked (N/A) modems, so it is only titled
            "Healthy Modems" when every chip in it really is Healthy. */
         '<span>' + (_nwHealthyModems.some(function (m) { return m.masked; })
-            ? 'Related Modems' : 'Healthy Modems') + '</span>' +
+            ? 'Related Networks' : 'Healthy Networks') + '</span>' +
         '<span class="rdpms-popup-section-count">' + _nwHealthyModems.length + '</span>' +
         '</div>' +
         '<div class="rdpms-popup-modem-chips">';
@@ -9272,9 +9292,13 @@ if (_nwHealthyModems.length) {
                     ? payload.attributes
                     : []);
 
+            /* Same heading + count chip as "Healthy Networks" / "Connectivity",
+               so the drawer's sections read as one set. */
             bodyHtml +=
-                '<div class="rdpms-popup-attr-head">Linked attributes (' +
-                _laList.length + ')</div>';
+                '<div class="rdpms-popup-section-title">' +
+                '<span>Linked Attributes</span>' +
+                '<span class="rdpms-popup-section-count">' + _laList.length + '</span>' +
+                '</div>';
 
             if (!_laList.length) {
                 /* Reached only when the station's CardLine rows are genuinely
@@ -9287,9 +9311,9 @@ if (_nwHealthyModems.length) {
                     '<div class="rdpms-popup-attr-empty">' +
                     '<i class="fas fa-info-circle" style="margin-right:6px;"></i>' +
                     'Configuration for this station has not loaded yet, so the ' +
-                    (type === 'network' ? 'modem' : 'A10') +
+                    (type === 'network' ? 'network' : 'IoT') +
                     ' attribute names are unavailable' +
-                    (_lzIds ? ' (' + (type === 'network' ? 'Modem ' : 'A10 ') +
+                    (_lzIds ? ' (' + (type === 'network' ? 'Network ' : 'IoT ') +
                         _lzIds + ')' : '') +
                     '. Fetching now — this should resolve on the next open.' +
                     '</div>';
@@ -9332,7 +9356,7 @@ if (_nwHealthyModems.length) {
                         '<span class="rdpms-popup-chip-name" style="color:' +
                         laNameColor + ';">' + laName + '</span>' +
                         (la.link ? '<span class="rdpms-popup-chip-link">' +
-                            (type === 'network' ? 'Modem ' : 'A10 ') + la.link + '</span>' : '') +
+                            (type === 'network' ? 'Network ' : 'IoT ') + la.link + '</span>' : '') +
                         '</span>';
                 }
 
@@ -10659,6 +10683,8 @@ if (_nwHealthyModems.length) {
 
     /* Checked AssetTypeIds, or null when nothing is filtered. */
     function nfSelectedAssetTypeIds() {
+        var sc = window.__rdpmsSearchScope;
+        if (sc && 'assetTypeIds' in sc) { return sc.assetTypeIds; }
         var $all = $('.cb-assetType');
         if (!$all.length) { return null; }
         var sel = $('.cb-assetType:checked').map(function () {
@@ -12238,6 +12264,8 @@ if (_nwHealthyModems.length) {
         var _vibGroupSeen = {};
 
         var _pmSeen = {};
+        var _pmPending = false;
+        var _contrib = {};   /* "siteId|assetId" -> sensors counted, for the change log below */
 
         if (_vinfos.length) {
             var _attrSeen = {};
@@ -12261,7 +12289,35 @@ if (_nwHealthyModems.length) {
                     var _pmk = _sid + '|' + _aid;
                     if (_pmSeen[_pmk]) { continue; }
                     _pmSeen[_pmk] = true;
-                    total += rdpmsAssetAttributes(_sid, _aid).length;
+                    var _pmN = rdpmsAssetAttributes(_sid, _aid).length;
+                    total += _pmN;
+                    _contrib[_pmk] = _pmN;
+                    /* rdpmsAssetAttributes skips vibration ends and leaves A/B
+                       uncollapsed until GetAssetsByIds lands, so the count taken
+                       now differs from the one ~1 s later. It also fires that
+                       request, so a pending request here means "not final yet". */
+                    if (!window.rdpmsHalfPmKnown(_aid)) {
+                        var _pmAsked = !!(window.__rdpmsPmFlagsAsked &&
+                            window.__rdpmsPmFlagsAsked[String(_aid)]);
+                        /* Hold the tile while the half-PM flag is still
+                           resolvable: a request is in flight, OR we have not
+                           asked yet. This closes the first-paint window where
+                           nothing was pending, which showed the uncollapsed
+                           A/B count (107) before collapsing to the real
+                           filtered count (95). Fire the fetch if it is not
+                           already running so the hold resolves; once
+                           asked-and-settled but still unknown we stop holding,
+                           so a genuinely missing flag never pins the tile on
+                           '…'. */
+                        if (window.__rdpmsPmFlagsRequest || !_pmAsked) {
+                            _pmPending = true;
+                            if (!window.__rdpmsPmFlagsRequest &&
+                                typeof window.rdpmsFetchPointMachineFlags === 'function') {
+                                try { window.rdpmsFetchPointMachineFlags(); }
+                                catch (ePmFetch) { }
+                            }
+                        }
+                    }
                     continue;
                 }
 
@@ -12278,6 +12334,7 @@ if (_nwHealthyModems.length) {
                     if (_vibGroupSeen[_vk]) { continue; }
                     _vibGroupSeen[_vk] = true;
                     total++;
+                    _contrib[_sid + '|' + _aid] = (_contrib[_sid + '|' + _aid] || 0) + 1;
                     continue;
                 }
 
@@ -12294,6 +12351,7 @@ if (_nwHealthyModems.length) {
                 _attrSeen[_ak] = true;
 
                 total++;
+                _contrib[_sid + '|' + _aid] = (_contrib[_sid + '|' + _aid] || 0) + 1;
             }
         } else {
             var _ipsAssetSeen = {};
@@ -12345,7 +12403,60 @@ if (_nwHealthyModems.length) {
 
         /* Write even when zero so an empty selection reads 0 rather than
    keeping a stale number. Skip only when neither source has loaded. */
-        if (_vinfos.length > 0 || cardLines.length > 0) {
+        /* DIAGNOSTIC: when Total moves between two passes, log which assets
+           moved and by how much, so a flicker names its own cause. */
+        var _prevC = window.__rdpmsLastSensorContrib;
+        if (_prevC && _prevC.total !== total) {
+            var _moved = [];
+            var _ks = {};
+            Object.keys(_contrib).forEach(function (k) { _ks[k] = 1; });
+            Object.keys(_prevC.byAsset).forEach(function (k) { _ks[k] = 1; });
+            Object.keys(_ks).forEach(function (k) {
+                var a = _prevC.byAsset[k] || 0, b = _contrib[k] || 0;
+                if (a !== b) { _moved.push({ asset: k, was: a, now: b }); }
+            });
+            console.warn('[RDPMS tile] Sensor Total moved ' + _prevC.total + ' -> ' + total +
+                (_pmPending ? ' (PM flags pending)' : ''), _moved, new Error('caller').stack);
+        }
+        window.__rdpmsLastSensorContrib = { total: total, byAsset: _contrib };
+
+        /* Point machine counts also depend on the CardLine rows: the aliases
+           in them decide how rdpmsCollapsePmAttributes pairs A and B. On the
+           first search of the page those rows are still being fetched, and
+           nothing repainted the tile when they landed - it showed the
+           pre-alias count until the next WebSocket frame ~1 s later, then
+           jumped. Hold while any selected station's rows are unsettled and
+           repaint once they arrive. A failed fetch sets FailedAt, which ends
+           the hold so the tile cannot wait forever. */
+        if (Object.keys(_pmSeen).length && typeof nfFetchCardLineRows === 'function') {
+            var _clStore = window.__rdpmsCardLineRowsBySite || {};
+            var _clFailed = window.__rdpmsCardLineFailedAt || {};
+            var _clWait = window.__rdpmsSensorCardLineWait =
+                window.__rdpmsSensorCardLineWait || {};
+            var _clKeys = _selSites.length ? _selSites : ['0'];
+            if (!$.isArray(_clStore['0'])) {
+                _clKeys.forEach(function (k) {
+                    if ($.isArray(_clStore[k]) || _clFailed[k]) { return; }
+                    _pmPending = true;
+                    if (_clWait[k]) { return; }
+                    _clWait[k] = true;
+                    $.when(nfFetchCardLineRows(k)).always(function () {
+                        delete _clWait[k];
+                        try { nfBindFilteredSensorCounts(); } catch (e) { }
+                    });
+                });
+            }
+        }
+
+        if (_pmPending) {
+            /* Hold the tile until the point machine configuration is known;
+               the request's .always() repaints with the final count. Show 0
+               meanwhile - the same placeholder the partial renders - rather
+               than an interim count that would jump. */
+            $('#spnTotalSensor').removeData('nm-text').text(0)
+                .attr('title', 'Loading point machine configuration');
+        }
+        else if (_vinfos.length > 0 || cardLines.length > 0) {
             $('#spnTotalSensor').removeData('nm-text').text(total)
                 .attr('title', 'Filtered by the selected asset type(s)');
         }
@@ -12561,6 +12672,9 @@ console.log(
        summary must be surfaced as stale, never silently replaced by a count
        taken from a different universe.                                      */
     function rdpmsTileOwner() {
+        /* Decided by the asset types that were SEARCHED, not the live dropdown. */
+        var sc = window.__rdpmsSearchScope;
+        if (sc && typeof sc.owner === 'string') { return sc.owner; }
         var $all = $('.cb-assetType');
         if (!$all.length) { return 'none'; }
         return ($all.length === $('.cb-assetType:checked').length)
@@ -12602,6 +12716,12 @@ console.log(
        station that has reported when nothing is checked. Mirrors
        nfBindCombinedNetworkCounts. */
     function rdpmsSelectedSiteFilter() {
+        /* Use the stations captured when Search was clicked, not the live
+           dropdown, so changing Station does nothing until Search. */
+        var sc = window.__rdpmsSearchScope;
+        if (sc && $.isArray(sc.siteIds)) {
+            return { ids: sc.siteIds.slice(), restrict: sc.siteIds.length > 0 };
+        }
         var ids = $('.cb-site:checked').map(function () {
             var id = parseInt($(this).val(), 10);
             return id > 0 ? String(id) : null;
@@ -12974,7 +13094,22 @@ console.log(
            at all). The raw sensorHealth row store is the same universe that
            roll-up counts, so derive the tile from it rather than leaving the
            markup's literal 0 on screen. */
-        if (!gotSensor && typeof window.rdpmsSensorUniverse === 'function') {
+        /* Under a partial Asset-Type filter the fallbacks below are wrong: the
+           raw row store is station-wide, so on the first search (before any
+           summary frame) this wrote the whole station's count right after
+           nfBindFilteredSensorCounts wrote the filtered one - every sensor
+           frame, which is the Point Machine Total flicker. Hand the tile to the
+           filtered binder instead, exactly as the gotSensor branch does. */
+        if (!gotSensor && rdpmsTileOwner() === 'rows') {
+            if (typeof nfBindFilteredSensorCounts === 'function') {
+                nfBindFilteredSensorCounts();
+            }
+        }
+        /* All asset types selected: the station-wide sensorHealthSummary is the
+           ONLY source. Stay on the markup's 0 until it arrives - the raw-row and
+           inventory estimates count different sets of sensors and flickered. */
+        else if (!gotSensor && rdpmsTileOwner() === 'none' &&
+            typeof window.rdpmsSensorUniverse === 'function') {
             var _su = window.rdpmsSensorUniverse();
             if (_su.length) {
                 var _suT = 0, _suF = 0;

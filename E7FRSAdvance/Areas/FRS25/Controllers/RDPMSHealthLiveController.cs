@@ -270,6 +270,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     {
                         string jsonString = response.Content.ReadAsStringAsync().Result;
                         mAssetLister = JsonConvert.DeserializeObject<RDPMSHealthLiveLister>(jsonString);
+                        if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssets.Count > 0)
+                        {
+                            mAssetLister.mAssets = mAssetLister.mAssets
+                                .Where(x => !IsExcludedAssetType(x.AssetTypeName))
+                                .ToList();
+                        }
                     }
                 }
             }
