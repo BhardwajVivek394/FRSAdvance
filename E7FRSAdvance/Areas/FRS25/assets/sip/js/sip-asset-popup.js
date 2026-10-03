@@ -105,6 +105,92 @@
     /* ── tiny helpers ─────────────────────────────────────────────── */
     function el(id) { return document.getElementById(id); }
 
+    /* ===============================================================
+       v618.6 THEME -- the popup follows the schematic palette
+       (Control room / EI VDU / Day, from SIP.themeName(); without the
+       SIP library: Day on a light page, Control room on a dark one).
+       Variables are re-declared on #sipAssetPopupOverlay[data-sip-theme]
+       (higher specificity than the base #sipAssetPopupOverlay rule, so it
+       also wins over the copy inside Views/Sip/Index.cshtml). Canvas
+       charts read the same variables through sapVar().
+       =============================================================== */
+    var SAP_THEME_CSS = [
+        '#sipAssetPopupOverlay[data-sip-theme="night"]{--sap-bg-panel:#101A28;--sap-bg-card:#142033;--sap-bg-row-alt:#122033;--sap-bg-row-hover:#18283D;--sap-bg-header:#0E1828;' +
+            '--sap-border:#22324A;--sap-border-glow:#2E4260;--sap-text-primary:#E6EDF5;--sap-text-secondary:#A9B7CA;--sap-text-muted:#8D9CB2;' +
+            '--sap-accent-cyan:#3BC9DB;--sap-accent-green:#3DE38A;--sap-accent-yellow:#F6C445;--sap-accent-orange:#FF8A4C;--sap-accent-red:#FF5A4E;--sap-accent-blue:#5B9BFF;' +
+            '--sap-gradient-header:linear-gradient(135deg,#14223A 0%,#0E1828 100%);--sap-shadow-card:0 10px 40px rgba(0,0,0,.45);' +
+            '--sap-heading:#FFFFFF;--sap-backdrop:rgba(5,10,20,.72);--sap-grid:rgba(141,156,178,.22);--sap-cursor:rgba(59,201,219,.5);' +
+            '--sap-tip-bg:rgba(14,24,40,.95);--sap-tip-border:rgba(59,201,219,.35);--sap-tint:rgba(59,201,219,.10);}',
+        '#sipAssetPopupOverlay[data-sip-theme="vdu"]{--sap-bg-panel:#0B0C0D;--sap-bg-card:#121416;--sap-bg-row-alt:#0F1113;--sap-bg-row-hover:#1A1D21;--sap-bg-header:#000000;' +
+            '--sap-border:#2A2D31;--sap-border-glow:#3A3E44;--sap-text-primary:#ECECEC;--sap-text-secondary:#B5B5B5;--sap-text-muted:#8A8F95;' +
+            '--sap-accent-cyan:#00B4FF;--sap-accent-green:#22E05A;--sap-accent-yellow:#FFD21F;--sap-accent-orange:#FF8C1A;--sap-accent-red:#FF2B2B;--sap-accent-blue:#4C8DFF;' +
+            '--sap-gradient-header:linear-gradient(135deg,#121416 0%,#000000 100%);--sap-shadow-card:0 10px 40px rgba(0,0,0,.6);' +
+            '--sap-heading:#FFFFFF;--sap-backdrop:rgba(0,0,0,.78);--sap-grid:rgba(180,180,180,.18);--sap-cursor:rgba(0,180,255,.5);' +
+            '--sap-tip-bg:rgba(0,0,0,.95);--sap-tip-border:rgba(0,180,255,.35);--sap-tint:rgba(0,180,255,.10);}',
+        '#sipAssetPopupOverlay[data-sip-theme="day"]{--sap-bg-panel:#FFFFFF;--sap-bg-card:#F6F8FA;--sap-bg-row-alt:#F8FAFC;--sap-bg-row-hover:#EEF4F8;--sap-bg-header:#F3F5F8;' +
+            '--sap-border:#DCE2E9;--sap-border-glow:#C6D0DB;--sap-text-primary:#13202E;--sap-text-secondary:#4A5868;--sap-text-muted:#6B7A8C;' +
+            '--sap-accent-cyan:#0E8FA3;--sap-accent-green:#17A659;--sap-accent-yellow:#B47B00;--sap-accent-orange:#D9601A;--sap-accent-red:#D0251B;--sap-accent-blue:#1F6FD1;' +
+            '--sap-gradient-header:linear-gradient(135deg,#FFFFFF 0%,#F3F5F8 100%);--sap-shadow-card:0 10px 36px rgba(15,27,42,.18);' +
+            '--sap-heading:#13202E;--sap-backdrop:rgba(15,27,42,.35);--sap-grid:rgba(90,104,120,.18);--sap-cursor:rgba(14,143,163,.5);' +
+            '--sap-tip-bg:rgba(255,255,255,.97);--sap-tip-border:rgba(14,143,163,.35);--sap-tint:rgba(14,143,163,.08);}',
+        /* hard-coded colours in the base sheet -> theme variables */
+        '#sipAssetPopupOverlay[data-sip-theme]{background:var(--sap-backdrop);color:var(--sap-text-primary);}',
+        '#sipAssetPopupOverlay[data-sip-theme] .sap-asset-name,#sipAssetPopupOverlay[data-sip-theme] .sap-maint-modal h3{color:var(--sap-heading);}',
+        '#sipAssetPopupOverlay[data-sip-theme] .sap-cc-head{color:var(--sap-heading);background:linear-gradient(135deg,var(--sap-tint),transparent);border-bottom-color:var(--sap-border);}',
+        '#sipAssetPopupOverlay[data-sip-theme] .sap-maint-modal-bg{background:var(--sap-backdrop);}',
+        '#sipAssetPopupOverlay[data-sip-theme] .sap-telemetry-header{background:linear-gradient(90deg,var(--sap-tint),transparent);}',
+        '#sipAssetPopupOverlay[data-sip-theme] .sap-asset-icon,#sipAssetPopupOverlay[data-sip-theme] .sap-bell-icon{background:var(--sap-tint);border-color:var(--sap-border-glow);}',
+        '#sipAssetPopupOverlay[data-sip-theme] .sap-close-btn{background:var(--sap-bg-card);}',
+        '#sipAssetPopupOverlay[data-sip-theme] input,#sipAssetPopupOverlay[data-sip-theme] select,#sipAssetPopupOverlay[data-sip-theme] textarea{background:var(--sap-bg-card);color:var(--sap-text-primary);border-color:var(--sap-border);}',
+        '#sipAssetPopupOverlay[data-sip-theme="night"] input,#sipAssetPopupOverlay[data-sip-theme="vdu"] input{color-scheme:dark;}',
+        '#sipAssetPopupOverlay[data-sip-theme="day"] input{color-scheme:light;}'
+    ].join('');
+
+    function sapPageIsLight() {
+        if (window.SipTelemetry && typeof window.SipTelemetry.pageIsLight === 'function') {
+            try { return !!window.SipTelemetry.pageIsLight(); } catch (e) { /* fall through */ }
+        }
+        var n = document.body;
+        while (n && n.nodeType === 1) {
+            var c = window.getComputedStyle(n).backgroundColor || '';
+            var m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c);
+            if (m && (m[4] === undefined || parseFloat(m[4]) > 0.5)) {
+                return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255 > 0.5;
+            }
+            n = n.parentNode;
+        }
+        return true;
+    }
+    function sapThemeName() {
+        if (window.SIP && typeof window.SIP.themeName === 'function') {
+            var t = window.SIP.themeName();
+            if (t === 'night' || t === 'vdu' || t === 'day') return t;
+        }
+        return sapPageIsLight() ? 'day' : 'night';
+    }
+    function applySapTheme() {
+        if (!document.querySelector('style[data-sap-theme-css]')) {
+            var st = document.createElement('style');
+            st.setAttribute('data-sap-theme-css', '1');
+            st.textContent = SAP_THEME_CSS;
+            document.head.appendChild(st);
+        }
+        var ov = el('sipAssetPopupOverlay');
+        if (ov) ov.setAttribute('data-sip-theme', sapThemeName());
+    }
+    /* chart colours from the active theme (falls back to the old constants) */
+    function sapVar(name, fallback) {
+        var ov = el('sipAssetPopupOverlay');
+        if (!ov) return fallback;
+        var v = window.getComputedStyle(ov).getPropertyValue(name);
+        v = v ? String(v).trim() : '';
+        return v || fallback;
+    }
+    window.addEventListener('sip-theme', function () {
+        applySapTheme();
+        try { if (typeof redrawAllPopupCharts === 'function') redrawAllPopupCharts(); } catch (e) { /* optional */ }
+    });
+
     /* ── Console logging ────────────────────────────────────────────────
        Popup asset-resolution and data-binding decisions are logged with
        the [sip-popup] prefix. Set window.SIP_DEBUG = false to silence. */
@@ -2140,7 +2226,7 @@
                 });
 
                 card.style.borderColor = 'var(--sap-accent-cyan)';
-                card.style.boxShadow = '0 0 12px rgba(0,212,255,0.18)';
+                card.style.boxShadow = '0 0 12px ' + sapVar('--sap-cursor', 'rgba(0,212,255,0.18)');
 
                 var index = parseInt(card.getAttribute('data-index'), 10);
                 var group = assetGroups[index];
@@ -2965,7 +3051,7 @@
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, W, H);
 
-        ctx.fillStyle = '#5a6a8a';
+        ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
         ctx.font = '13px IBM Plex Sans, Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -3063,7 +3149,7 @@
         });
 
         /* ── Title ── */
-        ctx.fillStyle = '#e2e8f0';
+        ctx.fillStyle = sapVar('--sap-text-primary', '#e2e8f0');
         ctx.font = '600 13px IBM Plex Sans, Arial, sans-serif';
         ctx.textAlign = 'left';
         var titleText = visibleSeries.length === 1
@@ -3075,13 +3161,13 @@
         var totalPts = seriesList.reduce(function (n, s) {
             return Math.max(n, (s.points ? s.points.length : 0));
         }, 0);
-        ctx.fillStyle = '#5a6a8a';
+        ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
         ctx.font = '10px IBM Plex Sans, Arial, sans-serif';
         ctx.textAlign = 'right';
         ctx.fillText(totalPts + ' records', W - pad.right, 18);
 
         /* ── Grid lines + Y-axis labels ── */
-        ctx.strokeStyle = 'rgba(90,106,138,0.28)';
+        ctx.strokeStyle = sapVar('--sap-grid', 'rgba(90,106,138,0.28)');
         ctx.lineWidth = 1;
         for (var i = 0; i <= 4; i++) {
             var gy  = pad.top + (gh / 4) * i;
@@ -3090,7 +3176,7 @@
             ctx.moveTo(pad.left, gy);
             ctx.lineTo(pad.left + gw, gy);
             ctx.stroke();
-            ctx.fillStyle = '#5a6a8a';
+            ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
             ctx.font = '10px JetBrains Mono, monospace';
             ctx.textAlign = 'right';
             var yLabel = isMultiScale ? ((4 - i) * 25 + '%') : formatGraphValue(val);
@@ -3100,7 +3186,7 @@
         /* ── X-axis time labels (use first non-empty series for ticks) ── */
         var refPts = (visibleSeries[0] && visibleSeries[0].points) || [];
         if (refPts.length) {
-            ctx.fillStyle = '#5a6a8a';
+            ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
             ctx.font = '10px JetBrains Mono, monospace';
             ctx.textAlign = 'center';
             var tickCount = Math.min(7, refPts.length);
@@ -3193,7 +3279,7 @@
                 ctx.strokeStyle = s.color;
                 ctx.lineWidth = 2;
                 ctx.stroke();
-                ctx.fillStyle = '#8b9dc3';
+                ctx.fillStyle = sapVar('--sap-text-secondary', '#8b9dc3');
                 ctx.font = '10px IBM Plex Sans, Arial, sans-serif';
                 ctx.textAlign = 'left';
                 var maxLegW = colW - 26;
@@ -3293,7 +3379,7 @@
 
         /* Vertical crosshair at the first series' x (representative) */
         var refX = hits[0].ptx;
-        ctx.strokeStyle = 'rgba(0,212,255,0.35)';
+        ctx.strokeStyle = sapVar('--sap-cursor', 'rgba(0,212,255,0.35)');
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 3]);
         ctx.beginPath();
@@ -3330,13 +3416,13 @@
         if (bx + boxW > pad.left + g.gw) bx = refX - boxW - 14;
         if (by < pad.top) by = hits[0].pty + 12;
 
-        ctx.fillStyle = 'rgba(15,22,41,0.92)';
-        ctx.strokeStyle = 'rgba(0,212,255,0.3)';
+        ctx.fillStyle = sapVar('--sap-tip-bg', 'rgba(15,22,41,0.92)');
+        ctx.strokeStyle = sapVar('--sap-tip-border', 'rgba(0,212,255,0.3)');
         ctx.lineWidth = 1;
         roundRect(ctx, bx, by, boxW, boxH, 6);
 
         /* Time row */
-        ctx.fillStyle = '#8b9dc3';
+        ctx.fillStyle = sapVar('--sap-text-secondary', '#8b9dc3');
         ctx.font = '10px JetBrains Mono, monospace';
         ctx.textAlign = 'left';
         ctx.fillText(timeText, bx + 10, by + 14);
@@ -3444,6 +3530,7 @@
     }
     function openPopup(cellOrCtx, sourceInfo) {
         ensureReady();
+        applySapTheme();   /* v618.6 */
 
         var c = cellOrCtx || {};
         var s = sourceInfo || {};

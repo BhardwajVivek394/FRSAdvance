@@ -34,44 +34,66 @@
     'use strict';
 
     /* ------------------------------------------------------------------------ *
-     *  Theme — every colour lives here so a re-skin is a single edit. Mirrors
-     *  the CSS variables in sip-editor.css.
+     *  Theme (SL1 SIP smooth-vector re-skin, v618.0)
+     *  Three palettes; every renderer reads colours from T only. applyTheme()
+     *  also refreshes the legacy keys so older renderers follow the theme.
+     *  Live state still arrives as the legacy colours written by
+     *  sip-telemetry.js (#FF2E2E occupied, #22D142 / #FFD400 point, ...);
+     *  renderers translate those into these tokens.
      * ------------------------------------------------------------------------ */
-    const T = {
-        railBase: '#7E7E7E',
-        railEdge: '#ffffff',
-        sleeper: '#515151',
-
-        sectionClear: '#22D142',
-        sectionOcc: '#FF2E2E',
-        sectionRoute: '#22d3ee',
-        sectionEdge: 'rgba(255,255,255,0.18)',
-        sectionText: '#ffffff',
-
-        signalBody: '#606060',
-        lampOuter: '#4C4C4C',
-        lampOff: '#ffffff',
-        lampRed: '#FF2E2E',
-        lampYellow: '#FFD400',
-        lampGreen: '#22D142',
-
-        pmBody: '#5B6168',
-        pmDot: '#ffffff',
-        pmDotDim: 'rgba(255,255,255,0.25)',
-
-        shuntBody: '#5B6168',
-
-        busBar: '#9aa8c4',
-        bbLabel: '#ffffff',
-
-        routeLine: '#606060',
-
-        siding: '#e8edf6',
-
-        labelDefault: '#d7d7d7',
-        labelHi: '#ffffff',          /* was #FFC919 (yellow) — labels are now white */
-        labelFont: "'Plus Jakarta Sans', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    const THEMES = {
+        night: {
+            canvas: '#0E1828', free: '#46566D', route: '#F6C445', occ: '#FF5A4E', fault: '#FF5A4E',
+            lampR: '#FF4D42', lampY: '#FFCB3D', lampG: '#3DE38A',
+            lampDark: '#1B2638', lampRing: '#3A4A62', lampMark: 'rgba(169,183,202,0.38)',
+            head: '#0A111C', headEdge: '#3A4A62', post: '#93A3B8',
+            pmN: '#3DE38A', pmR: '#F6C445', pmUnknown: '#5B6B82',
+            label: '#A9B7CA', labelHot: '#E6EDF5', select: '#3BC9DB', pl: '#F6FAFF',
+            bus: '#9AA8C4', glowOpacity: 0.28
+        },
+        vdu: {
+            canvas: '#000000', free: '#7A7A7A', route: '#FFD21F', occ: '#FF2B2B', fault: '#FF2B2B',
+            lampR: '#FF2B2B', lampY: '#FFD21F', lampG: '#22E05A',
+            lampDark: '#232323', lampRing: '#4A4A4A', lampMark: 'rgba(200,200,200,0.35)',
+            head: '#060606', headEdge: '#4A4A4A', post: '#B5B5B5',
+            pmN: '#22E05A', pmR: '#FFD21F', pmUnknown: '#6A6A6A',
+            label: '#C8C8C8', labelHot: '#FFFFFF', select: '#00B4FF', pl: '#FFFFFF',
+            bus: '#A9A9A9', glowOpacity: 0.3
+        },
+        day: {
+            canvas: '#FAFBFD', free: '#B3BDC9', route: '#E8A600', occ: '#E5372E', fault: '#E5372E',
+            lampR: '#E5372E', lampY: '#F0B000', lampG: '#17A659',
+            lampDark: '#3A4654', lampRing: '#1E2833', lampMark: 'rgba(255,255,255,0.35)',
+            head: '#1E2833', headEdge: '#1E2833', post: '#5A6878',
+            pmN: '#17A659', pmR: '#E8A600', pmUnknown: '#8A97A6',
+            label: '#4A5868', labelHot: '#13202E', select: '#0E8FA3', pl: '#FFFFFF',
+            bus: '#5A6878', glowOpacity: 0
+        }
     };
+    const T = {
+        theme: 'night',
+        labelFont: "'Barlow Condensed', 'Plus Jakarta Sans', 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+    };
+    const TRACK_W = 10;          /* track line width (px)                       */
+    const JOINT_INSET = 7;       /* each end inset -> block joint shows as a gap */
+    function applyTheme(name) {
+        const key = THEMES[name] ? name : 'night';
+        const p = THEMES[key];
+        T.theme = key;
+        Object.assign(T, p);
+        /* legacy keys -> theme (keeps untouched renderers on-palette) */
+        T.railBase = p.free; T.railEdge = p.free; T.sleeper = p.free;
+        T.sectionClear = p.free; T.sectionOcc = p.occ; T.sectionRoute = p.route;
+        T.sectionEdge = 'rgba(0,0,0,0)'; T.sectionText = p.labelHot;
+        T.signalBody = p.head; T.lampOuter = p.headEdge; T.lampOff = p.lampDark;
+        T.lampRed = p.lampR; T.lampYellow = p.lampY; T.lampGreen = p.lampG;
+        T.pmBody = p.head; T.pmDot = p.pl; T.pmDotDim = 'rgba(255,255,255,0.25)';
+        T.shuntBody = p.head; T.busBar = p.bus; T.bbLabel = p.labelHot;
+        T.routeLine = p.post; T.siding = p.free;
+        T.labelDefault = p.label; T.labelHi = p.labelHot;
+        return key;
+    }
+    applyTheme((typeof window !== 'undefined' && window.SIP_THEME) || 'night');
 
     /* ------------------------------------------------------------------------ *
      *  Small helpers
@@ -97,7 +119,32 @@
     function normaliseLabelFill(fill) {
         if (!fill) return fill;
         const f = String(fill).trim().toLowerCase();
-        return (f === '#ffc919' || f === '#fc0' || f === '#ffcc00') ? '#ffffff' : fill;
+        if (f === '#ffc919' || f === '#fc0' || f === '#ffcc00') return T.labelHot;
+        if (f === '#ffffff' || f === '#fff' || f === 'white' || f === '#dcd7d7' || f === '#d7d7d7') return T.labelHot;
+        /* v618.2: a saved colour that would vanish on the current canvas
+         * (dark blue on the dark theme, pale grey on the day theme) falls
+         * back to the readable theme label colour. Status colours (red) pass. */
+        const lum = hexLuminance(f);
+        if (lum !== null) {
+            const canvasDark = (hexLuminance(String(T.canvas).toLowerCase()) || 0) < 0.3;
+            if (canvasDark && lum < 0.15) return T.labelHot;
+            if (!canvasDark && lum > 0.6) return T.labelHot;
+        }
+        return fill;
+    }
+    function hexLuminance(f) {
+        let m = /^#([0-9a-f]{3})$/.exec(f);
+        let hex = m ? m[1].split('').map(function (c) { return c + c; }).join('') : null;
+        if (!hex) {
+            m = /^#([0-9a-f]{6})$/.exec(f);
+            hex = m ? m[1] : null;
+        }
+        if (!hex) return null;
+        const ch = [0, 2, 4].map(function (i) {
+            const v = parseInt(hex.substr(i, 2), 16) / 255;
+            return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+        });
+        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
     }
     function attrLabelFill(cell) {
         return normaliseLabelFill(attrLabel(cell).fill) || T.labelDefault;
@@ -118,6 +165,120 @@
         return LIT_FILLS.has(String(colour).toLowerCase().replace(/\s/g, ''));
     }
 
+    /* --- Smooth-vector helpers (v618.0) ------------------------------------- */
+    /* Snap a y onto the nearest rail band so separately drawn cells meet on
+     * one centre line (old layouts were tolerant of a few px because of the
+     * 18px rail bed; thin lines are not). */
+    function snapBandY(yy, tol) {
+        const bands = (typeof _railContext !== 'undefined' && _railContext.bands) || [];
+        let best = null;
+        let bestD = tol;
+        for (let i = 0; i < bands.length; i++) {
+            const d = Math.abs(bands[i].cy - yy);
+            if (d <= bestD) {
+                bestD = d;
+                best = bands[i].cy;
+            }
+        }
+        return best == null ? yy : best;
+    }
+    function glowStroke(d, colour, width) {
+        if (!(T.glowOpacity > 0)) return '';
+        return `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${width + 10}" ` +
+            `stroke-opacity="${T.glowOpacity}" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`;
+    }
+    function glowDot(cx, cy, r, colour) {
+        if (!(T.glowOpacity > 0)) return '';
+        return `<circle cx="${cx}" cy="${cy}" r="${r + 4}" fill="${colour}" opacity="${T.glowOpacity}" pointer-events="none"/>`;
+    }
+    function lampLitColour(kind, fallback) {
+        switch (kind) {
+            case 'R': return T.lampR;
+            case 'G': return T.lampG;
+            case 'Y': return T.lampY;
+            case 'X': return T.lampY;
+            default: return fallback || T.lampY;
+        }
+    }
+    /* Cubic S-curve between two points with horizontal tangents at both
+     * ends (control points at 50% of dx) -- the crossover shape. */
+    function sCurve(x1, y1, x2, y2) {
+        const s = (x2 - x1) >= 0 ? 1 : -1;
+        const k = Math.abs(x2 - x1) * 0.5;
+        return [[x1, y1], [x1 + s * k, y1], [x2 - s * k, y2], [x2, y2]];
+    }
+    function bezAt(P, t) {
+        const u = 1 - t;
+        return [
+            u * u * u * P[0][0] + 3 * u * u * t * P[1][0] + 3 * u * t * t * P[2][0] + t * t * t * P[3][0],
+            u * u * u * P[0][1] + 3 * u * u * t * P[1][1] + 3 * u * t * t * P[2][1] + t * t * t * P[3][1]
+        ];
+    }
+    function bezD(P) {
+        const f = v => (+v).toFixed(2);
+        return `M ${f(P[0][0])} ${f(P[0][1])} C ${f(P[1][0])} ${f(P[1][1])}, ${f(P[2][0])} ${f(P[2][1])}, ${f(P[3][0])} ${f(P[3][1])}`;
+    }
+    /* Polyline along the curve from parameter ta to tb. */
+    function bezSub(P, ta, tb) {
+        const n = 16;
+        let d = '';
+        for (let i = 0; i <= n; i++) {
+            const p = bezAt(P, ta + (tb - ta) * i / n);
+            d += (i ? ' L ' : 'M ') + p[0].toFixed(2) + ' ' + p[1].toFixed(2);
+        }
+        return d;
+    }
+    /* First parameter where the curve has left its start line by `sep` px
+     * (vertically), and the parameter a further `len` px along the curve. */
+    function bezSplit(P, sep, len) {
+        let tA = -1;
+        for (let i = 1; i <= 200; i++) {
+            const t = i / 400;
+            if (Math.abs(bezAt(P, t)[1] - P[0][1]) >= sep) {
+                tA = t;
+                break;
+            }
+        }
+        if (tA < 0) return null;
+        let acc = 0;
+        let prev = bezAt(P, tA);
+        let tB = tA;
+        for (let j = 1; j <= 200 && acc < len; j++) {
+            tB = Math.min(0.5, tA + j / 400);
+            const p = bezAt(P, tB);
+            acc += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+            prev = p;
+        }
+        return { tA: tA, tB: tB };
+    }
+    function revCurve(P) { return [P[3], P[2], P[1], P[0]]; }
+    /* Point position from the legacy colours telemetry writes. */
+    function pmPosOf(cell) {
+        const c1 = (cell.attrs && cell.attrs.circle1) || {};
+        const f = String(c1.fill || '').toLowerCase().replace(/\s/g, '');
+        if (f === '#22d142' || f === '#00ff62' || f === '#008633' || f === 'green') return 'N';
+        if (f === '#ffd400' || f === 'yellow') return 'R';
+        return '';
+    }
+    function pmCurveOf(cell, mirror) {
+        const x = cell.position.x;
+        const y = cell.position.y;
+        const w = (cell.size && cell.size.width) || 100;
+        const h = (cell.size && cell.size.height) || 60;
+        let x1, y1, x2, y2;
+        if (mirror) {
+            x1 = x; y1 = y; x2 = x + w; y2 = y + h;
+        } else {
+            x1 = x; y1 = y + h; x2 = x + w; y2 = y;
+        }
+        const angled = cell.angle && Math.abs(cell.angle) > 0.01;
+        if (!angled) {
+            y1 = snapBandY(y1, 24);
+            y2 = snapBandY(y2, 24);
+        }
+        return sCurve(x1, y1, x2, y2);
+    }
+
     /* ------------------------------------------------------------------------ *
      *  RENDERERS
      * ------------------------------------------------------------------------ */
@@ -136,7 +297,7 @@
         return svg;
     }
 
-    /* --- Track / rail cell — rail strip + green pill label -------------------- */
+    /* --- Track / rail cell -- smooth line, joint gaps, plain label (v618.0) -- */
     function renderTrack(cell) {
         const x = cell.position.x;
         const y = cell.position.y;
@@ -147,61 +308,31 @@
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
         const labelSize = +labelAttrs.fontSize || 13;
 
-        const pathStroke = (cell.attrs && cell.attrs.path && cell.attrs.path.stroke) || '#3c4260';
+        const pathAttrs = (cell.attrs && cell.attrs.path) || {};
+        const pathStroke = pathAttrs.stroke || pathAttrs.fill || '#3c4260';
         const occupied = isLit(pathStroke);
-        const pillFill = occupied ? '#FF2E2E' : '#22A042';
-        const pillStroke = occupied ? '#a01818' : '#1a8033';
-        const railColor = occupied ? pathStroke : T.railBase;
+        const col = occupied ? T.occ : T.free;
 
-        const cy = y + h / 2;
-        const railH = Math.max(8, Math.min(14, h * 0.14));
+        const angled = cell.angle && Math.abs(cell.angle) > 0.01;
+        const cy = angled ? y + h / 2 : snapBandY(y + h / 2, 40);
+        const inset = Math.min(JOINT_INSET, w / 4);
+        const x1 = x + inset;
+        const x2 = x + w - inset;
+        const d = `M ${x1} ${cy} L ${x2} ${cy}`;
 
         let svg = `<g class="sip-asset sip-track" data-id="${cell.id}" data-type="${cell.type}">`;
         svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent"/>`;
-
-        /* ---- Rail strip (grey body + white edge lines + sleeper cross-marks) ---- */
-        svg += `<rect x="${x}" y="${cy - railH / 2}" width="${w}" height="${railH}" fill="${railColor}"/>`;
-        svg += `<line x1="${x}" y1="${cy - railH / 2 + 0.5}" x2="${x + w}" y2="${cy - railH / 2 + 0.5}" stroke="${T.railEdge}" stroke-width="1"/>`;
-        svg += `<line x1="${x}" y1="${cy + railH / 2 - 0.5}" x2="${x + w}" y2="${cy + railH / 2 - 0.5}" stroke="${T.railEdge}" stroke-width="1"/>`;
-        const innerTop = cy - railH / 2 + 1;
-        const innerH = Math.max(1, railH - 2);
-        /* Sleeper cross-marks: one pattern-filled rect instead of ~w/4 individual
-         * <rect>s (same 1px mark every `step` px, same phase) — cuts the yard
-         * SVG size and node count by an order of magnitude on track-heavy layouts. */
-        const step = Math.max(3, Math.round(w / 80));
-        const patId = 'sipSl_' + String(cell.id).replace(/[^A-Za-z0-9_-]/g, '');
-        svg += `<defs><pattern id="${patId}" patternUnits="userSpaceOnUse" x="${x + 4}" y="${innerTop}" width="${step}" height="${innerH}">` +
-            `<rect x="0" y="0" width="1" height="${innerH}" fill="${T.sleeper}"/></pattern></defs>`;
-        if (w - 4 >= 1) svg += `<rect x="${x + 4}" y="${innerTop}" width="${w - 4}" height="${innerH}" fill="url(#${patId})"/>`;
-
-        /* ---- Merge divider marks at left and right edges ---- *
-         *  Short vertical yellow ticks at each end of the track section.
-         *  These create visible dividers where track sections meet. */
-        const divH = railH + 6;
-        svg += `<line x1="${x}" y1="${cy - divH / 2}" x2="${x}" y2="${cy + divH / 2}" ` +
-            `stroke="#FFC919" stroke-width="2" opacity="0.7" stroke-linecap="round"/>`;
-        svg += `<line x1="${x + w}" y1="${cy - divH / 2}" x2="${x + w}" y2="${cy + divH / 2}" ` +
-            `stroke="#FFC919" stroke-width="2" opacity="0.7" stroke-linecap="round"/>`;
+        if (occupied) svg += glowStroke(d, col, TRACK_W);
+        svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${TRACK_W}" stroke-linecap="round"/>`;
 
         if (labelTxt) {
-            const pillH = Math.max(20, labelSize + 8);
-            const padX = 10;
-            const approxTextW = Math.max(24, labelTxt.length * labelSize * 0.62);
-            const pillW = approxTextW + 2 * padX;
-            const px = x + (w - pillW) / 2;
-            const py = cy - railH / 2 - 6 - pillH;
-
+            const ly = cy - TRACK_W / 2 - 9;
             svg += `<g class="sip-label">`;
-            svg += `<rect x="${px}" y="${py}" width="${pillW}" height="${pillH}" ` +
-                `rx="${pillH / 2}" ry="${pillH / 2}" ` +
-                `fill="${pillFill}" stroke="${pillStroke}" stroke-width="1.2"/>`;
-            svg += `<text x="${px + pillW / 2}" y="${py + pillH / 2 + labelSize / 3}" ` +
-                `fill="#ffffff" font-family="${T.labelFont}" ` +
-                `font-size="${labelSize}" font-weight="700" ` +
+            svg += `<text x="${x + w / 2}" y="${ly}" fill="${occupied ? T.labelHot : T.label}" ` +
+                `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="600" ` +
                 `text-anchor="middle">${escapeXml(labelTxt)}</text>`;
             svg += `</g>`;
         }
-
         svg += `</g>`;
         return svg;
     }
@@ -212,290 +343,162 @@
         const y = cell.position.y;
         const w = cell.size.width;
         const h = cell.size.height;
+        const pathAttrs = (cell.attrs && cell.attrs.path) || {};
+        const occupied = isLit(pathAttrs.stroke) || isLit(pathAttrs.fill);
+        const col = occupied ? T.occ : T.free;
         const path = dir === 'right'
-            ? `M ${x} ${y + h / 2}  C ${x + w * 0.3} ${y + h / 2}, ${x + w * 0.7} ${y + h / 2 + 18}, ${x + w} ${y + h / 2 + 18}`
-            : `M ${x + w} ${y + h / 2}  C ${x + w * 0.7} ${y + h / 2}, ${x + w * 0.3} ${y + h / 2 + 18}, ${x} ${y + h / 2 + 18}`;
+            ? `M ${x} ${y + h / 2}  C ${x + w * 0.5} ${y + h / 2}, ${x + w * 0.5} ${y + h / 2 + 18}, ${x + w} ${y + h / 2 + 18}`
+            : `M ${x + w} ${y + h / 2}  C ${x + w * 0.5} ${y + h / 2}, ${x + w * 0.5} ${y + h / 2 + 18}, ${x} ${y + h / 2 + 18}`;
         return `<g class="sip-asset sip-track-curve" data-id="${cell.id}" data-type="${cell.type}">` +
-            `<path d="${path}" fill="none" stroke="${T.railBase}" stroke-width="7" stroke-linecap="round"/>` +
-            `<path d="${path}" fill="none" stroke="${T.sleeper}" stroke-width="1" stroke-dasharray="1,2"/>` +
+            (occupied ? glowStroke(path, col, TRACK_W) : '') +
+            `<path d="${path}" fill="none" stroke="${col}" stroke-width="${TRACK_W}" stroke-linecap="round"/>` +
             `</g>`;
     }
 
-    /* --- Crossover diagonal ------------------------------------------------- */
+    /* --- Crossover -- S-curve tangent to both lines (v618.0) ---------------- */
     function renderCrossover(cell) {
         const x = cell.position.x;
         const y = cell.position.y;
         const w = cell.size.width;
         const h = cell.size.height;
-        const x1 = x, y1 = y;
-        const x2 = x + w, y2 = y + h;
-        const dx = x2 - x1, dy = y2 - y1;
-        const len = Math.hypot(dx, dy);
-        const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-
-        let svg = `<g class="sip-asset sip-crossover" data-id="${cell.id}" data-type="${cell.type}"`;
-        svg += ` transform="translate(${x1} ${y1}) rotate(${ang})">`;
-        svg += renderRailStrip(0, 0, len, 9);
-        svg += `</g>`;
-        return svg;
+        const angled = cell.angle && Math.abs(cell.angle) > 0.01;
+        const y1 = angled ? y : snapBandY(y, 24);
+        const y2 = angled ? y + h : snapBandY(y + h, 24);
+        const P = sCurve(x, y1, x + w, y2);
+        return `<g class="sip-asset sip-crossover" data-id="${cell.id}" data-type="${cell.type}">` +
+            `<path d="${bezD(P)}" fill="none" stroke="${T.free}" stroke-width="${TRACK_W}" stroke-linecap="round"/>` +
+            `</g>`;
     }
 
-    /* --- Point machine — diagonal rail strip with centred indicator circle -- *
-     *  Draws a crossover-style diagonal track strip (matching crossover.svg)
-     *  with the point-machine indicator circle placed at the EXACT centre
-     *  of the bounding box, showing the point's Normal/Reverse status.
-     *
-     *  Normal variant: diagonal goes bottom-left → top-right
-     *  Mirror variant: diagonal goes top-left   → bottom-right
+    /* --- Point machine -- S-curve diagonal + status dot (v618.0) ------------
+     *  Normal variant: curve bottom-left -> top-right; mirror: top-left ->
+     *  bottom-right. The curve takes the route colour only when the point
+     *  lies Reverse. The leg the point is NOT set to is cut by
+     *  renderPointGapLayer() (top layer, live view only).
+     *  attrs.pm options still honoured: labelSide, labelOffset, indRadius,
+     *  indOffset. Operating (attrs.pmBlink) = the status dot flashes.
      * ----------------------------------------------------------------------- */
     function renderPointMachine(cell, mirror) {
-        const x = cell.position.x;
-        const y = cell.position.y;
-        const w = cell.size.width || 100;
-        const h = cell.size.height || 60;
-
-        const bodyAttrs = (cell.attrs && cell.attrs.body) || {};
-        const strokeC = bodyAttrs.stroke || '#3c4260';
-        const bodyColor = isLit(strokeC)
-            ? strokeC
-            : (strokeC === '#3c4260' || strokeC === '#6a7596' ? '#8aa3c0' : strokeC);
-
-        const c1 = (cell.attrs && cell.attrs.circle1) || {};
-        const indFill = c1.fill || '#d4d4d4';
-        const indLit = isLit(indFill);
+        const pos = pmPosOf(cell);
+        const P = pmCurveOf(cell, mirror);
+        const d = bezD(P);
+        const col = pos === 'R' ? T.route : T.free;
 
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
         const labelFill = normaliseLabelFill(
-            labelAttrs.fill && labelAttrs.fill !== 'transparent'
-                ? labelAttrs.fill
-                : '#ffffff');   /* was #FFC919 — PM labels are white now */
-
-        /* PM display options (set from the SIP editor inspector):
-           attrs.pm = {
-               labelSide:   'auto' | 'opposite'   — 'opposite' puts the name on
-                            the REVERSE side of the diagonal (away from the
-                            indicator circle) to avoid overlapping it,
-               labelOffset: extra px gap pushing the label away from the rail
-           }
-           Legacy fallback: attrs.label.side is also honoured.            */
+            labelAttrs.fill && labelAttrs.fill !== 'transparent' ? labelAttrs.fill : '#ffffff');
         const pmProps = (cell.attrs && cell.attrs.pm) || {};
         const pmLabelSide = String(pmProps.labelSide || labelAttrs.side || 'auto').toLowerCase();
         const pmLabelExtra = Math.max(0, +pmProps.labelOffset || 0);
-
-        /* Operate blink — set by sip-telemetry.js when live data shows a
-           NORMAL ⇆ REVERSE transition; cleared automatically after a few
-           seconds. Rendered as an SVG opacity pulse on the lit indicator. */
         const pmBlink = !!(cell.attrs && cell.attrs.pmBlink);
 
-        /* Operate direction + effect style:
-           attrs.pmState  — 'N' (normal) | 'R' (reverse); set by telemetry or
-                            the editor preview. Controls the energy-flow
-                            direction along the diagonal.
-           attrs.pm.effect — which visual plays WHILE OPERATING (pmBlink):
-                'pulse'  → classic opacity blink of the indicator (legacy)
-                'ripple' → expanding sonar rings from the indicator
-                'flow'   → animated energy dashes travelling along the diagonal
-                           (direction follows pmState: N→ one way, R→ other)
-                'all'    → everything (default)                              */
-        const pmState = String((cell.attrs && cell.attrs.pmState) || 'N').toUpperCase() === 'R' ? 'R' : 'N';
-        const pmEffect = String(pmProps.effect || 'all').toLowerCase();
-        const fxPulse = pmBlink && (pmEffect === 'pulse' || pmEffect === 'all');
-        const fxRipple = pmBlink && (pmEffect === 'ripple' || pmEffect === 'all');
-        const fxFlow = pmBlink && (pmEffect === 'flow' || pmEffect === 'all');
-
-        /* ---- Diagonal rail strip geometry ---- */
-        let x1, y1, x2, y2;
-        if (mirror) {
-            // top-left → bottom-right
-            x1 = x; y1 = y;
-            x2 = x + w; y2 = y + h;
-        } else {
-            // bottom-left → top-right
-            x1 = x; y1 = y + h;
-            x2 = x + w; y2 = y;
-        }
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.hypot(dx, dy);
-        const ang = Math.atan2(dy, dx);          // angle in radians
-        const angDeg = ang * 180 / Math.PI;
-        const railW = Math.max(7, Math.min(12, h * 0.12));  // rail strip width
-
-        // Normal perpendicular for edge lines
-        const nx = -Math.sin(ang) * railW / 2;
-        const ny = Math.cos(ang) * railW / 2;
-
         let svg = `<g class="sip-asset sip-pm" data-id="${cell.id}" data-type="${cell.type}">`;
+        if (pos === 'R') svg += glowStroke(d, col, TRACK_W);
+        svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${TRACK_W}" stroke-linecap="round"/>`;
 
-        /* ---- Rail body (grey fill between two edge lines) ---- */
-        const bodyPoly = [
-            [x1 + nx, y1 + ny],
-            [x2 + nx, y2 + ny],
-            [x2 - nx, y2 - ny],
-            [x1 - nx, y1 - ny]
-        ].map(p => p[0] + ',' + p[1]).join(' ');
-        svg += `<polygon points="${bodyPoly}" fill="#7E7E7E"/>`;
-
-        /* ---- White edge lines (top and bottom of rail strip) ---- */
-        svg += `<line x1="${x1 + nx}" y1="${y1 + ny}" x2="${x2 + nx}" y2="${y2 + ny}" ` +
-            `stroke="white" stroke-width="1" opacity="0.7"/>`;
-        svg += `<line x1="${x1 - nx}" y1="${y1 - ny}" x2="${x2 - nx}" y2="${y2 - ny}" ` +
-            `stroke="white" stroke-width="1" opacity="0.7"/>`;
-
-        /* ---- Yellow centre merge line (route indication) ---- */
-        svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ` +
-            `stroke="#FFC919" stroke-width="1.5" opacity="0.8" stroke-linecap="round"/>`;
-        /* ---- Sleeper cross-marks along the diagonal ---- */
-        const sleeperGap = Math.max(3, len / 36);
-        const sleeperHalf = railW * 0.55;
-        const snx = Math.cos(ang);    // unit direction along rail
-        const sny = Math.sin(ang);
-        /* One dashed stroke along the diagonal draws the same 1px-wide,
-           2*sleeperHalf-tall marks every sleeperGap px as the old per-mark
-           loop (~36 <line>s per point machine) — same look, 1 node. */
-        const sStart = sleeperGap;
-        const sEnd = len - sleeperGap * 0.5;
-        if (sEnd > sStart) {
-            svg += `<line x1="${(x1 + snx * sStart).toFixed(2)}" y1="${(y1 + sny * sStart).toFixed(2)}" ` +
-                `x2="${(x1 + snx * sEnd).toFixed(2)}" y2="${(y1 + sny * sEnd).toFixed(2)}" ` +
-                `stroke="#515151" stroke-width="${(sleeperHalf * 2).toFixed(2)}" ` +
-                `stroke-dasharray="1 ${(sleeperGap - 1).toFixed(2)}"/>`;
-        }
-
-        /* ---- Glow when the body is lit (occupied / route set) ---- */
-        if (isLit(strokeC)) {
-            svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ` +
-                `stroke="${strokeC}" stroke-width="${railW + 6}" opacity="0.2" stroke-linecap="round"/>`;
-        }
-
-        /* ---- OPERATE EFFECT: energy flow along the diagonal ---- *
-         *  Animated dashes travel along the point blade while the machine
-         *  is throwing. Direction encodes the target position:
-         *      Normal  (N) → dashes flow x1→x2 (with the diagonal)
-         *      Reverse (R) → dashes flow x2→x1 (against the diagonal)
-         *  Colour matches the indicator when lit, cyan otherwise.        */
-        if (fxFlow) {
-            const dashPeriod = 26;                       // 8 dash + 18 gap
-            const flowTo = pmState === 'R' ? dashPeriod : -dashPeriod;
-            const flowCol = indLit ? indFill : '#22d3ee';
-            svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ` +
-                `stroke="${flowCol}" stroke-width="${Math.max(3, railW * 0.42)}" ` +
-                `stroke-dasharray="8 18" stroke-linecap="round" opacity="0.95">` +
-                `<animate attributeName="stroke-dashoffset" from="0" to="${flowTo}" ` +
-                `dur="0.55s" repeatCount="indefinite"/>` +
-                `</line>`;
-            /* soft glow underneath the dashes */
-            svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" ` +
-                `stroke="${flowCol}" stroke-width="${railW + 4}" opacity="0.14" stroke-linecap="round">` +
-                `<animate attributeName="opacity" values="0.14;0.3;0.14" dur="1.1s" repeatCount="indefinite"/>` +
-                `</line>`;
-        }
-
-        /* ---- Indicator circle — centred but OFFSET below the diagonal ---- *
-         *  The circle sits next to the rail strip on the lower/outer side,
-         *  not on top of the track. We offset perpendicular to the diagonal
-         *  by enough distance to clear the rail body completely.
-         * ------------------------------------------------------------------- */
-        /* Indicator circle radius:
-           auto  → scales with the cell size (old behaviour, 10–14 px)
-           user  → attrs.pm.indRadius (set from the SIP editor inspector),
-                   clamped 4–40 px. 0 / missing = auto. */
-        const indRUser = +(pmProps.indRadius) || 0;
-        const indR = indRUser > 0
-            ? Math.max(4, Math.min(40, indRUser))
-            : Math.max(10, Math.min(14, Math.min(w, h) * 0.14));
-        const baseOffset = railW / 2 + indR + 3;  // clear the rail edge + circle radius + gap
-
-        /* Perpendicular unit vector to the diagonal direction. */
+        /* status dot: beside the curve midpoint, on the outer (lower) side */
+        const mid = bezAt(P, 0.5);
+        const ang = Math.atan2(P[3][1] - P[0][1], P[3][0] - P[0][0]);
         const perpX = -Math.sin(ang);
         const perpY = Math.cos(ang);
-        /* Choose the sign so the circle goes DOWNWARD / to the outer side
-           (below the diagonal track strip) by default. */
         const sign = perpY > 0 ? 1 : -1;
-
-        /* User adjustment (SIP editor inspector): attrs.pm.indOffset shifts the
-           indicator circle along the perpendicular of the PM line. Positive
-           moves it further DOWN / outward, negative moves it UP / inward (and
-           past the line to the other side for large negative values). */
-        const indAdjust = +(pmProps.indOffset) || 0;
-        const offsetDist = baseOffset + indAdjust;
-
-        const indCx = x + w / 2 + perpX * offsetDist * sign;
-        const indCy = y + h / 2 + perpY * offsetDist * sign;
-
-        const blinkAnim = fxPulse && indLit
-            ? `<animate attributeName="opacity" values="1;0.12;1" dur="0.7s" repeatCount="indefinite"/>`
+        const indRUser = +(pmProps.indRadius) || 0;
+        const indR = indRUser > 0 ? Math.max(4, Math.min(40, indRUser)) : 6;
+        const off = TRACK_W / 2 + indR + 6 + (+(pmProps.indOffset) || 0);
+        const dcx = mid[0] + perpX * off * sign;
+        const dcy = mid[1] + perpY * off * sign;
+        const dotCol = pos === 'N' ? T.pmN : pos === 'R' ? T.pmR : T.pmUnknown;
+        const blink = pmBlink
+            ? `<animate attributeName="opacity" values="1;0.15;1" dur="0.7s" repeatCount="indefinite"/>`
             : '';
+        svg += `<circle cx="${dcx.toFixed(2)}" cy="${dcy.toFixed(2)}" r="${indR}" fill="${dotCol}" ` +
+            `stroke="${T.canvas}" stroke-width="2">${blink}</circle>`;
 
-        /* ---- OPERATE EFFECT: sonar ripple rings from the indicator ---- *
-         *  Two staggered rings expand outward and fade while operating —
-         *  reads as "machine in motion" even from a zoomed-out schematic. */
-        if (fxRipple) {
-            const rippleCol = indLit ? indFill : '#22d3ee';
-            for (let ri = 0; ri < 2; ri++) {
-                svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR}" fill="none" ` +
-                    `stroke="${rippleCol}" stroke-width="2">` +
-                    `<animate attributeName="r" values="${indR};${indR + 20}" ` +
-                    `dur="1.3s" begin="${ri * 0.65}s" repeatCount="indefinite"/>` +
-                    `<animate attributeName="opacity" values="0.75;0" ` +
-                    `dur="1.3s" begin="${ri * 0.65}s" repeatCount="indefinite"/>` +
-                    `</circle>`;
-            }
-        }
-
-        /* Static dark ring stays solid; the lit parts (glow + fill + shine)
-           are grouped so the blink pulses them together. */
-        svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 1.5}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.8"/>`;
-        svg += `<g class="sip-pm-ind${fxPulse && indLit ? ' sip-pm-blink' : ''}">`;
-        if (indLit) {
-            svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 6}" fill="${indFill}" opacity="0.15"/>`;
-            svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR + 3}" fill="${indFill}" opacity="0.30"/>`;
-        }
-        svg += `<circle cx="${indCx}" cy="${indCy}" r="${indR}" ` +
-            `fill="${indLit ? indFill : '#d4d4d4'}"/>`;
-        if (indLit) {
-            svg += `<ellipse cx="${indCx - indR * 0.3}" cy="${indCy - indR * 0.3}" ` +
-                `rx="${indR * 0.3}" ry="${indR * 0.18}" fill="white" opacity="0.55"/>`;
-        }
-        svg += blinkAnim;
-        svg += `</g>`;
-
-        /* ---- Label (rotated along the yellow merge line, like "101/102") ---- */
         if (labelTxt) {
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2;
-            /* Offset the label slightly to the side of the diagonal so it
-               doesn't overlap the yellow line or the circle.
-               labelSide 'opposite' flips the label to the REVERSE side of the
-               diagonal (away from the indicator circle) — used when the
-               default side overlaps neighbouring tracks/assets. */
-            const labelSign = (pmLabelSide === 'opposite' || pmLabelSide === 'reverse' || pmLabelSide === 'flip')
-                ? -sign : sign;
-            const labelOff = railW + 6 + pmLabelExtra;
-            const lx = midX + perpX * labelOff * labelSign;
-            const ly = midY + perpY * labelOff * labelSign;
-            /* Rotate text to follow the diagonal angle.
-               Ensure text is always readable (not upside-down) — including
-               when the WHOLE cell is rotated (cell.angle), since renderCell
-               wraps this output in an outer rotate(). We normalise against
-               the EFFECTIVE on-screen angle (diagonal + cell rotation). */
-            const cellAngle = (((+cell.angle || 0) % 360) + 360) % 360;
-            let rotDeg = angDeg;
-            let effDeg = ((rotDeg + cellAngle) % 360 + 360) % 360;
-            if (effDeg > 90 && effDeg < 270) rotDeg -= 180;
-            svg += `<text x="${lx}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
-                `font-family="${T.labelFont}" font-size="14" font-weight="800" ` +
-                `text-anchor="middle" dominant-baseline="central" paint-order="stroke" ` +
-                `transform="rotate(${rotDeg.toFixed(1)} ${lx} ${ly})">${escapeXml(labelTxt)}</text>`;
-            svg += `<text x="${lx}" y="${ly}" fill="${labelFill}" ` +
-                `font-family="${T.labelFont}" font-size="14" font-weight="800" ` +
-                `text-anchor="middle" dominant-baseline="central" ` +
-                `transform="rotate(${rotDeg.toFixed(1)} ${lx} ${ly})">${escapeXml(labelTxt)}</text>`;
+            const flip = (pmLabelSide === 'opposite' || pmLabelSide === 'reverse' || pmLabelSide === 'flip');
+            const lsign = flip ? -sign : sign;
+            const loff = off + (flip ? 0 : 0) + pmLabelExtra;
+            const lcx = mid[0] + perpX * loff * lsign;
+            const lcy = mid[1] + perpY * loff * lsign;
+            const lx = flip ? lcx : dcx + indR + 5;
+            const anchor = flip ? 'middle' : 'start';
+            svg += `<text x="${lx.toFixed(2)}" y="${(lcy + 5).toFixed(2)}" fill="${labelFill}" ` +
+                `font-family="${T.labelFont}" font-size="14" font-weight="600" ` +
+                `text-anchor="${anchor}">${escapeXml(labelTxt)}</text>`;
         }
         svg += `</g>`;
         return svg;
     }
+
+    /* --- Point gap layer (top layer, live view) ------------------------------
+     *  Normal  -> cut the diverging curve just after both switches.
+     *  Reverse -> cut the straight rail just after both switches and redraw
+     *             the start of the curve over the cut.
+     *  No detected position -> nothing (no false indication).
+     *  Each PM gets <g data-pm-gap="<cellId>"> so the live view can patch it.
+     * ----------------------------------------------------------------------- */
+    const PM_GAP_TYPES = { 'examples.PointMachine': 'normal', 'examples.PointMachine1': 'mirror' };
+    /* v618.3: OFF by default -- on real layouts the cut legs read as a broken
+     * point. Position is shown by colour (curve amber when Reverse) and the
+     * status dot. SIP.setPointGaps(true) re-enables the VDU-style gaps. */
+    let POINT_GAPS = false;
+    function setPointGaps(on) { POINT_GAPS = !!on; return POINT_GAPS; }
+
+    function renderPointGap(cell) {
+        const kind = PM_GAP_TYPES[cell.type];
+        if (!kind || !POINT_GAPS) return '';
+        const pos = pmPosOf(cell);
+        if (!pos) return '';
+        const P = pmCurveOf(cell, kind === 'mirror');
+        if (Math.abs(P[3][1] - P[0][1]) < 2 * TRACK_W) return '';
+        const mw = TRACK_W + 5;
+        let svg = '';
+        const ends = [P, revCurve(P)];
+        for (let i = 0; i < ends.length; i++) {
+            const C = ends[i];
+            const sp = bezSplit(C, TRACK_W + 4, 22);
+            if (!sp) continue;
+            if (pos === 'N') {
+                svg += `<path d="${bezSub(C, sp.tA, sp.tB)}" fill="none" stroke="${T.canvas}" stroke-width="${mw}" stroke-linecap="butt"/>`;
+            } else {
+                const s = (C[3][0] - C[0][0]) >= 0 ? 1 : -1;
+                const x0 = C[0][0];
+                const y0 = C[0][1];
+                svg += `<path d="M ${x0 + s * (TRACK_W / 2 + 3)} ${y0} L ${x0 + s * (TRACK_W / 2 + 27)} ${y0}" ` +
+                    `fill="none" stroke="${T.canvas}" stroke-width="${mw}" stroke-linecap="butt"/>`;
+                svg += `<path d="${bezSub(C, 0, Math.min(0.5, sp.tB))}" fill="none" stroke="${T.route}" ` +
+                    `stroke-width="${TRACK_W}" stroke-linecap="round"/>`;
+            }
+        }
+        if (svg && cell.angle && Math.abs(cell.angle) > 0.01) {
+            const w = (cell.size && cell.size.width) || 60;
+            const h = (cell.size && cell.size.height) || 60;
+            const cx = cell.position.x + w / 2;
+            const cy = cell.position.y + h / 2;
+            svg = `<g transform="rotate(${cell.angle} ${cx} ${cy})">${svg}</g>`;
+        }
+        return svg;
+    }
+
+    function renderPointGapLayer(cells) {
+        if (!Array.isArray(cells) || !cells.length) return '';
+        let svg = '<g class="sip-pm-gap-layer" pointer-events="none">';
+        for (const c of cells) {
+            if (!c || !PM_GAP_TYPES[c.type]) continue;
+            svg += '<g data-pm-gap="' + escapeXml(c.id) + '">' + renderPointGap(c) + '</g>';
+        }
+        svg += '</g>';
+        return svg;
+    }
+
+    /* Background + theme helpers for hosts (live view, editor, export). */
+    function renderBackground() {
+        return `<rect class="sip-bg" x="-100000" y="-100000" width="200000" height="200000" fill="${T.canvas}"/>`;
+    }
+    function setTheme(name) { return applyTheme(name); }
+    function themeName() { return T.theme; }
+    function themeList() { return Object.keys(THEMES); }
 
     /* --- Signal lamps ------------------------------------------------------- */
 
@@ -544,7 +547,7 @@
 
         // The vertical drop runs from the rail edge to the level of the
         // back-of-box top/bottom — NOT all the way to the head centre.
-        const railEdgeY = headAbove ? railCy - 9 : railCy + 9;   // rail bed half-height = 9
+        const railEdgeY = headAbove ? railCy - (TRACK_W / 2 + 3) : railCy + (TRACK_W / 2 + 3);   // v618.0: thin track line
         const dropEndY = headAbove ? headBox.y - 4 : headBox.y + headBox.h + 4;
 
         // Horizontal joiner runs from the drop x over to the back side of the head.
@@ -554,7 +557,7 @@
         // but in practice we offset the drop slightly so the L is visible.
         const dropX = backX;
 
-        const STK = '#7a7a7a';
+        const STK = T.post;
         let svg = `<g class="sip-stick" pointer-events="none">`;
         // Vertical drop
         svg += `<line x1="${dropX}" y1="${railEdgeY}" x2="${dropX}" y2="${dropEndY}" ` +
@@ -598,19 +601,18 @@
         const r = Math.max(4, Math.min(w, h) * 0.35);
 
         let svg = `<g class="sip-asset sip-signal" data-id="${cell.id}" data-type="${cell.type}">`;
-        svg += `<circle cx="${lcx}" cy="${lcy}" r="${r + 1.5}" fill="none" stroke="#2a2a2a" stroke-width="1"/>`;
+        svg += `<circle cx="${lcx}" cy="${lcy}" r="${r + 1.5}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="1"/>`;
 
         if (lit) {
             let litColour;
             switch (kind) {
-                case 'R': litColour = '#FF2E2E'; break;
-                case 'G': litColour = '#22D142'; break;
-                case 'Y': litColour = '#FFD400'; break;
-                case 'X': litColour = '#FFD400'; break;
+                case 'R': litColour = T.lampR; break;
+                case 'G': litColour = T.lampG; break;
+                case 'Y': litColour = T.lampY; break;
+                case 'X': litColour = T.lampY; break;
                 default: litColour = fillSaved;
             }
-            svg += `<circle cx="${lcx}" cy="${lcy}" r="${r + 4}" fill="${litColour}" opacity="0.18"/>`;
-            svg += `<circle cx="${lcx}" cy="${lcy}" r="${r + 2}" fill="${litColour}" opacity="0.35"/>`;
+            svg += glowDot(lcx, lcy, r, litColour);
             svg += `<circle cx="${lcx}" cy="${lcy}" r="${r}"     fill="${litColour}"/>`;
             svg += `<ellipse cx="${lcx - r * 0.35}" cy="${lcy - r * 0.4}" rx="${r * 0.35}" ry="${r * 0.22}" fill="white" opacity="0.45"/>`;
         } else {
@@ -625,8 +627,7 @@
                 X: 'rgba(255, 176, 32, 0.7)'
             };
             const sym = KIND_TINT[kind] || '#3a3a3a';
-            svg += `<circle cx="${lcx}" cy="${lcy}" r="${r}" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1.5"/>`;
-            svg += `<circle cx="${lcx}" cy="${lcy}" r="${r - 1.5}" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="1"/>`;
+            svg += `<circle cx="${lcx}" cy="${lcy}" r="${r}" fill="${T.lampDark}" stroke="${T.lampRing}" stroke-width="1.2"/>`;
             if (kind === 'R') {
                 svg += `<line x1="${lcx - r + 1}" y1="${lcy - 1.4}" x2="${lcx + r - 1}" y2="${lcy - 1.4}" stroke="${sym}" stroke-width="1.8" stroke-linecap="round"/>`;
                 svg += `<line x1="${lcx - r + 1}" y1="${lcy + 1.4}" x2="${lcx + r - 1}" y2="${lcy + 1.4}" stroke="${sym}" stroke-width="1.8" stroke-linecap="round"/>`;
@@ -649,10 +650,10 @@
            from stacking three labels on top of each other. */
         const lblIsVisible = !!lblText && lblAttr.fill !== 'transparent';
         if (lblIsVisible) {
-            const lblFill = lblAttr.fill || 'rgba(220,228,245,0.85)';
+            const lblFill = normaliseLabelFill(lblAttr.fill) || T.labelHot;
             const lblSize = +lblAttr.fontSize || 14;
             const ly = lcy + r + lblSize + 4;
-            svg += `<text x="${lcx}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
+            svg += `<text x="${lcx}" y="${ly}" fill="${T.canvas}" stroke="${T.canvas}" stroke-width="3" ` +
                 `font-family="${T.labelFont}" font-size="${lblSize}" font-weight="700" ` +
                 `text-anchor="middle" paint-order="stroke">${escapeXml(lblText)}</text>`;
             svg += `<text x="${lcx}" y="${ly}" fill="${lblFill}" ` +
@@ -686,9 +687,9 @@
         const lblVisible = !!lblText && lblAttr.fill !== 'transparent';
 
         let svg = `<g class="sip-asset sip-sig-bg" data-id="${cell.id}" data-type="${cell.type}">`;
-        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="#606060"/>`;
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(w, h) / 2}" ry="${Math.min(w, h) / 2}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="1.2"/>`;
         if (lblVisible) {
-            const fill = lblAttr.fill || T.labelDefault;
+            const fill = normaliseLabelFill(lblAttr.fill) || T.labelDefault;
             const size = +lblAttr.fontSize || 12;
             svg += `<text x="${x + w / 2}" y="${y + h + size + 4}" fill="${fill}" ` +
                 `font-family="${T.labelFont}" font-size="${size}" font-weight="600" ` +
@@ -814,9 +815,9 @@
         }
 
         const endPt = pts[pts.length - 1];
-        return `<path d="${d}" stroke="#b8b8b8" stroke-width="1.5" ` +
+        return `<path d="${d}" stroke="${T.post}" stroke-width="2.2" ` +
             `fill="none" stroke-linecap="round" stroke-linejoin="round"/>` +
-            `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="2" fill="#b8b8b8"/>`;
+            `<circle cx="${endPt[0]}" cy="${endPt[1]}" r="2.2" fill="${T.post}"/>`;
     }
 
     /* ------------------------------------------------------------------------ *
@@ -864,9 +865,17 @@
         /* 1. Stand — drawn FIRST so it sits behind the pill */
         svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen, 4, sigProps);
 
+        /* 1b. Route / Calling attachment -- drawn BEFORE the head (v618.2) so
+               the arms come out from behind the signal instead of crossing
+               its lamps. */
+        const routeProps = (cell.attrs && cell.attrs.route) || null;
+        if (routeProps && boolRouteProp(routeProps.enabled, false)) {
+            svg += renderAttachedRouteCallingToSignal({ x: x, y: y, w: w, h: h }, normaliseRouteCallingConfig(cell, true));
+        }
+
         /* 2. Background pill */
-        const rx = Math.min(h / 2 - 1, 6);
-        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="#606060"/>`;
+        const rx = h / 2;
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="1.2"/>`;
 
         /* 3. Lamps with equal padding (n+1 gaps total) */
         const lampD = Math.max(6, h - 6);
@@ -880,27 +889,26 @@
             const cy = y + h / 2;
             const kind = lamps[i];
             const isLitLamp = !!litSet[kind];
-            const litColour = SIGNAL_LAMP_LIT[kind];
+            const litColour = SIGNAL_LAMP_LIT[kind] ? lampLitColour(kind) : null;
 
             if (isLitLamp && litColour) {
-                svg += `<circle cx="${cx}" cy="${cy}" r="${r + 2.5}" fill="${litColour}" opacity="0.18"/>`;
-                svg += `<circle cx="${cx}" cy="${cy}" r="${r + 1}"   fill="${litColour}" opacity="0.35"/>`;
+                svg += glowDot(cx, cy, r, litColour);
                 svg += `<circle cx="${cx}" cy="${cy}" r="${r}"       fill="${litColour}"/>`;
                 svg += `<ellipse cx="${cx - r * 0.35}" cy="${cy - r * 0.4}" rx="${r * 0.35}" ry="${r * 0.22}" fill="white" opacity="0.45"/>`;
             } else {
-                svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1.2"/>`;
+                svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${T.lampDark}" stroke="${T.lampRing}" stroke-width="1"/>`;
                 if (kind === 'R') {
-                    svg += `<line x1="${cx - r + 1}" y1="${cy - 1.2}" x2="${cx + r - 1}" y2="${cy - 1.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                    svg += `<line x1="${cx - r + 1}" y1="${cy + 1.2}" x2="${cx + r - 1}" y2="${cy + 1.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - r + 1}" y1="${cy - 1.2}" x2="${cx + r - 1}" y2="${cy - 1.2}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
+                    svg += `<line x1="${cx - r + 1}" y1="${cy + 1.2}" x2="${cx + r - 1}" y2="${cy + 1.2}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 } else if (kind === 'G') {
-                    svg += `<line x1="${cx}" y1="${cy - r + 1}" x2="${cx}" y2="${cy + r - 1}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx}" y1="${cy - r + 1}" x2="${cx}" y2="${cy + r - 1}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 } else if (kind === 'Y') {
                     const d = r * 0.72;
-                    svg += `<line x1="${cx - d}" y1="${cy - d}" x2="${cx + d}" y2="${cy + d}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d}" x2="${cx + d}" y2="${cy + d}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 } else if (kind === 'X') {
                     const d = r * 0.72;
-                    svg += `<line x1="${cx - d}" y1="${cy - d + 2.2}" x2="${cx + d}" y2="${cy + d + 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                    svg += `<line x1="${cx - d}" y1="${cy - d - 2.2}" x2="${cx + d}" y2="${cy + d - 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d + 2.2}" x2="${cx + d}" y2="${cy + d + 2.2}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d - 2.2}" x2="${cx + d}" y2="${cy + d - 2.2}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 }
             }
         }
@@ -910,18 +918,26 @@
            physically attached to the selected edge of the main signal body,
            not drawn as a loose/overlapping module. This keeps 2/3/4/5-aspect
            heads compact while allowing route/calling on any side. */
-        const routeProps = (cell.attrs && cell.attrs.route) || null;
-        if (routeProps && boolRouteProp(routeProps.enabled, false)) {
-            svg += renderAttachedRouteCallingToSignal({ x: x, y: y, w: w, h: h }, normaliseRouteCallingConfig(cell, true));
-        }
+        /* (route / calling attachment is drawn before the head -- see step 1b) */
 
         /* 5. Label — auto-positioned opposite the stand */
         const lblAttr = (cell.attrs && cell.attrs.label) || {};
         const lblText = lblAttr.text != null ? String(lblAttr.text) : '';
         if (lblText && lblAttr.fill !== 'transparent') {
-            const lblFill = lblAttr.fill || '#dcd7d7';
+            const lblFill = normaliseLabelFill(lblAttr.fill) || T.labelHot;
             const lblSize = +lblAttr.fontSize || 12;
             const lp = labelSideFromStand(standPos, x, y, w, h, lblSize, sigProps.labelGap);
+            /* v618.2: keep the name clear of route arms on the same side */
+            if (routeProps && boolRouteProp(routeProps.enabled, false)) {
+                const rSide = normaliseRouteCallingConfig(cell, true).routeSide;
+                if ((rSide === 'left' && lp.anchor === 'end') || (rSide === 'right' && lp.anchor === 'start')) {
+                    lp.lx = x + w / 2;
+                    lp.ly = y - lblSize * 0.9;
+                    lp.anchor = 'middle';
+                } else if (rSide === 'top' && lp.ly < y) {
+                    lp.ly = y + h + lblSize;
+                }
+            }
             svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${lblFill}" ` +
                 `font-family="${T.labelFont}" font-size="${lblSize}" font-weight="700" ` +
                 `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(lblText)}</text>`;
@@ -974,7 +990,7 @@
         const h = cell.size.height || 23;
 
         const bodyAttrs = (cell.attrs && cell.attrs.body) || {};
-        const bodyFill = bodyAttrs.fill || '#5B6168';
+        const bodyFill = isLit(bodyAttrs.fill) ? bodyAttrs.fill : T.head;
 
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
@@ -1010,7 +1026,7 @@
             `L ${bx + 21.7913 * sx} ${by + 9.09038 * sy} ` +
             `C ${bx + 20.0269 * sx} ${by + 7.48825 * sy} ${bx + 17.2844 * sx} ${by + 4.90306 * sy} ${bx + 15.6975 * sx} ${by + 3.34558 * sy} ` +
             `C ${bx + 12.8669 * sx} ${by + 0.567087 * sy} ${bx + 10.3638 * sx} ${by - 0.450839 * sy} ${bx + 7.91188 * sx} ${by + 0.180471 * sy} Z`;
-        svg += `<path d="${pathD}" fill="#3a3e44"/>`;
+        svg += `<path d="${pathD}" fill="${T.headEdge}"/>`;
         const inset = `<g transform="translate(${bx + bw / 2} ${by + bh / 2}) scale(0.96) translate(${-(bx + bw / 2)} ${-(by + bh / 2)})">` +
             `<path d="${pathD}" fill="${bodyFill}"/></g>`;
         svg += inset;
@@ -1031,13 +1047,13 @@
         ];
         for (const d of dotPositions) {
             if (d.lit) {
-                svg += `<circle${blink} cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="white" opacity="0.18"/>`;
-                svg += `<circle${blink} cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white"/>`;
-                //svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="white" opacity="0.18"/>`;
-                //svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white"/>`;
+                svg += `<circle${blink} cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="${T.pl}" opacity="${T.glowOpacity}"/>`;
+                svg += `<circle${blink} cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="${T.pl}"/>`;
+                //svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.8}" fill="${T.pl}" opacity="${T.glowOpacity}"/>`;
+                //svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="${T.pl}"/>`;
                 svg += `<ellipse cx="${d.cx - dotR * 0.35}" cy="${d.cy - dotR * 0.4}" rx="${dotR * 0.35}" ry="${dotR * 0.22}" fill="white" opacity="0.6"/>`;
             } else {
-                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white" fill-opacity="0.08" stroke="white" stroke-opacity="0.25" stroke-width="0.6"/>`;
+                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="${T.lampDark}" stroke="${T.lampRing}" stroke-width="0.8"/>`;
             }
         }
 
@@ -1049,8 +1065,8 @@
 
         if (labelTxt) {
             const lFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
-                ? labelAttrs.fill
-                : 'rgba(220,228,245,0.85)';
+                ? normaliseLabelFill(labelAttrs.fill)
+                : T.labelHot;
             const sigSide = (cell.attrs && cell.attrs.signal && cell.attrs.signal.signalSide) || 'up';
             const isRight = (sigSide === 'up' || sigSide === 'right');
             // Wider default gap so the SHxx label clears the triangle body /
@@ -1059,7 +1075,7 @@
             const lx = isRight ? bx + bw + lblGap : bx - lblGap;
             const anchor = isRight ? 'start' : 'end';
             const ly = by + bh / 2 + 5;
-            svg += `<text x="${lx}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
+            svg += `<text x="${lx}" y="${ly}" fill="${T.canvas}" stroke="${T.canvas}" stroke-width="3" ` +
                 `font-family="${T.labelFont}" font-size="14" font-weight="700" ` +
                 `text-anchor="${anchor}" dominant-baseline="middle" paint-order="stroke">${escapeXml(labelTxt)}</text>`;
             svg += `<text x="${lx}" y="${ly}" fill="${lFill}" ` +
@@ -1149,7 +1165,7 @@
 
     function renderCombinedShuntSymbol(shX, shY, shW, shH, dotSet, bodyFill) {
         dotSet = dotSet || { top: false, bl: true, br: true };
-        bodyFill = bodyFill || '#5B6168';
+        bodyFill = (bodyFill && isLit(bodyFill)) ? bodyFill : T.head;
         const sx = shW / 25;
         const sy = shH / 23;
         const pathD = `M ${shX + 7.91188 * sx} ${shY + 0.180471 * sy} ` +
@@ -1161,7 +1177,7 @@
             `C ${shX + 20.0269 * sx} ${shY + 7.48825 * sy} ${shX + 17.2844 * sx} ${shY + 4.90306 * sy} ${shX + 15.6975 * sx} ${shY + 3.34558 * sy} ` +
             `C ${shX + 12.8669 * sx} ${shY + 0.567087 * sy} ${shX + 10.3638 * sx} ${shY - 0.450839 * sy} ${shX + 7.91188 * sx} ${shY + 0.180471 * sy} Z`;
         let svg = '';
-        svg += `<path d="${pathD}" fill="#3a3e44"/>`;
+        svg += `<path d="${pathD}" fill="${T.headEdge}"/>`;
         svg += `<g transform="translate(${shX + shW / 2} ${shY + shH / 2}) scale(0.96) translate(${-(shX + shW / 2)} ${-(shY + shH / 2)})">` +
             `<path d="${pathD}" fill="${bodyFill}"/></g>`;
 
@@ -1173,11 +1189,11 @@
         ];
         for (const d of dots) {
             if (d.lit) {
-                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.5}" fill="white" opacity="0.18"/>`;
-                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white"/>`;
+                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR + 1.5}" fill="${T.pl}" opacity="${T.glowOpacity}"/>`;
+                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="${T.pl}"/>`;
                 svg += `<ellipse cx="${d.cx - dotR * 0.35}" cy="${d.cy - dotR * 0.4}" rx="${dotR * 0.35}" ry="${dotR * 0.22}" fill="white" opacity="0.6"/>`;
             } else {
-                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="white" fill-opacity="0.08" stroke="white" stroke-opacity="0.25" stroke-width="0.6"/>`;
+                svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="${T.lampDark}" stroke="${T.lampRing}" stroke-width="0.8"/>`;
             }
         }
         return svg;
@@ -1201,7 +1217,7 @@
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
         const labelFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
-            ? labelAttrs.fill : 'rgba(220,228,245,0.85)';
+            ? labelAttrs.fill : T.labelHot;
         const labelSize = +labelAttrs.fontSize || 14;
 
         /* Main + shunt are now fully combinable:
@@ -1262,7 +1278,7 @@
 
         // ── Variable-aspect main signal head ──
         svg += `<rect x="${sigX}" y="${sigY}" width="${sigW}" height="${sigH}" rx="5" fill="#3a3a3a"/>`;
-        svg += `<rect x="${sigX + 1}" y="${sigY + 1}" width="${sigW - 2}" height="${sigH - 2}" rx="4" fill="#606060"/>`;
+        svg += `<rect x="${sigX + 1}" y="${sigY + 1}" width="${sigW - 2}" height="${sigH - 2}" rx="4" fill="${T.head}"/>`;
         const litMap = { R: '#FF2E2E', Y: '#FFD400', G: '#22D142', X: '#FFD400' };
         const r = lampD / 2;
         for (let i = 0; i < n; i++) {
@@ -1277,19 +1293,19 @@
                 svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"/>`;
                 svg += `<ellipse cx="${cx - r * 0.35}" cy="${cy - r * 0.4}" rx="${r * 0.35}" ry="${r * 0.22}" fill="white" opacity="0.45"/>`;
             } else {
-                svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1.2"/>`;
+                svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${T.lampDark}" stroke="${T.lampRing}" stroke-width="1"/>`;
                 if (kind === 'R') {
-                    svg += `<line x1="${cx - r + 1}" y1="${cy - 1.4}" x2="${cx + r - 1}" y2="${cy - 1.4}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                    svg += `<line x1="${cx - r + 1}" y1="${cy + 1.4}" x2="${cx + r - 1}" y2="${cy + 1.4}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - r + 1}" y1="${cy - 1.4}" x2="${cx + r - 1}" y2="${cy - 1.4}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
+                    svg += `<line x1="${cx - r + 1}" y1="${cy + 1.4}" x2="${cx + r - 1}" y2="${cy + 1.4}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 } else if (kind === 'Y') {
                     const d = r * 0.72;
-                    svg += `<line x1="${cx - d}" y1="${cy - d}" x2="${cx + d}" y2="${cy + d}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d}" x2="${cx + d}" y2="${cy + d}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 } else if (kind === 'G') {
-                    svg += `<line x1="${cx}" y1="${cy - r + 1}" x2="${cx}" y2="${cy + r - 1}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx}" y1="${cy - r + 1}" x2="${cx}" y2="${cy + r - 1}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 } else if (kind === 'X') {
                     const d = r * 0.72;
-                    svg += `<line x1="${cx - d}" y1="${cy - d + 2.2}" x2="${cx + d}" y2="${cy + d + 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
-                    svg += `<line x1="${cx - d}" y1="${cy - d - 2.2}" x2="${cx + d}" y2="${cy + d - 2.2}" stroke="#3a3a3a" stroke-width="1.4"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d + 2.2}" x2="${cx + d}" y2="${cy + d + 2.2}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
+                    svg += `<line x1="${cx - d}" y1="${cy - d - 2.2}" x2="${cx + d}" y2="${cy + d - 2.2}" stroke="${T.lampMark}" stroke-width="1.2"/>`;
                 }
             }
         }
@@ -1311,7 +1327,7 @@
         if (labelTxt) {
             const labelGap = Math.max(4, +sigProps.labelGap || 6);
             const lp = labelSideFromStand(sPos, standHeadBox.x, standHeadBox.y, standHeadBox.w, standHeadBox.h, labelSize, labelGap);
-            svg += `<text x="${lp.lx}" y="${lp.ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
+            svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${T.canvas}" stroke="${T.canvas}" stroke-width="3" ` +
                 `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="700" ` +
                 `text-anchor="${lp.anchor}" dominant-baseline="central" paint-order="stroke">${escapeXml(labelTxt)}</text>`;
             svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${labelFill}" ` +
@@ -1445,8 +1461,11 @@
         }
     }
 
+    /* A lit white indicator: white on dark palettes; solid ink on the light
+     * (day) palette, where white would read as "off". */
+    function litWhite() { return T.glowOpacity > 0 ? T.pl : T.labelHot; }
     function renderSimpleRouteLamp(cx, cy, r, lit, colour) {
-        colour = colour || '#ffffff';
+        colour = colour || T.pl;
         if (lit) {
             return `<circle cx="${cx}" cy="${cy}" r="${r + 3}" fill="${colour}" opacity="0.18">` +
                 `<animate attributeName="opacity" values="0.18;0.03;0.18" dur="0.8s" repeatCount="indefinite"/>` +
@@ -1454,12 +1473,12 @@
                 `<circle cx="${cx}" cy="${cy}" r="${r + 1.3}" fill="${colour}" opacity="0.45">` +
                 `<animate attributeName="opacity" values="0.45;0.12;0.45" dur="0.8s" repeatCount="indefinite"/>` +
                 `</circle>` +
-                `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}" stroke="${colour}" stroke-width="0.8">` +
+                `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colour}" stroke="${T.post}" stroke-width="1">` +
                 `<animate attributeName="opacity" values="1;0.25;1" dur="0.8s" repeatCount="indefinite"/>` +
                 `</circle>`;
         }
-        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#0a0f1e" ` +
-            `stroke="${colour}" stroke-opacity="0.68" stroke-width="0.9"/>` +
+        return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${T.canvas}" ` +
+            `stroke="${colour}" stroke-width="1.2"/>` +
             `<circle cx="${cx}" cy="${cy}" r="${Math.max(1.3, r * 0.34)}" fill="${colour}" fill-opacity="0.16"/>`;
     }
 
@@ -1476,9 +1495,9 @@
         const lineLen = Math.max(8, +cfg.armLength || 22);
         const attachGap = Math.max(0, +cfg.attachGap || 6);
         const dotR = Math.max(2.4, +cfg.dotSize || 3.8);
-        const labelSize = Math.max(6, +cfg.labelSize || 8.5);
+        const labelSize = Math.max(10, +cfg.labelSize || 11);   /* v618.2: was 8.5 px, unreadable */
         const labelGap = Math.max(0, +cfg.labelGap || 8);
-        const baseCol = '#9aa8c4';
+        const baseCol = T.post;
         let svg = `<g class="sip-route-top-arms" pointer-events="none">`;
 
         /* Railway SIP-style route indicator:
@@ -1495,7 +1514,7 @@
             const jy = p.sy + p.ay * attachGap;
             const ex = p.sx + p.ax * (attachGap + lineLen);
             const ey = p.sy + p.ay * (attachGap + lineLen);
-            const stroke = lit ? '#ffffff' : baseCol;
+            const stroke = lit ? T.labelHot : baseCol;
 
             /* origin override: route lines start from signal centre when attached */
             const startX = origin ? origin.x : p.sx;
@@ -1505,11 +1524,11 @@
                 `stroke="${stroke}" stroke-width="1.45" stroke-linecap="round" opacity="${lit ? '1' : '0.76'}">` +
                 (lit ? `<animate attributeName="opacity" values="1;0.28;1" dur="0.8s" repeatCount="indefinite"/>` : '') +
                 `</line>`;
-            svg += renderSimpleRouteLamp(ex, ey, dotR, lit, '#ffffff');
+            svg += renderSimpleRouteLamp(ex, ey, dotR, lit, lit ? litWhite() : T.post);
 
             const lp = routeLabelPoint(sideName, ex, ey, dotR + labelGap);
-            svg += `<text x="${lp.x}" y="${lp.y}" fill="${lit ? '#ffffff' : '#d7d7d7'}" ` +
-                `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="800" ` +
+            svg += `<text x="${lp.x}" y="${lp.y}" fill="${lit ? T.labelHot : T.label}" ` +
+                `font-family="${T.labelFont}" font-size="${labelSize}" font-weight="700" ` +
                 `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(lbl)}</text>`;
         }
         svg += `</g>`;
@@ -1529,7 +1548,7 @@
         const lineStartY = origin ? origin.y : start.sy;
         let svg = `<g class="sip-calling-below-line" pointer-events="none">`;
         svg += `<line x1="${lineStartX}" y1="${lineStartY}" x2="${endX}" y2="${endY}" ` +
-            `stroke="#9aa8c4" stroke-width="1.25" stroke-linecap="round" opacity="0.72"/>`;
+            `stroke="${T.post}" stroke-width="1.4" stroke-linecap="round"/>`;
         svg += renderCallingAttachment(endX, endY, cfg, sideName);
         svg += `</g>`;
         return svg;
@@ -1559,17 +1578,17 @@
         const label = String(cfg.callingLabel || 'C').toUpperCase();
         let svg = `<g class="sip-calling-simple">`;
         if (callLit) {
-            svg += `<circle cx="${cx}" cy="${cy}" r="${r + 3.5}" fill="#ffffff" opacity="0.18">` +
+            svg += `<circle cx="${cx}" cy="${cy}" r="${r + 3.5}" fill="${T.pl}" opacity="0.18">` +
                 `<animate attributeName="opacity" values="0.18;0.03;0.18" dur="0.8s" repeatCount="indefinite"/>` +
                 `</circle>`;
-            svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ffffff" stroke="#ffffff" stroke-width="1.1">` +
+            svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${litWhite()}" stroke="${T.post}" stroke-width="1.1">` +
                 `<animate attributeName="opacity" values="1;0.25;1" dur="0.8s" repeatCount="indefinite"/>` +
                 `</circle>`;
-            svg += `<text x="${cx}" y="${cy}" fill="#0a0f1e" font-family="${T.labelFont}" ` +
+            svg += `<text x="${cx}" y="${cy}" fill="${T.canvas}" font-family="${T.labelFont}" ` +
                 `font-size="${Math.max(8, r * 1.15)}" font-weight="900" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`;
         } else {
-            svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#0a0f1e" stroke="#ffffff" stroke-opacity="0.78" stroke-width="1.1"/>`;
-            svg += `<text x="${cx}" y="${cy}" fill="#ffffff" fill-opacity="0.88" font-family="${T.labelFont}" ` +
+            svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${T.canvas}" stroke="${T.post}" stroke-width="1.2"/>`;
+            svg += `<text x="${cx}" y="${cy}" fill="${T.labelHot}" font-family="${T.labelFont}" ` +
                 `font-size="${Math.max(8, r * 1.15)}" font-weight="900" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`;
         }
         svg += `</g>`;
@@ -1593,9 +1612,9 @@
 
         const armLen = Math.max(8, +cfg.armLength || 22);
         const dotR = Math.max(2.4, +cfg.dotSize || 3.8);
-        const labelSz = Math.max(6, +cfg.labelSize || 8.5);
+        const labelSz = Math.max(10, +cfg.labelSize || 11);   /* v618.2: was 8.5 px, unreadable */
         const labelGap = Math.max(0, +cfg.labelGap || 8);
-        const baseCol = '#9aa8c4';
+        const baseCol = T.post;
 
         /* Base angle: direction the fan is centred on (degrees, 0 = right) */
         const routeSide = /^(top|bottom|left|right)$/.test(cfg.routeSide) ? cfg.routeSide : 'top';
@@ -1623,10 +1642,16 @@
             const angleDeg = baseDeg + offset;
             const angleRad = angleDeg * Math.PI / 180;
 
-            /* Arm endpoint */
-            const ex = cx + Math.cos(angleRad) * armLen;
-            const ey = cy + Math.sin(angleRad) * armLen;
-            const stroke = lit ? '#ffffff' : baseCol;
+            /* Arm endpoint -- measured from the head EDGE along the arm angle
+               (v618.2: the arm starts behind the head, so it must clear it) */
+            const ca = Math.cos(angleRad), sa = Math.sin(angleRad);
+            const edgeT = Math.min(
+                Math.abs(ca) > 1e-6 ? (box.w / 2) / Math.abs(ca) : Infinity,
+                Math.abs(sa) > 1e-6 ? (box.h / 2) / Math.abs(sa) : Infinity);
+            const reach = (isFinite(edgeT) ? edgeT : 0) + armLen;
+            const ex = cx + ca * reach;
+            const ey = cy + sa * reach;
+            const stroke = lit ? T.labelHot : baseCol;
 
             /* Arm line from signal centre → endpoint */
             svg += `<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" ` +
@@ -1635,7 +1660,7 @@
                 `</line>`;
 
             /* Lamp dot at the tip */
-            svg += renderSimpleRouteLamp(ex, ey, dotR, lit, '#ffffff');
+            svg += renderSimpleRouteLamp(ex, ey, dotR, lit, lit ? litWhite() : T.post);
 
             /* Label beyond the dot, pushed outward along the same angle */
             const lx = ex + Math.cos(angleRad) * (dotR + labelGap);
@@ -1648,8 +1673,8 @@
             else if (cosA < -0.3) anchor = 'end';      /* arm points left  */
             else anchor = 'middle';   /* arm points up/down */
 
-            svg += `<text x="${lx}" y="${ly}" fill="${lit ? '#ffffff' : '#d7d7d7'}" ` +
-                `font-family="${T.labelFont}" font-size="${labelSz}" font-weight="800" ` +
+            svg += `<text x="${lx}" y="${ly}" fill="${lit ? T.labelHot : T.label}" ` +
+                `font-family="${T.labelFont}" font-size="${labelSz}" font-weight="700" ` +
                 `text-anchor="${anchor}" dominant-baseline="central">${escapeXml(lbl)}</text>`;
         }
 
@@ -1661,7 +1686,7 @@
             const callEndY = box.y + box.h + callGap + callLen;
 
             svg += `<line x1="${cx}" y1="${cy}" x2="${cx}" y2="${callEndY}" ` +
-                `stroke="#9aa8c4" stroke-width="1.25" stroke-linecap="round" opacity="0.72"/>`;
+                `stroke="${T.post}" stroke-width="1.4" stroke-linecap="round"/>`;
             svg += renderCallingAttachment(cx, callEndY, cfg, 'bottom');
         }
 
@@ -1690,7 +1715,7 @@
         svg += renderRouteCallingGraphic(cx, cy, cfg, { includeCalling: true });
 
         if (labelTxt && labelAttrs.fill !== 'transparent') {
-            const fill = labelAttrs.fill || T.labelDefault;
+            const fill = normaliseLabelFill(labelAttrs.fill) || T.labelDefault;
             const size = +labelAttrs.fontSize || 12;
             svg += `<text x="${x + w / 2}" y="${y + h + size + 4}" fill="${fill}" ` +
                 `font-family="${T.labelFont}" font-size="${size}" font-weight="800" ` +
@@ -1717,13 +1742,13 @@
             `stroke="#8aa3c0" stroke-width="3" stroke-linecap="round"/>`;
         svg += `<line x1="${cx1}" y1="${cy1}" x2="${cx2}" y2="${cy2}" ` +
             `stroke="white" stroke-width="1" stroke-linecap="round" opacity="0.3"/>`;
-        svg += `<circle cx="${cx1}" cy="${cy1}" r="${r + 1}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.5"/>`;
+        svg += `<circle cx="${cx1}" cy="${cy1}" r="${r + 1}" fill="${T.canvas}" stroke="${T.select}" stroke-width="1.5"/>`;
         svg += `<circle cx="${cx1}" cy="${cy1}" r="${r - 2}" fill="#f4f4f4"/>`;
-        svg += `<circle cx="${cx2}" cy="${cy2}" r="${r + 1}" fill="#0a0f1e" stroke="#22d3ee" stroke-width="1.5"/>`;
+        svg += `<circle cx="${cx2}" cy="${cy2}" r="${r + 1}" fill="${T.canvas}" stroke="${T.select}" stroke-width="1.5"/>`;
         svg += `<circle cx="${cx2}" cy="${cy2}" r="${r - 2}" fill="#f4f4f4"/>`;
         if (labelTxt) {
             const ly = cy2 + r + 18;
-            svg += `<text x="${cx2}" y="${ly}" fill="#0a0f1e" stroke="#0a0f1e" stroke-width="3" ` +
+            svg += `<text x="${cx2}" y="${ly}" fill="${T.canvas}" stroke="${T.canvas}" stroke-width="3" ` +
                 `font-family="${T.labelFont}" font-size="14" font-weight="700" ` +
                 `text-anchor="middle" paint-order="stroke">${escapeXml(labelTxt)}</text>`;
             svg += `<text x="${cx2}" y="${ly}" fill="${T.labelDefault}" ` +
@@ -1846,10 +1871,10 @@
 
         let svg = `<g class="sip-asset sip-breaker" data-id="${cell.id}" data-type="${cell.type}">`;
         // dark backing makes the bar pop even when it lands on top of a pill
-        svg += `<rect x="${cx - barW / 2 - 1}" y="${cy - barH / 2 - 1}" width="${barW + 2}" height="${barH + 2}" fill="#0a0f1e"/>`;
-        svg += `<rect x="${cx - barW / 2}"     y="${cy - barH / 2}"     width="${barW}"     height="${barH}"     fill="#FFD400"/>`;
+        svg += `<rect x="${cx - barW / 2 - 1}" y="${cy - barH / 2 - 1}" width="${barW + 2}" height="${barH + 2}" fill="${T.canvas}"/>`;
+        svg += `<rect x="${cx - barW / 2}"     y="${cy - barH / 2}"     width="${barW}"     height="${barH}"     rx="1.5" fill="${T.post}"/>`;
         if (lblVisible) {
-            const fill = lblAttr.fill || '#dcd7d7';
+            const fill = normaliseLabelFill(lblAttr.fill) || T.labelHot;
             const sz = +lblAttr.fontSize || 11;
             svg += `<text x="${cx}" y="${cy + barH / 2 + sz + 2}" fill="${fill}" ` +
                 `font-family="${T.labelFont}" font-size="${sz}" font-weight="600" ` +
@@ -1936,7 +1961,7 @@
                     `<line x1="2"  y1="10" x2="58" y2="10" stroke="#fff" stroke-width="0.4"/>` +
                     `<line x1="2"  y1="14" x2="58" y2="14" stroke="#fff" stroke-width="0.4"/>` +
                     Array.from({ length: 18 }, (_, i) => `<rect x="${4 + i * 3}" y="11" width="1" height="2" fill="${T.sleeper}"/>`).join('') +
-                    `<rect x="28" y="3"  width="4" height="18" fill="#0a0f1e"/>` +
+                    `<rect x="28" y="3"  width="4" height="18" fill="${T.canvas}"/>` +
                     `<rect x="29" y="4"  width="2" height="16" fill="#FFD400"/>` +
                     `</svg>`;
             }
@@ -1956,7 +1981,7 @@
                     `<polygon points="4,28 56,6 58,8 6,30" fill="${T.railBase}"/>` +
                     `<line x1="4" y1="28" x2="56" y2="6" stroke="white" stroke-width="0.5" opacity="0.7"/>` +
                     `<line x1="6" y1="30" x2="58" y2="8" stroke="white" stroke-width="0.5" opacity="0.7"/>` +
-                    `<circle cx="38" cy="25" r="5.5" fill="#0a0f1e" stroke="#22d3ee" stroke-width="0.8"/>` +
+                    `<circle cx="38" cy="25" r="5.5" fill="${T.canvas}" stroke="${T.select}" stroke-width="0.8"/>` +
                     `<circle cx="38" cy="25" r="4" fill="${T.pmDot}"/>` +
                     `</svg>`;
             }
@@ -1976,7 +2001,7 @@
                     `<polygon points="4,6 56,28 58,26 6,4" fill="${T.railBase}"/>` +
                     `<line x1="4" y1="6" x2="56" y2="28" stroke="white" stroke-width="0.5" opacity="0.7"/>` +
                     `<line x1="6" y1="4" x2="58" y2="26" stroke="white" stroke-width="0.5" opacity="0.7"/>` +
-                    `<circle cx="22" cy="25" r="5.5" fill="#0a0f1e" stroke="#22d3ee" stroke-width="0.8"/>` +
+                    `<circle cx="22" cy="25" r="5.5" fill="${T.canvas}" stroke="${T.select}" stroke-width="0.8"/>` +
                     `<circle cx="22" cy="25" r="4" fill="${T.pmDot}"/>` +
                     `</svg>`;
             }
@@ -2011,12 +2036,12 @@
                     `<line x1="24" y1="30" x2="24" y2="13" stroke="#9aa8c4" stroke-width="1.3"/>` +
                     `<line x1="40" y1="30" x2="40" y2="13" stroke="#9aa8c4" stroke-width="1.3"/>` +
                     `<line x1="56" y1="30" x2="56" y2="13" stroke="#9aa8c4" stroke-width="1.3"/>` +
-                    `<circle cx="24" cy="13" r="3.2" fill="#fff"/><circle cx="40" cy="13" r="3.2" fill="#0a0f1e" stroke="#fff"/><circle cx="56" cy="13" r="3.2" fill="#0a0f1e" stroke="#fff"/>` +
+                    `<circle cx="24" cy="13" r="3.2" fill="#fff"/><circle cx="40" cy="13" r="3.2" fill="${T.canvas}" stroke="#fff"/><circle cx="56" cy="13" r="3.2" fill="${T.canvas}" stroke="#fff"/>` +
                     `<text x="24" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">AUG</text>` +
                     `<text x="40" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">BUG</text>` +
                     `<text x="56" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">CUG</text>` +
                     `<line x1="40" y1="30" x2="40" y2="45" stroke="#9aa8c4" stroke-width="1.1"/>` +
-                    `<circle cx="40" cy="45" r="5" fill="#0a0f1e" stroke="#fff"/><text x="40" y="46" font-family="${T.labelFont}" font-size="7" fill="#fff" font-weight="900" text-anchor="middle">C</text>` +
+                    `<circle cx="40" cy="45" r="5" fill="${T.canvas}" stroke="#fff"/><text x="40" y="46" font-family="${T.labelFont}" font-size="7" fill="#fff" font-weight="900" text-anchor="middle">C</text>` +
                     `</svg>`;
             }
         },
@@ -2049,8 +2074,8 @@
             icon: function () {
                 /* Toolbox tile preview — 3 blank lamps in a pill with a tiny stand. */
                 return `<svg viewBox="0 0 60 30" xmlns="http://www.w3.org/2000/svg">` +
-                    `<line x1="30" y1="20" x2="30" y2="28" stroke="#b8b8b8" stroke-width="1.5" stroke-linecap="round"/>` +
-                    `<rect x="4"  y="8" width="52" height="12" rx="3" ry="3" fill="#606060"/>` +
+                    `<line x1="30" y1="20" x2="30" y2="28" stroke="${T.post}" stroke-width="1.5" stroke-linecap="round"/>` +
+                    `<rect x="4"  y="8" width="52" height="12" rx="3" ry="3" fill="${T.head}"/>` +
                     `<circle cx="13" cy="14" r="3.6" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="0.6"/>` +
                     `<circle cx="30" cy="14" r="3.6" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="0.6"/>` +
                     `<circle cx="47" cy="14" r="3.6" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="0.6"/>` +
@@ -2067,7 +2092,7 @@
             render: renderSignalBackground,
             icon: function () {
                 return `<svg viewBox="0 0 60 24">` +
-                    `<rect x="3" y="6"  width="54" height="12" rx="3" ry="3" fill="#606060"/>` +
+                    `<rect x="3" y="6"  width="54" height="12" rx="3" ry="3" fill="${T.head}"/>` +
                     `<circle cx="13" cy="12" r="3.5" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="0.8"/>` +
                     `<circle cx="30" cy="12" r="3.5" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="0.8"/>` +
                     `<circle cx="47" cy="12" r="3.5" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="0.8"/>` +
@@ -2152,7 +2177,7 @@
                 // v1 — top dim, BL lit, BR lit — PROCEED
                 return `<svg viewBox="0 0 56 36">` +
                     `<g transform="translate(8 1) scale(0.96)">` +
-                    `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="#3a3e44"/>` +
+                    `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="${T.headEdge}"/>` +
                     `<g transform="translate(12.5 11.5) scale(0.96) translate(-12.5 -11.5)">` +
                     `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="${T.shuntBody}"/>` +
                     `</g></g>` +
@@ -2176,7 +2201,7 @@
                 // v2 — top lit, BL DIM, BR lit — DIVERGE
                 return `<svg viewBox="0 0 56 36">` +
                     `<g transform="translate(8 1) scale(0.96)">` +
-                    `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="#3a3e44"/>` +
+                    `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="${T.headEdge}"/>` +
                     `<g transform="translate(12.5 11.5) scale(0.96) translate(-12.5 -11.5)">` +
                     `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="${T.shuntBody}"/>` +
                     `</g></g>` +
@@ -2200,7 +2225,7 @@
                 // v3 — all three dim — OFF
                 return `<svg viewBox="0 0 56 36">` +
                     `<g transform="translate(8 1) scale(0.96)">` +
-                    `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="#3a3e44"/>` +
+                    `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="${T.headEdge}"/>` +
                     `<g transform="translate(12.5 11.5) scale(0.96) translate(-12.5 -11.5)">` +
                     `<path d="M 7.9 0.2 C 5.8 0.7 4.3 2.9 2.1 8.5 C 0.4 13 0 15 0 18.6 L 0 23 L 25 23 L 25 17.5 L 25 12 L 21.8 9.1 C 20 7.5 17.3 4.9 15.7 3.3 C 12.9 0.6 10.4 -0.5 7.9 0.2 Z" fill="${T.shuntBody}"/>` +
                     `</g></g>` +
@@ -2224,12 +2249,12 @@
             icon: function () {
                 return `<svg viewBox="0 0 80 28">` +
                     `<rect x="2" y="4" width="46" height="20" rx="3" fill="#3a3a3a"/>` +
-                    `<rect x="3" y="5" width="44" height="18" rx="2" fill="#606060"/>` +
+                    `<rect x="3" y="5" width="44" height="18" rx="2" fill="${T.head}"/>` +
                     `<circle cx="12" cy="14" r="5" fill="#FF2E2E"/>` +
                     `<circle cx="25" cy="14" r="5" fill="#FFD400"/>` +
                     `<circle cx="38" cy="14" r="5" fill="#22D142"/>` +
                     // mini shunt triangle
-                    `<path d="M 56 7 L 68 7 Q 76 7 78 14 Q 76 22 68 22 L 56 22 Q 55 22 55 21 L 55 8 Q 55 7 56 7 Z" fill="#5B6168"/>` +
+                    `<path d="M 56 7 L 68 7 Q 76 7 78 14 Q 76 22 68 22 L 56 22 Q 55 22 55 21 L 55 8 Q 55 7 56 7 Z" fill="${T.head}"/>` +
                     `<circle cx="60" cy="12" r="1.8" fill="white"/>` +
                     `<circle cx="68" cy="12" r="1.8" fill="white"/>` +
                     `<circle cx="64" cy="18" r="1.8" fill="white"/>` +
@@ -2350,7 +2375,7 @@
     function signalLampIcon(_colour, kind) {
         let svg = `<svg viewBox="0 0 60 32">` +
             `<rect x="20" y="2" width="20" height="28" rx="7" fill="#3a3a3a"/>` +
-            `<rect x="21" y="3" width="18" height="26" rx="6" fill="#606060"/>` +
+            `<rect x="21" y="3" width="18" height="26" rx="6" fill="${T.head}"/>` +
             `<circle cx="30" cy="16" r="9.5" fill="none" stroke="#2a2a2a" stroke-width="0.8"/>` +
             `<circle cx="30" cy="16" r="7" fill="#f4f4f4" stroke="#2a2a2a" stroke-width="1"/>` +
             `<circle cx="30" cy="16" r="5.8" fill="none" stroke="rgba(0,0,0,0.12)" stroke-width="0.8"/>`;
@@ -2512,6 +2537,9 @@
         const className = opts.className || 'sip-yard';
         let bg = '';
         if (background) {
+            bg = renderBackground();
+        }
+        if (false) {
             bg = `<defs>` +
                 `<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">` +
                 `<stop offset="0%"   stop-color="#0c1530"/>` +
@@ -2528,7 +2556,7 @@
         const breakerLayer = renderBreakerLayer(cells);
         const body = cells.map(renderCell).join('\n');
         return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" class="${className}" preserveAspectRatio="xMidYMid meet">` +
-            bg + railLayer + pmConnLayer + standLayer + breakerLayer + body +
+            bg + railLayer + pmConnLayer + standLayer + breakerLayer + body + renderPointGapLayer(cells) +
             `</svg>`;
     }
 
@@ -2573,58 +2601,29 @@
             }
         }
 
-        // Publish band y-centres for renderStick() to find the nearest rail.
+        // Publish band y-centres for renderStick() / snapBandY().
         _railContext.bands = bands.map(function (b) {
             const ys = b.items.map(function (i) { return i.cy; });
             return { cy: Math.round(ys[Math.floor(ys.length / 2)]) };
         });
 
-        const patId = 'sipSleepers_' + Math.floor(Math.random() * 1e9).toString(36);
-        const BED_H = 18;
-        const SLEEP_W = 3;
-        const SLEEP_STEP = 6;
-
+        /* v618.0: no rail bed any more -- each track cell draws its own
+         * smooth line. This layer only carries the per-cell occupied GLOW,
+         * still tagged data-rail-cell / data-occ-fill so the live view keeps
+         * toggling it in place (patchRail) without a rebuild. */
         let svg = '<g class="sip-rail-layer" pointer-events="none">';
-        svg += '<defs>' +
-            '<pattern id="' + patId + '" x="0" y="0" width="' + SLEEP_STEP + '" height="' + BED_H + '" patternUnits="userSpaceOnUse">' +
-            '<rect x="0" y="0" width="' + SLEEP_W + '" height="' + BED_H + '" fill="' + T.sleeper + '"/>' +
-            '</pattern>' +
-            '</defs>';
-
-        for (const band of bands) {
-            band.items.sort(function (a, b) { return a.xLeft - b.xLeft; });
-            const ys = band.items.map(function (i) { return i.cy; });
-            const cy = Math.round(ys[Math.floor(ys.length / 2)]);
-            const minX = band.items[0].xLeft - 8;
-            const maxX = band.items[band.items.length - 1].xRight + 8;
-            const top = cy - BED_H / 2;
-
-            svg += '<rect x="' + minX + '" y="' + top + '" width="' + (maxX - minX) + '" height="' + BED_H + '" ' +
-                'fill="' + T.railBase + '"/>';
-            svg += '<rect x="' + minX + '" y="' + top + '" width="' + (maxX - minX) + '" height="' + BED_H + '" ' +
-                'fill="url(#' + patId + ')" opacity="0.55"/>';
-            svg += '<line x1="' + minX + '" y1="' + top + '" x2="' + maxX + '" y2="' + top + '" ' +
-                'stroke="' + T.railEdge + '" stroke-width="1.2"/>';
-            svg += '<line x1="' + minX + '" y1="' + (top + BED_H) + '" x2="' + maxX + '" y2="' + (top + BED_H) + '" ' +
-                'stroke="' + T.railEdge + '" stroke-width="1.2"/>';
-
-            /* Occupied overlay per track section. Always emitted (hidden when
-             * clear) and tagged with the cell id so the live view can toggle
-             * occupancy in place (display + fill) instead of rebuilding the
-             * whole rail layer on every telemetry change. */
+        for (let b = 0; b < bands.length; b++) {
+            const band = bands[b];
+            const cy = _railContext.bands[b].cy;
             for (const it of band.items) {
-                const occFill = it.lit ? it.stroke : T.sectionOcc;
+                const occFill = it.lit ? T.occ : T.sectionOcc;
                 svg += '<g class="sip-rail-occ" data-rail-cell="' + escapeXml(it.id) + '"' +
                     (it.lit ? '' : ' style="display:none"') + '>';
-                svg += '<rect x="' + it.xLeft + '" y="' + (top - 3) + '" ' +
-                    'width="' + (it.xRight - it.xLeft) + '" height="' + (BED_H + 6) + '" ' +
-                    'fill="' + occFill + '" data-occ-fill="1" opacity="0.25" rx="2"/>';
-                svg += '<rect x="' + it.xLeft + '" y="' + top + '" ' +
-                    'width="' + (it.xRight - it.xLeft) + '" height="' + BED_H + '" ' +
-                    'fill="' + occFill + '" data-occ-fill="1" opacity="0.85"/>';
-                svg += '<rect x="' + it.xLeft + '" y="' + top + '" ' +
-                    'width="' + (it.xRight - it.xLeft) + '" height="' + BED_H + '" ' +
-                    'fill="url(#' + patId + ')" opacity="0.30"/>';
+                if (T.glowOpacity > 0) {
+                    svg += '<rect x="' + (it.xLeft + 2) + '" y="' + (cy - 10) + '" ' +
+                        'width="' + Math.max(0, it.xRight - it.xLeft - 4) + '" height="20" rx="10" ' +
+                        'fill="' + occFill + '" data-occ-fill="1" opacity="' + T.glowOpacity + '"/>';
+                }
                 svg += '</g>';
             }
         }
@@ -2864,15 +2863,15 @@
 
         /* 3. Emit a breaker at each rail tip, matching the +/-8 padding that
               renderRailLayer uses so the bar sits at the visible rail edge. */
-        const barW = 3;
-        const barH = 26;
+        const barW = 4;
+        const barH = TRACK_W + 12;
         let svg = '<g class="sip-breaker-layer" pointer-events="none">';
         for (const band of bands) {
             band.items.sort(function (a, b) { return a.xLeft - b.xLeft; });
             const ys = band.items.map(function (i) { return i.cy; });
             const cy = Math.round(ys[Math.floor(ys.length / 2)]);
-            const minX = band.items[0].xLeft - 8;
-            const maxX = band.items[band.items.length - 1].xRight + 8;
+            const minX = band.items[0].xLeft - 3;
+            const maxX = band.items[band.items.length - 1].xRight + 3;
 
             const ends = [
                 { x: minX, y: cy },
@@ -2880,10 +2879,8 @@
             ];
             for (const e of ends) {
                 if (manualNear(e.x, e.y)) continue;
-                svg += '<rect x="' + (e.x - barW / 2 - 1) + '" y="' + (e.y - barH / 2 - 1) + '" ' +
-                    'width="' + (barW + 2) + '" height="' + (barH + 2) + '" fill="#0a0f1e"/>';
                 svg += '<rect x="' + (e.x - barW / 2) + '" y="' + (e.y - barH / 2) + '" ' +
-                    'width="' + barW + '" height="' + barH + '" fill="#FFD400"/>';
+                    'width="' + barW + '" height="' + barH + '" rx="2" fill="' + T.post + '"/>';
             }
         }
         svg += '</g>';
@@ -3163,6 +3160,7 @@
         GROUPS, PALETTE: Object.keys(ASSETS), ASSETS,
         spec, makeCell, renderCell, renderIcon, renderYard,
         renderRailLayer, prepareRailContext, renderStandLayer, renderBreakerLayer, renderPMConnectorLayer,
+        renderPointGapLayer, renderPointGap, renderBackground, setTheme, themeName, themeList, setPointGaps,
         isLit, _uid: uid, _theme: T
     };
 

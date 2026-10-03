@@ -38,6 +38,12 @@
  *    SipTelemetry.diagnose()              SipTelemetry.simulate(asset, attr, v, reset)
  *    SipTelemetry._state
  *  Set window.SIP_DEBUG = true for per-cell decision logs, false to silence all.
+ *
+ *  v618.0 -- smooth-vector re-skin hooks (themed background, point gap
+ *  layer + patchGap) and REPLAY MODE (SipTelemetry.replay, driven by
+ *  sip-replay.js): while replay is on, live items are ignored, the host
+ *  (wsLiveData) is neither read nor written, and the same 616 rule engine
+ *  evaluates history rows fed through feedItems(items, true).
  * ========================================================================== */
 
 (function () {
@@ -164,6 +170,7 @@
         needFullRender: false,
         domCells: {},           // cellId → <g class="sip-live-cell">
         domRail: {},            // cellId → <g class="sip-rail-occ">
+        domGap: {},             // cellId -> <g data-pm-gap> (v618.0 point gap layer)
         svgEl: null,
         ws: null,
         wsGen: 0,
@@ -187,6 +194,10 @@
         _bufferingSince: 0,
         layoutCache: {}         // siteId → { data, at }
     };
+
+    /* v618.0 replay mode flag + saved live store (see SECTION 11). */
+    var _replayOn = false;
+    var _replaySaved = null;
 
     /* ── Duplicate-message guard (bridge + own socket may deliver the same
           packet). O(1) per item; the map is swept on a timer, not per item. */
@@ -345,7 +356,7 @@
             '<div id="sipCanvas" style="position:absolute;inset:0;overflow:hidden;"></div>' +
             '</div>';
         canvasEl = document.getElementById('sipCanvas');
-        state.domCells = {}; state.domRail = {}; state.svgEl = null;
+        state.domCells = {}; state.domRail = {}; state.domGap = {}; state.svgEl = null;
         wireCanvasAssetPopupClick();
         statusEl = document.getElementById('wsStatus');
         var wrap = document.getElementById('sipTelWrap');
@@ -373,7 +384,7 @@
             });
         }
         canvasEl = statusEl = null;
-        state.domCells = {}; state.domRail = {}; state.svgEl = null;
+        state.domCells = {}; state.domRail = {}; state.domGap = {}; state.svgEl = null;
     }
 
     /* Fullscreen toggle for the card host. Also keeps the button icon in sync
@@ -433,6 +444,10 @@
         if (!cell) { swarn('clicked SVG asset but no matching cell found:', upId); return; }
         evt.preventDefault();
         evt.stopPropagation();
+        if (_replayOn && window.SipReplay && typeof window.SipReplay.onCellClick === 'function') {
+            window.SipReplay.onCellClick(cell, getCellAssetName(cell));
+            return;
+        }
         openSipAssetPopupForCell(cell, evt);
     }
     function findSipLiveCellGroup(node) {
@@ -804,6 +819,7 @@
             return;
         }
 
+        if (_replayOn) replayEnd(true);
         var gen = ++state.gen;
         closeSockets();
         resetSiteState(siteId);
@@ -844,7 +860,7 @@
         state.lastItemAt = 0;
         state.msgCount = 0;
         state.dirty = {}; state.needFullRender = false;
-        state.domCells = {}; state.domRail = {}; state.svgEl = null;
+        state.domCells = {}; state.domRail = {}; state.domGap = {}; state.svgEl = null;
         state.diag.recv = state.diag.items = state.diag.hits = state.diag.noMatch = 0;
         state.diag.patches = state.diag.fullRenders = 0;
         _seen = {}; _seenCount = 0;
@@ -950,6 +966,7 @@
           through a path we do not bridge). O(entries) with a cheap stamp
           check; evaluates only assets whose host entry actually changed. */
     function resyncFromShared() {
+        if (_replayOn) return;
         var ld = window.wsLiveData;
         if (!ld || !state.cells.length) return;
         var now = Date.now();
@@ -1365,7 +1382,8 @@
         }
     }
 
-    function feedItems(items) {
+    function feedItems(items, fromReplay) {
+        if (_replayOn && !fromReplay) return;          // v618.0: live is paused during replay
         state.diag.recv++;
         if (!items || !items.length || !state.siteId) return;
         var now = Date.now();
@@ -1381,7 +1399,7 @@
                 if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e2) { continue; } }
             }
             if (!d || !d.AssetName) continue;
-            if (isDuplicate(d, now)) continue;
+            if (!fromReplay && isDuplicate(d, now)) continue;
 
             var assetName = String(d.AssetName).trim();
             var rawAttr = String(d.AssetAttributeName || d.AttributeName || '').trim();
@@ -1413,7 +1431,7 @@
                 if (!isNaN(zo)) { rec.zeroOffset = zo; state.zeroOffset[assetName] = zo; }
             }
             touched[assetName] = true;
-            mirrorToShared(d, assetName, assetId, attrName, rawAttr, attrId, num, isDL, tsDev, hasFresh, fresh, rawFresh, kind);
+            if (!fromReplay) mirrorToShared(d, assetName, assetId, attrName, rawAttr, attrId, num, isDL, tsDev, hasFresh, fresh, rawFresh, kind);
         }
 
         /* ── LAYOUT-LOAD RACE GUARD: values are absorbed above; cells are
@@ -1450,6 +1468,10 @@
         state.diag.hits += hit;
         state.diag.noMatch += noCell;
 
+        if (fromReplay) {
+            if (hasDirty()) requestRender();
+            return;
+        }
         if (hasDirty()) {
             state.msgCount++;
             setStatus('Live · ' + state.msgCount + ' upd · ' + state.diag.recv + ' msg', 'ok');
@@ -1570,6 +1592,7 @@
 
     /* ── Host entry lookup (by id, else lazy name scan at most every 3 s) ── */
     function hostEntryFor(rec, now) {
+        if (_replayOn) return null;
         var ld = window.wsLiveData;
         if (!ld) return null;
         if (rec.id && ld[rec.id]) return ld[rec.id];
@@ -1603,6 +1626,7 @@
         return null;
     }
     function hostOwns(rec) {
+        if (_replayOn) return null;
         var e = rec && rec.id && window.wsLiveData ? window.wsLiveData[rec.id] : null;
         return (e && !e.__sipMirror) ? e : null;
     }
@@ -1610,7 +1634,7 @@
     /* Copy a host-owned wsLiveData entry into our record when its
        lastUpdated stamp changed. Returns true when something was synced. */
     function syncFromHost(rec, e, now) {
-        if (!rec) return false;
+        if (!rec || _replayOn) return false;
         e = e || hostEntryFor(rec, now);
         if (!e || e.__sipMirror) return false;
         var stamp = e.lastUpdated ? (+new Date(e.lastUpdated)) : 0;
@@ -2171,8 +2195,9 @@
         '.sip-live-cell,.sip-live-cell .sip-asset{cursor:pointer;pointer-events:all;}' +
         '.sip-rail-layer,.sip-stand-layer,.sip-breaker-layer,.grid{pointer-events:none;}' +
         '.sip-dim{opacity:.28;}' +
-        '.sip-highlight{filter:drop-shadow(0 0 6px rgba(34,211,238,.9));}' +
+        '.sip-highlight{filter:drop-shadow(0 0 4px rgba(59,201,219,.95)) drop-shadow(0 0 10px rgba(59,201,219,.55));}' +
         '.sip-stale{opacity:.5;}' +
+        '.sip-pm-gap-layer{pointer-events:none;}' +
         '.sip-alert-flash{animation:sipAlertPulse 1.2s ease-in-out infinite;filter:drop-shadow(0 0 8px var(--sip-alert-color,#7366ff));}' +
         '@keyframes sipAlertPulse{0%,100%{opacity:1;}50%{opacity:.55;filter:drop-shadow(0 0 2px transparent);}}';
 
@@ -2180,10 +2205,11 @@
         var cls = 'sip-live-cell';
         if (state.highlight) {
             var lbl = getCellLabel(c).toLowerCase();
-            cls += lbl.indexOf(state.highlight.toLowerCase()) !== -1 ? ' sip-highlight' : ' sip-dim';
+            if (lbl.indexOf(state.highlight.toLowerCase()) !== -1) cls += ' sip-highlight';
+            else if (!state.highlightMarkOnly) cls += ' sip-dim';
         }
         if (c._sipStale) cls += ' sip-stale';
-        if (c._sipAlert) cls += ' sip-alert-flash';
+        if (c._sipAlert && !_replayOn) cls += ' sip-alert-flash';   // v618.0: no live alert flash over a replay
         return cls;
     }
     function cellStyle(c) {
@@ -2223,6 +2249,7 @@
         var lbl = getCellLabel(c);
         if (g.getAttribute('data-cell-label') !== lbl) g.setAttribute('data-cell-label', lbl);
         if (RAIL_LAYER_TRACK[c.type]) patchRail(c);
+        if (PM_TYPES[c.type]) patchGap(c);
         return true;
     }
     /* Rail-bed occupied overlay (drawn by SIP.renderRailLayer as a hidden
@@ -2239,6 +2266,13 @@
         }
     }
 
+    /* v618.0: point gap (unset leg) overlay, patched in place per PM cell. */
+    function patchGap(c) {
+        var g = state.domGap[c.id];
+        if (!g || typeof SIP.renderPointGap !== 'function') return;
+        g.innerHTML = SIP.renderPointGap(c);
+    }
+
     function renderAll() {
         if (!canvasEl) return;
         if (!state.cells.length) { renderPlaceholder('No cells to render.'); return; }
@@ -2247,6 +2281,7 @@
         var railLayer = typeof SIP.renderRailLayer === 'function' ? SIP.renderRailLayer(state.cells) : '';
         var standLayer = typeof SIP.renderStandLayer === 'function' ? SIP.renderStandLayer(state.cells) : '';
         var breakerLayer = typeof SIP.renderBreakerLayer === 'function' ? SIP.renderBreakerLayer(state.cells) : '';
+        var gapLayer = typeof SIP.renderPointGapLayer === 'function' ? SIP.renderPointGapLayer(state.cells) : '';
         var parts = new Array(state.cells.length);
         for (var i = 0; i < state.cells.length; i++) {
             var c = state.cells[i];
@@ -2257,27 +2292,26 @@
         canvasEl.innerHTML =
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + state.viewBox + '" class="sip-yard" ' +
             'preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;">' +
-            '<defs><style>' + SVG_STYLE + '</style>' +
-            '<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">' +
-            '<stop offset="0%" stop-color="#0c1530"/><stop offset="55%" stop-color="#08101c"/><stop offset="100%" stop-color="#060a14"/>' +
-            '</linearGradient></defs>' +
-            '<rect width="100%" height="100%" fill="url(#sipBg)"/>' +
-            railLayer + standLayer + breakerLayer + parts.join('') +
+            '<defs><style>' + SVG_STYLE + '</style></defs>' +
+            (typeof SIP.renderBackground === 'function' ? SIP.renderBackground() : '<rect width="100%" height="100%" fill="#0E1828"/>') +
+            railLayer + standLayer + breakerLayer + parts.join('') + gapLayer +
             '</svg>';
         indexDom();
     }
     function indexDom() {
-        state.domCells = {}; state.domRail = {};
+        state.domCells = {}; state.domRail = {}; state.domGap = {};
         state.svgEl = canvasEl ? canvasEl.querySelector('svg') : null;
         if (!state.svgEl) return;
         var gs = state.svgEl.querySelectorAll('g.sip-live-cell[data-cell-id]');
         for (var i = 0; i < gs.length; i++) state.domCells[gs[i].getAttribute('data-cell-id')] = gs[i];
         var rs = state.svgEl.querySelectorAll('[data-rail-cell]');
         for (var j = 0; j < rs.length; j++) state.domRail[rs[j].getAttribute('data-rail-cell')] = rs[j];
+        var gs2 = state.svgEl.querySelectorAll('[data-pm-gap]');
+        for (var k = 0; k < gs2.length; k++) state.domGap[gs2[k].getAttribute('data-pm-gap')] = gs2[k];
     }
     function renderPlaceholder(msg) {
         if (!canvasEl) return;
-        state.svgEl = null; state.domCells = {}; state.domRail = {};
+        state.svgEl = null; state.domCells = {}; state.domRail = {}; state.domGap = {};
         canvasEl.innerHTML =
             '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#64748b;font-size:14px;font-family:system-ui;">' +
             escHtml(msg) + '</div>';
@@ -2297,8 +2331,9 @@
         if (cls) keep.push('ws-' + cls);
         statusEl.className = keep.join(' ');
     }
-    function highlight(query) {
+    function highlight(query, markOnly) {
         state.highlight = (query || '').trim();
+        state.highlightMarkOnly = !!markOnly;   /* v618.3: replay selection marks, never dims the yard */
         if (!state.svgEl) return;
         for (var i = 0; i < state.cells.length; i++) {
             var c = state.cells[i], g = state.domCells[c.id];
@@ -2440,6 +2475,69 @@
     }
 
     /* =========================================================================
+       SECTION 11 -- REPLAY MODE (v618.0)
+       -------------------------------------------------------------------------
+       sip-replay.js drives this. begin() parks the live store, end() restores
+       it and re-syncs from the shared live data. While on, feedItems only
+       accepts replay items (fromReplay = true) and the host is isolated.
+       ========================================================================= */
+    function replayClearStore() {
+        state.assets = {};
+        state.assetValues = {};
+        state.pmLast = {};
+        clearPmBlinkTimers();
+        sanitizeLiveBaseline(state.cells);
+        state.needFullRender = true;
+        requestRender();
+    }
+    function replayBegin() {
+        if (_replayOn) { replayClearStore(); return true; }
+        if (!state.cells.length) return false;
+        _replaySaved = { assets: state.assets, assetValues: state.assetValues };
+        _replayOn = true;
+        replayClearStore();
+        setStatus('Replay', 'replay');
+        return true;
+    }
+    function replayEnd(silent) {
+        if (!_replayOn) return;
+        _replayOn = false;
+        if (_replaySaved) {
+            state.assets = _replaySaved.assets || {};
+            state.assetValues = _replaySaved.assetValues || {};
+        }
+        _replaySaved = null;
+        state.pmLast = {};
+        clearPmBlinkTimers();
+        sanitizeLiveBaseline(state.cells);
+        reevalAll(false);
+        resyncFromShared();
+        state.needFullRender = true;
+        requestRender();
+        if (!silent) setStatus('Live', 'ok');
+        if (window.SipReplay && typeof window.SipReplay.onReplayEnded === 'function') {
+            try { window.SipReplay.onReplayEnded(); } catch (e) { /* ignore */ }
+        }
+    }
+    function replayFeed(items) {
+        if (!_replayOn || !items || !items.length) return;
+        feedItems(items, true);
+    }
+    var replayApi = {
+        begin: replayBegin,
+        end: function () { replayEnd(false); },
+        reset: function () { if (_replayOn) replayClearStore(); },
+        feed: replayFeed,
+        isOn: function () { return _replayOn; },
+        siteId: function () { return state.siteId; },
+        cells: function () { return state.cells; },
+        findCells: findCells,
+        assetNameOf: getCellAssetName,
+        record: function (name) { return state.assets[name] || null; },
+        setStatus: setStatus
+    };
+
+    /* =========================================================================
        BOOT + PUBLIC API
        ========================================================================= */
     function disconnect() {
@@ -2448,8 +2546,168 @@
         state.siteId = null;
         state.loading = false;
     }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-    else init();
+    /* v618.3 -- SIP palette: user choice (Auto / Day / Control room / EI VDU),
+       kept in localStorage 'sipTheme'. Auto = Day when the page around the
+       schematic is light, Control room when it is dark (measured from the
+       actual background colour, so it works with any theme attribute).
+       window.SIP_THEME, when set by a page, wins. */
+    var THEME_KEY = 'sipTheme';
+    var THEME_LABELS = { auto: 'Auto', day: 'Day', night: 'Control room', vdu: 'EI VDU' };
+    function themePref() {
+        try { var v = window.localStorage.getItem(THEME_KEY); if (THEME_LABELS[v]) return v; } catch (e) { /* storage blocked */ }
+        return 'auto';
+    }
+    function bgLuminance(el) {
+        while (el && el.nodeType === 1) {
+            var c = window.getComputedStyle(el).backgroundColor || '';
+            var m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c);
+            if (m && (m[4] === undefined || parseFloat(m[4]) > 0.5)) {
+                return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255;
+            }
+            el = el.parentNode;
+        }
+        return 1;
+    }
+    function pageIsLight() {
+        var card = document.getElementById('sipCardSection') || document.body;
+        return bgLuminance(card) > 0.5;
+    }
+    function appSipTheme() {
+        if (window.SIP_THEME) return window.SIP_THEME;
+        var p = themePref();
+        if (p !== 'auto') return p;
+        return pageIsLight() ? 'day' : 'night';
+    }
+    function syncAppTheme(force) {
+        if (typeof SIP.setTheme !== 'function') return;
+        var want = appSipTheme();
+        var light = pageIsLight();
+        document.documentElement.setAttribute('data-sip-page', light ? 'light' : 'dark');
+        if (!force && typeof SIP.themeName === 'function' && SIP.themeName() === want) {
+            try { window.dispatchEvent(new CustomEvent('sip-theme', { detail: { theme: want, pageLight: light } })); } catch (e) { /* old browser */ }
+            return;
+        }
+        SIP.setTheme(want);
+        if (canvasEl) {
+            canvasEl.setAttribute('data-sip-theme', want);
+            canvasEl.style.background = SIP._theme && SIP._theme.canvas ? SIP._theme.canvas : '';
+        }
+        if (state.cells.length) {
+            state.needFullRender = true;
+            requestRender();
+        }
+        paintThemeUi();
+        try { window.dispatchEvent(new CustomEvent('sip-theme', { detail: { theme: want, pageLight: light } })); } catch (e2) { /* old browser */ }
+    }
+    function setThemePref(name) {
+        try { window.localStorage.setItem(THEME_KEY, THEME_LABELS[name] ? name : 'auto'); } catch (e) { /* storage blocked */ }
+        syncAppTheme(true);
+    }
+    /* v618.4 -- palette as a segmented control (Control room | EI VDU | Day,
+       like the SL1 SIP prototype) + a legend row under the schematic. Until
+       the user picks one, the auto choice is shown as selected. */
+    var SEG_ORDER = ['night', 'vdu', 'day'];
+    var SIP_UI_CSS = '' +
+        '.sip-seg{display:inline-flex;padding:2px;border-radius:9px;background:rgba(127,140,160,.18);gap:2px;}' +
+        '.sip-seg button{height:26px;padding:0 10px;border:none;border-radius:7px;background:transparent;color:inherit;' +
+        'font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;opacity:.8;}' +
+        '.sip-seg button:hover{opacity:1;}' +
+        '.sip-seg button[aria-pressed="true"]{background:#3BC9DB;color:#04161A;font-weight:600;opacity:1;}' +
+        '.sip-legend2{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;padding:6px 6px 2px;font-size:12px;}' +
+        '.sip-legend2 span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}' +
+        '.sip-legend2 i{display:inline-block;width:22px;height:5px;border-radius:3px;}' +
+        '.sip-legend2 i.dot{width:9px;height:9px;border-radius:50%;}' +
+        '.sip-card:not(.fullscreen) .sip-legend2{display:none;}';
+    function ensureSipUiCss() {
+        if (document.getElementById('sipUiCss')) return;
+        var st = document.createElement('style');
+        st.id = 'sipUiCss';
+        st.textContent = SIP_UI_CSS;
+        document.head.appendChild(st);
+    }
+    function ensureThemeSelect() {
+        var ctr = document.getElementById('sipControls');
+        if (!ctr || document.getElementById('sipThemeSeg')) return;
+        ensureSipUiCss();
+        var seg = document.createElement('div');
+        seg.id = 'sipThemeSeg';
+        seg.className = 'sip-seg';
+        seg.setAttribute('role', 'group');
+        seg.setAttribute('aria-label', 'Schematic colours');
+        for (var i = 0; i < SEG_ORDER.length; i++) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('data-sip-theme', SEG_ORDER[i]);
+            b.textContent = THEME_LABELS[SEG_ORDER[i]];
+            seg.appendChild(b);
+        }
+        seg.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var t = e.target.closest ? e.target.closest('button[data-sip-theme]') : null;
+            if (t) setThemePref(t.getAttribute('data-sip-theme'));
+        });
+        ctr.insertBefore(seg, ctr.firstChild);
+        ensureLegend();
+        paintThemeUi();
+    }
+    function ensureLegend() {
+        if (document.getElementById('sipLegend2')) return;
+        var canvas = document.getElementById('sipCanvas');
+        if (!canvas || !canvas.parentNode) return;
+        var lg = document.createElement('div');
+        lg.id = 'sipLegend2';
+        lg.className = 'sip-legend2';
+        canvas.parentNode.insertBefore(lg, canvas.nextSibling);
+    }
+    /* swatches always in the colours of the palette on screen */
+    function paintThemeUi() {
+        var cur = (typeof SIP.themeName === 'function') ? SIP.themeName() : 'night';
+        var seg = document.getElementById('sipThemeSeg');
+        if (seg) {
+            var bs = seg.querySelectorAll('button[data-sip-theme]');
+            for (var i = 0; i < bs.length; i++) {
+                bs[i].setAttribute('aria-pressed', String(bs[i].getAttribute('data-sip-theme') === cur));
+            }
+        }
+        var lg = document.getElementById('sipLegend2');
+        var T = SIP._theme || {};
+        if (lg) {
+            lg.innerHTML =
+                '<span><i style="background:' + T.free + '"></i>Free</span>' +
+                '<span><i style="background:' + T.occ + '"></i>Occupied</span>' +
+                '<span><i class="dot" style="background:' + T.pmN + '"></i>Point normal</span>' +
+                '<span><i class="dot" style="background:' + T.pmR + '"></i><i style="background:' + T.route + ';width:16px"></i>Point reverse</span>' +
+                '<span><i class="dot" style="background:' + T.lampR + '"></i><i class="dot" style="background:' + T.lampY + '"></i>' +
+                '<i class="dot" style="background:' + T.lampG + '"></i>Signal aspect</span>';
+        }
+    }
+    function watchAppTheme() {
+        syncAppTheme(true);
+        ensureThemeSelect();
+        var tries = 0;
+        var t = setInterval(function () {
+            ensureThemeSelect();
+            if (document.getElementById('sipThemeSeg') || ++tries > 60) clearInterval(t);
+        }, 1000);
+        if (typeof MutationObserver !== 'function') return;
+        var pending = null;
+        var mo = new MutationObserver(function () {
+            if (pending) return;
+            pending = setTimeout(function () { pending = null; syncAppTheme(false); }, 60);
+        });
+        var opts = { attributes: true, attributeFilter: ['data-aurora', 'data-theme', 'class', 'style'] };
+        mo.observe(document.documentElement, opts);
+        if (document.body) mo.observe(document.body, opts);
+        var card = document.getElementById('sipCardSection');
+        if (card) mo.observe(card, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    function bootSip() {
+        init();
+        watchAppTheme();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootSip);
+    else bootSip();
 
     window.SipTelemetry = {
         connectToSite: connectToSite,
@@ -2464,6 +2722,11 @@
         startAlertFlash: startAlertFlash,
         stopAlertFlash: stopAlertFlash,
         resync: resyncFromShared,
+        replay: replayApi,
+        syncTheme: syncAppTheme,
+        setThemePref: setThemePref,
+        themePref: themePref,
+        pageIsLight: pageIsLight,
         _state: state
     };
     /* telemetrylive.js FRS-Advanced view calls loadSipLayout(siteId) — no-op when same site. */

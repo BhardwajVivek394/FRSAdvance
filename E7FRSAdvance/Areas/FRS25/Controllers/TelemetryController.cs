@@ -1069,6 +1069,83 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
 
+        /// <summary>
+        /// v618.5 SIP replay alerts -- same flow as AlertsController.GetAlertList:
+        /// the client posts the same FRSAlertLister shape as the Alerts page
+        /// ($.param: SearchCriteria.SiteIds / AlertStatus / AlertTypeId /
+        /// FromDate / ToDate, Pager.Skip / PageSize), Take = PageSize,
+        /// FRSAlert/GetListerWithPagination, then the same AlertStatus filter
+        /// (1 = acknowledged only, 2 = unacknowledged only, 0 = all).
+        /// Returns JSON instead of the _List partial; the client pages with
+        /// Pager.Skip until rawCount is less than PageSize and trims to the
+        /// exact replay window.
+        /// </summary>
+        [HttpPost]
+        public JsonResult GetSipReplayAlerts(Domain.FRSAlertLister mFRSAlertLister)
+        {
+            if (ClsHttpContent.LoginUser == null)
+            {
+                Response.StatusCode = 401;
+                return Json(new { success = false, forbidden = true, rawCount = 0, alerts = new object[0] });
+            }
+
+            try
+            {
+                if (mFRSAlertLister == null || mFRSAlertLister.Pager == null)
+                {
+                    throw new ArgumentNullException("Pager is null");
+                }
+
+                var criteria = mFRSAlertLister.SearchCriteria;
+                mFRSAlertLister.Pager.Take = mFRSAlertLister.Pager.PageSize;
+                mFRSAlertLister = _frsAlertService.GetListerWithPagination(mFRSAlertLister);
+
+                var list = (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts != null)
+                    ? mFRSAlertLister.mFRSAlerts
+                    : new List<Domain.FRSAlert>();
+                int rawCount = list.Count;
+
+                if (criteria != null && criteria.AlertStatus == 1)
+                {
+                    list = list.Where(x => x.AcknowledgemenTimeStamp != null).ToList();
+                }
+                else if (criteria != null && criteria.AlertStatus == 2)
+                {
+                    list = list.Where(x => x.AcknowledgemenTimeStamp == null).ToList();
+                }
+
+                var alerts = list
+                    .OrderBy(x => x.SetTimeStamp)
+                    .Select(a => new
+                    {
+                        id = a.Id,
+                        siteId = a.SiteId,
+                        assetId = a.AssetId,
+                        assetName = a.AssetName,
+                        assetType = a.AssetType,
+                        alertType = a.AlertType,
+                        alertTypeId = a.AlertTypeId,
+                        causeCode = a.CauseCode,
+                        description = a.Description,
+                        acknowledged = a.AcknowledgemenTimeStamp != null,
+                        setTime = a.SetTimeStamp.ToString("yyyy-MM-ddTHH:mm:ss"),
+                        resetTime = a.ResetTimeStamp.HasValue ? a.ResetTimeStamp.Value.ToString("yyyy-MM-ddTHH:mm:ss") : null
+                    })
+                    .ToList();
+
+                return new JsonResult
+                {
+                    Data = new { success = true, rawCount = rawCount, alerts = alerts },
+                    JsonRequestBehavior = JsonRequestBehavior.DenyGet,
+                    MaxJsonLength = int.MaxValue
+                };
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, error = ex.Message, rawCount = 0, alerts = new object[0] });
+            }
+        }
+
         [HttpPost]
         public JsonResult GetSipAssetAlertAnalytics(
     int siteId,

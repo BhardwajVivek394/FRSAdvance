@@ -248,14 +248,8 @@
         canvasEl.innerHTML =
             `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.viewBox}" ` +
             `class="sip-yard" preserveAspectRatio="xMidYMid meet">` +
-            `<defs>` +
-            `<linearGradient id="sipBg" x1="0" y1="0" x2="0" y2="1">` +
-            `<stop offset="0%"   stop-color="#0c1530"/>` +
-            `<stop offset="55%"  stop-color="#08101c"/>` +
-            `<stop offset="100%" stop-color="#060a14"/>` +
-            `</linearGradient>` +
-            `</defs>` +
-            `<rect width="100%" height="100%" fill="url(#sipBg)"/>` +
+            /* v618.0: themed flat canvas (SIP.renderBackground) */
+            ((typeof SIP.renderBackground === 'function') ? SIP.renderBackground() : `<rect width="100%" height="100%" fill="#0E1828"/>`) +
             grid +
             railLayer +
             pmConnLayer +
