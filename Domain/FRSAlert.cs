@@ -82,6 +82,7 @@ namespace Domain
         public string PhotoEvidence { get; set; }
         public string PhotoEvidenceBase64 { get; set; }
         public bool? IsAlert { get; set; }
+        public bool? IsTest { get; set; }
         public List<int> AssetIds { get; set; }
 
         //public List<AlertAuditProblem> mAlertAuditProblems { get; set; } = new List<AlertAuditProblem>();

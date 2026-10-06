@@ -1,3 +1,16 @@
+/* v618.28: value-held window for the Graph view hover -- [from, to) of the
+   value in force at t: last change at or before t, next change after it
+   (to = null while the value is still holding). pts = [[ms, value], ...] */
+function tlgvChangeWindow(pts, t) {
+    if (!pts || !pts.length) return null;
+    var lo = 0, hi = pts.length - 1, i = -1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1; if (pts[mid][0] <= t) { i = mid; lo = mid + 1; } else hi = mid - 1; }
+    if (i < 0) return null;
+    var v = pts[i][1], a = i, b = i + 1;
+    while (a > 0 && pts[a - 1][1] === v) a--;
+    while (b < pts.length && pts[b][1] === v) b++;
+    return { from: pts[a][0], to: b < pts.length ? pts[b][0] : null };
+}
 /* =============================================================================
  * telemetrylive-ext.js  —  Telemetry Live v617 extensions (release 617.6)
  *
@@ -611,7 +624,9 @@ function abortPmIndicationRequest() {
         specs.push({
             field: 'assetName', cls: 'asset-name pm616-name pm616-s1', noFlash: true,
             html: '<a href="javascript:void(0);" class="pm-hist-link" data-id="' + esc(aid) + '" title="View same-day operation history">' +
-                esc(m.assetName) + '<i class="fas fa-history"></i></a>'
+                esc(m.assetName) + '<i class="fas fa-history"></i></a>' +
+                /* v618.32: AI button -> asset drawer */
+                '<button type="button" class="tl-asset-action tl-aa-ai" style="margin-left:6px" onclick="event.stopPropagation();tlOpenAssetDrawer(\'' + esc(aid) + '\')" title="Asset dashboard: values, AI, circuit, alerts, graph" aria-label="Open asset dashboard for ' + esc(m.assetName) + '"><i class="fa-solid fa-wand-magic-sparkles"></i></button>'
         });
         specs.push({ field: 'opDateTime', cls: 'pm-datetime-cell pm616-s2', html: esc(m.operationDate) });
         specs.push({
@@ -2678,6 +2693,8 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         var name = asset.AssetName || 'Signal';
         var h = '<tr data-id="' + esc(assetId) + '">';
         h += '<td class="asset-name" style="font-weight:600;white-space:nowrap;font-size:12px;padding:6px 12px;">' + esc(name) +
+            '<button type="button" class="tl-asset-action tl-aa-ai" style="margin-left:6px" title="Asset dashboard: values, AI, circuit, alerts, graph" ' +
+            'onclick="tlOpenAssetDrawer(\'' + esc(assetId) + '\')" aria-label="Open asset dashboard"><i class="fa-solid fa-wand-magic-sparkles"></i></button>' +
             '<button type="button" class="tl-asset-action tl-aa-avg sig616-avg" title="Avg values" ' +
             'onclick="fnShowFRSAttributeRangeHistory(\'' + esc(assetId) + '\')"><i class="fa-solid fa-chart-column"></i></button></td>';
         for (var ci = 0; ci < columns.length; ci++) {
@@ -3018,10 +3035,17 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
     function cardHeaderRight(asset, assetId) {
         var siteId = (asset && asset.SiteId) || $('#drpSite').val();
         var a = esc(assetId), s = esc(siteId);
+        /* v618.33: Graph / Circuit / Avg values replaced by one AI button -> asset drawer
+           (the drawer keeps Full circuit view and Avg values as actions). Old buttons:
         return '<div class="card-header-right"><div class="sig-card-actions">' +
             '<button class="sig-action-btn sig-action-graph" onclick="fnGetAssetGraph(\'' + s + '\',\'' + a + '\')" title="Historical Graph"><i class="fa-solid fa-chart-line"></i></button>' +
             '<button class="sig-action-btn sig-action-circuit" onclick="fnGetAssetCircuit(\'' + a + '\')" title="Circuit Diagram"><i class="fa-solid fa-project-diagram"></i></button>' +
             '<button class="sig-action-btn sig-action-avg" onclick="fnShowFRSAttributeRangeHistory(\'' + a + '\')" title="Avg values"><i class="fa-solid fa-chart-column"></i></button>' +
+            '</div></div>';
+        */
+        void s;
+        return '<div class="card-header-right"><div class="sig-card-actions">' +
+            '<button type="button" class="sig-action-btn tl-aa-ai" onclick="tlOpenAssetDrawer(\'' + a + '\')" title="Asset dashboard: values, AI, circuit, alerts, graph" aria-label="Open asset dashboard"><i class="fa-solid fa-wand-magic-sparkles"></i></button>' +
             '</div></div>';
     }
     var CARD_COL = 'col-12 col-xxl-4 col-xl-6 col-lg-6 col-md-12 col-sm-12 rdpms-signal-card sigv2-col';
@@ -4589,13 +4613,28 @@ try {
     }
 
     /* ---- I3 / I5  row models --------------------------------------------- */
-    function ipsClassifyTab(isDataLogger, attrKey, attrLabel) {
+    // Digital = data-logger relay; Current = IIPS reading, or a battery
+    // charging / discharging reading (by attribute name, or because it belongs
+    // to a BATT CHARGING / DISCHARGING asset) unless it is named as a voltage;
+    // Voltage = everything else.
+    function ipsBattBucketOf(text) {
+        var up = String(text || '').toUpperCase();
+        if (/DISCHAR/.test(up)) return 'discharging';
+        if (/CHARG|\bCHAR[\s_\-]*\d/.test(up)) return 'charging';
+        return null;
+    }
+    function ipsClassifyTab(isDataLogger, attrKey, attrLabel, assetName) {
         if (isDataLogger) return 'digital';
         var hay = (String(attrKey || '') + ' ' + String(attrLabel || '')).toUpperCase();
         if (hay.indexOf('IIPS') !== -1) return 'current';
+        if ((ipsBattBucketOf(hay) || ipsBattBucketOf(assetName)) && !/VIPS|VOLT|\(V\)/.test(hay)) return 'current';
         return 'voltage';
     }
     W.ipsClassifyTab = ipsClassifyTab;
+
+    // Per-bank readings of a battery group are not shown: only the Σ total
+    // (table: no expandable bank rows; cards: no "tap for breakup").
+    var IPS_SHOW_BANK_BREAKUP = false;
 
     function staleInfo(aObj) {
         var stale = fn('isPmReplayStale') ? W.isPmReplayStale(aObj) === true : false;
@@ -4639,7 +4678,7 @@ try {
                 rows.push({
                     assetId: aid, assetName: name, attr: label, attrKey: key, value: value, ts: ts,
                     dlClass: norm === 'pickup' ? 'pickup' : (norm === 'drop' ? 'drop' : ''),
-                    isDataLogger: isDL, ipsTab: ipsClassifyTab(isDL, key, label),
+                    isDataLogger: isDL, ipsTab: ipsClassifyTab(isDL, key, label, name),
                     isStale: st.isStale, staleTitle: st.staleTitle
                 });
             }
@@ -4674,6 +4713,7 @@ try {
                 var up = String(r.assetName || '').toUpperCase();
                 if (up.indexOf('DISCHARGING') !== -1) bucket = 'discharging';
                 else if (up.indexOf('CHARGING') !== -1) bucket = 'charging';
+                else bucket = ipsBattBucketOf(r.attr);   // banks kept as attributes of one asset
             }
             if (bucket === null) { out.push(r); continue; }
             var base = String(r.assetName || '').replace(/[\s\-_]*\d+\s*$/, '').trim() || String(r.assetName || '');
@@ -4715,7 +4755,7 @@ try {
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i];
             flat.push(r);
-            if (r && r.isGroup && r.members && r.members.length) {
+            if (IPS_SHOW_BANK_BREAKUP && r && r.isGroup && r.members && r.members.length) {
                 for (var m = 0; m < r.members.length; m++) {
                     var mr = r.members[m];
                     flat.push({
@@ -4815,7 +4855,7 @@ try {
                 extra = ' data-parent="' + esc(r.parentId) + '"';
             } else if (r.isGroup) {
                 cls.push('ips-row-group');
-                if (r.members && r.members.length) {
+                if (IPS_SHOW_BANK_BREAKUP && r.members && r.members.length) {
                     cls.push('ips-row-expandable');
                     if (ipsGroupIsExpanded(r.assetId)) cls.push('ips-group-open');
                     extra = ' data-ips-group="' + esc(r.assetId) + '" aria-expanded="' + ipsGroupIsExpanded(r.assetId) + '"';
@@ -4996,7 +5036,7 @@ try {
                 var aObj = attrs[an] || {};
                 if (isDlAttr(asset, an, aObj)) continue;
                 var label = plainLabel(assetId, an, aObj);
-                if (currentOnly && ipsClassifyTab(false, an, label) !== 'current') continue;
+                if (currentOnly && ipsClassifyTab(false, an, label, asset.AssetName) !== 'current') continue;
                 var num = parseFloat(ipsFormatDisplayValue(aObj.Value, EMPTY));
                 var base = W.ipsBattBaseAttrName(label);
                 var key = ipsCardSumKey(base);
@@ -5112,6 +5152,8 @@ try {
             G + '.ipsv2 .ipsv2-sum{margin:6px 0 2px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);overflow:hidden;}' +
             G + '.ipsv2 .ipsv2-sum-head{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:8px;padding:9px 10px;cursor:pointer;}' +
             G + '.ipsv2 .ipsv2-sum-head:hover{background:rgba(34,211,238,.07);}' +
+            G + '.ipsv2 .ipsv2-sum-only .ipsv2-sum-head{cursor:default;}' +
+            G + '.ipsv2 .ipsv2-sum-only .ipsv2-sum-head:hover{background:none;}' +
             G + '.ipsv2 .ipsv2-sum-head:focus-visible{outline:2px solid var(--at-brand,#22d3ee);outline-offset:-2px;}' +
             G + '.ipsv2 .ipsv2-chev{flex:0 0 auto;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;color:var(--ipsv2-accent,#22d3ee);transition:transform .18s ease;}' +
             G + '.ipsv2 .ipsv2-sum.open .ipsv2-chev{transform:rotate(90deg);}' +
@@ -5203,8 +5245,21 @@ try {
 
     function sumBlockHtml(assetId, m, memberKeys) {
         var attrs = (liveData()[assetId] || {}).attrs || {};
-        var open = !!ipsBattOpen[battOpenKey(assetId, m.key)];
         var disp = ipsCardSumDisplay(m);
+        if (!IPS_SHOW_BANK_BREAKUP) {
+            // Σ total only. The bank values stay in the DOM, hidden, so the
+            // incremental updater still finds one value cell per attribute.
+            var hidden = '<div class="ipsv2-banks" hidden>';
+            memberKeys.forEach(function (an) { hidden += attrRowHtml(assetId, an, attrs[an] || {}, 'ipsv2-bank'); });
+            hidden += '</div>';
+            return '<div class="ipsv2-sum ipsv2-sum-only ips-attr-row ips-sum-row" data-sum-key="' + esc(m.key) + '">' +
+                '<div class="ipsv2-sum-head">' +
+                '<span class="ipsv2-sum-label ips-attr-name"><b title="Total of ' + m.members + ' banks — ' + esc(m.label) + '">' +
+                (fn('formatAliasName') ? (W.formatAliasName(m.label) || esc(m.label)) : esc(m.label)) + '</b></span>' +
+                '<span class="ipsv2-sum-val ips-attr-val ips-sum-val' + (disp === EMPTY ? ' no-data' : '') + '" data-sum="' + esc(m.key) + '">' + esc(disp) + '</span>' +
+                '</div>' + hidden + '</div>';
+        }
+        var open = !!ipsBattOpen[battOpenKey(assetId, m.key)];
         var bankId = 'ipsv2b_' + String(assetId).replace(/\W/g, '_') + '_' + m.key;
         var h = '<div class="ipsv2-sum ips-attr-row ips-sum-row' + (open ? ' open' : '') + '" data-sum-key="' + esc(m.key) + '">' +
             '<button type="button" class="ipsv2-sum-head" data-ipsv2-toggle="' + esc(m.key) + '" aria-expanded="' + open + '" aria-controls="' + bankId + '"' +
@@ -5255,7 +5310,7 @@ try {
 
         var h = '<div class="ips-asset-card ipsv2' + kindCls + '" data-ips-id="' + esc(assetId) + '">';
         h += '<div class="ips-card-head"><div class="ipsv2-title"><span class="ips-asset-name" title="' + esc(name) + '">' + esc(name) + '</span>' +
-            (kindTxt ? '<span class="ipsv2-kind">' + kindTxt + (models.length ? ' \u00b7 ' + models[0].members + ' banks' : '') + '</span>' : '') + '</div>' +
+            (kindTxt ? '<span class="ipsv2-kind">' + kindTxt + (IPS_SHOW_BANK_BREAKUP && models.length ? ' \u00b7 ' + models[0].members + ' banks' : '') + '</span>' : '') + '</div>' +
             '<button type="button" class="tl-asset-action tl-aa-avg" title="Avg values" onclick="fnShowFRSAttributeRangeHistory(\'' + esc(assetId) + '\')">' +
             '<i class="fa-solid fa-chart-column"></i></button><span class="ips-status-dot" title="Live"></span></div>';
         h += '<div class="ips-attr-list">';
@@ -5295,7 +5350,7 @@ try {
         if (open) paintBars($card, aid);
     }
     function syncBulkBtn() {
-        var $blocks = $('#ipsCardGrid .ipsv2-sum');
+        var $blocks = $('#ipsCardGrid .ipsv2-sum').not('.ipsv2-sum-only');
         var $btn = $('.ips-grid-header .ipsv2-bulk');
         if (!$blocks.length) { $btn.remove(); return; }
         if (!$btn.length) {
@@ -7301,7 +7356,10 @@ try {
                 if (prevKey !== null) updateLive(c, true);   // restore the lane we just left
             }
             $cur.html('<b>' + fmtFull(p.t) + '</b> <span style="color:' + esc(s.color) + ';font-weight:700;margin-left:6px;">' + esc(s.name) + '</span>');
-            if (readouts[s.key]) readouts[s.key].html(valHtml(valueAt(s.pts, p.t), s.kind, s.unit));
+            var cw = tlgvChangeWindow(s.pts, p.t);
+            if (readouts[s.key]) readouts[s.key].html(valHtml(valueAt(s.pts, p.t), s.kind, s.unit) +
+                (cw ? '<div class="tlgv-since">since ' + esc(fmtFull(cw.from)) + (cw.to ? ' &rarr; ' + esc(fmtFull(cw.to)) : ' &rarr; now') + '</div>' : ''));
+            if (cw) $cur.append(' <span class="tlgv-since-bar">held since <b>' + esc(fmtFull(cw.from)) + '</b>' + (cw.to ? ' until <b>' + esc(fmtFull(cw.to)) + '</b>' : ' (still)') + '</span>');
         }
         function schedule(p) {
             pending = p;
@@ -8496,6 +8554,16 @@ try {
         mgG.siteId = siteId; mgG.kind = kd.kind; mgG.typeId = kd.typeId; mgG.typeName = kd.typeName;
 
         var ids = resolveAssets(opts.assetIds);
+        /* v618.25: Track / Signal -> ONE asset at a time (selector in the header);
+           IPS / ELD / others keep the multi-asset view. */
+        mgG.single = false;
+        if ((kd.kind === 'track' || kd.kind === 'signal') && ids.length > 1) {
+            mgG.allIds = ids.slice();
+            var pick = String(opts.single || window._tlmgSingle || '');
+            if (ids.map(String).indexOf(pick) < 0) pick = String(ids[0]);
+            ids = [pick];
+            mgG.single = true;
+        }
         if (!ids.length) {
             $('#divTelemetryLive').html('<div class="tlmg-wrap"><div class="tlmg-empty" style="display:block;"><i class="fas fa-chart-line"></i>' +
                 '<div style="font-weight:700;color:var(--at-t2,rgba(255,255,255,.72));margin-bottom:6px;">No ' + esc(kd.typeName) + ' assets to graph</div>' +
@@ -8511,6 +8579,19 @@ try {
         mgG.mode = prefs.mode.multi || 'overlay';
 
         buildShell();
+        if (mgG.single) {
+            var $rg = $('#mgRange');
+            $rg.find('.tlmg-assets').hide();
+            var opt = mgG.allIds.map(function (id) {
+                return '<option value="' + esc(id) + '"' + (String(id) === String(ids[0]) ? ' selected' : '') + '>' + esc(assetName(id)) + '</option>';
+            }).join('');
+            $rg.prepend('<label for="mgSingle" style="font-weight:600;">' + esc(mgG.typeName) + '</label>' +
+                '<select id="mgSingle" class="tlmg-btn" style="min-width:120px;" aria-label="Asset">' + opt + '</select>');
+            $('#mgSingle').on('change', function () {
+                window._tlmgSingle = String(this.value);
+                TLMG.open({ assetIds: mgG.allIds, single: window._tlmgSingle, keepRange: true });
+            });
+        }
         // Live values come from the WebSocket store. connectWebSocket() wipes
         // wsLiveData, so only (re)connect when nothing is streaming or the
         // stream is for a different filter (same rule as Search). The WS
@@ -8889,6 +8970,11 @@ try {
         var l = n.toLowerCase();
         if (l.indexOf('ma') > -1 || l.indexOf('mv') > -1 || l.indexOf('-c') > -1) return 'ma';
         if (/\bv\b|volt/.test(l) || /v\)?$/.test(l)) return 'v';
+        /* v618.28: RDPMS naming -- I... = current (ISIG RG, ICOSIG, IROSIG, IPT, ITC),
+           V... = voltage (VSIG RG, VCOSIG, VPT, VTC); before, signal currents fell
+           into 'other' and the mA filter showed "No data". */
+        if (/^\s*I[A-Z]/.test(n)) return 'ma';
+        if (/^\s*V[A-Z]/.test(n)) return 'v';
         return 'other';
     }
     function relayName(aid, id, first, rawName) {
@@ -9406,7 +9492,7 @@ try {
         var host = $('#mgAlt'), list = visible(model), T = theme();
         if (!list.length) { host.html('<div class="tlgv-empty"><i class="fas fa-filter"></i> No attributes match. Clear the filter or show hidden lanes.</div>'); return; }
         var narrow = (host.width() || 900) < 640, GW = narrow ? 132 : 220;
-        var laneH = DENS[prefs.density] || DENS.m, gap = 10, top = 8, HDR = 28, bottom = 64;
+        var laneH = DENS[prefs.density] || DENS.m, gap = 26, top = 8, HDR = 28, bottom = 64;   /* v618.28: room for each lane's time axis */
         var span = model.xMax - model.xMin;
         var groups = groupsOf(list), lanes = '', hdrs = '', layout = [], y = top;
         groups.forEach(function (g) {
@@ -9442,15 +9528,15 @@ try {
             grids.push({ left: left, right: right, top: L.y, height: laneH, show: true, backgroundColor: i % 2 ? T.gridB : T.gridA, borderColor: T.split, borderWidth: 1 });
             xs.push({
                 type: 'time', gridIndex: i, min: model.xMin, max: model.xMax, boundaryGap: false,
-                axisLine: { show: last, lineStyle: { color: T.axis } }, axisTick: { show: last }, splitNumber: narrow ? 4 : 8,
-                axisLabel: { show: last, color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', hideOverlap: true, formatter: function (v) { return fmtAxis(v, span); } },
+                axisLine: { show: true, lineStyle: { color: T.axis } }, axisTick: { show: true }, splitNumber: narrow ? 4 : 8,
+                axisLabel: { show: true, color: T.txt, fontSize: last ? 10 : 9, fontFamily: 'JetBrains Mono,monospace', hideOverlap: true, formatter: function (v) { return fmtAxis(v, span); } },
                 splitLine: { show: true, lineStyle: { color: T.split } },
                 axisPointer: { label: { show: false } }
             });
             ys.push({
-                type: 'value', gridIndex: i, min: 0, max: isBin ? 1 : niceMax(s.stats.max), splitNumber: prefs.density === 'l' ? 3 : 1,
-                axisLine: { show: false }, axisTick: { show: false },
-                axisLabel: { color: hexA(s.color, .9), fontSize: 9, fontFamily: 'JetBrains Mono,monospace', margin: 6, showMinLabel: false, formatter: isBin ? function (v) { return v === 1 ? 'P' : ''; } : function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(+v.toFixed(2)); } },
+                type: 'value', gridIndex: i, min: 0, max: isBin ? 1 : niceMax(s.stats.max), splitNumber: prefs.density === 'l' ? 3 : 2,
+                axisLine: { show: true, lineStyle: { color: T.axis } }, axisTick: { show: false },
+                axisLabel: { color: T.txt, fontSize: 9, fontFamily: 'JetBrains Mono,monospace', margin: 6, showMinLabel: true, formatter: isBin ? function (v) { return v === 1 ? 'P' : ''; } : function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(+v.toFixed(2)); } },
                 splitLine: { show: true, lineStyle: { color: T.split, type: 'dashed' } }, axisPointer: { show: false }
             });
             series.push(laneSeries(s, i, i, model.xMax, prefs.density));
@@ -9488,7 +9574,10 @@ try {
                 if (prev !== null) refreshLive(true);   // restore the lane we just left
             }
             $cur.html('<b>' + fmtFull(p.t) + '</b> <span style="color:' + esc(s.asset.color) + ';font-weight:700;margin-left:6px;">' + esc(s.asset.name) + '</span> <span style="color:' + esc(s.color) + ';font-weight:700;margin-left:4px;">' + esc(s.short) + '</span>');
-            if (readouts[s.key]) readouts[s.key].html(valHtml(valueAt(s.pts, p.t), s.kind, s.unit));
+            var cw = tlgvChangeWindow(s.pts, p.t);
+            if (readouts[s.key]) readouts[s.key].html(valHtml(valueAt(s.pts, p.t), s.kind, s.unit) +
+                (cw ? '<div class="tlgv-since">since ' + esc(fmtFull(cw.from)) + (cw.to ? ' &rarr; ' + esc(fmtFull(cw.to)) : ' &rarr; now') + '</div>' : ''));
+            if (cw) $cur.append(' <span class="tlgv-since-bar">held since <b>' + esc(fmtFull(cw.from)) + '</b>' + (cw.to ? ' until <b>' + esc(fmtFull(cw.to)) + '</b>' : ' (still)') + '</span>');
         }
         function schedule(p) { pending = p; if (!raf) raf = requestAnimationFrame(function () { raf = 0; paint(pending); }); }
         chart.on('updateAxisPointer', function (e) {

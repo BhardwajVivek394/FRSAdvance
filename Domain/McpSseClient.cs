@@ -215,7 +215,7 @@ namespace Domain
         // ═════════════════════════════════════════════════════════
         //  CALL TOOL
         // ═════════════════════════════════════════════════════════
-        public async Task<string> CallToolAsync(string name, JToken args, int maxChars)
+        public async Task<string> CallToolAsync(string name, JToken args, int maxChars, string e7Token = null)
         {
             await EnsureConnectedAsync().ConfigureAwait(false);
 

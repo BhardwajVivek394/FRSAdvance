@@ -3058,254 +3058,145 @@
         ctx.fillText(message, W / 2, H / 2);
     }
 
+    /* v618.25 -- GRAPH TAB: one LANE per attribute (own scale), drawn as STEP
+       lines (horizontal, then straight up / down at the sample time), on a
+       shared TIME axis -- no more overlapped, criss-crossing series.
+       Hover: one crosshair across all lanes, value of every lane at that time. */
+    function _sapPtMs(p) {
+        if (!p) return NaN;
+        if (p.sortKey) return p.sortKey;
+        var t = Date.parse(String(p.rawTime || '').replace(' ', 'T'));
+        return isNaN(t) ? NaN : t;
+    }
     function drawHistoryChart(seriesList) {
-        /* Accept legacy call signature: drawHistoryChart(points, alias) */
         if (Array.isArray(seriesList) && seriesList.length && !seriesList[0].hasOwnProperty('points')) {
             var legacyAlias = arguments[1] || 'Value';
             seriesList = [{ id: 'legacy', alias: legacyAlias, points: seriesList, color: GRAPH_COLORS[0] }];
         }
         if (!Array.isArray(seriesList)) seriesList = [];
-
         var canvas = el('sipAssetChartCanvas');
         if (!canvas || !sapNodeExists(canvas) || !canvas.parentElement || _activeTab !== 'graph') return;
+        var series = seriesList.filter(function (s) { return s.points && s.points.length > 0; });
+        if (!series.length) { drawGraphMessage('No data for the selected attribute(s).'); return; }
 
-        var ctx = canvas.getContext('2d');
-        var dpr = window.devicePixelRatio || 1;
         var host = canvas.parentElement;
         lockSapChartHeight(host);
-
+        /* lanes need room: at least 54 px each (+ axis); grow the host and let it scroll */
+        var needH = 40 + series.length * 54 + 30;
+        var locked = parseInt(host.style.height, 10) || 460;
+        if (needH > locked) { host.style.height = needH + 'px'; host.style.minHeight = needH + 'px'; host.style.maxHeight = needH + 'px'; }
+        if (host.parentElement) host.parentElement.style.overflowY = 'auto';
         canvas.style.width = '100%';
         canvas.style.height = '100%';
-
         var rect = host.getBoundingClientRect();
         if (!rect || rect.width <= 0 || rect.height <= 0) return;
-
-        var W = Math.floor(rect.width);
-        var H = Math.floor(rect.height);
-        var needW = Math.round(W * dpr);
-        var needH = Math.round(H * dpr);
-        if (canvas.width !== needW || canvas.height !== needH) {
-            canvas.width = needW;
-            canvas.height = needH;
-        } else {
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+        var dpr = window.devicePixelRatio || 1;
+        var W = Math.floor(rect.width), H = Math.floor(rect.height);
+        if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+        var ctx = canvas.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        /* Legend height: 18 px per row, max 3 cols */
-        var visibleSeries = seriesList.filter(function (s) { return s.points && s.points.length > 0; });
-        var legendCols    = Math.min(3, visibleSeries.length);
-        var legendRows    = visibleSeries.length > 0 ? Math.ceil(visibleSeries.length / legendCols) : 0;
-        var legendH       = legendRows > 0 ? legendRows * 18 + 8 : 0;
+        var pad = { top: 26, right: 16, bottom: 30, left: 190 };
+        var gw = W - pad.left - pad.right, gh = H - pad.top - pad.bottom;
+        var laneH = gh / series.length;
 
-        var pad = { top: 34, right: 24, bottom: 42 + legendH, left: 58 };
-        var gw  = W - pad.left - pad.right;
-        var gh  = H - pad.top  - pad.bottom;
-
-        ctx.clearRect(0, 0, W, H);
-
-        /* ── Y range model ─────────────────────────────────────
-           Single attribute  : raw/global Y-axis.
-           Multiple attributes: per-series normalized Y-axis so every selected
-           attribute shows its own up/down step movement. Raw values remain in
-           tooltip and legend range. A common raw Y-axis cannot represent mixed
-           units/ranges such as TPR(0/1), current(mA), voltage(V), etc. */
-        var isMultiScale = visibleSeries.length > 1;
-        var allVals = [];
-        visibleSeries.forEach(function (s) {
-            s.points.forEach(function (p) {
-                if (p && p.value !== null && p.value !== undefined && !isNaN(p.value)) allVals.push(p.value);
-            });
+        /* shared time range (fallback: index) */
+        var t0 = Infinity, t1 = -Infinity, useTime = true;
+        series.forEach(function (s) {
+            s.points.forEach(function (p) { var t = _sapPtMs(p); if (isNaN(t)) useTime = false; else { if (t < t0) t0 = t; if (t > t1) t1 = t; } });
         });
+        if (!useTime || !(t1 > t0)) useTime = false;
+        var xOf = function (s, i) {
+            if (useTime) return pad.left + ((_sapPtMs(s.points[i]) - t0) / (t1 - t0)) * gw;
+            return pad.left + (gw * i / Math.max(1, s.points.length - 1));
+        };
 
-        var minV = allVals.length ? Math.min.apply(null, allVals) : 0;
-        var maxV = allVals.length ? Math.max.apply(null, allVals) : 1;
-        if (minV === maxV) { minV = minV - 1; maxV = maxV + 1; }
-        var range = maxV - minV;
-        minV = minV - range * 0.08;
-        maxV = maxV + range * 0.08;
-
-        /* Prepare individual scales for multi-attribute mode. */
-        visibleSeries.forEach(function (s) {
-            var vals = [];
-            (s.points || []).forEach(function (p) {
-                if (p && p.value !== null && p.value !== undefined && !isNaN(p.value)) vals.push(p.value);
-            });
-            var lo = vals.length ? Math.min.apply(null, vals) : 0;
-            var hi = vals.length ? Math.max.apply(null, vals) : 1;
-            s._rawMin = lo;
-            s._rawMax = hi;
-
-            if (lo === hi) {
-                lo = lo - 1;
-                hi = hi + 1;
-            } else {
-                var sr = hi - lo;
-                lo = lo - sr * 0.08;
-                hi = hi + sr * 0.08;
-            }
-            s._sapScale = { min: lo, max: hi };
-        });
-
-        /* ── Title ── */
-        ctx.fillStyle = sapVar('--sap-text-primary', '#e2e8f0');
-        ctx.font = '600 13px IBM Plex Sans, Arial, sans-serif';
+        var txt = sapVar('--sap-text-primary', '#e2e8f0'), mut = sapVar('--sap-text-muted', '#5a6a8a'), sec = sapVar('--sap-text-secondary', '#8b9dc3');
+        var grid = sapVar('--sap-grid', 'rgba(90,106,138,0.28)');
+        ctx.font = '600 12px IBM Plex Sans, Arial, sans-serif';
+        ctx.fillStyle = txt;
         ctx.textAlign = 'left';
-        var titleText = visibleSeries.length === 1
-            ? (visibleSeries[0].alias || 'Attribute')
-            : (visibleSeries.length + ' Attributes · Multi-scale');
-        ctx.fillText(titleText, pad.left, 18);
+        ctx.fillText(series.length + ' attribute' + (series.length > 1 ? 's' : '') + ' -- one lane each, own scale', pad.left, 16);
 
-        /* ── Record count ── */
-        var totalPts = seriesList.reduce(function (n, s) {
-            return Math.max(n, (s.points ? s.points.length : 0));
-        }, 0);
-        ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
-        ctx.font = '10px IBM Plex Sans, Arial, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(totalPts + ' records', W - pad.right, 18);
-
-        /* ── Grid lines + Y-axis labels ── */
-        ctx.strokeStyle = sapVar('--sap-grid', 'rgba(90,106,138,0.28)');
-        ctx.lineWidth = 1;
-        for (var i = 0; i <= 4; i++) {
-            var gy  = pad.top + (gh / 4) * i;
-            var val = maxV - ((maxV - minV) * (i / 4));
-            ctx.beginPath();
-            ctx.moveTo(pad.left, gy);
-            ctx.lineTo(pad.left + gw, gy);
-            ctx.stroke();
-            ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
-            ctx.font = '10px JetBrains Mono, monospace';
-            ctx.textAlign = 'right';
-            var yLabel = isMultiScale ? ((4 - i) * 25 + '%') : formatGraphValue(val);
-            ctx.fillText(yLabel, pad.left - 8, gy + 3);
-        }
-
-        /* ── X-axis time labels (use first non-empty series for ticks) ── */
-        var refPts = (visibleSeries[0] && visibleSeries[0].points) || [];
-        if (refPts.length) {
-            ctx.fillStyle = sapVar('--sap-text-muted', '#5a6a8a');
-            ctx.font = '10px JetBrains Mono, monospace';
-            ctx.textAlign = 'center';
-            var tickCount = Math.min(7, refPts.length);
-            for (var t = 0; t < tickCount; t++) {
-                var idx = tickCount === 1 ? 0 : Math.round((refPts.length - 1) * (t / (tickCount - 1)));
-                var tx  = pad.left + (gw * idx / Math.max(1, refPts.length - 1));
-                ctx.fillText(refPts[idx].time || '', tx, H - legendH - 16);
-            }
-        }
-
-        function px(pts, index) { return pad.left + (gw * index / Math.max(1, pts.length - 1)); }
-        function pyGlobal(v) {
-            var span = (maxV - minV) || 1;
-            return pad.top + gh - ((v - minV) / span) * gh;
-        }
-        function yForSeries(s, v) {
-            if (!isMultiScale) return pyGlobal(v);
-            var sc = (s && s._sapScale) ? s._sapScale : { min: minV, max: maxV };
-            var span = (sc.max - sc.min) || 1;
-            return pad.top + gh - ((v - sc.min) / span) * gh;
-        }
-
-        /* ── Draw each series as a step-line ── */
-        visibleSeries.forEach(function (s) {
-            var pts = s.points || [];
-            if (!pts.length) return;
-
-            ctx.beginPath();
-            for (var si = 0; si < pts.length; si++) {
-                var sx = px(pts, si);
-                var sy = yForSeries(s, pts[si].value);
-                if (si === 0) {
-                    ctx.moveTo(sx, sy);
-                } else {
-                    /* Step graph: horizontal part must use the SAME scale as the vertical point. */
-                    ctx.lineTo(sx, yForSeries(s, pts[si - 1].value));
-                    ctx.lineTo(sx, sy);
-                }
-            }
-            ctx.lineTo(pad.left + gw, yForSeries(s, pts[pts.length - 1].value));
-            ctx.strokeStyle = s.color;
-            ctx.lineWidth = visibleSeries.length === 1 ? 2 : 1.5;
-            ctx.stroke();
-
-            /* Fill for single-series only (too noisy with multiple) */
-            if (visibleSeries.length === 1) {
-                var grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + gh);
-                grad.addColorStop(0, hexAlpha(s.color, 0.14));
-                grad.addColorStop(1, hexAlpha(s.color, 0.00));
-                ctx.lineTo(pad.left + gw, pad.top + gh);
-                ctx.lineTo(pad.left, pad.top + gh);
-                ctx.closePath();
-                ctx.fillStyle = grad;
-                ctx.fill();
-            }
-
-            /* Glow dot on last value */
-            var last = pts[pts.length - 1];
-            var lx = pad.left + gw;
-            var ly = yForSeries(s, last.value);
-            ctx.beginPath();
-            ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+        series.forEach(function (s, li) {
+            var y0 = pad.top + li * laneH, y1 = y0 + laneH;
+            var top = y0 + 8, bot = y1 - 8;
+            var lo = Infinity, hi = -Infinity;
+            s.points.forEach(function (p) { if (p.value < lo) lo = p.value; if (p.value > hi) hi = p.value; });
+            if (hi === lo) { hi += 1; lo -= 1; }
+            s._lo = lo; s._hi = hi; s._top = top; s._bot = bot;
+            /* lane band */
+            ctx.fillStyle = li % 2 ? 'rgba(127,140,160,0.06)' : 'rgba(127,140,160,0.02)';
+            ctx.fillRect(pad.left, y0, gw, laneH);
+            ctx.strokeStyle = grid;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(pad.left, y1 + 0.5); ctx.lineTo(pad.left + gw, y1 + 0.5); ctx.stroke();
+            /* label + latest value */
+            var last = s.points[s.points.length - 1];
             ctx.fillStyle = s.color;
-            ctx.fill();
-            if (visibleSeries.length === 1) {
-                ctx.beginPath();
-                ctx.arc(lx, ly, 8, 0, Math.PI * 2);
-                ctx.strokeStyle = hexAlpha(s.color, 0.35);
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-                ctx.fillStyle = s.color;
-                ctx.font = '600 11px JetBrains Mono, monospace';
-                ctx.textAlign = 'right';
-                ctx.fillText(formatGraphValue(last.value), lx - 14, ly + 4);
+            ctx.fillRect(8, y0 + laneH / 2 - 9, 4, 18);
+            ctx.fillStyle = txt;
+            ctx.font = '600 11.5px IBM Plex Sans, Arial, sans-serif';
+            var nm = String(s.alias || s.title || s.id || '');
+            while (nm.length > 4 && ctx.measureText(nm).width > pad.left - 30) nm = nm.slice(0, -2);
+            if (nm !== String(s.alias || s.title || s.id || '')) nm += '...';
+            ctx.fillText(nm, 18, y0 + laneH / 2 - 2);
+            ctx.fillStyle = s.color;
+            ctx.font = '700 12px JetBrains Mono, monospace';
+            ctx.fillText(formatGraphValue(last.value), 18, y0 + laneH / 2 + 13);
+            /* own scale min / max */
+            ctx.fillStyle = mut;
+            ctx.font = '9.5px JetBrains Mono, monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(formatGraphValue(hi), pad.left - 6, top + 7);
+            ctx.fillText(formatGraphValue(lo), pad.left - 6, bot);
+            ctx.textAlign = 'left';
+            /* step line */
+            var Y = function (v) { return bot - ((v - lo) / (hi - lo)) * (bot - top); };
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 1.6;
+            ctx.lineJoin = 'miter';
+            ctx.beginPath();
+            for (var i = 0; i < s.points.length; i++) {
+                var x = xOf(s, i), y = Y(s.points[i].value);
+                if (i === 0) ctx.moveTo(x, y);
+                else { ctx.lineTo(x, Y(s.points[i - 1].value)); ctx.lineTo(x, y); }
             }
+            ctx.lineTo(pad.left + gw, Y(last.value));
+            ctx.stroke();
+            /* soft fill under the step */
+            ctx.lineTo(pad.left + gw, bot);
+            ctx.lineTo(xOf(s, 0), bot);
+            ctx.closePath();
+            ctx.fillStyle = hexAlpha(s.color, 0.08);
+            ctx.fill();
         });
 
-        /* ── Legend (below chart) ── */
-        if (legendRows > 0) {
-            var legY   = H - legendH + 6;
-            var colW   = (W - pad.left - pad.right) / legendCols;
-            visibleSeries.forEach(function (s, li) {
-                var col = li % legendCols;
-                var row = Math.floor(li / legendCols);
-                var lx2 = pad.left + col * colW;
-                var ly2 = legY + row * 18;
-                ctx.beginPath();
-                ctx.moveTo(lx2, ly2 + 6);
-                ctx.lineTo(lx2 + 16, ly2 + 6);
-                ctx.strokeStyle = s.color;
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = sapVar('--sap-text-secondary', '#8b9dc3');
-                ctx.font = '10px IBM Plex Sans, Arial, sans-serif';
-                ctx.textAlign = 'left';
-                var maxLegW = colW - 26;
-                var aliasText = s.alias || s.id;
-                if (isMultiScale) aliasText += ' [' + formatGraphValue(s._rawMin) + '–' + formatGraphValue(s._rawMax) + ']';
-                ctx.fillText(aliasText, lx2 + 22, ly2 + 10);
-            });
+        /* time axis */
+        ctx.fillStyle = sec;
+        ctx.font = '10px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        var ticks = 6;
+        for (var k = 0; k <= ticks; k++) {
+            var tx = pad.left + gw * k / ticks;
+            var lbl;
+            if (useTime) { var d = new Date(t0 + (t1 - t0) * k / ticks); lbl = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+            else { var s0 = series[0]; var ii = Math.round((s0.points.length - 1) * k / ticks); lbl = s0.points[ii] ? s0.points[ii].time : ''; }
+            ctx.fillText(lbl, tx, H - 10);
+            ctx.strokeStyle = grid;
+            ctx.beginPath(); ctx.moveTo(tx + 0.5, pad.top); ctx.lineTo(tx + 0.5, pad.top + gh); ctx.stroke();
         }
+        ctx.textAlign = 'left';
 
-        /* ── Save geometry for hover tooltip ── */
         _chartGeo = {
-            pad: pad, gw: gw, gh: gh, W: W, H: H,
-            minV: minV, maxV: maxV,
-            multiScale: isMultiScale,
-            series: visibleSeries,
-            /* Legacy compat */
-            points: visibleSeries.length ? visibleSeries[0].points : [],
-            alias:  visibleSeries.length ? visibleSeries[0].alias  : '',
-            px: function (index) { return px(visibleSeries.length ? visibleSeries[0].points : [], index); },
-            py: pyGlobal,
-            yForSeries: function (s, v) { return yForSeries(s, v); },
+            lanes: true, pad: pad, gw: gw, gh: gh, W: W, H: H, series: series, useTime: useTime, t0: t0, t1: t1, xOf: xOf,
+            points: series[0].points, alias: series[0].alias,
             baseImage: ctx.getImageData(0, 0, canvas.width, canvas.height)
         };
     }
 
-    /* ── Helper: hex colour + alpha as rgba ── */
     function hexAlpha(hex, alpha) {
         var r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
         return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
@@ -3346,94 +3237,47 @@
 
     function drawTooltipOverlay(canvas, mouseX) {
         var g = _chartGeo;
-        if (!g || _activeTab !== 'graph' || !canvas || !sapNodeExists(canvas)) return;
-
-        var allSeries = g.series || (g.points && g.points.length ? [{ points: g.points, alias: g.alias || '', color: '#00d4ff' }] : []);
-        if (!allSeries.length) return;
-
+        if (!g || _activeTab !== 'graph' || !canvas || !sapNodeExists(canvas) || !g.lanes) return;
         var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
-
         ctx.putImageData(g.baseImage, 0, 0);
+        var pad = g.pad;
+        if (mouseX < pad.left || mouseX > pad.left + g.gw) return;
         ctx.save();
         ctx.scale(dpr, dpr);
-
-        var pad = g.pad;
-        if (mouseX < pad.left || mouseX > pad.left + g.gw) { ctx.restore(); return; }
-
-        /* For each series find the nearest point by x */
-        var hits = [];
-        allSeries.forEach(function (s) {
-            var pts = s.points || [];
-            if (!pts.length) return;
-            var ratio = (mouseX - pad.left) / g.gw;
-            var idx = Math.round(ratio * (pts.length - 1));
-            if (idx < 0) idx = 0;
-            if (idx >= pts.length) idx = pts.length - 1;
-            var ptx = pad.left + (g.gw * idx / Math.max(1, pts.length - 1));
-            var pty = (typeof g.yForSeries === 'function') ? g.yForSeries(s, pts[idx].value) : g.py(pts[idx].value);
-            hits.push({ s: s, idx: idx, pt: pts[idx], ptx: ptx, pty: pty });
-        });
-
-        if (!hits.length) { ctx.restore(); return; }
-
-        /* Vertical crosshair at the first series' x (representative) */
-        var refX = hits[0].ptx;
-        ctx.strokeStyle = sapVar('--sap-cursor', 'rgba(0,212,255,0.35)');
-        ctx.lineWidth = 1;
+        var tAt = g.useTime ? g.t0 + (g.t1 - g.t0) * ((mouseX - pad.left) / g.gw) : null;
+        ctx.strokeStyle = sapVar('--sap-cursor', 'rgba(0,212,255,0.5)');
         ctx.setLineDash([4, 3]);
-        ctx.beginPath();
-        ctx.moveTo(refX, pad.top);
-        ctx.lineTo(refX, pad.top + g.gh);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mouseX, pad.top); ctx.lineTo(mouseX, pad.top + g.gh); ctx.stroke();
         ctx.setLineDash([]);
-
-        /* Draw a dot per series */
-        hits.forEach(function (h) {
-            ctx.beginPath();
-            ctx.arc(h.ptx, h.pty, 4, 0, Math.PI * 2);
-            ctx.fillStyle = h.s.color;
-            ctx.fill();
+        var timeText = '';
+        g.series.forEach(function (s) {
+            /* value in force at the cursor (last sample at or before it) */
+            var idx = 0;
+            for (var i = 0; i < s.points.length; i++) {
+                if (g.xOf(s, i) <= mouseX + 0.5) idx = i; else break;
+            }
+            var p = s.points[idx];
+            if (!timeText) timeText = tAt ? new Date(tAt).toLocaleTimeString() : (p.time || '');
+            var y = s._bot - ((p.value - s._lo) / (s._hi - s._lo)) * (s._bot - s._top);
+            ctx.beginPath(); ctx.arc(mouseX, y, 3.5, 0, Math.PI * 2); ctx.fillStyle = s.color; ctx.fill();
+            var t = formatGraphValue(p.value);
+            ctx.font = '700 11px JetBrains Mono, monospace';
+            var w = ctx.measureText(t).width + 10;
+            var bx = mouseX + 8; if (bx + w > pad.left + g.gw) bx = mouseX - w - 8;
+            ctx.fillStyle = sapVar('--sap-tip-bg', 'rgba(15,22,41,0.92)');
+            roundRect(ctx, bx, y - 9, w, 18, 4);
+            ctx.fillStyle = s.color;
+            ctx.textAlign = 'left';
+            ctx.fillText(t, bx + 5, y + 4);
         });
-
-        /* ── Tooltip box: list all series values ── */
-        var timeText = hits[0].pt.time || '';
-        var lines = hits.map(function (h) {
-            return { text: (h.s.alias || '') + ': ' + formatGraphValue(h.pt.value), color: h.s.color };
-        });
-
-        ctx.font = '600 11px JetBrains Mono, monospace';
-        var maxTW = 0;
-        lines.forEach(function (l) { var tw = ctx.measureText(l.text).width; if (tw > maxTW) maxTW = tw; });
-        ctx.font = '10px JetBrains Mono, monospace';
-        var tw2 = ctx.measureText(timeText).width;
-        maxTW = Math.max(maxTW, tw2);
-
-        var boxW = maxTW + 20;
-        var boxH = lines.length * 16 + 22;
-        var bx   = refX + 14;
-        var by   = hits[0].pty - boxH - 8;
-        if (bx + boxW > pad.left + g.gw) bx = refX - boxW - 14;
-        if (by < pad.top) by = hits[0].pty + 12;
-
+        ctx.font = '600 10.5px JetBrains Mono, monospace';
+        var tw = ctx.measureText(timeText).width + 12;
         ctx.fillStyle = sapVar('--sap-tip-bg', 'rgba(15,22,41,0.92)');
-        ctx.strokeStyle = sapVar('--sap-tip-border', 'rgba(0,212,255,0.3)');
-        ctx.lineWidth = 1;
-        roundRect(ctx, bx, by, boxW, boxH, 6);
-
-        /* Time row */
-        ctx.fillStyle = sapVar('--sap-text-secondary', '#8b9dc3');
-        ctx.font = '10px JetBrains Mono, monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(timeText, bx + 10, by + 14);
-
-        /* Series rows */
-        lines.forEach(function (l, li) {
-            ctx.fillStyle = l.color;
-            ctx.font = '600 11px JetBrains Mono, monospace';
-            ctx.fillText(l.text, bx + 10, by + 14 + (li + 1) * 16);
-        });
-
+        roundRect(ctx, Math.min(mouseX - tw / 2, pad.left + g.gw - tw), pad.top + g.gh + 4, tw, 18, 4);
+        ctx.fillStyle = sapVar('--sap-text-primary', '#e2e8f0');
+        ctx.textAlign = 'center';
+        ctx.fillText(timeText, Math.min(mouseX, pad.left + g.gw - tw / 2), pad.top + g.gh + 17);
         ctx.restore();
     }
     function roundRect(ctx, x, y, w, h, r) {

@@ -3016,7 +3016,7 @@ function _pmgRender() {
         yAxis: yAxes,
         dataZoom: [{
             type: 'slider', height: 34, bottom: 4,
-            borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)',
+            borderColor: 'rgba(255,255,255,0.14)', backgroundColor: (typeof tlTc === 'function' ? tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)') : 'rgba(15,23,42,0.70)'),
             fillerColor: 'rgba(34,211,238,0.20)',
             handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' },
             textStyle: { fontSize: 10, color: 'rgba(255,255,255,0.50)' }
@@ -3371,7 +3371,7 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
                 bottom: 6,
                 filterMode: 'none',
                 borderColor: 'rgba(255,255,255,0.14)',
-                backgroundColor: 'rgba(15,23,42,0.70)',
+                backgroundColor: (typeof tlTc === 'function' ? tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)') : 'rgba(15,23,42,0.70)'),
                 fillerColor: 'rgba(34,211,238,0.20)',
                 handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' },
                 textStyle: { fontSize: 10, color: 'rgba(255,255,255,0.50)' }

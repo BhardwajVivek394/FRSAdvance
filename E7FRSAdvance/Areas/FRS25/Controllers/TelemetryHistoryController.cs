@@ -166,8 +166,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
          */
 
         // README: tsLimit -- "Distinct timestamps per page (default 50, max 500)".
+        // v618.11: cap raised to 10000 so the SIP replay can pull a whole window
+        // in one page (page=1) and bind it client-side in chunks. Callers that
+        // ask for <= 500 (Telemetry History grid) are unaffected; if the upstream
+        // API still caps tsLimit, the cursor chain fetches the rest as before.
         private const int DefaultTsLimit = 50;
-        private const int MaxTsLimit = 500;
+        private const int MaxTsLimit = 10000;
 
         // Server-side proxy to call the new paginated DashboardHistory API.
         // Used for Track, Signal and all non-Point-Machine asset types.

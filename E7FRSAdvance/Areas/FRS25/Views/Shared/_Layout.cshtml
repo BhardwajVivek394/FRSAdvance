@@ -3406,6 +3406,10 @@
 </head>
 
 <body id="e7Body">
+    <script>
+        // Restore the collapsed rail before first paint so it doesn't flash open.
+        try { if (localStorage.getItem('e7SidebarMini') === '1') document.body.classList.add('sidebar-mini'); } catch (e) { }
+    </script>
     <!-- Aurora animated background canvas -->
     <div class="at-canvas" aria-hidden="true"></div>
 
@@ -3442,7 +3446,7 @@
                         {
                             // ── Leaf item ──
                             bool isActive = ViewBag.Title == menu.Main.MenuName;
-                            <a class="e7-nav-item @(isActive ? "active" : "")"
+                            <a class="e7-nav-item @(isActive ? "active" : "")" title="@menu.Main.MenuName"
                                href="@Url.Content("~/FRS25/" + menu.Main.ControllerName + "/" + menu.Main.ActionName)">
                                 <i class="@menu.Main.IconName"></i>
                                 <span>@menu.Main.MenuName</span>
@@ -3463,7 +3467,7 @@
                             string subId = "sub_" + menu.Main.MenuName.Replace(" ", "_");
                             bool subOpen = parentActive.Contains("open");
 
-                            <a class="e7-nav-item has-sub @parentActive"
+                            <a class="e7-nav-item has-sub @parentActive" title="@menu.Main.MenuName"
                                onclick="e7ToggleSub('@subId', this)" href="#">
                                 <i class="@menu.Main.IconName"></i>
                                 <span>@menu.Main.MenuName</span>
@@ -3512,7 +3516,7 @@
                toggle-btn, e7AiHeaderBtn) are kept for the layout scripts. *@
             <header class="e7-header topbar">
                 <!-- Hamburger: opens the off-canvas rail on small screens (zip: .hamb) -->
-                <button type="button" class="e7-menu-toggle hamb" id="e7MenuToggle" aria-controls="e7Sidebar" aria-label="Open navigation menu" title="Menu">&#9776;</button>
+                <button type="button" class="e7-menu-toggle hamb" id="e7MenuToggle" aria-controls="e7Sidebar" aria-label="Toggle navigation menu" title="Collapse / expand menu">&#9776;</button>
                 <div class="e7-header-title title">Remote Diagnostic &amp; Predictive Maintenance</div>
 
                 <div class="e7-header-right top-actions">
@@ -3668,15 +3672,24 @@
             if (window.innerWidth <= 991) {
                 document.getElementById('e7Sidebar').classList.toggle('open');
             } else {
-                document.body.classList.toggle('sidebar-mini');
+                e7SetSidebarMini(!document.body.classList.contains('sidebar-mini'));
             }
         });
+
+        // Collapse/expand the desktop rail and remember the choice across pages
+        function e7SetSidebarMini(mini) {
+            document.body.classList.toggle('sidebar-mini', mini);
+            try { localStorage.setItem('e7SidebarMini', mini ? '1' : '0'); } catch (e) { }
+        }
 
         // ── Submenu accordion ───────────────────────────────────────
         function e7ToggleSub(subId, parentEl) {
             event.preventDefault();
+            // Submenus are hidden in the collapsed rail: expand it so the children are reachable
+            var expanding = document.body.classList.contains('sidebar-mini') && window.innerWidth > 991;
+            if (expanding) e7SetSidebarMini(false);
             var sub = document.getElementById(subId);
-            var isOpen = sub.classList.contains('open');
+            var isOpen = !expanding && sub.classList.contains('open');
             // Close all siblings
             document.querySelectorAll('.e7-submenu').forEach(function(s) { s.classList.remove('open'); });
             document.querySelectorAll('.e7-nav-item.has-sub').forEach(function(p) { p.classList.remove('open'); });

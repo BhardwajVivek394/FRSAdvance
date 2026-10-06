@@ -954,7 +954,7 @@
         const w = cell.size.width || 100;
         const h = cell.size.height || 100;
         const labelTxt = attrLabelText(cell);
-        const fill = attrLabel(cell).fill || T.siding;
+        const fill = normaliseLabelFill(attrLabel(cell).fill) || T.labelHot;   /* v618.9: readable on every palette */
         const size = attrLabel(cell).fontSize || 16;
 
         const padX = Math.max(10, Math.min(20, w * 0.15));
@@ -965,14 +965,14 @@
         if (labelTxt) {
             svg += `<rect x="${x + padX}" y="${pillY}" width="${w - 2 * padX}" height="${pillH}" ` +
                 `rx="${pillH / 2}" ry="${pillH / 2}" ` +
-                `fill="rgba(34,211,238,0.08)" stroke="rgba(34,211,238,0.45)" stroke-width="1.2"/>`;
+                `fill="${T.select}" fill-opacity="0.10" stroke="${T.select}" stroke-opacity="0.6" stroke-width="1.2"/>`;
             svg += `<text x="${x + w / 2}" y="${pillY + pillH / 2 + size / 3}" fill="${fill}" ` +
                 `font-family="${T.labelFont}" font-size="${size}" font-weight="700" ` +
                 `text-anchor="middle">${escapeXml(labelTxt)}</text>`;
         } else {
             svg += `<rect x="${x + padX}" y="${pillY}" width="${w - 2 * padX}" height="${pillH}" ` +
                 `rx="${pillH / 2}" ry="${pillH / 2}" ` +
-                `fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3,3"/>`;
+                `fill="none" stroke="${T.post}" stroke-opacity="0.45" stroke-width="1" stroke-dasharray="3,3"/>`;
         }
         svg += `</g>`;
         return svg;
@@ -1790,7 +1790,7 @@
         const w = cell.size.width || 100;
         const h = cell.size.height || 25;
         const labelTxt = attrLabelText(cell);
-        const fill = attrLabel(cell).fill || T.bbLabel;
+        const fill = normaliseLabelFill(attrLabel(cell).fill) || T.bbLabel;
 
         let svg = `<g class="sip-asset sip-bb" data-id="${cell.id}" data-type="${cell.type}">`;
         svg += `<rect x="${x}" y="${y + h / 2 - 4}" width="${Math.max(40, w)}" height="8" rx="2" fill="${T.busBar}"/>`;

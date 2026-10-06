@@ -8,6 +8,19 @@ function tlZeroFloor(v) {
     if (isNaN(n)) return v;
     return (n <= 0) ? 0 : n;
 }
+
+/* v618.17 theme helpers: true when the RDPMS page is in light mode */
+function tlIsLight() {
+    var a = (document.body && document.body.getAttribute('data-aurora')) || document.documentElement.getAttribute('data-aurora') || '';
+    return String(a).toLowerCase() === 'light';
+}
+function tlTc(darkColour, lightColour) { return tlIsLight() ? lightColour : darkColour; }
+/* Current value of a theme token (e7-energy7-theme.css), or the fallback when the token is absent */
+function tlThemeVar(name, fallback) {
+    var v = '';
+    try { v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) { }
+    return v || fallback;
+}
 window.tlZeroFloor = tlZeroFloor;
 
 var chart;
@@ -208,15 +221,23 @@ function atBuildTrackCard(aid) {
     var siteIdForActions = a.SiteId || $('#drpSite').val();
 
     // ── Graph & Circuit action buttons (top-right) ─────────────────
+    // v618.30: Graph / Circuit / Avg values replaced by ONE AI button that opens
+    // the asset drawer (telemetrylive-drawer.js). The drawer keeps Full circuit
+    // view and Avg values as actions; the old buttons are kept below, commented out.
+    //var actionsHtml = '<span class="tl-asset-actions" style="position:absolute; top:8px; right:8px;">' +
+    //    '<button class="tl-asset-action" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + aid + '\')" title="Graph">' +
+    //    '<i class="fa-solid fa-chart-line"></i>' +
+    //    '</button>' +
+    //    '<button class="tl-asset-action" onclick="fnGetAssetCircuit(\'' + aid + '\')" title="Circuit">' +
+    //    '<i class="fa-solid fa-project-diagram"></i>' +
+    //    '</button>' +
+    //    '<button class="tl-asset-action tl-aa-avg" onclick="fnShowFRSAttributeRangeHistory(\'' + aid + '\')" title="Avg values">' +
+    //    '<i class="fa-solid fa-chart-column"></i>' +
+    //    '</button>' +
+    //    '</span>';
     var actionsHtml = '<span class="tl-asset-actions" style="position:absolute; top:8px; right:8px;">' +
-        '<button class="tl-asset-action" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + aid + '\')" title="Graph">' +
-        '<i class="fa-solid fa-chart-line"></i>' +
-        '</button>' +
-        '<button class="tl-asset-action" onclick="fnGetAssetCircuit(\'' + aid + '\')" title="Circuit">' +
-        '<i class="fa-solid fa-project-diagram"></i>' +
-        '</button>' +
-        '<button class="tl-asset-action tl-aa-avg" onclick="fnShowFRSAttributeRangeHistory(\'' + aid + '\')" title="Avg values">' +
-        '<i class="fa-solid fa-chart-column"></i>' +
+        '<button type="button" class="tl-asset-action tl-aa-ai" onclick="tlOpenAssetDrawer(\'' + aid + '\')" title="Asset dashboard: values, AI, circuit, alerts, graph" aria-label="Open asset dashboard for ' + String(name).replace(/["<>&]/g, '') + '">' +
+        '<i class="fa-solid fa-wand-magic-sparkles"></i>' +
         '</button>' +
         '</span>';
 
@@ -9745,7 +9766,7 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
             splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
         },
         dataZoom: [
-            { type: 'slider', height: 22, bottom: 8, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)', fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 10, color: 'rgba(255,255,255,0.50)' } },
+            { type: 'slider', height: 22, bottom: 8, borderColor: tlTc('rgba(255,255,255,0.14)', 'rgba(15,23,42,0.14)'), backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'), fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 10, color: 'rgba(255,255,255,0.50)' } },
             { type: 'inside' }
         ],
         series: series
@@ -9868,7 +9889,7 @@ function renderPmDirChart(data, assetId, filterIds) {
             splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
         }],
         dataZoom: [
-            { type: 'slider', height: 30, start: 0, end: 100, bottom: 10, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)', fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' } },
+            { type: 'slider', height: 30, start: 0, end: 100, bottom: 10, borderColor: tlTc('rgba(255,255,255,0.14)', 'rgba(15,23,42,0.14)'), backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'), fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' } },
             { type: 'inside' }
         ],
         color: colors,
@@ -10087,6 +10108,9 @@ function getAttributeName(assetId, attributeId) {
     return fallbackMap[attributeId] || ('Attr ' + attributeId);
 }
 function renderHistoryChart(data, assetId, hours, startDate, endDate) {
+    // Kept so the chart can be redrawn in the new colours when the theme is toggled.
+    window._rdpmsLastHistoryRender = Array.prototype.slice.call(arguments);
+
     var $chartDiv = $('#rdpmsGraphChartDiv');
     $chartDiv.show();
 
@@ -10477,14 +10501,29 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 
     var leftAxisName = useDualAxis ? 'mA / Value' : (hasVoltageSeries ? 'V' : 'mA / Value');
 
+    // Chart chrome follows the page theme tokens (light / dark)
+    var gt = {
+        surface: tlThemeVar('--e7-surface', tlTc('#0a1a2e', '#ffffff')),
+        surface3: tlThemeVar('--e7-surface-3', tlTc('#1e293b', '#eef2f6')),
+        border: tlThemeVar('--e7-border-2', tlTc('#334155', '#dde3ec')),
+        grid: tlThemeVar('--e7-grid-line', tlTc('#1e293b', '#e2e8f0')),
+        heading: tlThemeVar('--e7-heading', tlTc('#f1f5f9', '#1b3c55')),
+        text: tlThemeVar('--e7-text', tlTc('#e2e8f0', '#22303f')),
+        text2: tlThemeVar('--e7-text-2', tlTc('#cbd5e1', '#55657a')),
+        text3: tlThemeVar('--e7-text-3', tlTc('#94a3b8', '#8b98a8')),
+        accent: tlThemeVar('--e7-accent', '#22d3ee'),
+        accentSoft: tlThemeVar('--e7-accent-soft', 'rgba(37,157,171,0.25)'),
+        accent2: tlThemeVar('--e7-c2', '#a78bfa')
+    };
+
     var yAxisConfig = [
         {
             type: 'value',
             name: leftAxisName,
-            nameTextStyle: { fontSize: 12, color: '#64748b' },
-            axisLabel: { fontSize: 11, color: '#64748b' },
-            axisLine: { show: true, lineStyle: { color: '#22d3ee', width: 2 } },
-            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+            nameTextStyle: { fontSize: 12, color: gt.text3 },
+            axisLabel: { fontSize: 11, color: gt.text3 },
+            axisLine: { show: true, lineStyle: { color: gt.accent, width: 2 } },
+            splitLine: { show: true, lineStyle: { color: gt.grid, type: 'dashed' } }
         }
     ];
 
@@ -10493,9 +10532,9 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             type: 'value',
             name: 'V',
             position: 'right',
-            nameTextStyle: { fontSize: 12, color: '#a78bfa' },
-            axisLabel: { fontSize: 11, color: '#a78bfa' },
-            axisLine: { show: true, lineStyle: { color: '#a78bfa', width: 2 } },
+            nameTextStyle: { fontSize: 12, color: gt.accent2 },
+            axisLabel: { fontSize: 11, color: gt.accent2 },
+            axisLine: { show: true, lineStyle: { color: gt.accent2, width: 2 } },
             splitLine: { show: false }
         });
     }
@@ -10506,12 +10545,13 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
         tooltip: {
             trigger: 'axis',
             confine: true,
-            axisPointer: { type: 'line', snap: false, lineStyle: { color: 'rgba(34,211,238,0.45)', width: 1 } },
-            backgroundColor: 'rgba(10,26,46,0.96)',
-            borderColor: 'rgba(37,157,171,0.4)',
+            axisPointer: { type: 'line', snap: false, lineStyle: { color: gt.accent, width: 1, opacity: 0.6 } },
+            backgroundColor: gt.surface,
+            borderColor: gt.border,
             borderWidth: 1,
             padding: [12, 16],
-            textStyle: { color: '#e2e8f0', fontSize: 13 },
+            textStyle: { color: gt.text, fontSize: 13 },
+            extraCssText: 'box-shadow:0 10px 24px rgba(0,0,0,0.18);border-radius:10px;',
             formatter: function (params) {
                 if (!params || !params.length) return '';
 
@@ -10533,7 +10573,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
                 } catch (e) { }
 
                 var store = window._rdpmsTooltipSeries || [];
-                var html = '<div style="font-weight:600;margin-bottom:8px;color:#22d3ee;">' + timeStr + '</div>';
+                var html = '<div style="font-weight:600;margin-bottom:8px;color:' + gt.accent + ';">' + timeStr + '</div>';
                 var shown = 0;
 
                 // Show EVERY attribute, carrying the last value forward to the hovered time.
@@ -10552,8 +10592,8 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
                     html += '<div style="display:flex;align-items:center;margin:4px 0;">' +
                         '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
                         s.color + ';margin-right:10px;"></span>' +
-                        '<span style="flex:1;color:#cbd5e1;">' + s.name + '</span>' +
-                        '<span style="font-weight:700;margin-left:15px;color:#fff;">' +
+                        '<span style="flex:1;color:' + gt.text2 + ';">' + s.name + '</span>' +
+                        '<span style="font-weight:700;margin-left:15px;color:' + gt.heading + ';">' +
                         tlZeroFloor(Number(v)).toFixed(2) + suffix +
                         '</span></div>';
                     shown++;
@@ -10570,10 +10610,11 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             top: 34,             // own row, BELOW the toolbox icons -> no overlap ever
             left: 10,
             right: 10,
-            textStyle: { fontSize: 12, color: '#94a3b8' },
-            pageTextStyle: { color: '#94a3b8' },
-            pageIconColor: '#259dab',
-            pageIconInactiveColor: '#334155',
+            textStyle: { fontSize: 12, color: gt.text2 },
+            inactiveColor: gt.border,
+            pageTextStyle: { color: gt.text3 },
+            pageIconColor: gt.accent,
+            pageIconInactiveColor: gt.border,
             itemGap: 16,
             itemWidth: 25,
             itemHeight: 12
@@ -10588,12 +10629,12 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             right: 12,
             top: 6,
             itemGap: 8,
-            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' },
-            emphasis: { iconStyle: { borderColor: '#22d3ee' } },
+            iconStyle: { borderColor: gt.text3 },
+            emphasis: { iconStyle: { borderColor: gt.accent, textFill: gt.accent } },
             feature: {
                 dataZoom: { title: { zoom: 'Zoom', back: 'Reset' } },
                 restore: { title: 'Reset' },
-                saveAsImage: { title: 'Save', pixelRatio: 2 }
+                saveAsImage: { title: 'Save', pixelRatio: 2, backgroundColor: gt.surface }
             }
         },
         xAxis: {
@@ -10603,13 +10644,13 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             boundaryGap: false,
             axisLabel: {
                 fontSize: 11,
-                color: 'rgba(255,255,255,0.55)',
+                color: gt.text3,
                 formatter: function (v) {
                     return _graphXAxisLabel(v, spanMs);
                 }
             },
-            axisLine: { lineStyle: { color: '#1e293b' } },
-            splitLine: { show: true, lineStyle: { color: '#1e293b', type: 'dashed' } }
+            axisLine: { lineStyle: { color: gt.border } },
+            splitLine: { show: true, lineStyle: { color: gt.grid, type: 'dashed' } }
         },
         yAxis: yAxisConfig,
         dataZoom: [
@@ -10620,14 +10661,15 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
                 start: 0,
                 end: 100,
                 filterMode: 'none',
-                borderColor: '#1e293b',
-                backgroundColor: 'rgba(15,23,42,0.6)',
-                fillerColor: 'rgba(37,157,171,0.25)',
-                handleStyle: { color: '#259dab', borderColor: '#259dab' },
-                textStyle: { color: '#64748b' },
+                borderColor: gt.border,
+                backgroundColor: gt.surface3,
+                fillerColor: gt.accentSoft,
+                handleStyle: { color: gt.accent, borderColor: gt.accent },
+                moveHandleStyle: { color: gt.accent },
+                textStyle: { color: gt.text3 },
                 dataBackground: {
-                    lineStyle: { color: '#334155' },
-                    areaStyle: { color: 'rgba(37,157,171,0.08)' }
+                    lineStyle: { color: gt.border },
+                    areaStyle: { color: gt.accentSoft }
                 }
             },
             {
@@ -11242,6 +11284,13 @@ function closeGraphModal(e) {
     setTimeout(function () { $('#rdpmsGraphOverlay').remove(); }, 250);
 }
 $(document).on('keydown', function (e) { if (e.key === 'Escape' && $('#rdpmsGraphOverlay').length) closeGraphModal(); });
+
+// Theme toggled while the Historical Graph is open -> redraw it in the new colours.
+// Goes through window.renderHistoryChart so the graph-view wrapper (telemetrylive-ext.js) re-applies too.
+window.addEventListener('e7ThemeChange', function () {
+    if (!rdpmsGraphChart || !window._rdpmsLastHistoryRender || !$('#rdpmsGraphOverlay.tl-modal-overlay').length) return;
+    setTimeout(function () { window.renderHistoryChart.apply(null, window._rdpmsLastHistoryRender); }, 0);
+});
 
 // ── Fullscreen toggle for Graph and Circuit modals ──
 function toggleModalFullscreen(overlayId) {
@@ -14276,6 +14325,8 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     h += '<div class="pm-index-score">Index Score: 7</div>';
     h += '</div>';
     h += '<div class="pm-card-header-right">';
+    // v618.32: AI button -> asset drawer (values, analysis, Ask AI, circuit, alerts, pattern analysis, graph)
+    h += '<button type="button" class="tl-asset-action tl-aa-ai" onclick="tlOpenAssetDrawer(\'' + assetId + '\')" title="Asset dashboard: values, AI, circuit, alerts, graph" aria-label="Open asset dashboard"><i class="fa-solid fa-wand-magic-sparkles"></i></button>';
     h += '<button class="btn-event-log" onclick="fnGetEventLog(\'' + assetId + '\')"><i class="fas fa-bell"></i> Event Log</button>';
     h += '</div>';
     h += '</div>';
@@ -15352,8 +15403,11 @@ function loadSingleArrayData(startDate, endDate) {
     });
 }
 
-function renderSingleArrayByTimestamp(operations, title, unit, color) {
-    var el = document.getElementById('singleArrChartDiv');
+function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) {
+    /* v618.27: honour the target (the PM Graph "Operation Event" pane passes
+       'pmgOpChart'); before, the waveform was drawn into the hidden
+       #singleArrChartDiv and the pane stayed empty. */
+    var el = document.getElementById(targetId || 'singleArrChartDiv');
     if (!el) return;
 
     // FIX 9: Guard empty operations
@@ -15432,14 +15486,14 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
     }
 
     _singleArrChart.setOption({
-        backgroundColor: '#0a1228',
+        backgroundColor: tlTc('#0a1228', '#ffffff'),
         title: {
             text: title,
             subtext: series.length + ' operation(s) plotted',
             left: 'center',
             top: 10,
-            textStyle: { fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.94)' },
-            subtextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' }
+            textStyle: { fontSize: 16, fontWeight: '700', color: tlTc('rgba(255,255,255,0.94)', 'rgba(15,23,42,0.94)') },
+            subtextStyle: { fontSize: 11, color: tlTc('rgba(255,255,255,0.50)', 'rgba(15,23,42,0.5)') }
         },
         tooltip: {
             trigger: 'axis',
@@ -15474,7 +15528,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
             data: legends,
             top: 50,
             left: 'center',
-            textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.72)' },
+            textStyle: { fontSize: 11, color: tlTc('rgba(255,255,255,0.72)', 'rgba(15,23,42,0.72)') },
             itemGap: 15,
             type: 'scroll'
         },
@@ -15493,10 +15547,10 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
             name: 'Time (ms)',
             nameLocation: 'center',
             nameGap: 32,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
             axisLabel: {
                 fontSize: 10,
-                color: 'rgba(255,255,255,0.55)',
+                color: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)'),
                 formatter: function (v) {
                     var d = new Date(v);
                     return String(d.getHours()).padStart(2, '0') + ':' +
@@ -15504,22 +15558,22 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                         String(d.getSeconds()).padStart(2, '0');
                 }
             },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
-            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+            axisLine: { lineStyle: { color: tlTc('rgba(255,255,255,0.16)', 'rgba(15,23,42,0.16)') } },
+            splitLine: { show: true, lineStyle: { color: tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)') } }
         },
         yAxis: {
             type: 'value',
             name: unit,
             nameLocation: 'middle',
             nameGap: 45,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
             axisLabel: {
                 fontSize: 10,
-                color: 'rgba(255,255,255,0.55)',
+                color: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)'),
                 formatter: function (v) { return v.toFixed(2); }
             },
             axisLine: { show: true, lineStyle: { color: color, width: 2 } },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
+            splitLine: { lineStyle: { color: tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)'), type: 'dashed' } }
         },
         dataZoom: [
             {
@@ -15529,7 +15583,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color) {
                 start: 0,
                 end: 100,
                 borderColor: 'rgba(255,255,255,0.14)',
-                backgroundColor: 'rgba(15,23,42,0.70)',
+                backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'),
                 // FIX 5: rgba not hex alpha
                 fillerColor: _hexToRgba(color, 0.12),
                 handleStyle: { color: color }
@@ -15856,7 +15910,7 @@ function updatePmWaveforms(assetId, pm) {
                         start: 0,
                         end: 100,
                         borderColor: 'transparent',
-                        backgroundColor: 'rgba(15,23,42,0.70)',
+                        backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'),
                         fillerColor: chartColor + '30',
                         handleStyle: { color: chartColor, borderColor: 'rgba(255,255,255,0.80)', borderWidth: 2, shadowBlur: 4, shadowColor: chartColor + '60' },
                         handleSize: '80%',
@@ -16286,14 +16340,14 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
     });
 
     chart.setOption({
-        backgroundColor: '#0a1228',
+        backgroundColor: tlTc('#0a1228', '#ffffff'),
         title: {
             text: title,
             subtext: 'A: ' + aOperations.length + ' operation(s), B: ' + bOperations.length + ' operation(s)',
             left: 'center',
             top: 10,
-            textStyle: { fontSize: 16, fontWeight: '700', color: 'rgba(255,255,255,0.94)' },
-            subtextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.50)' }
+            textStyle: { fontSize: 16, fontWeight: '700', color: tlTc('rgba(255,255,255,0.94)', 'rgba(15,23,42,0.94)') },
+            subtextStyle: { fontSize: 11, color: tlTc('rgba(255,255,255,0.50)', 'rgba(15,23,42,0.5)') }
         },
         tooltip: {
             trigger: 'axis',
@@ -16326,7 +16380,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
             data: legends,
             top: 50,
             left: 'center',
-            textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.72)' },
+            textStyle: { fontSize: 11, color: tlTc('rgba(255,255,255,0.72)', 'rgba(15,23,42,0.72)') },
             itemGap: 15,
             type: 'scroll'
         },
@@ -16345,10 +16399,10 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
             name: 'Time (TimestampDevice)',
             nameLocation: 'center',
             nameGap: 30,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
             axisLabel: {
                 fontSize: 10,
-                color: 'rgba(255,255,255,0.55)',
+                color: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)'),
                 formatter: function (v) {
                     var d = new Date(v);
                     return String(d.getHours()).padStart(2, '0') + ':' +
@@ -16356,19 +16410,19 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
                         String(d.getSeconds()).padStart(2, '0');
                 }
             },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
-            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+            axisLine: { lineStyle: { color: tlTc('rgba(255,255,255,0.16)', 'rgba(15,23,42,0.16)') } },
+            splitLine: { show: true, lineStyle: { color: tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)') } }
         },
         yAxis: {
             type: 'value',
             name: unit,
-            nameTextStyle: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.60)' },
-            axisLabel: { fontSize: 10, color: 'rgba(255,255,255,0.55)', formatter: function (v) { return v.toFixed(2); } },
+            nameTextStyle: { fontSize: 12, fontWeight: '600', color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
+            axisLabel: { fontSize: 10, color: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)'), formatter: function (v) { return v.toFixed(2); } },
             axisLine: { show: true, lineStyle: { color: '#e2e8f0' } },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
+            splitLine: { lineStyle: { color: tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)'), type: 'dashed' } }
         },
         dataZoom: [
-            { type: 'slider', height: 22, bottom: 8, start: 0, end: 100, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(15,23,42,0.70)', fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { color: 'rgba(255,255,255,0.50)' } },
+            { type: 'slider', height: 22, bottom: 8, start: 0, end: 100, borderColor: tlTc('rgba(255,255,255,0.14)', 'rgba(15,23,42,0.14)'), backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'), fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { color: tlTc('rgba(255,255,255,0.50)', 'rgba(15,23,42,0.5)') } },
             { type: 'inside' }
         ],
         series: series

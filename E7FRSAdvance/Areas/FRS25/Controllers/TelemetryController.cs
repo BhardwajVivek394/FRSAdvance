@@ -1097,7 +1097,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
 
                 var criteria = mFRSAlertLister.SearchCriteria;
-                mFRSAlertLister.Pager.Take = mFRSAlertLister.Pager.PageSize;
+                mFRSAlertLister.Pager.Take = -1;
                 mFRSAlertLister = _frsAlertService.GetListerWithPagination(mFRSAlertLister);
 
                 var list = (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts != null)

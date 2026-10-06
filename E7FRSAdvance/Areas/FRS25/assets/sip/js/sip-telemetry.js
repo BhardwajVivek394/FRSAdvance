@@ -446,10 +446,780 @@
         evt.stopPropagation();
         if (_replayOn && window.SipReplay && typeof window.SipReplay.onCellClick === 'function') {
             window.SipReplay.onCellClick(cell, getCellAssetName(cell));
+            renderInspector();
+            return;
+        }
+        /* v618.18: full screen -> show the asset in the INSPECTOR panel (its
+           "Details" button opens the asset popup); small card -> popup */
+        if (inspectorVisible()) {
+            inspectSelect(cell);
             return;
         }
         openSipAssetPopupForCell(cell, evt);
     }
+
+    /* ======================================================================
+       v618.18 INSPECTOR -- live values of the selected asset in the empty
+       top-right area of the full-screen SIP. Live: values from the SIP live
+       store, health from TlHealthView.classify (safe range, bar), relays.
+       Replay: SipReplay.inspectorHtml() -- values at the cursor timestamp,
+       small trend per reading, graph of the chosen reading.
+       ====================================================================== */
+    var INSP_CSS = '' +
+        '.sip-insp{position:absolute;right:14px;z-index:6;width:min(360px,34%);max-height:58%;display:flex;flex-direction:column;' +
+        'background:var(--in-bg);color:var(--in-text);border:1px solid var(--in-edge);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);' +
+        'font:12.5px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;}' +
+        '.sip-card:not(.fullscreen) .sip-insp{display:none;}' +
+        '.sip-insp-bar{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--in-edge);}' +
+        '.sip-insp-bar b{flex:1;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--in-muted);}' +
+        '.sip-insp-bar button{border:1px solid var(--in-edge);background:transparent;color:var(--in-text);border-radius:6px;height:24px;padding:0 8px;font:inherit;font-size:11.5px;cursor:pointer;}' +
+        '.sip-insp-bar button:hover{border-color:var(--in-accent);}' +
+        '.sip-insp-body{overflow:auto;padding:8px 10px 10px;}' +
+        '.sip-insp-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px;}' +
+        '.sip-insp-head b{font-size:16px;}' +
+        '.sip-insp-st{color:var(--in-muted);font-size:12px;}' +
+        '.sip-insp-time{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--in-muted);font-size:12px;}' +
+        '.sip-insp-empty{color:var(--in-muted);padding:6px 0;}' +
+        '.sip-insp-rows{display:flex;flex-direction:column;gap:1px;}' +
+        '.sip-insp-row{display:grid;grid-template-columns:minmax(0,1fr) 78px 92px;align-items:center;gap:8px;padding:3px 6px;border-radius:6px;cursor:pointer;}' +
+        '.sip-insp-row:hover{background:var(--in-hover);}' +
+        '.sip-insp-row.on{box-shadow:inset 0 0 0 1.5px var(--in-accent);}' +
+        '.sip-insp-row.st-low{background:rgba(224,161,0,.14);} .sip-insp-row.st-high{background:rgba(229,72,77,.14);}' +
+        '.sip-insp-row .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--in-muted);}' +
+        '.sip-insp-row .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}' +
+        '.sip-insp-row.st-low .v{color:#C98A00;} .sip-insp-row.st-high .v{color:#E5484D;}' +
+        '.sip-insp-row svg{display:block;width:100%;height:22px;}' +
+        '.sip-insp-bar2{position:relative;height:10px;}' +
+        '.sip-insp-bar2 i{position:absolute;left:0;right:0;top:4px;height:2px;background:var(--in-edge);}' +
+        '.sip-insp-bar2 em{display:none;}' +
+        /* v618.29: same gauge as the Health view -- amber low end, green safe middle, red high end */
+        '.sip-insp-bar2 i{height:4px !important;top:3px !important;border-radius:3px;background:linear-gradient(90deg,rgba(224,161,0,.55) 0%,rgba(31,157,85,.38) 22%,rgba(31,157,85,.38) 78%,rgba(229,72,77,.45) 100%) !important;}' +
+        '.sip-insp-bar2 u{width:4px !important;margin-left:-2px !important;top:-1px !important;height:12px !important;}' +
+        '.sip-insp-bar2 u{position:absolute;top:0;width:3px;height:10px;margin-left:-1.5px;border-radius:2px;background:var(--in-text);}' +
+        '.sip-insp-row.st-low u{background:#E0A100;} .sip-insp-row.st-high u{background:#E5484D;}' +
+        '.sip-insp-relays{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 6px;}' +
+        '.sip-insp-relays span{font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--in-edge);}' +
+        '.sip-insp-relays .up{color:#1F9D55;border-color:rgba(31,157,85,.5);background:rgba(31,157,85,.10);} .sip-insp-relays .dn{color:#B88700;border-color:rgba(234,179,8,.6);background:rgba(234,179,8,.14);}' +
+        '.sip-insp .ins-tr{stroke:var(--in-text);} .sip-insp .ins-dl{stroke:var(--in-accent);} .sip-insp .ins-cur{stroke:#F6A500;}' +
+        '.sip-insp-graph{margin-top:8px;border-top:1px solid var(--in-edge);padding-top:6px;}' +
+        '.sip-insp-gh,.sip-insp-gf{display:flex;justify-content:space-between;gap:8px;color:var(--in-muted);font-size:11.5px;}' +
+        '.sip-insp-gh b{color:var(--in-text);}' +
+        '.sip-insp-graph svg{display:block;width:100%;height:90px;background:var(--in-hover);border-radius:6px;}' +
+        /* v618.19 tabs */
+        '.sip-insp{width:320px;max-height:calc(100% - 20px);border-radius:12px;right:8px;}' +
+        '.sip-insp .sip-insp-bar{padding:6px 8px;gap:6px;}' +
+        '.sip-insp .sip-insp-bar b{font-size:14px;font-weight:800;}' +
+        '.sip-insp .sip-insp-bar button{height:22px;padding:0 7px;font-size:11px;}' +
+        '.sip-insp .sip-insp-body{padding:6px 8px 8px;}' +
+        '.sip-insp-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;}' +
+        '.sip-insp-list{display:flex;flex-direction:column;gap:1px;}' +
+        '.sip-insp-li{display:grid;grid-template-columns:minmax(0,1fr) 66px 70px;gap:6px;align-items:center;padding:4px 6px 4px 9px;border-radius:6px;font-size:12px;position:relative;}' +
+        '.sip-insp-li:nth-child(odd){background:var(--in-hover);}' +
+        '.sip-insp-li::before{content:"";position:absolute;left:2px;top:5px;bottom:5px;width:3px;border-radius:2px;background:rgba(31,157,85,.55);}' +
+        '.sip-insp-li.st-low::before,.sip-insp-li.st-near::before{background:#E0A100;} .sip-insp-li.st-high::before{background:#E5484D;} .sip-insp-li.st-none::before{background:var(--in-edge);}' +
+        '.sip-insp-sumrow{display:flex;align-items:center;gap:8px;margin-bottom:6px;color:var(--in-text);}' +
+        '.sip-insp-sumrow .sip-insp-chips{margin:0;}' +
+        '.sip-insp-sect span{font-weight:600;color:var(--in-muted);margin-left:4px;}' +
+        '.sip-insp-ico{width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:var(--in-hover);color:var(--in-accent);font-size:12px;}' +
+        '.sip-insp .sip-insp-bar{background:linear-gradient(180deg,var(--in-hover),transparent);}' +
+        '.sip-insp-li .n{color:var(--in-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.sip-insp-li .v{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}' +
+        '.sip-insp-li .v i{font-style:normal;font-size:9.5px;}' +
+        '.sip-insp-li.st-low{background:rgba(224,161,0,.12);} .sip-insp-li.st-low .v{color:#C98A00;} .sip-insp-li.st-low u{background:#E0A100;}' +
+        '.sip-insp-li.st-high{background:rgba(229,72,77,.12);} .sip-insp-li.st-high .v{color:#E5484D;} .sip-insp-li.st-high u{background:#E5484D;}' +
+        '.sip-insp-li.st-near{box-shadow:inset 0 0 0 1px rgba(224,161,0,.45);} .sip-insp-li.stale{opacity:.6;}' +
+        '.sip-insp-live{width:8px;height:8px;border-radius:50%;background:#22C55E;box-shadow:0 0 0 3px rgba(34,197,94,.25);animation:sipInspPulse 2s infinite;}' +
+        '@keyframes sipInspPulse{50%{box-shadow:0 0 0 6px rgba(34,197,94,0);}}' +
+        '.sip-insp-hero{display:flex;align-items:flex-start;gap:10px;margin-bottom:8px;}' +
+        '.sip-insp-hero .nm{font-size:22px;font-weight:800;letter-spacing:.02em;}' +
+        '.sip-insp-hero .sub{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}' +
+        '.sip-insp-chip{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--in-edge);color:var(--in-muted);}' +
+        '.sip-insp-chip.ok{color:#1F9D55;border-color:rgba(31,157,85,.45);background:rgba(31,157,85,.08);}' +
+        '.sip-insp-chip.bad{color:#E5484D;border-color:rgba(229,72,77,.45);background:rgba(229,72,77,.08);}' +
+        '.sip-insp-chip.warn{color:#B88700;border-color:rgba(234,179,8,.55);background:rgba(234,179,8,.10);}' +
+        '.sip-insp-kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;}' +
+        '.sip-insp-kpis4 div{border:1px solid var(--in-edge);border-radius:10px;padding:6px 8px;}' +
+        '.sip-insp-kpis4 b{display:block;font-size:18px;} .sip-insp-kpis4 span{font-size:11px;color:var(--in-muted);}' +
+        '.sip-insp-kpis4 .bad b{color:#E5484D;} .sip-insp-kpis4 .warn b{color:#B88700;}' +
+        '.sip-insp-relays.big span{font-size:12px;padding:3px 9px;}' +
+        '.sip-insp-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;}' +
+        '.sip-insp-tile{border:1px solid var(--in-edge);border-radius:10px;padding:7px 9px 6px;}' +
+        '.sip-insp-tile .lb{font-size:11.5px;color:var(--in-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.sip-insp-tile .vl{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;margin:1px 0 3px;display:flex;align-items:baseline;gap:6px;}' +
+        '.sip-insp-tile .vl i{font-style:normal;font-size:10.5px;font-weight:700;}' +
+        '.sip-insp-tile .rg{font-size:10.5px;color:var(--in-muted);margin-top:2px;}' +
+        '.sip-insp-tile.st-low{border-color:rgba(224,161,0,.6);background:rgba(224,161,0,.08);} .sip-insp-tile.st-low .vl{color:#C98A00;}' +
+        '.sip-insp-tile.st-high{border-color:rgba(229,72,77,.6);background:rgba(229,72,77,.08);} .sip-insp-tile.st-high .vl{color:#E5484D;}' +
+        '.sip-insp-tile.st-near{border-color:rgba(224,161,0,.45);} .sip-insp-tile.stale{opacity:.6;}' +
+        '.sip-insp-tile.st-low u{background:#E0A100;} .sip-insp-tile.st-high u{background:#E5484D;}' +
+        '.sip-insp-allhead{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;} .sip-insp-allhead b{font-size:15px;} .sip-insp-allhead span{color:var(--in-muted);font-size:12px;}' +
+        '.sip-insp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px;}' +
+        '.sip-insp-card{border:1px solid var(--in-edge);border-radius:10px;padding:2px 4px 5px;}' +
+        '.sip-insp-card.bad{border-color:rgba(229,72,77,.5);}' +
+        '.sip-insp-mini{display:flex;justify-content:space-between;gap:8px;padding:1px 6px;font-size:12px;border-radius:4px;}' +
+        '.sip-insp-mini .n{color:var(--in-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;} .sip-insp-mini .v{font-weight:700;font-variant-numeric:tabular-nums;}' +
+        '.sip-insp-mini.st-low{background:rgba(224,161,0,.12);} .sip-insp-mini.st-low .v{color:#C98A00;}' +
+        '.sip-insp-mini.st-high{background:rgba(229,72,77,.12);} .sip-insp-mini.st-high .v{color:#E5484D;}' +
+        '.sip-insp-bar b{color:var(--in-text);font-size:14px;letter-spacing:.02em;text-transform:none;}' +
+        '.sip-insp-upd{color:var(--in-muted);font-size:11px;font-variant-numeric:tabular-nums;}' +
+        '.sip-insp-tabs{display:flex;gap:2px;padding:4px 6px 0;border-bottom:1px solid var(--in-edge);overflow-x:auto;}' +
+        '.sip-insp-tabs button{border:none;background:transparent;color:var(--in-muted);font:inherit;font-size:12px;font-weight:600;padding:6px 9px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}' +
+        '.sip-insp-tabs button[aria-selected="true"]{color:var(--in-text);border-bottom-color:var(--in-accent);}' +
+        '.sip-insp-tools{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;}' +
+        '.sip-insp-tools button,.sip-insp-tools input,.sip-insp-chips button{border:1px solid var(--in-edge);background:transparent;color:var(--in-text);border-radius:6px;height:26px;padding:0 8px;font:inherit;font-size:11.5px;cursor:pointer;}' +
+        '.sip-insp-tools button[aria-pressed="true"],.sip-insp-chips button[aria-pressed="true"]{background:var(--in-accent);border-color:var(--in-accent);color:#04161A;font-weight:600;}' +
+        '.sip-insp-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;}' +
+        '.sip-insp-graph svg{height:150px;}' +
+        '.sip-insp-row .v i{font-style:normal;font-size:10px;}' +
+        '.sip-insp-sum{font-size:12px;font-weight:600;margin:2px 0 6px;} .sip-insp-sum.ok{color:#1F9D55;} .sip-insp-sum.bad{color:#E5484D;}' +
+        '.sip-insp-kpis{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;}' +
+        '.sip-insp-kpis .k{border:1px solid var(--in-edge);border-radius:8px;padding:6px 10px;display:flex;align-items:baseline;gap:8px;}' +
+        '.sip-insp-kpis b{font-size:22px;} .sip-insp-kpis .p b{color:#E0A100;} .sip-insp-kpis .f b{color:#E5484D;}' +
+        '.sip-insp-kpis span{color:var(--in-muted);font-size:12px;}' +
+        '.sip-insp-sect{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--in-muted);margin:8px 0 4px;}' +
+        '.sip-insp-cause{display:grid;grid-template-columns:minmax(0,1.3fr) 1fr 34px;gap:8px;align-items:center;padding:2px 0;}' +
+        '.sip-insp-cause .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.sip-insp-cause .b{height:8px;border-radius:4px;background:var(--in-hover);overflow:hidden;}' +
+        '.sip-insp-cause .b i{display:block;height:100%;border-radius:4px;} .sip-insp-cause .b i.f{background:#E5484D;} .sip-insp-cause .b i.p{background:#E0A100;}' +
+        '.sip-insp-cause .c{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;}' +
+        '.sip-insp-tl{list-style:none;margin:0;padding:0;}' +
+        '.sip-insp-tl li{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 2px 5px 8px;border-bottom:1px solid var(--in-edge);box-shadow:inset 3px 0 0 var(--in-edge);}' +
+        '.sip-insp-tl li.act{box-shadow:inset 3px 0 0 #E5484D;} .sip-insp-tl li.clr{box-shadow:inset 3px 0 0 #1F9D55;} .sip-insp-tl li.mnt{box-shadow:inset 3px 0 0 #E0A100;}' +
+        '.sip-insp-tl time{color:var(--in-muted);font-variant-numeric:tabular-nums;font-size:12px;}' +
+        '.sip-insp-tl small{color:var(--in-muted);}' +
+        '.sip-insp-tl em{font-style:normal;font-size:11px;font-weight:700;padding:1px 7px;border-radius:4px;border:1px solid var(--in-edge);}' +
+        '.sip-insp-tl li.act em{color:#E5484D;border-color:rgba(229,72,77,.5);} .sip-insp-tl li.clr em{color:#1F9D55;border-color:rgba(31,157,85,.5);} .sip-insp-tl li.mnt em{color:#C98A00;border-color:rgba(224,161,0,.5);}' +
+        '.sip-insp-banner{border-radius:8px;padding:8px 10px;font-weight:700;margin-bottom:6px;}' +
+        '.sip-insp-banner.ok{background:rgba(31,157,85,.12);color:#1F9D55;} .sip-insp-banner.bad{background:rgba(229,72,77,.12);color:#E5484D;}' +
+        /* v618.20 all-assets list + Pickup / Drop */
+        '.sip-insp-asset{border:1px solid var(--in-edge);border-radius:8px;padding:2px 4px 4px;margin-bottom:6px;}' +
+        '.sip-insp-ah{display:flex;align-items:center;gap:8px;width:100%;border:none;background:transparent;color:var(--in-text);font:inherit;padding:5px 4px;cursor:pointer;text-align:left;}' +
+        '.sip-insp-ah b{font-size:13px;} .sip-insp-ah span{color:var(--in-muted);font-size:11.5px;} .sip-insp-ah i{margin-left:auto;font-style:normal;color:var(--in-muted);font-size:10px;}' +
+        '.sip-insp-ah:hover b{color:var(--in-accent);}' +
+        '.sip-insp-row.sm{padding:1px 6px;grid-template-columns:minmax(0,1fr) 78px 84px;}' +
+        '.sip-insp-row.sm svg{height:18px;}' +
+        '.sip-insp .rp-pk{color:#1F9D55;font-weight:700;} .sip-insp .rp-dr{color:#B88700;font-weight:700;}';
+    var insp = { name: null, cellId: null, min: false, timer: null, pressing: false, tab: 'live', cache: {}, frame: '', graphCol: null, graphHours: 6 };
+    /* keep the yard visible: the canvas gives up the panel's width on the
+       right while the panel is open (the SVG re-fits to the narrower box) */
+    function inspReserve(on) {
+        /* v618.24: the yard is NOT shifted any more (panel floats, draggable) */
+        on = false;
+        var canvas = document.getElementById('sipCanvas');
+        if (!canvas) return;
+        var want = on ? '336px' : '';
+        if (canvas.style.marginRight !== want) {
+            canvas.style.marginRight = want;
+            try { window.dispatchEvent(new Event('resize')); } catch (e) { /* old browser */ }
+        }
+    }
+    function inspectorVisible() {
+        var card = document.getElementById('sipCardSection');
+        return !!(card && card.classList.contains('fullscreen'));
+    }
+    function inspectSelect(cell) {
+        var nm = getCellAssetName(cell);
+        if (nm !== insp.name) { insp.graphCol = null; insp.frame = ''; }
+        insp.name = nm;
+        insp.cellId = cell.id;
+        insp.min = false;
+        if (typeof highlight === 'function') highlight(insp.name, true);
+        if (window.TlHealthView && typeof window.TlHealthView.ensureRanges === 'function') {
+            try { window.TlHealthView.ensureRanges(); } catch (e) { /* optional */ }
+        }
+        renderInspector();
+    }
+    function ensureInspector() {
+        var canvas = document.getElementById('sipCanvas');
+        if (!canvas || !canvas.parentNode) return null;
+        var host = canvas.parentNode;
+        if (window.getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        if (!document.getElementById('sipInspCss')) {
+            var st = document.createElement('style');
+            st.id = 'sipInspCss';
+            st.textContent = INSP_CSS;
+            document.head.appendChild(st);
+        }
+        var el = document.getElementById('sipInspector');
+        if (!el) {
+            el = document.createElement('aside');
+            el.id = 'sipInspector';
+            el.className = 'sip-insp';
+            el.setAttribute('aria-label', 'Asset values');
+            host.appendChild(el);
+            /* never rebuild between pointerdown and click (the click would be lost) */
+            el.addEventListener('pointerdown', function () { insp.pressing = true; });
+            /* v618.24: drag by the title bar to move the panel off any part of the yard */
+            el.addEventListener('pointerdown', function (e) {
+                if (!e.target.closest || !e.target.closest('.sip-insp-bar') || e.target.closest('button')) return;
+                var r0 = el.getBoundingClientRect(), p0 = el.offsetParent ? el.offsetParent.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+                var dx = e.clientX - r0.left, dy = e.clientY - r0.top;
+                function mv(ev) {
+                    var x = Math.max(0, Math.min(p0.width - r0.width, ev.clientX - p0.left - dx));
+                    var y = Math.max(0, Math.min(p0.height - 40, ev.clientY - p0.top - dy));
+                    insp.pos = { x: x, y: y };
+                    el.style.left = x + 'px';
+                    el.style.top = y + 'px';
+                    el.style.right = 'auto';
+                }
+                function up() { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); }
+                document.addEventListener('pointermove', mv);
+                document.addEventListener('pointerup', up);
+                e.preventDefault();
+            });
+            document.addEventListener('pointerup', function () { setTimeout(function () { insp.pressing = false; }, 0); }, true);
+            el.addEventListener('change', function (e) {
+                var di = e.target && e.target.getAttribute && e.target.getAttribute('data-insp-day');
+                if (di) { insp[di] = e.target.value || inspTodayYmd(); inspLoadTab(true); }
+            });
+            el.addEventListener('click', function (e) {
+                var t = e.target;
+                if (!t.closest) return;
+                e.stopPropagation();
+                if (t.closest('[data-insp-min]')) { insp.min = !insp.min; renderInspector(); return; }
+                var ah = t.closest('[data-insp-asset]');
+                if (ah) {
+                    var an = ah.getAttribute('data-insp-asset');
+                    if (_replayOn && window.SipReplay && typeof window.SipReplay.inspectorSelect === 'function') { window.SipReplay.inspectorSelect(an); renderInspector(); return; }
+                    var cs = findCells(an);
+                    if (cs.length) inspectSelect(cs[0]);
+                    return;
+                }
+                if (t.closest('[data-insp-all]')) {
+                    if (_replayOn && window.SipReplay && typeof window.SipReplay.inspectorSelect === 'function') window.SipReplay.inspectorSelect(null);
+                    renderInspector();
+                    return;
+                }
+                var tb = t.closest('[data-insp-tab]');
+                if (tb) { insp.tab = tb.getAttribute('data-insp-tab'); renderInspector(); return; }
+                if (t.closest('[data-insp-reload]')) { inspLoadTab(true); return; }
+                var hb = t.closest('[data-insp-hours]');
+                if (hb) { insp.graphHours = +hb.getAttribute('data-insp-hours') || 6; inspLoadGraph(true); return; }
+                var gi = t.closest('[data-insp-gi]');
+                if (gi) { insp.graphCol = +gi.getAttribute('data-insp-gi'); inspSetBody(inspGraphHtml()); return; }
+                var gc = t.closest('[data-insp-gcol]');
+                if (gc && false) {
+                    /* live row -> its graph */
+                    var want = gc.getAttribute('data-insp-gcol');
+                    insp.tab = 'graph';
+                    insp.graphWant = want;
+                    renderInspector();
+                    return;
+                }
+                if (t.closest('[data-insp-clear]')) { insp.name = null; insp.cellId = null; insp.frame = ''; if (typeof highlight === 'function') highlight(''); renderInspector(); return; }
+                if (t.closest('[data-insp-open]')) {
+                    var c = state.cellById[insp.cellId];
+                    if (c) openSipAssetPopupForCell(c, e);
+                    return;
+                }
+                var col = t.closest('[data-insp-col]');
+                if (col && window.SipReplay && typeof window.SipReplay.inspectorPick === 'function') {
+                    window.SipReplay.inspectorPick(+col.getAttribute('data-insp-col'));
+                    renderInspector();
+                }
+            });
+        }
+        if (insp.pos) { el.style.left = insp.pos.x + 'px'; el.style.top = insp.pos.y + 'px'; el.style.right = 'auto'; }
+        else el.style.top = (canvas.offsetTop + 10) + 'px';
+        return el;
+    }
+    function inspPalette(el) {
+        var T = SIP._theme || {};
+        var dark = (T.glowOpacity || 0) > 0;
+        el.style.setProperty('--in-bg', dark ? 'rgba(14,24,40,.93)' : 'rgba(255,255,255,.96)');
+        el.style.setProperty('--in-text', dark ? '#E6EDF5' : '#13202E');
+        el.style.setProperty('--in-muted', dark ? '#9FB0C6' : '#5A6878');
+        el.style.setProperty('--in-edge', dark ? 'rgba(255,255,255,.14)' : 'rgba(15,23,42,.12)');
+        el.style.setProperty('--in-hover', dark ? 'rgba(255,255,255,.05)' : 'rgba(15,23,42,.04)');
+        el.style.setProperty('--in-accent', T.select || '#3BC9DB');
+    }
+    function inspFmt(v) {
+        if (v === null || v === undefined || isNaN(v)) return '--';
+        var a = Math.abs(v);
+        return a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : v.toFixed(2);
+    }
+    /* ---- v618.19: tabs = the asset popup's tabs, inside the panel ------- */
+    var INSP_TABS = [['live', 'Live'], ['graph', 'Graph'], ['alerts', 'Alert analytics'], ['events', 'Event log'], ['alarms', 'Alarms']];
+    var INSP_TTL = 60000;
+    function inspTodayYmd() {
+        var d = new Date();
+        return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    }
+    function inspRec() { return insp.name ? state.assets[insp.name] : null; }
+    function inspCache() {
+        var k = insp.name || '';
+        return insp.cache[k] || (insp.cache[k] = {});
+    }
+    function relayChip(name, up) {
+        return '<span class="' + (up ? 'up' : 'dn') + '">' + escapeHtml(name) + ' ' + (up ? '&uarr; Pickup' : '&darr; Drop') + '</span>';
+    }
+    /* v618.22 -- INSPECTOR = LIVE VALUES ONLY (history / graphs live in the
+       replay dock). Selected asset: header with state, KPIs, relays and one
+       tile per reading (value, Low / High, safe range, bar). Nothing
+       selected: every asset as a compact card. */
+    function liveState(name) {
+        var cs = findCells(name), out = [];
+        for (var i = 0; i < cs.length; i++) {
+            var c = cs[i], at = c.attrs || {}, d = '';
+            if (/Track/.test(c.type)) {
+                var st = (at.path && (at.path.stroke || at.path.fill)) || '';
+                d = (typeof SIP.isLit === 'function' && SIP.isLit(st)) ? 'Occupied' : 'Clear';
+            } else if (/Signal|Shunt/.test(c.type)) {
+                var lit = (at.signal && at.signal.lit) || '';
+                d = lit ? 'Aspect ' + lit : '';
+            } else if (/PointMachine/.test(c.type)) {
+                var f = String((at.circle1 && at.circle1.fill) || '').toLowerCase();
+                d = f === '#22d142' ? 'Normal' : f === '#ffd400' ? 'Reverse' : '';
+            }
+            if (d && out.indexOf(d) === -1) out.push(d);
+        }
+        return out.join(' / ');
+    }
+    /* v618.23: one entry per attribute (the same attribute can arrive under
+       its raw name and its AliasName) -- AliasName label, newest sample wins */
+    function liveReadings(rec) {
+        var cls = (window.TlHealthView && typeof window.TlHealthView.classify === 'function') ? window.TlHealthView.classify : null;
+        var meta = window.userAssetSimpleMap || {};
+        var by = {};
+        Object.keys(rec.attrs || {}).forEach(function (k) {
+            var o = rec.attrs[k] || {};
+            var m = (o.attrId && rec.id) ? meta[rec.id + '_' + o.attrId] : null;
+            var label = String((m && (m.name || m.AliasName)) || o.name || k).replace(/<[^>]*>/g, '').trim();
+            var key = o.attrId ? 'id' + o.attrId : 'n' + label.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            var prev = by[key];
+            if (prev && (prev.o.ts || 0) > (o.ts || 0)) return;
+            if (prev && label.length < prev.label.length && !(m && m.name)) label = prev.label;
+            by[key] = { o: o, label: label };
+        });
+        /* raw-name and alias entries without attrId pointing at the same value */
+        var seen = {};
+        return Object.keys(by).map(function (key) {
+            var e = by[key], o = e.o;
+            var v = (o.Value === null || o.Value === undefined) ? null : parseFloat(o.Value);
+            var c = cls ? cls(rec.id, e.label, v) : { st: 'ok' };
+            return { k: e.label, v: v, c: c, stale: o.fresh === false };
+        }).filter(function (r) {
+            var sk = r.k.toUpperCase();
+            if (seen[sk]) return false;
+            seen[sk] = 1;
+            return true;
+        }).sort(function (a, b) { return a.k.localeCompare(b.k, undefined, { numeric: true }); });
+    }
+    function liveAllHtml() {
+        var names = Object.keys(state.assets).filter(function (n) { return findCells(n).length; })
+            .sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+        if (!names.length) return '<div class="sip-insp-empty">Waiting for live data. Click any track, point or signal in the yard for its live values.</div>';
+        var h = '<div class="sip-insp-allhead"><b>All assets</b><span>' + names.length + ' live</span></div><div class="sip-insp-cards">';
+        names.forEach(function (n) {
+            var rec = state.assets[n];
+            var rd = liveReadings(rec);
+            var bad = rd.filter(function (r) { return r.c.st === 'low' || r.c.st === 'high'; }).length;
+            var st = liveState(n);
+            h += '<div class="sip-insp-card' + (bad ? ' bad' : '') + '"><button type="button" class="sip-insp-ah" data-insp-asset="' + escapeHtml(n) + '" title="Show this asset">' +
+                '<b>' + escapeHtml(n) + '</b>' + (st ? '<span class="sip-insp-chip ' + stateCls(st) + '">' + escapeHtml(st) + '</span>' : '') +
+                (bad ? '<span class="sip-insp-chip bad">' + bad + ' out</span>' : '') + '<i>&#9654;</i></button>';
+            var rl = Object.keys(rec.dl || {});
+            if (rl.length) { h += '<div class="sip-insp-relays">'; rl.forEach(function (k) { h += relayChip(k, rec.dl[k].isPickup); }); h += '</div>'; }
+            rd.forEach(function (r) {
+                h += '<div class="sip-insp-mini st-' + (r.c.st || 'ok') + '"><span class="n" title="' + escapeHtml(r.k) + '">' + escapeHtml(r.k) + '</span><span class="v">' + inspFmt(r.v) + '</span></div>';
+            });
+            h += '</div>';
+        });
+        return h + '</div>';
+    }
+    function stateCls(st) {
+        return /Occupied/.test(st) ? 'bad' : /Clear|Normal/.test(st) ? 'ok' : /Reverse/.test(st) ? 'warn' : /Aspect R/.test(st) ? 'bad' : /Aspect (Y|YY)/.test(st) ? 'warn' : /Aspect G/.test(st) ? 'ok' : '';
+    }
+    /* v618.24 POINT MACHINE: only what the PM table / cards show --
+       per end A / B for the last operated direction: IPT N/R(A) Max + Avg,
+       VPT 110 DC LOC N/R(V), TPT N/R(ms), VPT 24 DC LOC N/R(V), VPT N/R(V);
+       relays NWKR / RWKR / NWCR / RWCR. Uses the PM table's own model
+       (buildPmTableRowModel) when the page has this asset, otherwise the
+       same attribute ids from the SIP live store:
+         Normal  A: I 1004 Max / 1002 Avg / 1005 TPT, V 2002;  B: I 3004 / 3002 / 3005, V 4002
+         Reverse A: I 6004 / 6002 / 6005, V 7002;            B: I 8004 / 8002 / 8005, V 9002
+         VPT 24 DC LOC: A 576 N / 577 R, B 578 N / 579 R;   VPT: A 25 N / 26 R, B 27 N / 28 R */
+    function isPmAsset(name) {
+        var cs = findCells(name);
+        for (var i = 0; i < cs.length; i++) if (/PointMachine/.test(cs[i].type)) return true;
+        return false;
+    }
+    function pmAttrById(rec) {
+        var by = {};
+        Object.keys(rec.attrs || {}).forEach(function (k) {
+            var o = rec.attrs[k] || {};
+            var id = o.attrId || 0;
+            if (!id) { var m = /-(\d{2,5})-/.exec(k) || /^(\d{2,5})$/.exec(k); if (m) id = parseInt(m[1], 10); }
+            if (id && (!by[id] || (o.ts || 0) >= (by[id].ts || 0))) by[id] = o;
+        });
+        return by;
+    }
+    function pmReadings(rec, dirHint) {
+        var cls = (window.TlHealthView && typeof window.TlHealthView.classify === 'function') ? window.TlHealthView.classify : null;
+        var out = [];
+        var push = function (label, v) {
+            var n = (v === null || v === undefined || v === '') ? null : parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
+            if (n !== null && isNaN(n)) n = null;
+            out.push({ k: label, v: n, c: cls ? cls(rec.id, label, n) : { st: 'ok' }, stale: false });
+        };
+        var m = null;
+        if (rec.id && typeof window.buildPmTableRowModel === 'function' && window.wsLiveData && window.wsLiveData[rec.id]) {
+            try { m = window.buildPmTableRowModel(rec.id); } catch (e) { m = null; }
+        }
+        var DEF = [['iptMax', 'IPT N/R(A) Max'], ['iptAvg', 'IPT N/R(A) Avg'], ['vpt110Avg', 'VPT 110 DC LOC N/R(V)'], ['tpt', 'TPT N/R(ms)'], ['locIndication', 'VPT 24 DC LOC N/R(V)'], ['krIndication', 'VPT N/R(V)']];
+        if (m) {
+            ['A', 'B'].forEach(function (E) {
+                var f = m[E]; if (!f) return;
+                var any = DEF.some(function (d) { return f[d[0]] && f[d[0]].present; });
+                if (!any) return;
+                DEF.forEach(function (d) { var en = f[d[0]] || {}; push(E + ' ' + d[1], en.present ? en.text : null); });
+            });
+            return { rows: out, dir: (m.operation && m.operation.direction) || dirHint || '', when: m.operationDate || '' };
+        }
+        var by = pmAttrById(rec);
+        var val = function (id) { var o = by[id]; return o ? o.Value : null; };
+        var tsOf = function (ids) { var t = 0; ids.forEach(function (id) { if (by[id] && (by[id].ts || 0) > t) t = by[id].ts; }); return t; };
+        var dir = dirHint;
+        if (dir !== 'Normal' && dir !== 'Reverse') dir = tsOf([6002, 6004, 8002, 8004]) > tsOf([1002, 1004, 3002, 3004]) ? 'Reverse' : 'Normal';
+        var R = dir === 'Reverse';
+        var ends = { A: R ? [6004, 6002, 7002, 6005, 577, 26] : [1004, 1002, 2002, 1005, 576, 25], B: R ? [8004, 8002, 9002, 8005, 579, 28] : [3004, 3002, 4002, 3005, 578, 27] };
+        ['A', 'B'].forEach(function (E) {
+            var ids = ends[E];
+            if (!ids.some(function (id) { return by[id]; })) return;
+            DEF.forEach(function (d, i) { push(E + ' ' + d[1], val(ids[i])); });
+        });
+        return { rows: out, dir: dir, when: '' };
+    }
+    function liveInspectorHtml() {
+        var rec = inspRec();
+        if (!rec) return '<div class="sip-insp-empty">No live data for this asset yet.</div>';
+        var pm = isPmAsset(insp.name) ? pmReadings(rec, liveState(insp.name)) : null;
+        var rd = pm ? pm.rows : liveReadings(rec);
+        var bad = rd.filter(function (r) { return r.c.st === 'low' || r.c.st === 'high'; }).length;
+        var near = rd.filter(function (r) { return r.c.st === 'near'; }).length;
+        var st = liveState(insp.name);
+        var rl = Object.keys(rec.dl || {});
+        if (pm) {
+            /* PM relays: only NWKR / RWKR / NWCR / RWCR (Combined / A End / B End names accepted) */
+            var want = ['NWKR', 'RWKR', 'NWCR', 'RWCR'], keep = [];
+            want.forEach(function (w) {
+                for (var i = 0; i < rl.length; i++) {
+                    var nk = rl[i].toUpperCase().replace(/[^A-Z]/g, '');
+                    if (nk === w || nk === 'COMBINED' + w || nk.slice(-4) === w) { if (keep.indexOf(rl[i]) === -1) keep.push(rl[i]); break; }
+                }
+            });
+            rl = keep;
+        }
+        /* v618.25: summary strip -- health ring + state + range chips */
+        var score = Math.max(0, 100 - bad * 18 - near * 6);
+        var ringCol = bad >= 3 ? '#E5484D' : bad ? '#E0A100' : '#22A55B';
+        var C = 2 * Math.PI * 15;
+        var h = '<div class="sip-insp-sumrow"><svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">' +
+            '<circle cx="20" cy="20" r="15" fill="none" stroke="var(--in-edge)" stroke-width="4"></circle>' +
+            '<circle cx="20" cy="20" r="15" fill="none" stroke="' + ringCol + '" stroke-width="4" stroke-linecap="round" stroke-dasharray="' + (score / 100 * C).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 20 20)"></circle>' +
+            '<text x="20" y="24" text-anchor="middle" font-size="11" font-weight="800" fill="currentColor">' + score + '</text></svg>' +
+            '<div class="sip-insp-chips">' + (st ? '<span class="sip-insp-chip ' + stateCls(st) + '">' + escapeHtml(st) + '</span>' : '') +
+            (pm && pm.when && pm.when !== '--' ? '<span class="sip-insp-chip">Last op ' + escapeHtml(pm.when) + '</span>' : '') +
+            '<span class="sip-insp-chip ' + (bad ? 'bad' : 'ok') + '">' + (bad ? bad + ' outside' : 'In range') + '</span>' +
+            (near ? '<span class="sip-insp-chip warn">' + near + ' near limit</span>' : '') + '</div></div>';
+        if (rl.length) {
+            h += '<div class="sip-insp-sect">Relays</div><div class="sip-insp-relays">';
+            rl.forEach(function (k) { h += relayChip(k, rec.dl[k].isPickup); });
+            h += '</div>';
+        }
+        if (!rd.length) return h + '<div class="sip-insp-empty">No analog readings.</div>';
+        h += '<div class="sip-insp-sect">Readings <span>' + rd.length + '</span></div><div class="sip-insp-list">';
+        rd.forEach(function (r) {
+            var g = r.c.range;
+            h += '<div class="sip-insp-li st-' + (r.c.st || 'ok') + (r.stale ? ' stale' : '') + '" title="' + escapeHtml(r.k) +
+                (g ? ' | safe ' + inspFmt(g.min) + ' - ' + inspFmt(g.max) : '') + (r.stale ? ' | stale' : '') + '">' +
+                '<span class="n">' + escapeHtml(r.k) + '</span>' +
+                '<span class="v">' + inspFmt(r.v) + (r.c.st === 'low' ? ' <i>L</i>' : r.c.st === 'high' ? ' <i>H</i>' : '') + '</span>' +
+                (g ? '<span class="sip-insp-bar2"><i></i><em></em><u style="left:' + r.c.pos.toFixed(1) + '%"></u></span>' : '<span></span>') +
+                '</div>';
+        });
+        return h + '</div>';
+    }
+
+    /* Graph: DashboardHistory for this asset (newest samples of the period),
+       chosen reading drawn with its safe band. */
+    function inspLoadGraph(force) {
+        var rec = inspRec(), C = inspCache();
+        var hours = insp.graphHours || 6;
+        if (!rec || !rec.id) { inspSetBody('<div class="sip-insp-empty">Asset id not known yet -- wait for live data.</div>'); return; }
+        if (!force && C.graph && C.graph.hours === hours && Date.now() - C.graph.at < INSP_TTL) { inspSetBody(inspGraphHtml()); return; }
+        inspSetBody('<div class="sip-insp-empty">Loading graph...</div>');
+        var now = Date.now(), name = insp.name;
+        var f = function (ms) {
+            var d = new Date(ms), p2 = function (n) { return (n < 10 ? '0' : '') + n; };
+            return p2(d.getDate()) + p2(d.getMonth() + 1) + d.getFullYear() + '_' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+        };
+        $.ajax({
+            url: '/FRS25/TelemetryHistory/GetDashboardHistoryData', type: 'GET', dataType: 'json',
+            data: { assetId: rec.id, startDate: f(now - hours * 3600000), endDate: f(now), page: 1, pageSize: 2000, sort: 'desc', fillGaps: 'true', cursor: '' },
+            success: function (resp) {
+                if (insp.name !== name) return;
+                var pl = resp || {};
+                var inner = pl.Data || pl.data;
+                if (inner && (inner.columns || inner.Columns)) pl = inner;
+                var cols = (pl.columns || pl.Columns || []).map(function (c) {
+                    return { name: String(c.name || c.Name || ''), dl: String(c.dataType || c.DataType || '').toLowerCase() === 'datalogger', skip: (c.attrId === null || c.attrId === undefined) && (c.AttrId === null || c.AttrId === undefined) };
+                });
+                var rows = (pl.rows || pl.Rows || []).map(function (r) { return { t: new Date(r.ts || r.Ts).getTime(), v: r.v || r.V || [] }; })
+                    .filter(function (r) { return !isNaN(r.t); }).sort(function (a, b) { return a.t - b.t; });
+                inspCache().graph = { at: Date.now(), hours: hours, cols: cols, rows: rows };
+                if (insp.tab === 'graph') inspSetBody(inspGraphHtml());
+            },
+            error: function (x) { if (insp.name === name && insp.tab === 'graph') inspSetBody('<div class="sip-insp-empty">Graph could not be loaded (HTTP ' + (x && x.status) + ').</div>'); }
+        });
+    }
+    function inspGraphHtml() {
+        var G = inspCache().graph;
+        var h = '<div class="sip-insp-tools">' + [1, 6, 24].map(function (hh) {
+            return '<button type="button" data-insp-hours="' + hh + '" aria-pressed="' + ((insp.graphHours || 6) === hh) + '">' + hh + ' h</button>';
+        }).join('') + '<button type="button" data-insp-reload="1" title="Reload">&#8635;</button></div>';
+        if (!G || !G.rows.length) return h + '<div class="sip-insp-empty">No history in this period.</div>';
+        var idx = [];
+        for (var i = 0; i < G.cols.length; i++) if (!G.cols[i].skip) idx.push(i);
+        if (insp.graphWant) {
+            var wk = String(insp.graphWant).toUpperCase().replace(/[^A-Z0-9]/g, '');
+            for (var w = 0; w < idx.length; w++) if (String(G.cols[idx[w]].name).toUpperCase().replace(/[^A-Z0-9]/g, '') === wk) insp.graphCol = idx[w];
+            insp.graphWant = null;
+        }
+        if (insp.graphCol === null || insp.graphCol === undefined || G.cols[insp.graphCol] === undefined) insp.graphCol = idx.length ? idx[0] : 0;
+        h += '<div class="sip-insp-chips">' + idx.map(function (ci) {
+            return '<button type="button" data-insp-gi="' + ci + '" aria-pressed="' + (ci === insp.graphCol) + '">' + escapeHtml(G.cols[ci].name) + '</button>';
+        }).join('') + '</div>';
+        var col = G.cols[insp.graphCol];
+        var pts = [];
+        for (var r = 0; r < G.rows.length; r++) {
+            var v = parseFloat(G.rows[r].v[insp.graphCol]);
+            if (!isNaN(v)) pts.push({ t: G.rows[r].t, v: v });
+        }
+        if (pts.length < 2) return h + '<div class="sip-insp-empty">Not enough samples for ' + escapeHtml(col.name) + '.</div>';
+        var lo = Infinity, hi = -Infinity;
+        pts.forEach(function (p) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); });
+        var mn = lo, mx = hi;
+        var cls = (window.TlHealthView && typeof window.TlHealthView.classify === 'function') ? window.TlHealthView.classify : null;
+        var rec = inspRec();
+        var rg = cls ? cls(rec && rec.id, col.name, pts[pts.length - 1].v).range : null;
+        if (rg) { lo = Math.min(lo, rg.min); hi = Math.max(hi, rg.max); }
+        if (hi === lo) { hi += 1; lo -= 1; }
+        var pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+        var t0 = pts[0].t, t1 = pts[pts.length - 1].t, W = 400, H = 150;
+        var X = function (t) { return ((t - t0) / ((t1 - t0) || 1)) * W; }, Y = function (v) { return H - ((v - lo) / (hi - lo)) * H; };
+        var d = '';
+        pts.forEach(function (p, k) {
+            if (col.dl && k) d += 'L' + X(p.t).toFixed(1) + ' ' + Y(pts[k - 1].v).toFixed(1);
+            d += (k ? 'L' : 'M') + X(p.t).toFixed(1) + ' ' + Y(p.v).toFixed(1);
+        });
+        var tm = function (ms) { var x = new Date(ms); return ('0' + x.getHours()).slice(-2) + ':' + ('0' + x.getMinutes()).slice(-2); };
+        h += '<div class="sip-insp-graph"><div class="sip-insp-gh"><b>' + escapeHtml(col.name) + '</b><span>now ' + inspFmt(pts[pts.length - 1].v) + '</span></div>' +
+            '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="' + escapeHtml(col.name) + ' history">' +
+            (rg ? '<rect x="0" y="' + Y(rg.max).toFixed(1) + '" width="' + W + '" height="' + (Y(rg.min) - Y(rg.max)).toFixed(1) + '" fill="rgba(31,157,85,.16)"></rect>' : '') +
+            '<path class="' + (col.dl ? 'ins-dl' : 'ins-tr') + '" d="' + d + '" fill="none" stroke-width="1.6" vector-effect="non-scaling-stroke"></path></svg>' +
+            '<div class="sip-insp-gf"><span>min ' + inspFmt(mn) + '</span><span>' + tm(t0) + ' to ' + tm(t1) +
+            (rg ? ' | safe ' + inspFmt(rg.min) + '-' + inspFmt(rg.max) : '') + '</span><span>max ' + inspFmt(mx) + '</span></div></div>';
+        return h;
+    }
+
+    /* Alert analytics (same API as the popup): predictive / failure by cause code */
+    function inspLoadAlerts(force) {
+        var rec = inspRec(), C = inspCache(), day = insp.alertDay || inspTodayYmd(), name = insp.name;
+        if (!force && C.alerts && C.alerts.day === day && Date.now() - C.alerts.at < INSP_TTL) { inspSetBody(inspAlertsHtml()); return; }
+        inspSetBody('<div class="sip-insp-empty">Loading alert analytics...</div>');
+        $.ajax({
+            url: '/FRS25/Telemetry/GetSipAssetAlertAnalytics', type: 'POST',
+            data: { siteId: state.siteId || 0, assetId: (rec && rec.id) || 0, assetName: name || '', fromDate: day, toDate: day, alertIds: '' },
+            success: function (res) {
+                if (insp.name !== name) return;
+                inspCache().alerts = { at: Date.now(), day: day, res: res || {} };
+                if (insp.tab === 'alerts') inspSetBody(inspAlertsHtml());
+            },
+            error: function (x) { if (insp.name === name && insp.tab === 'alerts') inspSetBody('<div class="sip-insp-empty">Alert analytics could not be loaded (HTTP ' + (x && x.status) + ').</div>'); }
+        });
+    }
+    function inspDayTools(key) {
+        var v = insp[key] || inspTodayYmd();
+        return '<div class="sip-insp-tools"><input type="date" data-insp-day="' + key + '" value="' + v + '" max="' + inspTodayYmd() + '" aria-label="Date">' +
+            '<button type="button" data-insp-reload="1" title="Reload">&#8635;</button></div>';
+    }
+    function inspAlertsHtml() {
+        var A = inspCache().alerts;
+        var h = inspDayTools('alertDay');
+        if (!A) return h;
+        var r = A.res || {};
+        var pc = r.predictiveCauses || [], fc = r.failureCauses || [];
+        h += '<div class="sip-insp-kpis"><div class="k p"><b>' + (r.pred || 0) + '</b><span>Predictive</span></div>' +
+            '<div class="k f"><b>' + (r.fail || 0) + '</b><span>Failure</span></div></div>';
+        var sect = function (title, list, f) {
+            if (!list.length) return '';
+            var max = Math.max.apply(null, list.map(function (c) { return c.count || 0; })) || 1;
+            return '<div class="sip-insp-sect">' + title + '</div>' + list.map(function (c) {
+                return '<div class="sip-insp-cause"><span class="n">' + escapeHtml(c.code || '-') + '</span>' +
+                    '<span class="b"><i class="' + (f ? 'f' : 'p') + '" style="width:' + Math.max(4, ((c.count || 0) / max) * 100).toFixed(0) + '%"></i></span>' +
+                    '<span class="c">' + (c.count || 0) + '</span></div>';
+            }).join('');
+        };
+        var body = sect('Failure causes', fc, true) + sect('Predictive causes', pc, false);
+        return h + (body || '<div class="sip-insp-empty">No alerts on this day.</div>');
+    }
+
+    /* Event log (same API as the popup): alerts + maintenance mode, newest first */
+    function inspLoadEvents(force) {
+        var rec = inspRec(), C = inspCache(), day = insp.eventDay || inspTodayYmd(), name = insp.name;
+        if (!rec || !rec.id) { inspSetBody(inspDayTools('eventDay') + '<div class="sip-insp-empty">Asset id not known yet.</div>'); return; }
+        if (!force && C.events && C.events.day === day && Date.now() - C.events.at < INSP_TTL) { inspSetBody(inspEventsHtml()); return; }
+        inspSetBody('<div class="sip-insp-empty">Loading event log...</div>');
+        $.ajax({
+            url: '/FRS25/Telemetry/GetSipEventLog', type: 'POST', contentType: 'application/json', dataType: 'json', timeout: 30000,
+            data: JSON.stringify({ AssetId: parseInt(rec.id, 10), SiteId: parseInt(state.siteId || 0, 10), AssetTypeId: parseInt(rec.typeId || 0, 10) || 0,
+                FromDate: day + 'T00:00:00', ToDate: day + 'T23:59:59', Take: 200 }),
+            success: function (res) {
+                if (insp.name !== name) return;
+                inspCache().events = { at: Date.now(), day: day, res: res || {} };
+                if (insp.tab === 'events') inspSetBody(inspEventsHtml());
+            },
+            error: function (x) { if (insp.name === name && insp.tab === 'events') inspSetBody('<div class="sip-insp-empty">Event log could not be loaded (HTTP ' + (x && x.status) + ').</div>'); }
+        });
+    }
+    function inspTime(raw) {
+        if (!raw) return '';
+        var d = new Date(String(raw).replace(' ', 'T'));
+        return isNaN(d.getTime()) ? String(raw) : ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
+    }
+    function inspEventsHtml() {
+        var E = inspCache().events;
+        var h = inspDayTools('eventDay');
+        if (!E) return h;
+        var r = E.res || {};
+        if (r.Success === false) return h + '<div class="sip-insp-empty">' + escapeHtml(r.Message || 'No data.') + '</div>';
+        var ev = [];
+        (r.Alerts || []).forEach(function (a) {
+            var t = a.IncidentDateTime || a.SetTimestamp || a.incidentDateTime || a.setTimestamp || '';
+            var st = parseInt(a.AlertStatus || a.alertStatus || 0, 10);
+            ev.push({ t: new Date(String(t).replace(' ', 'T')).getTime() || 0, raw: t, kind: st === 1 ? 'act' : 'clr',
+                text: (a.CauseCode || a.causeCode || a.AlertCode || a.alertCode || 'Alert'), tag: st === 1 ? 'Active' : 'Cleared' });
+        });
+        (r.MaintenanceModes || []).forEach(function (m) {
+            var on = m.ActiveTime || m.activeTime, off = m.InActiveTime || m.inActiveTime;
+            if (on) ev.push({ t: new Date(String(on).replace(' ', 'T')).getTime() || 0, raw: on, kind: 'mnt', text: 'Maintenance mode on', tag: 'Maint.' });
+            if (off && String(off).indexOf('0001') < 0) ev.push({ t: new Date(String(off).replace(' ', 'T')).getTime() || 0, raw: off, kind: 'mnt', text: 'Maintenance mode off', tag: 'Maint.' });
+        });
+        ev.sort(function (a, b) { return b.t - a.t; });
+        if (!ev.length) return h + '<div class="sip-insp-empty">No events on this day.</div>';
+        return h + '<ul class="sip-insp-tl">' + ev.map(function (e) {
+            return '<li class="' + e.kind + '"><time>' + escapeHtml(inspTime(e.raw)) + '</time><span>' + escapeHtml(e.text) + '</span><em>' + e.tag + '</em></li>';
+        }).join('') + '</ul>';
+    }
+
+    /* Active alarms (same API as the popup) */
+    function inspLoadAlarms(force) {
+        var rec = inspRec(), C = inspCache(), name = insp.name;
+        if (!rec || !rec.id) { inspSetBody('<div class="sip-insp-empty">Asset id not known yet.</div>'); return; }
+        if (!force && C.alarms && Date.now() - C.alarms.at < INSP_TTL) { inspSetBody(inspAlarmsHtml()); return; }
+        inspSetBody('<div class="sip-insp-empty">Loading alarms...</div>');
+        $.ajax({
+            url: '/FRS25/Telemetry/GetSipActiveAlarms', type: 'POST', contentType: 'application/json', dataType: 'json', timeout: 30000,
+            data: JSON.stringify({ AssetId: parseInt(rec.id, 10), SiteId: parseInt(state.siteId || 0, 10), AssetTypeId: parseInt(rec.typeId || 0, 10) || 0 }),
+            success: function (res) {
+                if (insp.name !== name) return;
+                inspCache().alarms = { at: Date.now(), res: res || {} };
+                if (insp.tab === 'alarms') inspSetBody(inspAlarmsHtml());
+            },
+            error: function (x) { if (insp.name === name && insp.tab === 'alarms') inspSetBody('<div class="sip-insp-empty">Alarms could not be loaded (HTTP ' + (x && x.status) + ').</div>'); }
+        });
+    }
+    function inspAlarmsHtml() {
+        var A = inspCache().alarms;
+        var h = '<div class="sip-insp-tools"><button type="button" data-insp-reload="1" title="Reload">&#8635; Refresh</button></div>';
+        if (!A) return h;
+        var r = A.res || {};
+        if (r.Success === false) return h + '<div class="sip-insp-empty">' + escapeHtml(r.Message || 'No data.') + '</div>';
+        var list = r.Alarms || [], n = r.ActiveCount || list.length || 0;
+        h += '<div class="sip-insp-banner ' + (n ? 'bad' : 'ok') + '">' + (n ? n + ' active alarm' + (n > 1 ? 's' : '') + ' -- needs attention' : 'No active alarms') + '</div>';
+        if (!list.length) return h;
+        return h + '<ul class="sip-insp-tl">' + list.map(function (a) {
+            return '<li class="act"><time>' + escapeHtml(inspTime(a.RaisedAt)) + '</time><span>' + escapeHtml(a.CauseCode || 'Alarm') +
+                (a.DurationDisplay ? ' <small>' + escapeHtml(a.DurationDisplay) + '</small>' : '') + '</span><em>' + escapeHtml(a.Severity || 'Active') + '</em></li>';
+        }).join('') + '</ul>';
+    }
+
+    function inspSetBody(html) {
+        var b = document.querySelector('#sipInspector .sip-insp-body');
+        if (!b) return;
+        var sc = b.scrollTop;
+        b.innerHTML = html;
+        b.scrollTop = sc;
+    }
+    function inspLoadTab(force) {
+        if (insp.tab === 'graph') inspLoadGraph(force);
+        else if (insp.tab === 'alerts') inspLoadAlerts(force);
+        else if (insp.tab === 'events') inspLoadEvents(force);
+        else if (insp.tab === 'alarms') inspLoadAlarms(force);
+        else inspSetBody(liveInspectorHtml());
+    }
+    function renderInspector() {
+        if (insp.pressing) return;
+        if (!inspectorVisible()) {
+            var old = document.getElementById('sipInspector');
+            if (old) old.style.display = 'none';
+            inspReserve(false);
+            return;
+        }
+        var el = ensureInspector();
+        if (!el) return;
+        if (!insp.name) {
+            /* v618.23: nothing selected -> no panel, yard uses the full width */
+            el.style.display = 'none';
+            insp.frame = '';
+            inspReserve(false);
+            return;
+        }
+        el.style.display = '';
+        inspReserve(!insp.min);
+        inspPalette(el);
+        var replay = _replayOn && window.SipReplay && typeof window.SipReplay.inspectorHtml === 'function';
+        if (replay) {
+            /* v618.21: during a replay the asset values live in the replay dock
+               (all assets + history), so the yard panel steps aside */
+            insp.frame = '';
+            el.style.display = 'none';
+            inspReserve(false);
+            return;
+        }
+        if (replay) {
+            var prev = el.querySelector('.sip-insp-body');
+            var scroll = prev ? prev.scrollTop : 0;
+            el.innerHTML = '<div class="sip-insp-bar"><b>Replay values</b><button type="button" data-insp-min="1">' + (insp.min ? '+' : '&minus;') + '</button></div>' +
+                (insp.min ? '' : '<div class="sip-insp-body">' + window.SipReplay.inspectorHtml() + '</div>');
+            var nb = el.querySelector('.sip-insp-body');
+            if (nb && scroll) nb.scrollTop = scroll;
+            return;
+        }
+        var rec = inspRec();
+        var frame = [insp.name, insp.tab, insp.min].join('|');
+        if (frame !== insp.frame) {
+            insp.frame = frame;
+            var cell0 = state.cellById[insp.cellId] || {};
+            var ico = /Track/.test(cell0.type || '') ? 'fa-grip-lines' : /PointMachine/.test(cell0.type || '') ? 'fa-code-branch' : /Signal|Shunt/.test(cell0.type || '') ? 'fa-traffic-light' : 'fa-microchip';
+            el.innerHTML = '<div class="sip-insp-bar"><span class="sip-insp-ico"><i class="fa-solid ' + ico + '"></i></span><span class="sip-insp-live"></span><b>' + escapeHtml(insp.name) + '</b>' +
+                '<span class="sip-insp-upd" id="sipInspUpd"></span>' +
+                '<button type="button" data-insp-open="1" title="Open the asset popup (graph, alerts, events, alarms)">Details</button>' +
+                '<button type="button" data-insp-clear="1" title="Close" aria-label="Close">&times;</button>' +
+                '<button type="button" data-insp-min="1" title="' + (insp.min ? 'Expand' : 'Collapse') + '">' + (insp.min ? '+' : '&minus;') + '</button></div>' +
+                (insp.min ? '' : '<div class="sip-insp-body">' + liveInspectorHtml() + '</div>');
+        } else if (insp.name && !insp.min) {
+            inspSetBody(liveInspectorHtml());
+        }
+        var up = document.getElementById('sipInspUpd');
+        if (up) up.textContent = rec && rec.lastAt ? new Date(rec.lastAt).toLocaleTimeString() : '';
+    }
+    setInterval(function () {
+        if (document.hidden) return;
+        if (inspectorVisible()) renderInspector();
+        else { var o = document.getElementById('sipInspector'); if (o) o.style.display = 'none'; }
+    }, 400);
     function findSipLiveCellGroup(node) {
         while (node && node !== canvasEl && node.nodeType === 1) {
             if (hasClass(node, 'sip-live-cell') && node.getAttribute('data-cell-id')) return node;
@@ -2198,6 +2968,10 @@
         '.sip-highlight{filter:drop-shadow(0 0 4px rgba(59,201,219,.95)) drop-shadow(0 0 10px rgba(59,201,219,.55));}' +
         '.sip-stale{opacity:.5;}' +
         '.sip-pm-gap-layer{pointer-events:none;}' +
+        /* v618.14: failure (alertTypeId 2) flashing during replay */
+        '.sip-fail-flash{animation:sipFailBlink .9s steps(2,jump-none) infinite;filter:drop-shadow(0 0 5px rgba(255,59,48,.95)) drop-shadow(0 0 12px rgba(255,59,48,.6));}' +
+        '@keyframes sipFailBlink{50%{opacity:.28;}}' +
+        '@media (prefers-reduced-motion:reduce){.sip-fail-flash{animation:none;}}' +
         '.sip-alert-flash{animation:sipAlertPulse 1.2s ease-in-out infinite;filter:drop-shadow(0 0 8px var(--sip-alert-color,#7366ff));}' +
         '@keyframes sipAlertPulse{0%,100%{opacity:1;}50%{opacity:.55;filter:drop-shadow(0 0 2px transparent);}}';
 
@@ -2209,6 +2983,7 @@
             else if (!state.highlightMarkOnly) cls += ' sip-dim';
         }
         if (c._sipStale) cls += ' sip-stale';
+        if (c._sipFail) cls += ' sip-fail-flash';
         if (c._sipAlert && !_replayOn) cls += ' sip-alert-flash';   // v618.0: no live alert flash over a replay
         return cls;
     }
@@ -2274,6 +3049,7 @@
     }
 
     function renderAll() {
+        try { renderStationBar(); } catch (e0) { /* v618.15 station bar is optional */ }
         if (!canvasEl) return;
         if (!state.cells.length) { renderPlaceholder('No cells to render.'); return; }
         state.dirty = {};
@@ -2499,8 +3275,35 @@
         setStatus('Replay', 'replay');
         return true;
     }
+    /* v618.14: mark the cells of these asset names as FAILED (flashing).
+       Only touches the class attribute of changed cells. */
+    var _failSet = {};
+    function replaySetFaults(names) {
+        var want = {};
+        for (var i = 0; i < (names || []).length; i++) {
+            var cs = findCells(names[i]);
+            for (var j = 0; j < cs.length; j++) want[cs[j].id] = cs[j];
+        }
+        var k, c, g;
+        for (k in _failSet) {
+            if (!_failSet.hasOwnProperty(k) || want[k]) continue;
+            c = _failSet[k];
+            c._sipFail = false;
+            g = state.domCells[c.id];
+            if (g) g.setAttribute('class', cellClass(c));
+        }
+        for (k in want) {
+            if (!want.hasOwnProperty(k) || _failSet[k]) continue;
+            c = want[k];
+            c._sipFail = true;
+            g = state.domCells[c.id];
+            if (g) g.setAttribute('class', cellClass(c));
+        }
+        _failSet = want;
+    }
     function replayEnd(silent) {
         if (!_replayOn) return;
+        replaySetFaults([]);
         _replayOn = false;
         if (_replaySaved) {
             state.assets = _replaySaved.assets || {};
@@ -2534,7 +3337,8 @@
         findCells: findCells,
         assetNameOf: getCellAssetName,
         record: function (name) { return state.assets[name] || null; },
-        setStatus: setStatus
+        setStatus: setStatus,
+        setFaults: replaySetFaults
     };
 
     /* =========================================================================
@@ -2578,10 +3382,20 @@
         if (p !== 'auto') return p;
         return pageIsLight() ? 'day' : 'night';
     }
+    var _lastPageLight = null;
     function syncAppTheme(force) {
         if (typeof SIP.setTheme !== 'function') return;
+        /* v618.17: when the page itself switches Light <-> Dark, the schematic
+           follows it again (a palette picked earlier is dropped), so every SIP
+           part -- yard, legend, station bar, replay, asset popup -- matches. */
+        var lightNow = pageIsLight();
+        if (_lastPageLight !== null && lightNow !== _lastPageLight) {
+            try { window.localStorage.removeItem(THEME_KEY); } catch (e0) { /* storage blocked */ }
+            force = true;
+        }
+        _lastPageLight = lightNow;
         var want = appSipTheme();
-        var light = pageIsLight();
+        var light = lightNow;
         document.documentElement.setAttribute('data-sip-page', light ? 'light' : 'dark');
         if (!force && typeof SIP.themeName === 'function' && SIP.themeName() === want) {
             try { window.dispatchEvent(new CustomEvent('sip-theme', { detail: { theme: want, pageLight: light } })); } catch (e) { /* old browser */ }
@@ -2617,6 +3431,7 @@
         '.sip-legend2 span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}' +
         '.sip-legend2 i{display:inline-block;width:22px;height:5px;border-radius:3px;}' +
         '.sip-legend2 i.dot{width:9px;height:9px;border-radius:50%;}' +
+        '.sip-legend2 i.sip-lg-fail{box-shadow:0 0 6px rgba(255,59,48,.9);animation:sipFailBlink .9s steps(2,jump-none) infinite;}' +
         '.sip-card:not(.fullscreen) .sip-legend2{display:none;}';
     function ensureSipUiCss() {
         if (document.getElementById('sipUiCss')) return;
@@ -2659,8 +3474,88 @@
         lg.className = 'sip-legend2';
         canvas.parentNode.insertBefore(lg, canvas.nextSibling);
     }
+    /* v618.15 -- STATION NAME BAR (EI VDU style: "< DN [ STATION | CODE ] UP >")
+       above the yard. Name / code / zone / division from GetSiteById (the
+       page's cached fetchSiteDetails), falling back to the site dropdown text
+       "NAME - CODE". Clicking DN / UP swaps the sides (kept per site). */
+    var STN_CSS = '' +
+        '.sip-stn{display:flex;align-items:center;justify-content:center;gap:14px;padding:8px 10px 6px;flex:none;}' +
+        '.sip-stn-dir{display:inline-flex;align-items:center;gap:6px;border:none;background:transparent;cursor:pointer;' +
+        'font:700 15px/1 "Barlow Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.06em;padding:4px 6px;}' +
+        '.sip-stn-dir i{font-style:normal;font-size:18px;}' +
+        '.sip-stn-box{display:inline-flex;align-items:center;gap:10px;padding:5px 18px;border:2px solid;border-radius:3px;' +
+        'font:700 20px/1 "Barlow Condensed","Arial Narrow",system-ui,sans-serif;letter-spacing:.22em;text-transform:uppercase;}' +
+        '.sip-stn-box .cd{font-size:15px;letter-spacing:.12em;padding-left:10px;border-left:1px solid;opacity:.85;}' +
+        '.sip-stn-sub{font:600 11px/1 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;opacity:.7;}' +
+        '.sip-card:not(.fullscreen) .sip-stn{padding:4px 6px 2px;gap:8px;}' +
+        '.sip-card:not(.fullscreen) .sip-stn-box{font-size:13px;padding:3px 10px;letter-spacing:.16em;}' +
+        '.sip-card:not(.fullscreen) .sip-stn-box .cd{font-size:11px;}' +
+        '.sip-card:not(.fullscreen) .sip-stn-dir{font-size:11px;} .sip-card:not(.fullscreen) .sip-stn-sub{display:none;}';
+    var _stn = { siteId: null, name: '', code: '', sub: '' };
+    function stnSide() {
+        try { return window.localStorage.getItem('sipUpSide_' + (state.siteId || '')) === 'left' ? 'left' : 'right'; } catch (e) { return 'right'; }
+    }
+    function renderStationBar() {
+        var canvas = document.getElementById('sipCanvas');
+        if (!canvas || !canvas.parentNode) return;
+        if (!document.getElementById('sipStnCss')) {
+            var st = document.createElement('style');
+            st.id = 'sipStnCss';
+            st.textContent = STN_CSS;
+            document.head.appendChild(st);
+        }
+        var bar = document.getElementById('sipStationBar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'sipStationBar';
+            bar.className = 'sip-stn';
+            bar.setAttribute('aria-label', 'Station');
+            canvas.parentNode.insertBefore(bar, canvas);
+            bar.addEventListener('click', function (e) {
+                if (!e.target.closest || !e.target.closest('.sip-stn-dir')) return;
+                e.stopPropagation();
+                try { window.localStorage.setItem('sipUpSide_' + (state.siteId || ''), stnSide() === 'left' ? 'right' : 'left'); } catch (x) { /* ignore */ }
+                renderStationBar();
+            });
+        }
+        var sid = String(state.siteId || (siteSelectEl && siteSelectEl.value) || '');
+        if (sid && _stn.siteId !== sid) {
+            _stn.siteId = sid;
+            var txt = siteSelectEl && siteSelectEl.options && siteSelectEl.selectedIndex >= 0 ? String(siteSelectEl.options[siteSelectEl.selectedIndex].text || '') : '';
+            var parts = txt.split(' - ');
+            _stn.name = (parts[0] || '').trim();
+            _stn.code = (parts[1] || '').trim();
+            _stn.sub = '';
+            if (typeof window.fetchSiteDetails === 'function') {
+                window.fetchSiteDetails(sid, function (d) {
+                    if (!d || _stn.siteId !== sid) return;
+                    _stn.name = String(d.Name || d.SiteName || _stn.name || '').trim();
+                    _stn.code = String(d.StationCode || d.Description || _stn.code || '').trim();
+                    var z = String(d.ZoneName || d.Zone || '').trim(), dv = String(d.DivisionName || d.Division || '').trim();
+                    _stn.sub = [z, dv].filter(function (x) { return x; }).join(' / ');
+                    renderStationBar();
+                });
+            }
+        }
+        var T = SIP._theme || {};
+        bar.style.background = T.canvas || '';
+        bar.style.display = _stn.name ? '' : 'none';
+        var arrow = T.select || '#3BC9DB', ink = T.labelHot || '#E6EDF5';
+        var left = stnSide() === 'left' ? 'UP' : 'DN', right = left === 'UP' ? 'DN' : 'UP';
+        bar.innerHTML =
+            '<button type="button" class="sip-stn-dir" title="Swap DN / UP" style="color:' + arrow + '"><i>&#9664;</i>' + left + '</button>' +
+            '<span class="sip-stn-box" style="color:' + ink + ';border-color:' + ink + '">' +
+            '<span class="nm">' + escapeHtml(_stn.name) + '</span>' + (_stn.code ? '<span class="cd" style="border-color:' + ink + '">' + escapeHtml(_stn.code) + '</span>' : '') + '</span>' +
+            '<button type="button" class="sip-stn-dir" title="Swap DN / UP" style="color:' + arrow + '">' + right + '<i>&#9654;</i></button>' +
+            (_stn.sub ? '<span class="sip-stn-sub" style="color:' + ink + '">' + escapeHtml(_stn.sub) + '</span>' : '');
+    }
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
     /* swatches always in the colours of the palette on screen */
     function paintThemeUi() {
+        try { renderStationBar(); } catch (e) { /* bar is optional */ }
         var cur = (typeof SIP.themeName === 'function') ? SIP.themeName() : 'night';
         var seg = document.getElementById('sipThemeSeg');
         if (seg) {
@@ -2678,7 +3573,8 @@
                 '<span><i class="dot" style="background:' + T.pmN + '"></i>Point normal</span>' +
                 '<span><i class="dot" style="background:' + T.pmR + '"></i><i style="background:' + T.route + ';width:16px"></i>Point reverse</span>' +
                 '<span><i class="dot" style="background:' + T.lampR + '"></i><i class="dot" style="background:' + T.lampY + '"></i>' +
-                '<i class="dot" style="background:' + T.lampG + '"></i>Signal aspect</span>';
+                '<i class="dot" style="background:' + T.lampG + '"></i>Signal aspect</span>' +
+                '<span><i class="sip-lg-fail" style="background:' + T.occ + '"></i>Failed (flashing)</span>';
         }
     }
     function watchAppTheme() {
