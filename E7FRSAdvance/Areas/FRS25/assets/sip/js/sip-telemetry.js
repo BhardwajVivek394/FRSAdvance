@@ -44,6 +44,22 @@
  *  sip-replay.js): while replay is on, live items are ignored, the host
  *  (wsLiveData) is neither read nor written, and the same 616 rule engine
  *  evaluates history rows fed through feedItems(items, true).
+ *
+ *  v618.30 -- POST→SIGNAL BINDING (bindPostsToSignals): layouts that put the
+ *  asset name on a text-only Signal Post (examples.Post/Post1) instead of on
+ *  the signal shape now simulate -- each unlabelled Signal/SignalShunt/Shaunt
+ *  adopts the nearest named post (type-aware, distance-capped, greedy). Shapes
+ *  that carry their own label are never touched (self-label stays the override).
+ *
+ *  v618.31 -- CLICK/POPUP FIXES + ALL-TYPES METADATA. getCellAssetName resolves
+ *  _sipAsset before the empty-label bail-out (post-bound signals now report
+ *  their bound name on click), and the external popup call is try/caught so a
+ *  popup error can't swallow the open. loadSipAllTypeMetadata pre-loads
+ *  GetBulkAssetMetadata for EVERY asset type of the site into a standalone
+ *  cache (window.sipMetaAll) so the asset popup shows AliasName-labelled rows
+ *  and DataLogger relays for any asset type, regardless of the classic grid's
+ *  single-type selection (sip-asset-popup.js refreshLive reads it as a
+ *  fallback). The classic telemetrylive grid's single-type maps are untouched.
  * ========================================================================== */
 
 (function () {
@@ -135,6 +151,7 @@
     var TRACK_FILL = { 'examples.Track3': 1, 'examples.Track4': 1 };
     var PM_TYPES = { 'examples.PointMachine': 1, 'examples.PointMachine1': 1 };
     var SHUNT_TYPES = { 'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1 };
+    var POST_TYPES = { 'examples.Post': 1, 'examples.Post1': 1 };  // text-only name posts
     var ROUTE_CALLING_TYPES = { 'examples.RouteCallingSignal': 1 };
     var BUSBAR_TYPES = { 'examples.BusBar': 1 };
     var AXLE_TYPES = { 'examples.AxleCounter': 1 };
@@ -160,6 +177,9 @@
         cellById: {},
         findMemo: {},           // assetName → cells[]  (candidate expansion memo)
         viewBox: '0 0 2000 740',
+        view: null,             // {x,y,w,h} current zoom/pan viewBox (numeric)
+        fit: null,              // {x,y,w,h} fit-to-content view (zoom baseline)
+        needFit: false,         // request a re-fit on the next ensureFit()
         assetValues: {},        // assetName → { alias: number }   (public / popup)
         assets: {},             // assetName → rich record (attrs / relays / freshness)
         nameById: {},           // AssetId → assetName
@@ -319,6 +339,7 @@
             || document.querySelector('.sip-card-head .sip-sub') || null;
 
         wireCardFullscreen(sipCard);
+        wireViewerInteractions();
 
         /* telemetrylive.js drives connectToSite(sid) itself ~400 ms after a
            site change (after it opened its site-wide socket). Only bind our
@@ -370,13 +391,18 @@
                 document.body.style.overflow = fs ? 'hidden' : '';
                 var icon = btn.querySelector('i');
                 if (icon) icon.className = fs ? 'fas fa-compress' : 'fas fa-expand';
+                updateZoomControlsVisibility();                     // zoom controls: full screen only
+                state.needFit = true; setTimeout(ensureFit, 60);   // re-fit to the new size
             });
         }
+        wireViewerInteractions();
         connectToSite(drpSite.value);
     }
 
     function deactivate(divTL) {
         closeSockets();
+        if (state._onResize) { window.removeEventListener('resize', state._onResize); state._onResize = null; }
+        clearTimeout(state._fitT);
         if (divTL) {
             divTL.innerHTML = '';
             ['#atCardView', '#atKpiRow', '#trackCardContainer', '.at-table-scroll'].forEach(function (s) {
@@ -397,6 +423,8 @@
         if (icon) icon.className = on ? 'fas fa-compress' : 'fas fa-expand';
         var btn = document.getElementById('sipFullscreenBtn');
         if (btn) btn.setAttribute('title', on ? 'Exit full screen (Esc)' : 'Full screen');
+        updateZoomControlsVisibility();                     // zoom controls: full screen only
+        state.needFit = true; setTimeout(ensureFit, 80);   // re-fit to the new size
     }
     function wireCardFullscreen(sipCard) {
         var fsBtn = document.getElementById('sipFullscreenBtn');
@@ -1233,7 +1261,11 @@
     /* Reverse lookup: which live asset name does this cell belong to? */
     function getCellAssetName(cell) {
         var label = getCellLabel(cell);
-        if (!label) return '';
+        /* Post-bound shapes carry no own label — their asset name lives in
+           _sipAsset (set by bindPostsToSignals). Resolve that BEFORE the
+           empty-label bail-out, or clicking such a signal yields no asset and
+           the popup can't open. */
+        if (!label) return cell._sipAsset || '';
         if (cell._sipAsset && state.assets[cell._sipAsset]) return cell._sipAsset;
         if (LAMP_SIGNAL[cell.type] || !state.byLabel[label]) {
             var prefix = label.split(/\s+/)[0];
@@ -1543,8 +1575,8 @@
             liveValues: state.assetValues[assetName] || {}
         };
         if (typeof window.SipAssetPopupLive === 'object' && typeof window.SipAssetPopupLive.open === 'function') {
-            window.SipAssetPopupLive.open(cell, ctx);
-            return;
+            try { window.SipAssetPopupLive.open(cell, ctx); return; }
+            catch (ex0) { swarn('SipAssetPopupLive.open failed, falling back:', ex0 && ex0.message); }
         }
         if (typeof window.OpenSipAssetPopupFromCell === 'function') {
             try { if (window.OpenSipAssetPopupFromCell(cell, ctx) !== false) return; }
@@ -1690,7 +1722,10 @@
         state.cells = JSON.parse(JSON.stringify(cells));
         var resetN = sanitizeLiveBaseline(state.cells);
         state.viewBox = autoViewBox(state.cells);
+        state.needFit = true; state.view = null;   // fit-to-content on (re)load
         buildIndex();
+        bindPostsToSignals();
+        loadSipAllTypeMetadata(siteId);
         renderAll();
         sinfo('Layout loaded' + (fromCache ? ' (cache)' : '') + ': ' + state.cells.length +
             ' cells, ' + resetN + ' editor preview state(s) cleared.');
@@ -1857,6 +1892,183 @@
                 if (np) (state.byNormPrefix[np] = state.byNormPrefix[np] || []).push(c);
             }
         }
+    }
+
+    /* ── Post → signal binding ───────────────────────────────────────────
+       Some layouts (e.g. SECR / G CABIN) put the asset name on a text-only
+       Signal Post (examples.Post / Post1) instead of on the signal shape
+       itself. A Post renders only a text pill (sip-library renderPost) and
+       can never show an aspect, so such signals never lit.
+
+       For every DRIVABLE shape (Signal / SignalShunt / Shaunt*) that has NO
+       label of its own, adopt the name of the nearest named Post and
+       register the shape under that name so live telemetry drives it. The
+       pick is type-aware (shunt discs prefer SH* posts, main signals prefer
+       non-SH posts), greedy by distance, and capped so a shape with no post
+       nearby stays unbound. Shapes that already carry their own label are
+       left completely untouched — sites that self-label their signals (e.g.
+       Gahlota) are therefore unaffected, and a label typed directly on a
+       shape remains the authoritative override. */
+    var POSTBIND_MAX_DIST = 250;   // px between shape centre and post centre
+    var POSTBIND_TYPE_PENALTY = 140; // cost added when shape/post class differ
+    function cellCenter(c) {
+        var p = (c && c.position) || {}, s = (c && c.size) || {};
+        return { x: (p.x || 0) + (s.width || 0) / 2, y: (p.y || 0) + (s.height || 0) / 2 };
+    }
+    function isShuntName(n) { return /^SH/i.test(String(n == null ? '' : n).replace(/[^A-Za-z0-9]/g, '')); }
+    function registerCellName(cell, name) {
+        cell._sipAsset = name;
+        (state.byLabel[name] = state.byLabel[name] || []);
+        if (state.byLabel[name].indexOf(cell) === -1) state.byLabel[name].push(cell);
+        var nk = _normLabel(name);
+        if (nk) {
+            (state.byNorm[nk] = state.byNorm[nk] || []);
+            if (state.byNorm[nk].indexOf(cell) === -1) state.byNorm[nk].push(cell);
+        }
+    }
+    function bindPostsToSignals() {
+        var posts = [], shapes = [], i, c;
+        for (i = 0; i < state.cells.length; i++) {
+            c = state.cells[i]; if (!c) continue;
+            if (POST_TYPES[c.type]) {
+                var nm = getCellLabel(c);
+                if (nm) posts.push({ name: nm, shunt: isShuntName(nm), c: cellCenter(c), used: false });
+            } else if ((COMPOSITE_SIGNAL[c.type] || SHUNT_TYPES[c.type]) && !getCellLabel(c)) {
+                shapes.push({ cell: c, shunt: !!SHUNT_TYPES[c.type], c: cellCenter(c) });
+            }
+        }
+        if (!posts.length || !shapes.length) return;
+
+        var pairs = [], si, pi;
+        for (si = 0; si < shapes.length; si++) {
+            for (pi = 0; pi < posts.length; pi++) {
+                var dx = shapes[si].c.x - posts[pi].c.x, dy = shapes[si].c.y - posts[pi].c.y;
+                var d = Math.sqrt(dx * dx + dy * dy);
+                if (d > POSTBIND_MAX_DIST) continue;
+                pairs.push({ si: si, pi: pi, cost: (shapes[si].shunt === posts[pi].shunt) ? d : d + POSTBIND_TYPE_PENALTY });
+            }
+        }
+        pairs.sort(function (a, b) { return a.cost - b.cost; });
+
+        var shapeUsed = {}, bound = 0;
+        for (i = 0; i < pairs.length; i++) {
+            var pr = pairs[i];
+            if (shapeUsed[pr.si] || posts[pr.pi].used) continue;
+            shapeUsed[pr.si] = 1; posts[pr.pi].used = true;
+            registerCellName(shapes[pr.si].cell, posts[pr.pi].name);
+            bound++;
+            slog('Post-bind: ' + shapes[pr.si].cell.type + ' ' + shapes[pr.si].cell.id + ' -> "' + posts[pr.pi].name + '"');
+        }
+        if (bound) { state.findMemo = {}; sinfo('Post→signal binding: ' + bound + ' unlabelled shape(s) bound to the nearest named post.'); }
+    }
+
+    /* ── SIP all-asset-types metadata cache ──────────────────────────────
+       The classic telemetrylive grid loads GetBulkAssetMetadata for ONE
+       asset type at a time and wipes its alias / DataLogger maps on every
+       type change. The SIP schematic shows ALL types at once, so clicking a
+       signal while the "Track" pill is selected finds no signal metadata and
+       the asset popup can only show raw snapshot values (no AliasName labels,
+       no TPR/NWKR relay rows).
+
+       Here we pre-load metadata for EVERY asset type of the site once, into a
+       standalone, never-wiped store (window.sipMetaAll) that the popup reads
+       as a fallback. It never touches the classic single-type globals, so the
+       telemetry grid is unaffected. Point Machine (type 3) uses a different
+       endpoint in the classic code and is skipped here (PM rows fall back to
+       the live snapshot). Cached per site. */
+    window.sipMetaAll = window.sipMetaAll || { siteId: null, simple: {}, dl: {}, assets: {}, zeroOffset: {}, loaded: false, pending: 0 };
+    var PM_ASSET_TYPE_ID = '3';
+    function sipMetaPost(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(body)
+        }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    }
+    function sipMetaMergeBulk(resp) {
+        if (!resp || !resp.mAssets) return;
+        var M = window.sipMetaAll, assets = resp.mAssets, n = 0;
+        for (var bi = 0; bi < assets.length; bi++) {
+            var asset = assets[bi];
+            if (!asset || !asset.Id) continue;
+            var aid = String(asset.Id);
+            M.assets[aid] = { Id: asset.Id, Name: asset.Name, SiteId: asset.SiteId, AssetTypeId: asset.AssetTypeId };
+            var off = parseFloat(asset.ZeroOffsetValue);
+            if (!isNaN(off) && off > 0) M.zeroOffset[aid] = off;
+            var attrs = asset.assetAttributes || asset.AssetAttributes || [];
+            for (var j = 0; j < attrs.length; j++) {
+                var attr = attrs[j];
+                var attrId = String(attr.Id || attr.AssetAttributeId || attr.AttributeId || '').trim();
+                var alias = String(attr.AliasName || '').trim();
+                var rawName = String(attr.Title || attr.AttributeName || attr.Name || alias || '').trim();
+                var disp = alias || rawName;
+                if (!attrId || !disp) continue;
+                var sk = aid + '_' + attrId;
+                if (!M.simple[sk]) M.simple[sk] = {
+                    name: disp, aliasName: disp, AliasName: disp,
+                    attributeName: rawName, AttributeName: rawName,
+                    assetName: asset.Name || '', assetTypeId: asset.AssetTypeId, siteId: asset.SiteId,
+                    multiplication: attr.Multiplication, absolute: attr.Absolute,
+                    minValue: attr.MinValue, maxValue: attr.MaxValue
+                };
+            }
+            var dls = asset.mAssetInfoDataloggers || asset.MAssetInfoDataloggers || [];
+            for (var k = 0; k < dls.length; k++) {
+                var dl = dls[k];
+                if (!dl) continue;
+                var role = String(dl.Value || dl.value || '').trim();
+                if (!role || role === '0' || role.toLowerCase() === 'null') continue;
+                var dlName = String(dl.DataloggerAttribute || dl.dataloggerAttribute || '').trim()
+                    || String(dl.DataloggerAssetName || dl.dataloggerAssetName || '').trim()
+                    || String(dl.AttributeName || dl.Name || ('DL ' + role)).trim();
+                if (!dlName) continue;
+                var dk = aid + '_' + role;
+                if (!M.dl[dk]) M.dl[dk] = {
+                    role: role, Role: role, dataloggerRole: role,
+                    name: dlName, Name: dlName,
+                    attributeName: dl.DataloggerAttribute || dlName, AttributeName: dl.DataloggerAttribute || dlName,
+                    dataloggerAttribute: dl.DataloggerAttribute || '', DataloggerAttribute: dl.DataloggerAttribute || '',
+                    dataloggerAssetName: dl.DataloggerAssetName || '', DataloggerAssetName: dl.DataloggerAssetName || '',
+                    dataloggerAttributeId: dl.Value || null, DataloggerAttributeId: dl.Value || null,
+                    dataloggerValueId: dl.Value || null, sourceId: dl.Id || null,
+                    contactType: dl.ContactType || '', assetName: asset.Name, AssetName: asset.Name,
+                    assetTypeId: asset.AssetTypeId, siteId: asset.SiteId
+                };
+            }
+            n++;
+        }
+        return n;
+    }
+    function loadSipAllTypeMetadata(siteId) {
+        siteId = String(siteId || '');
+        if (!siteId || siteId === '0') return;
+        var M = window.sipMetaAll;
+        if (M.siteId === siteId && (M.loaded || M.pending > 0)) return;   // cached / in-flight
+        window.sipMetaAll = M = { siteId: siteId, simple: {}, dl: {}, assets: {}, zeroOffset: {}, loaded: false, pending: 0 };
+        sipMetaPost('/FRS25/Telemetry/GetAssetTypeBySiteId', { siteId: siteId }).then(function (types) {
+            if (window.sipMetaAll !== M) return;                         // site changed meanwhile
+            var list = (types || []).filter(function (t) {
+                return t && t.IsActive && String(t.Id) !== PM_ASSET_TYPE_ID
+                    && !(typeof window.isHiddenAssetTypeName === 'function' && window.isHiddenAssetTypeName(t.Name));
+            });
+            if (!list.length) { M.loaded = true; return; }
+            M.pending = list.length;
+            list.forEach(function (t) {
+                sipMetaPost('/FRS25/Telemetry/GetBulkAssetMetadata',
+                    { SearchCriteria: { SiteId: siteId, AssetTypeId: parseInt(t.Id, 10) } })
+                    .then(function (resp) { if (window.sipMetaAll === M) sipMetaMergeBulk(resp); })
+                    .catch(function (e) { swarnOnce('sipmeta-type-' + t.Id, 'SIP metadata: type ' + t.Id + ' failed:', e && e.message); })
+                    .then(function () {
+                        if (window.sipMetaAll !== M) return;
+                        if (--M.pending <= 0) {
+                            M.loaded = true;
+                            sinfo('SIP all-type metadata ready — ' + Object.keys(M.assets).length + ' assets, ' +
+                                Object.keys(M.simple).length + ' attrs, ' + Object.keys(M.dl).length + ' dataloggers.');
+                        }
+                    });
+            });
+        }).catch(function (e) { swarnOnce('sipmeta-types', 'SIP metadata: GetAssetTypeBySiteId failed:', e && e.message); });
     }
 
     function findCells(assetName) {
@@ -2464,11 +2676,17 @@
         HG: ['HG mA', 'ISIG HG', 'ISIG_HG', 'HG Current', 'HG I', 'H mA'],
         HHG: ['HHG mA', 'ISIG HHG', 'ISIG_HHG', 'HHG Current', 'HHG I']
     };
+    // 'RR' / 'DR' / 'HR' / 'HHR' removed: they are SEPARATE relays, not nicknames for
+    // RECR / DECR / HECR / HHECR. When an asset reports both (e.g. HECR=0 and HR=1) the
+    // alias lookup returned the wrong relay's state and painted a phantom SINGLE_YELLOW
+    // over the correct GREEN. The spaced spellings (e.g. 'R E CR', 'HE CR') are kept -
+    // they are genuine variants of the real relay names. Matches host isSignalRelayPickup
+    // in telemetrylive.js and e7mriv2web parity.
     var RELAY_ALIASES = {
-        RECR: ['RECR', 'RCR', 'RR', 'RED CR', 'R E CR'],
-        DECR: ['DECR', 'DCR', 'DR', 'DE CR'],
-        HECR: ['HECR', 'HCR', 'HR', 'HE CR'],
-        HHECR: ['HHECR', 'HHCR', 'HHR', 'HHE CR']
+        RECR: ['RECR', 'RCR', 'RED CR', 'R E CR'],
+        DECR: ['DECR', 'DCR', 'DE CR'],
+        HECR: ['HECR', 'HCR', 'HE CR'],
+        HHECR: ['HHECR', 'HHCR', 'HHE CR']
     };
     var _normAliasCache = {};
     function normAliases(list, key) {
@@ -2565,6 +2783,24 @@
             if (lamps.HG && !lamps.HG.hasFresh && lamps.HG.Value > thr) cand.push({ aspect: 'SINGLE_YELLOW', p: 3, v: lamps.HG.Value });
             if (lamps.DG && !lamps.DG.hasFresh && lamps.DG.Value > thr) cand.push({ aspect: 'GREEN', p: 4, v: lamps.DG.Value });
             chosen = pickBest(cand);
+        }
+        /* S-35 two-aspect resolver + RG fail-safe — PARITY with the host
+           computeSignalState (telemetrylive.js). In SIP-only mode the host
+           store is empty so resolveSignalState falls back here; without this,
+           a 2-aspect RG+HG head whose RG mA is energised but server-flagged
+           IsFresh=false (and no RECR) would render dark in the schematic while
+           the Signal Card / Live view shows RED. Runs only when nothing above
+           resolved, so it can never override a real aspect. */
+        if (!chosen) {
+            var rgOn = !!(lamps.RG && lamps.RG.Value > thr);   // energised RG current (ignores fresh flag)
+            var hgOn = !!(lamps.HG && lamps.HG.Value > thr);
+            var rgEnergised = rgOn || recr;                    // current OR relay pickup
+            var hgEnergised = hgOn || hecr;
+            if (lamps.RG && lamps.HG && !lamps.DG && !lamps.HHG) {   // 2-aspect head
+                if (rgEnergised) chosen = { aspect: 'RED', p: 1, v: 0 };
+                else if (hgEnergised) chosen = { aspect: 'SINGLE_YELLOW', p: 3, v: 0 };
+            }
+            if (!chosen && rgEnergised) chosen = { aspect: 'RED', p: 1, v: 0 };   // any head: energised RG never dark
         }
         var aspect = chosen ? chosen.aspect : 'INACTIVE';
         var hasRelays = relayPresent(rec, 'RECR') || relayPresent(rec, 'DECR') || relayPresent(rec, 'HECR') || relayPresent(rec, 'HHECR');
@@ -3070,9 +3306,12 @@
             'preserveAspectRatio="xMidYMid meet" style="width:100%;height:100%;">' +
             '<defs><style>' + SVG_STYLE + '</style></defs>' +
             (typeof SIP.renderBackground === 'function' ? SIP.renderBackground() : '<rect width="100%" height="100%" fill="#0E1828"/>') +
+            '<g class="sip-content">' +
             railLayer + standLayer + breakerLayer + parts.join('') + gapLayer +
+            '</g>' +
             '</svg>';
         indexDom();
+        ensureFit();
     }
     function indexDom() {
         state.domCells = {}; state.domRail = {}; state.domGap = {};
@@ -3085,6 +3324,235 @@
         var gs2 = state.svgEl.querySelectorAll('[data-pm-gap]');
         for (var k = 0; k < gs2.length; k++) state.domGap[gs2[k].getAttribute('data-pm-gap')] = gs2[k];
     }
+    /* =========================================================================
+       VIEWER FIT + ZOOM / PAN
+       Fit-to-content on load (no wasted band at the top), plus wheel / drag /
+       button zoom. Works purely on the SVG viewBox, so live DOM patches are
+       untouched and the current zoom/pan survives every re-render.
+       ========================================================================= */
+    var SIP_MAX_ZOOM = 12;   // max magnification over the fit view
+    var SIP_MIN_ZOOM = 1;    // fit is the most zoomed-out view (never over-zoom out)
+
+    /* Fallback bbox from cell positions when getBBox is unavailable. */
+    function cellsBBox() {
+        var cells = state.cells;
+        if (!cells || !cells.length) return null;
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (var i = 0; i < cells.length; i++) {
+            var c = cells[i];
+            var x = (c.position && c.position.x) || 0, y = (c.position && c.position.y) || 0;
+            var w = (c.size && c.size.width) || 60, h = (c.size && c.size.height) || 60;
+            if (x < minX) minX = x; if (y < minY) minY = y;
+            if (x + w > maxX) maxX = x + w; if (y + h > maxY) maxY = y + h;
+        }
+        if (minX === Infinity) return null;
+        var p = 30;
+        return { x: minX - p, y: minY - p, w: (maxX - minX) + 2 * p, h: (maxY - minY) + 2 * p };
+    }
+
+    /* True drawn bounds of the schematic (excludes the full-bleed background
+       rect, which lives outside g.sip-content), so an empty band saved into the
+       layout can't leave dead space. Falls back to the cell-position bbox. */
+    function contentBBox() {
+        if (state.svgEl) {
+            var g = state.svgEl.querySelector('g.sip-content');
+            if (g && g.getBBox) {
+                try {
+                    var b = g.getBBox();
+                    if (b && b.width > 1 && b.height > 1) {
+                        var pad = Math.max(18, Math.min(b.width, b.height) * 0.04);
+                        return { x: b.x - pad, y: b.y - pad, w: b.width + 2 * pad, h: b.height + 2 * pad };
+                    }
+                } catch (e) { /* not laid out yet */ }
+            }
+        }
+        return cellsBBox();
+    }
+
+    /* Content bbox expanded on its short axis to match the canvas aspect ratio,
+       so preserveAspectRatio="xMidYMid meet" fills the canvas with NO letterbox
+       and the yard is centred with balanced margins. */
+    function computeFitView() {
+        var bb = contentBBox();
+        if (!bb || !canvasEl) return null;
+        var rect = canvasEl.getBoundingClientRect();
+        var cw = rect.width || 1, ch = rect.height || 1;
+        var canvasAR = cw / ch, boxAR = bb.w / bb.h;
+        var x = bb.x, y = bb.y, w = bb.w, h = bb.h;
+        if (boxAR > canvasAR) { var nh = bb.w / canvasAR; y -= (nh - h) / 2; h = nh; }
+        else { var nw = bb.h * canvasAR; x -= (nw - w) / 2; w = nw; }
+        return { x: x, y: y, w: w, h: h };
+    }
+
+    function applyViewBoxOnly() {
+        if (!state.view) return;
+        var v = state.view;
+        state.viewBox = v.x + ' ' + v.y + ' ' + v.w + ' ' + v.h;
+        if (state.svgEl) state.svgEl.setAttribute('viewBox', state.viewBox);
+    }
+
+    /* Establish the fit view once per load / resize; otherwise keep the user's
+       current zoom/pan across re-renders. Called at the end of renderAll. */
+    function ensureFit() {
+        if (!canvasEl) return;
+        if (state.needFit || !state.view) {
+            var fv = computeFitView();
+            if (!fv) return;
+            state.fit = fv;
+            state.view = { x: fv.x, y: fv.y, w: fv.w, h: fv.h };
+            state.needFit = false;
+        }
+        applyViewBoxOnly();
+    }
+
+    function fitView() { state.needFit = true; ensureFit(); }
+
+    /* Exact client→SVG mapping (handles any preserveAspectRatio). */
+    function clientToSvg(cx, cy) {
+        var svg = state.svgEl;
+        if (svg && svg.getScreenCTM) {
+            try {
+                var m = svg.getScreenCTM();
+                if (m) { var pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; var q = pt.matrixTransform(m.inverse()); return { x: q.x, y: q.y }; }
+            } catch (e) { }
+        }
+        var rect = canvasEl.getBoundingClientRect(), v = state.view;
+        return { x: v.x + (cx - rect.left) / (rect.width || 1) * v.w, y: v.y + (cy - rect.top) / (rect.height || 1) * v.h };
+    }
+
+    /* Keep part of the yard on-screen so it can't be panned into the void. */
+    function clampView() {
+        if (!state.view || !state.fit) return;
+        var v = state.view, f = state.fit, m;
+        if (v.x > f.x + f.w - (m = v.w * 0.2)) v.x = f.x + f.w - m;
+        if (v.x + v.w < f.x + (m = v.w * 0.2)) v.x = f.x + m - v.w;
+        if (v.y > f.y + f.h - (m = v.h * 0.2)) v.y = f.y + f.h - m;
+        if (v.y + v.h < f.y + (m = v.h * 0.2)) v.y = f.y + m - v.h;
+    }
+
+    function zoomAt(factor, cx, cy) {
+        if (!state.view || !state.fit) return;
+        var v = state.view, fit = state.fit;
+        var curScale = fit.w / v.w;
+        var newScale = Math.max(SIP_MIN_ZOOM, Math.min(SIP_MAX_ZOOM, curScale * factor));
+        if (Math.abs(newScale - curScale) < 1e-4) return;
+        var nw = fit.w / newScale, nh = fit.h / newScale;
+        var p = clientToSvg(cx, cy);
+        var fx = (p.x - v.x) / v.w, fy = (p.y - v.y) / v.h;
+        state.view = { x: p.x - fx * nw, y: p.y - fy * nh, w: nw, h: nh };
+        clampView();
+        applyViewBoxOnly();
+    }
+
+    function zoomByCenter(factor) {
+        if (!canvasEl) return;
+        var rect = canvasEl.getBoundingClientRect();
+        zoomAt(factor, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    }
+
+    function wireZoomPan() {
+        if (!canvasEl || canvasEl._sipZoomPanBound) return;
+        canvasEl._sipZoomPanBound = true;
+
+        canvasEl.addEventListener('wheel', function (e) {
+            if (!state.view || !isViewerFullscreen()) return;   // zoom only in full screen
+            if (e.target && e.target.closest && e.target.closest('.sip-insp, .sip-replay')) return; // let overlays scroll
+            e.preventDefault();
+            zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+        }, { passive: false });
+
+        var pan = null;
+        canvasEl.addEventListener('pointerdown', function (e) {
+            if (!state.view || !isViewerFullscreen()) return;   // pan only in full screen
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            if (e.target && e.target.closest && e.target.closest('button, .sip-insp, .sip-replay, #wsStatus, a, input, select')) return;
+            pan = { x0: e.clientX, y0: e.clientY, vx: state.view.x, vy: state.view.y, moved: false, id: e.pointerId };
+        }, false);
+
+        canvasEl.addEventListener('pointermove', function (e) {
+            if (!pan) return;
+            var dx = e.clientX - pan.x0, dy = e.clientY - pan.y0;
+            if (!pan.moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+            if (!pan.moved) { pan.moved = true; assetClickDown = null; try { canvasEl.setPointerCapture(pan.id); } catch (e2) { } canvasEl.style.cursor = 'grabbing'; }
+            var rect = canvasEl.getBoundingClientRect(), v = state.view;
+            state.view = { x: pan.vx - dx / (rect.width || 1) * v.w, y: pan.vy - dy / (rect.height || 1) * v.h, w: v.w, h: v.h };
+            clampView();
+            applyViewBoxOnly();
+        }, false);
+
+        function endPan() {
+            if (pan) { try { canvasEl.releasePointerCapture(pan.id); } catch (e2) { } }
+            pan = null;
+            if (canvasEl) canvasEl.style.cursor = '';
+        }
+        canvasEl.addEventListener('pointerup', endPan, false);
+        canvasEl.addEventListener('pointercancel', endPan, false);
+    }
+
+    /* True only while the SIP schematic is shown full screen (card mode or the
+       activate() fallback). Zoom/pan are enabled only here. */
+    function isViewerFullscreen() {
+        var card = document.getElementById('sipCardSection') || document.querySelector('section.sip-card, .sip-card');
+        if (card && card.classList.contains('fullscreen')) return true;
+        var wrap = document.getElementById('sipTelWrap');
+        if (wrap && wrap.classList.contains('sip-tel-fs')) return true;
+        return false;
+    }
+
+    /* Show / hide the zoom controls — only visible in full screen. */
+    function updateZoomControlsVisibility() {
+        if (state._zoomBar) state._zoomBar.style.display = isViewerFullscreen() ? 'flex' : 'none';
+    }
+
+    /* Floating zoom controls (minus / fit / plus). Appended to the canvas HOST
+       so they survive every re-render. Hidden unless the schematic is full
+       screen (per request: zoom works only in full screen). */
+    function installViewerZoomControls() {
+        var host = canvasEl && canvasEl.parentNode;
+        if (!host || host._sipZoomCtrls) return;
+        host._sipZoomCtrls = true;
+        var cs = window.getComputedStyle(host);
+        if (cs && cs.position === 'static') host.style.position = 'relative';
+        if (!document.getElementById('sipZoomCtrlCss')) {
+            var zs = document.createElement('style'); zs.id = 'sipZoomCtrlCss';
+            zs.textContent = '.sip-zoom-ctrls button:hover{background:rgba(255,255,255,0.10);color:#fff;}' +
+                '.sip-zoom-ctrls button:active{transform:scale(0.93);}' +
+                '.sip-zoom-ctrls .sip-zoom-sep{width:1px;height:18px;background:rgba(148,163,184,0.25);}';
+            document.head.appendChild(zs);
+        }
+        var bar = document.createElement('div');
+        bar.className = 'sip-zoom-ctrls';
+        bar.style.cssText = 'position:absolute;bottom:16px;right:16px;z-index:40;display:none;align-items:center;gap:1px;' +
+            'background:rgba(17,24,39,0.72);border:1px solid rgba(148,163,184,0.22);border-radius:10px;padding:3px;' +
+            'box-shadow:0 2px 10px rgba(0,0,0,0.28);';
+        var bs = 'background:transparent;color:#cbd5e1;border:none;border-radius:7px;width:34px;height:34px;cursor:pointer;' +
+            'font-size:13px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s,transform .08s;';
+        bar.innerHTML =
+            '<button type="button" id="sipZoomOut" title="Zoom out" aria-label="Zoom out" style="' + bs + '"><i class="fas fa-minus"></i></button>' +
+            '<span class="sip-zoom-sep"></span>' +
+            '<button type="button" id="sipZoomFit" title="Fit to screen" aria-label="Fit to screen" style="' + bs + '"><i class="fas fa-compress-arrows-alt"></i></button>' +
+            '<span class="sip-zoom-sep"></span>' +
+            '<button type="button" id="sipZoomIn" title="Zoom in" aria-label="Zoom in" style="' + bs + '"><i class="fas fa-plus"></i></button>';
+        host.appendChild(bar);
+        state._zoomBar = bar;
+        var g = function (id) { return document.getElementById(id); };
+        if (g('sipZoomOut')) g('sipZoomOut').addEventListener('click', function () { zoomByCenter(1 / 1.25); });
+        if (g('sipZoomFit')) g('sipZoomFit').addEventListener('click', function () { fitView(); });
+        if (g('sipZoomIn')) g('sipZoomIn').addEventListener('click', function () { zoomByCenter(1.25); });
+        updateZoomControlsVisibility();
+    }
+
+    /* Wire zoom/pan + floating controls + a resize re-fit, for whichever host
+       mode is active (card mode or the activate() fallback). */
+    function wireViewerInteractions() {
+        wireZoomPan();
+        installViewerZoomControls();
+        if (!state._onResize) {
+            state._onResize = function () { state.needFit = true; clearTimeout(state._fitT); state._fitT = setTimeout(ensureFit, 120); };
+            window.addEventListener('resize', state._onResize);
+        }
+    }
+
     function renderPlaceholder(msg) {
         if (!canvasEl) return;
         state.svgEl = null; state.domCells = {}; state.domRail = {}; state.domGap = {};

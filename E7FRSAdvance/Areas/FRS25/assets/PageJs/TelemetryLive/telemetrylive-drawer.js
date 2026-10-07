@@ -1,14 +1,18 @@
 /* =============================================================================
-   telemetrylive-drawer.js  --  v618.36  ASSET DRAWER (Track first)
+   telemetrylive-drawer.js  --  v618.38  ASSET DRAWER (Track first)
 
    One AI button on each Track card (replaces Graph / Circuit / Avg values)
    opens this drawer from the right -- the "Drawer final" mockup:
 
      header      asset, health score, TPR, live time, prev / next asset, close
-     actions     Open in SIP, Full circuit view (old circuit modal), Avg values
-                 (old FRS range history), Export CSV
-     row 1       Live values (safe-range gauges + calculated values) + Analysis
+     nav         SPA-style section jump: Live values, Ask AI, Alerts, Circuit,
+                 Track shorting (/ Pattern analysis), Maintenance roster, Graph;
+                 plus an Export CSV icon button.
+                 (v618.38: replaced Open in SIP / Full circuit view / Avg values)
+     row 1       Live values (safe-range gauges + calculated values)
                  | Ask AI (POST /FRS25/ChatBot/Chat, SSE text / tool_use / error frames; v618.37)
+                   -- Analysis (Asset Health API) now shows here as the default view
+                      and the conversation replaces it once you ask (v618.38)
      circuit     track circuit, live values on cards, animated current flow
      alerts      past alerts, 30 days (POST /FRS25/Telemetry/GetSipReplayAlerts),
                  filter chips, Replay -> SIP replay around the alert
@@ -110,7 +114,13 @@
         '.tld-btn.sm{height:26px;padding:0 9px;font-size:11.5px;border-radius:7px;}' +
         '.tld-btn[aria-pressed="true"]{background:var(--e7-accent,#2f9ec4);border-color:var(--e7-accent,#2f9ec4);color:#fff;}' +
         '.tld-x{width:36px;height:36px;font-size:18px;padding:0;}' +
-        '.tld-actions{display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);}' +
+        '.tld-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 18px;border-bottom:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);}' +
+        /* v618.38 in-drawer section nav (SPA-style jump to each section) */
+        '.tld-navbtn{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;}' +
+        '.tld-navbtn:hover{border-color:var(--e7-accent,#2f9ec4);color:var(--e7-accent,#2f9ec4);}' +
+        '.tld-navbtn[aria-pressed="true"]{background:var(--e7-accent,#2f9ec4);border-color:var(--e7-accent,#2f9ec4);color:#fff;}' +
+        '.tld-navgap{flex:1;min-width:8px;}' +
+        '.tld-defan .tld-sh{margin-bottom:6px;}' +
         '.tld-body{flex:1;min-height:0;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;}' +
         '.tld-row{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:12px;align-items:stretch;}' +
         '.tld-col{display:flex;flex-direction:column;gap:12px;min-width:0;}' +
@@ -1470,8 +1480,12 @@
     }
     function msgsHtml() {
         var C = chatState(), name = (live()[D.aid] || {}).AssetName || D.aid;
-        if (!C.msgs.length) return '<div class="tld-empty">Ask anything about ' + esc(name) + ': its live values, history, alerts or health. ' +
-            'The assistant gets this asset\'s live values with your first question and looks up history and alerts itself.</div>';
+        /* v618.38: Analysis is the default content inside Ask AI; the conversation replaces it once you ask. */
+        if (!C.msgs.length) return '<div class="tld-defan">' +
+            '<div class="tld-sh"><h3>Analysis</h3><button type="button" class="tld-btn sm" data-tld-hrefresh="1" title="Ask the Asset Health API again (skips its 10-minute cache)">&#8635; Refresh</button></div>' +
+            '<div id="tldAnalysis">' + analysisHtml(describe(D.aid)) + '</div>' +
+            '<div class="tld-note" style="margin-top:10px">Ask anything about ' + esc(name) + ' below &#8212; its live values, history, alerts or health. ' +
+            'The assistant gets this asset\'s live values with your first question and looks up history and alerts itself.</div></div>';
         return C.msgs.map(function (m, i) {
             return m.role === 'user' ? '<div class="tld-mu">' + esc(m.show || m.content) + '</div>' : botHtml(m, i, i === C.msgs.length - 1);
         }).join('');
@@ -1647,35 +1661,59 @@
             (next ? '<button type="button" class="tld-btn" data-tld-go="' + esc(next) + '">' + esc(nm(next)) + ' &#8594;</button>' : '') +
             '<button type="button" class="tld-btn tld-x" data-tld-close="1" aria-label="Close">&times;</button>';
     }
-    function sec(title, body, extra, id, fill) {
-        return '<section class="tld-sec' + (fill ? ' fill' : '') + '"><div class="tld-sh"><h3>' + title + '</h3>' + (extra || '') + '</div><div' + (id ? ' id="' + id + '"' : '') + '>' + body + '</div></section>';
+    function sec(title, body, extra, id, fill, secId) {
+        return '<section class="tld-sec' + (fill ? ' fill' : '') + '"' + (secId ? ' id="' + secId + '"' : '') + '><div class="tld-sh"><h3>' + title + '</h3>' + (extra || '') + '</div><div' + (id ? ' id="' + id + '"' : '') + '>' + body + '</div></section>';
     }
     function shell() {
         var A = describe(D.aid);
         var periods = [[1, '1 h'], [24, '24 h'], [168, '7 d']].map(function (p) {
             return '<button type="button" class="tld-btn sm" data-tld-h="' + p[0] + '" aria-pressed="' + (D.graphHours === p[0]) + '">' + p[1] + '</button>';
         }).join(' ');
+        /* v618.38: in-drawer section nav (SPA-style jump) -- replaces Open in SIP / Full circuit view */
+        var navItems = [['tldSecValues', 'Live values'], ['tldChatSec', 'Ask AI'], ['tldSecAlerts', 'Alerts'], ['tldSecCircuit', 'Circuit']];
+        if (kind() === 'track') navItems.push(['tldSecShort', 'Track shorting']);
+        else if (kind() === 'pm') navItems.push(['tldSecPattern', 'Pattern analysis']);
+        navItems.push(['tldSecRoster', 'Maintenance roster'], ['tldSecGraph', 'Graph']);
+        var navHtml = navItems.map(function (n, i) {
+            return '<button type="button" class="tld-navbtn" data-tld-nav="' + n[0] + '" aria-pressed="' + (i === 0) + '">' + n[1] + '</button>';
+        }).join('');
         return '<div class="tld-head" id="tldHead">' + headHtml(A) + '</div>' +
-            '<div class="tld-actions"><button type="button" class="tld-btn" data-tld-act="sip">Open in SIP</button>' +
-            '<button type="button" class="tld-btn" data-tld-act="circuit">Full circuit view</button>' +
-            '<button type="button" class="tld-btn" data-tld-act="avg">Avg values</button>' +
-            '<button type="button" class="tld-btn" data-tld-act="csv">Export</button></div>' +
+            '<nav class="tld-actions" aria-label="Sections">' + navHtml +
+            '<span class="tld-navgap"></span>' +
+            '<button type="button" class="tld-ib" data-tld-act="csv" aria-label="Export CSV" title="Export CSV"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"></path></svg></button></nav>' +
             '<div class="tld-body">' +
-            '<div class="tld-row"><div class="tld-col">' + sec('Live values', valuesHtml(A), '', 'tldValues') +
-            '<section class="tld-sec fill"><div class="tld-sh"><h3>Analysis</h3><button type="button" class="tld-btn sm" data-tld-hrefresh="1" title="Ask the Asset Health API again (skips its 10-minute cache)">&#8635; Refresh</button></div><div id="tldAnalysis">' + analysisHtml(A) + '</div></section></div>' +
+            '<div class="tld-row"><div class="tld-col" id="tldSecValues">' + sec('Live values', valuesHtml(A), '', 'tldValues') + '</div>' +
             '<div class="tld-col"><section class="tld-sec fill tld-chatsec' + (D.chatFull ? ' full' : '') + '" id="tldChatSec"><div class="tld-sh"><h3>Ask AI</h3>' +
             '<button type="button" class="tld-ib" data-tld-chatclear="1" aria-label="New chat" title="New chat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>' +
             '<button type="button" class="tld-ib" data-tld-chatfull="1" aria-pressed="' + !!D.chatFull + '" aria-label="' + (D.chatFull ? 'Exit full screen' : 'Expand to full screen') + '" title="Full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button></div>' +
             '<div id="tldChat" style="display:flex;flex-direction:column;flex:1;min-height:0">' + chatHtml() + '</div></section></div></div>' +
-            sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>') +
-            sec('Past alerts &#183; 30 days', alertsHtml(), '', 'tldAlerts') +
-            sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster') +
+            sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null, false, 'tldSecCircuit') +
+            sec('Past alerts &#183; 30 days', alertsHtml(), '', 'tldAlerts', false, 'tldSecAlerts') +
+            sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster', false, 'tldSecRoster') +
             (kind() === 'signal' ? '' : kind() === 'pm' ? sec('Operation pattern analysis', '<div class="tld-pend"><b>Pattern analysis API pending.</b> This section will run the point-machine pattern checks on the recent operations and show the result: ' +
-                'overall verdict (normal / watch / fault, confidence), each pattern checked (e.g. obstruction, friction / slagging, creeping, A / B end mismatch, slow throw, detection or indication low) with its status and the evidence (operations, current curve, values), and the operations that matched.</div>') :
+                'overall verdict (normal / watch / fault, confidence), each pattern checked (e.g. obstruction, friction / slagging, creeping, A / B end mismatch, slow throw, detection or indication low) with its status and the evidence (operations, current curve, values), and the operations that matched.</div>', '', null, false, 'tldSecPattern') :
             sec('Track shorting (leakage) report', '<div id="tldShort" style="display:flex;flex-direction:column;gap:8px">' + shortHtml() + '</div><div id="tldShortPlots" style="margin-top:8px">' + shortPlotsHtml() + '</div>',
-                '<div style="display:flex;gap:4px">' + shortDaysHtml() + '</div>')) +
-            sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px">' + periods + '</div>', 'tldGraph') +
+                '<div style="display:flex;gap:4px">' + shortDaysHtml() + '</div>', null, false, 'tldSecShort')) +
+            sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px">' + periods + '</div>', 'tldGraph', false, 'tldSecGraph') +
             '</div>';
+    }
+    function setActiveNav(active) {
+        var btns = document.querySelectorAll('[data-tld-nav]');
+        for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(btns[i] === active));
+    }
+    /* v618.38 scroll-spy: highlight the nav item for the section nearest the top of the body */
+    function navSpy() {
+        var body = document.querySelector('#tldDrawer .tld-body');
+        var btns = document.querySelectorAll('[data-tld-nav]');
+        if (!body || !btns.length) return;
+        var ref = body.getBoundingClientRect().top + 24, active = btns[0], activeTop = -Infinity;
+        for (var i = 0; i < btns.length; i++) {
+            var el = document.getElementById(btns[i].getAttribute('data-tld-nav'));
+            if (!el) continue;
+            var top = el.getBoundingClientRect().top;
+            if (top <= ref && top > activeTop) { activeTop = top; active = btns[i]; }
+        }
+        setActiveNav(active);
     }
     function liveRefresh() {
         if (!D.aid || !document.getElementById('tldDrawer')) return;
@@ -1728,13 +1766,17 @@
         if (!t.closest) return;
         if (t.closest('[data-tld-close]')) { close(); return; }
         var go = t.closest('[data-tld-go]'); if (go) { open(go.getAttribute('data-tld-go')); return; }
+        var nav = t.closest('[data-tld-nav]');
+        if (nav) {
+            var sect = document.getElementById(nav.getAttribute('data-tld-nav'));
+            if (sect && sect.scrollIntoView) sect.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setActiveNav(nav);
+            return;
+        }
         var act = t.closest('[data-tld-act]');
         if (act) {
-            var k = act.getAttribute('data-tld-act'), aid = D.aid;
-            if (k === 'sip') openSip();
-            else if (k === 'circuit' && typeof W.fnGetAssetCircuit === 'function') W.fnGetAssetCircuit(aid);
-            else if (k === 'avg' && typeof W.fnShowFRSAttributeRangeHistory === 'function') W.fnShowFRSAttributeRangeHistory(aid);
-            else if (k === 'csv') exportCsv();
+            var k = act.getAttribute('data-tld-act');
+            if (k === 'csv') exportCsv();
             return;
         }
         if (t.closest('[data-tld-unsel]')) { D.sel = null; D.liveSig = ''; liveRefresh(); return; }
@@ -1829,6 +1871,8 @@
             document.addEventListener('keydown', onKey);
         }
         dr.innerHTML = shell();
+        var bodyEl = dr.querySelector('.tld-body');
+        if (bodyEl) bodyEl.addEventListener('scroll', navSpy, { passive: true });
         D.liveSig = '';
         liveRefresh();
         loadAlerts();

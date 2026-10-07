@@ -48,6 +48,7 @@
     const state = {
         cells: [],
         selectedId: null,
+        selectedIds: [],        // multi-selection (includes selectedId as the primary)
         viewBox: '0 0 2000 740',
         history: [],
         historyIdx: -1,
@@ -65,6 +66,139 @@
     function $$(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
     function cellById(id) { return state.cells.find(c => c.id === id); }
     function selectedCell() { return state.selectedId ? cellById(state.selectedId) : null; }
+
+    /* Visible bounding box of a cell's ICON (what the user sees), which can
+       differ from cell.size. Shunts auto-size their body to 44-64px, so the
+       selection overlay / handles must track the body, not the tiny cell.size,
+       otherwise every handle is crammed into a spot that doesn't match the icon. */
+    function cellBox(cell) {
+        const x = cell.position.x, y = cell.position.y;
+        const w = cell.size.width, h = cell.size.height;
+        const t = cell.type;
+        if (t === 'examples.Shaunt' || t === 'examples.Shaunt2' || t === 'examples.Shaunt3') {
+            const bw = Math.max(44, Math.min(w * 1.5, 64));
+            const bh = bw * (23 / 25);
+            return { x: x + (w - bw) / 2, y: y + (h - bh) / 2, w: bw, h: bh };
+        }
+        return { x: x, y: y, w: w, h: h };
+    }
+
+    /* Stand geometry for the selected signal/shunt — the attach point (ax,ay),
+       the stand TIP (ex,ey), whether it has an adjustable L arm, and the vertical
+       factor (corners reach 0.6*len). Mirrors renderStand8 so the drag handle
+       sits on the real stand tip and stretches it accurately. */
+    const _STAND_CELL_TYPES = { 'examples.Signal': 1, 'examples.SignalShunt': 1, 'examples.RouteCallingSignal': 1, 'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1 };
+    function standGeom(cell) {
+        if (!cell || !_STAND_CELL_TYPES[cell.type]) return null;
+        const sg = (cell.attrs && cell.attrs.signal) || {};
+        const sPos = sg.standPos || ((sg.stand === 'none') ? 'none' : 'B');
+        if (sPos === 'none') return null;
+        const b = cellBox(cell);
+        const x = b.x, y = b.y, x2 = b.x + b.w, y2 = b.y + b.h, mx = b.x + b.w / 2, my = b.y + b.h / 2;
+        if (sPos === 'FREE') {
+            // Both ends freely placed (offsets from the body centre).
+            const ax0 = mx + (+sg.standAx || 0), ay0 = my + (+sg.standAy || 0);
+            const ex0 = mx + (+sg.standEx || 0), ey0 = my + (+sg.standEy || 0);
+            return { sPos: 'FREE', free: true, ax: ax0, ay: ay0, ex: ex0, ey: ey0, hasArm: true, hasAttach: true, bodyCx: mx, bodyCy: my };
+        }
+        const len = Math.max(8, +sg.standLength || 24);
+        const arm = Math.max(0, +sg.standArm || Math.max(10, len * 0.45));
+        const drop = String(sg.standDrop || 'down').toLowerCase();
+        const vSign = (drop === 'up' || drop === 'top') ? -1 : 1;
+        const off = Math.max(0, Math.min(b.h, +sg.standAttachOff || 0));   // attach shift along the body
+        let ax, ay, ex, ey, hasArm = false, vFactor = 1, hasAttach = false, attachBase = 0;
+        switch (sPos) {
+            case 'T': ax = mx; ay = y + off; ex = mx; ey = ay - len; hasAttach = true; attachBase = y; break;
+            case 'B': ax = mx; ay = y2 - off; ex = mx; ey = ay + len; hasAttach = true; attachBase = y2; break;
+            case 'C': ax = mx; ay = y2 - off; ex = mx + arm; ey = ay + vSign * len; hasArm = true; hasAttach = true; attachBase = y2; break;
+            case 'L': ax = x; ay = my; ex = x - arm; ey = my + vSign * len; hasArm = true; break;
+            case 'R': ax = x2; ay = my; ex = x2 + arm; ey = my + vSign * len; hasArm = true; break;
+            case 'TL': ax = x; ay = y; ex = x - arm; ey = y - len; hasArm = true; break;
+            case 'TR': ax = x2; ay = y; ex = x2 + arm; ey = y - len; hasArm = true; break;
+            case 'BL': ax = x; ay = y2; ex = x - arm; ey = y2 + len; hasArm = true; break;
+            case 'BR': ax = x2; ay = y2; ex = x2 + arm; ey = y2 + len; hasArm = true; break;
+            default: ax = mx; ay = y2; ex = mx; ey = y2 + len;
+        }
+        return { sPos: sPos, ax: ax, ay: ay, ex: ex, ey: ey, hasArm: hasArm, vFactor: vFactor, hasAttach: hasAttach, attachBase: attachBase, bodyH: b.h };
+    }
+
+    /* ---- multi-selection helpers (selectedIds) ---------------------------- */
+    function isSelected(id) { return state.selectedIds.indexOf(id) !== -1; }
+    function toggleInSelection(id) {
+        const i = state.selectedIds.indexOf(id);
+        if (i === -1) { state.selectedIds.push(id); state.selectedId = id; }
+        else { state.selectedIds.splice(i, 1); state.selectedId = state.selectedIds.length ? state.selectedIds[state.selectedIds.length - 1] : null; }
+    }
+    function clearSelection() { state.selectedIds = []; state.selectedId = null }
+    function selectAll() {
+        if (!state.cells.length) { toast('Nothing to select.'); return; }
+        state.selectedIds = state.cells.map(c => c.id);
+        state.selectedId = state.selectedIds[state.selectedIds.length - 1];
+        render();
+        toast('Selected all ' + state.selectedIds.length + ' element' + (state.selectedIds.length === 1 ? '' : 's') + ' — drag any one to move them together');
+    }
+
+    /* ---- zoom (button + programmatic). factor < 1 zooms IN, > 1 zooms OUT.
+       Anchors on a screen point (defaults to the canvas centre). ------------- */
+    function zoomBy(factor, ox, oy) {
+        const svg = canvasEl && canvasEl.querySelector('svg');
+        const rect = svg ? svg.getBoundingClientRect() : (canvasEl ? canvasEl.getBoundingClientRect() : null);
+        if (!rect) return;
+        const vb = parseViewBox(state.viewBox);
+        const cx = (ox != null) ? ox : rect.left + rect.width / 2;
+        const cy = (oy != null) ? oy : rect.top + rect.height / 2;
+        const wx = vb.x + (cx - rect.left) * (vb.w / (rect.width || 1));
+        const wy = vb.y + (cy - rect.top) * (vb.h / (rect.height || 1));
+        let nw = vb.w * factor, nh = vb.h * factor;
+        nw = Math.max(40, Math.min(40000, nw));
+        nh = Math.max(40, Math.min(40000, nh));
+        const nx = wx - (wx - vb.x) * (nw / vb.w);
+        const ny = wy - (wy - vb.y) * (nh / vb.h);
+        state.viewBox = Math.round(nx) + ' ' + Math.round(ny) + ' ' + Math.round(nw) + ' ' + Math.round(nh);
+        const vbInput = $('#viewbox-input'); if (vbInput) vbInput.value = state.viewBox;
+        render();
+    }
+
+    /* Dashed box around a group of selected cells (no resize handles). */
+    function renderGroupBox(ids) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
+        for (const id of ids) {
+            const c = cellById(id); if (!c) continue;
+            const x = c.position.x, y = c.position.y, w = c.size.width, h = c.size.height;
+            if (x < minX) minX = x; if (y < minY) minY = y;
+            if (x + w > maxX) maxX = x + w; if (y + h > maxY) maxY = y + h; n++;
+        }
+        if (!n || minX === Infinity) return '';
+        const pad = 6;
+        return `<g class="selection-overlay"><rect x="${minX - pad}" y="${minY - pad}" ` +
+            `width="${maxX - minX + pad * 2}" height="${maxY - minY + pad * 2}" ` +
+            `fill="rgba(34,211,238,0.06)" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="8,5" pointer-events="none"/></g>`;
+    }
+
+    /* Floating zoom / fit / select-all buttons over the canvas. Appended to the
+       canvas HOST (not #canvas, whose innerHTML is replaced every render). */
+    function installEditorZoomControls() {
+        const host = canvasEl && canvasEl.parentNode;
+        if (!host || host._sipZoomCtrls) return;
+        host._sipZoomCtrls = true;
+        const cs = window.getComputedStyle(host);
+        if (cs && cs.position === 'static') host.style.position = 'relative';
+        const bar = document.createElement('div');
+        bar.className = 'sip-ed-zoom';
+        bar.style.cssText = 'position:absolute;bottom:16px;right:16px;z-index:30;display:flex;gap:6px;align-items:center;';
+        const bs = 'background:rgba(15,23,42,0.88);color:#67e8f9;border:1px solid rgba(34,211,238,0.42);border-radius:8px;height:34px;cursor:pointer;line-height:1;display:inline-flex;align-items:center;justify-content:center;font-family:inherit;';
+        bar.innerHTML =
+            '<button type="button" id="sipEdSelAll" title="Select all (Ctrl+A)" style="' + bs + 'padding:0 12px;font-size:12px;font-weight:600;">Select all</button>' +
+            '<button type="button" id="sipEdZoomOut" title="Zoom out" style="' + bs + 'width:34px;font-size:20px;">&#8722;</button>' +
+            '<button type="button" id="sipEdZoomFit" title="Fit all to view" style="' + bs + 'padding:0 10px;font-size:12px;font-weight:600;">Fit</button>' +
+            '<button type="button" id="sipEdZoomIn" title="Zoom in" style="' + bs + 'width:34px;font-size:20px;">&#43;</button>';
+        host.appendChild(bar);
+        const g = id => document.getElementById(id);
+        if (g('sipEdZoomIn')) g('sipEdZoomIn').addEventListener('click', () => zoomBy(0.8));
+        if (g('sipEdZoomOut')) g('sipEdZoomOut').addEventListener('click', () => zoomBy(1.25));
+        if (g('sipEdZoomFit')) g('sipEdZoomFit').addEventListener('click', () => fitAll());
+        if (g('sipEdSelAll')) g('sipEdSelAll').addEventListener('click', () => selectAll());
+    }
 
     /* ------------------------------------------------------------------------ *
      *  SIGNAL → BACKGROUND AUTO-FIT
@@ -203,7 +337,7 @@
         const snapdata = JSON.parse(state.history[state.historyIdx]);
         state.cells = snapdata.cells;
         state.viewBox = snapdata.viewBox;
-        state.selectedId = null;
+        state.selectedId = null; state.selectedIds = [];
         const vbInput = $('#viewbox-input');
         if (vbInput) vbInput.value = state.viewBox;
         render();
@@ -223,7 +357,7 @@
 
         const fragments = state.cells.map(c => {
             const inner = SIP.renderCell(c);
-            const sel = (c.id === state.selectedId) ? ' selected' : '';
+            const sel = (isSelected(c.id) || c.id === state.selectedId) ? ' selected' : '';
             return `<g data-eid="${c.id}" class="editable${sel}">${inner}</g>`;
         });
 
@@ -243,7 +377,11 @@
         const pmConnLayer = (typeof SIP.renderPMConnectorLayer === 'function')
             ? SIP.renderPMConnectorLayer(state.cells)
             : '';
-        const sel = state.selectedId ? renderSelectionBox(cellById(state.selectedId)) : '';
+        // Group box (dashed, no handles) for a multi-selection; resize handles
+        // for a single selection.
+        const sel = (state.selectedIds.length > 1)
+            ? renderGroupBox(state.selectedIds)
+            : (state.selectedId ? renderSelectionBox(cellById(state.selectedId)) : '');
 
         canvasEl.innerHTML =
             `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.viewBox}" ` +
@@ -265,12 +403,79 @@
         refreshHistoryButtons();
     }
 
+    /* Parse an SVG markup fragment into REAL SVG-namespaced nodes. Setting
+       innerHTML / insertAdjacentHTML directly on an SVG element parses in the
+       HTML namespace in many browsers (elements don't render / aren't
+       clickable). Wrapping the fragment in <svg> inside a plain <div> uses the
+       lenient HTML parser's foreign-content mode — the SAME path the full
+       render() uses (canvasEl is a div) — so the children come out correctly
+       SVG-namespaced and it tolerates the same markup the full render does. */
+    const _SVG_NS = 'http://www.w3.org/2000/svg';
+    function _parseSvgWrap(markup) {
+        try {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = '<svg xmlns="' + _SVG_NS + '">' + markup + '</svg>';
+            return tmp.querySelector('svg');   // children are SVG-namespaced nodes
+        } catch (e) { return null; }
+    }
+    function _replaceSvgChildren(el, markup) {
+        const wrap = _parseSvgWrap(markup);
+        if (!wrap) return false;
+        while (el.firstChild) el.removeChild(el.firstChild);
+        const kids = [];
+        for (let i = 0; i < wrap.childNodes.length; i++) kids.push(wrap.childNodes[i]);
+        for (const k of kids) el.appendChild(document.importNode(k, true));
+        return true;
+    }
+
+    /* Live, in-place update of ONE cell + the selection overlay during a drag /
+       resize / rotate — instead of rebuilding the whole SVG (grid, rails, every
+       cell) each mouse-move, which caused heavy flicker. A full render() runs
+       once on mouse-up to reconcile everything. */
+    function renderCellLive(c) {
+        const svg = canvasEl && canvasEl.querySelector('svg');
+        if (!svg || !c) { render(true); return; }
+        const g = svg.querySelector('g.editable[data-eid="' + cssEsc(c.id) + '"]');
+        if (!g) { render(true); return; }
+        if (!_replaceSvgChildren(g, SIP.renderCell(c))) { render(true); return; }
+        const ov = svg.querySelector('.selection-overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+        const box = (state.selectedIds.length > 1) ? renderGroupBox(state.selectedIds)
+            : renderSelectionBox(c);
+        if (box) {
+            const w = _parseSvgWrap(box);
+            const node = w && w.firstElementChild;
+            if (node) svg.appendChild(document.importNode(node, true));
+        }
+    }
+
+    /* Live update of SEVERAL cells + the group box (for group drag). */
+    function renderCellsLive(ids) {
+        const svg = canvasEl && canvasEl.querySelector('svg');
+        if (!svg) { render(true); return; }
+        for (const id of ids) {
+            const c = cellById(id); if (!c) continue;
+            const g = svg.querySelector('g.editable[data-eid="' + cssEsc(id) + '"]');
+            if (!g || !_replaceSvgChildren(g, SIP.renderCell(c))) { render(true); return; }
+        }
+        const ov = svg.querySelector('.selection-overlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+        const box = (state.selectedIds.length > 1) ? renderGroupBox(state.selectedIds)
+            : (state.selectedId ? renderSelectionBox(cellById(state.selectedId)) : '');
+        if (box) {
+            const w = _parseSvgWrap(box);
+            const node = w && w.firstElementChild;
+            if (node) svg.appendChild(document.importNode(node, true));
+        }
+    }
+
     /* After the SVG is in the DOM, find the SELECTED cell's actual label glyph
      * and lay an interactive highlight + grab handle directly over it. This
      * makes "drag the label" land exactly on the real text wherever each
      * renderer happens to draw it (below, beside, centred…), instead of an
      * assumed anchor — so the label tracks the pointer 1:1. */
     function placeLabelHandle() {
+        if (state.selectedIds.length > 1) return;   // no label handle during a group selection
         if (!state.selectedId) return;
         const c = cellById(state.selectedId);
         if (!c) return;
@@ -354,35 +559,73 @@
 
     function renderSelectionBox(cell) {
         if (!cell) return '';
-        const x = cell.position.x, y = cell.position.y;
-        const w = cell.size.width, h = cell.size.height;
+        const _b = cellBox(cell);   // visible icon box (handles align with what's drawn)
+        const x = _b.x, y = _b.y, w = _b.w, h = _b.h;
         const x2 = x + w, y2 = y + h;
         const mx = x + w / 2, my = y + h / 2;
-        const r = 5;   // handle radius in viewBox units
+        // Keep handles a constant ON-SCREEN size at any zoom so they are always
+        // easy to grab. u = viewBox units per screen pixel (meet-fit scale).
+        let u = 1;
+        try {
+            const _vb = parseViewBox(state.viewBox);
+            const _rc = canvasEl.getBoundingClientRect();
+            const _sc = Math.min((_rc.width || 1) / _vb.w, (_rc.height || 1) / _vb.h);
+            if (_sc > 0 && isFinite(_sc)) u = 1 / _sc;
+        } catch (e) { }
+        const R = 6 * u;      // visible handle dot (~6px)
+        // Resize-handle grab area: generous, but capped to the cell size so the
+        // 8 side/corner targets don't overlap on small stencils (accurate pick).
+        const HIT = Math.max(6 * u, Math.min(14 * u, w * 0.42, h * 0.42));
+        const HIT_ISO = 14 * u;   // isolated handles (rotate / stand) stay big
+        const SW = 1.6 * u;   // stroke width
 
         // Each handle gets a data-handle="<dir>" used by the mousedown router.
-        // pointer-events stays ON on this group so the handles are clickable.
         let svg = `<g class="selection-overlay">`;
         // Dashed bounding box (passive)
-        svg += `<rect x="${x - 2}" y="${y - 2}" width="${w + 4}" height="${h + 4}" ` +
-            `fill="none" stroke="#22d3ee" stroke-width="1.5" stroke-dasharray="6,4" pointer-events="none"/>`;
-        // 8 handles
-        const handles = [
-            ['nw', x, y, 'nwse-resize'],
-            ['n', mx, y, 'ns-resize'],
-            ['ne', x2, y, 'nesw-resize'],
-            ['e', x2, my, 'ew-resize'],
-            ['se', x2, y2, 'nwse-resize'],
-            ['s', mx, y2, 'ns-resize'],
-            ['sw', x, y2, 'nesw-resize'],
-            ['w', x, my, 'ew-resize']
-        ];
-        for (const h of handles) {
-            svg += `<circle class="resize-handle" data-handle="${h[0]}" ` +
-                `cx="${h[1]}" cy="${h[2]}" r="${r}" ` +
-                `fill="#0f172a" stroke="#22d3ee" stroke-width="2" ` +
-                `style="cursor:${h[3]}"/>`;
+        svg += `<rect x="${x - 2 * u}" y="${y - 2 * u}" width="${w + 4 * u}" height="${h + 4 * u}" ` +
+            `fill="none" stroke="#22d3ee" stroke-width="${SW}" stroke-dasharray="${6 * u},${4 * u}" pointer-events="none"/>`;
+        // 8 resize handles — every side + corner. Big transparent hit target so
+        // you can grab near the dot, with a small visible dot on top. Shunts are
+        // a fixed-size symbol (body auto-sized), so they get no resize handles —
+        // just a clean box + move + rotate + stand handle.
+        const _isShunt = (cell.type === 'examples.Shaunt' || cell.type === 'examples.Shaunt2' || cell.type === 'examples.Shaunt3');
+        if (!_isShunt) {
+            const handles = [
+                ['nw', x, y, 'nwse-resize'], ['n', mx, y, 'ns-resize'], ['ne', x2, y, 'nesw-resize'],
+                ['e', x2, my, 'ew-resize'], ['se', x2, y2, 'nwse-resize'], ['s', mx, y2, 'ns-resize'],
+                ['sw', x, y2, 'nesw-resize'], ['w', x, my, 'ew-resize']
+            ];
+            for (const hdl of handles) {
+                svg += `<circle class="resize-handle" data-handle="${hdl[0]}" cx="${hdl[1]}" cy="${hdl[2]}" r="${HIT}" ` +
+                    `fill="transparent" style="cursor:${hdl[3]}"/>`;
+                svg += `<circle cx="${hdl[1]}" cy="${hdl[2]}" r="${R}" fill="#0f172a" stroke="#22d3ee" stroke-width="${SW}" pointer-events="none"/>`;
+            }
         }
+        // Stand-length handle (AMBER) — adjusts only the stand's drop, separate
+        // from the blue head-resize handles. Shown for signals that have a stand.
+        const _sgm = standGeom(cell);
+        if (_sgm) {
+            const _cur = _sgm.hasArm ? 'move' : 'ns-resize';   // L stands stretch in 2D
+            svg += `<line x1="${_sgm.ax}" y1="${_sgm.ay}" x2="${_sgm.ex}" y2="${_sgm.ey}" stroke="#f59e0b" stroke-width="${SW}" stroke-dasharray="${3 * u},${3 * u}" pointer-events="none"/>`;
+            // Amber = stand TIP (stretch height / arm).
+            svg += `<circle class="stand-handle" data-handle="stand" cx="${_sgm.ex}" cy="${_sgm.ey}" r="${HIT_ISO}" fill="transparent" style="cursor:${_cur}"/>`;
+            svg += `<rect x="${_sgm.ex - R}" y="${_sgm.ey - R}" width="${2 * R}" height="${2 * R}" rx="${2 * u}" fill="#0f172a" stroke="#f59e0b" stroke-width="${SW}" pointer-events="none"/>`;
+            // Green = ATTACH point (drag along the body to attach at centre / lower).
+            if (_sgm.hasAttach) {
+                svg += `<circle class="attach-handle" data-handle="attach" cx="${_sgm.ax}" cy="${_sgm.ay}" r="${HIT_ISO}" fill="transparent" style="cursor:ns-resize"/>`;
+                svg += `<circle cx="${_sgm.ax}" cy="${_sgm.ay}" r="${R}" fill="#0f172a" stroke="#22c55e" stroke-width="${SW}" pointer-events="none"/>`;
+            }
+        }
+        // Rotate handle (also a big hit target), on a stalk above top-centre.
+        const rotY = y - 26 * u;
+        const rotWrap = (cell.angle && Math.abs(cell.angle) > 0.01) ? `<g transform="rotate(${cell.angle} ${mx} ${my})">` : '<g>';
+        svg += rotWrap +
+            `<line x1="${mx}" y1="${y}" x2="${mx}" y2="${rotY}" stroke="#22d3ee" stroke-width="${SW}" pointer-events="none"/>` +
+            `<circle class="rotate-handle" data-handle="rotate" cx="${mx}" cy="${rotY}" r="${HIT_ISO}" fill="transparent" style="cursor:grab"/>` +
+            `<circle cx="${mx}" cy="${rotY}" r="${R + 1 * u}" fill="#0f172a" stroke="#22d3ee" stroke-width="${SW}" pointer-events="none"/>` +
+            `<text x="${mx}" y="${rotY + 3.4 * u}" text-anchor="middle" font-size="${10 * u}" fill="#22d3ee" ` +
+            `pointer-events="none" style="font-family:system-ui;">↻</text>` +
+            `</g>`;
         svg += `</g>`;
         return svg;
     }
@@ -392,7 +635,8 @@
         const sl = $('#selection-label');
         if (ec) ec.textContent = state.cells.length + ' element' + (state.cells.length === 1 ? '' : 's');
         if (sl) {
-            if (!state.selectedId) sl.textContent = 'No selection';
+            if (state.selectedIds.length > 1) sl.textContent = state.selectedIds.length + ' selected';
+            else if (!state.selectedId) sl.textContent = 'No selection';
             else {
                 const c = selectedCell();
                 const s = c && SIP.spec(c.type);
@@ -536,7 +780,7 @@
         c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
         state.cells.push(c);
         const snapped = maybeSnapToBackground(c);
-        state.selectedId = c.id;
+        state.selectedId = c.id; state.selectedIds = [c.id];
         trackRecentType(type);
         pushHistory();
         render();
@@ -562,7 +806,7 @@
         // If a signal lamp was spawned on top of a SignalBackground that's
         // already at canvas centre, auto-fit it to the tray.
         const snapped = maybeSnapToBackground(c);
-        state.selectedId = c.id;
+        state.selectedId = c.id; state.selectedIds = [c.id];
         trackRecentType(type);
         pushHistory();
         render();
@@ -808,6 +1052,23 @@
                 }
             }
             html += `</div></div>`;
+
+            /* Centre L-stand: an L-shaped stand attached at the signal's bottom
+               centre (vertical drop + horizontal foot). Height = "Stand vertical",
+               foot length = "L arm size" below. The compass centre (×) removes it. */
+            html += `<div class="field" style="margin-top:6px;"><label>Centre stand</label>` +
+                `<div style="display:flex;gap:6px;margin-top:2px;flex-wrap:wrap;">` +
+                `<button type="button" id="insp-stand-center" ` +
+                `style="padding:5px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;` +
+                `border:1.5px solid ${curStandPos === 'C' ? '#22d3ee' : 'rgba(255,255,255,0.15)'};` +
+                `background:${curStandPos === 'C' ? 'rgba(34,211,238,0.18)' : 'rgba(255,255,255,0.05)'};` +
+                `color:${curStandPos === 'C' ? '#22d3ee' : '#ccc'};">L-stand at centre</button>` +
+                `<button type="button" id="insp-stand-free" ` +
+                `style="padding:5px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;` +
+                `border:1.5px solid ${curStandPos === 'FREE' ? '#22c55e' : 'rgba(255,255,255,0.15)'};` +
+                `background:${curStandPos === 'FREE' ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.05)'};` +
+                `color:${curStandPos === 'FREE' ? '#22c55e' : '#ccc'};" title="Drag the green attach point and the amber tip to shape the L freely">Free L-stand (drag ends)</button>` +
+                `</div></div>`;
 
             /* Stand size */
             const standArm = +sigProps.standArm || 14;
@@ -1313,6 +1574,33 @@
                 });
             }
 
+            /* Centre L-stand button */
+            const standCenterBtn = $('#insp-stand-center');
+            if (standCenterBtn) {
+                standCenterBtn.addEventListener('click', () => {
+                    const sp = ensureSig();
+                    sp.standPos = 'C';
+                    delete sp.stand; delete sp.standSide; delete sp.standArmBefore; delete sp.signalSide;
+                    render();
+                    pushHistory();
+                });
+            }
+            /* Free L-stand button — attach + tip both draggable; seed sensible defaults */
+            const standFreeBtn = $('#insp-stand-free');
+            if (standFreeBtn) {
+                standFreeBtn.addEventListener('click', () => {
+                    const sp = ensureSig();
+                    const bb = cellBox(c);
+                    sp.standPos = 'FREE';
+                    // Always (re)centre: attach on the CENTRE of the body, tip up above it.
+                    sp.standAx = 0; sp.standAy = 0;
+                    sp.standEx = 0; sp.standEy = -(Math.round(bb.h / 2) + 60);
+                    delete sp.stand; delete sp.standSide; delete sp.standArmBefore; delete sp.signalSide;
+                    render();
+                    pushHistory();
+                });
+            }
+
             /* Stand size */
             bindInspectorInputNum('insp-sig-stand-len', v => {
                 const sp = ensureSig();
@@ -1544,11 +1832,56 @@
      * ------------------------------------------------------------------------ */
     let drag = null;    // { id, offX, offY, moved }   — moving an existing cell
     let resize = null;  // { id, handle, ox, oy, ow, oh, moved } — resizing
+    let rotate = null;  // { id, cx, cy, moved } — rotating via the rotate handle
+    let standDrag = null; // { id, ... } — dragging the stand TIP (height / arm)
+    let attachDrag = null; // { id, base, bodyH, moved } — dragging the stand ATTACH point
     let labelDrag = null; // { id, startX, startY, baseDx, baseDy, moved } — moving a label
+    let canvasPan = null; // { startX, startY, vb, moved } — left-drag panning the view
 
     function onCanvasMouseDown(evt) {
-        // (a) Was it a resize handle?
         let node = evt.target;
+        // (a0) Was it the rotate handle?
+        if (node && node.classList && node.classList.contains('rotate-handle')) {
+            const c = selectedCell();
+            if (!c) return;
+            rotate = {
+                id: c.id,
+                cx: c.position.x + c.size.width / 2,
+                cy: c.position.y + c.size.height / 2,
+                moved: false
+            };
+            evt.preventDefault();
+            return;
+        }
+        // (a0a) Was it the stand ATTACH handle? (moves where the stand connects
+        // to the body — centre / lower — without touching the head.)
+        if (node && node.classList && node.classList.contains('attach-handle')) {
+            const c = selectedCell();
+            if (!c) return;
+            const sgm = standGeom(c);
+            if (!sgm || !sgm.hasAttach) return;
+            attachDrag = { id: c.id, base: sgm.attachBase, bodyH: sgm.bodyH, free: !!sgm.free, cx: sgm.bodyCx, cy: sgm.bodyCy, moved: false };
+            evt.preventDefault();
+            return;
+        }
+        // (a0b) Was it the stand-length handle? (adjusts the stand only, not the head)
+        if (node && node.classList && node.classList.contains('stand-handle')) {
+            const c = selectedCell();
+            if (!c) return;
+            const sgm = standGeom(c);
+            if (!sgm) return;
+            standDrag = {
+                id: c.id,
+                ax: sgm.ax, ay: sgm.ay,
+                hasArm: sgm.hasArm,
+                vFactor: sgm.vFactor || 1,
+                free: !!sgm.free, cx: sgm.bodyCx, cy: sgm.bodyCy,
+                moved: false
+            };
+            evt.preventDefault();
+            return;
+        }
+        // (a) Was it a resize handle?
         if (node && node.classList && node.classList.contains('resize-handle')) {
             const dir = node.getAttribute('data-handle');
             const c = selectedCell();
@@ -1584,14 +1917,37 @@
             node = node.parentNode;
         }
         if (!node || node === canvasEl) {
-            if (state.selectedId) {
-                state.selectedId = null;
-                render();
-            }
+            // Empty space: left-drag pans the view; a plain click clears selection
+            // (handled on mouseup when no drag occurred).
+            canvasPan = { startX: evt.clientX, startY: evt.clientY, vb: parseViewBox(state.viewBox), moved: false };
+            evt.preventDefault();
             return;
         }
         const eid = node.getAttribute('data-eid');
+
+        // Shift-click toggles an element in/out of the multi-selection.
+        if (evt.shiftKey) {
+            toggleInSelection(eid);
+            render();
+            evt.preventDefault();
+            return;
+        }
+
+        // Clicking an element that is part of a multi-selection starts a GROUP
+        // drag that moves every selected element together.
+        if (isSelected(eid) && state.selectedIds.length > 1) {
+            state.selectedId = eid;
+            const gs = clientToWorld(evt);
+            drag = { group: true, ids: state.selectedIds.slice(), base: {}, startX: gs.x, startY: gs.y, moved: false, clickEid: eid };
+            for (const id of drag.ids) { const gc = cellById(id); if (gc) drag.base[id] = { x: gc.position.x, y: gc.position.y }; }
+            render();
+            evt.preventDefault();
+            return;
+        }
+
+        // Otherwise: single select + drag that one element.
         state.selectedId = eid;
+        state.selectedIds = [eid];
         render();
 
         const c = cellById(eid);
@@ -1610,6 +1966,62 @@
         const w = clientToWorld(evt);
         const cc = $('#cursor-coords');
         if (cc) cc.textContent = Math.round(w.x) + ',' + Math.round(w.y);
+
+        // ROTATE (grabbed the rotate handle) — absolute angle from the pointer
+        // around the cell centre, so it is correct at any current rotation.
+        if (rotate) {
+            const c = cellById(rotate.id);
+            if (!c) return;
+            let ang = Math.atan2(w.y - rotate.cy, w.x - rotate.cx) * 180 / Math.PI + 90;
+            const step = evt.shiftKey ? 1 : 15;   // Shift = fine (1°), else snap to 15°
+            ang = ((Math.round(ang / step) * step) % 360 + 360) % 360;
+            if (ang !== (c.angle || 0)) { c.angle = ang; rotate.moved = true; renderCellLive(c); }
+            return;
+        }
+
+        // STAND ATTACH — drag the green handle to move where the stand connects
+        // to the body (attach at centre / lower).
+        if (attachDrag) {
+            const c = cellById(attachDrag.id);
+            if (!c) return;
+            c.attrs = c.attrs || {}; c.attrs.signal = c.attrs.signal || {};
+            const sig = c.attrs.signal;
+            let ch = false;
+            if (attachDrag.free) {
+                // Lock the attach X to the body centre so the vertical leg always
+                // stays centred on the shunt; only the vertical position moves.
+                const ay = Math.round(w.y - attachDrag.cy);
+                if ((sig.standAx || 0) !== 0 || ay !== (sig.standAy || 0)) { sig.standAx = 0; sig.standAy = ay; ch = true; }
+            } else {
+                const off = Math.max(0, Math.min(attachDrag.bodyH, snap(Math.abs(w.y - attachDrag.base))));
+                if (off !== (sig.standAttachOff || 0)) { sig.standAttachOff = off; ch = true; }
+            }
+            if (ch) { attachDrag.moved = true; renderCellLive(c); }
+            return;
+        }
+
+        // STAND STRETCH — drag the amber tip handle to change the stand drop
+        // (height) and, for L-shaped stands, the arm (horizontal reach).
+        if (standDrag) {
+            const c = cellById(standDrag.id);
+            if (!c) return;
+            c.attrs = c.attrs || {}; c.attrs.signal = c.attrs.signal || {};
+            const sig = c.attrs.signal;
+            let ch = false;
+            if (standDrag.free) {
+                const ex = Math.round(w.x - standDrag.cx), ey = Math.round(w.y - standDrag.cy);
+                if (ex !== (sig.standEx || 0) || ey !== (sig.standEy || 0)) { sig.standEx = ex; sig.standEy = ey; ch = true; }
+            } else {
+                const len = Math.max(8, snap(Math.abs(w.y - standDrag.ay) / (standDrag.vFactor || 1)));
+                if (len !== (sig.standLength || 0)) { sig.standLength = len; ch = true; }
+                if (standDrag.hasArm) {
+                    const arm = Math.max(0, snap(Math.abs(w.x - standDrag.ax)));
+                    if (arm !== (sig.standArm || 0)) { sig.standArm = arm; ch = true; }
+                }
+            }
+            if (ch) { standDrag.moved = true; renderCellLive(c); }
+            return;
+        }
 
         // LABEL DRAG has priority — just nudges the label offset
         if (labelDrag) {
@@ -1662,8 +2074,40 @@
                 c.size.width = nw;
                 c.size.height = nh;
                 resize.moved = true;
-                render();
+                renderCellLive(c);   // in-place update — no full rebuild, no flicker
             }
+            return;
+        }
+
+        // CANVAS PAN (left-drag on empty space) — cheap: update the viewBox attr
+        // directly, no full re-render until mouseup.
+        if (canvasPan) {
+            const pdx = evt.clientX - canvasPan.startX, pdy = evt.clientY - canvasPan.startY;
+            if (!canvasPan.moved && Math.abs(pdx) < 4 && Math.abs(pdy) < 4) return;
+            canvasPan.moved = true;
+            const svg = canvasEl.querySelector('svg');
+            const rect = svg ? svg.getBoundingClientRect() : canvasEl.getBoundingClientRect();
+            const pvb = canvasPan.vb;
+            const nx = pvb.x - pdx * (pvb.w / (rect.width || 1));
+            const ny = pvb.y - pdy * (pvb.h / (rect.height || 1));
+            state.viewBox = Math.round(nx) + ' ' + Math.round(ny) + ' ' + Math.round(pvb.w) + ' ' + Math.round(pvb.h);
+            if (svg) svg.setAttribute('viewBox', state.viewBox);
+            const vbInput = $('#viewbox-input'); if (vbInput) vbInput.value = state.viewBox;
+            return;
+        }
+
+        // GROUP DRAG — move every selected element by the same (snapped) delta.
+        if (drag && drag.group) {
+            const dxs = snap(w.x - drag.startX);
+            const dys = snap(w.y - drag.startY);
+            let changed = false;
+            for (const id of drag.ids) {
+                const gc = cellById(id); if (!gc) continue;
+                const b = drag.base[id]; if (!b) continue;
+                const nx = b.x + dxs, ny = b.y + dys;
+                if (nx !== gc.position.x || ny !== gc.position.y) { gc.position.x = nx; gc.position.y = ny; changed = true; }
+            }
+            if (changed) { drag.moved = true; renderCellsLive(drag.ids); }
             return;
         }
 
@@ -1677,31 +2121,57 @@
             c.position.x = nx;
             c.position.y = ny;
             drag.moved = true;
-            render();
+            renderCellLive(c);   // in-place update — no full rebuild, no flicker
         }
     }
 
     function onCanvasMouseUp() {
-        if (resize && resize.moved) pushHistory();
-        if (labelDrag && labelDrag.moved) { render(); pushHistory(); }
-        if (drag && drag.moved) {
+        // One full render() at the end reconciles rails / inspector / label
+        // handle after the in-place live updates during the drag.
+        let changed = false;
+        if (rotate && rotate.moved) { pushHistory(); changed = true; }
+        if (resize && resize.moved) { pushHistory(); changed = true; }
+        if (standDrag && standDrag.moved) { pushHistory(); changed = true; }
+        if (attachDrag && attachDrag.moved) { pushHistory(); changed = true; }
+        if (labelDrag && labelDrag.moved) { pushHistory(); changed = true; }
+        if (drag && drag.group) {
+            if (drag.moved) { pushHistory(); changed = true; }
+            else if (drag.clickEid) {
+                // Clicked (no drag) on a member of the group → reduce to that one.
+                state.selectedIds = [drag.clickEid];
+                state.selectedId = drag.clickEid;
+                changed = true;
+            }
+        } else if (drag && drag.moved) {
             // If the cell being dragged is a signal lamp and we let go over
             // a SignalBackground, snap-fit it to the tray.
             const c = cellById(drag.id);
-            if (c && maybeSnapToBackground(c)) render();
+            if (c) maybeSnapToBackground(c);
             pushHistory();
+            changed = true;
+        }
+        if (canvasPan) {
+            if (canvasPan.moved) pushHistory();          // panned → remember viewBox
+            else if (state.selectedIds.length || state.selectedId) { clearSelection(); changed = true; } // plain click → deselect
         }
         drag = null;
         resize = null;
+        rotate = null;
+        standDrag = null;
+        attachDrag = null;
         labelDrag = null;
+        canvasPan = null;
+        if (changed) render();
     }
 
     function onKey(evt) {
         if (evt.target && /^(INPUT|TEXTAREA|SELECT)$/.test(evt.target.tagName)) return;
         if (evt.key === 'Delete' || evt.key === 'Backspace') {
-            if (state.selectedId) { deleteSelected(); evt.preventDefault(); }
+            if (state.selectedIds.length || state.selectedId) { deleteSelected(); evt.preventDefault(); }
         } else if (evt.key === 'Escape') {
-            if (state.selectedId) { state.selectedId = null; render(); }
+            if (state.selectedIds.length || state.selectedId) { clearSelection(); render(); }
+        } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'a') {
+            evt.preventDefault(); selectAll();
         } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {
             evt.preventDefault();
             if (evt.shiftKey) redo(); else undo();
@@ -1713,9 +2183,13 @@
     }
 
     function deleteSelected() {
-        if (!state.selectedId) return;
-        state.cells = state.cells.filter(c => c.id !== state.selectedId);
-        state.selectedId = null;
+        const ids = state.selectedIds.length ? state.selectedIds.slice()
+            : (state.selectedId ? [state.selectedId] : []);
+        if (!ids.length) return;
+        const del = {};
+        ids.forEach(id => { del[id] = true; });
+        state.cells = state.cells.filter(c => !del[c.id]);
+        clearSelection();
         pushHistory();
         render();
     }
@@ -1729,6 +2203,7 @@
         copy.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
         state.cells.push(copy);
         state.selectedId = copy.id;
+        state.selectedIds = [copy.id];
         pushHistory();
         render();
     }
@@ -1812,7 +2287,7 @@
             state.cells = [];
             state.viewBox = '0 0 2000 740';
         }
-        state.selectedId = null;
+        state.selectedId = null; state.selectedIds = [];
         const vbInput = $('#viewbox-input');
         if (vbInput) vbInput.value = state.viewBox;
         pushHistory();
@@ -1964,7 +2439,7 @@
             if (vbInput) vbInput.value = state.viewBox;
         }
 
-        state.selectedId = null;
+        state.selectedId = null; state.selectedIds = [];
         pushHistory();
         render();
     }
@@ -2135,6 +2610,7 @@
         // If clicked on an element, show element actions first
         if (clickedCell) {
             state.selectedId = clickedCell.id;
+            state.selectedIds = [clickedCell.id];
             render();
             const spec = SIP.spec(clickedCell.type);
             html += `<div class="ctx-header">${spec ? spec.label : clickedCell.type}</div>`;
@@ -2211,7 +2687,7 @@
                     c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
                     state.cells.push(c);
                     maybeSnapToBackground(c);
-                    state.selectedId = c.id;
+                    state.selectedId = c.id; state.selectedIds = [c.id];
                     trackRecentType(type);
                     pushHistory();
                     render();
@@ -2281,6 +2757,7 @@
         document.addEventListener('mousemove', onCanvasMouseMove);
         document.addEventListener('mouseup', onCanvasMouseUp);
         document.addEventListener('keydown', onKey);
+        installEditorZoomControls();
 
         // Right-click context menu
         canvasEl.addEventListener('contextmenu', showContextMenu);
@@ -2379,7 +2856,7 @@
         openImport, exportLayoutJs, exportSvg,
         closeModal, copyModal, downloadModal,
         duplicateSelected, deleteSelected,
-        toggleFullscreen, fitAll,
+        toggleFullscreen, fitAll, selectAll, zoomBy,
         getLayout, setLayout,
         refreshAssetRegistry, loadAssetsForType
     };

@@ -210,6 +210,54 @@ function atBuildEldCard(aid) {
 }
 window.atBuildEldCard = atBuildEldCard;
 
+// Normalised "is this a TPR relay key/name?" test (shared by the TPR badge
+// and the generic pill loop so TPR isn't shown twice).
+function _trkNorm(s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function _isTrackTprKey(key, relay) {
+    var kk = _trkNorm(key);
+    var nm = _trkNorm(relay && (relay.name || relay.Name || relay.displayName || relay.AssetAttributeName || relay.AttributeName));
+    return kk === 'TPR' || kk === 'TPRRELAY' || nm === 'TPR' || nm === 'TPRRELAY';
+}
+
+// TPR status for a track card: pickup = track CLEAR (relay energised / TPR V
+// high), drop = track OCCUPIED (relay dropped / TPR V < 1.0 V). Mirrors the SIP
+// computeOccupied616 precedence: TPR relay -> TPR numeric flag -> TPR V voltage.
+// Returns { state:'pickup'|'drop', src } or null when no TPR data is present.
+function trackTprStatus(a) {
+    if (!a) return null;
+    var dl = a.dlRelays || {}, at = a.attrs || {}, k;
+    // 1. TPR DataLogger relay (pickup = clear)
+    for (k in dl) {
+        if (!dl.hasOwnProperty(k)) continue;
+        var r = dl[k] || {};
+        if (_isTrackTprKey(k, r)) {
+            var up = (r.isPickup === true || r.IsPickup === true || r.value === 1 || r.value === '1' ||
+                (typeof r.value === 'number' && r.value >= 0.5) || r.Value === 1 || r.Value === '1');
+            return { state: up ? 'pickup' : 'drop', src: 'relay' };
+        }
+    }
+    // 2. TPR as a numeric 0/1 attribute flag
+    var flag = at['TPR'] || at['TPR Relay'];
+    if (flag && (flag.Value === 0 || flag.Value === 1 || flag.Value === '0' || flag.Value === '1')) {
+        return { state: (parseFloat(flag.Value) >= 0.5) ? 'pickup' : 'drop', src: 'flag' };
+    }
+    // 3. TPR V voltage (< 1.0 V => occupied => drop)
+    var tprVNames = ['TPR V', 'TPR V (Loc)', 'TPR V (LOC)', 'VTC 24 DC TPR I/P(V)', 'VTC 24 DC TPR I/P (V)'];
+    for (var i = 0; i < tprVNames.length; i++) {
+        var v = at[tprVNames[i]];
+        if (v != null) { var nv = parseFloat(v.Value); if (!isNaN(nv)) return { state: nv < 1.0 ? 'drop' : 'pickup', src: 'tprv' }; }
+    }
+    for (var an in at) {
+        if (!at.hasOwnProperty(an)) continue;
+        var u = _trkNorm(an);
+        if (u.indexOf('TPR') !== -1 && /(V|VLOC|IPV)$/.test(u)) {
+            var nv2 = parseFloat(at[an].Value);
+            if (!isNaN(nv2)) return { state: nv2 < 1.0 ? 'drop' : 'pickup', src: 'tprv' };
+        }
+    }
+    return null;
+}
+
 function atBuildTrackCard(aid) {
     var a = wsLiveData[aid];
     if (!a) return '';
@@ -284,15 +332,28 @@ function atBuildTrackCard(aid) {
     }
 
     // ── DataLogger pills ──────────────────────────────────────────
+    // Arrow (up=pickup / down=drop) and green/amber colour come from CSS
+    // (.at-pill.pickup/.drop ::after) so every badge family stays consistent.
     var pills = '';
     var dlKeys = Object.keys(dlRelays);
-    for (var d = 0; d < Math.min(dlKeys.length, 5); d++) {
-        var r = dlRelays[dlKeys[d]];
-        var arrow = r.isPickup ? '↑' : '↓';
-        var statusText = r.isPickup ? 'Pickup' : 'Drop';
-        pills += '<span class="at-pill ' + (r.isPickup ? 'pickup' : 'drop') + '" title="' + statusText + '">' + (r.displayName || dlKeys[d]) + ' ' + arrow + '</span>';
+
+    // Dedicated TPR status badge for tracks: pickup = green up (track clear),
+    // drop = amber down (track occupied). Shown first; the raw TPR relay (if
+    // any) is skipped below so it is not duplicated.
+    var tpr = (!isAxc) ? trackTprStatus(a) : null;
+    if (tpr) {
+        pills += '<span class="at-pill ' + tpr.state + '" title="TPR ' +
+            (tpr.state === 'pickup' ? 'Pickup - track clear' : 'Drop - track occupied') + '">TPR ' +
+            (tpr.state === 'pickup' ? 'Pickup' : 'Drop') + '</span>';
     }
-    if (dlKeys.length > 5) pills += '<span class="at-pill">+' + (dlKeys.length - 5) + ' more</span>';
+
+    var otherKeys = dlKeys.filter(function (k) { return !_isTrackTprKey(k, dlRelays[k]); });
+    for (var d = 0; d < Math.min(otherKeys.length, 5); d++) {
+        var r = dlRelays[otherKeys[d]];
+        var statusText = r.isPickup ? 'Pickup' : 'Drop';
+        pills += '<span class="at-pill ' + (r.isPickup ? 'pickup' : 'drop') + '" title="' + statusText + '">' + (r.displayName || otherKeys[d]) + '</span>';
+    }
+    if (otherKeys.length > 5) pills += '<span class="at-pill">+' + (otherKeys.length - 5) + ' more</span>';
 
     // ── Assemble the card HTML ────────────────────────────────────
     return '<div class="at-asset-card" data-state="live" data-id="' + aid + '" style="position:relative;">' +
@@ -3036,9 +3097,10 @@ function buildPmTableRow(assetId) {
         for (var di = 0; di < Math.min(dlKeys.length, 3); di++) {
             var rl = dlRelays[dlKeys[di]];
             var dn = rl.displayName || dlKeys[di];
-            var bc = rl.isPickup ? 'linear-gradient(135deg,#10b981,#059669)' : 'linear-gradient(135deg,#f59e0b,#d97706)';
+            var bc = rl.isPickup ? 'pickup' : 'drop';
             var bs = rl.isPickup ? 'Pickup' : 'Drop';
-            dlHtml += '<span style="display:inline-block;background:' + bc + ';color:#fff;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;margin:1px;">' + dn.substring(0, 18) + ' ' + bs + '</span> ';
+            // Shared rdpms-dl-badge class → green/amber + up/down arrow from CSS.
+            dlHtml += '<span class="rdpms-dl-badge ' + bc + '" style="display:inline-block;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;margin:1px;">' + dn.substring(0, 18) + ' ' + bs + '</span> ';
         }
         if (dlKeys.length > 3) dlHtml += '<span style="color:rgba(255,255,255,0.35);font-size:10px;">+' + (dlKeys.length - 3) + '</span>';
     }
@@ -3248,7 +3310,7 @@ function _buildSigTableRow(assetId, cols) {
         var r = dlRelays[dlKeys[d]];
         var bc = r.isPickup ? 'pickup' : 'drop';
         dlHtml += '<span class="rdpms-dl-badge ' + bc + '" style="margin:1px;padding:2px 6px;font-size:10px;">'
-            + (r.displayName || dlKeys[d]) + ' ' + (r.isPickup ? '↑' : '↓') + '</span>';
+            + (r.displayName || dlKeys[d]) + '</span>';
     }
     if (dlKeys.length > 3) dlHtml += '<span class="rdpms-dl-badge" style="margin:1px;">+' + (dlKeys.length - 3) + '</span>';
     h += '<td class="dl-cell">' + (dlHtml || '<span style="color:#94a3b8;font-size:10px;">--</span>') + '</td>';
@@ -3607,7 +3669,7 @@ window.updateSignalGroupedTables = function (updatedIds) {
                 var relay = dlRelays[dlKeys[d]];
                 var bc = relay.isPickup ? 'pickup' : 'drop';
                 dlHtml += '<span class="rdpms-dl-badge ' + bc + '" style="margin:1px;padding:2px 6px;font-size:10px;">'
-                    + (relay.displayName || dlKeys[d]) + ' ' + (relay.isPickup ? '↑' : '↓') + '</span>';
+                    + (relay.displayName || dlKeys[d]) + '</span>';
             }
             if (dlKeys.length > 3) dlHtml += '<span class="rdpms-dl-badge" style="margin:1px;">+' + (dlKeys.length - 3) + '</span>';
             $dl.html(dlHtml || '<span style="color:#94a3b8;font-size:10px;">--</span>');
@@ -3940,8 +4002,15 @@ function updateRowCells($row, asset, isTrack) {
             $derivedCells.eq(5).text(formatDerivedValue(derived.ibalst));
             $derivedCells.eq(6).text(formatDerivedValue(derived.rrail));
         }
+    }
 
-        // Update DataLogger column
+    // G3: DataLogger column rebuild must fire for Track OR Signal (type 2) OR
+    // ELD — matching the row-build gate in buildTableRow. Previously this was
+    // nested under the Track-only branch, so ELD's relay column never refreshed
+    // live. ELD badges show STATE ONLY (no relay name), like the card view.
+    var _urcIsEld = (typeof isEldAssetType === 'function') && isEldAssetType();
+    var _urcIsSignal = parseInt(wsCurrentAssetTypeId) === 2;
+    if (isTrack || _urcIsSignal || _urcIsEld) {
         var $dlCell = $row.find('td.dl-cell');
         if ($dlCell.length) {
             var dlRelays = asset.dlRelays || {};
@@ -3952,7 +4021,7 @@ function updateRowCells($row, asset, isTrack) {
                     var relay = dlRelays[dlKeys[di]];
                     var badgeClass = relay.isPickup ? 'pickup' : 'drop';
                     var badgeText = relay.isPickup ? 'Pickup' : 'Drop';
-                    dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
+                    dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (_urcIsEld ? badgeText : (relay.displayName || dlKeys[di]) + ': ' + badgeText) + '</span> ';
                 }
             } else {
                 dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
@@ -7236,6 +7305,8 @@ function fnBindGrph() {
     g += '.gDlBadge2{display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;color:#fff;position:relative;overflow:hidden;flex-shrink:0;}';
     g += '.gDlBadge2.pickup{background:#10b981;}';
     g += '.gDlBadge2.drop{background:#f59e0b;}';
+    g += '.gDlBadge2.pickup::after{content:" \\2191";font-weight:700;margin-left:2px;}';
+    g += '.gDlBadge2.drop::after{content:" \\2193";font-weight:700;margin-left:2px;}';
     g += '.gDlBadge2::before{content:"";position:absolute;top:0;left:-75%;width:50%;height:100%;background:linear-gradient(120deg,rgba(255,255,255,.1) 0%,rgba(255,255,255,.45) 50%,rgba(255,255,255,.1) 100%);transform:skewX(-20deg);animation:gDlShine 2.5s infinite;}';
     g += '@keyframes gDlShine{0%{left:-75%;}100%{left:125%;}}';
     g += '.gDerivedRow{display:flex;align-items:center;padding:2px 4px;border-radius:5px;cursor:pointer;gap:5px;transition:background .12s;user-select:none;margin-bottom:1px;}';
@@ -18371,6 +18442,7 @@ function updateExistingRowCells(assetId, $row) {
     var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
     var isTrack = (assetTypeId === 1);
     var isSignal = (assetTypeId === 2);
+    var isEld = (typeof isEldAssetType === 'function') && isEldAssetType();
     var ifMa = 0, irMa = 0, tprV = 0;
 
     for (var ai = 0; ai < wsAttributeNames.length; ai++) {
@@ -18436,8 +18508,9 @@ function updateExistingRowCells(assetId, $row) {
         updateDerivedValuesForRow(assetId, $row);
     }
 
-    // FIX: Update DataLogger column for Track and Signal assets
-    if ((isTrack || isSignal) && typeof window.updateDataLoggerColumnInTable === 'function') {
+    // FIX: Update DataLogger column for Track, Signal and ELD assets.
+    // G3: ELD added so its relay column refreshes live, like Track/Signal.
+    if ((isTrack || isSignal || isEld) && typeof window.updateDataLoggerColumnInTable === 'function') {
         window.updateDataLoggerColumnInTable(assetId);
     }
 
@@ -19255,10 +19328,12 @@ window.updateDataLoggerColumnInTable = function (assetId) {
         var badgeText = relay.isPickup ? 'Pickup' : 'Drop';
         var displayName = relay.displayName || dlKeys[di];
 
+        // G3: ELD badges show STATE ONLY (no relay name), matching the ELD
+        // card view. Track/Signal keep the "<name>: <state>" form.
         dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + ' shine-button" ' +
             'style="margin:1px;padding:2px 6px;font-size:10px;" ' +
             'title="' + displayName + ': ' + badgeText + ' (Value: ' + relay.value + ')">' +
-            displayName + ': ' + badgeText + '</span> ';
+            ((typeof isEldAssetType === 'function' && isEldAssetType()) ? badgeText : displayName + ': ' + badgeText) + '</span> ';
     }
 
     $dlCell.html(dlHtml);
@@ -22414,11 +22489,19 @@ function _aliasTokenMatch(keyNorm, aliasNorm) {
 // DataLogger relay pickup resolver: alias map + boundary-safe matching + many pickup encodings.
 function isSignalRelayPickup(dlRelays, relayName) {
     if (!dlRelays) return false;
+    // 'HR', 'DR' and 'HHR' (and 'RR') are NOT nicknames for HECR / DECR / HHECR / RECR -
+    // they are separate relays that these assets report alongside them, with their own
+    // attribute ids and their own values. Keeping them in the alias list made the lookup
+    // answer with the wrong relay whenever one of them arrived first (the loop below
+    // returns the first alias match in iteration order): asset 42871 reported HECR=0
+    // and HR=1, HR matched first, so "is HECR picked up?" answered 1 and the card painted
+    // a phantom SINGLE_YELLOW over the correct GREEN. Do not consult them. (Parity with
+    // e7mriv2web telemetrylive.js, which removed these for the same reason.)
     var aliases = {
-        RECR: ['RECR', 'RCR', 'RR'],
-        DECR: ['DECR', 'DCR', 'DR'],
-        HECR: ['HECR', 'HCR', 'HR'],
-        HHECR: ['HHECR', 'HHCR', 'HHR']
+        RECR: ['RECR', 'RCR'],
+        DECR: ['DECR', 'DCR'],
+        HECR: ['HECR', 'HCR'],
+        HHECR: ['HHECR', 'HHCR']
     };
     var list = aliases[relayName] || [relayName];
     var listNorm = [], i;
@@ -24523,6 +24606,41 @@ function ensureIpsTableStyles() {
         '.ips-card-flash{animation:ipsCardFlash 1s ease-out;}' +
         '@keyframes ipsValFlash{0%{background:var(--at-brand-glow,rgba(34,211,238,0.45));}100%{background:transparent;}}' +
         '@keyframes ipsCardFlash{0%{border-color:var(--at-brand,#22d3ee);}100%{border-color:var(--at-edge,rgba(255,255,255,0.10));}}' +
+        /* ---- IPS 3-tab (Voltage / Current / Digital) — Aurora ---- */
+        '.ips-tabbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 2px 10px;}' +
+        '.ips-tab-btn{appearance:none;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));background:var(--at-g1,rgba(255,255,255,0.04));color:var(--at-t2,rgba(255,255,255,0.72));font-size:13px;font-weight:600;padding:7px 14px;border-radius:var(--at-r-sm,8px);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s ease;}' +
+        '.ips-tab-btn:hover{background:var(--at-g3,rgba(255,255,255,0.10));color:var(--at-t1,#fff);}' +
+        '.ips-tab-btn.active{background:var(--at-brand,#22d3ee);border-color:var(--at-brand,#22d3ee);color:var(--at-bg2,#0e1530);}' +
+        '.ips-tab-empty{padding:22px 12px;text-align:center;color:var(--at-t4,rgba(255,255,255,0.34));font-size:13px;border:1px dashed var(--at-edge,rgba(255,255,255,0.10));border-top:none;border-radius:0 0 var(--at-r-md,12px) var(--at-r-md,12px);background:transparent;}' +
+        /* S.No via CSS counter on the visible, non-child rows of the active tab */
+        'table.ips-live-table tbody{counter-reset:ipssno;}' +
+        'table.ips-live-table tbody tr.ips-row-hidden{display:none;}' +
+        'table.ips-live-table tbody tr[data-ips-id]:not(.ips-row-hidden):not(.ips-row-child){counter-increment:ipssno;}' +
+        'table.ips-live-table tbody td.ips-sno::before{content:counter(ipssno);}' +
+        /* Aggregated BATT group row + expandable member breakdown */
+        'table.ips-live-table tbody tr.ips-row-group{background:var(--at-g2,rgba(255,255,255,0.08));font-weight:700;}' +
+        'table.ips-live-table tbody tr.ips-row-group td.ips-aname{color:var(--at-brand,#22d3ee);}' +
+        'table.ips-live-table tbody tr.ips-row-expandable{cursor:pointer;}' +
+        'table.ips-live-table tbody tr.ips-row-expandable:hover{background:var(--at-g3,rgba(255,255,255,0.10));}' +
+        'table.ips-live-table tbody tr.ips-child-collapsed{display:none;}' +
+        'table.ips-live-table tbody tr.ips-row-child{background:var(--at-g1,rgba(255,255,255,0.04));}' +
+        'table.ips-live-table tbody tr.ips-row-child:hover{background:var(--at-g3,rgba(255,255,255,0.10));}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-sno::before{content:"";}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-aname{font-weight:500;color:var(--at-t2,rgba(255,255,255,0.72));padding-left:28px;position:relative;white-space:nowrap;}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-aname::before{content:"\\21B3";position:absolute;left:12px;color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-attr{color:var(--at-t3,rgba(255,255,255,0.50));}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-val{font-weight:600;color:var(--at-brand,#22d3ee);}' +
+        '.ips-caret{display:inline-block;width:0;height:0;margin-right:7px;vertical-align:middle;border-left:5px solid var(--at-brand,#22d3ee);border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s ease;}' +
+        'tr.ips-group-open .ips-caret{transform:rotate(90deg);}' +
+        '.ips-child-badge{display:inline-block;margin-left:6px;background:var(--at-brand,#22d3ee);color:var(--at-bg2,#0e1530);font-size:11px;font-weight:700;line-height:1;padding:2px 7px;border-radius:999px;vertical-align:middle;}' +
+        /* Sum row (shared class name; used by the card-grid sum when enabled) */
+        '.ips-attr-row.ips-sum-row{border-top:1px dashed var(--at-edge-s,rgba(255,255,255,0.18));margin-top:4px;padding-top:6px;}' +
+        '.ips-attr-row.ips-sum-row .ips-attr-name,.ips-attr-row.ips-sum-row .ips-sum-sigma{font-weight:700;color:var(--at-brand,#22d3ee);}' +
+        '.ips-attr-row.ips-sum-row .ips-sum-count{display:inline-block;margin-left:6px;background:var(--at-brand,#22d3ee);color:var(--at-bg2,#0e1530);font-size:10px;font-weight:700;line-height:1;padding:2px 6px;border-radius:999px;vertical-align:middle;}' +
+        '.ips-attr-val.ips-sum-val{font-weight:800;color:var(--at-brand,#22d3ee);}' +
+        '.ips-attr-val.ips-sum-val.no-data{color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
+        /* Server-stale "!" badge for the IPS table value cell (Aurora) */
+        'table.ips-live-table td.ips-val.ws-value-server-stale::before{content:"!";display:inline-block;margin-right:5px;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;background:var(--at-warn,#fbbf24);color:var(--at-bg2,#0e1530);font-weight:700;font-size:10px;}' +
         // Responsive: the grid tracks narrow in steps, and below ~560px the
         // cards go single-column so attribute names stay readable.
         '@media (max-width:1400px){.ips-card-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}}' +
@@ -24536,70 +24654,324 @@ function ensureIpsTableStyles() {
     document.head.appendChild(st);
 }
 
-// Build flat row models (one row per asset x attribute), sorted by asset name then attribute order.
+// ---- IPS value formatters (ported from 616) ------------------------------
+// Numeric readings -> 2 decimals (zero-floored); non-numeric text passes
+// through; null/blank -> emptyText. Shared with the card grid so the two views
+// can never drift apart.
+function ipsFormatDisplayValue(rawValue, emptyText) {
+    if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') {
+        return emptyText;
+    }
+    var numericValue = tlZeroFloor(parseFloat(rawValue));
+    return isNaN(numericValue) ? rawValue : numericValue.toFixed(2);
+}
+window.ipsFormatDisplayValue = ipsFormatDisplayValue;
+
+// DataLogger relay state: 1/0 (or text) -> Pickup / Drop, never 1.00 / 0.00.
+// Returns null when the value is empty or not a recognisable state, so the
+// caller can fall back to its normal display.
+function ipsDataLoggerStateText(rawValue) {
+    if (rawValue === null || rawValue === undefined) { return null; }
+    if (rawValue === true) { return 'Pickup'; }
+    if (rawValue === false) { return 'Drop'; }
+    var text = String(rawValue).trim().toLowerCase();
+    if (text === '') { return null; }
+    if (text === 'pickup' || text === 'pick up' || text === 'true' || text === 'on') { return 'Pickup'; }
+    if (text === 'drop' || text === 'false' || text === 'off') { return 'Drop'; }
+    var n = parseFloat(text);
+    if (isNaN(n)) { return null; }
+    return n > 0 ? 'Pickup' : 'Drop';
+}
+window.ipsDataLoggerStateText = ipsDataLoggerStateText;
+
+// Classify an IPS row into one of three tabs:
+//   digital -> DataLogger rows
+//   current -> attribute name/label contains 'IIPS'
+//   voltage -> 'VIPS', also the default so nothing disappears.
+function ipsClassifyTab(isDataLogger, attrKey, attrLabel) {
+    if (isDataLogger) { return 'digital'; }
+    var hay = (String(attrKey || '') + ' ' + String(attrLabel || '')).toUpperCase();
+    if (hay.indexOf('IIPS') !== -1) { return 'current'; }
+    if (hay.indexOf('VIPS') !== -1) { return 'voltage'; }
+    return 'voltage';
+}
+window.ipsClassifyTab = ipsClassifyTab;
+
+// Build flat row models (one row per asset x attribute). DataLogger rows first,
+// then analog rows; natural asset/attribute order inside each section.
 function buildIpsTableRowModels() {
     var rows = [];
     if (!window.wsLiveData) return rows;
 
-    // The socket can carry the whole station (every asset type), so the flat
-    // table has to filter the same way the card grid does. Without this, Signal
-    // rows (Sh-HPR, Off Aspect mA/V, ...) appeared in the IPS table.
+    // CRITICAL (kept from the current build): the socket can carry the whole
+    // station (every asset type), so the flat table must filter the same way
+    // the card grid does \u2014 otherwise Signal rows (Sh-HPR, Off Aspect mA/V, ...)
+    // leak into the IPS table. The reference lacks this filter.
     var assetIds = Object.keys(wsLiveData).filter(function (id) {
         if (typeof isAssetInBulkWhitelist === 'function' && !isAssetInBulkWhitelist(id)) return false;
         return (typeof assetMatchesSelectedType !== 'function') || assetMatchesSelectedType(id);
     });
 
-    assetIds.sort(function (a, b) {
-        return (wsLiveData[a].AssetName || '').localeCompare(
-            wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' });
-    });
     for (var i = 0; i < assetIds.length; i++) {
         var aid = assetIds[i];
         var asset = wsLiveData[aid];
         if (!asset) continue;
-        var name = asset.AssetName || ('Asset ' + aid);
-        var attrs = asset.attrs || {};
-        var attrKeys = Object.keys(attrs);
-        attrKeys.sort(function (a, b) {
-            var oA = (attrs[a] && attrs[a].AttrOrder != null) ? parseInt(attrs[a].AttrOrder) : 999;
-            var oB = (attrs[b] && attrs[b].AttrOrder != null) ? parseInt(attrs[b].AttrOrder) : 999;
-            return oA - oB;
-        });
 
-        // Operation / device timestamp for the asset (HH:mm:ss)
+        var assetName = asset.AssetName || ('Asset ' + aid);
+        var attrs = asset.attrs || {};
+        var dlRelays = asset.dlRelays || {};
+        var attrKeys = Object.keys(attrs);
+
+        // Resolve the timestamp once for all rows of this asset.
         var ts = '\u2014';
         if (typeof window.getOperationTimestampDevice === 'function') {
-            var opTs = window.getOperationTimestampDevice(asset);
-            if (opTs && typeof window.fmtTimestampDevice === 'function') ts = window.fmtTimestampDevice(opTs);
+            var operationTimestamp = window.getOperationTimestampDevice(asset);
+            if (operationTimestamp && typeof window.fmtTimestampDevice === 'function') {
+                ts = window.fmtTimestampDevice(operationTimestamp);
+            }
         }
-        if (ts === '\u2014' && asset.lastUpdated && typeof window.fmtTime === 'function') ts = window.fmtTime(asset.lastUpdated);
+        if (ts === '\u2014' && asset.lastUpdated && typeof window.fmtTime === 'function') {
+            ts = window.fmtTime(asset.lastUpdated);
+        }
 
         if (attrKeys.length === 0) {
-            rows.push({ assetId: aid, assetName: name, attr: '\u2014', attrKey: '', value: '\u2014', ts: ts });
+            rows.push({
+                assetId: aid, assetName: assetName, attr: '\u2014', attrKey: '',
+                value: '\u2014', ts: ts, dlClass: '', isDataLogger: false,
+                ipsTab: 'voltage', isStale: false, staleTitle: ''
+            });
             continue;
         }
-        for (var k = 0; k < attrKeys.length; k++) {
-            var an = attrKeys[k];
-            var aObj = attrs[an] || {};
-            var rawVal = aObj.Value;
-            var disp = (rawVal !== null && rawVal !== undefined && rawVal !== '') ? (isNaN(parseFloat(rawVal)) ? rawVal : tlZeroFloor(parseFloat(rawVal)).toFixed(2)) : '\u2014';
 
-            // Attribute display label (plain text)
-            var label = aObj.AliasName || aObj.AttrName || an;
-            if (typeof window.getAttrDisplayNamePlain === 'function') {
-                label = window.getAttrDisplayNamePlain(an, aObj.AttrId) || label;
-            } else if (typeof window.getAttrDisplayName === 'function') {
-                label = window.getAttrDisplayName(an, aObj.AttrId) || label;
+        for (var k = 0; k < attrKeys.length; k++) {
+            var attrKey = attrKeys[k];
+            var attrObject = attrs[attrKey] || {};
+
+            // DataLogger detection via DataType OR the dlRelays collection.
+            var isDataLogger =
+                String(attrObject.DataType || '').trim().toLowerCase() === 'datalogger' ||
+                Object.prototype.hasOwnProperty.call(dlRelays, attrKey);
+
+            var rawValue = attrObject.Value;
+            var displayValue = ipsFormatDisplayValue(rawValue, isDataLogger ? '-' : '\u2014');
+
+            // DataLogger relay state: Pickup / Drop instead of 1.00 / 0.00.
+            if (isDataLogger) {
+                displayValue = ipsDataLoggerStateText(rawValue) || displayValue;
             }
-            if (typeof window.formatAliasName === 'function') label = window.formatAliasName(label) || label;
+
+            var label = attrObject.AliasName || attrObject.AttrName || attrKey;
+            if (typeof window.getAttrDisplayNamePlain === 'function') {
+                label = window.getAttrDisplayNamePlain(attrKey, attrObject.AttrId || attrObject.AssetAttributeId) || label;
+            } else if (typeof window.getAttrDisplayName === 'function') {
+                label = window.getAttrDisplayName(attrKey, attrObject.AttrId || attrObject.AssetAttributeId) || label;
+            }
+            if (typeof window.formatAliasName === 'function') {
+                label = window.formatAliasName(label) || label;
+            }
             label = String(label).replace(/<[^>]*>/g, '').trim();
 
-            rows.push({ assetId: aid, assetName: name, attr: label, attrKey: an, value: disp, ts: ts });
+            var normalizedDisplayValue = String(displayValue).trim().toLowerCase();
+            var dlClass = '';
+            if (normalizedDisplayValue === 'pickup') { dlClass = 'pickup'; }
+            else if (normalizedDisplayValue === 'drop') { dlClass = 'drop'; }
+
+            // Replay-snapshot stale mark \u2014 same rule as the Point Machine table
+            // (BroadcastKind === 'replay' AND IsFresh === false). DataLogger
+            // attributes are exempt. Value is still shown; only the "!" badge
+            // and tooltip are added.
+            var isStaleValue = false;
+            if (!isDataLogger && typeof isPmReplayStale === 'function') {
+                isStaleValue = isPmReplayStale(attrObject) === true;
+            }
+
+            rows.push({
+                assetId: aid, assetName: assetName, attr: label, attrKey: attrKey,
+                value: displayValue, ts: ts, dlClass: dlClass, isDataLogger: isDataLogger,
+                ipsTab: ipsClassifyTab(isDataLogger, attrKey, label),
+                isStale: isStaleValue,
+                staleTitle: (isStaleValue && typeof buildPmStaleTitle === 'function') ? buildPmStaleTitle(attrObject) : ''
+            });
         }
     }
+
+    // DataLogger rows first, then analog; natural asset then attribute order.
+    rows.sort(function (a, b) {
+        if (a.isDataLogger !== b.isDataLogger) { return a.isDataLogger ? -1 : 1; }
+        var assetCompare = String(a.assetName || '').localeCompare(
+            String(b.assetName || ''), undefined, { numeric: true, sensitivity: 'base' });
+        if (assetCompare !== 0) { return assetCompare; }
+        return String(a.attr || '').localeCompare(
+            String(b.attr || ''), undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     return rows;
 }
 window.buildIpsTableRowModels = buildIpsTableRowModels;
+
+/* ---- BATT CHARGING / DISCHARGING ampere-sum helpers (ported from 616) ---- */
+// Attribute label shown on the aggregated BATT row:
+//   false -> member index dropped: "IIPS BATT CHAR 110 DC"  (default)
+//   true  -> first member kept:    "IIPS BATT CHAR-1 110 DC"
+var IPS_BATT_GROUP_KEEP_FIRST_ATTR_NAME = false;
+
+// Strip the CHAR-n / DISCHAR-n member index (only when joined by - or _, never
+// a plain space) so all members collapse onto one group.
+function ipsBattBaseAttrName(attrLabel) {
+    var text = String(attrLabel || '');
+    text = text.replace(/(DISCHARGING|DISCHARGER|DISCHARGE|DISCHAR|CHARGING|CHARGER|CHARGE|CHAR)[\-_]\s*\d+/gi, '$1');
+    return text.replace(/\s{2,}/g, ' ').trim();
+}
+window.ipsBattBaseAttrName = ipsBattBaseAttrName;
+
+// Battery charging/discharging readings arrive in mA; shown in amperes.
+var IPS_BATT_MA_PER_AMP = 1000;
+var IPS_BATT_DECIMALS = 3;
+
+// A value ALREADY in amperes: zero-floored and fixed to the battery decimals.
+function ipsBattFormatAmpsValue(amps, emptyText) {
+    if (amps === null || amps === undefined || String(amps).trim() === '') { return emptyText; }
+    var n = parseFloat(amps);
+    if (isNaN(n)) { return emptyText; }
+    return tlZeroFloor(n).toFixed(IPS_BATT_DECIMALS);
+}
+window.ipsBattFormatAmpsValue = ipsBattFormatAmpsValue;
+
+// A reading reported in mA, formatted as amperes.
+function ipsBattFormatAmps(rawValue, emptyText) {
+    if (rawValue === null || rawValue === undefined || String(rawValue).trim() === '') { return emptyText; }
+    var n = parseFloat(rawValue);
+    if (isNaN(n)) { return emptyText; }
+    return ipsBattFormatAmpsValue(n / IPS_BATT_MA_PER_AMP, emptyText);
+}
+window.ipsBattFormatAmps = ipsBattFormatAmps;
+
+// Append " (A)" to a caption. Idempotent.
+function ipsBattAmpLabel(label) {
+    var base = String(label || '');
+    if (!base) { return base; }
+    if (/\(\s*A\s*\)\s*$/i.test(base)) { return base; }
+    return base + ' (A)';
+}
+window.ipsBattAmpLabel = ipsBattAmpLabel;
+
+// Collapse CHARGING / DISCHARGING current rows into a single summed (amperes)
+// row per base attribute; the member rows are retained for the expandable
+// breakdown. Non-battery rows pass through untouched.
+function ipsGroupCurrentRows(rows) {
+    if (!rows || !rows.length) { return rows; }
+    var groups = {};
+    var out = [];
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var bucket = null;
+        if (r && r.ipsTab === 'current' && !r.isDataLogger) {
+            var up = String(r.assetName || '').toUpperCase();
+            if (up.indexOf('DISCHARGING') !== -1) { bucket = 'discharging'; }
+            else if (up.indexOf('CHARGING') !== -1) { bucket = 'charging'; }
+        }
+        if (bucket === null) { out.push(r); continue; }
+        var base = String(r.assetName || '').replace(/[\s\-_]*\d+\s*$/, '').trim() || String(r.assetName || '');
+        var groupAttr = ipsBattBaseAttrName(r.attr);
+        var key = bucket + '||' + groupAttr + '||' + base;
+        // Accumulate in AMPERES at exactly the value each member displays, so
+        // the breakdown adds up to the total shown.
+        var num = parseFloat(ipsBattFormatAmps(r.value, ''));
+        var g = groups[key];
+        if (!g) {
+            g = {
+                _agg: true, assetId: 'ipsgrp::' + key, assetName: base,
+                attr: IPS_BATT_GROUP_KEEP_FIRST_ATTR_NAME ? r.attr : groupAttr,
+                attrKey: groupAttr, sum: isFinite(num) ? num : 0, count: isFinite(num) ? 1 : 0, ts: r.ts,
+                members: []
+            };
+            groups[key] = g;
+            out.push(g);
+        } else {
+            if (isFinite(num)) { g.sum += num; g.count++; }
+            if (String(r.ts).length === String(g.ts).length && String(r.ts) > String(g.ts)) { g.ts = r.ts; }
+        }
+        g.members.push(r);
+    }
+    for (var j = 0; j < out.length; j++) {
+        var o = out[j];
+        if (!o || !o._agg) { continue; }
+        var v = (o.count > 0) ? ipsBattFormatAmpsValue(o.sum, '\u2014') : '\u2014';
+        out[j] = {
+            assetId: o.assetId, assetName: o.assetName, attr: ipsBattAmpLabel(o.attr), attrKey: o.attrKey,
+            value: v, ts: o.ts, dlClass: '', isDataLogger: false, ipsTab: 'current',
+            isStale: false, staleTitle: '', isGroup: true, members: o.members
+        };
+    }
+    return out;
+}
+window.ipsGroupCurrentRows = ipsGroupCurrentRows;
+
+// Expand/collapse state for aggregated BATT rows, keyed by synthetic assetId.
+var ipsExpandedGroups = {};
+function ipsGroupIsExpanded(id) { return !!(id && ipsExpandedGroups[id]); }
+window.ipsGroupIsExpanded = ipsGroupIsExpanded;
+
+// Display-only expander: inserts each group's member rows after it, in amperes,
+// flagged as children. The export path keeps consuming the un-expanded rows.
+function ipsExpandRowsForDisplay(rows) {
+    if (!rows || !rows.length) { return rows || []; }
+    var flat = [];
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        flat.push(r);
+        if (r && r.isGroup && r.members && r.members.length) {
+            for (var m = 0; m < r.members.length; m++) {
+                var mr = r.members[m];
+                flat.push({
+                    assetId: mr.assetId, assetName: mr.assetName,
+                    attr: ipsBattAmpLabel(mr.attr), attrKey: mr.attrKey,
+                    value: ipsBattFormatAmps(mr.value, '\u2014'), ts: mr.ts,
+                    dlClass: mr.dlClass || '', isDataLogger: false, ipsTab: 'current',
+                    isStale: !!mr.isStale, staleTitle: mr.staleTitle || '',
+                    isChild: true, parentId: r.assetId
+                });
+            }
+        }
+    }
+    return flat;
+}
+window.ipsExpandRowsForDisplay = ipsExpandRowsForDisplay;
+
+// Click a group row to toggle its member breakdown. Delegated + guarded.
+if (!window._ipsGroupExpandHandlerBound) {
+    window._ipsGroupExpandHandlerBound = true;
+    $(document).on('click', 'table.ips-live-table tr.ips-row-expandable', function () {
+        var gid = $(this).attr('data-ips-group');
+        if (!gid) { return; }
+        var nowOpen = !ipsGroupIsExpanded(gid);
+        if (nowOpen) { ipsExpandedGroups[gid] = true; } else { delete ipsExpandedGroups[gid]; }
+        $(this).toggleClass('ips-group-open', nowOpen);
+        $(this).closest('table.ips-live-table').find('tr.ips-row-child').each(function () {
+            if ($(this).attr('data-parent') === gid) {
+                $(this).toggleClass('ips-child-collapsed', !nowOpen);
+            }
+        });
+    });
+}
+
+// Active-tab label helpers (referenced by the PDF/export path).
+function ipsActiveTabLabel() {
+    if (typeof ipsTableMode === 'function' && !ipsTableMode()) { return ''; }
+    var t = (window.ipsActiveTab === 'current' || window.ipsActiveTab === 'digital') ? window.ipsActiveTab : 'voltage';
+    return t === 'current' ? 'IPS Current' : (t === 'digital' ? 'IPS Digital' : 'IPS Voltage');
+}
+window.ipsActiveTabLabel = ipsActiveTabLabel;
+function ipsViewSuffix() {
+    var lbl = ipsActiveTabLabel();
+    return lbl ? '   |   View: ' + lbl : '';
+}
+window.ipsViewSuffix = ipsViewSuffix;
+function ipsActiveTabSlug() {
+    var lbl = ipsActiveTabLabel();
+    return lbl ? lbl.replace(/^IPS\s+/, '') + '_' : '';
+}
+window.ipsActiveTabSlug = ipsActiveTabSlug;
 
 // ---- IPS view mode router -------------------------------------------------
 // Table view  -> IPS flat table (id="ipsLiveTable")
@@ -24609,10 +24981,10 @@ function ipsTableMode() {
     try { return $('#drpView').val() === 'Table'; } catch (e) { return false; }
 }
 
-// Real flat-table renderer
+// Real flat-table renderer (tabbed: Voltage / Current / Digital)
 function ipsRenderTable() {
     ensureIpsTableStyles();
-    var rows = buildIpsTableRowModels();
+    var rows = ipsExpandRowsForDisplay(ipsGroupCurrentRows(buildIpsTableRowModels()));
     if (rows.length === 0) {
         $('#divTelemetryLive').html('<div class="ips-table-wrap"><div class="text-center text-muted p-5">' +
             '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:#259dab;display:block;"></i>' +
@@ -24620,18 +24992,27 @@ function ipsRenderTable() {
         return;
     }
     $('#divTelemetryLive').html(ipsBuildTableHtml(rows));
+    var activeTab = (window.ipsActiveTab === 'current' || window.ipsActiveTab === 'digital') ? window.ipsActiveTab : 'voltage';
+    ipsApplyTab(activeTab);
 }
 
-// Pure HTML builder for the IPS flat table, shared by the table view and the
-// export path so Export behaves identically from the IPS card grid.
+// Pure HTML builder for the IPS table, shared by the table view and the
+// HTML-export path. Builds the 3-tab bar, group/child markup, DL badges and
+// the stale cell mark. Rows are grouped+expanded when not passed in.
 function ipsBuildTableHtml(rows) {
-    rows = rows || buildIpsTableRowModels();
+    rows = rows || ipsExpandRowsForDisplay(ipsGroupCurrentRows(buildIpsTableRowModels()));
     if (!rows.length) return '';
     var assetCount = (window.wsLiveData ? Object.keys(wsLiveData).length : 0);
+    var activeTab = (window.ipsActiveTab === 'current' || window.ipsActiveTab === 'digital') ? window.ipsActiveTab : 'voltage';
     var h = '<div class="ips-table-wrap">';
     h += '<div class="ips-table-head">' +
         '<h6><i class="fas fa-table" style="color:#259dab;"></i> IPS Live Grid</h6>' +
         '<span class="ips-count">' + assetCount + ' Asset' + (assetCount !== 1 ? 's' : '') + '</span>' +
+        '</div>';
+    h += '<div class="ips-tabbar">' +
+        '<button type="button" class="ips-tab-btn" data-ipstab="voltage"><i class="fas fa-bolt"></i> IPS Voltage</button>' +
+        '<button type="button" class="ips-tab-btn" data-ipstab="current"><i class="fas fa-wave-square"></i> IPS Current</button>' +
+        '<button type="button" class="ips-tab-btn" data-ipstab="digital"><i class="fas fa-toggle-on"></i> IPS Digital</button>' +
         '</div>';
     h += '<div class="ips-table-scroll"><table id="ipsLiveTable" class="ips-live-table"><thead><tr>' +
         '<th class="ips-c-sno" style="width:64px;">S.No</th><th>Asset Name</th><th>Attribute</th>' +
@@ -24641,23 +25022,54 @@ function ipsBuildTableHtml(rows) {
     for (var i = 0; i < rows.length; i++) {
         var r = rows[i];
         var noData = (r.value === '\u2014');
-        h += '<tr data-ips-id="' + ipsEscHtml(r.assetId) + '" data-attr="' + ipsEscHtml(r.attrKey) + '">' +
-            '<td class="ips-sno">' + (i + 1) + '</td>' +
-            '<td class="ips-aname">' + ipsEscHtml(r.assetName) + '</td>' +
+        var rowTab = (r.ipsTab === 'current' || r.ipsTab === 'digital') ? r.ipsTab : 'voltage';
+        var rowCls = [];
+        if (rowTab !== activeTab) { rowCls.push('ips-row-hidden'); }
+
+        var extraAttr = '';
+        var anameHtml = ipsEscHtml(r.assetName);
+        if (r.isChild) {
+            rowCls.push('ips-row-child');
+            if (!ipsGroupIsExpanded(r.parentId)) { rowCls.push('ips-child-collapsed'); }
+            extraAttr = ' data-parent="' + ipsEscHtml(r.parentId) + '"';
+        } else if (r.isGroup) {
+            rowCls.push('ips-row-group');
+            if (r.members && r.members.length) {
+                rowCls.push('ips-row-expandable');
+                if (ipsGroupIsExpanded(r.assetId)) { rowCls.push('ips-group-open'); }
+                extraAttr = ' data-ips-group="' + ipsEscHtml(r.assetId) + '"';
+                anameHtml = '<span class="ips-caret" aria-hidden="true"></span>' + anameHtml +
+                    ' <span class="ips-child-badge">' + r.members.length + '</span>';
+            }
+        }
+
+        h += '<tr data-ips-id="' + ipsEscHtml(r.assetId) + '" data-attr="' + ipsEscHtml(r.attrKey) + '"' +
+            ' data-ips-tab="' + rowTab + '"' + extraAttr +
+            (rowCls.length ? ' class="' + rowCls.join(' ') + '"' : '') + '>' +
+            '<td class="ips-sno"></td>' +
+            '<td class="ips-aname">' + anameHtml + '</td>' +
             '<td class="ips-attr">' + ipsEscHtml(r.attr) + '</td>' +
-            '<td class="ips-val' + (noData ? ' no-data' : '') + '">' + ipsEscHtml(r.value) + '</td>' +
+            '<td class="ips-val' + (noData ? ' no-data' : '') +
+            (r.isStale ? ' ws-value-server-stale' : '') + '"' +
+            (r.isStale ? ' title="' + ipsEscHtml(r.staleTitle) + '"' : '') + '>' +
+            (r.dlClass ? '<span class="rdpms-dl-badge ' + r.dlClass + '">' + ipsEscHtml(r.value) + '</span>' : ipsEscHtml(r.value)) +
+            '</td>' +
             '<td class="ips-ts">' + ipsEscHtml(r.ts) + '</td>' +
             '</tr>';
     }
-    h += '</tbody></table></div></div>';
+    h += '</tbody></table></div>';
+    h += '<div class="ips-tab-empty" data-ips-tab="voltage" style="display:none;">No IPS Voltage readings.</div>';
+    h += '<div class="ips-tab-empty" data-ips-tab="current" style="display:none;">No IPS Current readings.</div>';
+    h += '<div class="ips-tab-empty" data-ips-tab="digital" style="display:none;">No IPS Digital readings.</div>';
+    h += '</div>';
     return h;
 }
 
-// Real flat-table incremental updater
+// Real flat-table incremental updater (handles DL badges + stale cells)
 function ipsUpdateTable(updatedAssetIds) {
     var $table = $('#ipsLiveTable');
     if ($table.length === 0) { ipsRenderTable(); return; }
-    var rows = buildIpsTableRowModels();
+    var rows = ipsExpandRowsForDisplay(ipsGroupCurrentRows(buildIpsTableRowModels()));
     var $body = $table.find('tbody');
     if ($body.find('tr').length !== rows.length) { ipsRenderTable(); return; }
     for (var i = 0; i < rows.length; i++) {
@@ -24665,7 +25077,11 @@ function ipsUpdateTable(updatedAssetIds) {
         var $tr = $body.find('tr').eq(i);
         var $val = $tr.find('.ips-val');
         if ($val.text() !== String(r.value)) {
-            $val.text(r.value);
+            if (r.dlClass) {
+                $val.html('<span class="rdpms-dl-badge ' + r.dlClass + '">' + ipsEscHtml(r.value) + '</span>');
+            } else {
+                $val.text(r.value);
+            }
             if (r.value === '\u2014') { $val.addClass('no-data'); }
             else {
                 $val.removeClass('no-data');
@@ -24673,9 +25089,51 @@ function ipsUpdateTable(updatedAssetIds) {
                 (function ($v) { setTimeout(function () { $v.removeClass('ips-val-flash'); }, 1200); })($val);
             }
         }
+        // Freshness is applied every pass: a value can go stale while its
+        // reading is unchanged, and must clear the moment a fresh update lands.
+        var wasStale = $val.hasClass('ws-value-server-stale');
+        if (r.isStale && !wasStale) { $val.addClass('ws-value-server-stale'); }
+        else if (!r.isStale && wasStale) { $val.removeClass('ws-value-server-stale'); }
+        if (r.isStale) {
+            if ($val.attr('title') !== r.staleTitle) { $val.attr('title', r.staleTitle); }
+        } else if (wasStale) {
+            $val.removeAttr('title');
+        }
         var $ts = $tr.find('.ips-ts');
         if ($ts.text() !== String(r.ts)) $ts.text(r.ts);
     }
+}
+
+// ---- IPS 3-tab controller: filters the flat table by active tab ----------
+// Pure DOM (no rebuild): toggles row visibility + empty-note per tab and marks
+// the active button. S.No renumbers via the CSS counter.
+function ipsApplyTab(tab) {
+    tab = (tab === 'current' || tab === 'digital') ? tab : 'voltage';
+    window.ipsActiveTab = tab;
+    var $wrap = $('#ipsLiveTable').closest('.ips-table-wrap');
+    if ($wrap.length === 0) { return; }
+    $wrap.find('.ips-tab-btn').each(function () {
+        $(this).toggleClass('active', $(this).attr('data-ipstab') === tab);
+    });
+    $wrap.find('#ipsLiveTable tbody tr[data-ips-id]').each(function () {
+        var t = $(this).attr('data-ips-tab') || 'voltage';
+        if (t === tab) { $(this).removeClass('ips-row-hidden'); }
+        else { $(this).addClass('ips-row-hidden'); }
+    });
+    ['voltage', 'current', 'digital'].forEach(function (t) {
+        var count = $wrap.find('#ipsLiveTable tbody tr[data-ips-id][data-ips-tab="' + t + '"]').length;
+        $wrap.find('.ips-tab-empty[data-ips-tab="' + t + '"]')
+            .css('display', (t === tab && count === 0) ? 'block' : 'none');
+    });
+}
+window.ipsApplyTab = ipsApplyTab;
+
+// Delegated tab-button handler on #divTelemetryLive, bound once.
+if (!window._ipsTabBound) {
+    window._ipsTabBound = true;
+    $(document).on('click', '#divTelemetryLive .ips-tab-btn[data-ipstab]', function () {
+        ipsApplyTab($(this).attr('data-ipstab'));
+    });
 }
 
 // Mode-aware entry point: self-bootstraps (full render if the current mode's

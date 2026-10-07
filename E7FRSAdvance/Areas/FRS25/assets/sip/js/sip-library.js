@@ -774,22 +774,40 @@
         const armLen = Math.max(0, +opts.standArm || Math.max(10, len * 0.45));
         const dropMode = String(opts.standDrop || opts.drop || 'down').toLowerCase();
         const vSign = (dropMode === 'up' || dropMode === 'top') ? -1 : 1;
+        // Where the stand attaches ALONG the body (vertical stands): 0 = the edge
+        // (bottom for B/C, top for T), up to bh = the opposite edge. bh/2 = centre.
+        const attachOff = Math.max(0, Math.min(bh, +opts.standAttachOff || 0));
 
         let pts;  // array of [x,y] waypoints
         switch (pos) {
             /* ---- Side centres ---- */
-            case 'T': pts = [[mx, by], [mx, by - len]]; break;
-            case 'B': pts = [[mx, by + bh], [mx, by + bh + len]]; break;
+            case 'T': pts = [[mx, by + attachOff], [mx, by + attachOff - len]]; break;
+            case 'B': pts = [[mx, by + bh - attachOff], [mx, by + bh - attachOff + len]]; break;
+
+            /* ---- Centre: L-stand from the (offset) bottom centre (vertical drop + foot).
+                   Attach = signal.standAttachOff, height = standLength, foot = standArm. ---- */
+            case 'C': pts = [[mx, by + bh - attachOff], [mx, by + bh - attachOff + vSign * len], [mx + armLen, by + bh - attachOff + vSign * len]]; break;
 
             /* ---- Left / Right: L-bracket from exact side centre ---- */
             case 'L': pts = [[bx, my], [bx - armLen, my], [bx - armLen, my + vSign * len]]; break;
             case 'R': pts = [[bx + bw, my], [bx + bw + armLen, my], [bx + bw + armLen, my + vSign * len]]; break;
 
-            /* ---- Corners: legacy L-shaped bracket ---- */
-            case 'TL': pts = [[bx, by], [bx - len * 0.4, by], [bx - len * 0.4, by - len * 0.6]]; break;
-            case 'TR': pts = [[bx + bw, by], [bx + bw + len * 0.4, by], [bx + bw + len * 0.4, by - len * 0.6]]; break;
-            case 'BL': pts = [[bx, by + bh], [bx - len * 0.4, by + bh], [bx - len * 0.4, by + bh + len * 0.6]]; break;
-            case 'BR': pts = [[bx + bw, by + bh], [bx + bw + len * 0.4, by + bh], [bx + bw + len * 0.4, by + bh + len * 0.6]]; break;
+            /* ---- Corners: L-shaped bracket. Horizontal leg = signal.standArm,
+                   vertical leg = signal.standLength (independently adjustable). ---- */
+            case 'TL': pts = [[bx, by], [bx - armLen, by], [bx - armLen, by - len]]; break;
+            case 'TR': pts = [[bx + bw, by], [bx + bw + armLen, by], [bx + bw + armLen, by - len]]; break;
+            case 'BL': pts = [[bx, by + bh], [bx - armLen, by + bh], [bx - armLen, by + bh + len]]; break;
+            case 'BR': pts = [[bx + bw, by + bh], [bx + bw + armLen, by + bh], [bx + bw + armLen, by + bh + len]]; break;
+
+            /* ---- FREE L-stand: both ends placed by the user. Attach A and tip E
+                   are offsets from the body centre; draws vertical-then-horizontal. ---- */
+            case 'FREE': {
+                const _Ax = mx + (+opts.standAx || 0), _Ay = my + (+opts.standAy || 0);
+                const _Ex = mx + (+opts.standEx || 0), _Ey = my + (+opts.standEy || 0);
+                if (Math.abs(_Ax - _Ex) < 0.5 || Math.abs(_Ay - _Ey) < 0.5) pts = [[_Ax, _Ay], [_Ex, _Ey]];
+                else pts = [[_Ax, _Ay], [_Ax, _Ey], [_Ex, _Ey]];
+                break;
+            }
             default: return '';
         }
 
@@ -827,7 +845,7 @@
     function labelSideFromStand(standPos, x, y, w, h, lblSize, labelGap) {
         const pad = Math.max(0, +labelGap || 6);
         switch (standPos) {
-            case 'B': case 'BL': case 'BR':
+            case 'B': case 'BL': case 'BR': case 'C':
                 return { lx: x + w + pad, ly: y + h / 2, anchor: 'start' };
             case 'T': case 'TL': case 'TR':
                 return { lx: x - pad, ly: y + h / 2, anchor: 'end' };

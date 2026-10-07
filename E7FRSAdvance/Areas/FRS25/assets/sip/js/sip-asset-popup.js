@@ -1121,6 +1121,21 @@
                 sapLog('Resolved assetId ' + aid + ' for "' + _assetName + '" via bulkAssetMap name match.');
             }
         }
+        /* SIP-wide cache name fallback (covers assets whose type isn't the
+           currently-selected one, so bulkAssetMap doesn't hold them). */
+        if (!aid && _assetName && window.sipMetaAll && window.sipMetaAll.assets) {
+            var _wantN = String(_assetName).toUpperCase().replace(/[^A-Z0-9]+/g, '');
+            var _am = window.sipMetaAll.assets;
+            for (var _ak in _am) {
+                if (!_am.hasOwnProperty(_ak)) continue;
+                var _an = String((_am[_ak] && _am[_ak].Name) || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+                if (_an && _an === _wantN) {
+                    aid = String(_ak); _assetId = aid;
+                    sapLog('Resolved assetId ' + aid + ' for "' + _assetName + '" via sipMetaAll name match.');
+                    break;
+                }
+            }
+        }
 
         /* CONCEPT: the popup shows ONLY the clicked asset.
            Previously, when aid was empty the simpleMap / dlMap loops lost
@@ -1143,6 +1158,25 @@
 
         var dlMap = window.userAssetDataloggerMap || {};
         var simpleMap = window.userAssetSimpleMap || {};
+        /* SIP all-types fallback: the classic maps hold only the currently
+           selected asset type. If they have nothing for THIS asset, merge in
+           its entries from the SIP-wide metadata cache (window.sipMetaAll) so
+           the popup shows AliasName-labelled rows + DataLogger relays for any
+           asset type, without disturbing the classic telemetry grid. */
+        if (aid && window.sipMetaAll && (window.sipMetaAll.simple || window.sipMetaAll.dl)) {
+            var _pfx = aid + '_', _haveLive = false, _z;
+            for (_z in simpleMap) { if (simpleMap.hasOwnProperty(_z) && _z.indexOf(_pfx) === 0) { _haveLive = true; break; } }
+            if (!_haveLive) {
+                var _mS = {}, _mD = {};
+                for (_z in simpleMap) if (simpleMap.hasOwnProperty(_z)) _mS[_z] = simpleMap[_z];
+                for (_z in dlMap) if (dlMap.hasOwnProperty(_z)) _mD[_z] = dlMap[_z];
+                var _SS = window.sipMetaAll.simple || {}, _DD = window.sipMetaAll.dl || {};
+                for (_z in _SS) if (_SS.hasOwnProperty(_z) && _z.indexOf(_pfx) === 0) _mS[_z] = _SS[_z];
+                for (_z in _DD) if (_DD.hasOwnProperty(_z) && _z.indexOf(_pfx) === 0) _mD[_z] = _DD[_z];
+                simpleMap = _mS; dlMap = _mD;
+                sapLog('Using sipMetaAll fallback metadata for asset ' + aid);
+            }
+        }
         var dlMeta = {};
         var dlNameIndex = {};
         var dlLookup = {};
