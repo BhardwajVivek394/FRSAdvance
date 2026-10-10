@@ -1,0 +1,105 @@
+@model Domain.AssetLister
+
+<div class="table-border p-lg-4 p-2">
+    @if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
+    {
+        foreach (var item in Model.mAssets)
+        {
+            var vibration = item.assetAttributes != null ? item.assetAttributes.Where(x => x.Title != null && x.Title.Contains("Vibration")).ToList() : null;
+            bool isVibration = vibration != null && vibration.Count > 0;
+            bool isFullPointMachine = item.IsHalfPointMachine == null || (item.IsHalfPointMachine != null && !item.IsHalfPointMachine.Value);
+
+            <div class="ai-sec-asset">
+                <div class="ai-sec-asset-head">
+                    <h6>
+                        <a target="_blank" href="@item.HttpMisLink">@item.AssetTypeName : @item.Name</a>
+                    </h6>
+                    <span class="ai-sec-score">Index Score: @item.IndexScore</span>
+                </div>
+                <div class="ai-sec-asset-body">
+                    <div class="table-responsive tblAssetData mb-3">
+                        <table class="table table-hover">
+                            <thead class="thead-light2">
+                                <tr>
+                                    <th>@item.Name</th>
+                                    @if (isFullPointMachine)
+                                    {
+                                        if (!string.IsNullOrEmpty(item.AliasDirectionA))
+                                        {
+                                            <th>Direction:@item.AliasDirectionA</th>
+                                        }
+                                        else
+                                        {
+                                            <th>Direction:A</th>
+                                        }
+                                        if (!string.IsNullOrEmpty(item.AliasDirectionB))
+                                        {
+                                            <th>Direction:@item.AliasDirectionB</th>
+                                        }
+                                        else
+                                        {
+                                            <th>Direction:B</th>
+                                        }
+                                        if (isVibration)
+                                        {
+                                            <th>VibrationA(x/y/z)</th>
+                                            <th>VibrationB(x/y/z)</th>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <th>Direction</th>
+                                        <th></th>
+                                        if (isVibration)
+                                        {
+                                            <th></th>
+                                            <th></th>
+                                        }
+                                    }
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+
+                    <div class="table-responsive tblAssetData ai-sec-scroll">
+                        <table class="table table-hover" id="tblPoint@(item.Id)">
+                            <thead class="thead-light2">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Name</th>
+                                    <th>Direction</th>
+                                    @if (item.IsSeriesOpration != null && item.IsSeriesOpration.Value)
+                                    {
+                                        <th>Combine</th>
+                                    }
+                                    @if (isFullPointMachine)
+                                    {
+                                        <th>A Current(Max/Avg)</th>
+                                        <th>A Voltage</th>
+                                        <th>A Time (ms)</th>
+                                        <th>B Current(Max/Avg)</th>
+                                        <th>B Voltage</th>
+                                        <th>B Time (ms)</th>
+                                    }
+                                    else
+                                    {
+                                        <th>Current(Max/Avg)</th>
+                                        <th>Voltage</th>
+                                        <th>Time (ms)</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody class="fbody@(item.Id)">
+                                @Html.Partial("_PointMachineDatePartial", item)
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <p class="ai-sec-empty">No record found!</p>
+    }
+</div>

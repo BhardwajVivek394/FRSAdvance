@@ -805,6 +805,7 @@
                 const _Ax = mx + (+opts.standAx || 0), _Ay = my + (+opts.standAy || 0);
                 const _Ex = mx + (+opts.standEx || 0), _Ey = my + (+opts.standEy || 0);
                 if (Math.abs(_Ax - _Ex) < 0.5 || Math.abs(_Ay - _Ey) < 0.5) pts = [[_Ax, _Ay], [_Ex, _Ey]];
+                else if (opts.standOrder === 'hv') pts = [[_Ax, _Ay], [_Ex, _Ay], [_Ex, _Ey]];   // arm first, then post
                 else pts = [[_Ax, _Ay], [_Ax, _Ey], [_Ex, _Ey]];
                 break;
             }

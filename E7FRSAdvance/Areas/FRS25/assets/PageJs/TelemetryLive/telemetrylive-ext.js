@@ -412,9 +412,12 @@ function abortPmIndicationRequest() {
             if (!Object.prototype.hasOwnProperty.call(attrs, an)) continue;
             var ad = attrs[an];
             if (!ad) continue;
-            var numId = parseInt(ad.AssetAttributeId || ad.AttrId || 0, 10);
-            var d = (numId && decode) ? decode(numId) : null;
-            if (!d && parseName && decode) { var p = parseName(an); if (p) d = decode(p.attrId); }
+            /* e7mriv2web: an attribute is a PM OPERATION reading only when its
+               NAME is one (NN-PM-NNNN-xxx); decoding by the numeric id alone put
+               unrelated attributes whose id happens to be 1000-9006 (e.g.
+               vibration -Max/-Avg offsets) into Normal / Reverse AC/AV/BC/BV. */
+            var d = null;
+            if (parseName && decode) { var p = parseName(an); if (p) d = decode(p.attrId); }
             var common = {
                 value: ad.Value, timestamp: ad.Timestamp, changed: ad.changed, attrName: an,
                 DataType: ad.DataType, BroadcastKind: ad.BroadcastKind,
@@ -2139,9 +2142,13 @@ function abortPmIndicationRequest() {
     // Cards view never flushed WS operation events into pmEventHistory:
     // processItemsInternal only does that when drpView === 'PointMachine'
     // (the pre-Aurora view name). Flush them for the Aurora 'Cards' view too.
+    /* DISABLED to match e7mriv2web: card history is owned by buildPmDataRow616
+       (indication-first direction); flushing raw operation messages added rows
+       labelled by the op type, e.g. "Reverse Operation" while indicating Normal. */
+    var PM_CARDS_OP_FLUSH = false;
     (function () {
         var orig = window.processItemsInternal;
-        if (typeof orig !== 'function') return;
+        if (!PM_CARDS_OP_FLUSH || typeof orig !== 'function') return;
         window.processItemsInternal = function (items) {
             var res = orig.apply(this, arguments);
             try {
@@ -4613,10 +4620,8 @@ try {
     }
 
     /* ---- I3 / I5  row models --------------------------------------------- */
-    // Digital = data-logger relay; Current = IIPS reading, or a battery
-    // charging / discharging reading (by attribute name, or because it belongs
-    // to a BATT CHARGING / DISCHARGING asset) unless it is named as a voltage;
-    // Voltage = everything else.
+    // e7mriv2web rule (source of truth): Digital = data-logger relay;
+    // Current = the reading is named IIPS; Voltage = VIPS and everything else.
     function ipsBattBucketOf(text) {
         var up = String(text || '').toUpperCase();
         if (/DISCHAR/.test(up)) return 'discharging';
@@ -4627,7 +4632,6 @@ try {
         if (isDataLogger) return 'digital';
         var hay = (String(attrKey || '') + ' ' + String(attrLabel || '')).toUpperCase();
         if (hay.indexOf('IIPS') !== -1) return 'current';
-        if ((ipsBattBucketOf(hay) || ipsBattBucketOf(assetName)) && !/VIPS|VOLT|\(V\)/.test(hay)) return 'current';
         return 'voltage';
     }
     W.ipsClassifyTab = ipsClassifyTab;
@@ -4712,14 +4716,13 @@ try {
             if (r && r.ipsTab === 'current' && !r.isDataLogger) {
                 var up = String(r.assetName || '').toUpperCase();
                 if (up.indexOf('DISCHARGING') !== -1) bucket = 'discharging';
-                else if (up.indexOf('CHARGING') !== -1) bucket = 'charging';
-                else bucket = ipsBattBucketOf(r.attr);   // banks kept as attributes of one asset
+                else if (up.indexOf('CHARGING') !== -1) bucket = 'charging';   // e7mriv2web: by ASSET name only
             }
             if (bucket === null) { out.push(r); continue; }
             var base = String(r.assetName || '').replace(/[\s\-_]*\d+\s*$/, '').trim() || String(r.assetName || '');
             var groupAttr = W.ipsBattBaseAttrName(r.attr);
             var key = bucket + '||' + groupAttr + '||' + base;
-            var num = parseFloat(r.value);
+            var num = parseFloat(W.ipsBattFormatAmps(r.value, ''));   // e7mriv2web: battery current in A
             var g = groups[key];
             if (!g) {
                 g = { _agg: true, assetId: 'ipsgrp::' + key, assetName: base,
@@ -4737,8 +4740,8 @@ try {
             var o = out[j];
             if (!o || !o._agg) continue;
             out[j] = {
-                assetId: o.assetId, assetName: o.assetName, attr: o.attr, attrKey: o.attrKey,
-                value: o.count > 0 ? ipsFormatDisplayValue(o.sum, EMPTY) : EMPTY, ts: o.ts, dlClass: '',
+                assetId: o.assetId, assetName: o.assetName, attr: W.ipsBattAmpLabel(o.attr), attrKey: o.attrKey,
+                value: o.count > 0 ? W.ipsBattFormatAmpsValue(o.sum, EMPTY) : EMPTY, ts: o.ts, dlClass: '',
                 isDataLogger: false, ipsTab: 'current', isStale: false, staleTitle: '', isGroup: true, members: o.members
             };
         }
@@ -5037,12 +5040,13 @@ try {
                 if (isDlAttr(asset, an, aObj)) continue;
                 var label = plainLabel(assetId, an, aObj);
                 if (currentOnly && ipsClassifyTab(false, an, label, asset.AssetName) !== 'current') continue;
-                var num = parseFloat(ipsFormatDisplayValue(aObj.Value, EMPTY));
+                var amp = ipsClassifyTab(false, an, label, asset.AssetName) === 'current';
+                var num = parseFloat(ipsCardDisplayValue(assetId, an, aObj));
                 var base = W.ipsBattBaseAttrName(label);
                 var key = ipsCardSumKey(base);
                 if (!key) continue;
                 var g = groups[key];
-                if (!g) { g = groups[key] = { key: key, label: base, sum: 0, count: 0, members: 0 }; order.push(g); }
+                if (!g) { g = groups[key] = { key: key, label: amp && fn('ipsBattAmpLabel') ? W.ipsBattAmpLabel(base) : base, sum: 0, count: 0, members: 0, ampere: amp }; order.push(g); }
                 g.members++;
                 if (isFinite(num)) { g.sum += num; g.count++; }
             }
@@ -5054,7 +5058,7 @@ try {
     }
     function ipsCardSumDisplay(m) {
         if (!m || m.count === 0) return EMPTY;
-        return ipsFormatDisplayValue(m.sum, EMPTY);
+        return (m.ampere && fn('ipsBattFormatAmpsValue')) ? W.ipsBattFormatAmpsValue(m.sum, EMPTY) : ipsFormatDisplayValue(m.sum, EMPTY);
     }
     function buildIpsCardSumRowsHtml(assetId) {
         var models = buildIpsCardSumModels(assetId);
@@ -5226,8 +5230,21 @@ try {
         var m = String(label || '').match(/CHAR[A-Z]*\s*-?\s*(\d+)/i) || String(label || '').match(/-(\d+)\b/);
         return m ? 'Bank ' + m[1] : null;
     }
+    /* e7mriv2web ipsCardIsAmpereAttr / ipsCardDisplayValue: on a battery
+       charging / discharging asset, a CURRENT reading is shown in amperes
+       (mA / 1000, 3 decimals). One function so render + live update agree. */
+    function ipsCardIsAmpereAttr(asset, assetId, an, aObj) {
+        if (!asset || !ipsCardBattBucket(asset, assetId)) return false;
+        return ipsClassifyTab(false, an, plainLabel(assetId, an, aObj || {}), asset.AssetName) === 'current';
+    }
+    function ipsCardDisplayValue(assetId, an, aObj) {
+        var asset = liveData()[assetId], raw = (aObj || {}).Value;
+        return (ipsCardIsAmpereAttr(asset, assetId, an, aObj) && fn('ipsBattFormatAmps'))
+            ? W.ipsBattFormatAmps(raw, EMPTY) : ipsFormatDisplayValue(raw, EMPTY);
+    }
+    W.ipsCardDisplayValue = ipsCardDisplayValue;
     function attrRowHtml(assetId, an, aObj, extraCls) {
-        var disp = ipsFormatDisplayValue(aObj.Value, EMPTY);
+        var disp = ipsCardDisplayValue(assetId, an, aObj);
         var label = plainLabel(assetId, an, aObj);
         var labelHtml = fn('formatAliasName') ? (W.formatAliasName(label) || esc(label)) : esc(label);
         if (extraCls === 'ipsv2-bank') {
@@ -5293,6 +5310,23 @@ try {
         });
     }
 
+    /* Data-logger relays of an IPS asset that are not already an attribute row. */
+    function ipsCardRelayKeys(asset) {
+        var relays = (asset && asset.dlRelays) || {}, attrs = (asset && asset.attrs) || {};
+        return Object.keys(relays).filter(function (k) { return !Object.prototype.hasOwnProperty.call(attrs, k); })
+            .sort(function (a, b) { return natural(String(relays[a].displayName || a), String(relays[b].displayName || b)); });
+    }
+    function relayState(relay) {
+        if (!relay || relay.isNull) return { txt: '-', cls: '' };
+        return relay.isPickup ? { txt: 'Pickup', cls: 'pickup' } : { txt: 'Drop', cls: 'drop' };
+    }
+    function relayRowHtml(asset, key) {
+        var relay = asset.dlRelays[key] || {}, s = relayState(relay), nm = String(relay.displayName || key);
+        return '<div class="ips-attr-row ips-relay-row" data-ipst="digital">' +
+            '<span class="ips-attr-name" title="' + esc(nm) + '">' + esc(nm) + '</span>' +
+            '<span class="ips-relay-val ' + s.cls + '" data-relay="' + esc(key) + '">' + s.txt + '</span></div>';
+    }
+
     W.buildIpsCard = function (assetId) {
         var asset = liveData()[assetId];
         if (!asset) return '';
@@ -5314,7 +5348,8 @@ try {
             '<button type="button" class="tl-asset-action tl-aa-avg" title="Avg values" onclick="fnShowFRSAttributeRangeHistory(\'' + esc(assetId) + '\')">' +
             '<i class="fa-solid fa-chart-column"></i></button><span class="ips-status-dot" title="Live"></span></div>';
         h += '<div class="ips-attr-list">';
-        if (!keys.length) {
+        var relayKeys = ipsCardRelayKeys(asset);
+        if (!keys.length && !relayKeys.length) {
             h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--at-t4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
         } else {
             // plain attributes first (anything that is not a bank of a Σ group)
@@ -5326,6 +5361,8 @@ try {
             for (var i = 0; i < models.length; i++) {
                 h += sumBlockHtml(assetId, models[i], ms.byKey[models[i].key] || []);
             }
+            // data-logger relays = the Digital readings (as in e7mriv2web's IPS table)
+            for (var rr = 0; rr < relayKeys.length; rr++) h += relayRowHtml(asset, relayKeys[rr]);
         }
         h += '</div>';
         h += '<div class="ips-card-footer"><i class="fas fa-clock"></i> ' + esc(ts) + '</div></div>';
@@ -5414,7 +5451,9 @@ try {
             }
             var attrs = asset.attrs || {};
             var rendered = $card.find('.ips-attr-val[data-attr]').length;
-            if (!$card.hasClass('ipsv2') || rendered !== Object.keys(attrs).length || !updateIpsCardSums($card, aid)) {
+            var relayKeys = ipsCardRelayKeys(asset);
+            if (!$card.hasClass('ipsv2') || rendered !== Object.keys(attrs).length ||
+                $card.find('.ips-relay-val[data-relay]').length !== relayKeys.length || !updateIpsCardSums($card, aid)) {
                 var $new = $(W.buildIpsCard(aid));
                 $card.replaceWith($new);
                 paintBars($new, aid);
@@ -5424,7 +5463,7 @@ try {
                 var $v = $(this);
                 var an = $v.attr('data-attr');
                 var aObj = attrs[an] || {};
-                var disp = ipsFormatDisplayValue(aObj.Value, EMPTY);
+                var disp = ipsCardDisplayValue(aid, an, aObj);
                 var s = staleMarks(aid, an, aObj.Value, disp === EMPTY ? 'ips-attr-val no-data' : 'ips-attr-val');
                 var old = $v.clone().children('.ws-stale-marker,.ws-warn-marker').remove().end().text();
                 if (old !== String(disp)) {
@@ -5438,6 +5477,10 @@ try {
                     $v.find('.ws-stale-marker,.ws-warn-marker').remove();
                     if (s.marks) $v.append(s.marks);
                 }
+            });
+            $card.find('.ips-relay-val[data-relay]').each(function () {
+                var s = relayState(asset.dlRelays[this.getAttribute('data-relay')]);
+                if (this.textContent !== s.txt) { this.textContent = s.txt; this.className = 'ips-relay-val ' + s.cls + ' ips-val-flash'; }
             });
             paintBars($card, aid);
             $card.find('.ips-card-footer').html('<i class="fas fa-clock"></i> ' + esc(assetTs(asset)));
@@ -6508,7 +6551,7 @@ try {
         ['Ir mA', 'ITC RELAY END(mA)', 'ITC RELAY END'],
         ['Charger mA', 'ITC TFC O/P(mA)', 'ITC TFC O/P'],
         ['Choke V', 'VTC CH FEED END(V)', 'VTC CH FEED END'],
-        ['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)', 'VTC TFC I/P', 'VTC TFC I/P(V)'],
+        ['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)'],   // e7mriv2web: O/P only
         ['Vf', 'Vf V', 'VTC FEED END', 'VTC FEED END(V)']
     ];
     function normName(v) { return str(v).trim().toLowerCase().replace(/[^a-z0-9]/g, ''); }
@@ -6756,6 +6799,8 @@ try {
     prefs.density = prefs.density || 'm';
     prefs.cols = prefs.cols || 'auto';
     if (prefs.sync === undefined) prefs.sync = true;
+    /* simplified toolbar: these are no longer user options -- fixed defaults */
+    prefs.density = 'm'; prefs.cols = 'auto'; prefs.sync = true;
 
     // value at time t (carry-forward) — pts sorted asc
     function valueAt(pts, t) {
@@ -8375,7 +8420,15 @@ try {
     var SHADES = [[0, 66, 88], [12, 56, 78], [-12, 74, 92], [22, 48, 70], [-22, 62, 96], [6, 44, 60], [-6, 80, 84], [30, 58, 74], [-30, 52, 66], [16, 70, 96]];
     function assetHue(idx) { return HUES[idx % HUES.length] + Math.floor(idx / HUES.length) * 11; }
     function assetColor(idx) { return hsl2hex(assetHue(idx), isLight() ? 62 : 82, isLight() ? 42 : 62); }
+    /* one asset on the chart: shades of a single hue are indistinguishable,
+       so every reading gets its own clearly different colour instead */
+    var CAT_LIGHT = ['#2563EB', '#E11D48', '#16A34A', '#D97706', '#7C3AED', '#0891B2', '#DB2777', '#65A30D', '#EA580C', '#4F46E5', '#0D9488', '#B45309', '#9333EA', '#059669', '#DC2626', '#0284C7', '#A16207', '#475569'];
+    var CAT_DARK = ['#60A5FA', '#FB7185', '#4ADE80', '#FBBF24', '#A78BFA', '#22D3EE', '#F472B6', '#A3E635', '#FB923C', '#818CF8', '#2DD4BF', '#FCD34D', '#C084FC', '#34D399', '#F87171', '#38BDF8', '#FDE047', '#CBD5E1'];
     function seriesColor(assetIdx, attrIdx) {
+        if ((mgG.assetIds || []).length <= 1) {
+            var cat = isLight() ? CAT_LIGHT : CAT_DARK, n = attrIdx % cat.length, lap = Math.floor(attrIdx / cat.length);
+            return lap ? hsl2hex(((attrIdx * 47) % 360), isLight() ? 60 : 80, isLight() ? 38 : 66) : cat[n];
+        }
         var sh = SHADES[attrIdx % SHADES.length], light = isLight();
         return hsl2hex(assetHue(assetIdx) + sh[0], light ? Math.max(40, sh[2] - 22) : sh[2], light ? Math.max(30, sh[1] - 20) : sh[1]);
     }
@@ -8534,7 +8587,16 @@ try {
             'body[data-aurora="light"] .tlmg-pop{background:#fff;}',
             'body[data-aurora="light"] .tlmg-wrap .tlgv-badge{color:#04121c;}',
             '@media (max-width:640px){.tlmg-head{padding:10px 12px;}.tlmg-title b{font-size:13.5px;}.tlmg-abody{grid-template-columns:1fr;padding-left:18px;}.tlmg-chart{height:320px;}.tlmg-selbar{padding:6px 10px;}.tlmg-count{width:100%;margin-left:0;}.tlmg-ahdr{right:8px;}}',
-            '@media (prefers-reduced-motion:reduce){.tlmg-spin{animation:none;}}'
+            '@media (prefers-reduced-motion:reduce){.tlmg-spin{animation:none;}}',
+            /* simplified toolbar */
+            '.tlmg-simple{gap:8px 12px;padding:10px 16px;}',
+            '.tlmg-simple .tlgv-seg button{padding:5px 12px;font-size:12px;border-radius:8px;}',
+            '.tlmg-simple .tlgv-seg button.on{box-shadow:0 1px 6px rgba(34,211,238,.35);}',
+            '.tlmg-quick [data-mg-custom].on{background:var(--at-brand,#22d3ee);color:#04161A;}',
+            '.tlmg-custom{align-items:center;gap:6px;padding:4px 8px;border-radius:10px;background:rgba(34,211,238,.07);border:1px dashed rgba(34,211,238,.35);}',
+            '.tlmg-hint{padding:6px 16px 8px;font-size:11.5px;color:var(--at-t3,rgba(255,255,255,.55));border-bottom:1px solid var(--at-edge,rgba(255,255,255,.08));}',
+            '.tlmg-hint i{color:var(--at-brand,#22d3ee);margin-right:4px;}',
+            'body[data-aurora="light"] .tlmg-hint{color:#5A6878;}'
         ].join('\n');
         var st = document.createElement('style'); st.id = 'tlmg-styles';
         st.appendChild(document.createTextNode(css));
@@ -8616,43 +8678,44 @@ try {
     // ------------------------------------------------------------------
     // shell
     // ------------------------------------------------------------------
+    /* Simplified graph toolbar: View (One chart / Separate lanes) + Show
+       (All / Current / Voltage / Relays / Derived) + Reset / Download. Lane
+       size, columns, sync-zoom and attribute search were removed -- they are
+       fixed at the defaults (medium lanes, auto columns, zoom always synced). */
     function viewBarHtml() {
         var m = mgG.mode, hn = Object.keys(mgG.hidden).length;
-        function seg(list, attr, cur, pretty) {
-            return '<div class="tlgv-seg tlgv-mini" role="group">' + list.map(function (d) {
-                return '<button type="button" ' + attr + '="' + d + '" class="' + (String(cur) === d ? 'on' : '') + '">' + (pretty ? pretty(d) : d.toUpperCase()) + '</button>';
-            }).join('') + '</div>';
+        function btn(attr, val, cur, icon, label, tip) {
+            var on = String(cur) === val;
+            return '<button type="button" ' + attr + '="' + val + '" class="' + (on ? 'on' : '') + '" aria-pressed="' + on + '"' +
+                (tip ? ' title="' + esc(tip) + '"' : '') + '>' + (icon ? '<i class="fas ' + icon + '"></i> ' : '') + label + '</button>';
         }
-        return '<div class="tlgv-bar" data-tlgv="multi" data-mode="' + m + '">' +
+        /* Track / Signal / ELD: no Current / Voltage / Relays split -- every
+           reading is listed and drawn together, as in e7mriv2web. Only IPS
+           keeps the split (e7mriv2web differentiates IPS readings). */
+        var splitByKind = mgG.kind === 'ips';
+        if (!splitByKind && mgG.filter !== 'all') mgG.filter = 'all';
+        var shows = [['all', 'All', ''], ['ma', 'Current', 'Current readings (mA / A)'], ['v', 'Voltage', 'Voltage readings (V)'],
+            ['bin', 'Relays', 'Relay pickup / drop (0 / 1)']];
+        return '<div class="tlgv-bar tlmg-simple" data-tlgv="multi" data-mode="' + m + '">' +
             '<span class="tlgv-lbl">View</span>' +
             '<div class="tlgv-seg" role="group" aria-label="Graph view">' +
-            '<button type="button" data-tlgv-mode="overlay" class="' + (m === 'overlay' ? 'on' : '') + '" aria-pressed="' + (m === 'overlay') + '" title="All attributes on one chart"><i class="fas fa-layer-group"></i> Overlay</button>' +
-            '<button type="button" data-tlgv-mode="stacked" class="' + (m === 'stacked' ? 'on' : '') + '" aria-pressed="' + (m === 'stacked') + '" title="One lane per attribute, grouped by asset"><i class="fas fa-bars-staggered"></i> Stacked</button>' +
-            '<button type="button" data-tlgv-mode="individual" class="' + (m === 'individual' ? 'on' : '') + '" aria-pressed="' + (m === 'individual') + '" title="A chart card for every attribute, grouped by asset"><i class="fas fa-table-cells-large"></i> Individual</button>' +
+            btn('data-tlgv-mode', 'overlay', m, 'fa-chart-line', 'One chart', 'All selected readings on one chart') +
+            btn('data-tlgv-mode', 'stacked', m, 'fa-bars-staggered', 'Separate lanes', 'One lane per reading, grouped by asset') +
+            (m === 'individual' ? btn('data-tlgv-mode', 'individual', m, 'fa-table-cells-large', 'Cards', 'One chart card per reading') : '') +
             '</div>' +
-            '<span class="tlgv-grp"><span class="tlgv-lbl">Filter</span>' +
-            seg(['all', 'ma', 'v', 'bin', 'drv'].filter(function (f) { return f !== 'drv' || mgG.kind === 'track'; }), 'data-mg-filter', mgG.filter,
-                function (d) { return { all: 'All', ma: 'mA', v: 'V', bin: '0/1', drv: 'Derived' }[d]; }) + '</span>' +
-            '<span class="tlgv-grp tlgv-stk-only"><span class="tlgv-lbl">Lanes</span>' + seg(['s', 'm', 'l'], 'data-tlgv-dens', prefs.density) + '</span>' +
-            '<span class="tlgv-grp tlgv-ind-only"><span class="tlgv-lbl">Columns</span>' + seg(['auto', '1', '2', '3'], 'data-tlgv-cols', prefs.cols, function (d) { return d === 'auto' ? 'Auto' : d; }) + '</span>' +
+            (splitByKind ? '<span class="tlgv-grp"><span class="tlgv-lbl">Show</span><div class="tlgv-seg" role="group" aria-label="Show readings">' +
+            shows.map(function (f) { return btn('data-mg-filter', f[0], mgG.filter, '', f[1], f[2]); }).join('') + '</div></span>' : '') +
             '<span class="tlgv-spacer"></span>' +
-            '<span class="tlgv-grp tlgv-alt-only"><input type="search" class="tlgv-search" data-tlgv-search placeholder="Filter attributes…" aria-label="Filter attributes" value="' + esc(mgG.search) + '"/></span>' +
-            '<label class="tlgv-chk tlgv-alt-only" title="Zoom / pan all charts together (hover stays on one attribute)"><input type="checkbox" data-tlgv-sync ' + (prefs.sync ? 'checked' : '') + '/> Sync zoom</label>' +
             '<button type="button" class="tlgv-btn tlgv-alt-only" data-tlgv-unhide style="' + (hn ? '' : 'display:none!important') + '"><i class="fas fa-eye"></i> Show hidden (<span data-tlgv-hn>' + hn + '</span>)</button>' +
-            '<button type="button" class="tlgv-btn" data-tlgv-reset><i class="fas fa-undo"></i> Reset zoom</button>' +
-            '<button type="button" class="tlgv-btn" data-tlgv-png><i class="fas fa-download"></i> PNG</button>' +
+            '<button type="button" class="tlgv-btn" data-tlgv-reset title="Reset zoom"><i class="fas fa-magnifying-glass-minus"></i> Reset zoom</button>' +
+            '<button type="button" class="tlgv-btn" data-tlgv-png title="Download the chart as an image"><i class="fas fa-download"></i></button>' +
             '</div>';
     }
+    var HINT_HTML = '<div class="tlmg-hint"><i class="fas fa-circle-info"></i> Drag on the chart or use the slider below it to zoom &middot; hover for exact values &middot; tick readings in the list to add or remove them.</div>';
     function syncBar() {
+        // the bar is small: rebuild it (the Cards button only exists while that view is on)
         var $bar = $('#mgWrap .tlgv-bar');
-        $bar.attr('data-mode', mgG.mode);
-        $bar.find('[data-tlgv-mode]').each(function () { var on = $(this).attr('data-tlgv-mode') === mgG.mode; $(this).toggleClass('on', on).attr('aria-pressed', on ? 'true' : 'false'); });
-        $bar.find('[data-mg-filter]').each(function () { $(this).toggleClass('on', $(this).attr('data-mg-filter') === mgG.filter); });
-        $bar.find('[data-tlgv-dens]').each(function () { $(this).toggleClass('on', $(this).attr('data-tlgv-dens') === prefs.density); });
-        $bar.find('[data-tlgv-cols]').each(function () { $(this).toggleClass('on', $(this).attr('data-tlgv-cols') === String(prefs.cols)); });
-        var hn = Object.keys(mgG.hidden).length;
-        $bar.find('[data-tlgv-hn]').text(hn);
-        $bar.find('[data-tlgv-unhide]').attr('style', hn ? '' : 'display:none!important');
+        if ($bar.length) $bar.replaceWith(viewBarHtml());
     }
     function titleText() {
         var n = mgG.assetIds.length;
@@ -8666,24 +8729,25 @@ try {
         var h = '<div class="tlmg-wrap" id="mgWrap">';
         h += '<div class="tlmg-head">' +
             '<div class="tlmg-title"><i class="fas fa-chart-line"></i><div><b id="mgTitle">' + esc(titleText()) + '</b>' +
-            '<div class="tlmg-sub">' + esc(siteName) + ' · ' + esc(mgG.typeName) + ' · Multi-Asset History Graph</div></div></div>' +
+            '<div class="tlmg-sub">' + esc(siteName) + ' · ' + esc(mgG.typeName) + ' · History graph</div></div></div>' +
             '<div class="tlmg-range" id="mgRange">' +
             '<div class="tlmg-assets"><button type="button" class="tlmg-btn" id="mgAssetsBtn" aria-haspopup="true" aria-expanded="false"><i class="fas fa-cubes"></i> Assets <span id="mgAssetsN">' + mgG.assetIds.length + '</span> <i class="fas fa-chevron-down" style="font-size:9px;opacity:.6;"></i></button>' +
             '<div class="tlmg-pop" id="mgPop" role="dialog" aria-label="Choose assets"></div></div>' +
             '<div class="tlgv-seg tlgv-mini tlmg-quick" role="group" aria-label="Quick range">' +
-            ['1', '3', '6', '12', '24'].map(function (hh) { return '<button type="button" data-mg-quick="' + hh + '">' + hh + 'H</button>'; }).join('') +
-            '<button type="button" data-mg-quick="today" class="on">Today</button></div>' +
+            [['1', 'Last 1 hour'], ['6', 'Last 6 hours'], ['24', 'Last 24 hours']].map(function (q) { return '<button type="button" data-mg-quick="' + q[0] + '" title="' + q[1] + '">' + q[0] + 'h</button>'; }).join('') +
+            '<button type="button" data-mg-quick="today" class="on" title="Since midnight">Today</button>' +
+            '<button type="button" data-mg-custom title="Pick an exact From / To"><i class="far fa-calendar"></i> Custom</button></div>' +
+            /* exact From / To: tucked away until "Custom" is clicked */
+            '<span class="tlmg-custom" id="mgCustom" style="display:none;">' +
             '<label for="mgFrom">From</label><input type="datetime-local" id="mgFrom" aria-label="From date and time"/>' +
             '<label for="mgTo">To</label><input type="datetime-local" id="mgTo" aria-label="To date and time"/>' +
-            '<button type="button" class="tlmg-btn tlmg-primary" id="mgLoadBtn"><i class="fas fa-sync-alt"></i> Load</button>' +
+            '<button type="button" class="tlmg-btn tlmg-primary" id="mgLoadBtn"><i class="fas fa-check"></i> Show</button></span>' +
             '</div></div>';
         h += '<div id="mgNotice"></div>';
-        h += viewBarHtml();
-        h += '<div class="tlmg-selbar"><span class="tlgv-lbl">Attributes</span>' +
-            '<button type="button" class="tlmg-mini" data-mg-all="1"><i class="fas fa-check-square"></i> Select All</button>' +
-            '<button type="button" class="tlmg-mini" data-mg-all="0"><i class="far fa-square"></i> Unselect All</button>' +
-            '<button type="button" class="tlmg-mini" data-mg-foldall="1" title="Collapse every asset group"><i class="fas fa-compress"></i> Fold</button>' +
-            '<button type="button" class="tlmg-mini" data-mg-foldall="0" title="Expand every asset group"><i class="fas fa-expand"></i> Unfold</button>' +
+        h += viewBarHtml() + HINT_HTML;
+        h += '<div class="tlmg-selbar"><span class="tlgv-lbl">Readings</span>' +
+            '<button type="button" class="tlmg-mini" data-mg-all="1"><i class="fas fa-check-square"></i> Select all</button>' +
+            '<button type="button" class="tlmg-mini" data-mg-all="0"><i class="far fa-square"></i> Clear</button>' +
             '<span class="tlmg-count" id="mgCount"></span></div>';
         h += '<div class="tlmg-panel" id="mgPanel"></div>';
         h += '<div class="tlmg-legend" id="mgLegend" style="display:none;"></div>';
@@ -8763,7 +8827,13 @@ try {
             if (!isNaN(d) && d > Date.now()) { $(this).val(toLocalInput(Date.now())); warn('Future dates are not allowed.'); }
         });
         $w.on('keydown.tlmg', '#mgFrom,#mgTo', function (e) { if (e.key === 'Enter') $('#mgLoadBtn').trigger('click'); });
+        $w.on('click.tlmg', '[data-mg-custom]', function () {
+            var $c = $('#mgCustom'), open = !$c.is(':visible');
+            $c.css('display', open ? 'inline-flex' : 'none'); $(this).toggleClass('on', open);
+            if (open) $('#mgFrom').trigger('focus');
+        });
         $w.on('click.tlmg', '[data-mg-quick]', function () {
+            $('#mgCustom').css('display', 'none'); $('#mgRange [data-mg-custom]').removeClass('on');
             var q = $(this).attr('data-mg-quick'), now = Date.now();
             if (q === 'today') { var d = new Date(now); d.setHours(0, 0, 0, 0); mgG.fromMs = d.getTime(); }
             else mgG.fromMs = now - parseInt(q, 10) * 3600000;
@@ -8962,11 +9032,14 @@ try {
         35: 'Supply V', 36: 'Modem mV', 154: 'Root V', 155: 'Root mA', 227: 'UG V', 228: 'UG mA', 327: 'HHPR', 328: 'DPR', 329: 'HPR', 337: 'PILOT mA', 499: 'PILOT V', 610: 'Co_Hg mA', 611: 'Co_Hg V'
     };
     var SHORT_BY_ID = { 1: 'If mA', 2: 'Ir mA', 4: 'Choke V', 5: 'Charger mA' };
-    function classify(name, isBin, isDrv) {
+    function classify(name, isBin, isDrv, assetName) {
         if (isBin) return 'bin';
         if (isDrv) return 'drv';
         var n = String(name || '');
-        if (mgG.kind === 'ips') return /^\s*I|\bmA\b|CURRENT/i.test(n) ? 'ma' : (/^\s*V|\bV\b|VOLT/i.test(n) ? 'v' : 'other');
+        /* IPS: same rule as the Voltage / Current / Digital tabs (ipsClassifyTab) so a
+           reading is in the same category everywhere; before, any name starting
+           with 'I' (e.g. 'IPS ...') was counted as a current */
+        if (mgG.kind === 'ips') { var tb = fn('ipsClassifyTab') ? window.ipsClassifyTab(false, n, n, assetName) : 'voltage'; return tb === 'current' ? 'ma' : 'v'; }
         var l = n.toLowerCase();
         if (l.indexOf('ma') > -1 || l.indexOf('mv') > -1 || l.indexOf('-c') > -1) return 'ma';
         if (/\bv\b|volt/.test(l) || /v\)?$/.test(l)) return 'v';
@@ -9067,7 +9140,7 @@ try {
                     ex.pts = uniq; ex.actual = ex.actual.concat(actual).sort(function (a, b) { return a[0] - b[0]; });
                     return;
                 }
-                var kind = classify(name, isRelay, false);
+                var kind = classify(name, isRelay, false, A.name);
                 mgG.series[key] = {
                     key: key, assetId: String(aid), attrId: id, name: name, assetName: A.name, kind: kind, unit: unitFor(name, kind),
                     color: seriesColor(A.idx, attrIdx++), pts: pts, actual: actual, isBin: isRelay,
@@ -9166,7 +9239,7 @@ try {
             var key = 'battgrp::' + gk, attrIdx = Object.keys(mgG.series).filter(function (k) { return mgG.series[k].assetId === vAid; }).length;
             var pts = sumStep(mem.map(function (s) { return s.pts; }));
             mgG.series[key] = {
-                key: key, assetId: vAid, attrId: g.attrId, name: g.name, assetName: V.name, kind: classify(g.name, false, false), unit: unitFor(g.name, classify(g.name, false, false)),
+                key: key, assetId: vAid, attrId: g.attrId, name: g.name, assetName: V.name, kind: classify(g.name, false, false, V.name), unit: unitFor(g.name, classify(g.name, false, false, V.name)),
                 color: seriesColor(V.idx, attrIdx), pts: pts, actual: pts.slice(0, Math.max(1, pts.length - 1)), isBin: false, isGroup: true,
                 members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }), live: { src: 'sum', members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }) }
             };
@@ -9417,23 +9490,39 @@ try {
         });
         $('#mgChart').show();
         if (mgG.chart) { try { mgG.chart.dispose(); } catch (e) { /* ignore */ } }
+        el.style.height = '';   // one combined chart: back to the CSS height
         var chart = mgG.chart = window.echarts.init(el, null, { renderer: 'canvas' });
-        var maxMA = 0, maxV = 0, hasBin = false, hasMA = false, hasV = false, series = [];
+        var maxMA = 0, maxV = 0, maxO = 0, hasBin = false, hasMA = false, hasV = false, hasO = false, oUnits = {}, series = [], metas = [];
+        /* axis by UNIT (not by kind): mA left, V right, anything else (Ω, ...) on
+           its own right axis -- a derived Ω/V reading no longer sits squashed
+           at the bottom of the mA scale */
+        function axisOf(s) {
+            if (s.kind === 'bin') return 2;
+            var u = String(s.unit || '').trim();
+            if (/^m?A$/i.test(u) || (!u && s.kind === 'ma')) return 0;
+            if (/^m?V$/i.test(u) || (!u && s.kind === 'v')) return 1;
+            if (!u && s.kind !== 'drv') return 1;
+            return 3;
+        }
         list.forEach(function (s) {
-            var isBin = s.kind === 'bin', yi = isBin ? 2 : (s.kind === 'ma' || s.kind === 'drv') ? 0 : 1;
-            if (isBin) hasBin = true; else if (yi === 0) { hasMA = true; if (s.stats.max > maxMA) maxMA = s.stats.max; } else { hasV = true; if (s.stats.max > maxV) maxV = s.stats.max; }
+            var isBin = s.kind === 'bin', yi = axisOf(s);
+            if (isBin) hasBin = true;
+            else if (yi === 0) { hasMA = true; if (s.stats.max > maxMA) maxMA = s.stats.max; }
+            else if (yi === 1) { hasV = true; if (s.stats.max > maxV) maxV = s.stats.max; }
+            else { hasO = true; oUnits[String(s.unit || '').trim() || '?'] = 1; if (s.stats.max > maxO) maxO = s.stats.max; }
             var o = {
                 id: s.key, name: s.name, type: 'line', step: 'end', xAxisIndex: 0, yAxisIndex: yi, showSymbol: false, symbol: 'circle', symbolSize: 3,
                 connectNulls: true, animation: false, clip: true, sampling: 'lttb',
-                lineStyle: { width: isBin ? 1.4 : 1.7, color: s.color, type: s.kind === 'drv' ? 'dashed' : 'solid' },
-                itemStyle: { color: s.color }, emphasis: { focus: 'series', lineStyle: { width: 2.6 } }, blur: { lineStyle: { opacity: 0.18 } },
+                lineStyle: { width: isBin ? 1.3 : 1.5, color: s.color, opacity: 0.92, type: 'solid' },
+                itemStyle: { color: s.color }, emphasis: { focus: 'series', lineStyle: { width: 2.8, opacity: 1 } }, blur: { lineStyle: { opacity: 0.12 } },
                 data: s.pts
             };
             // relays share the full-height 0/1 axis: a fill would blanket the analog lines
             if (isBin) o.areaStyle = { color: hexA(s.color, .05) };
+            o.emphasis = { focus: 'none' };   // focus mode below does the highlighting
             series.push(o);
+            metas.push({ key: s.key, yi: yi, s: s, bin: isBin });
         });
-        var byKey = {}; list.forEach(function (s) { byKey[s.key] = s; });
         var tip = {
             trigger: 'axis', confine: true, appendToBody: false, axisPointer: { type: 'line', snap: false, lineStyle: { color: 'rgba(34,211,238,0.7)', type: 'dashed' } },
             backgroundColor: T.tipBg, borderColor: 'rgba(34,211,238,.28)', borderWidth: 1, padding: [8, 12], textStyle: { color: T.tipTxt, fontSize: 11.5 },
@@ -9445,8 +9534,8 @@ try {
                 groupsOf(list).forEach(function (g) {
                     h += '<div style="min-width:180px;"><div style="font-weight:800;color:' + g.asset.color + ';margin-bottom:2px;">' + esc(g.asset.name) + '</div>';
                     g.list.forEach(function (s) {
-                        var v = valueAt(s.pts, t);
-                        h += '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="width:8px;height:8px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
+                        var v = valueAt(s.pts, t), on = mgG.focusShown === s.key;
+                        h += '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;' + (on ? 'background:' + hexA(s.color, .16) + ';border-radius:4px;margin:0 -4px;padding:0 4px;font-weight:700;' : (mgG.focusShown ? 'opacity:.6;' : '')) + '"><span style="width:8px;height:8px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
                             '<span style="opacity:.8;flex:1;">' + esc(s.short) + '</span><b style="margin-left:8px;font-family:JetBrains Mono,monospace;">' + fmtVal(v, s.kind) + (s.kind === 'bin' || v === null ? '' : ' ' + esc(s.unit)) + '</b></div>';
                     });
                     h += '</div>';
@@ -9457,12 +9546,14 @@ try {
         var yAxes = [
             { type: 'value', name: hasMA ? 'mA' : '', min: 0, max: niceMax(maxMA), show: hasMA, position: 'left', nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', formatter: function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(+v.toFixed(2)); } }, splitLine: { lineStyle: { color: T.split, type: 'dashed' } }, axisLine: { show: false }, axisTick: { show: false } },
             { type: 'value', name: hasV ? 'V' : '', min: 0, max: niceMax(maxV), show: hasV, position: 'right', nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', formatter: function (v) { return String(+v.toFixed(2)); } }, splitLine: { show: !hasMA, lineStyle: { color: T.split, type: 'dashed' } }, axisLine: { show: false }, axisTick: { show: false } },
-            { type: 'value', name: hasBin ? '0/1' : '', min: 0, max: 1, interval: 1, show: hasBin, position: 'right', offset: hasV ? 52 : 0, nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, formatter: function (v) { return v === 1 ? 'P' : v === 0 ? 'D' : ''; } }, splitLine: { show: false }, axisLine: { show: false }, axisTick: { show: false } }
+            { type: 'value', name: hasBin ? '0/1' : '', min: 0, max: 1, interval: 1, show: hasBin, position: 'right', offset: (hasV ? 52 : 0) + (hasO ? 52 : 0), nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, formatter: function (v) { return v === 1 ? 'P' : v === 0 ? 'D' : ''; } }, splitLine: { show: false }, axisLine: { show: false }, axisTick: { show: false } },
+            { type: 'value', name: hasO ? Object.keys(oUnits).join(' / ') : '', min: 0, max: niceMax(maxO), show: hasO, position: 'right', offset: hasV ? 52 : 0, nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', formatter: function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(+v.toFixed(2)); } }, splitLine: { show: !hasMA && !hasV, lineStyle: { color: T.split, type: 'dashed' } }, axisLine: { show: false }, axisTick: { show: false } }
         ];
+        var rAxes = (hasV ? 1 : 0) + (hasO ? 1 : 0) + (hasBin ? 1 : 0);
         chart.setOption({
             backgroundColor: 'transparent', animation: false,
             legend: { type: 'scroll', top: 6, left: 12, right: 12, selectedMode: false, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: T.txt2, fontSize: 10.5 }, pageTextStyle: { color: T.txt }, pageIconColor: '#22d3ee', pageIconInactiveColor: T.axis, data: list.map(function (s) { return { name: s.name, itemStyle: { color: s.color } }; }) },
-            grid: { left: narrow ? 44 : 58, right: (hasBin && hasV ? 96 : (hasBin || hasV) ? 52 : 18) + (narrow ? 0 : 8), top: 44, bottom: 64, containLabel: false },
+            grid: { left: narrow ? 44 : 58, right: (rAxes ? rAxes * 52 - (hasBin ? 8 : 0) : 18) + (narrow ? 0 : 8), top: 58, bottom: 64, containLabel: false },
             tooltip: tip,
             xAxis: { type: 'time', min: model.xMin, max: model.xMax, boundaryGap: false, splitNumber: narrow ? 4 : 8, axisLine: { lineStyle: { color: T.axis } }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', hideOverlap: true, formatter: function (v) { return fmtAxis(v, span); } }, splitLine: { show: true, lineStyle: { color: T.split } } },
             yAxis: yAxes,
@@ -9472,6 +9563,86 @@ try {
             ],
             series: series
         }, true);
+        overlayFocus(chart, metas, narrow ? 44 : 58);
+    }
+
+    /* v618.31 FOCUS MODE for the combined chart: hover a line (or a reading
+       chip above the chart) -> that reading is drawn in colour with a light
+       fill, every other line turns muted grey. Click a line to PIN the focus,
+       click it again / empty chart space to release. ECharts 5.1 has no hover
+       event on a bare line, so the nearest line to the mouse is found from
+       the cursor time and each reading's value there. */
+    function overlayFocus(chart, metas, gridLeft) {
+        var byKey = {}, byCss = {};
+        metas.forEach(function (m) { byKey[m.key] = m; byCss[cssKey(m.key)] = m.key; });
+        if (mgG.focusPin && !byKey[mgG.focusPin]) mgG.focusPin = null;
+        mgG.focusShown = undefined;
+        var GREY = isLight() ? '#A9B3C1' : '#566173';
+        function hint(k) {
+            var m = k && byKey[k];
+            return [{
+                id: 'mgFocusHint', type: 'text', left: gridLeft + 8, top: 62, z: 50, silent: true,
+                style: {
+                    text: m ? (m.s.name + (mgG.focusPin === k ? '   · pinned (click again to release)' : '   · click to pin')) : 'Hover a line to focus it · click to pin',
+                    fill: m ? m.s.color : (isLight() ? '#8391A3' : '#7C8BA0'), font: (m ? '700 ' : '') + '11.5px system-ui,-apple-system,"Segoe UI",sans-serif'
+                }
+            }];
+        }
+        function apply(k) {
+            if (k === mgG.focusShown) return;
+            mgG.focusShown = k;
+            chart.setOption({
+                graphic: hint(k),
+                series: metas.map(function (m) {
+                    var me = m.key === k, on = !k || me;
+                    return {
+                        id: m.key, z: me ? 10 : 2,
+                        lineStyle: { color: on ? m.s.color : GREY, width: me ? 2.4 : k ? 1 : (m.bin ? 1.3 : 1.5), opacity: me ? 1 : on ? 0.92 : 0.45 },
+                        itemStyle: { color: on ? m.s.color : GREY },
+                        areaStyle: me ? { color: hexA(m.s.color, .14), opacity: 1 } : (m.bin && !k ? { color: hexA(m.s.color, .05), opacity: 1 } : { opacity: 0 })
+                    };
+                })
+            });
+        }
+        function nearest(x, y) {
+            if (!chart.containPixel('grid', [x, y])) return null;
+            var t = chart.convertFromPixel({ xAxisIndex: 0 }, x), best = null, bd = 10;
+            metas.forEach(function (m) {
+                var v = valueAt(m.s.pts, t); if (v === null || v === undefined) return;
+                var py = chart.convertToPixel({ yAxisIndex: m.yi }, m.bin ? (v >= 0.5 ? 1 : 0) : v);
+                var d = Math.abs(py - y);
+                if (d < bd || (d === bd && best && m.key === mgG.focusShown)) { bd = d; best = m.key; }
+            });
+            return best;
+        }
+        var zr = chart.getZr(), raf = null, lastXY = null;
+        zr.on('mousemove', function (e) {
+            if (mgG.focusPin) return;
+            lastXY = [e.offsetX, e.offsetY];
+            if (raf) return;
+            raf = (window.requestAnimationFrame || function (f) { return setTimeout(f, 16); })(function () {
+                raf = null;
+                if (!mgG.focusPin && lastXY) apply(nearest(lastXY[0], lastXY[1]));
+            });
+        });
+        zr.on('globalout', function () { lastXY = null; if (!mgG.focusPin) apply(null); });
+        zr.on('click', function (e) {
+            var k = nearest(e.offsetX, e.offsetY);
+            mgG.focusPin = (k && k !== mgG.focusPin) ? k : null;
+            mgG.focusShown = undefined;
+            apply(mgG.focusPin || k);
+        });
+        /* reading chips above the chart focus their line while hovered */
+        $(document).off('.tlmgfocus')
+            .on('mouseenter.tlmgfocus', '#mgPanel .tlmg-chip[data-mg-chip]', function () {
+                if (mgG.mode !== 'overlay' || mgG.chart !== chart || mgG.focusPin) return;
+                var k = byCss[$(this).attr('data-mg-chip')]; if (k) apply(k);
+            })
+            .on('mouseleave.tlmgfocus', '#mgPanel .tlmg-chip[data-mg-chip]', function () {
+                if (mgG.mode !== 'overlay' || mgG.chart !== chart || mgG.focusPin) return;
+                apply(null);
+            });
+        apply(mgG.focusPin || null);
     }
 
     // ------------------------------------------------------------------
@@ -9793,6 +9964,8 @@ try {
     // on the buttons too and key the clean-up on live chart instances, not on the DOM.
     $(function () {
         $('.tl-vmode-btn').not('[data-vmode="Graph"]').off('click.tlmgleave').on('click.tlmgleave', function () { if (hasCharts()) disposeAll(); });
+        // v618.33: asset type change resets to Card view -> free any open graph charts
+        $('#drpAssetType').off('change.tlmgleave').on('change.tlmgleave', function () { if (hasCharts()) disposeAll(); });
     });
 
     // theme flip (body[data-aurora]) -> recolour + redraw the open graph

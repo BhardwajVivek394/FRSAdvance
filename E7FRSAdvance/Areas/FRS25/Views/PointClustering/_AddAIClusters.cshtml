@@ -1,0 +1,197 @@
+@model Domain.AIClusters
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal fade" id="modal-add-AIClusters" tabindex="-1" role="dialog" aria-labelledby="modal-add-AIClusters" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            @Html.HiddenFor(m => Model.Id, new { @id = "hdnClusterCategoryId" })
+            @Html.HiddenFor(m => Model.ImageBase64, new { @id = "hdnImageBase64" })
+            @Html.HiddenFor(m => Model.ImageExtension, new { @id = "hdnImageExtension" })
+            <div class="modal-header">
+                @if (Model.Id == 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Add Cluster</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"> Edit Cluster</span></h4>
+                }
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="AssetTypeId">Asset Type <span class="text-danger">*</span></label>
+                            @Html.DropDownListFor(m => m.AssetTypeId, (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "Select", new { @class = "form-control", @readonly = "readonly", tabindex = 1 })
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="Cluster">Cluster <span class="text-danger">*</span></label>
+                            @Html.TextBoxFor(m => m.Cluster, new { @class = "form-control", tabindex = 2 })
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="Remark">Remark <span class="text-danger">*</span></label>
+                            @Html.TextAreaFor(m => m.Remark, new { @class = "form-control", tabindex = 3 })
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="UploadImg">Upload Image <span class="text-danger">*</span></label>
+                            <input type="file" id="UploadImg" name="UploadImg" accept="image/*" class="form-control" onchange="fnUploadImageFile(this)">
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12" id="divImage">
+                        @if (!string.IsNullOrEmpty(Model.ImageBase64))
+                        {
+                            <img height="100" width="100" src="data:image/png;base64,@Model.ImageBase64" />
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // First rendered inside Index (before the layout loads jQuery), later returned by Save / _AddAIClusters.
+    (function (fn) {
+        if (window.jQuery) { jQuery(fn); } else { document.addEventListener('DOMContentLoaded', fn); }
+    })(function () {
+        // jQuery UI is not part of the FRS25 layout; keep the drag handle only when it is present.
+        if ($.fn.draggable) {
+            $("#modal-add-AIClusters .modal-dialog").draggable({
+                handle: ".modal-header"
+            });
+        }
+
+        // Scope to this partial: _PointMachineEventData also renders #hdnSaveType / #hdnSaveMessage.
+        var $saveType = $("#divSaveAICluster #hdnSaveType");
+        var $saveMessage = $("#divSaveAICluster #hdnSaveMessage");
+
+        if ($saveType.val() == 'Success') {
+            CommonNotification($saveType.val().toLowerCase(), $saveMessage.val());
+
+            fnPmcClearModalBackdrop();
+            $("#frmAIClusteringList").submit();
+            window.history.pushState('', '', '@Url.Action("Index", "PointClustering", new { area = "FRS25" })');
+        }
+        else if ($saveType.val() == 'Error') {
+            CommonNotification($saveType.val().toLowerCase(), $saveMessage.val());
+
+            fnPmcClearModalBackdrop();
+            window.history.pushState('', '', '@Url.Action("Index", "PointClustering", new { area = "FRS25" })');
+        }
+
+        $("#AssetTypeId").val('@E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode()');
+    });
+
+    // The open modal is replaced by the Save response, so its backdrop / body lock must be cleared by hand.
+    function fnPmcClearModalBackdrop() {
+        $(".modal-backdrop").remove();
+        $("body").removeClass("modal-open").css("padding-right", "");
+    }
+
+    function fnUploadImageFile($this) {
+        var counter = 0;
+        $("#loader, #e7-loader").show();
+        var files = $($this).get(0).files;
+        var fileData = new FormData();
+        for (var i = 0; i < files.length; i++) {
+            fileData.append(files[i].name, files[i]);
+        }
+
+        $.ajax({
+            url: "/FRS25/PointClustering/UploadFile",
+            type: "POST",
+            contentType: false,
+            processData: false,
+            data: fileData,
+            async: true,
+            success: function (data) {
+                $("#loader, #e7-loader").hide();
+                var imageBase64 = '';
+                if (data != null && data != undefined && data != '') {
+                    imageBase64 += "<input type='hidden' id='hdnBas64_" + counter + "' class='hdnImageBase64' value='" + data.ImageBase64 + "' data-fileextension='" + data.ImageExtension + "' />";
+                    imageBase64 += "<img height='100' width='100' id='imgBas64_" + counter + "' src='data:image/png;base64," + data.ImageBase64 + "'/>";
+
+                    $('#hdnImageBase64').val(data.ImageBase64);
+                    $('#hdnImageExtension').val(data.ImageExtension);
+                }
+                $('#divImage').empty().append(imageBase64);
+            },
+            error: function (xhr, error, status) {
+                $("#loader, #e7-loader").hide();
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function ClusterCategorySaved() {
+        $("#loader, #e7-loader").hide();
+        $("#modal-add-ClusterCategory").hide();
+    }
+
+    function fnSave() {
+        if (Validate()) {
+            $("#frmSaveAICluster").submit();
+        }
+    }
+
+    function Validate() {
+        var result = true;
+
+        if ($.trim($("#Cluster").val()).length == 0) {
+            $("#Cluster").next("span").html("Cluster is required");
+            result = false;
+        }
+        else {
+            $("#Cluster").next("span").html("");
+        }
+
+        if ($.trim($("#Remark").val()).length == 0) {
+            $("#Remark").next("span").html("Remark is required");
+            result = false;
+        }
+        else {
+            $("#Remark").next("span").html("");
+        }
+
+        if ($.trim($("#hdnImageBase64").val()).length == 0) {
+            $("#UploadImg").next("span").html("Image is required");
+            result = false;
+        }
+        else {
+            $("#UploadImg").next("span").html("");
+        }
+
+        if ($.trim($("#AssetTypeId").val()).length == 0 || $("#AssetTypeId").val() == "0") {
+            $("#AssetTypeId").next("span").html("Asset Type is required");
+            result = false;
+        }
+        else {
+            $("#AssetTypeId").next("span").html("");
+        }
+
+        return result;
+    }
+</script>

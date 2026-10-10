@@ -1,0 +1,1330 @@
+﻿/* ── SIP View (yard-diagram replay) ─────────────────────────────────────────
+   Scoped under #sipView. Reuses the dashboard's CSS vars (--panel,--line,--mut,
+   --accent,--up,--down) where present, with local fallbacks. */
+#sipView {
+    max-width: none;
+    margin: 0;
+    padding: 12px 16px
+}
+
+    #sipView * {
+        box-sizing: border-box
+    }
+
+.sip-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: end;
+    position: sticky;
+    top: var(--sip-header,54px);
+    z-index: 8;
+    background: #fff;
+    padding: 10px 16px;
+    margin: -12px -16px 12px;
+    border-bottom: 1px solid #e6e9ef
+}
+
+    .sip-controls label {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #475569
+    }
+
+    .sip-controls select, .sip-controls input {
+        font-size: 13px;
+        padding: 6px 9px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a;
+        font-weight: 400
+    }
+
+        .sip-controls select:focus, .sip-controls input:focus {
+            outline: none;
+            border-color: var(--accent,#3b82f6);
+            box-shadow: 0 0 0 2px rgba(59,130,246,.15)
+        }
+
+    .sip-controls .grow {
+        flex: 1
+    }
+
+.sip-spacer {
+    flex: 1
+}
+
+.sip-btn {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155
+}
+
+    .sip-btn:hover {
+        border-color: var(--accent,#3b82f6);
+        color: #1d4ed8
+    }
+
+    .sip-btn.active {
+        background: var(--accent,#3b82f6);
+        color: #fff;
+        border-color: var(--accent,#3b82f6)
+    }
+
+    .sip-btn.primary {
+        background: var(--accent,#3b82f6);
+        color: #fff;
+        border-color: var(--accent,#3b82f6)
+    }
+
+    .sip-btn:disabled {
+        opacity: .45;
+        cursor: not-allowed
+    }
+
+.sip-body {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 14px;
+    align-items: start
+}
+
+@media(max-width:1100px) {
+    .sip-body {
+        grid-template-columns: 1fr
+    }
+}
+/* the LEFT list (timestamps + assets) stays pinned and scrolls only on hover
+   (its own overflow) while the RIGHT column scrolls with the page — so a tall
+   circuit never drags the asset list out of view. */
+.sip-right {
+    position: static
+}
+
+.sip-left {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: var(--sip-sticky,118px);
+    align-self: start;
+    max-height: calc(100vh - var(--sip-sticky,118px) - 14px);
+    overflow: auto;
+    padding-right: 4px
+}
+
+@media(max-width:1100px) {
+    .sip-left {
+        position: static;
+        max-height: none;
+        overflow: visible
+    }
+}
+
+.sip-panel {
+    background: var(--panel,#0f1626);
+    border: 1px solid var(--line,#26324a);
+    border-radius: 12px;
+    padding: 10px 12px
+}
+
+    .sip-panel h3 {
+        margin: 0 0 8px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        color: var(--mut,#8aa)
+    }
+
+/* timestamps */
+.sip-ts-list {
+    max-height: 230px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px
+}
+
+.sip-ts {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    border: 1px solid var(--line,#26324a);
+    background: rgba(255,255,255,.02);
+    cursor: pointer;
+    font-size: 12px
+}
+
+    .sip-ts:hover {
+        border-color: var(--accent,#3b82f6)
+    }
+
+    .sip-ts.active {
+        border-color: var(--accent,#3b82f6);
+        background: rgba(59,130,246,.12)
+    }
+
+    .sip-ts .tstate {
+        font-weight: 700;
+        font-size: 10px;
+        padding: 1px 6px;
+        border-radius: 20px
+    }
+
+        .sip-ts .tstate.DOWN {
+            background: rgba(220,60,60,.16);
+            color: #ff8b8b
+        }
+
+        .sip-ts .tstate.UP {
+            background: rgba(21,154,88,.16);
+            color: #5bd99a
+        }
+
+.sip-hint {
+    font-size: 12px;
+    color: var(--mut,#8aa);
+    padding: 6px 2px
+}
+
+/* gear/asset list */
+.sip-gear {
+    border: 1px solid var(--line,#26324a);
+    border-radius: 9px;
+    margin-bottom: 6px;
+    overflow: hidden;
+    background: rgba(255,255,255,.02)
+}
+
+.sip-gear-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-size: 12.5px
+}
+
+    .sip-gear-head:hover {
+        background: rgba(255,255,255,.03)
+    }
+
+    .sip-gear-head .gname {
+        font-weight: 700
+    }
+
+    .sip-gear-head .gtype {
+        font-size: 10px;
+        color: var(--mut,#8aa);
+        text-transform: uppercase
+    }
+
+    .sip-gear-head .gdot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        flex: none;
+        background: #54617a
+    }
+
+.sip-gear.flagged {
+    border-color: #f0a53e;
+    box-shadow: 0 0 0 1px rgba(240,165,62,.35)
+}
+
+    .sip-gear.flagged .gname {
+        color: #ffcf87
+    }
+
+.sip-gear-body {
+    padding: 2px 10px 8px;
+    display: none
+}
+
+.sip-gear.open .sip-gear-body {
+    display: block
+}
+
+.sip-attr {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 11.5px;
+    border-top: 1px dashed rgba(255,255,255,.06)
+}
+
+    .sip-attr .an {
+        color: var(--mut,#9fb0c8)
+    }
+
+    .sip-attr .av {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600
+    }
+
+    .sip-attr.changed {
+        color: #ffcf87
+    }
+
+        .sip-attr.changed .an {
+            color: #ffcf87
+        }
+
+    .sip-attr .flag {
+        color: #f0a53e;
+        font-weight: 700;
+        margin-left: 5px
+    }
+
+/* per-attribute timestamped series (−180s…+5s) */
+.sip-attr-block {
+    border-top: 1px dashed rgba(255,255,255,.06);
+    padding-top: 2px
+}
+
+    .sip-attr-block .sip-attr {
+        border-top: none
+    }
+
+.sip-series {
+    max-height: 150px;
+    overflow: auto;
+    margin: 2px 0 7px;
+    padding-left: 4px;
+    border-left: 2px solid rgba(255,255,255,.07)
+}
+
+    .sip-series.off {
+        color: var(--mut,#8aa);
+        font-size: 10.5px;
+        padding: 2px 0 6px
+    }
+
+.sip-sp {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10.5px;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums
+}
+
+    .sip-sp .spt {
+        color: #8aa
+    }
+
+    .sip-sp .spo {
+        color: #5f6f8c;
+        width: 42px;
+        text-align: right;
+        flex: none
+    }
+
+    .sip-sp .spv {
+        font-weight: 600;
+        color: #cdd8ea;
+        min-width: 52px;
+        text-align: right
+    }
+
+    .sip-sp.cross .spv {
+        color: #ffcf87
+    }
+
+    .sip-sp.cross .spt {
+        color: #ffcf87
+    }
+
+/* stage */
+.sip-stage-wrap {
+    position: relative
+}
+
+.sip-stage {
+    position: relative;
+    min-height: 64vh;
+    display: flex;
+    background: radial-gradient(140% 150% at 50% 38%,#fbfcfe 0%,#eef2f7 58%,#e5eaf1 100%);
+    border: 1px solid #d6dde7;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: inset 0 0 70px rgba(150,168,196,.12),0 6px 22px rgba(35,55,95,.10)
+}
+
+#sipSvg {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: auto;
+    touch-action: none
+}
+
+.sip-stage.editing #sipSvg {
+    cursor: crosshair
+}
+/* reference underlay lives inside the SVG (see .sip-ref-svg) — perfectly aligned */
+.sip-ref-svg {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s
+}
+
+.sip-stage.show-ref .sip-ref-svg {
+    opacity: .55
+}
+
+/* transport */
+.sip-transport {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--panel,#0f1626);
+    border: 1px solid var(--line,#26324a);
+    border-radius: 10px;
+    flex-wrap: wrap
+}
+
+.sip-play {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent,#3b82f6);
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center
+}
+
+    .sip-play:hover {
+        filter: brightness(1.1)
+    }
+/* continuous replay timeline — every ELD event in series (oldest → recent), each a
+   −180s…+5s segment; wraps to more rows when long. Red tick = the ELD trigger. */
+.sip-timeline {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255,255,255,.04)
+}
+
+.sip-ev {
+    flex: 1 0 40px;
+    max-width: 88px;
+    height: 22px;
+    position: relative;
+    cursor: pointer;
+    background: #e6ebf2;
+    border-right: 2px solid #10192b
+}
+    /* thin black separator between events */
+    .sip-ev:hover {
+        background: #d3deef
+    }
+
+.sip-ev-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0;
+    background: rgba(59,130,246,.22)
+}
+
+.sip-ev.done .sip-ev-fill {
+    background: rgba(59,130,246,.22)
+}
+
+.sip-ev.active .sip-ev-fill {
+    background: rgba(59,130,246,.55)
+}
+
+.sip-ev.active {
+    outline: 2px solid var(--accent,#3b82f6);
+    outline-offset: -2px;
+    z-index: 1
+}
+
+.sip-ev-eld {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 97.3%;
+    width: 2px;
+    background: #e5484d
+}
+/* ELD trigger (180/185) */
+.sip-tlabel {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: #475569;
+    min-width: 150px;
+    text-align: right
+}
+
+    .sip-tlabel b {
+        color: #0f172a
+    }
+
+    .sip-tlabel .off {
+        color: #94a3b8
+    }
+
+.sip-speed {
+    font-size: 11px;
+    color: var(--mut,#8aa);
+    display: flex;
+    align-items: center;
+    gap: 5px
+}
+
+/* svg element styling — light "blueprint" theme (off-white stage) */
+.el-track {
+    stroke: #8592a8;
+    stroke-width: 7;
+    stroke-linecap: round;
+    fill: none;
+    transition: stroke .45s,opacity .3s
+}
+
+    .el-track.st-clear {
+        stroke: #2f9e63
+    }
+
+    .el-track.st-occupied {
+        stroke: #e23b41
+    }
+
+    .el-track.st-down {
+        stroke: #e0932a;
+        stroke-dasharray: 3 6
+    }
+
+    .el-track.st-nodata {
+        stroke: #c3ccda;
+        opacity: .95
+    }
+
+.el-tracklabel rect {
+    fill: #1a7a4c;
+    rx: 8
+}
+
+.el-tracklabel.st-occupied rect {
+    fill: #c0392f
+}
+
+.el-tracklabel.st-nodata rect {
+    fill: #8593a8
+}
+
+.el-tracklabel text {
+    fill: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central
+}
+
+.el-point .pt-leg {
+    stroke: #8592a8;
+    stroke-width: 5;
+    stroke-linecap: round;
+    fill: none;
+    transition: stroke .45s
+}
+
+.el-point .pt-blade {
+    stroke: #64748b;
+    stroke-width: 5;
+    stroke-linecap: round;
+    transition: transform .6s ease,stroke .4s;
+    transform-origin: center;
+    transform-box: fill-box
+}
+
+.el-point.pt-normal .pt-blade {
+    stroke: #1f9d5f
+}
+
+.el-point.pt-reverse .pt-blade {
+    stroke: #e0932a
+}
+
+.el-point.pt-mid .pt-blade {
+    stroke: #9aa7bb
+}
+
+.el-point .pt-body {
+    fill: #ffffff;
+    stroke: #94a3b8;
+    stroke-width: 1.3
+}
+
+.el-point text {
+    fill: #475569;
+    font-size: 9px;
+    font-weight: 700;
+    text-anchor: middle
+}
+
+.el-signal .sig-post {
+    stroke: #64748b;
+    stroke-width: 2
+}
+
+.el-signal .sig-lamp {
+    fill: #d5dbe5;
+    stroke: #7a8698;
+    stroke-width: 1;
+    transition: fill .35s
+}
+
+.el-signal .sig-lamp2 {
+    fill: transparent;
+    stroke: transparent;
+    stroke-width: 1;
+    transition: fill .35s
+}
+
+.el-signal.asp-red .sig-lamp {
+    fill: #ef3e3e
+}
+
+.el-signal.asp-yellow .sig-lamp {
+    fill: #f5b301
+}
+
+.el-signal.asp-dyellow .sig-lamp {
+    fill: #f5b301
+}
+
+.el-signal.asp-dyellow .sig-lamp2 {
+    fill: #f5b301;
+    stroke: #c98a00
+}
+/* double-yellow = two yellow lamps */
+.el-signal.asp-green .sig-lamp {
+    fill: #1fb866
+}
+
+.el-signal.asp-callon .sig-lamp {
+    fill: #ffffff
+}
+
+.el-signal.asp-off .sig-lamp {
+    fill: #d5dbe5
+}
+
+.el-signal text {
+    fill: #334155;
+    font-size: 9px;
+    font-weight: 700;
+    text-anchor: middle
+}
+
+.el-signal.flagged text {
+    fill: #b26a00
+}
+
+.el-marker circle {
+    fill: #ffffff;
+    stroke: #94a3b8;
+    stroke-width: 1.5
+}
+
+.el-marker text {
+    fill: #475569;
+    font-size: 9px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central
+}
+
+/* changed pulse */
+.el-flag-ring {
+    fill: none;
+    stroke: #f0a53e;
+    stroke-width: 2;
+    opacity: 0
+}
+
+.flagged .el-flag-ring {
+    opacity: 1;
+    animation: sipPulse 1.4s ease-in-out infinite
+}
+
+@keyframes sipPulse {
+    0%,100% {
+        opacity: .25
+    }
+
+    50% {
+        opacity: .9
+    }
+}
+
+/* editor */
+.el-group {
+    cursor: pointer
+}
+/* replay mode: click a mapped asset to open its circuit */
+.editing .el-group {
+    cursor: grab
+}
+
+    .editing .el-group.sel-el {
+        outline: none
+    }
+
+        .editing .el-group.sel-el .el-sel-box {
+            opacity: 1
+        }
+
+.el-sel-box {
+    fill: none;
+    stroke: #3b82f6;
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+    opacity: 0;
+    pointer-events: none
+}
+
+.sip-editbar {
+    display: none;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    background: rgba(59,130,246,.08);
+    border: 1px solid rgba(59,130,246,.3);
+    border-radius: 10px;
+    font-size: 12px;
+    color: #334155
+}
+
+    .sip-stage.editing ~ .sip-editbar, .sip-editbar.on {
+        display: flex
+    }
+
+    .sip-editbar .sep {
+        width: 1px;
+        height: 20px;
+        background: #cbd5e1
+    }
+
+    .sip-editbar input[type=number] {
+        width: 64px;
+        font-size: 12px;
+        padding: 4px 6px;
+        border-radius: 6px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #0f172a
+    }
+
+    .sip-editbar .dirty {
+        color: #f0a53e;
+        font-weight: 700
+    }
+
+.sip-changed-list {
+    max-width: min(52vw,620px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #64748b
+}
+
+    .sip-changed-list.has-changes {
+        color: #1d4ed8;
+        font-weight: 600
+    }
+
+/* ── track circuit schematic (opens over the stage) ───────────────────────── */
+.sip-gear-head .cir-open {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    cursor: pointer;
+    border: 1px solid var(--accent,#3b82f6);
+    background: rgba(59,130,246,.10);
+    color: #8fb4ff;
+    margin-right: 6px
+}
+
+    .sip-gear-head .cir-open:hover {
+        background: var(--accent,#3b82f6);
+        color: #fff
+    }
+
+.sip-gear.is-track .gdot {
+    background: #3b82f6
+}
+
+/* the circuit opens BELOW the yard (not as a popup) so both stay reachable by
+   scrolling up/down. z-index:1 keeps the whole circuit BELOW the sticky controls
+   (z-index:8); inside it the sticky cir-bar (z-index:5) stays above the canvas. */
+.sip-circuit {
+    margin-top: 14px;
+    position: relative;
+    z-index: 1;
+    display: none;
+    flex-direction: column;
+    background: radial-gradient(140% 150% at 50% 34%,#fbfcfe 0%,#eef2f7 60%,#e5eaf1 100%);
+    border: 1px solid #d6dde7;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(35,55,95,.18)
+}
+
+    .sip-circuit.on {
+        display: flex
+    }
+
+.cir-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #fff;
+    border-bottom: 1px solid #e6e9ef;
+    border-radius: 12px 12px 0 0;
+    position: sticky;
+    top: var(--sip-sticky,118px);
+    z-index: 5;
+    box-shadow: 0 4px 10px rgba(35,55,95,.06)
+}
+
+.cir-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: #0f172a
+}
+
+.cir-when {
+    font-size: 11.5px;
+    color: #64748b;
+    font-variant-numeric: tabular-nums
+}
+
+    .cir-when b {
+        color: #0f172a
+    }
+
+.cir-stage {
+    position: relative;
+    overflow: visible;
+    padding: 8px
+}
+
+.cir-canvas {
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    aspect-ratio: 920 / 680
+}
+
+#cirSvg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block
+}
+
+.cir-chips {
+    position: absolute;
+    inset: 0;
+    pointer-events: none
+}
+
+/* svg decorations */
+.cir-zone {
+    fill: rgba(244,238,228,.55);
+    stroke: #c9b58f;
+    stroke-width: 1.2;
+    stroke-dasharray: 3 3
+}
+
+.cir-zone-lbl {
+    fill: #8a7a55;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .04em
+}
+
+.cir-rail {
+    stroke-width: 4;
+    stroke-linecap: round
+}
+
+    .cir-rail.r1 {
+        stroke: #d64545
+    }
+
+    .cir-rail.r2 {
+        stroke: #25324a
+    }
+
+    .cir-rail.org {
+        stroke: #e8892b
+    }
+
+.cir-wire {
+    fill: none;
+    stroke: #9aa7bb;
+    stroke-width: 1.6
+}
+
+    .cir-wire.ac {
+        stroke: #4f6bd0;
+        stroke-width: 2
+    }
+
+.cir-static {
+    fill: #475569;
+    font-size: 11px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central
+}
+
+    .cir-static.rail {
+        fill: #0f172a;
+        font-weight: 800;
+        font-size: 12px
+    }
+
+    .cir-static.relay {
+        fill: #fff;
+        font-weight: 800;
+        paint-order: stroke;
+        stroke: #2f6fd6;
+        stroke-width: 12px;
+        stroke-linejoin: round;
+        font-size: 12px
+    }
+
+    .cir-static.io {
+        fill: #25324a;
+        font-weight: 800;
+        text-anchor: start
+    }
+
+    .cir-static.tag {
+        fill: #64748b;
+        font-size: 10px
+    }
+
+    .cir-static.fix {
+        fill: #334155;
+        font-weight: 700;
+        font-size: 10px
+    }
+
+/* signal aspect head + signal-unit boundary */
+.cir-lampbody {
+    fill: #1c2230;
+    stroke: #0c0f17;
+    stroke-width: 2
+}
+
+.cir-post {
+    fill: #2a3242
+}
+
+.cir-lamp {
+    stroke: #0c0f17;
+    stroke-width: 2;
+    transition: fill .35s
+}
+
+.cir-wire.unit {
+    stroke: #9aa7bb;
+    stroke-width: 1.4;
+    stroke-dasharray: 5 4
+}
+
+/* value chips */
+.cir-box {
+    position: absolute;
+    transform: translate(-50%,-50%);
+    pointer-events: auto;
+    min-width: 78px;
+    max-width: 150px;
+    background: #fff;
+    border: 1px solid #cfd8e4;
+    border-radius: 8px;
+    padding: 3px 8px;
+    text-align: center;
+    cursor: default;
+    box-shadow: 0 1px 4px rgba(35,55,95,.10);
+    transition: border-color .15s,box-shadow .15s
+}
+
+    .cir-box.wide {
+        min-width: 120px
+    }
+
+    .cir-box:hover {
+        border-color: var(--accent,#3b82f6);
+        box-shadow: 0 3px 10px rgba(59,130,246,.22);
+        z-index: 2
+    }
+
+    .cir-box .cl {
+        display: block;
+        font-size: 9px;
+        font-weight: 700;
+        color: #64748b;
+        line-height: 1.15;
+        text-transform: uppercase;
+        letter-spacing: .02em
+    }
+
+    .cir-box .cv {
+        display: block;
+        font-size: 14px;
+        font-weight: 800;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums;
+        margin-top: 1px
+    }
+
+        .cir-box .cv.off {
+            color: #b3bccb
+        }
+
+    .cir-box.nodata {
+        border-style: dashed;
+        background: #f8fafc
+    }
+
+    .cir-box[data-n]:after {
+        content: attr(data-n)" pts";
+        position: absolute;
+        top: -7px;
+        right: -6px;
+        font-size: 8px;
+        font-weight: 700;
+        color: #7c8aa3;
+        background: #eef2f7;
+        border: 1px solid #d6dde7;
+        border-radius: 10px;
+        padding: 0 4px
+    }
+
+    .cir-box.status {
+        border-width: 1.5px
+    }
+
+        .cir-box.status .cv.up {
+            color: #1a9e5c
+        }
+
+        .cir-box.status .cv.down {
+            color: #e23b41
+        }
+    /* the attribute that CHANGED in the window → orange, pulsing, so it's found at a glance */
+    .cir-box.changed {
+        border-color: #f0a53e;
+        border-width: 1.5px;
+        background: #fff9f0;
+        animation: cirPulse 1.5s ease-in-out infinite
+    }
+
+        .cir-box.changed .cl {
+            color: #b26a00
+        }
+
+@keyframes cirPulse {
+    0%,100% {
+        box-shadow: 0 0 0 2px rgba(240,165,62,.35),0 2px 8px rgba(240,165,62,.25)
+    }
+
+    50% {
+        box-shadow: 0 0 0 5px rgba(240,165,62,.65),0 2px 12px rgba(240,165,62,.4)
+    }
+}
+
+/* other (unbound) readings — no inner scroll; changed ones sorted to the front */
+.cir-extra {
+    padding: 8px 12px;
+    background: #fff;
+    border-top: 1px solid #e6e9ef;
+    border-radius: 0 0 12px 12px;
+    overflow: visible
+}
+
+.cir-extra-h {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: #64748b;
+    margin-bottom: 6px
+}
+
+    .cir-extra-h .chg {
+        color: #e08b00;
+        font-weight: 800
+    }
+
+.cir-extra-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill,minmax(150px,1fr));
+    gap: 5px
+}
+
+.cir-ex {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 3px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: default;
+    background: #f8fafc
+}
+
+    .cir-ex:hover {
+        border-color: var(--accent,#3b82f6)
+    }
+
+    .cir-ex.changed {
+        border-color: #f0a53e;
+        background: #fff7ec
+    }
+
+        .cir-ex.changed .ev {
+            color: #b26a00
+        }
+
+    .cir-ex .el {
+        color: #64748b
+    }
+
+    .cir-ex .ev {
+        font-weight: 700;
+        color: #0f172a;
+        font-variant-numeric: tabular-nums
+    }
+
+/* point-machine operations table (Date · Direction · A/B current·voltage·throw-time) */
+.cir-ops {
+    padding: 8px 12px;
+    background: #fff;
+    border-top: 1px solid #e6e9ef
+}
+
+.cir-ops-h {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: #64748b;
+    margin-bottom: 6px
+}
+
+    .cir-ops-h .off {
+        color: #94a3b8;
+        font-weight: 600
+    }
+
+.cir-ops-scroll {
+    overflow-x: auto
+}
+
+.cir-ops-t {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums
+}
+
+    .cir-ops-t th {
+        background: #0f1626;
+        color: #dce6f5;
+        font-weight: 700;
+        text-align: right;
+        padding: 6px 10px;
+        white-space: nowrap
+    }
+
+        .cir-ops-t th:first-child, .cir-ops-t th:nth-child(2) {
+            text-align: left
+        }
+
+    .cir-ops-t td {
+        padding: 5px 10px;
+        text-align: right;
+        border-bottom: 1px solid #eef2f7;
+        color: #0f172a;
+        white-space: nowrap
+    }
+
+        .cir-ops-t td.d {
+            text-align: left;
+            color: #475569
+        }
+
+        .cir-ops-t td.t {
+            font-weight: 700
+        }
+
+    .cir-ops-t tr:hover td {
+        background: #f6f9fe
+    }
+
+    .cir-ops-t tr.avg td {
+        background: #eef4ff;
+        font-weight: 800;
+        color: #1d4ed8;
+        border-bottom: 2px solid #cdddff
+    }
+
+    .cir-ops-t tr.avg:hover td {
+        background: #e6efff
+    }
+
+    .cir-ops-t td .o {
+        color: #94a3b8;
+        font-size: 10px;
+        margin-left: 6px;
+        font-weight: 600
+    }
+
+    .cir-ops-t tr.near td {
+        background: #fff7ec
+    }
+
+    .cir-ops-t tr.near:hover td {
+        background: #fdf0dd
+    }
+
+    .cir-ops-t tr.near td.d {
+        color: #b26a00;
+        font-weight: 700
+    }
+
+    .cir-ops-t td .trg {
+        color: #e08b00;
+        font-weight: 800;
+        font-size: 10px;
+        margin-left: 4px
+    }
+
+    .cir-ops-t .dir {
+        font-weight: 700;
+        font-size: 10px;
+        padding: 1px 8px;
+        border-radius: 20px;
+        display: inline-block
+    }
+
+        .cir-ops-t .dir.normal {
+            background: rgba(21,154,88,.16);
+            color: #137a49
+        }
+
+        .cir-ops-t .dir.reverse {
+            background: rgba(234,140,40,.18);
+            color: #b26a00
+        }
+
+/* hover tooltip: full series */
+.cir-tip {
+    position: absolute;
+    z-index: 40;
+    display: none;
+    min-width: 150px;
+    max-width: 240px;
+    max-height: 240px;
+    overflow: auto;
+    background: #0f1626;
+    border: 1px solid #26324a;
+    border-radius: 9px;
+    padding: 7px 9px;
+    pointer-events: none;
+    box-shadow: 0 10px 30px rgba(10,18,35,.5)
+}
+
+    .cir-tip.on {
+        display: block
+    }
+
+    .cir-tip .th {
+        font-size: 11px;
+        font-weight: 800;
+        color: #dce6f5;
+        margin-bottom: 4px;
+        border-bottom: 1px solid #26324a;
+        padding-bottom: 4px
+    }
+
+        .cir-tip .th .off {
+            color: #6b7a94;
+            font-weight: 600
+        }
+
+    .cir-tip .tr {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 10.5px;
+        line-height: 1.6;
+        font-variant-numeric: tabular-nums
+    }
+
+        .cir-tip .tr .tt {
+            color: #8aa
+        }
+
+        .cir-tip .tr .to {
+            color: #5f6f8c;
+            width: 40px;
+            text-align: right
+        }
+
+        .cir-tip .tr .tv {
+            color: #cdd8ea;
+            font-weight: 700;
+            min-width: 52px;
+            text-align: right
+        }
+
+        .cir-tip .tr.now .tv, .cir-tip .tr.now .tt {
+            color: #5bd99a
+        }
+
+        .cir-tip .tr.off {
+            color: #8aa
+        }

@@ -7,6 +7,10 @@
 (function () {
     'use strict';
 
+    // The full-page Chatbot / ChatbotNew views are the chat themselves and reuse the same element ids;
+    // they set this flag before this script loads so the floating sidebar is not built on top of them.
+    if (window.E7AI_PAGE_OWNS_CHAT) return;
+
     const CHAT_ENDPOINT = '/FRS25/AiChat/Chat';
     const STATUS_ENDPOINT = '/FRS25/AiChat/Status';
     const STORAGE_KEY = 'e7ai_history';

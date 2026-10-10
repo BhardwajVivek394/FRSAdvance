@@ -1,0 +1,131 @@
+@model List<Domain.Asset>
+
+@{
+    List<string> clusters = new List<string>();
+}
+
+<div class="table-border">
+    <div class="pmc-section-head">
+        <h5>Assets by Cluster</h5>
+    </div>
+
+    @if (Model != null && Model.Count > 0)
+    {
+        foreach (var asset in Model)
+        {
+            if (asset.mPointMachineData != null && asset.mPointMachineData.Count > 0)
+            {
+                foreach (var pointData in asset.mPointMachineData)
+                {
+                    if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterA))
+                    {
+                        var clusterASplit = pointData.PointMachineJson.ClusterA.Split('-');
+                        if (clusterASplit != null && clusterASplit.Count() > 0)
+                        {
+                            if (clusters.Where(x => x == clusterASplit.FirstOrDefault().Trim()).Count() <= 0)
+                            {
+                                clusters.Add(clusterASplit.FirstOrDefault().Trim());
+                            }
+                        }
+                    }
+
+                    if (asset.IsHalfPointMachine == null || (asset.IsHalfPointMachine != null && !asset.IsHalfPointMachine.Value))
+                    {
+                        if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterB))
+                        {
+                            var clusterBSplit = pointData.PointMachineJson.ClusterB.Split('-');
+                            if (clusterBSplit != null && clusterBSplit.Count() > 0)
+                            {
+                                if (clusters.Where(x => x == clusterBSplit.FirstOrDefault().Trim()).Count() <= 0)
+                                {
+                                    clusters.Add(clusterBSplit.FirstOrDefault().Trim());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        @* No .table-responsive wrapper: its overflow would clip the station dropdown menus. *@
+        <table class="table table-hover pmc-table">
+            <thead class="thead-light2">
+                <tr>
+                    <th>Cluster</th>
+                    <th>Stations / Assets</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (clusters != null && clusters.Count > 0)
+                {
+                    var grouped = clusters.GroupBy(label => label.Substring(0, 2)).OrderBy(g => g.Key);
+                    foreach (var group in grouped)
+                    {
+                        foreach (var cluster in group)
+                        {
+                            var pointData = Model.SelectMany(x => x.mPointMachineData).Where(x => x.ClusterA == cluster || x.ClusterB == cluster).ToList();
+
+                            <tr>
+                                <td class="pmc-name">@cluster</td>
+                                <td>
+                                    @if (pointData != null && pointData.Count > 0)
+                                    {
+                                        int counter = 0;
+
+                                        var siteIds = pointData.Select(x => x.SiteId).ToList().Distinct();
+                                        if (siteIds != null && siteIds.Count() > 0)
+                                        {
+                                            foreach (var siteId in siteIds)
+                                            {
+                                                counter++;
+
+                                                var siteName = Model.Where(x => x.SiteId == siteId).Select(x => x.SiteName).FirstOrDefault();
+                                                var pointdDataAssets = pointData.Where(x => x.SiteId == siteId).GroupBy(x => new { x.AssetId, x.AssetName }).Select(x => x.Key).ToList();
+
+                                                <div class="btn-group mt-1 mr-1">
+                                                    <button type="button" class="btn btn-sm dropdown-toggle pmc-site-btn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">@siteName</button>
+                                                    <div class="dropdown-menu">
+                                                        @if (pointdDataAssets != null && pointdDataAssets.Count > 0)
+                                                        {
+                                                            foreach (var pointdDataAsset in pointdDataAssets)
+                                                            {
+                                                                <a class="dropdown-item" href="javascript:void(0)" onclick="fnShowPointMachineEventData('@siteId','@pointdDataAsset.AssetId','@cluster')">@pointdDataAsset.AssetName</a>
+                                                            }
+                                                        }
+                                                    </div>
+                                                </div>
+                                                if (counter > 15)
+                                                {
+                                                    counter = 0;
+                                                    <br />
+                                                }
+                                            }
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="2" class="pmc-empty">No record found</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="pmc-empty">No record found</p>
+    }
+</div>
+
+<script>
+    $(document).ready(function () {
+        if ($.fn.popover) {
+            $("[data-toggle='popover']").popover();
+        }
+    });
+</script>

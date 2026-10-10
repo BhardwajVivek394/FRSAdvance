@@ -1,0 +1,1399 @@
+@{
+    ViewBag.Title = "Benchmarking";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+@* jQuery, Bootstrap 4 (modal) and the air-datepicker are loaded by the FRS25 layout at the end of <body>,
+   so start-up code waits for DOMContentLoaded and every other function only touches $ when it is called.
+   Chart.js 2.x is needed for the point-machine signature graph (Chart.Line API); the only local copy
+   (~/assets/js/chart/chartjs/chart.min.js) is v1.0.1, so the 2.9.4 CDN build is used.
+   ECharts draws the MQTT graph (Demochart) and the saved-benchmark graph (BindBenchmarkingChart). *@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+<script src="~/assets/js/chart/echart/echarts.js"></script>
+
+<style>
+    .bm-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .bm-actions .btn {
+        white-space: nowrap;
+    }
+
+    .bm-results:empty {
+        display: none;
+    }
+
+    .bm-section-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--e7-border, var(--e7-edge));
+    }
+
+    .bm-section-head h5,
+    .bm-section-head h6 {
+        margin: 0;
+        font-weight: 600;
+        color: var(--e7-heading, var(--e7-t1));
+    }
+
+    .bm-section-head h6 a {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .bm-section-head h6 a:hover {
+        color: var(--e7-accent, var(--primary));
+    }
+
+    .bm-muted {
+        color: var(--e7-text-2, var(--e7-t2)) !important;
+        font-size: 12px;
+    }
+
+    .bm-table {
+        margin-bottom: 0;
+        color: var(--e7-text, var(--e7-t1));
+    }
+
+    .bm-table td,
+    .bm-table th {
+        border-color: var(--e7-border, var(--e7-edge));
+        vertical-align: middle;
+    }
+
+    .bm-table th {
+        white-space: nowrap;
+    }
+
+    .bm-table a {
+        color: var(--e7-accent, var(--primary));
+    }
+
+    .bm-table input[type=checkbox] {
+        width: 16px;
+        height: 16px;
+        vertical-align: middle;
+        cursor: pointer;
+        accent-color: var(--e7-accent, var(--primary));
+    }
+
+    .bm-table select {
+        height: 28px;
+        padding: 0 6px;
+        font-size: 12px;
+        border-radius: 6px;
+        border: 1px solid var(--e7-border, var(--e7-edge));
+        background: var(--e7-surface, var(--e7-bg-1));
+        color: var(--e7-text, var(--e7-t1));
+        vertical-align: middle;
+    }
+
+    .bm-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        color: var(--e7-red, #d64545) !important;
+        transition: background .15s ease;
+    }
+
+    .bm-icon-btn:hover {
+        background: var(--e7-wash, rgba(214, 69, 69, .1));
+    }
+
+    .bm-empty {
+        padding: 24px;
+        margin: 0;
+        text-align: center;
+        font-size: 14px;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+
+    .bm-click {
+        cursor: pointer;
+    }
+
+    .bm-val-thick { color: var(--e7-accent, #00A4E0) !important; }
+    .bm-val-normal { color: var(--e7-amber, #dc8b33) !important; }
+
+    .bm-scroll {
+        overflow: auto;
+        max-height: 420px;
+    }
+
+    .bm-asset {
+        border: 1px solid var(--e7-border, var(--e7-edge));
+        border-radius: var(--e7-r-md, 12px);
+        background: var(--e7-surface, var(--e7-g1));
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+
+    .bm-asset > .bm-section-head {
+        background: var(--e7-surface-2, var(--e7-g2));
+    }
+
+    .bm-asset-tools {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+    }
+
+    .bm-asset-tools a,
+    .bm-asset-tools i {
+        cursor: pointer;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+
+    .bm-asset-tools a:hover,
+    .bm-asset-tools i:hover {
+        color: var(--e7-accent, var(--primary));
+    }
+
+    .bm-asset-body {
+        padding: 12px 16px;
+    }
+
+    .bm-asset-body .table-border + .table-border {
+        margin-top: 12px;
+    }
+
+    .bm-pm-filter {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .bm-pm-filter .form-group {
+        margin-bottom: 0;
+        min-width: 180px;
+    }
+
+    /* Graph modal toolbar: MQTT / Select Bench Marking toggle + date */
+    .bm-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .bm-seg {
+        display: inline-flex;
+        border: 1px solid var(--e7-border, var(--e7-edge));
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .bm-seg .db1 {
+        border: 0;
+        border-radius: 0;
+        padding: 6px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        background: transparent;
+        color: var(--e7-text-2, var(--e7-t2));
+        box-shadow: none;
+    }
+
+    .bm-seg .db1 + .db1 {
+        border-left: 1px solid var(--e7-border, var(--e7-edge));
+    }
+
+    .bm-seg .db1.active,
+    .bm-seg .db1:hover {
+        background: var(--e7-accent, var(--primary));
+        color: #fff;
+    }
+
+    .bm-toolbar .bm-date {
+        width: 160px;
+    }
+
+    .bm-asset-label {
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+
+    .bm-asset-label strong {
+        color: var(--e7-text, var(--e7-t1));
+        margin-right: 4px;
+    }
+
+    .bm-echart {
+        width: 100%;
+        height: 380px;
+    }
+
+    #area-echart-dataview {
+        height: 500px;
+        overflow-y: auto;
+    }
+
+    #modal-pointmachine-graph .modal-title span {
+        display: inline-block;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    /* Bootstrap 4.1.3 has no .modal-xl */
+    @@media (min-width: 992px) {
+        .bm-modal .modal-xl {
+            max-width: 1140px;
+        }
+    }
+
+    @@media (min-width: 576px) and (max-width: 991.98px) {
+        .bm-modal .modal-xl {
+            max-width: 95%;
+        }
+    }
+
+    /* air-datepicker pops up at z-index 100, below Bootstrap modals (1050) */
+    .datepicker {
+        z-index: 1070;
+    }
+</style>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI Section</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Benchmarking</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Benchmarking</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header mb-4">
+                    <div class="d-flex justify-content-between">
+                        <h4 class="m-0">Search</h4>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="row mb-lg-5 mb-3">
+                        <div class="col">
+                            <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="SiteId">Station</label>
+                                    @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="AssetTypeId">Asset Type</label>
+                                    @Html.DropDownList("AssetTypeId", (IEnumerable<SelectListItem>)ViewBag.AssetTypes, "Select", new { @class = "form-control", tabindex = 2 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="AssetId">Asset</label>
+                                    <select id="AssetId" class="form-control" tabindex="3">
+                                        <option value="0">Select</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group w-sm-100">
+                                    <label class="d-none d-md-block">&nbsp;</label>
+                                    <div class="bm-actions">
+                                        <button type="button" class="btn btn-primary-search" title="Search Benchmarking" onclick="GetBenchMarkingList()">
+                                            <img src="~/Areas/FRS25/assets/img/search.svg" alt="Search" />
+                                        </button>
+                                        <button type="button" class="btn btn-active" title="Add Benchmarking" onclick="GetGraph('@DateTime.Now.ToShortDateString()','@DateTime.Now.ToShortDateString()')">
+                                            <i class="fa fa-plus"></i> Add Benchmarking
+                                        </button>
+                                        <button type="button" class="btn btn-inactive" title="Add PointMachine Event Benchmarking" onclick="GetPointMachineEvent()">
+                                            <i class="fa fa-plus"></i> P/M Event
+                                        </button>
+                                        <button type="button" class="btn btn-inactive" title="Benchmarking Graph" onclick="GetBenchmarkingGraph('@DateTime.Now.ToShortDateString()','@DateTime.Now.ToShortDateString()')">
+                                            <i class="fa fa-eye"></i> Graph
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="divAssetAttributePartial" class="bm-results">
+                    </div>
+                    <div id="divPointMachineEventPartial" style="display:none">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@* Modal hosts live outside the cards so no card styling (overflow / filters) can clip the fixed-position modals. *@
+<div class="modal fade bm-modal" id="asset-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><span>Graph</span></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="bm-asset-label">
+                    <strong>Asset:</strong><span id="lblName"></span>
+                </div>
+                <div id="divFamilyTrack" style="display:none;">
+                    <input type="hidden" id="familyTrack" value="Select Asset" />
+                </div>
+
+                <div class="bm-toolbar">
+                    <input type="hidden" id="selDatabase" value="MQTT" />
+                    <div class="bm-seg" role="group">
+                        <button class="btn db1 active" id="mqtt" onclick="fnDBChanges(this,'MQTT')" data-name="MQTT" type="button">MQTT Db</button>
+                        <button class="btn db1" id="http" onclick="fnDBChanges(this,'BenchMarking')" data-name="HTTP" type="button">Select Bench Marking</button>
+                    </div>
+                    <input type="text" class="form-control bm-date" id="searchDate" onchange="fnFilterGraph()" autocomplete="off" />
+                </div>
+
+                <div id="chart" style="width:100%">
+                </div>
+                <div class="apache-cotainer bm-echart" id="area-echart">
+                </div>
+                <div id="area-echart-dataview" class="table-border" style="display:none;">
+                    <div class="table-responsive">
+                        <table class="table table-hover bm-table">
+                            <thead class="thead-light2" id="area-echart-thead"></thead>
+                            <tbody id="area-echart-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="fnSaveBenchMarking()">Save</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade bm-modal" id="model-benchmarking-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><span>Graph</span></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="bm-asset-label">
+                    <strong>Asset:</strong><span id="lblAssetName"></span>
+                </div>
+                <div class="apache-cotainer bm-echart" id="area-benchmarking-echart">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* PointMachineEventGraph partial (its own modal) is injected here. It sits before #modal-pointmachine-graph
+   so the signature graph opened from its rows stacks on top (Bootstrap 4 modals share one z-index). *@
+<div id="divpmEventPartial">
+</div>
+
+<div class="modal fade bm-modal" id="modal-pointmachine-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="myModalLabel">
+                    <span id="line1">52 2021-05-26 17:07:00 <b id="op">Normal Operation:</b></span><br />
+                    <span id="line2">- A Max / Average Current: 3.8 / 2.34</span><br />
+                    <span id="line3">- A Max / Average Voltage: 118.9 / 116.00</span><br />
+                    <span id="line4">- A Operating Time (ms): 3300</span><br />
+                    <span id="line5">B Max / Average Current: null / 0.0</span><br />
+                    <span id="line6">- B Max / Average Voltage: 0 / 0.00</span><br />
+                    <span id="line7">- B Operating Time (ms): 0</span><br />
+                </h6>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 mainclass" id="mainId">
+                        <canvas id="basicflot" style="height: 263px"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var chart;
+    // Suppresses the date-filter reload while the graph modal itself sets #searchDate to today.
+    var bmSuppressDateFilter = false;
+
+    // The FRS25 layout renders #e7-loader; #loader is kept for parity with other FRS25 pages.
+    function fnBmLoader(show) {
+        if (show) { $("#loader, #e7-loader").show(); } else { $("#loader, #e7-loader").hide(); }
+    }
+
+    function fnBmCssVar(names, fallback) {
+        var style = getComputedStyle(document.body);
+        for (var i = 0; i < names.length; i++) {
+            var v = style.getPropertyValue(names[i]);
+            if (v && v.trim()) { return v.trim(); }
+        }
+        return fallback;
+    }
+
+    // Theme colours are read at draw time so the charts follow the day / night switch.
+    function fnBmChartTheme() {
+        var reference = ["#4bacc6", "#215968", "#717171", "#7366ff", "#cc6600", "#90d474", "#4d4d00", "#00e396", "#00ceba", "#f37995"];
+        var palette = [];
+        for (var i = 1; i <= 6; i++) {
+            var c = fnBmCssVar(['--e7-c' + i], '');
+            if (c) { palette.push(c); }
+        }
+        for (var k = palette.length; k < reference.length; k++) {
+            palette.push(reference[k]);
+        }
+        return {
+            text: fnBmCssVar(['--e7-text-2', '--e7-t2'], '#666'),
+            textStrong: fnBmCssVar(['--e7-text', '--e7-t1'], '#333'),
+            grid: fnBmCssVar(['--e7-grid-line', '--e7-edge'], 'rgba(0,0,0,0.1)'),
+            border: fnBmCssVar(['--e7-border', '--e7-edge'], '#ccc'),
+            surface: fnBmCssVar(['--e7-surface', '--e7-bg-1'], '#fff'),
+            accent: fnBmCssVar(['--e7-c1', '--e7-accent', '--e7-cyan'], 'rgba(75,192,192,1)'),
+            palette: palette
+        };
+    }
+
+    // Bootstrap 4 drops body.modal-open when any modal hides; restore it while a stacked modal is still open.
+    function fnBmKeepModalOpen() {
+        if ($('.modal.show').length > 0) {
+            $('body').addClass('modal-open');
+        }
+    }
+
+    // jQuery is loaded by the layout after the page body.
+    document.addEventListener('DOMContentLoaded', function () {
+        $("#AssetTypeId").change(function () {
+            BindAssetType();
+        });
+        $("#SiteId").change(function () {
+            BindAssetType();
+        });
+
+        $(document).on('hidden.bs.modal', '.modal', fnBmKeepModalOpen);
+
+        // Faded modals are still hidden when the chart is drawn right after .modal("show"); re-measure once visible.
+        $('#asset-graph, #model-benchmarking-graph').on('shown.bs.modal', fnBmResizeChart);
+        window.addEventListener('resize', fnBmResizeChart);
+    });
+
+    function fnBmResizeChart() {
+        if (chart != null && chart != "" && chart != undefined && typeof chart.resize === 'function' && !(chart.isDisposed && chart.isDisposed())) {
+            chart.resize();
+        }
+    }
+
+    function fnGetPointMachineEvent() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/GetPointMachineEvent',
+                type: 'Post',
+                data: '{assetId:' + $("#AssetId").val() + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    fnBmLoader(false);
+                    $("#divpmEventPartial").empty().append(data);
+                    $("#model-benchmarking-pointmachine-eventgraph").modal("show");
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function fnDBChanges($this, db) {
+        $(".db1").removeClass("active");
+        $($this).addClass("active");
+        if (db == "MQTT") {
+            $('#area-echart-dataview').hide();
+            $('#area-echart').show();
+            fnBmResizeChart();
+        } else {
+            $('#area-echart').hide();
+            $('#area-echart-dataview').show();
+        }
+    }
+
+    function BindAssetType() {
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/GetAssestBy',
+                type: 'POST',
+                data: '{siteId:' + $("#SiteId").val() + ',assetTypeId:' + $("#AssetTypeId").val() + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    fnBmLoader(false);
+                    $("#AssetId").empty();
+                    $("#AssetId").append($("<option></option>").val('0').html('Select Asset'));
+                    $.each(data, function (key, value) {
+                        $("#AssetId").append($("<option></option>").val(value.Id).html(value.Name));
+                    });
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    // air-datepicker: same 'm/d/yy' format as before; picking a date reloads the graph (#searchDate onchange).
+    function fnBmInitSearchDate() {
+        var $date = $('#searchDate');
+        $date.datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true,
+            onSelect: function () {
+                if (!bmSuppressDateFilter) {
+                    $date.trigger('change');
+                }
+            }
+        });
+        var dp = $date.data('datepicker');
+        bmSuppressDateFilter = true;
+        if (dp && typeof dp.selectDate === 'function') {
+            dp.selectDate(new Date());
+        }
+        bmSuppressDateFilter = false;
+    }
+
+    function GetGraph(sd, ed) {
+        var mAsset = {};
+        mAsset.Id = $("#AssetId").val();
+        mAsset.SiteId = $("#SiteId").val();
+        mAsset.StartDate = sd;
+        mAsset.EndDate = ed;
+
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        mAsset.IsReadHttpPost = false;
+        mAsset.IsLocal = false;
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/GetReportData',
+                type: 'Post',
+                data: '{asset:' + JSON.stringify(mAsset) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    fnBmLoader(false);
+                    if (data != null) {
+                        fnBmInitSearchDate();
+                        fnDBChanges($('#mqtt'), 'MQTT');
+                        $("#asset-graph").modal("show");
+
+                        Demochart(data);
+                    }
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function GetBenchmarkingGraph() {
+        var mBenchMarkingLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $("#SiteId").val();
+        mSearchCriteria.AssetId = $("#AssetId").val();
+
+        mBenchMarkingLister.SearchCriteria = mSearchCriteria;
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/GetGraph',
+                type: 'Post',
+                data: '{mBenchMarkingLister:' + JSON.stringify(mBenchMarkingLister) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    fnBmLoader(false);
+                    $("#model-benchmarking-graph").modal("show");
+                    BindBenchmarkingChart(data);
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    // Builds the ECharts series exactly as the reference page did (left axis = currents etc., right axis = voltages).
+    function fnBmBuildSeries(data, labelSelector) {
+        var result = { series: [], legends: [], maxV: 0, macLeft: 0, lary: [], rary: [] };
+        var sampling;
+
+        if (data.assetAttributes != null && data.assetAttributes.length > 0) {
+            $.each(data.assetAttributes, function (ids, val) {
+                if (ids == 0) {
+                    $("#lblType").text(val.AssetTypeName + " :");
+                    $(labelSelector).text(val.AssetName);
+                }
+
+                result.legends.push(val.Title);
+                var attr = {};
+                attr.name = val.Title;
+                attr.type = 'line';
+                attr.notShowSymbol = true;
+                attr.sampling = sampling;
+                attr.hoverAnimation = false;
+                attr.clip = true;
+                if (val.Title.indexOf('V') > -1) {
+                    result.rary.push({ value: val.Title });
+                    attr.yAxisIndex = 1;
+                }
+                else {
+                    result.lary.push({ value: val.Title });
+                    attr.yAxisIndex = 0;
+                }
+
+                if (val.Title == "TPR V" || val.Title == "DG V" || val.Title == "RG V" || val.Title == "HG V" || val.Title == "HHG V" || val.Title == "Tx1 V" || val.Title == "Tx2 V" || val.Title == "Choke V" || val.Title == "Vr" || val.Title == "Voltage") {
+                    $.each(val.Data, function (i, j) {
+                        var d = parseInt(j);
+                        if (d > result.maxV) {
+                            result.maxV = d;
+                        }
+                    });
+                }
+
+                var values = [];
+                $.each(val.Data, function (i, j) {
+                    values.push(j);
+                });
+
+                // (the reference's "!= ... || != ..." test is always true, so every series feeds the left-axis max)
+                var yLeft = Math.max.apply(Math, values);
+                if (yLeft >= result.macLeft) {
+                    result.macLeft = yLeft;
+                }
+
+                attr.connectNulls = true;
+                attr.data = values;
+                attr.datasetIndex = ids;
+                result.series.push(attr);
+            });
+        }
+        return result;
+    }
+
+    function fnBmDrawEChart(elementId, data, labelSelector) {
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+
+        var s = fnBmBuildSeries(data, labelSelector);
+
+        var xValue = [];
+        $.each(data.DateList, function (ids, val) {
+            xValue.push(val);
+        });
+
+        BindTable(data);
+
+        var t = fnBmChartTheme();
+        var axisCommon = {
+            axisLine: { lineStyle: { color: t.border } },
+            axisLabel: { color: t.text },
+            splitLine: { lineStyle: { color: t.grid } }
+        };
+
+        chart = echarts.init(document.getElementById(elementId));
+        chart.setOption({
+            textStyle: { color: t.text },
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: t.surface,
+                borderColor: t.border,
+                textStyle: { color: t.textStrong },
+                axisPointer: {
+                    type: 'cross',
+                    label: {
+                        backgroundColor: '#6a7985'
+                    }
+                }
+            },
+            legend: {
+                data: s.legends,
+                x: 'left',
+                textStyle: { color: t.text }
+            },
+            toolbox: {
+                show: true,
+                iconStyle: { borderColor: t.text },
+                feature: {
+                    mark: { show: true },
+                    dataView: { show: true, readOnly: false },
+                    magicType: { show: true, type: ['line', 'bar'] },
+                    restore: { show: true },
+                    saveAsImage: { show: true, backgroundColor: t.surface }
+                }
+            },
+            grid: {
+                left: '3%',
+                right: '4%',
+                bottom: '3%',
+                containLabel: true
+            },
+            xAxis: [
+                $.extend(true, {
+                    type: 'category',
+                    boundaryGap: false,
+                    interval: 50,
+                    data: xValue
+                }, axisCommon, { axisLine: { onZero: false } })
+            ],
+            yAxis: [
+                $.extend(true, {
+                    type: 'value',
+                    min: 0,
+                    max: s.macLeft,
+                    data: s.lary
+                }, axisCommon),
+                $.extend(true, {
+                    type: 'value',
+                    inverse: false,
+                    min: -1,
+                    max: s.maxV + 1,
+                    data: s.rary
+                }, axisCommon, { splitLine: { show: false } })
+            ],
+            height: 250,
+            dataZoom: [{
+                type: 'slider',
+                height: 40,
+                start: 0,
+                end: 100,
+                bottom: 0,
+                textStyle: { color: t.text },
+                borderColor: t.border
+            }],
+            color: t.palette,
+            series: s.series
+        });
+    }
+
+    function BindBenchmarkingChart(data) {
+        fnBmDrawEChart('area-benchmarking-echart', data, '#lblAssetName');
+    }
+
+    function fnFilterGraph() {
+        var mAsset = {};
+        mAsset.Id = $("#AssetId").val();
+        mAsset.SiteId = $("#SiteId").val();
+        mAsset.StartDate = $('#searchDate').val();
+        mAsset.EndDate = $('#searchDate').val();
+
+        mAsset.StartTime = $("#tpFrom").val();
+        mAsset.EndTime = $("#tpTo").val();
+        if (chart != null && chart != "" && chart != undefined) {
+            chart.dispose();
+        }
+        mAsset.IsReadHttpPost = false;
+        mAsset.IsLocal = false;
+
+        fnBmLoader(true);
+        $.ajax({
+            url: '/FRS25/BenchMarking/GetReportData',
+            type: 'Post',
+            data: '{asset:' + JSON.stringify(mAsset) + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                fnBmLoader(false);
+                if (data != null) {
+                    Demochart(data);
+                }
+            },
+            error: function (response) {
+                fnBmLoader(false);
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function Demochart(data) {
+        fnBmDrawEChart('area-echart', data, '#lblName');
+    }
+
+    function BindTable(DataSeriaes) {
+        var tblthead = '';
+        var tblbody = '';
+        var drpAttributes = [];
+        if (DataSeriaes != null && DataSeriaes != undefined && DataSeriaes != '') {
+            tblthead += '<tr>';
+            tblthead += '<th>Time</th>';
+            if (DataSeriaes.assetAttributes != null && DataSeriaes.assetAttributes.length > 0) {
+                $(DataSeriaes.assetAttributes).each(function (val, data) {
+                    tblthead += '<th>' + data.Title + '</th>';
+
+                    var firstTitle = data.Title.split(" ");
+                    if (firstTitle.length > 0) {
+                        if ($.inArray(firstTitle[0], drpAttributes) == -1) {
+                            drpAttributes.push(firstTitle[0]);
+                        }
+                    }
+                });
+            }
+            tblthead += '<th class="text-center">Select Bench Marking</th>';
+            tblthead += '</tr>';
+
+            for (var i = 0; i < DataSeriaes.DateList.length; i++) {
+                tblbody += '<tr>';
+                tblbody += '<td> ' + $('#searchDate').val() + ' ' + DataSeriaes.DateList[i] + '</td>';
+                if (DataSeriaes.assetAttributes != null && DataSeriaes.assetAttributes.length > 0) {
+                    $(DataSeriaes.assetAttributes).each(function (val, ldata) {
+                        tblbody += '<td data-attributeName="' + ldata.Title + '" data-attributeid="' + ldata.Id + '">' + ldata.Data[i] + '</td>';
+                    });
+
+                    if ($("#AssetTypeId").val() == "@E7FRSAdvance.Utility.Utility.AssetType.SIGNAL.GetHashCode()") {
+                        var optionAttr = '';
+                        $(drpAttributes).each(function (d, drpAttribute) {
+                            optionAttr += '<option value=' + drpAttribute + '>' + drpAttribute + '</option>';
+                        });
+                        tblbody += '<td class="text-center text-nowrap"><input type="checkbox"  /><select class="m-l-10 ml-2">' + optionAttr + '</select></td>';
+                    }
+                    else if ($("#AssetTypeId").val() == "@E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode()") {
+                        var optionAttr = '<option value="NWKR">NWKR</option><option value="RWKR">RWKR</option>';
+                        tblbody += '<td class="text-center text-nowrap"><input type="checkbox"  /><select class="m-l-10 ml-2">' + optionAttr + '</select></td>';
+                    }
+                    else {
+                        tblbody += '<td class="text-center"><input type="checkbox" /></td>';
+                    }
+                }
+                tblbody += '</tr>';
+            }
+        }
+        $("#area-echart-thead").empty().append(tblthead);
+        $("#area-echart-tbody").empty().append(tblbody);
+    }
+
+    function fnSaveBenchMarking() {
+        var mBenchMarkings = [];
+        $("#area-echart-tbody tr").each(function (t, trData) {
+
+            var isChecked = $(this).find("td:last").children("input[type=checkbox]").is(":checked");
+            var selectedAttr = $(this).find("td:last").find("select").find(":selected").val();
+            if (isChecked) {
+                $(this).children("td").each(function (index) {
+                    if (index > 0 && $(this).text() != null && $(this).text() != undefined && $(this).text() != '') {
+
+                        var selectedAttrName = $(this).attr('data-attributeName');
+                        if (selectedAttr != null && selectedAttr != undefined && selectedAttr != '' && selectedAttrName != null && selectedAttrName != undefined && selectedAttrName != '') {
+
+                            if (selectedAttrName.includes(selectedAttr)) {
+                                var mBenchMarking = {};
+                                mBenchMarking.SiteId = $("#SiteId").val();
+                                mBenchMarking.AssetId = $("#AssetId").val();
+                                mBenchMarking.AssetAttributeId = $(this).attr('data-attributeid');
+                                mBenchMarking.Value = $(this).text();
+                                mBenchMarking.TimeStamp = $(trData).find("td:first").text();
+                                if (mBenchMarking.AssetAttributeId != null && mBenchMarking.AssetAttributeId != undefined && mBenchMarking.AssetAttributeId != '' && parseInt(mBenchMarking.AssetAttributeId) > 0 && mBenchMarking.Value != null && mBenchMarking.Value != undefined && mBenchMarking.Value != '' && mBenchMarking.TimeStamp != null && mBenchMarking.TimeStamp != undefined && mBenchMarking.TimeStamp != '') {
+                                    mBenchMarkings.push(mBenchMarking);
+                                }
+                            }
+                        }
+                        else {
+                            var mBenchMarking = {};
+                            mBenchMarking.SiteId = $("#SiteId").val();
+                            mBenchMarking.AssetId = $("#AssetId").val();
+                            mBenchMarking.AssetAttributeId = $(this).attr('data-attributeid');
+                            mBenchMarking.Value = $(this).text();
+                            mBenchMarking.TimeStamp = $(trData).find("td:first").text();
+                            if (mBenchMarking.AssetAttributeId != null && mBenchMarking.AssetAttributeId != undefined && mBenchMarking.AssetAttributeId != '' && parseInt(mBenchMarking.AssetAttributeId) > 0 && mBenchMarking.Value != null && mBenchMarking.Value != undefined && mBenchMarking.Value != '' && mBenchMarking.TimeStamp != null && mBenchMarking.TimeStamp != undefined && mBenchMarking.TimeStamp != '') {
+                                mBenchMarkings.push(mBenchMarking);
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        if (mBenchMarkings != null && mBenchMarkings != undefined && mBenchMarkings.length > 0) {
+            if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                fnBmLoader(true);
+                $.ajax({
+                    url: '/FRS25/BenchMarking/Create',
+                    type: 'Post',
+                    data: '{mBenchMarkings:' + JSON.stringify(mBenchMarkings) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        fnBmLoader(false);
+                        if (data != null) {
+                            $("#asset-graph").modal("hide");
+                            if (data.type == "success") {
+                                GetBenchMarkingList();
+                                CommonNotification("SUCCESS", data.result, "success");
+                            } else {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+        else {
+            $("#asset-graph").modal("hide");
+            CommonNotification("ERROR", "Please select Benchmarking", "Error");
+        }
+    }
+
+    function GetBenchMarkingList() {
+        var mBenchMarkingLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $("#SiteId").val();
+        mSearchCriteria.AssetId = $("#AssetId").val();
+
+        mBenchMarkingLister.SearchCriteria = mSearchCriteria;
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/List',
+                type: 'Post',
+                data: '{mBenchMarkingLister:' + JSON.stringify(mBenchMarkingLister) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    fnBmLoader(false);
+                    $("#divAssetAttributePartial").show();
+                    $('#divPointMachineEventPartial').hide();
+                    $("#divAssetAttributePartial").empty().append(data);
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function fnDeleteBenchMarking(timeStamp) {
+        var mBenchMarking = {};
+        mBenchMarking.SiteId = $("#SiteId").val();
+        mBenchMarking.AssetId = $("#AssetId").val();
+        mBenchMarking.TimeStamp = timeStamp;
+
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+            if (confirm('Are you sure you want to delete this record?')) {
+                fnBmLoader(true);
+                $.ajax({
+                    url: '/FRS25/BenchMarking/Delete',
+                    type: 'Post',
+                    data: '{mBenchMarking:' + JSON.stringify(mBenchMarking) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        if (data.type == "success") {
+                            GetBenchMarkingList();
+                            CommonNotification("SUCCESS", data.result, "success");
+                        } else {
+                            fnBmLoader(false);
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    },
+                    error: function (response) {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function fnUpdateBenchMarking(timeStamp, $this) {
+        var mBenchMarking = {};
+        mBenchMarking.SiteId = $("#SiteId").val();
+        mBenchMarking.AssetId = $("#AssetId").val();
+        mBenchMarking.TimeStamp = timeStamp;
+
+        if ($($this).prop('checked') == true) {
+            mBenchMarking.IsPrimary = true;
+        }
+        else {
+            mBenchMarking.IsPrimary = false;
+        }
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/Update',
+                type: 'Post',
+                data: '{mBenchMarking:' + JSON.stringify(mBenchMarking) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data.type == "success") {
+                        GetBenchMarkingList();
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function searchStringInArray(str, strArray) {
+        for (var j = 0; j < strArray.length; j++) {
+            if (strArray[j].includes(str)) return j;
+        }
+        return -1;
+    }
+
+    function GetPointMachineEvent() {
+        var mAssetLister = {};
+
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $("#SiteId").val();
+        mSearchCriteria.AssetName = $("#AssetId").find(":selected").text();
+        mSearchCriteria.StartDate = $("#txtpmFromDate").val();
+        mSearchCriteria.EndDate = $("#txtpmToDate").val();
+
+        mAssetLister.SearchCriteria = mSearchCriteria;
+
+        if ($("#AssetTypeId").val() == "@E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode()") {
+            if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+                fnBmLoader(true);
+                $.ajax({
+                    url: '/FRS25/BenchMarking/_PointMachineEvent',
+                    type: 'Post',
+                    data: '{mAssetLister:' + JSON.stringify(mAssetLister) + '}',
+                    contentType: 'application/json',
+                    dataType: 'html',
+                    success: function (data) {
+                        fnBmLoader(false);
+                        if (data != null) {
+                            $('#divAssetAttributePartial').hide();
+                            $('#divPointMachineEventPartial').show();
+                            $('#divPointMachineEventPartial').empty().append(data);
+                        }
+                    },
+                    error: function (response) {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+            else {
+                CommonNotification("ERROR", "Select Site and Asset", "Error");
+            }
+        }
+        else {
+            CommonNotification("ERROR", "Select Asset Type Point Machine", "Error");
+        }
+    }
+
+    function SavePointMachineEventData() {
+        var mBenchMarkingPointMachines = [];
+        $(".clspmEventDataCheck").each(function () {
+            if ($(this).is(":checked")) {
+                var mBenchMarking = {};
+                mBenchMarking.AssetId = $(this).attr('data-AssetId');
+                mBenchMarking.Direction = $(this).attr('data-direction');
+                mBenchMarking.ArrayData = $(this).attr('data-pmjson');
+                mBenchMarking.TsTime = $(this).attr('data-tstime');
+                mBenchMarking.TimeStamp = $(this).attr('data-timestamp');
+                mBenchMarking.IsAutomatic = false;
+                mBenchMarkingPointMachines.push(mBenchMarking);
+            }
+        });
+
+        if (mBenchMarkingPointMachines != null && mBenchMarkingPointMachines != undefined && mBenchMarkingPointMachines.length > 0) {
+            if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0') {
+                fnBmLoader(true);
+                $.ajax({
+                    url: '/FRS25/BenchMarking/CreatePointMachineEvent',
+                    type: 'Post',
+                    data: '{mBenchMarkingPointMachines:' + JSON.stringify(mBenchMarkingPointMachines) + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        fnBmLoader(false);
+                        if (data != null) {
+                            $("#asset-graph").modal("hide");
+                            if (data.type == "success") {
+                                CommonNotification("SUCCESS", data.result, "success");
+                            } else {
+                                CommonNotification("ERROR", data.result, "error");
+                            }
+                        }
+                    },
+                    error: function (response) {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        }
+        else {
+            $("#asset-graph").modal("hide");
+            CommonNotification("ERROR", "Please select Benchmarking", "Error");
+        }
+    }
+
+    function fnUpdatePointMachineBenchMarking(timeStamp, Direction, $this) {
+        var mBenchMarkingPointMachine = {};
+        mBenchMarkingPointMachine.AssetId = $("#AssetId").val();
+        mBenchMarkingPointMachine.TsTime = timeStamp;
+        mBenchMarkingPointMachine.Direction = Direction;
+
+        if ($($this).prop('checked') == true) {
+            mBenchMarkingPointMachine.IsPrimary = true;
+        }
+        else {
+            mBenchMarkingPointMachine.IsPrimary = false;
+        }
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+            fnBmLoader(true);
+            $.ajax({
+                url: '/FRS25/BenchMarking/UpdatePointMachineEvent',
+                type: 'Post',
+                data: '{mBenchMarkingPointMachine:' + JSON.stringify(mBenchMarkingPointMachine) + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    if (data.type == "success") {
+                        GetBenchMarkingList();
+                        CommonNotification("SUCCESS", data.result, "success");
+                    } else {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", data.result, "error");
+                    }
+                },
+                error: function (response) {
+                    fnBmLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+
+    function fnBindSignatureGragh(data, type, datevalue, direction, name) {
+        $("div").remove(".chartjs-size-monitor");
+        var j = JSON.parse(data);
+        var acg;
+        var bcg;
+        var avg;
+        var bvg;
+        if (j.A_C_AVERAGE != null) {
+            acg = parseFloat(j.A_C_AVERAGE).toFixed(2);
+        }
+        if (j.B_C_AVERAGE != null) {
+            bcg = parseFloat(j.B_C_AVERAGE).toFixed(2);
+        }
+        if (j.A_V_AVERAGE != null) {
+            avg = parseFloat(j.A_V_AVERAGE).toFixed(2);
+        }
+        if (j.B_V_AVERAGE != null) {
+            bvg = parseFloat(j.B_V_AVERAGE).toFixed(2);
+        }
+
+        $("#line1").empty().text(name + " " + datevalue);
+        $("#op").text(direction + " Operation");
+        $("#line2").empty().text("- A Max / Average Current:" + j.A_C_MAX + "/" + acg);
+        $("#line3").empty().text("-  Average Voltage:" + avg);
+        $("#line4").empty().text("- A Operating Time (ms):" + j.A_C_TIME);
+        $("#line5").empty().text("- B Max / Average Current:" + j.B_C_MAX + "/" + bcg);
+        $("#line6").empty().text("- Average Voltage:" + bvg);
+        $("#line7").empty().text("- B Operating Time (ms):" + j.B_C_TIME);
+
+        var array = [];
+        var labels = "";
+        var total = 0;
+        function collect(values) {
+            $.each(values, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+
+        if (type == "CC") {
+            labels = "Combine C";
+            collect(j.A_C);
+            collect(j.B_C);
+        }
+        if (type == "CV") {
+            labels = "Combine V";
+            collect(j.A_V);
+            collect(j.B_V);
+        }
+        if (type == "AC") {
+            labels = "A End";
+            collect(j.A_C);
+        }
+        if (type == "BC") {
+            labels = "B End";
+            collect(j.B_C);
+        }
+        if (type == "AV") {
+            labels = "A End";
+            collect(j.A_V);
+        }
+        if (type == "BV") {
+            labels = "B End";
+            collect(j.B_V);
+        }
+
+        var label = [];
+        for (var i = 0; i <= array.length; i++) {
+            label.push(i * 100);
+        }
+
+        var chartContainer = document.getElementById('mainId');
+        chartContainer.innerHTML = '&nbsp;';
+        $('#mainId').append('<canvas id="basicflot" style="height: 263px"></canvas>');
+        var canvas = $("#basicflot").get(0).getContext("2d");
+
+        var t = fnBmChartTheme();
+        Chart.defaults.global.defaultFontColor = t.text;
+
+        var chartData = {
+            labels: label,
+            datasets: [
+                {
+                    label: labels + " Current",
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: t.accent,
+                    borderColor: t.accent,
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: t.accent,
+                    pointBackgroundColor: t.surface,
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: t.accent,
+                    pointHoverBorderColor: t.grid,
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array
+                }
+            ]
+        };
+
+        var option = {
+            showLines: true,
+            scales: {
+                xAxes: [{ gridLines: { color: t.grid } }],
+                yAxes: [{ gridLines: { color: t.grid } }]
+            }
+        };
+        Chart.Line(canvas, {
+            data: chartData,
+            options: option
+        });
+
+        $("#modal-pointmachine-graph").modal("show");
+    }
+
+    function fnDeletePointMachineBenchMarking(id) {
+
+        if ($("#SiteId").val() != null && $("#SiteId").val() != undefined && $("#SiteId").val() != '' && $("#SiteId").val() != '0' && $("#AssetId").val() != null && $("#AssetId").val() != undefined && $("#AssetId").val() != '' && $("#AssetId").val() != '0') {
+            if (confirm('Are you sure you want to delete this record?')) {
+                fnBmLoader(true);
+                $.ajax({
+                    url: '/FRS25/BenchMarking/DeletePointMachineEvent',
+                    type: 'Post',
+                    data: '{id:' + id + '}',
+                    contentType: 'application/json',
+                    success: function (data) {
+                        fnBmLoader(false);
+                        $("#model-benchmarking-pointmachine-eventgraph").modal("hide");
+                        if (data.type == "success") {
+                            CommonNotification("SUCCESS", data.result, "success");
+                        } else {
+                            CommonNotification("ERROR", data.result, "error");
+                        }
+                    },
+                    error: function (response) {
+                        fnBmLoader(false);
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+            }
+        } else {
+            CommonNotification("ERROR", "Select Site and Asset", "Error");
+        }
+    }
+</script>

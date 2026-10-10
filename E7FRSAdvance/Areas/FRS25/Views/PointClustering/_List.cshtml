@@ -1,0 +1,126 @@
+@model Domain.AssetLister
+@using System.Linq;
+
+<div class="table-border">
+    <div class="pmc-section-head">
+        <h5>Clusters by Asset</h5>
+    </div>
+
+    @if (Model.mAssets != null && Model.mAssets.Count > 0)
+    {
+        <table class="table table-hover pmc-table">
+            <thead class="thead-light2">
+                <tr>
+                    <th>Asset</th>
+                    <th>Clusters</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var asset in Model.mAssets)
+                {
+                    List<string> cluster = new List<string>();
+                    if (asset.mPointMachineData != null && asset.mPointMachineData.Count > 0)
+                    {
+                        foreach (var pointData in asset.mPointMachineData)
+                        {
+                            if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterA))
+                            {
+                                var clusterASplit = pointData.PointMachineJson.ClusterA.Split('-');
+                                if (clusterASplit != null && clusterASplit.Count() > 0)
+                                {
+                                    if (cluster.Where(x => x == clusterASplit.FirstOrDefault().Trim()).Count() <= 0)
+                                    {
+                                        cluster.Add(clusterASplit.FirstOrDefault().Trim());
+                                    }
+                                }
+                            }
+
+                            if (asset.IsHalfPointMachine == null || (asset.IsHalfPointMachine != null && !asset.IsHalfPointMachine.Value))
+                            {
+                                if (!string.IsNullOrEmpty(pointData.PointMachineJson.ClusterB))
+                                {
+                                    var clusterBSplit = pointData.PointMachineJson.ClusterB.Split('-');
+                                    if (clusterBSplit != null && clusterBSplit.Count() > 0)
+                                    {
+                                        if (cluster.Where(x => x == clusterBSplit.FirstOrDefault().Trim()).Count() <= 0)
+                                        {
+                                            cluster.Add(clusterBSplit.FirstOrDefault().Trim());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (cluster != null && cluster.Count > 0)
+                    {
+                        var grouped = cluster.GroupBy(label => label.Substring(0, 2)).OrderBy(g => g.Key);
+
+                        <tr>
+                            <td class="pmc-name">@asset.Name</td>
+                            <td>
+                                <div class="pmc-chips">
+                                    @foreach (var group in grouped)
+                                    {
+                                        // Same grouping rules as the classic page: G = good, B = bad, M = mid,
+                                        // a leading "T" selects the darker variant.
+                                        var colorClass = string.Empty;
+                                        if (group.Key.ToUpper().Contains("G"))
+                                        {
+                                            colorClass = group.Key.StartsWith("T") ? "pmc-chip-good pmc-chip-dark" : "pmc-chip-good";
+                                        }
+                                        else if (group.Key.ToUpper().Contains("B"))
+                                        {
+                                            colorClass = group.Key.StartsWith("T") ? "pmc-chip-bad pmc-chip-dark" : "pmc-chip-bad";
+                                        }
+                                        else if (group.Key.ToUpper().Contains("M"))
+                                        {
+                                            colorClass = group.Key.StartsWith("T") ? "pmc-chip-mid pmc-chip-dark" : "pmc-chip-mid";
+                                        }
+                                        else
+                                        {
+                                            colorClass = "pmc-chip-other";
+                                        }
+
+                                        foreach (var item in group)
+                                        {
+                                            if (asset.mPointMachineData != null && asset.mPointMachineData.Count > 0)
+                                            {
+                                                int part = 0;
+                                                foreach (var pointData in asset.mPointMachineData)
+                                                {
+                                                    if (pointData.PointMachineJson != null)
+                                                    {
+                                                        if (pointData.PointMachineJson.ClusterA.StartsWith(item) || pointData.PointMachineJson.ClusterB.StartsWith(item))
+                                                        {
+                                                            part++;
+                                                        }
+                                                    }
+                                                }
+                                                double percentage = ((double)part / asset.mPointMachineData.Count) * 100;
+
+                                                <button type="button" data-toggle="popover" data-content="@Math.Round(percentage, 2) %" data-placement="top" data-trigger="hover" class="btn pmc-chip @colorClass" onclick="fnShowPointMachineEventData('@asset.SiteId','@asset.Id','@item')">@item</button>
+                                            }
+                                        }
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="pmc-empty">No record found</p>
+    }
+</div>
+
+<script>
+    $(document).ready(function () {
+        if ($.fn.popover) {
+            $("[data-toggle='popover']").popover();
+        }
+    });
+</script>

@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Threading.Tasks;
 using System.Web.Mvc;
 
 namespace E7FRSAdvance.Areas.FRS25.Controllers
@@ -48,9 +49,20 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return View();
         }
 
-        public JsonResult GetDivisionByZoneId(int zoneId)
+        // Two request shapes: { zoneId } (Telemetry Live / Detail pages) and
+        // { SearchCriteria: { ZoneIds: [...] } } (Telemetry History, same as
+        // the web project's DivisionLister contract).
+        public JsonResult GetDivisionByZoneId(int? zoneId, DivisionLister mDivisionLister)
         {
-            return Json(_divisionService.GetByZoneId(zoneId), JsonRequestBehavior.AllowGet);
+            if (zoneId.HasValue)
+                return Json(_divisionService.GetByZoneId(zoneId.Value), JsonRequestBehavior.AllowGet);
+
+            List<Division> mDivisions = new List<Division>();
+            if (mDivisionLister != null && mDivisionLister.SearchCriteria != null &&
+                mDivisionLister.SearchCriteria.ZoneIds != null && mDivisionLister.SearchCriteria.ZoneIds.Count > 0)
+                mDivisions = _divisionService.GetDivisionList(mDivisionLister);
+
+            return Json(mDivisions, JsonRequestBehavior.AllowGet);
         }
 
         public JsonResult GetSiteByDivisionId(int divisionId)
@@ -848,6 +860,207 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             catch (Exception ex)
             {
                 return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        /* ================================================================
+         * History / PM-history / user-asset-info APIs ported from e7mriv2web
+         * (source of truth for Telemetry Live). Graphs now read
+         * /api/DashboardHistory through GetGraphHistory, as e7mriv2web does.
+         * ================================================================ */
+
+
+        // Point Machine scalar operation columns shown in the Live PM table's
+        // same-day history modal: Avg / Max current, Operation time (A & B
+        // current) and Avg voltage (A & B), Normal + Reverse. Waveform arrays
+        // are deliberately excluded -- they are what made HistoryValue slow.
+        private const string PmDayHistoryAttrIds =
+            "1002,1004,1005,2002,3002,3004,3005,4002," +
+            "6002,6004,6005,7002,8002,8004,8005,9002";
+
+        /*
+         * GET /FRS25/Telemetry/GetPMDayOperationHistory
+         *
+         * Proxy over /api/DashboardPMHistoryOperation (same API the Telemetry
+         * History Operation tab uses), one page per call, newest-first,
+         * fillGaps=false so every row is a real operation. The client walks
+         * pages with nextCursor. Body returned verbatim.
+         */
+        public Task<ActionResult> GetPMDayOperationHistory(
+            int assetId,
+            string startDate,
+            string endDate,
+            int? page = null,
+            string cursor = null,
+            int? pageSize = null)
+        {
+            return ProxyPmOperationAsync(assetId, startDate, endDate, page, cursor, pageSize, PmDayHistoryAttrIds);
+        }
+
+        /*
+         * GET /FRS25/Telemetry/GetPMHistoryOperationArray
+         *
+         * Proxy over /api/DashboardPMHistoryOperationArray -- the same API
+         * Telemetry History's table waveform graph uses. The Live PM table's
+         * current / voltage cell graph asks for a ±2 min window around the
+         * operation. fillGaps=false so an older operation's array is never
+         * carried onto a later row.
+         *
+         * attrIds is required in practice: without it upstream returns only
+         * the Avg / OperationTime columns and none of the …001 array columns.
+         */
+        public Task<ActionResult> GetPMHistoryOperationArray(
+            int assetId,
+            string startDate,
+            string endDate,
+            int? page = null,
+            int? tsLimit = null,
+            string cursor = null,
+            string attrIds = null)
+        {
+            return ProxyPmOperationAsync(assetId, startDate, endDate, page, cursor, tsLimit, attrIds,
+                "DashboardPMHistoryOperationArray", 50);
+        }
+
+        /*
+         * GET /FRS25/Telemetry/GetGraphHistory
+         *
+         * Proxy over /api/DashboardHistory for every history graph (Telemetry
+         * Live and Telemetry History, all asset types): tsLimit=10000,
+         * fillGaps=true, sort=asc. Point Machine operation / waveform graphs
+         * pass attrIds so the …001 arrays are included (the default column set
+         * omits them). The client walks nextCursor. Body returned verbatim.
+         */
+        public async Task<ActionResult> GetGraphHistory(
+            int assetId,
+            string startDate,
+            string endDate,
+            int? page = null,
+            string cursor = null,
+            string attrIds = null)
+        {
+            try
+            {
+                string baseUrl = ConfigurationManager.AppSettings["DashboardHistoryBaseUrl"];
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    return Json(new { error = "DashboardHistoryBaseUrl / ProxyBaseUrl is not configured." }, JsonRequestBehavior.AllowGet);
+
+                int reqPage = (page.HasValue && page.Value > 0) ? page.Value : 1;
+
+                string apiUrl = string.Format(
+                    "{0}/api/DashboardHistory?AssetId={1}&StartDate={2}&EndDate={3}" +
+                    "&tsLimit=10000&page={4}&fillGaps=true&sort=asc",
+                    baseUrl.TrimEnd('/'),
+                    assetId,
+                    Uri.EscapeDataString(startDate ?? string.Empty),
+                    Uri.EscapeDataString(endDate ?? string.Empty),
+                    reqPage);
+
+                if (!string.IsNullOrWhiteSpace(attrIds))
+                    apiUrl += "&attrIds=" + Uri.EscapeDataString(attrIds);
+
+                // Cursor is replayed exactly as the API returned it.
+                if (!string.IsNullOrWhiteSpace(cursor))
+                    apiUrl += "&cursor=" + cursor;
+
+                using (var client = new HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromMinutes(2);
+                    var response = await client.GetAsync(apiUrl);
+                    string jsonString = await response.Content.ReadAsStringAsync();
+                    if (response.StatusCode != HttpStatusCode.OK)
+                        return Json(new { error = "API returned status: " + response.StatusCode, page = reqPage }, JsonRequestBehavior.AllowGet);
+                    return Content(jsonString, "application/json");
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        private async Task<ActionResult> ProxyPmOperationAsync(
+            int assetId,
+            string startDate,
+            string endDate,
+            int? page,
+            string cursor,
+            int? pageSize,
+            string attrIds,
+            string endpoint = "DashboardPMHistoryOperation",
+            int defaultTsLimit = 500)
+        {
+            try
+            {
+                string baseUrl = ConfigurationManager.AppSettings["DashboardHistoryBaseUrl"];
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    return Json(new { error = "DashboardHistoryBaseUrl / ProxyBaseUrl is not configured." }, JsonRequestBehavior.AllowGet);
+
+                int tsLimit = (pageSize.HasValue && pageSize.Value > 0) ? Math.Min(pageSize.Value, 500) : defaultTsLimit;
+                int reqPage = (page.HasValue && page.Value > 0) ? page.Value : 1;
+
+                string apiUrl = string.Format(
+                    "{0}/api/{1}?AssetId={2}&StartDate={3}&EndDate={4}" +
+                    "&tsLimit={5}&sort=desc&fillGaps=false&page={6}",
+                    baseUrl.TrimEnd('/'),
+                    endpoint,
+                    assetId,
+                    Uri.EscapeDataString(startDate ?? string.Empty),
+                    Uri.EscapeDataString(endDate ?? string.Empty),
+                    tsLimit,
+                    reqPage);
+
+                if (!string.IsNullOrWhiteSpace(attrIds))
+                    apiUrl += "&attrIds=" + Uri.EscapeDataString(attrIds);
+
+                // Cursor is replayed exactly as the API returned it.
+                if (!string.IsNullOrWhiteSpace(cursor))
+                    apiUrl += "&cursor=" + cursor;
+
+                using (var client = new HttpClient())
+                {
+                    client.Timeout = TimeSpan.FromMinutes(2);
+                    var response = await client.GetAsync(apiUrl);
+                    string jsonString = await response.Content.ReadAsStringAsync();
+                    if (response.StatusCode != HttpStatusCode.OK)
+                        return Json(new { error = "API returned status: " + response.StatusCode, page = reqPage }, JsonRequestBehavior.AllowGet);
+                    return Content(jsonString, "application/json");
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { error = ex.Message }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
+        public async Task<ActionResult> GetUserAssetInfo(int siteId)
+        {
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = await hcf.client.GetAsync("AssetInfo/GetUserAssetInfo/SiteId/" + siteId);
+                    string json = await response.Content.ReadAsStringAsync();
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        return Content(json, "application/json");
+                    }
+                    else
+                    {
+                        return Json(new { error = "API returned status: " + response.StatusCode }, JsonRequestBehavior.AllowGet);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Optional: log the failure so it's traceable server-side.
+                // _logger?.Error(ex, "GetUserAssetInfo failed for siteId {0}", siteId);
+                return Json(new { error = "Failed to fetch user asset info: " + ex.Message }, JsonRequestBehavior.AllowGet);
             }
         }
 

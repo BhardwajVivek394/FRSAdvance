@@ -1,0 +1,81 @@
+@model Domain.BenchMarkingLister
+
+@* Rendered into #divAssetAttributePartial of Index (POST /FRS25/BenchMarking/List). *@
+<div class="table-border">
+    <div class="bm-section-head">
+        <h5>Benchmarking</h5>
+        <button style="display:none" type="button" class="btn btn-inactive" onclick="fnGetPointMachineEvent()" id="btnPointMachineEvent">Show Event</button>
+    </div>
+
+    @if (Model != null && Model.BenchMarkings != null && Model.BenchMarkings.Count > 0)
+    {
+        <div class="table-responsive">
+            <table class="table table-hover bm-table">
+                <thead class="thead-light2">
+                    <tr>
+                        <th>Date</th>
+                        @foreach (var attribute in Model.BenchMarkings.GroupBy(x => x.AssetAttribute).Select(x => x.Key))
+                        {
+                            <th>@attribute</th>
+                        }
+                        <th class="text-center">Delete</th>
+                        <th class="text-center">Is Primary</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var date in Model.BenchMarkings.GroupBy(x => x.TimeStamp).Select(x => x.Key))
+                    {
+                        bool isPrimary = false;
+                        if (Model.BenchMarkings.Where(x => x.TimeStamp == date).Count() == Model.BenchMarkings.Where(x => x.TimeStamp == date && x.IsPrimary).Count())
+                        {
+                            isPrimary = true;
+                        }
+                        <tr>
+                            <td class="text-nowrap">@date</td>
+
+                            @foreach (var attribute in Model.BenchMarkings.GroupBy(x => x.AssetAttribute).Select(x => x.Key))
+                            {
+                                var attr = Model.BenchMarkings.Where(x => x.TimeStamp == date && x.AssetAttribute.Trim().ToUpper() == attribute.Trim().ToUpper()).FirstOrDefault();
+                                if (attr != null && attr.Id > 0)
+                                {
+                                    <td>@attr.Value</td>
+                                }
+                                else
+                                {
+                                    <td></td>
+                                }
+                            }
+                            <td class="text-center">
+                                <a href="#" class="bm-icon-btn" title="Delete" onclick="fnDeleteBenchMarking('@date'); return false;"><i class="fa fa-trash"></i></a>
+                            </td>
+                            <td class="text-center">
+                                @if (isPrimary)
+                                {
+                                    <input type="checkbox" onchange="fnUpdateBenchMarking('@date',this)" checked />
+                                }
+                                else
+                                {
+                                    <input type="checkbox" onchange="fnUpdateBenchMarking('@date',this)" />
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <p class="bm-empty">No record found!</p>
+    }
+</div>
+
+<script>
+    $(document).ready(function () {
+        if ($("#AssetTypeId").val() != null && $("#AssetTypeId").val() != undefined && $("#AssetTypeId").val() != '' && $("#AssetTypeId").val() != '0' && $("#AssetTypeId").val() == "@E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE.GetHashCode()") {
+            $('#btnPointMachineEvent').show();
+        } else {
+            $('#btnPointMachineEvent').hide();
+        }
+    });
+</script>

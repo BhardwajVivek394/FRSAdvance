@@ -1,0 +1,131 @@
+@model Domain.AIRemarkLister
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+@{
+    int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+    if (Model.mAIRemarks == null || Model.mAIRemarks.Count == 0)
+    {
+        start = 0;
+    }
+    decimal end = Math.Floor(Model.Pager.TotalRecord);
+    if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+    {
+        if (Model.Pager.PageSize == -1)
+        {
+            end = Model.Pager.TotalRecord;
+        }
+        else
+        {
+            end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+            if (end > Model.Pager.TotalRecord)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+        }
+    }
+}
+
+<div class="table-border">
+    <div class="ais-section-head">
+        <h5>Remarks</h5>
+        <div class="d-flex flex-wrap align-items-center gap-10">
+            <span class="ais-count">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Remarks</span>
+            <div class="ais-pager">
+                @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                <button type="button" class="btn btn-inactive" title="Previous" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+                <button type="button" class="btn btn-inactive" title="Next" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive" style="max-height: 620px;">
+        <table class="table table-hover ais-table">
+            <thead class="thead-light2">
+                <tr>
+                    <th colspan="2" class="text-center">Action</th>
+                    <th>Asset Type</th>
+                    <th>Remark</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.mAIRemarks != null && Model.mAIRemarks.Count > 0)
+                {
+                    foreach (var item in Model.mAIRemarks)
+                    {
+                        <tr>
+                            <td class="ais-action">
+                                <a href="javascript:void(0)" title="Edit" onclick="GetById('@item.Id')">
+                                    <i class="fa fa-edit"></i>
+                                </a>
+                            </td>
+                            <td class="ais-action">
+                                <a href="javascript:void(0)" title="Delete" onclick="DeleteById('@item.Id')">
+                                    <i class="text-danger fa fa-trash"></i>
+                                </a>
+                            </td>
+                            <td>@item.AssetType</td>
+                            <td>@item.Remark</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="4" class="ais-empty">
+                            No record found
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // First rendered inside Index (before the layout loads jQuery), later re-rendered by the Ajax form.
+    (function (fn) {
+        if (window.jQuery) { jQuery(fn); } else { document.addEventListener('DOMContentLoaded', fn); }
+    })(function () {
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmGetAIRemarkList").submit();
+        });
+
+        if ($('#hdnCatListType').val() == 'Success') {
+            CommonNotification($("#hdnCatListType").val().toLowerCase(), $("#hdnCatListMessage").val());
+        }
+        else if ($('#hdnCatListType').val() == 'Error') {
+            if ($('#hdnCatListMessage').val() == 'Forbidden!') {
+                window.location.href = "/Login/Index";
+            } else {
+                CommonNotification($("#hdnCatListType").val().toLowerCase(), $("#hdnCatListMessage").val());
+            }
+        }
+    });
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (Number('@Model.Pager.TotalPage') != Number('@Model.Pager.CurrentPage')) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmGetAIRemarkList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize) {
+                var prevSkip = @Model.Pager.Skip;
+                prevSkip = prevSkip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(prevSkip);
+                $("#frmGetAIRemarkList").submit();
+            }
+        }
+    }
+</script>

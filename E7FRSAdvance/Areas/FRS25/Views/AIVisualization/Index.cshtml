@@ -1,0 +1,1167 @@
+﻿@{
+    ViewBag.Title = "Visualization";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+@*
+    AI Visualization (FRS25 / 617 theme)
+    Ported from E7MRIV2Web Views/AIVisualization/Index.cshtml. Behaviour, element ids,
+    JS function names and posted field names are kept so AIVisualizationController
+    works unchanged; only markup, styling and URLs (area-prefixed) differ.
+    jQuery is provided by the layout (loaded after RenderBody), so every top-level
+    jQuery call below runs inside DOMContentLoaded / event handlers.
+*@
+
+@* Chart.js 2.9.4 (Chart.Line API). The app has no local 2.9.x copy (~/assets/js/chart/chartjs/chart.min.js is v1.0.1),
+   so the same CDN build the reference and FRS25 Telemetry use is loaded. *@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+
+<style>
+    /* ── Page loader (the FRS25 layout only ships #e7-loader; this page and its
+          partials use #loader, incl. Ajax.BeginForm LoadingElementId) ── */
+    #loader {
+        position: fixed;
+        z-index: 9999999;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: none;
+    }
+
+    /* ── Type tabs (segmented control on top of .nav-pills.tabsStyle) ── */
+    .aiv-tabs {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 12px;
+        background: var(--e7-surface-2);
+        border: 1px solid var(--e7-border);
+    }
+
+        .aiv-tabs .nav-item {
+            margin: 0;
+        }
+
+        .aiv-tabs .nav-link {
+            margin: 0 !important;
+            padding: 7px 16px;
+            border-radius: 9px;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--e7-text-2);
+            background: transparent;
+            transition: background .15s ease, color .15s ease;
+        }
+
+            .aiv-tabs .nav-link i {
+                margin-right: 6px;
+                color: var(--e7-text-3);
+            }
+
+            .aiv-tabs .nav-link:hover {
+                color: var(--e7-heading);
+                background: var(--e7-accent-soft);
+            }
+
+            .aiv-tabs .nav-link.active,
+            .aiv-tabs .nav-link.active:hover {
+                color: var(--e7-accent-ink);
+                background: var(--e7-surface);
+                box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+            }
+
+                .aiv-tabs .nav-link.active i {
+                    color: var(--e7-accent);
+                }
+
+    #divSignalCluster {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        flex: 2 1 360px;
+        min-width: 0;
+    }
+
+        #divSignalCluster .form-group {
+            min-width: 140px;
+            flex: 1 1 140px;
+        }
+
+    .aiv-hint {
+        font-size: 13px;
+        color: var(--e7-text-3);
+    }
+
+        .aiv-hint i {
+            color: var(--e7-accent);
+            margin-right: 6px;
+        }
+
+    .aiv-result-sub {
+        font-size: 12.5px;
+        color: var(--e7-text-3);
+        margin: 2px 0 0;
+    }
+
+    /* ── Shared bits used by the partials ── */
+    .aiv-subfilter {
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        border-radius: 12px;
+        background: var(--e7-surface-2);
+        border: 1px solid var(--e7-border);
+    }
+
+        .aiv-subfilter .form-group {
+            margin-bottom: 0;
+        }
+
+    .aiv-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 38px;
+        margin: 0;
+        white-space: nowrap;
+        color: var(--e7-text-2);
+        font-weight: 500;
+        cursor: pointer;
+    }
+
+        .aiv-check input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--e7-accent);
+        }
+
+    .aiv-chipbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 16px;
+    }
+
+    .aiv-chipbar-label {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: var(--e7-text-3);
+        margin-right: 4px;
+    }
+
+    .aiv-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 11px;
+        border-radius: 999px;
+        font-size: 12.5px;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--e7-accent-ink);
+        background: var(--e7-accent-soft);
+        border: 1px solid transparent;
+        text-decoration: none !important;
+        cursor: pointer;
+        transition: border-color .15s ease, background .15s ease;
+    }
+
+        .aiv-chip:hover {
+            border-color: var(--e7-accent);
+            color: var(--e7-accent-ink);
+        }
+
+        .aiv-chip.aiv-chip-sm {
+            padding: 1px 8px;
+            font-size: 11px;
+        }
+
+    .aiv-chip-sep {
+        width: 1px;
+        height: 18px;
+        background: var(--e7-border);
+        margin: 0 4px;
+    }
+
+    .aiv-asset {
+        border: 1px solid var(--e7-border);
+        border-radius: 14px;
+        background: var(--e7-surface);
+        margin-bottom: 16px;
+        overflow: hidden;
+    }
+
+    .aiv-asset-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px 16px;
+        background: var(--e7-surface-2);
+        border-bottom: 1px solid var(--e7-border);
+    }
+
+    .aiv-asset-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--e7-heading);
+    }
+
+    .aiv-asset-site {
+        font-size: 13px;
+        color: var(--e7-text-2);
+    }
+
+        .aiv-asset-site i {
+            color: var(--e7-accent);
+            margin-right: 5px;
+        }
+
+    .aiv-asset-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px 16px 0;
+    }
+
+    .aiv-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--e7-text-2);
+        background: var(--e7-surface-2);
+        border: 1px solid var(--e7-border);
+    }
+
+        .aiv-badge.aiv-badge-strong {
+            color: var(--e7-accent-ink);
+            background: var(--e7-accent-soft);
+            border-color: transparent;
+        }
+
+    .aiv-asset-body {
+        padding: 12px 16px 16px;
+    }
+
+    .aiv-scroll {
+        overflow: auto;
+        max-height: 420px;
+    }
+
+        .aiv-scroll thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+    .aiv-table th,
+    .aiv-table td {
+        white-space: nowrap;
+        vertical-align: middle;
+        font-size: 13px;
+    }
+
+    .aiv-link,
+    .aiv-link a {
+        cursor: pointer;
+        color: var(--e7-accent) !important;
+        font-weight: 600;
+    }
+
+        .aiv-link a:hover {
+            text-decoration: underline;
+        }
+
+    .aiv-empty {
+        padding: 36px 16px;
+        text-align: center;
+        color: var(--e7-text-3);
+        font-size: 14px;
+    }
+
+        .aiv-empty i {
+            display: block;
+            font-size: 26px;
+            margin-bottom: 10px;
+            color: var(--e7-border-2, var(--e7-border));
+        }
+
+    /* Signal groups */
+    .aiv-group {
+        border: 1px solid var(--e7-border);
+        border-radius: 12px;
+        margin-bottom: 12px;
+        overflow: hidden;
+        background: var(--e7-surface);
+    }
+
+    .aiv-group-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        padding: 11px 16px;
+        border: 0;
+        text-align: left;
+        background: var(--e7-surface-2);
+        color: var(--e7-heading);
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+        .aiv-group-head:focus {
+            outline: none;
+        }
+
+        .aiv-group-head i {
+            width: 22px;
+            height: 22px;
+            display: inline-grid;
+            place-items: center;
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--e7-accent-ink);
+            background: var(--e7-accent-soft);
+        }
+
+    .aiv-group-body {
+        padding: 0 12px 12px;
+    }
+
+    .aiv-group .tableFixHead {
+        overflow: auto;
+        max-height: 520px;
+    }
+
+    .aiv-subhead th {
+        background: var(--e7-accent-soft) !important;
+        color: var(--e7-accent-ink) !important;
+        font-weight: 700;
+        border-top: 1px solid var(--e7-border) !important;
+    }
+
+    /* Track toolbar / pager */
+    .aiv-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .aiv-pager {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+        .aiv-pager .form-control {
+            width: auto;
+            min-width: 80px;
+            height: 32px;
+            padding: 2px 8px;
+            font-size: 13px;
+        }
+
+        .aiv-pager .pagination {
+            margin: 0;
+        }
+
+    .aiv-count {
+        font-size: 13px;
+        color: var(--e7-text-2);
+    }
+
+        .aiv-count strong {
+            color: var(--e7-heading);
+        }
+
+    .btn-aiv-download {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 38px;
+        padding: 0 14px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--e7-accent-ink) !important;
+        background: var(--e7-accent-soft);
+        border: 1px solid var(--e7-accent);
+        text-decoration: none !important;
+    }
+
+        .btn-aiv-download:hover {
+            background: var(--e7-accent);
+            color: #fff !important;
+        }
+
+    .aiv-asset-attr:empty {
+        display: none;
+    }
+
+    /* ── Graph modals ── */
+    .aiv-modal .modal-content {
+        background: var(--e7-surface);
+        color: var(--e7-text);
+        border: 1px solid var(--e7-border);
+        border-radius: 14px;
+    }
+
+    .aiv-modal .modal-header,
+    .aiv-modal .modal-footer {
+        border-color: var(--e7-border);
+    }
+
+    .aiv-modal .modal-title {
+        font-size: 13.5px;
+        font-weight: 500;
+        line-height: 1.7;
+        color: var(--e7-text-2);
+        padding-right: 32px;
+    }
+
+        .aiv-modal .modal-title #line1 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--e7-heading);
+        }
+
+        .aiv-modal .modal-title #op {
+            color: var(--e7-accent-ink);
+        }
+
+    .aiv-modal .close {
+        position: absolute;
+        right: 14px;
+        top: 12px;
+        color: var(--e7-text-2);
+        text-shadow: none;
+        opacity: .8;
+    }
+
+    .aiv-modal .btn-aiv-close {
+        height: 36px;
+        padding: 0 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        color: var(--e7-text-2);
+        background: var(--e7-surface-2);
+        border: 1px solid var(--e7-border);
+    }
+
+        .aiv-modal .btn-aiv-close:hover {
+            color: var(--e7-heading);
+            border-color: var(--e7-accent);
+        }
+
+    .aiv-modal .modal-body canvas {
+        max-width: 100%;
+    }
+
+    #pointmachine-select-mainId {
+        margin-bottom: 10px;
+    }
+
+        #pointmachine-select-mainId > div {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        #pointmachine-select-mainId input[type=checkbox] {
+            width: 15px;
+            height: 15px;
+            accent-color: var(--e7-accent);
+        }
+
+        #pointmachine-select-mainId label {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--e7-text-2);
+        }
+</style>
+
+<div id="loader" role="status" aria-label="Loading">
+    <img src="~/Content/images/FRSLoader.gif" height="80" alt="Loading..." />
+</div>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI Section</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Visualization</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Visualization</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header mb-4">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-10">
+                        <h4 class="m-0">Search</h4>
+                        <ul class="nav nav-pills tabsStyle aiv-tabs" id="aivTypeTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button type="button" class="nav-link border-0 active" data-type="3" role="tab" aria-selected="true"><i class="fa-solid fa-code-branch"></i>Point Machine</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button type="button" class="nav-link border-0" data-type="2" role="tab" aria-selected="false"><i class="fa-solid fa-traffic-light"></i>Signal</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button type="button" class="nav-link border-0" data-type="1" role="tab" aria-selected="false"><i class="fa-solid fa-road"></i>Track</button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    @* The tabs drive this (hidden) select so the original #TypeId logic is unchanged. *@
+                    @Html.DropDownList("TypeId", new List<SelectListItem>
+                    {
+                        new SelectListItem { Text = "Select", Value = "" },
+                        new SelectListItem { Text = "Track", Value = "1" },
+                        new SelectListItem { Text = "Signal", Value = "2" },
+                        new SelectListItem { Text = "POINT MACHINE", Value = "3", Selected = true },
+                    }, new { @class = "form-control d-none", tabindex = -1, aria_hidden = "true" })
+
+                    @* Track cluster (used only by the track upload/filter functions, whose actions are disabled in the controller). *@
+                    <input type="hidden" id="txtCluster" />
+
+                    <div class="row mb-lg-4 mb-3">
+                        <div class="col">
+                            <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
+                                <div class="form-group w-100 w-sm-48 divUpload">
+                                    <label for="fileAIUpload">Upload CSV</label>
+                                    <input type="file" accept=".csv" class="form-control" id="fileAIUpload" onchange="fnUploadCSV(this)" />
+                                </div>
+
+                                <div id="divSignalCluster" style="display:none">
+                                    <div class="form-group">
+                                        <label for="txtRGCluster">RG Cluster</label>
+                                        <input type="text" class="form-control" id="txtRGCluster" autocomplete="off" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="txtDGCluster">DG Cluster</label>
+                                        <input type="text" class="form-control" id="txtDGCluster" autocomplete="off" />
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="txtHGCluster">HG Cluster</label>
+                                        <input type="text" class="form-control" id="txtHGCluster" autocomplete="off" />
+                                    </div>
+                                </div>
+
+                                <div class="form-group w-sm-100 divUpload">
+                                    <label class="d-none d-md-block">&nbsp;</label>
+                                    <button type="button" class="btn btn-primary-search" title="Upload &amp; visualise" onclick="fnAivSearch()">
+                                        <img src="~/Areas/FRS25/assets/img/search.svg" alt="Search" />
+                                    </button>
+                                </div>
+
+                                <div id="divTrackHint" class="aiv-hint align-self-center" style="display:none">
+                                    <i class="fa-solid fa-circle-info"></i>Track data is loaded from the server &mdash; use the filters in the result below.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header mb-3">
+                    <h4 class="m-0" id="aivResultTitle">Point Machine</h4>
+                    <p class="aiv-result-sub" id="aivResultSub">Upload a point machine CSV to visualise AI clusters and signatures.</p>
+                </div>
+                <div class="card-body p-0">
+                    <div id="divPointMachine">
+                    </div>
+
+                    @using (Ajax.BeginForm("_TrackDashboard", "AIVisualization", new { area = "FRS25" }, new AjaxOptions()
+                    {
+                        HttpMethod = "POST",
+                        UpdateTargetId = "divTrack",
+                        InsertionMode = InsertionMode.Replace,
+                        LoadingElementId = "loader"
+                    }, new { id = "frmTrack" }))
+                    {
+                        <div id="divTrack">
+                        </div>
+                    }
+
+                    @using (Ajax.BeginForm("FilterSignal", "AIVisualization", new { area = "FRS25" }, new AjaxOptions()
+                    {
+                        HttpMethod = "POST",
+                        UpdateTargetId = "divSignal",
+                        InsertionMode = InsertionMode.Replace,
+                        LoadingElementId = "loader"
+                    }, new { id = "frmFilterSignal" }))
+                    {
+                        <div id="divSignal">
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade aiv-modal" id="modal-graph" tabindex="-1" role="dialog" data-backdrop="static" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="myModalLabel">
+                    <span id="line1">52 2021-05-26 17:07:00 <b id="op">Normal Operation:</b></span><br />
+                    <span id="line2">- A Max / Average Current: 3.8 / 2.34</span><br />
+                    <span id="line3">- A Max / Average Voltage: 118.9 / 116.00</span><br />
+                    <span id="line4">- A Operating Time (ms): 3300</span><br />
+                    <span id="line5">B Max / Average Current: null / 0.0</span><br />
+                    <span id="line6">- B Max / Average Voltage: 0 / 0.00</span><br />
+                    <span id="line7">- B Operating Time (ms): 0</span><br />
+                </h6>
+                <button type="button" class="close" data-dismiss="modal" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 mainclass" id="mainId">
+                        <canvas id='basicflot' style='height: 263px'></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-aiv-close" data-dismiss="modal" data-bs-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade aiv-modal" id="modal-pointmachine-graph" tabindex="-1" role="dialog" data-backdrop="static" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Signature comparison</h6>
+                <button type="button" class="close" data-dismiss="modal" data-bs-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <input type="hidden" id="hdnPMAssetId" />
+                        <div class="row" id="pointmachine-select-mainId">
+
+                        </div>
+                    </div>
+                    <div class="col-sm-12 mainclass" id="pointmachine-mainId">
+                        <canvas id='pointmachine-basicflot'></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-aiv-close" data-dismiss="modal" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    /* ── Theme helpers (read the FRS25 --e7-* tokens so charts follow day/night) ── */
+    function fnAivCss(name, fallback) {
+        try {
+            var v = window.getComputedStyle(document.documentElement).getPropertyValue(name);
+            v = (v || '').trim();
+            return v || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    function fnAivChartTheme() {
+        if (typeof Chart === 'undefined' || !Chart.defaults || !Chart.defaults.global) return;
+        Chart.defaults.global.defaultFontColor = fnAivCss('--e7-text-2', '#55657a');
+        Chart.defaults.global.defaultFontFamily = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+        if (Chart.defaults.scale && Chart.defaults.scale.gridLines) {
+            Chart.defaults.scale.gridLines.color = fnAivCss('--e7-border', 'rgba(0,0,0,0.1)');
+            Chart.defaults.scale.gridLines.zeroLineColor = fnAivCss('--e7-border-2', fnAivCss('--e7-border', 'rgba(0,0,0,0.25)'));
+        }
+    }
+
+    var aivTabText = {
+        '3': { title: 'Point Machine', sub: 'Upload a point machine CSV to visualise AI clusters and signatures.' },
+        '2': { title: 'Signal', sub: 'Enter at least one aspect cluster (RG / DG / HG), then upload a signal CSV.' },
+        '1': { title: 'Track', sub: 'Track AI clusters and outliers from the server.' }
+    };
+
+    function fnAivSyncTabUi(type) {
+        type = String(type || '');
+        $('#aivTypeTabs .nav-link').each(function () {
+            var on = String($(this).data('type')) === type;
+            $(this).toggleClass('active', on).attr('aria-selected', on ? 'true' : 'false');
+        });
+        var t = aivTabText[type];
+        if (t) {
+            $('#aivResultTitle').text(t.title);
+            $('#aivResultSub').text(t.sub);
+        }
+        // Point machine results live in their own container; track/signal share #divTrack (as in the reference).
+        $('#divPointMachine').toggle(type === '3' || type === '');
+        $('#frmTrack, #frmFilterSignal').toggle(type !== '3');
+        $('#divTrackHint').toggle(type === '1');
+    }
+
+    function fnAivSearch() {
+        if ($('#TypeId').val() == 1) {
+            $('#frmTrack').submit();
+            return;
+        }
+        var input = document.getElementById('fileAIUpload');
+        if (!input || !input.files || input.files.length === 0) {
+            CommonNotification("ERROR", "Please select a CSV file.", "Error");
+            return;
+        }
+        fnUploadCSV(input);
+    }
+
+    window.onbeforeunload = function () {
+
+        $.ajax({
+            url: "/FRS25/AIVisualization/RemoveCache",
+            type: "POST",
+            contentType: 'application/json',
+            success: function (data) {
+
+            },
+            error: function (xhr, error, status) {
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        fnAivChartTheme();
+
+        $('#TypeId').change(function () {
+            $('.divUpload').show();
+            if ($('#TypeId').val() == 1) {
+                $('.divUpload').hide();
+                $('#frmTrack').submit();
+                //$('#divCluster').show();
+            }
+            else if ($('#TypeId').val() == 2) {
+                $('#divSignalCluster').show();
+            }
+            else {
+                $('#divCluster').hide();
+                $('#divSignalCluster').hide();
+            }
+            $('#txtCluster').val('');
+            $('#txtRGCluster').val('');
+            $('#txtDGCluster').val('');
+            $('#txtHGCluster').val('');
+            fnAivSyncTabUi($('#TypeId').val());
+        });
+
+        $('#aivTypeTabs').on('click', '.nav-link', function () {
+            var type = String($(this).data('type'));
+            if (String($('#TypeId').val()) === type) return;
+            $('#TypeId').val(type).trigger('change');
+        });
+
+        // The root AssetAttribute partial (loaded from the Track grid) uses Bootstrap 5 data-bs-dismiss;
+        // the FRS25 layout runs Bootstrap 4, so close those modals here.
+        $(document).on('click', '[data-bs-dismiss="modal"]:not([data-dismiss])', function () {
+            $(this).closest('.modal').modal('hide');
+        });
+
+        fnAivSyncTabUi($('#TypeId').val());
+    });
+
+    function fnUploadCSV($this) {
+
+        var fileUpload = $($this).get(0);
+        var files = fileUpload.files;
+        if (!files || files.length === 0) {
+            return;
+        }
+        var fileData = new FormData();
+        fileData.append(files[0].name, files[0]);
+        $("#divTrack").empty()
+        $("#divSignal").empty()
+        if ($('#TypeId').val() == 2) {
+            fnUploadSignal(fileData);
+        }
+        else if ($('#TypeId').val() == 3) {
+            fnUploadPointMachine(fileData);
+        }
+
+    }
+
+    // NOTE: UploadTrackCSV is commented out in AIVisualizationController; this function is never called
+    // (same as the reference). Kept for parity only.
+    function fnUploadTrack(fileData) {
+        if ($('#txtCluster').val() != null && $('#txtCluster').val() != undefined && $('#txtCluster').val() != '') {
+            fileData.append("cluster", $('#txtCluster').val());
+            $("#loader").show();
+            $.ajax({
+                url: "/FRS25/AIVisualization/UploadTrackCSV",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        $("#divTrack").empty().append(data);
+                    } else {
+                        $("#divTrack").empty()
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    $("#divTrack").empty()
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Cluster is required.", "Error");
+        }
+
+    }
+
+    function fnUploadSignal(fileData) {
+        var isValid = false;
+        if ($('#txtRGCluster').val() != null && $('#txtRGCluster').val() != undefined && $('#txtRGCluster').val() != '') {
+            isValid = true;
+        }
+        if ($('#txtDGCluster').val() != null && $('#txtDGCluster').val() != undefined && $('#txtDGCluster').val() != '') {
+            isValid = true;
+        }
+        if ($('#txtHGCluster').val() != null && $('#txtHGCluster').val() != undefined && $('#txtHGCluster').val() != '') {
+            isValid = true;
+        }
+
+
+        if (isValid) {
+            fileData.append("ClusterRG", $('#txtRGCluster').val());
+            fileData.append("ClusterDG", $('#txtDGCluster').val());
+            fileData.append("ClusterHG", $('#txtHGCluster').val());
+            $("#loader").show();
+            $.ajax({
+                url: "/FRS25/AIVisualization/UploadSignalCSV",
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: fileData,
+                async: true,
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        $("#divTrack").empty().append(data);
+                    } else {
+                        $("#divTrack").empty()
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    $("#divTrack").empty()
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        } else {
+            CommonNotification("ERROR", "Cluster is required.", "Error");
+        }
+
+
+    }
+
+    function fnUploadPointMachine(fileData) {
+        $("#loader").show();
+        $.ajax({
+            url: "/FRS25/AIVisualization/UploadPointMachineCSV",
+            type: "POST",
+            contentType: false,
+            processData: false,
+            data: fileData,
+            async: true,
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data != undefined && data != '') {
+                    $("#divPointMachine").empty().append(data);
+                } else {
+                    $("#divPointMachine").empty()
+                }
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                $("#divPointMachine").empty()
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    function fnFilterPointMachine() {
+        $("#loader").show();
+        var searchCriteria = {
+            Status_A: $('#drpAStatus').find(":selected").val(),
+            Status_B: $('#drpBStatus').find(":selected").val(),
+            ClusterA: $('#drpaCluster').find(":selected").val(),
+            ClusterB: $('#drpbCluster').find(":selected").val(),
+            IsThickWave: $("#chkIsThickWave").is(":checked") ? "true" : "false"
+        };
+
+        $.ajax({
+            url: "/FRS25/AIVisualization/FilterPointMachine",
+            type: "POST",
+            data: '{searchCriteria:' + JSON.stringify(searchCriteria) + '}',
+            contentType: 'application/json',
+            dataType: 'html',
+            success: function (data) {
+                $("#loader").hide();
+                if (data != null && data != undefined && data != '') {
+                    $("#divPointMachine").empty().append(data);
+
+                    $('#drpAStatus').val(searchCriteria.Status_A);
+                    $('#drpBStatus').val(searchCriteria.Status_B);
+                    $('#drpaCluster').val(searchCriteria.ClusterA);
+                    $('#drpbCluster').val(searchCriteria.ClusterB);
+
+
+
+                } else {
+                    $("#divPointMachine").empty()
+                }
+            },
+            error: function (xhr, error, status) {
+                $("#loader").hide();
+                $("#divPointMachine").empty()
+                CommonNotification("ERROR", "Internal server error.", "Error");
+            }
+        });
+    }
+
+    // NOTE: FilterTrack is commented out in AIVisualizationController and nothing in the UI calls this
+    // (same as the reference, where its only caller is commented-out markup). Kept for parity only.
+    function fnFilterTrack() {
+        if ($('#txtCluster').val() != null && $('#txtCluster').val() != undefined && $('#txtCluster').val() != '') {
+            var searchCriteria = {
+                AssetName: $('#txtTrackAssetName').val(),
+                AI_Cluster: $('#txtCluster').val()
+            };
+            $("#loader").show();
+            $.ajax({
+                url: "/FRS25/AIVisualization/FilterTrack",
+                type: "POST",
+                data: '{mSearchCriteria:' + JSON.stringify(searchCriteria) + '}',
+                contentType: 'application/json',
+                dataType: 'html',
+                success: function (data) {
+                    $("#loader").hide();
+                    if (data != null && data != undefined && data != '') {
+                        $("#divTrack").empty().append(data);
+                        $('#txtTrackAssetName').val(searchCriteria.AssetName);
+                    } else {
+                        $("#divTrack").empty()
+                    }
+                },
+                error: function (xhr, error, status) {
+                    $("#loader").hide();
+                    $("#divTrack").empty()
+                    CommonNotification("ERROR", "Internal server error.", "Error");
+                }
+            });
+        }
+        else {
+            CommonNotification("ERROR", "Cluster is required.", "Error");
+        }
+
+    }
+
+    function fnBindSignatureGragh(data, type, datevalue, direction, name) {
+        fnAivChartTheme();
+        $("div").remove(".chartjs-size-monitor");
+        var j = JSON.parse(data);
+        var acg;
+        var bcg;
+        var avg;
+        var bvg;
+        if (j.A_C_AVERAGE != null) {
+            acg = parseFloat(j.A_C_AVERAGE).toFixed(2);
+        }
+        if (j.B_C_AVERAGE != null) {
+            bcg = parseFloat(j.B_C_AVERAGE).toFixed(2);
+        }
+        if (j.A_V_AVERAGE != null) {
+            avg = parseFloat(j.A_V_AVERAGE).toFixed(2);
+        }
+        if (j.B_V_AVERAGE != null) {
+            bvg = parseFloat(j.B_V_AVERAGE).toFixed(2);
+        }
+
+        $("#line1").empty().text(name + " " + datevalue);
+        $("#op").text(direction + " Operation");
+        $("#line2").empty().text("- A Max / Average Current:" + j.A_C_MAX + "/" + acg);
+        $("#line3").empty().text("-  Average Voltage:" + avg);
+        $("#line4").empty().text("- A Operating Time (ms):" + j.A_C_TIME);
+        $("#line5").empty().text("- B Max / Average Current:" + j.B_C_MAX + "/" + bcg);
+        $("#line6").empty().text("- Average Voltage:" + bvg);
+        $("#line7").empty().text("- B Operating Time (ms):" + j.B_C_TIME);
+
+        var array = [];
+        var labels = "";
+        var total = 0;
+        if (type == "CC") {
+            labels = "Combine C";
+            $.each(j.A_C, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+
+            $.each(j.B_C, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+        }
+
+        if (type == "CV") {
+            labels = "Combine V";
+            $.each(j.A_V, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+
+            $.each(j.B_V, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+        }
+
+        if (type == "AC") {
+            labels = "A End";
+            $.each(j.A_C, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+        }
+        if (type == "BC") {
+            labels = "B End";
+            $.each(j.B_C, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+        }
+        if (type == "AV") {
+            labels = "A End";
+            $.each(j.A_V, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+        }
+        if (type == "BV") {
+            labels = "B End";
+            $.each(j.B_V, function (id, val) {
+                var num = parseInt(val);
+                total += num;
+                array.push(val);
+            });
+        }
+
+        var marker = total / array.length;
+        var time = j.A_C_TIME;
+        var len = parseInt(j.A_C_TIME) / parseInt(1000);
+        var loop = parseInt(array.length / 2) + 1;
+
+        var label = [];
+
+        for (var i = 0; i <= array.length; i++) {
+            var xVal = (i) * (100);
+            label.push(xVal);
+        }
+
+        var pieChartContent = document.getElementById('mainId');
+        pieChartContent.innerHTML = '&nbsp;';
+        $('#mainId').append('<canvas id="basicflot" style="height: 263px"></canvas>');
+
+        var canvas = $("#basicflot").get(0).getContext("2d");
+
+        var accent = fnAivCss('--e7-accent', 'rgba(75,192,192,1)');
+        var data = {
+            labels: label,
+            datasets: [
+                {
+                    label: labels + " Current",
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: fnAivCss('--e7-accent-soft', 'rgba(75,192,192,0.4)'),
+                    borderColor: accent,
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: accent,
+                    pointBackgroundColor: fnAivCss('--e7-surface', '#fff'),
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: accent,
+                    pointHoverBorderColor: fnAivCss('--e7-border', 'rgba(220,220,220,1)'),
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array,
+                    markLine: {
+                        data: [{
+                            type: 'average',
+                            name: '???'
+                        }]
+                    }
+                }
+            ]
+        };
+
+        var option = {
+            showLines: true,
+
+        };
+        var myLineChart = Chart.Line(canvas, {
+            data: data,
+            options: option
+        });
+
+        $("#modal-graph").modal("show");
+    }
+</script>

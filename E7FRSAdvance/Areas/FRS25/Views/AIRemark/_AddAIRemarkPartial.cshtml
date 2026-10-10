@@ -1,0 +1,118 @@
+@model Domain.AIRemark
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+@Html.HiddenFor(m => m.Id)
+<div class="modal fade ais-modal" id="modal-add-AIRemark" tabindex="-1" role="dialog" aria-labelledby="modal-add-AIRemark" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                @if (Model.Id == 0)
+                {
+                    <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Add Remark</span></h4>
+                }
+                else
+                {
+                    <h4 class="modal-title isEdit" id="myModalLabel"><span id="spHeader"> Edit Remark</span></h4>
+                }
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="AssetTypeId">Asset Type <span class="text-danger">*</span></label>
+                            @Html.DropDownListFor(m => m.AssetTypeId, (IEnumerable<SelectListItem>)ViewBag.AssetTypes, new { @class = "form-control", tabindex = 1 })
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="ClusterId">Cluster <span class="text-danger">*</span></label>
+                            <select id="ClusterId" name="ClusterId" class="form-control">
+                                @for (int i = 1; i <= 50; i++)
+                                {
+                                    if (Model.ClusterId == i)
+                                    {
+                                        <option value="@i" selected>@i</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="@i">@i</option>
+                                    }
+                                }
+                            </select>
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <div class="col-sm-12">
+                        <div class="form-group">
+                            <label for="Remark">Remark <span class="text-danger">*</span></label>
+                            @Html.TextBoxFor(m => m.Remark, new { @class = "form-control", tabindex = 2 })
+                            <span class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary ls-1-2" onclick="fnSave()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---- from AddAIRemark.js ----
+    // First rendered inside Index (before the layout loads jQuery), later returned by GetById / SaveAIRemark.
+    (function (fn) {
+        if (window.jQuery) { jQuery(fn); } else { document.addEventListener('DOMContentLoaded', fn); }
+    })(function () {
+        if ($('#hdnSaveType').val() == 'Success') {
+            CommonNotification($("#hdnSaveType").val().toLowerCase(), $("#hdnSaveMessage").val());
+
+            fnAisClearModalBackdrop();
+            $("#frmGetAIRemarkList").submit();
+            window.history.pushState('', '', '@Url.Action("Index", "AIRemark", new { area = "FRS25" })');
+        }
+        else if ($('#hdnSaveType').val() == 'Error') {
+            CommonNotification($("#hdnSaveType").val().toLowerCase(), $("#hdnSaveMessage").val());
+
+            fnAisClearModalBackdrop();
+            window.history.pushState('', '', '@Url.Action("Index", "AIRemark", new { area = "FRS25" })');
+        }
+    });
+
+    function fnSave() {
+        if (Validate()) {
+            $("#frmSaveAIRemark").submit();
+        }
+    }
+
+    function Validate() {
+        var result = true;
+
+        if ($.trim($("#Remark").val()).length == 0) {
+            $("#Remark").next("span").html("Remark is required");
+            result = false;
+        }
+        else {
+            $("#Remark").next("span").html("");
+        }
+
+        if ($.trim($("#AssetTypeId").val()).length == 0) {
+            $("#AssetTypeId").next("span").html("Asset Type is required");
+            result = false;
+        }
+        else {
+            $("#AssetTypeId").next("span").html("");
+        }
+
+        return result;
+    }
+</script>

@@ -438,7 +438,11 @@
         }
         if (!document._sipEscBound) {
             document.addEventListener('keydown', function (e) {
-                if (e.key === 'Escape' && sipCard.classList.contains('fullscreen')) setCardFullscreen(sipCard, false);
+                if (e.key === 'Escape' && sipCard.classList.contains('fullscreen')) {
+                    /* Esc closes an open asset drawer first, not the full screen */
+                    if (window.TlAssetDrawer && window.TlAssetDrawer.isOpen()) return;
+                    setCardFullscreen(sipCard, false);
+                }
             });
             document._sipEscBound = true;
         }
@@ -453,13 +457,38 @@
         canvasEl.addEventListener('pointerdown', onSipAssetPointerDown, true);
         canvasEl.addEventListener('pointerup', onSipAssetPointerUp, true);
         canvasEl._sipAssetPopupClickBound = true;
+        /* Esc clears the selected asset first; a second Esc exits full screen */
+        if (!window._sipInspEscBound) {
+            window.addEventListener('keydown', function (e) {
+                if (e.key !== 'Escape' || !insp.name) return;
+                if (window.TlAssetDrawer && window.TlAssetDrawer.isOpen()) return;   // drawer closes first
+                if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+                inspClear();
+                e.stopImmediatePropagation();
+            }, true);
+            window._sipInspEscBound = true;
+        }
     }
+    var emptyClickDown = null;   // press on empty yard (for click-to-deselect)
     function onSipAssetPointerDown(evt) {
         var g = findSipLiveCellGroup(evt.target);
-        if (!g) { assetClickDown = null; return; }
+        emptyClickDown = null;
+        if (!g) {
+            assetClickDown = null;
+            if (!(evt.target && evt.target.closest && evt.target.closest('button, a, input, select, .sip-insp, .sip-replay, .sip-zoom-ctrls')))
+                emptyClickDown = { x: evt.clientX, y: evt.clientY };
+            return;
+        }
         assetClickDown = { x: evt.clientX, y: evt.clientY, id: g.getAttribute('data-cell-id') || '', group: g };
     }
     function onSipAssetPointerUp(evt) {
+        if (emptyClickDown) {
+            /* plain click on empty yard (not a pan) -> deselect */
+            var still = Math.abs(evt.clientX - emptyClickDown.x) <= 6 && Math.abs(evt.clientY - emptyClickDown.y) <= 6;
+            emptyClickDown = null;
+            if (still && insp.name && !findSipLiveCellGroup(evt.target)) inspClear();
+            return;
+        }
         if (!assetClickDown) return;
         var g = findSipLiveCellGroup(evt.target) || assetClickDown.group;
         if (!g) { assetClickDown = null; return; }
@@ -479,6 +508,12 @@
         }
         /* v618.18: full screen -> show the asset in the INSPECTOR panel (its
            "Details" button opens the asset popup); small card -> popup */
+        /* Telemetry Live: a click always opens the asset dashboard drawer */
+        if (typeof window.tlOpenAssetDrawer === 'function') {   // unlinked cells get a hint there
+            if (insp.name) inspClear();
+            openSipAssetPopupForCell(cell, evt);
+            return;
+        }
         if (inspectorVisible()) {
             inspectSelect(cell);
             return;
@@ -494,7 +529,7 @@
        small trend per reading, graph of the chosen reading.
        ====================================================================== */
     var INSP_CSS = '' +
-        '.sip-insp{position:absolute;right:14px;z-index:6;width:min(360px,34%);max-height:58%;display:flex;flex-direction:column;' +
+        '.sip-insp{position:absolute;right:14px;z-index:45;width:min(360px,34%);max-height:58%;display:flex;flex-direction:column;' +
         'background:var(--in-bg);color:var(--in-text);border:1px solid var(--in-edge);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);' +
         'font:12.5px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;}' +
         '.sip-card:not(.fullscreen) .sip-insp{display:none;}' +
@@ -540,9 +575,11 @@
         '.sip-insp .sip-insp-bar button{height:22px;padding:0 7px;font-size:11px;}' +
         '.sip-insp .sip-insp-body{padding:6px 8px 8px;}' +
         '.sip-insp-chips{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;}' +
-        '.sip-insp-list{display:flex;flex-direction:column;gap:1px;}' +
-        '.sip-insp-li{display:grid;grid-template-columns:minmax(0,1fr) 66px 70px;gap:6px;align-items:center;padding:4px 6px 4px 9px;border-radius:6px;font-size:12px;position:relative;}' +
-        '.sip-insp-li:nth-child(odd){background:var(--in-hover);}' +
+        /* live readings: column width = longest name + value (set by inspSize), as many columns as fit */
+        '.sip-insp .sip-insp-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(var(--insp-col,140px),100%),1fr));gap:3px;}' +
+        '.sip-insp .sip-insp-li .n{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.25;}' +
+        '.sip-insp .sip-insp-li{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:4px;row-gap:2px;align-items:center;padding:4px 6px 4px 9px;border-radius:6px;font-size:12px;position:relative;min-width:0;background:var(--in-hover);}' +
+        '.sip-insp .sip-insp-li > span:nth-child(3){grid-column:1 / -1;}' +
         '.sip-insp-li::before{content:"";position:absolute;left:2px;top:5px;bottom:5px;width:3px;border-radius:2px;background:rgba(31,157,85,.55);}' +
         '.sip-insp-li.st-low::before,.sip-insp-li.st-near::before{background:#E0A100;} .sip-insp-li.st-high::before{background:#E5484D;} .sip-insp-li.st-none::before{background:var(--in-edge);}' +
         '.sip-insp-sumrow{display:flex;align-items:center;gap:8px;margin-bottom:6px;color:var(--in-text);}' +
@@ -628,18 +665,104 @@
         '.sip-insp-row.sm svg{height:18px;}' +
         '.sip-insp .rp-pk{color:#1F9D55;font-weight:700;} .sip-insp .rp-dr{color:#B88700;font-weight:700;}';
     var insp = { name: null, cellId: null, min: false, timer: null, pressing: false, tab: 'live', cache: {}, frame: '', graphCol: null, graphHours: 6 };
-    /* keep the yard visible: the canvas gives up the panel's width on the
-       right while the panel is open (the SVG re-fits to the narrower box) */
     function inspReserve(on) {
-        /* v618.24: the yard is NOT shifted any more (panel floats, draggable) */
-        on = false;
-        var canvas = document.getElementById('sipCanvas');
-        if (!canvas) return;
-        var want = on ? '336px' : '';
-        if (canvas.style.marginRight !== want) {
-            canvas.style.marginRight = want;
-            try { window.dispatchEvent(new Event('resize')); } catch (e) { /* old browser */ }
+        /* v618.24: the yard is NEVER shifted -- the panel floats over a free
+           part of the yard (inspPlace). Panel closed -> forget its spot. */
+        if (!on) insp.placeKey = '';
+    }
+    /* Column width that shows the longest reading name + value uncut. */
+    function inspColWidth(rd) {
+        if (!rd || !rd.length) return 0;
+        var cv = inspColWidth._cv || (inspColWidth._cv = document.createElement('canvas'));
+        var ctx = cv.getContext && cv.getContext('2d');
+        var nw = 0, vw = 0;
+        rd.forEach(function (r) {
+            var n = String(r.k || ''), v = inspFmt(r.v) + ' H';
+            if (ctx) {
+                ctx.font = '12px system-ui,-apple-system,"Segoe UI",sans-serif';
+                nw = Math.max(nw, ctx.measureText(n).width);
+                ctx.font = '700 12px system-ui,-apple-system,"Segoe UI",sans-serif';
+                vw = Math.max(vw, ctx.measureText(v).width);
+            } else { nw = Math.max(nw, n.length * 7); vw = Math.max(vw, v.length * 7.5); }
+        });
+        /* + column gap 4, padding 9/6, a little slack */
+        return Math.ceil(nw + vw + 4 + 15 + 6);
+    }
+    /* Panel width from the readings: up to 3 columns (a short, wide panel
+       hides less of the yard), never wider than half the yard (names then
+       wrap instead of being cut). */
+    function inspSize(el, host) {
+        var col = insp.colW || 0;
+        if (!col || insp.min) { el.style.width = ''; el.style.removeProperty('--insp-col'); return; }
+        var cols = Math.max(1, Math.min(3, insp.colN || 1));
+        var hw = host.getBoundingClientRect().width || 1200;
+        var w = Math.max(320, Math.min(cols * col + (cols - 1) * 3 + 18, 720, Math.round(hw * 0.5)));
+        el.style.width = w + 'px';
+        el.style.setProperty('--insp-col', col + 'px');
+    }
+    /* Put the panel next to the selected asset where it covers NO SIP
+       element: of all free spots in the view, the one nearest the asset wins.
+       The yard itself is never moved; if no spot is fully free, the spot
+       hiding the least (then nearest) wins. */
+    function inspPlace(el, host, canvas) {
+        if (insp.pos) return;   // the user dragged it: keep their spot
+        var hr = host.getBoundingClientRect(), cr = canvas.getBoundingClientRect();
+        var pw = el.offsetWidth, ph = el.offsetHeight;
+        if (!pw || !ph) return;
+        var key = [insp.cellId, state.viewBox, Math.round(cr.width), Math.round(cr.height), pw, ph].join('|');
+        if (key === insp.placeKey) return;
+        insp.placeKey = key;
+        var M = 8, obs = [], P = 6;
+        function addObs(r) {
+            if (!r || r.width <= 0 || r.height <= 0) return;
+            if (r.right < hr.left || r.left > hr.right || r.bottom < hr.top || r.top > hr.bottom) return;
+            obs.push({ l: r.left - hr.left - P, t: r.top - hr.top - P, r: r.right - hr.left + P, b: r.bottom - hr.top + P });
         }
+        for (var id in state.domCells) {
+            if (state.domCells.hasOwnProperty(id)) addObs(state.domCells[id].getBoundingClientRect());
+        }
+        if (state._zoomBar && state._zoomBar.style.display !== 'none') addObs(state._zoomBar.getBoundingClientRect());
+        /* station name bar (DN / name / UP) and any other overlay in the host */
+        var stn = document.getElementById('sipStationBar');
+        if (stn && stn.style.display !== 'none') for (var sc = 0; sc < stn.children.length; sc++) addObs(stn.children[sc].getBoundingClientRect());
+        for (var hc = 0; hc < host.children.length; hc++) {
+            var ch = host.children[hc];
+            if (ch === el || ch === canvas || ch === stn || ch === state._zoomBar || ch.tagName === 'STYLE') continue;
+            if (window.getComputedStyle(ch).display !== 'none') addObs(ch.getBoundingClientRect());
+        }
+        /* the selected asset: the panel opens as close to it as possible */
+        var sel = insp.cellId && state.domCells[insp.cellId] ? state.domCells[insp.cellId].getBoundingClientRect() : null;
+        var ax = sel ? { l: sel.left - hr.left, t: sel.top - hr.top, r: sel.right - hr.left, b: sel.bottom - hr.top } : { l: hr.width, t: 0, r: hr.width, b: 0 };
+        function gap(L, T, R, B) {
+            var dx = Math.max(0, ax.l - R, L - ax.r), dy = Math.max(0, ax.t - B, T - ax.b);
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+        var x0 = M, x1 = hr.width - M - pw;
+        var y0 = M, y1 = hr.height - M - ph;
+        var found = null, foundD = Infinity, best = null, bestA = Infinity, bestD = Infinity;
+        if (x1 >= x0 && y1 >= y0) {
+            var STEP = 16, xs = [], ys = [], x, y;
+            for (x = x1; x > x0; x -= STEP) xs.push(x);
+            xs.push(x0);
+            for (y = y0; y < y1; y += STEP) ys.push(y);
+            ys.push(y1);
+            for (var yi = 0; yi < ys.length; yi++) {
+                for (var xi = 0; xi < xs.length; xi++) {
+                    var L = xs[xi], T = ys[yi], R = L + pw, B = T + ph;
+                    var d = gap(L, T, R, B);
+                    if (d >= foundD) continue;   // a nearer free spot is already known
+                    var area = 0;
+                    for (var k = 0; k < obs.length; k++) {
+                        var o = obs[k];
+                        if (o.l < R && o.r > L && o.t < B && o.b > T) area += (Math.min(o.r, R) - Math.max(o.l, L)) * (Math.min(o.b, B) - Math.max(o.t, T));
+                    }
+                    if (!area) { found = { x: L, y: T }; foundD = d; }
+                    else if (area < bestA || (area === bestA && d < bestD)) { bestA = area; bestD = d; best = { x: L, y: T }; }
+                }
+            }
+        }
+        found = found || best || { x: Math.max(M, x1), y: M };
+        el.style.right = 'auto'; el.style.left = Math.round(found.x) + 'px'; el.style.top = Math.round(found.y) + 'px';
     }
     function inspectorVisible() {
         var card = document.getElementById('sipCardSection');
@@ -647,7 +770,7 @@
     }
     function inspectSelect(cell) {
         var nm = getCellAssetName(cell);
-        if (nm !== insp.name) { insp.graphCol = null; insp.frame = ''; }
+        if (nm !== insp.name) { insp.graphCol = null; insp.frame = ''; insp.pos = null; }   // new asset -> open next to it again
         insp.name = nm;
         insp.cellId = cell.id;
         insp.min = false;
@@ -655,6 +778,19 @@
         if (window.TlHealthView && typeof window.TlHealthView.ensureRanges === 'function') {
             try { window.TlHealthView.ensureRanges(); } catch (e) { /* optional */ }
         }
+        renderInspector();
+        /* Safety net: if the values panel still isn't on screen, show the
+           asset popup instead so a click ALWAYS shows the live values. */
+        var el = document.getElementById('sipInspector');
+        var r = el && el.style.display !== 'none' ? el.getBoundingClientRect() : null;
+        if (!r || r.width < 20 || r.height < 20 || r.bottom < 0 || r.top > window.innerHeight || r.right < 0 || r.left > window.innerWidth) {
+            openSipAssetPopupForCell(cell);
+        }
+    }
+    /* Deselect: drop the highlight and close the values panel. */
+    function inspClear() {
+        insp.name = null; insp.cellId = null; insp.frame = '';
+        if (typeof highlight === 'function') highlight('');
         renderInspector();
     }
     function ensureInspector() {
@@ -734,7 +870,7 @@
                     renderInspector();
                     return;
                 }
-                if (t.closest('[data-insp-clear]')) { insp.name = null; insp.cellId = null; insp.frame = ''; if (typeof highlight === 'function') highlight(''); renderInspector(); return; }
+                if (t.closest('[data-insp-clear]')) { inspClear(); return; }
                 if (t.closest('[data-insp-open]')) {
                     var c = state.cellById[insp.cellId];
                     if (c) openSipAssetPopupForCell(c, e);
@@ -747,8 +883,17 @@
                 }
             });
         }
-        if (insp.pos) { el.style.left = insp.pos.x + 'px'; el.style.top = insp.pos.y + 'px'; el.style.right = 'auto'; }
-        else el.style.top = (canvas.offsetTop + 10) + 'px';
+        /* Place the panel INSIDE the visible host. offsetTop is measured from the
+           canvas' offsetParent (not necessarily the host), which could push the
+           panel below the clipped area so the values never appeared; a dragged
+           position from an earlier (bigger/smaller) view is clamped back in too. */
+        var hr = host.getBoundingClientRect();
+        if (insp.pos) {
+            var px = Math.max(0, Math.min(insp.pos.x, (hr.width || 400) - 120));
+            var py = Math.max(0, Math.min(insp.pos.y, (hr.height || 300) - 40));
+            el.style.left = px + 'px'; el.style.top = py + 'px'; el.style.right = 'auto';
+        }
+        /* otherwise inspPlace() keeps it off every SIP element */
         return el;
     }
     function inspPalette(el) {
@@ -919,6 +1064,7 @@
         return { rows: out, dir: dir, when: '' };
     }
     function liveInspectorHtml() {
+        insp.colW = 0; insp.colN = 0;
         var rec = inspRec();
         if (!rec) return '<div class="sip-insp-empty">No live data for this asset yet.</div>';
         var pm = isPmAsset(insp.name) ? pmReadings(rec, liveState(insp.name)) : null;
@@ -955,6 +1101,8 @@
             rl.forEach(function (k) { h += relayChip(k, rec.dl[k].isPickup); });
             h += '</div>';
         }
+        insp.colW = inspColWidth(rd);
+        insp.colN = rd.length;
         if (!rd.length) return h + '<div class="sip-insp-empty">No analog readings.</div>';
         h += '<div class="sip-insp-sect">Readings <span>' + rd.length + '</span></div><div class="sip-insp-list">';
         rd.forEach(function (r) {
@@ -1205,7 +1353,6 @@
             return;
         }
         el.style.display = '';
-        inspReserve(!insp.min);
         inspPalette(el);
         var replay = _replayOn && window.SipReplay && typeof window.SipReplay.inspectorHtml === 'function';
         if (replay) {
@@ -1242,6 +1389,11 @@
         }
         var up = document.getElementById('sipInspUpd');
         if (up) up.textContent = rec && rec.lastAt ? new Date(rec.lastAt).toLocaleTimeString() : '';
+        var cv = document.getElementById('sipCanvas');
+        if (cv && el.parentNode) {
+            inspSize(el, el.parentNode);
+            inspPlace(el, el.parentNode, cv);
+        }
     }
     setInterval(function () {
         if (document.hidden) return;
@@ -1561,6 +1713,44 @@
         Default: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>'
     };
 
+    /* AssetId for a SIP asset: live record, then the shared live/bulk maps,
+       then the all-types metadata cache. */
+    function sipResolveAssetId(assetName, assetId) {
+        if (assetId) return String(assetId);
+        if (!assetName) return '';
+        var found = sipFindLiveAssetByName(assetName);
+        if (found && found.id) return found.id;
+        var all = (window.sipMetaAll && window.sipMetaAll.assets) || {};
+        var nk = _normLabel(assetName);
+        for (var mid in all) {
+            if (all.hasOwnProperty(mid) && all[mid] && _normLabel(all[mid].Name) === nk) return String(mid);
+        }
+        return '';
+    }
+    function sipHint(msg) {
+        var el = document.getElementById('sipHint');
+        if (!el) {
+            el = document.createElement('div'); el.id = 'sipHint'; el.setAttribute('role', 'status');
+            el.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:10002;' +
+                'background:#22303f;color:#fff;font:500 12px/1.4 inherit;padding:8px 14px;border-radius:8px;' +
+                'box-shadow:0 6px 18px rgba(15,27,42,.3);pointer-events:none;transition:opacity .2s;';
+            document.body.appendChild(el);
+        }
+        el.textContent = msg;
+        el.style.opacity = '1';
+        clearTimeout(el._t);
+        el._t = setTimeout(function () { el.style.opacity = '0'; }, 2600);
+    }
+    function openSipAssetDrawer(aid) {
+        window.tlOpenAssetDrawer(aid);
+        /* the full-screen SIP card sits at z-index 9999, above the drawer */
+        if (inspectorVisible()) {
+            var ov = document.getElementById('tldOverlay'), dr = document.getElementById('tldDrawer');
+            if (ov) ov.style.zIndex = '10000';
+            if (dr) dr.style.zIndex = '10001';
+        }
+    }
+
     function openSipAssetPopupForCell(cell, evt) {
         var assetName = getCellAssetName(cell);
         var label = getCellLabel(cell);
@@ -1574,6 +1764,23 @@
             cellId: cell.id, cellType: cell.type, cell: cell,
             liveValues: state.assetValues[assetName] || {}
         };
+        /* Telemetry Live: open the same asset dashboard drawer every asset
+           type view uses (telemetrylive-drawer.js); popup is the fallback. */
+        if (typeof window.tlOpenAssetDrawer === 'function') {
+            var drawerId = sipResolveAssetId(assetName, assetId);
+            if (drawerId) {
+                try { openSipAssetDrawer(drawerId); return; }
+                catch (exD) { swarn('Asset drawer failed, falling back to popup:', exD && exD.message); }
+            } else {
+                /* decorative / unbound shape (e.g. RouteCallingSignal): there is
+                   no asset behind it, so the empty popup would only show a GUID */
+                var M = window.sipMetaAll;
+                sipHint(M && !M.loaded && M.pending
+                    ? 'Asset list still loading, try again in a moment.'
+                    : (assetName || label ? '"' + (assetName || label) + '" is' : 'This element is') + ' not linked to a live asset.');
+                return;
+            }
+        }
         if (typeof window.SipAssetPopupLive === 'object' && typeof window.SipAssetPopupLive.open === 'function') {
             try { window.SipAssetPopupLive.open(cell, ctx); return; }
             catch (ex0) { swarn('SipAssetPopupLive.open failed, falling back:', ex0 && ex0.message); }
@@ -3471,6 +3678,10 @@
 
         canvasEl.addEventListener('pointermove', function (e) {
             if (!pan) return;
+            /* button no longer held (its pointerup was swallowed by the asset
+               click handler, or released outside the window) -> stop panning,
+               never let the yard "stick" to the cursor */
+            if (e.pointerType === 'mouse' && !(e.buttons & 1)) { endPan(); return; }
             var dx = e.clientX - pan.x0, dy = e.clientY - pan.y0;
             if (!pan.moved && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
             if (!pan.moved) { pan.moved = true; assetClickDown = null; try { canvasEl.setPointerCapture(pan.id); } catch (e2) { } canvasEl.style.cursor = 'grabbing'; }
@@ -3485,8 +3696,11 @@
             pan = null;
             if (canvasEl) canvasEl.style.cursor = '';
         }
-        canvasEl.addEventListener('pointerup', endPan, false);
-        canvasEl.addEventListener('pointercancel', endPan, false);
+        /* window + capture: the asset click handler stops pointerup propagation,
+           so a canvas-level listener would never see the release */
+        window.addEventListener('pointerup', endPan, true);
+        window.addEventListener('pointercancel', endPan, true);
+        window.addEventListener('blur', endPan);
     }
 
     /* True only while the SIP schematic is shown full screen (card mode or the

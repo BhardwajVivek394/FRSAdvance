@@ -1,0 +1,193 @@
+﻿@model Domain.SignalDataLister
+@{
+    // Reference used Convert.ToDouble, which throws on blank CSV cells ("" -> FormatException) and failed the whole partial.
+    Func<string, double> toDouble = s =>
+    {
+        double d;
+        return double.TryParse(s, out d) ? d : 0;
+    };
+}
+
+<div class="aiv-subfilter">
+    <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
+        <div class="form-group w-100 w-sm-48">
+            <label for="txtSignalAssetName">Asset Name</label>
+            <input type="text" class="form-control" id="txtSignalAssetName" autocomplete="off"
+                   onkeydown="if (event.keyCode === 13) { event.preventDefault(); fnFilterSignal(); }" />
+        </div>
+        <div class="form-group w-sm-100">
+            <label class="d-none d-md-block">&nbsp;</label>
+            <button class="btn btn-primary-search" type="button" title="Search" onclick="fnFilterSignal()">
+                <img src="~/Areas/FRS25/assets/img/search.svg" alt="Search" />
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="divSignalGroups">
+    @if (Model.SignalDatas != null && Model.SignalDatas.Count > 0)
+    {
+        foreach (var assetName in Model.SignalDatas.GroupBy(x => x.AssetName).ToList())
+        {
+            string oldString = string.Empty;
+            <div class="aiv-group" data-asset="@assetName.Key">
+                <button type="button" class="aiv-group-head" onclick="fnGetSignalData('@assetName.Key', this.querySelector('i'))">
+                    <i class="fa fa-plus"></i>
+                    <span>@assetName.Key</span>
+                </button>
+                <div class="aiv-group-body @("trSignalAsset_" + assetName.Key)" style="display:none">
+                    <div class="table-border">
+                        <div class="tableFixHead">
+                            <table class="table table-hover aiv-table mb-0">
+                                @foreach (var item in Model.SignalDatas.Where(x => x.AssetName.Trim().ToLower() == assetName.Key.Trim().ToLower()))
+                                {
+                                    var str = new List<string>();
+                                    if (toDouble(item.RGV) > 0)
+                                    {
+                                        str.Add("RG");
+                                    }
+                                    if (toDouble(item.DGV) > 0)
+                                    {
+                                        str.Add("DG");
+                                    }
+                                    if (toDouble(item.HGV) > 0)
+                                    {
+                                        str.Add("HG");
+                                    }
+
+                                    if (str.Count == 1)
+                                    {
+                                        var stp = str.FirstOrDefault();
+
+                                        if (oldString != stp)
+                                        {
+                                            oldString = stp;
+                                            <tr class="aiv-subhead">
+                                                <th>Date</th>
+                                                <th>Aspect Name</th>
+                                                <th>Aspect @stp V</th>
+                                                <th>Aspect @stp mA</th>
+                                                <th>Aspect @stp P</th>
+                                                <th>@("AI_cluster_" + stp)</th>
+                                                <th>@("AI_status_" + stp)</th>
+                                            </tr>
+                                        }
+
+                                        <tr>
+                                            <td>@item.Date</td>
+                                            <td>@item.AssetName</td>
+                                            <td>
+                                                @if (stp == "RG")
+                                                {
+                                                    <span>@item.RGV</span>
+                                                }
+                                                else if (stp == "DG")
+                                                {
+                                                    <span>@item.DGV</span>
+                                                }
+                                                else if (stp == "HG")
+                                                {
+                                                    <span>@item.HGV</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (stp == "RG")
+                                                {
+                                                    <span>@item.RGmA</span>
+                                                }
+                                                else if (stp == "DG")
+                                                {
+                                                    <span>@item.DGmA</span>
+                                                }
+                                                else if (stp == "HG")
+                                                {
+                                                    <span>@item.HGmA</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (stp == "RG")
+                                                {
+                                                    <span>@item.RGP</span>
+                                                }
+                                                else if (stp == "DG")
+                                                {
+                                                    <span>@item.DGP</span>
+                                                }
+                                                else if (stp == "HG")
+                                                {
+                                                    <span>@item.HGP</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (stp == "RG")
+                                                {
+                                                    <span>@item.AI_cluster_RG</span>
+                                                }
+                                                else if (stp == "DG")
+                                                {
+                                                    <span>@item.AI_cluster_DG</span>
+                                                }
+                                                else if (stp == "HG")
+                                                {
+                                                    <span>@item.AI_cluster_HG</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (stp == "RG")
+                                                {
+                                                    <span>@item.AI_status_RG</span>
+                                                }
+                                                else if (stp == "DG")
+                                                {
+                                                    <span>@item.AI_status_DG</span>
+                                                }
+                                                else if (stp == "HG")
+                                                {
+                                                    <span>@item.AI_status_HG</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        <div class="aiv-empty" id="divSignalNoMatch" style="display:none"><i class="fa-solid fa-magnifying-glass"></i>No asset matches the search.</div>
+    }
+    else
+    {
+        <div class="aiv-empty"><i class="fa-regular fa-folder-open"></i>No record found!</div>
+    }
+</div>
+
+<script>
+    function fnGetSignalData(assetId, $this) {
+        if (assetId != null && assetId != undefined && assetId != '') {
+            if ($($this).hasClass("fa-plus")) {
+                $($this).removeClass("fa-plus").addClass("fa-minus");
+                $('.trSignalAsset_' + assetId).show();
+            }
+            else {
+                $($this).removeClass("fa-minus").addClass("fa-plus");
+                $('.trSignalAsset_' + assetId).hide();
+            }
+        }
+    }
+
+    // The reference "Search" button called fnFilterSignal(), which was never defined (and the FilterSignal
+    // action does not exist). Filter the already-rendered asset groups client-side instead.
+    function fnFilterSignal() {
+        var q = String($('#txtSignalAssetName').val() || '').trim().toLowerCase();
+        var shown = 0;
+        $('#divSignalGroups .aiv-group').each(function () {
+            var name = String($(this).attr('data-asset') || '').toLowerCase();
+            var match = q === '' || name.indexOf(q) > -1;
+            $(this).toggle(match);
+            if (match) shown++;
+        });
+        $('#divSignalNoMatch').toggle($('#divSignalGroups .aiv-group').length > 0 && shown === 0);
+    }
+</script>

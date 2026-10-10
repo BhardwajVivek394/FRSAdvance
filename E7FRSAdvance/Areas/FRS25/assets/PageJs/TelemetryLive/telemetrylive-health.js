@@ -69,7 +69,7 @@
         ranges: {}, rangesSite: null, rangeLogged: false,
         sig: '', els: {},
         sort: 'worst', filter: 'all', q: '',
-        trendKey: {}, trend: {}, ipsTab: 'all', ipsTableTab: 'voltage', gopen: {}, circ: {}, circOff: {}, circAll: false, view: 'cards', open: {}
+        trendKey: {}, trend: {}, ipsTab: 'all', ipsTableTab: 'all', gopen: {}, circ: {}, circOff: {}, circAll: false, view: 'cards', open: {}
     };
 
     /* ======================================================================
@@ -109,7 +109,11 @@
     function fmtClock(ms) { var d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
     function live() { return window.wsLiveData || {}; }
     function siteId() { return String($('#drpSite').val() || ''); }
-    function assetTypeId() { return parseInt(window.wsCurrentAssetTypeId || $('#drpAssetType').val() || 0, 10) || 0; }
+    /* Selected type: the dropdown first (same as the IPS cards'
+       assetMatchesSelectedType). wsCurrentAssetTypeId can be overwritten by
+       other paths (e.g. the circuit view stores the last message's type), which
+       made the Health view filter out every asset of the selected type. */
+    function assetTypeId() { return parseInt($('#drpAssetType').val() || window.wsCurrentAssetTypeId || 0, 10) || 0; }
     function isTrackType() { return assetTypeId() === 1; }
 
     /* ======================================================================
@@ -247,6 +251,28 @@
                 range: rangeFor(aid, title, alias)
             });
         }
+        /* IPS: data-logger relays are the DIGITAL readings (e7mriv2web IPS
+           Digital tab) -- add them as rows (Pickup / Drop) so the Digital tab
+           of the table and cards shows values, not just relay pills. */
+        if (!pmm && isIpsType() && e.dlRelays) {
+            var haveRow = {};
+            rows.forEach(function (x) { haveRow[x.k] = 1; });
+            Object.keys(e.dlRelays).forEach(function (rk) {
+                var rl = e.dlRelays[rk];
+                if (!rl || haveRow[rk]) return;
+                var nm = strip(rl.displayName || rk);
+                rows.push({
+                    k: rk, key: norm(nm), attrId: '', title: nm, alias: nm, label: nm, sub: '',
+                    v: rl.isNull ? null : (rl.isPickup ? 1 : 0), relay: true, up: !!rl.isPickup,
+                    stale: false, ipsTab: 'digital', scaleMin: null, scaleMax: null, range: null
+                });
+            });
+            /* an attribute that IS a data-logger relay belongs to Digital too */
+            rows.forEach(function (x) {
+                var ad = attrs[x.k];
+                if (!x.relay && ad && String(ad.DataType || '').toLowerCase() === 'datalogger') x.ipsTab = 'digital';
+            });
+        }
         if (isTrackType()) {
             rows.sort(function (x, y) {
                 var ix = TRACK_ORDER.indexOf(x.key), iy = TRACK_ORDER.indexOf(y.key);
@@ -321,11 +347,18 @@
         var ld = live();
         var at = assetTypeId();
         var ids = [];
+        var ips = isIpsType();
         for (var aid in ld) {
             if (!ld.hasOwnProperty(aid)) continue;
             var e = ld[aid];
             if (!e || !e.attrs) continue;
-            if (at && e.AssetTypeId && parseInt(e.AssetTypeId, 10) !== at) continue;
+            if (ips) {
+                /* IPS: exactly the assets the IPS cards show (bulk whitelist +
+                   assetMatchesSelectedType, which also falls back to the bulk
+                   metadata type) so the Health view never drops one */
+                if (typeof window.isAssetInBulkWhitelist === 'function' && !window.isAssetInBulkWhitelist(aid)) continue;
+                if (typeof window.assetMatchesSelectedType === 'function' && !window.assetMatchesSelectedType(aid)) continue;
+            } else if (at && e.AssetTypeId && parseInt(e.AssetTypeId, 10) !== at) continue;
             ids.push(aid);
         }
         return ids;
@@ -335,6 +368,7 @@
        CSS
        ====================================================================== */
     var CSS = '' +
+        '#tlHealthView .hv-rv.up{color:#10b981 !important;font-weight:700;} #tlHealthView .hv-rv.dn{color:#f59e0b !important;font-weight:700;}' +
         '.at-table-card.tl-health-on #atCardView,.at-table-card.tl-health-on .at-table-scroll{display:none !important;}' +
         '#tlHealthView{display:none;padding:14px 16px 18px;box-sizing:border-box;width:100%;color:var(--at-t1,inherit);}' +
         '.at-table-card.tl-health-on #tlHealthView{display:block;}' +
@@ -387,6 +421,14 @@
         '@media (max-width:1100px){.hv-card.hv-wide{grid-column:1 / -1;}}' +
         '.hv-circ{margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid var(--at-edge,rgba(127,140,160,.25));}' +
         '.hv-circ svg{display:block;width:100%;height:auto;font-family:inherit;}' +
+        '.hv-circ-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 10px;font-size:12px;border-bottom:1px solid var(--at-edge,rgba(127,140,160,.25));}' +
+        '.hv-circ-live{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:4px;background:#16A34A;color:#fff;font-weight:700;font-size:11px;}' +
+        '.hv-circ-live i{width:7px;height:7px;border-radius:50%;background:#fff;}' +
+        '.hv-circ-where,.hv-circ-ts{color:var(--at-t3,#8D9CB2);}' +
+        '.hv-circ-zoom{margin-left:auto;display:inline-flex;gap:4px;}' +
+        '.hv-circ-zoom button{min-width:28px;height:24px;padding:0 6px;border:1px solid var(--at-edge,rgba(127,140,160,.45));border-radius:4px;background:transparent;color:inherit;font-weight:700;cursor:pointer;}' +
+        '.hv-circ-pan{overflow:auto;}' +
+        '.hv-circ .hv-zoomed svg{height:auto!important;width:100%!important;}' +
         '.hv-derived{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 14px;margin-top:6px;padding-top:6px;border-top:1px solid var(--at-edge,rgba(127,140,160,.25));font-size:11.5px;}' +
         '.hv-derived span{display:flex;justify-content:space-between;gap:6px;color:var(--at-t3,#8D9CB2);}' +
         '.hv-derived em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
@@ -462,6 +504,12 @@
         '.hv-expin{align-items:stretch;}' +
         '.hv-expt .hv-trend{flex:1;display:flex;flex-direction:column;margin-top:8px;}' +
         '.hv-expt .hv-trend svg{flex:1;height:auto;min-height:200px;}' +
+        /* v618.30: circuit + trend sized to fit inside the table viewport (row + panel visible together) */
+        '.hv-expc{flex:3 1 520px;} .hv-expt{flex:2 1 320px;}' +
+        '.hv-expc .hv-circ{background:var(--hv-bg,#fff);}' +
+        '.hv-expc .hv-circ svg{width:100%;height:clamp(260px,calc(75vh - 170px),520px);}' +
+        '.hv-expt .hv-trend{box-sizing:border-box;height:clamp(260px,calc(75vh - 170px),520px);flex:1 1 auto;}' +
+        '.hv-expt .hv-trend svg{min-height:0;}' +
         '.hv-trend{margin-top:8px;border:1px solid var(--at-edge,rgba(127,140,160,.25));border-radius:10px;padding:6px 8px 4px;}' +
         '.hv-trend .th{display:flex;justify-content:space-between;font-size:11.5px;color:var(--at-t3,#8D9CB2);}' +
         '.hv-trend .th b{color:var(--at-t1,inherit);}' +
@@ -561,7 +609,14 @@
         }, 1500);
     });
     $(document).on('change', '#drpSite', function () { H.rangesSite = null; H.trend = {}; H.sig = ''; if (H.on) loadRanges(); });
-    $(document).on('change', '#drpAssetType', function () { H.sig = ''; H.trendKey = {}; });
+    $(document).on('change', '#drpAssetType', function () {
+        H.sig = ''; H.trendKey = {};
+        /* v618.33: asset type change returns to Card view */
+        H.open = {}; H.classic = false;
+        if (H.on) leave();
+        $('.tl-vmode-btn').removeClass('active').attr('aria-pressed', 'false');
+        $('.tl-vmode-btn[data-vmode="Cards"]').addClass('active').attr('aria-pressed', 'true');
+    });
 
     /* ======================================================================
        RENDER
@@ -595,12 +650,14 @@
         if (A.stale) p.push(A.stale + ' stale');
         return p.length ? p.join(', ') : 'All readings inside safe range';
     }
+    /* reading text: relays as Pickup / Drop, numbers formatted */
+    function dispV(r) { return r.relay ? (r.v === null ? '--' : (r.up ? 'Pickup' : 'Drop')) : fmt(r.v); }
     function flagText(r) {
         return r.st === 'low' ? '&darr; Low' : r.st === 'high' ? '&uarr; High' : r.st === 'near' ? 'Near' : r.st === 'occ' ? 'Occ.' : '';
     }
     function rowTip(r) {
         var g = r.range;
-        var t = r.label + (r.sub ? ' (' + r.sub + ')' : '') + ': ' + fmt(r.v);
+        var t = r.label + (r.sub ? ' (' + r.sub + ')' : '') + ': ' + dispV(r);
         if (g && g.min !== null && g.max !== null) t += ' | safe ' + fmt(g.min) + ' to ' + fmt(g.max) + ' (' + g.src + ')' + (g.avg !== null && g.avg !== undefined ? ' | avg ' + fmt(g.avg) : '');
         if (r.st === 'occ') t += ' | low while the track is occupied (normal)';
         if (r.stale) t += ' | stale';
@@ -626,6 +683,7 @@
     }
     function statusLine(r) {
         var g = r.range;
+        if (r.relay) return r.v === null ? 'no value' : 'relay ' + (r.up ? 'picked up' : 'dropped');
         if (r.v === null) return 'no value';
         if (!g || g.min === null || g.max === null) return r.st === 'high' ? 'out of range' : 'no safe range';
         if (r.st === 'low') return 'LOW - below ' + fmt(g.min);
@@ -643,7 +701,7 @@
         return '<div class="hv-tile st-' + r.st + (r.stale ? ' stale' : '') + (H.trendKey[A.aid] === r.k ? ' sel' : '') +
             '" data-hv-row="' + esc(A.aid) + '" data-hv-k="' + esc(r.k) + '" title="' + esc(rowTip(r)) + ' -- click for trend">' +
             '<div class="hd"><span class="lb">' + esc(r.label) + '</span>' + (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
-            '<div class="vl">' + fmt(r.v) + '</div>' +
+            '<div class="vl' + (r.relay ? ' hv-rv ' + (r.up ? 'up' : 'dn') : '') + '">' + dispV(r) + '</div>' +
             '<div class="sl">' + esc(statusLine(r)) + '</div>' +
             gaugeHtml(r, true) + '</div>';
     }
@@ -765,6 +823,99 @@
             txt2(x + 5, y + 1, esc(name) + ' ' + (up ? '&#8593;' : '&#8595;'), 10, col, 700) + '</g>';
     }
 
+    /* ---- v618.40 shared circuit symbols (616 reference set) ---------------
+       fuse, terminal link, ")(" cable plug / U-G connector, relay contact,
+       relay coil, choke, adjustable resistor and split-field DC motor --
+       used by the track, signal and point machine circuits below.
+       state: true = picked up (green), false = dropped (amber), else muted. */
+    function stCol(P, up) { return up === true ? P.green : up === false ? P.drop : P.muted; }
+    function stArrow(up) { return up === true ? ' &#8593;' : up === false ? ' &#8595;' : ''; }
+    function symFuseV(P, x, y, col, fill) {
+        return '<rect x="' + (x - 5) + '" y="' + (y - 11) + '" width="10" height="22" rx="4" fill="' + (fill || P.paper) + '" stroke="' + col + '" stroke-width="2"></rect>' +
+            '<circle cx="' + x + '" cy="' + (y - 11) + '" r="2.4" fill="' + col + '"></circle><circle cx="' + x + '" cy="' + (y + 11) + '" r="2.4" fill="' + col + '"></circle>' +
+            '<line x1="' + x + '" y1="' + (y - 7) + '" x2="' + x + '" y2="' + (y + 7) + '" stroke="' + col + '" stroke-width="1.2"></line>';
+    }
+    function symFuseH(P, x, y, col, fill) {
+        return '<rect x="' + (x - 11) + '" y="' + (y - 5) + '" width="22" height="10" rx="4" fill="' + (fill || P.paper) + '" stroke="' + col + '" stroke-width="2"></rect>' +
+            '<circle cx="' + (x - 11) + '" cy="' + y + '" r="2.4" fill="' + col + '"></circle><circle cx="' + (x + 11) + '" cy="' + y + '" r="2.4" fill="' + col + '"></circle>' +
+            '<line x1="' + (x - 7) + '" y1="' + y + '" x2="' + (x + 7) + '" y2="' + y + '" stroke="' + col + '" stroke-width="1.2"></line>';
+    }
+    function symLink(P, x, y) {
+        return '<rect x="' + (x - 14) + '" y="' + (y - 4.5) + '" width="28" height="9" rx="4.5" fill="' + P.ink + '"></rect>' +
+            '<circle cx="' + (x - 8) + '" cy="' + y + '" r="2.4" fill="' + P.bg + '"></circle><circle cx="' + (x + 8) + '" cy="' + y + '" r="2.4" fill="' + P.bg + '"></circle>';
+    }
+    function symPlug(P, x, y, col, fill, heavy) {
+        return '<rect x="' + (x - 6) + '" y="' + (y - 4) + '" width="12" height="8" fill="' + (fill || P.bg) + '"></rect>' +
+            '<path d="M' + (x - 8) + ' ' + (y - 8) + 'Q' + (x - 1) + ' ' + y + ' ' + (x - 8) + ' ' + (y + 8) + 'M' + (x + 8) + ' ' + (y - 8) + 'Q' + (x + 1) + ' ' + y + ' ' + (x + 8) + ' ' + (y + 8) + '" fill="none" stroke="' + (col || P.ink) + '" stroke-width="' + (heavy ? 2.8 : 1.8) + '" stroke-linecap="round"></path>';
+    }
+    /* front contact on a horizontal wire; the label sits above (or below) */
+    function symContact(P, x, y, name, up, fill, below) {
+        var c = stCol(P, up);
+        return '<g><title>' + esc(name + (up === true ? ' picked up' : up === false ? ' dropped' : ' state unknown')) + '</title>' +
+            '<rect x="' + (x - 8) + '" y="' + (y - 3) + '" width="16" height="6" fill="' + (fill || P.paper) + '"></rect>' +
+            '<path d="M' + (x - 6) + ' ' + (y - 6) + 'V' + (y + 6) + 'M' + (x + 6) + ' ' + (y - 6) + 'V' + (y + 6) + '" stroke="' + c + '" stroke-width="2.2"></path>' +
+            (up === true ? '<path d="M' + (x - 6) + ' ' + y + 'H' + (x + 6) + '" stroke="' + c + '" stroke-width="1.6"></path>' : '') +
+            txt2(x, below ? y + 17 : y - 9, esc(name) + stArrow(up), 9, c, 700, 'middle') + '</g>';
+    }
+    /* relay coil / ECR box drawn over the wire, coloured by state */
+    function symCoil(P, x, y, w, name, up, solid) {
+        var c = stCol(P, up);
+        return '<g><title>' + esc(name + (up === true ? ' picked up' : up === false ? ' dropped' : ' state unknown')) + '</title>' +
+            '<rect x="' + x + '" y="' + (y - 10) + '" width="' + w + '" height="20" rx="3" fill="' + (solid ? c : P.paper) + '" stroke="' + c + '" stroke-width="1.8"></rect>' +
+            txt2(x + w / 2, y + 4, esc(name) + (solid ? '' : stArrow(up)), 10, solid ? '#FFFFFF' : c, 800, 'middle') + '</g>';
+    }
+    function symChokeV(P, x, y) {
+        return '<rect x="' + (x - 6) + '" y="' + (y - 12) + '" width="12" height="24" fill="' + P.paper + '" stroke="' + P.ink + '" stroke-width="1.8"></rect>' +
+            '<path d="M' + (x - 3) + ' ' + (y - 6) + 'H' + (x + 3) + 'M' + (x - 3) + ' ' + y + 'H' + (x + 3) + 'M' + (x - 3) + ' ' + (y + 6) + 'H' + (x + 3) + '" stroke="' + P.ink + '" stroke-width="1.6"></path>';
+    }
+    /* adjustable resistor: coil on the lead with an arrow through it */
+    function symVarResV(P, x, y, col) {
+        var d = 'M' + x + ' ' + (y - 18);
+        for (var i = 0; i < 4; i++) d += 'a6 4.5 0 1 1 0 9';
+        return '<rect x="' + (x - 3) + '" y="' + (y - 18) + '" width="6" height="36" fill="' + P.paper + '"></rect>' +
+            '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="2"></path>' +
+            arrowTo(P, x - 12, y + 15, x + 14, y - 15, col, 1.6);
+    }
+    /* split-field DC motor: N/F and R/F field windings into armature "A";
+       wires arrive at (x-45, y-16) and (x-45, y+16), common leaves at x+11 */
+    function symMotor(P, x, y, col) {
+        var nf = 'M' + (x - 45) + ' ' + (y - 16) + 'a4 4 0 0 1 8 0a4 4 0 0 1 8 0a4 4 0 0 1 8 0L' + (x - 9) + ' ' + (y - 6);
+        var rf = 'M' + (x - 45) + ' ' + (y + 16) + 'a4 4 0 0 0 8 0a4 4 0 0 0 8 0a4 4 0 0 0 8 0L' + (x - 9) + ' ' + (y + 6);
+        return '<path d="' + nf + rf + '" fill="none" stroke="' + col + '" stroke-width="2"></path>' +
+            '<circle cx="' + x + '" cy="' + y + '" r="11" fill="' + P.paper + '" stroke="' + col + '" stroke-width="2"></circle>' +
+            txt2(x, y + 4, 'A', 11, col, 800, 'middle') +
+            txt2(x - 33, y - 24, 'N/F', 9, col, 700, 'middle') + txt2(x - 33, y + 33, 'R/F', 9, col, 700, 'middle');
+    }
+    function arrowTo(P, x1, y1, x2, y2, col, w, dash) {
+        var a = Math.atan2(y2 - y1, x2 - x1), h = 7;
+        return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + col + '" stroke-width="' + (w || 1.2) + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '></line>' +
+            '<path d="M' + (x2 - h * Math.cos(a - 0.45)).toFixed(1) + ' ' + (y2 - h * Math.sin(a - 0.45)).toFixed(1) + 'L' + x2 + ' ' + y2 + 'L' + (x2 - h * Math.cos(a + 0.45)).toFixed(1) + ' ' + (y2 - h * Math.sin(a + 0.45)).toFixed(1) + '" fill="none" stroke="' + col + '" stroke-width="' + (w || 1.2) + '"></path>';
+    }
+    function arrowHeadL(x, y, col) { return '<path d="M' + (x + 12) + ' ' + (y - 7) + 'L' + x + ' ' + y + 'L' + (x + 12) + ' ' + (y + 7) + '" fill="none" stroke="' + col + '" stroke-width="2.4" stroke-linejoin="round"></path>'; }
+    function dot(x, y, col) { return '<circle cx="' + x + '" cy="' + y + '" r="3" fill="' + col + '"></circle>'; }
+    /* relay state by name from the asset's DataLogger relays (exact, then suffix) */
+    function relayState(A, name) {
+        var k = norm(name), rs = A.relays || [], i;
+        for (i = 0; i < rs.length; i++) if (norm(rs[i].name) === k) return !!rs[i].up;
+        for (i = 0; i < rs.length; i++) { var n = norm(rs[i].name); if (n.length > k.length && n.slice(-k.length) === k) return !!rs[i].up; }
+        var dl = (live()[A.aid] || {}).dlRelays || {};
+        for (var dk in dl) {
+            if (!dl.hasOwnProperty(dk) || !dl[dk]) continue;
+            var dn = norm(dl[dk].displayName || dk);
+            if (dn === k || (dn.length > k.length && dn.slice(-k.length) === k)) return dl[dk].isNull ? undefined : !!dl[dk].isPickup;
+        }
+        return undefined;
+    }
+    /* raw live value by AssetAttributeId (PM N / R readings) */
+    function attrById(aid, id) {
+        var at = (live()[aid] || {}).attrs || {};
+        for (var k in at) {
+            if (!at.hasOwnProperty(k) || !at[k]) continue;
+            if (parseInt(at[k].AttrId || at[k].AssetAttributeId || 0, 10) === id) { var v = num(at[k].Value); return v === null ? '--' : fmt(v); }
+        }
+        return '--';
+    }
+
     function trackCircuitSvg(A) {
         var P = cpal2();
         A_ID = A.aid;
@@ -777,9 +928,13 @@
             '<line x1="110" y1="72" x2="190" y2="72" stroke="' + P.red + '" stroke-width="5"></line><line x1="800" y1="72" x2="880" y2="72" stroke="' + P.red + '" stroke-width="5"></line>' +
             '<line x1="110" y1="100" x2="880" y2="100" stroke="' + P.red + '" stroke-width="5"></line>' +
             txt2(480, 60, 'Rail 1', 13, P.ink, 800, 'middle') + txt2(480, 125, 'Rail 2', 13, P.ink, 800, 'middle') +
-            '<rect x="420" y="78" width="120" height="16" fill="' + P.bg + '"></rect>' + txt2(480, 91, 'IBALST : ' + (ib && ib.v !== null ? fmt(ib.v) : '--'), 11, P.ink, 800, 'middle') +
-            txt2(215, 36, 'RE Bond', 9.5, P.muted, 600, 'middle') + '<path d="M228 40L246 64" stroke="' + P.muted + '" stroke-width="1"></path>' +
-            txt2(615, 36, 'RE Bond', 9.5, P.muted, 600, 'middle') + '<path d="M600 40L584 64" stroke="' + P.muted + '" stroke-width="1"></path>';
+            '<rect x="420" y="78" width="120" height="16" fill="' + P.bg + '"></rect>' + txt2(480, 91, 'IBALST : ' + (ib && ib.v !== null ? fmt(ib.v) : '--'), 11, P.ink, 800, 'middle');
+        /* rail bond loops at the lead connections, RE Bond arrows onto them */
+        [[228, 72], [248, 100], [588, 72], [608, 100]].forEach(function (b) {
+            s += '<path d="M' + (b[0] - 12) + ' ' + b[1] + 'q0 13 12 13q12 0 12 -13" fill="none" stroke="' + P.ink + '" stroke-width="1.6"></path>';
+        });
+        s += txt2(205, 36, 'RE Bond', 9.5, P.muted, 600, 'middle') + arrowTo(P, 212, 40, 222, 66, P.muted, 1) +
+            txt2(625, 36, 'RE Bond', 9.5, P.muted, 600, 'middle') + arrowTo(P, 618, 40, 596, 66, P.muted, 1);
         /* panels */
         s += panel2(P, 130, 158, 280, 400) + panel2(P, 430, 158, 250, 400) + panel2(P, 700, 158, 210, 400) +
             txt2(805, 150, 'RELAY ROOM', 12, P.ink, 700, 'middle') +
@@ -789,11 +944,12 @@
         s += '<path d="M228 72V128M248 100V128M588 72V128M608 100V128" stroke="' + P.ink + '" stroke-width="2"></path>' +
             '<rect x="208" y="128" width="60" height="20" fill="' + P.head + '"></rect>' + txt2(238, 142, 'TLJB', 10.5, '#FFFFFF', 700, 'middle') +
             '<rect x="568" y="128" width="60" height="20" fill="' + P.head + '"></rect>' + txt2(598, 142, 'TLJB', 10.5, '#FFFFFF', 700, 'middle');
-        /* feed end: red + navy feed, choke, battery, charger, 110 V AC */
+        /* feed end: red + navy feed, adjustable resistor, choke, battery, charger, 110 V AC */
         s += '<path d="M228 148V470M248 148V385" stroke="' + P.red + '" stroke-width="2.4" fill="none"></path>' +
             '<path d="M248 148V170" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
-            '<path d="M228 196l-8 5l16 5l-16 5l16 5l-16 5l16 5l-8 5" stroke="' + P.red + '" stroke-width="2" fill="' + P.paper + '"></path>' +
-            txt2(262, 196, 'Choke', 9.5, P.ink, 600) +
+            symFuseV(P, 228, 166, P.red) + symFuseV(P, 248, 166, P.navy) +
+            symVarResV(P, 228, 214, P.red) +
+            symChokeV(P, 248, 214) + txt2(258, 200, 'Choke', 9.5, P.ink, 600) +
             '<path d="M218 344h20M222 350h12" stroke="' + P.ink + '" stroke-width="2.4"></path>' + txt2(244, 348, 'Battery', 9.5, P.ink, 600) +
             '<rect x="200" y="385" width="80" height="24" fill="' + P.grey + '"></rect>' + txt2(240, 401, 'Charger', 11, '#1F2937', 700, 'middle') +
             '<path d="M218 409V470M262 409V470" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
@@ -809,34 +965,74 @@
             cb2(P, 296, 212, 106, 30, findRow(A, 'IFMA'), 'ITC FEED END(mA)', '') +
             cb2(P, 296, 248, 106, 30, findRow(A, 'VF'), 'VTC FEED END(V)', '') +
             cb2(P, 296, 390, 106, 30, findRow(A, 'CHARGEROPV'), 'VTC TFC O/P(V)', '');
-        /* relay end: drops, track relay, 24 V from relay room */
+        /* relay end: drops with fuses, fuse before the track relay, track relay */
         s += '<path d="M588 148V262M608 148V262" stroke="' + P.red + '" stroke-width="2.4"></path>' +
+            symFuseV(P, 588, 166, P.red) + symFuseV(P, 608, 166, P.red) + symFuseV(P, 608, 238, P.red) +
             '<rect x="540" y="262" width="116" height="26" fill="' + P.blue + '"></rect>' + txt2(598, 280, 'Track Relay', 12, '#FFFFFF', 700, 'middle') +
-            '<path d="M470 320H640V288M490 345H620V288" stroke="' + P.red + '" stroke-width="2.4" fill="none"></path>' +
-            '<path d="M490 345V470H660M470 320V500H680" stroke="' + P.navy + '" stroke-width="2.4" fill="none"></path>' +
-            txt2(480, 312, '24V DC FROM R/R', 9.5, P.ink, 600) +
             cb2(P, 440, 168, 120, 30, findRow(A, 'VR'), 'VTC RELAY END(V)', '') +
             cb2(P, 440, 204, 120, 30, findRow(A, 'IRMA'), 'ITC RELAY END(mA)', '') +
             cb2(P, 618, 200, 58, 30, findRow(A, 'VTCTR'), 'TR V (Relay)', '') +
-            cb2(P, 440, 240, 90, 30, findRow(A, 'RRAIL'), 'RRAIL', 'Ohm') +
-            cb2(P, 520, 405, 120, 30, findRow(A, 'TPRVLOC'), 'VTC 24 DC LOC(V)', '');
+            cb2(P, 440, 240, 90, 30, findRow(A, 'RRAIL'), 'RRAIL', 'Ohm');
+        /* 24 V DC loop: B-24V / N-24V from the relay room through the four
+           location-box fuses (+)(-)(+)(-) and back to the TPR -- separate from
+           the track relay leads */
+        s += '<path d="M455 334V305H505V334M455 356V500M505 356V440H880V188H865" fill="none" stroke="' + P.red + '" stroke-width="2.4"></path>' +
+            '<path d="M480 334V318H530V334M480 356V470M530 356V455H895V200H865" fill="none" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
+            symFuseV(P, 455, 345, P.red) + symFuseV(P, 480, 345, P.navy) + symFuseV(P, 505, 345, P.red) + symFuseV(P, 530, 345, P.navy) +
+            txt2(455, 298, '(+)', 9, P.ink, 700, 'middle') + txt2(480, 298, '(&#8722;)', 9, P.ink, 700, 'middle') +
+            txt2(505, 298, '(+)', 9, P.ink, 700, 'middle') + txt2(530, 298, '(&#8722;)', 9, P.ink, 700, 'middle') +
+            txt2(555, 425, '24V DC FROM R/R', 9.5, P.ink, 600) +
+            cb2(P, 550, 360, 120, 30, findRow(A, 'TPRVLOC'), 'VTC 24 DC LOC(V)', '');
         /* relay room: TPR + feeds out */
         var tprUp = A.occ === false, tprCol = A.occ === true ? P.drop : A.occ === false ? P.green : P.muted;
-        s += '<rect x="745" y="176" width="120" height="36" fill="none" stroke="' + P.box + '" stroke-dasharray="3 2"></rect>' +
+        s += '<rect x="745" y="176" width="120" height="36" fill="' + P.paper + '" stroke="' + P.box + '" stroke-dasharray="3 2"></rect>' +
             txt2(795, 200, 'TPR', 15, tprCol, 800, 'middle') +
             txt2(828, 201, A.occ === null || A.occ === undefined ? '' : (tprUp ? '&#8593;' : '&#8595;'), 17, tprCol, 800, 'middle') +
             txt2(805, 228, A.occ === true ? 'Drop (occupied)' : A.occ === false ? 'Pickup (clear)' : '', 10, P.muted, 600, 'middle') +
-            cb2(P, 725, 405, 160, 30, findRow(A, 'TPRV'), 'VTC 24 DC TPR I/P(V)', '') +
-            arrowR(P, 660, 960, 470, P.navy, 3) + txt2(925, 460, 'N-24V', 10.5, P.ink, 700, 'end') +
-            arrowR(P, 680, 960, 500, P.red, 3) + txt2(925, 492, 'B-24V', 10.5, P.ink, 700, 'end') +
+            cb2(P, 720, 250, 150, 30, findRow(A, 'TPRV'), 'VTC 24 DC TPR I/P(V)', '') +
+            arrowR(P, 480, 960, 470, P.navy, 3) + txt2(925, 460, 'N-24V', 10.5, P.ink, 700, 'end') +
+            arrowR(P, 455, 960, 500, P.red, 3) + txt2(925, 492, 'B-24V', 10.5, P.ink, 700, 'end') +
             arrowR(P, 248, 960, 572, P.brown, 3) + txt2(925, 564, 'Bx110V', 10.5, P.ink, 700, 'end') +
             arrowR(P, 228, 960, 596, P.navy, 3) + txt2(925, 590, 'Nx110V', 10.5, P.ink, 700, 'end') +
             '<path d="M228 470V596M248 470V572" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
+            symFuseH(P, 905, 572, P.brown, P.bg) +
             txt2(560, 588, 'U/G CABLE', 10.5, P.ink, 600, 'middle');
+        /* U/G cable plug / socket where the 24 V and 110 V lines enter the relay room */
+        [[440, P.red], [455, P.navy], [470, P.navy], [500, P.red], [572, P.brown], [596, P.navy]].forEach(function (u) { s += symPlug(P, 690, u[0], P.ink, P.bg, true); });
+        s += txt2(690, 428, 'U/G', 8.5, P.ink, 700, 'middle') + txt2(690, 520, 'U/G CABLE', 8.5, P.ink, 700, 'middle');
         return s + '</svg>';
     }
 
-    /* signal: aspects from ISIG / VSIG readings, top -> bottom HHG, DG, HG, RG */
+    /* signal: aspects from ISIG / VSIG readings, top -> bottom HHG, DG, HG, RG.
+       Each aspect is fed Bx110V -> fuse -> relay contacts (series and parallel
+       branches, drawn on the 616 S-39 pattern) -> ECR -> location box ")(" ->
+       lamp, and returns on Nx110V through its own contacts.
+       A string is a series contact, an array of arrays is a set of parallel
+       branches. Verify against the station's signal control circuit. */
+    var SIG_WIRING = {
+        HHG: { b: ['HR', [['DR', 'HHR'], ['DR', 'DECR']]], n: ['HR', [['DR', 'HHR'], ['DR', 'DECR']]], ecr: 'HHECR' },
+        DG: { b: ['HR', 'HHR', 'DR'], n: ['HR', 'HHR', 'DR'], ecr: 'DECR' },
+        GG: { b: ['HR', 'DR'], n: ['HR', 'DR'], ecr: 'DECR' },
+        HG: { b: [[['HR'], ['DECR', 'DR']]], n: [[['DECR', 'DR'], ['HR']]], ecr: 'HECR' },
+        YG: { b: ['HR'], n: ['HR'], ecr: 'HECR' },
+        RG: { b: [[['HR'], ['DECR', 'HHECR', 'HECR']]], n: [[['DECR', 'HHECR', 'HECR'], ['HR']]], ecr: 'RECR' }
+    };
+    function sigChain(P, A, items, x0, y, wireCol) {
+        var s = '', x = x0, CW = 60;
+        items.forEach(function (it) {
+            if (typeof it === 'string') { s += symContact(P, x + CW / 2, y, it, relayState(A, it)); x += CW; return; }
+            var w = 0;
+            it.forEach(function (br) { w = Math.max(w, br.length * CW); });
+            w += 20;
+            it.forEach(function (br, bi) {
+                var by = y + bi * 18;
+                if (bi) s += '<path d="M' + (x + 4) + ' ' + y + 'V' + by + 'H' + (x + w - 4) + 'V' + y + '" fill="none" stroke="' + wireCol + '" stroke-width="2"></path>' + dot(x + 4, y, wireCol) + dot(x + w - 4, y, wireCol);
+                br.forEach(function (c, k) { s += symContact(P, x + 10 + CW / 2 + k * CW, by, c, relayState(A, c), P.paper, bi > 0); });
+            });
+            x += w;
+        });
+        return s;
+    }
     function signalCircuitSvg(A) {
         var P = cpal2();
         A_ID = A.aid;
@@ -847,49 +1043,60 @@
             var m = /^\s*[IV]SIG\s+([A-Z]+)\s*$/i.exec(r.alias || r.label || '');
             if (m && asp.indexOf(m[1].toUpperCase()) === -1 && !/PR$/.test(m[1].toUpperCase())) asp.push(m[1].toUpperCase());
         });
-        var ORDER = ['HHG', 'DG', 'HG', 'RG'];
+        var ORDER = ['HHG', 'DG', 'GG', 'HG', 'YG', 'RG'];
         asp.sort(function (a, b) { var ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib); });
         if (!asp.length) return genericCircuitSvg(A);
-        var lampCol = function (a) { return /RG$/.test(a) ? '#EF4444' : /DG$/.test(a) ? '#22C55E' : '#F5B70A'; };
+        var lampCol = function (a) { return /RG$/.test(a) ? '#EF4444' : /[DG]G$/.test(a) && a !== 'HHG' ? '#22C55E' : '#F5B70A'; };
         var get = function (pre, a) { return byKey[norm(pre + ' ' + a)] || byKey[norm(pre + a)] || null; };
         var proving = A.rows.filter(function (r) { return /[IV]SIG\s+[A-Z]*PR$|PR\s*$/i.test(r.alias || r.label || ''); });
         var others = A.rows.filter(function (r) { return !/^\s*[IV]SIG\s+[A-Z]+\s*$/i.test(r.alias || r.label || '') && proving.indexOf(r) === -1; });
-        var rowH = 92, top = 60, H = top + asp.length * rowH + 40 + (others.length ? Math.ceil(others.length / 4) * 40 + 30 : 0);
+        var rowH = 140, top = 60, NOFF = 66, body = asp.length * rowH;
+        var H = top + body + 70 + (others.length ? Math.ceil(others.length / 4) * 40 + 40 : 0);
         var s = '<svg viewBox="0 0 1000 ' + H + '" role="img" aria-label="Signal circuit ' + esc(A.name) + '"><rect width="1000" height="' + H + '" fill="' + P.bg + '"></rect>';
-        s += panel2(P, 20, 40, 520, asp.length * rowH + 10) + txt2(280, 32, 'RELAY ROOM', 11, P.ink, 700, 'middle') +
-            panel2(P, 560, 40, 130, asp.length * rowH + 10) + txt2(625, 26, 'LOCATION BOX', 10, P.ink, 700, 'middle') + txt2(625, 37, 'SLCBOX', 9, P.muted, 600, 'middle') +
-            '<line x1="705" y1="30" x2="705" y2="' + (40 + asp.length * rowH + 10) + '" stroke="' + P.ink + '" stroke-dasharray="3 3"></line>' + txt2(712, 32, 'SIGNAL UNIT', 10, P.ink, 700);
-        /* signal head */
-        var headH = asp.length * rowH - 10;
+        s += panel2(P, 20, 40, 520, body) + txt2(280, 32, 'RELAY ROOM', 11, P.ink, 700, 'middle') +
+            panel2(P, 560, 40, 130, body) + txt2(625, 32, 'LOCATION BOX', 10, P.ink, 700, 'middle') +
+            '<line x1="705" y1="24" x2="705" y2="' + (40 + body) + '" stroke="' + P.ink + '" stroke-dasharray="3 3"></line>' + txt2(712, 32, 'SIGNAL UNIT', 10, P.ink, 700);
+        /* signal head, post and base plate */
+        var headH = body - 30;
         s += '<rect x="745" y="50" width="96" height="' + headH + '" rx="40" fill="' + P.head + '"></rect>' +
-            '<rect x="784" y="' + (50 + headH) + '" width="18" height="40" fill="' + P.head + '"></rect>';
-        var relays = A.relays.slice(), per = Math.ceil(relays.length / asp.length) || 0;
+            '<rect x="784" y="' + (50 + headH) + '" width="18" height="60" fill="' + P.head + '"></rect>' +
+            '<rect x="763" y="' + (110 + headH) + '" width="60" height="12" rx="2" fill="' + P.head + '"></rect>';
         asp.forEach(function (a, i) {
-            var y = top + i * rowH, cy = y + 22;
+            var y = top + i * rowH, ny = y + NOFF, cy = y + 33;
             var I = get('ISIG', a), V = get('VSIG', a);
             var lit = (I && I.v !== null && I.v > 30) || (V && V.v !== null && V.v > 50);
-            s += arrowR(P, 30, 745, y, P.red, 2.4) + txt2(34, y - 5, 'Bx110V', 9.5, P.ink, 700) +
-                '<path d="M745 ' + (y + 30) + 'H36" stroke="' + P.navy + '" stroke-width="2.4"></path><path d="M44 ' + (y + 23) + 'L32 ' + (y + 30) + 'L44 ' + (y + 37) + '" fill="none" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
-                txt2(34, y + 46, 'Nx110V', 9.5, P.ink, 700);
-            /* relay contacts on this aspect's feed */
-            relays.slice(i * per, (i + 1) * per).forEach(function (rl, k) { s += relayTag(P, 110 + k * 92, y - 14, rl.name, rl.up); });
+            var wr = SIG_WIRING[a] || { b: ['HR'], n: ['HR'], ecr: '' };
+            /* feed and return end at the signal unit (no arrowheads into the lamp) */
+            s += '<path d="M30 ' + y + 'H745" stroke="' + P.red + '" stroke-width="2.4"></path>' + txt2(34, y - 8, 'Bx110V', 9.5, P.ink, 700) +
+                '<path d="M745 ' + ny + 'H36" stroke="' + P.navy + '" stroke-width="2.4"></path>' + arrowHeadL(32, ny, P.navy) +
+                txt2(34, ny + 16, 'Nx110V', 9.5, P.ink, 700);
+            s += symFuseH(P, 52, y, P.red);
+            s += sigChain(P, A, wr.b, 74, y, P.red) + sigChain(P, A, wr.n, 74, ny, P.navy);
+            /* the aspect's ECR at the end of the relay room */
+            if (wr.ecr) s += symCoil(P, 448, y, 78, wr.ecr, relayState(A, wr.ecr));
+            /* location box terminals */
+            s += symPlug(P, 576, y, P.ink, P.paper) + symPlug(P, 576, ny, P.ink, P.paper);
             /* lamp */
             s += '<circle cx="793" cy="' + cy + '" r="27" fill="' + (lit ? lampCol(a) : P.lampOff) + '"' + (lit ? ' style="filter:drop-shadow(0 0 8px ' + lampCol(a) + ')"' : '') + '></circle>' +
-                cb2(P, 860, y - 6, 128, 26, I, 'ISIG ' + a, '') + cb2(P, 860, y + 24, 128, 26, V, 'VSIG ' + a, '');
+                cb2(P, 860, y - 2, 128, 26, I, 'ISIG ' + a, '') + cb2(P, 860, y + 34, 128, 26, V, 'VSIG ' + a, '');
             /* proving relay of this aspect: HHG -> HHPR, DG -> DPR, HG -> HPR, RG -> RPR */
             var want = norm(a.replace(/G$/, '') + 'PR'), pr = null;
             proving.forEach(function (q) { var n = norm(q.alias || q.label); if (n.slice(-want.length) === want && (!pr || n.length < norm(pr.alias || pr.label).length)) pr = q; });
-            if (pr) s += cb2(P, 568, y + 2, 114, 30, pr, pr.alias || pr.label, '');
+            if (pr) s += cb2(P, 588, y + 17, 96, 32, pr, pr.alias || pr.label, '');
         });
         if (others.length) {
-            var oy = top + asp.length * rowH + 30;
+            var oy = top + body + 100;
             s += txt2(20, oy - 8, 'OTHER READINGS', 10, P.muted, 700);
             others.forEach(function (r, k) { s += cb2(P, 20 + (k % 4) * 245, oy + Math.floor(k / 4) * 40, 235, 32, r, r.alias || r.label, ''); });
         }
         return s + '</svg>';
     }
 
-    /* point machine: relay room, A / B end location boxes + motors, table */
+    /* point machine (616 PT pattern): relay room, A / B end location boxes
+       and motor boxes, closed 24 V detection loops B-24V -> B end -> A end ->
+       NWKR / RWKR coils -> N-24V, and the 110 V operation circuit through
+       NWCR / RWCR (B end motor) and NWPR/NWCZR / RWPR/RWCZR (A end motor)
+       to the split-field motors, common return to N-110V. */
     function pmCircuitSvg(A) {
         var P = cpal2();
         A_ID = A.aid;
@@ -898,47 +1105,73 @@
         var v = function (e, d) { var r = lab[e + ' End ' + d]; return r && r.v !== null && r.v !== undefined ? fmt(r.v) : '--'; };
         var rl = {};
         A.relays.forEach(function (r) { rl[String(r.name).toUpperCase().replace(/[^A-Z]/g, '').slice(-4)] = r; });
-        var s = '<svg viewBox="0 0 1000 640" role="img" aria-label="Point machine circuit ' + esc(A.name) + '"><rect width="1000" height="640" fill="' + P.bg + '"></rect>';
-        s += panel2(P, 30, 50, 320, 560) + txt2(190, 40, 'RELAY ROOM', 13, P.ink, 800, 'middle') +
-            panel2(P, 420, 330, 170, 270) + txt2(505, 352, 'A END', 13, P.ink, 800, 'middle') + txt2(505, 370, 'Location Box', 11, P.ink, 600, 'middle') +
-            panel2(P, 680, 60, 160, 300) + txt2(760, 50, 'B END', 13, P.ink, 800, 'middle') + txt2(760, 82, 'Location Box', 11, P.ink, 600, 'middle');
-        /* motors */
-        var motor = function (x, y, label) {
-            return '<circle cx="' + x + '" cy="' + y + '" r="16" fill="none" stroke="' + P.ink + '" stroke-width="2"></circle>' + txt2(x, y + 5, 'M', 13, P.ink, 800, 'middle') +
-                txt2(x, y + 32, label, 9.5, P.ink, 600, 'middle');
-        };
-        s += motor(640, 330, "'A' END MOTOR") + motor(905, 70, "'B' END MOTOR");
-        /* supplies */
-        s += txt2(44, 92, 'B-24V', 11, P.ink, 700) + '<path d="M44 100H880V80" stroke="' + P.red + '" stroke-width="2.4" fill="none"></path>' +
-            txt2(44, 122, 'N-24V', 11, P.ink, 700) + '<path d="M880 130H44" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
-            txt2(44, 212, 'B-110V', 11, P.ink, 700) + '<path d="M44 220H620V330" stroke="' + P.orange + '" stroke-width="2.4" fill="none"></path><path d="M300 220V180H905V86" stroke="' + P.orange + '" stroke-width="2.4" fill="none"></path>' +
-            txt2(44, 302, 'N-110V', 11, P.ink, 700) + '<path d="M44 310H660V330" stroke="' + P.navy + '" stroke-width="2.4" fill="none"></path><path d="M320 310V250H930V86" stroke="' + P.navy + '" stroke-width="2.4" fill="none"></path>';
-        /* relays */
-        var tag = function (x, y, k, name) { var r = rl[k]; return r ? relayTag(P, x, y, name, r.up) : relayTag(P, x, y, name + ' --', false).replace(P.drop, P.muted); };
-        s += tag(150, 240, 'NWCR', 'NWCR') + tag(150, 290, 'RWCR', 'RWCR') +
-            '<path d="M44 400H420M44 470H420" stroke="' + P.red + '" stroke-width="2.4"></path>' +
-            tag(70, 385, 'NWKR', 'NWKR') + tag(70, 455, 'RWKR', 'RWKR') +
-            txt2(170, 395, 'A VPT: ' + v('A', 'VPT N/R(V)') + '   B VPT: ' + v('B', 'VPT N/R(V)'), 10, P.ink, 700);
-        /* end location values */
-        s += txt2(505, 410, 'A VPT 24 DC LOC', 10, P.green, 700, 'middle') + txt2(505, 426, v('A', 'VPT 24 DC LOC N/R(V)') + ' V', 13, P.ink, 800, 'middle') +
-            txt2(505, 470, 'A IPT Max / Avg', 10, P.muted, 700, 'middle') + txt2(505, 486, v('A', 'IPT N/R(A) Max') + ' / ' + v('A', 'IPT N/R(A) Avg') + ' A', 12, P.ink, 800, 'middle') +
-            txt2(760, 140, 'B VPT 24 DC LOC', 10, P.green, 700, 'middle') + txt2(760, 156, v('B', 'VPT 24 DC LOC N/R(V)') + ' V', 13, P.ink, 800, 'middle') +
-            txt2(760, 210, 'B IPT Max / Avg', 10, P.muted, 700, 'middle') + txt2(760, 226, v('B', 'IPT N/R(A) Max') + ' / ' + v('B', 'IPT N/R(A) Avg') + ' A', 12, P.ink, 800, 'middle');
-        /* operation table */
-        var tx = 588, ty = 430, cw = [36, 82, 74, 64, 74, 60];
-        var hd = ['End', 'IPT Max/Avg', 'VPT 110 LOC', 'Op Time', 'VPT 24 LOC', 'VPT'];
+        var up = function (k) { return rl[k] ? !!rl[k].up : relayState(A, k); };
+        var upAny = function (a, b) { var x = relayState(A, a); return x === undefined ? relayState(A, b) : x; };
+        var W = 1060, Hh = 660;
+        var s = '<svg viewBox="0 0 ' + W + ' ' + Hh + '" role="img" aria-label="Point machine circuit ' + esc(A.name) + '"><rect width="' + W + '" height="' + Hh + '" fill="' + P.bg + '"></rect>';
+        var dash = function (x, y, w, h) { return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + P.paper + '" fill-opacity=".5" stroke="' + P.box + '" stroke-dasharray="5 4"></rect>'; };
+        s += panel2(P, 30, 50, 300, 590) + txt2(180, 40, 'RELAY ROOM', 13, P.ink, 800, 'middle') +
+            panel2(P, 400, 340, 120, 300) + txt2(460, 318, 'A END', 13, P.ink, 800, 'middle') + txt2(460, 333, 'Location Box', 10, P.ink, 600, 'middle') +
+            dash(530, 340, 100, 300) + txt2(580, 333, "'A' END MOTOR", 9.5, P.ink, 700, 'middle') +
+            panel2(P, 640, 60, 120, 360) + txt2(700, 50, 'B END', 13, P.ink, 800, 'middle') + txt2(700, 76, 'Location Box', 10, P.ink, 600, 'middle') +
+            dash(770, 60, 100, 360) + txt2(820, 52, "'B' END MOTOR", 9.5, P.ink, 700, 'middle');
+        /* 24 V detection: B-24V bus -> B end -> A end -> NWKR / RWKR coils -> N-24V */
+        s += txt2(44, 84, 'B-24V', 11, P.ink, 700) + '<path d="M44 90H840" stroke="' + P.red + '" stroke-width="2.4"></path>' +
+            '<path d="M810 90V130H560V380H262M840 90V150H590V430H262" fill="none" stroke="' + P.red + '" stroke-width="2.4"></path>' + dot(810, 90, P.red) +
+            txt2(66, 124, 'N-24V', 11, P.ink, 700) + '<path d="M192 380H60M192 430H60M60 430V110H36" fill="none" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
+            arrowHeadL(32, 110, P.navy) + dot(60, 380, P.navy);
+        var aNk = attrById(A.aid, 25), aRk = attrById(A.aid, 26), bNk = attrById(A.aid, 27), bRk = attrById(A.aid, 28);
+        s += symCoil(P, 192, 380, 70, 'NWKR', up('NWKR'), true) + symCoil(P, 192, 430, 70, 'RWKR', up('RWKR'), true) +
+            txt2(192, 366, 'A VPT NWKR: ' + aNk, 9, P.ink, 700) + txt2(192, 404, 'B VPT NWKR: ' + bNk, 9, P.ink, 700) +
+            txt2(192, 416, 'A VPT RWKR: ' + aRk, 9, P.ink, 700) + txt2(192, 454, 'B VPT RWKR: ' + bRk, 9, P.ink, 700);
+        /* 110 V operation: B-110V -> fuse -> NWCR (N/F) / RWCR (R/F) -> B end motor;
+           NWPR/NWCZR (N/F) / RWPR/RWCZR (R/F) -> A end motor */
+        s += txt2(44, 194, 'B-110V', 11, P.ink, 700) +
+            '<path d="M44 200H780V244H790M120 200V230H775V276H790M100 200V552H545M100 520H545" fill="none" stroke="' + P.orange + '" stroke-width="2.4"></path>' +
+            dot(100, 200, P.orange) + dot(120, 200, P.orange) + dot(100, 520, P.orange) + symFuseH(P, 76, 200, P.orange) +
+            symContact(P, 200, 200, 'A End - NWCR', up('NWCR')) + symContact(P, 200, 230, 'A End - RWCR', up('RWCR'), P.paper, true) +
+            symContact(P, 200, 520, 'NWPR/NWCZR', upAny('NWPR', 'NWCZR')) + symContact(P, 200, 552, 'RWPR/RWCZR', upAny('RWPR', 'RWCZR'), P.paper, true);
+        /* common returns to N-110V, through the return contacts */
+        s += txt2(44, 294, 'N-110V', 11, P.ink, 700) +
+            '<path d="M846 260H862V300H36M150 300V322H250V300M601 536H615V600H70V300M150 600V622H250V600" fill="none" stroke="' + P.navy + '" stroke-width="2.4"></path>' +
+            arrowHeadL(32, 300, P.navy) + dot(70, 300, P.navy) + dot(150, 300, P.navy) + dot(250, 300, P.navy) + dot(150, 600, P.navy) + dot(250, 600, P.navy) +
+            symContact(P, 200, 300, 'A End - NWCR', up('NWCR')) + symContact(P, 200, 322, 'A End - RWCR', up('RWCR'), P.paper, true) +
+            symContact(P, 200, 600, 'NWPR/NWCZR', upAny('NWPR', 'NWCZR')) + symContact(P, 200, 622, 'RWPR/RWCZR', upAny('RWPR', 'RWCZR'), P.paper, true);
+        /* split-field motors */
+        s += symMotor(P, 835, 260, P.ink) + symMotor(P, 590, 536, P.ink);
+        /* terminal links on every wire through both location boxes */
+        [90, 130, 150, 200, 230, 300].forEach(function (y) { s += symLink(P, 700, y); });
+        [380, 430, 520, 552, 600].forEach(function (y) { s += symLink(P, 460, y); });
+        /* end location readings, 24 V split into N and R */
+        s += txt2(460, 398, 'A VPT 24 DC LOC', 8.5, P.green, 700, 'middle') +
+            txt2(460, 414, 'N: ' + attrById(A.aid, 576) + '  R: ' + attrById(A.aid, 577), 9.5, P.ink, 800, 'middle') +
+            txt2(460, 470, 'A IPT Max / Avg', 8.5, P.muted, 700, 'middle') + txt2(460, 486, v('A', 'IPT N/R(A) Max') + ' / ' + v('A', 'IPT N/R(A) Avg') + ' A', 10.5, P.ink, 800, 'middle') +
+            txt2(700, 170, 'B VPT 24 DC LOC', 8.5, P.green, 700, 'middle') +
+            txt2(700, 186, 'N: ' + attrById(A.aid, 578) + '  R: ' + attrById(A.aid, 579), 9.5, P.ink, 800, 'middle') +
+            txt2(700, 256, 'B IPT Max / Avg', 8.5, P.muted, 700, 'middle') + txt2(700, 272, v('B', 'IPT N/R(A) Max') + ' / ' + v('B', 'IPT N/R(A) Avg') + ' A', 10.5, P.ink, 800, 'middle');
+        /* operation table with relay state pills */
+        var tx = 636, ty = 480, cw = [28, 66, 54, 44, 54, 48, 30, 30, 30, 30], tw = cw.reduce(function (a, b) { return a + b; }, 0);
+        var hd = [['End', ''], ['IPT N/R', 'Max/Avg'], ['VPT 110', 'DC LOC N/R'], ['TPT N/R', '(ms)'], ['VPT 24', 'DC LOC N/R'], ['VPT N/R', '(V)'], ['NWKR', ''], ['RWKR', ''], ['NWCR', ''], ['RWCR', '']];
         var dir = A.pmDir || '';
-        s += '<rect x="' + tx + '" y="' + (ty - 26) + '" width="' + cw.reduce(function (a, b) { return a + b; }, 0) + '" height="112" fill="' + P.paper + '" stroke="' + P.box + '" stroke-dasharray="3 2"></rect>' +
+        s += '<rect x="' + tx + '" y="' + (ty - 26) + '" width="' + tw + '" height="122" fill="' + P.paper + '" stroke="' + P.box + '" stroke-dasharray="3 2"></rect>' +
             txt2(tx + 6, ty - 10, esc(A.name), 10, P.ink, 800) +
-            (dir ? '<rect x="' + (tx + 300) + '" y="' + (ty - 22) + '" width="86" height="16" rx="8" fill="' + (dir === 'Reverse' ? P.drop : P.green) + '"></rect>' + txt2(tx + 343, ty - 10, esc(dir), 10, '#FFFFFF', 800, 'middle') : '');
+            (dir ? '<rect x="' + (tx + tw - 92) + '" y="' + (ty - 22) + '" width="86" height="16" rx="8" fill="' + (dir === 'Reverse' ? P.drop : P.green) + '"></rect>' + txt2(tx + tw - 49, ty - 10, esc(dir), 10, '#FFFFFF', 800, 'middle') : '');
         var cx = tx;
-        hd.forEach(function (h, i) { s += txt2(cx + 4, ty + 8, h, 9, P.muted, 700); cx += cw[i]; });
+        hd.forEach(function (h, i) { s += txt2(cx + 3, ty + 6, h[0], 8, P.muted, 700) + (h[1] ? txt2(cx + 3, ty + 16, h[1], 7.5, P.muted, 600) : ''); cx += cw[i]; });
         ['A', 'B'].forEach(function (E, j) {
-            var y = ty + 30 + j * 26, vals = [E, v(E, 'IPT N/R(A) Max') + '/' + v(E, 'IPT N/R(A) Avg'), v(E, 'VPT 110 DC LOC N/R(V)'), v(E, 'TPT N/R(ms)'), v(E, 'VPT 24 DC LOC N/R(V)'), v(E, 'VPT N/R(V)')];
+            var y = ty + 40 + j * 26, vals = [E, v(E, 'IPT N/R(A) Max') + '/' + v(E, 'IPT N/R(A) Avg'), v(E, 'VPT 110 DC LOC N/R(V)'), v(E, 'TPT N/R(ms)'), v(E, 'VPT 24 DC LOC N/R(V)'), v(E, 'VPT N/R(V)')];
             var c2 = tx;
-            s += '<line x1="' + tx + '" y1="' + (y - 16) + '" x2="' + (tx + 390) + '" y2="' + (y - 16) + '" stroke="' + P.edge + '"></line>';
-            vals.forEach(function (t, i) { s += txt2(c2 + 4, y, t, 10, P.ink, i ? 600 : 800); c2 += cw[i]; });
+            s += '<line x1="' + tx + '" y1="' + (y - 16) + '" x2="' + (tx + tw) + '" y2="' + (y - 16) + '" stroke="' + P.edge + '"></line>';
+            vals.forEach(function (t, i) { s += txt2(c2 + 3, y, t, 9.5, P.ink, i ? 600 : 800); c2 += cw[i]; });
+            if (!j) ['NWKR', 'RWKR', 'NWCR', 'RWCR'].forEach(function (k) {
+                var u = up(k), pc = stCol(P, u);
+                s += '<rect x="' + (c2 + 1) + '" y="' + (y - 10) + '" width="28" height="13" rx="6.5" fill="' + pc + '"></rect>' +
+                    txt2(c2 + 15, y, u === true ? 'Pickup' : u === false ? 'Drop' : '--', 7.5, '#FFFFFF', 800, 'middle');
+                c2 += 30;
+            });
         });
+        /* callouts from the table to the motors */
+        s += arrowTo(P, tx + 90, ty - 26, 832, 294, P.blue, 1.4, '2 3') + arrowTo(P, tx, ty + 40, 614, 538, P.blue, 1.4, '2 3');
         return s + '</svg>';
     }
 
@@ -977,7 +1210,19 @@
     function circuitHtml(A) {
         var at = assetTypeId();
         var svg = isTrackType() ? trackCircuitSvg(A) : at === 2 ? signalCircuitSvg(A) : at === 3 ? pmCircuitSvg(A) : genericCircuitSvg(A);
-        return '<div class="hv-circ">' + svg + '</div>';
+        /* v618.40: asset title block (LIVE, type / asset, last update) + - / Fit / + zoom */
+        var e = live()[A.aid] || {}, lu = e.lastUpdated ? new Date(e.lastUpdated) : null;
+        var ts = lu && !isNaN(lu.getTime()) ? pad(lu.getHours()) + ':' + pad(lu.getMinutes()) + ':' + pad(lu.getSeconds()) : '--';
+        var where = [strip($('#drpSite option:selected').text()), strip($('#drpAssetType option:selected').text())].filter(function (t) { return t && !/^select/i.test(t); }).join(' · ');
+        var z = (H.zoom && H.zoom[A.aid]) || 1;
+        return '<div class="hv-circ">' +
+            '<div class="hv-circ-head"><span class="hv-circ-live"><i></i>LIVE</span><b>' + esc(A.name) + '</b>' +
+            (where ? '<span class="hv-circ-where">' + esc(where) + '</span>' : '') +
+            '<span class="hv-circ-ts">Last Update: ' + ts + '</span>' +
+            '<span class="hv-circ-zoom"><button type="button" data-hv-zoom="-1" data-hv-zaid="' + esc(A.aid) + '" title="Zoom out">&#8722;</button>' +
+            '<button type="button" data-hv-zoom="0" data-hv-zaid="' + esc(A.aid) + '" title="Fit">Fit</button>' +
+            '<button type="button" data-hv-zoom="1" data-hv-zaid="' + esc(A.aid) + '" title="Zoom in">+</button></span></div>' +
+            '<div class="hv-circ-pan"><div class="hv-circ-in' + (z !== 1 ? ' hv-zoomed' : '') + '" style="width:' + Math.round(z * 100) + '%">' + svg + '</div></div></div>';
     }
     function circOpen(aid) { return H.circAll ? !H.circOff[aid] : !!H.circ[aid]; }
 
@@ -1130,7 +1375,7 @@
             A.rows.concat(A.derived || []).forEach(function (r) { map[r.k] = r; });
             var track = isTrackType();
             var pillCls = track ? (A.occ === true ? 'occ' : A.occ === false ? 'clear' : '') : pmPill(A);
-            h += '<tr class="st-' + A.status + (H.open[A.aid] ? ' open' : '') + (child ? ' hv-child' : '') + '">' +
+            h += '<tr data-hv-aid="' + esc(A.aid) + '" class="st-' + A.status + (H.open[A.aid] ? ' open' : '') + (child ? ' hv-child' : '') + '">' +
                 '<th scope="row" class="hv-sticky"><button type="button" class="hv-x" data-hv-open="' + esc(A.aid) + '" aria-expanded="' + !!H.open[A.aid] + '" title="Circuit and trend">' +
                 '<i class="fa-solid fa-chevron-right"></i></button><span class="hv-pill ' + pillCls + '">' + esc(A.name) + '</span></th>' +
                 '<td><div class="hv-hcell">' + ringSvg(A).replace('width="40" height="40"', 'width="30" height="30"') +
@@ -1144,7 +1389,7 @@
                 if (r.derived) { h += '<td class="dv">' + fmt(r.v) + '</td>'; return; }
                 h += '<td><button type="button" class="hv-cell st-' + r.st + (H.open[A.aid] && H.trendKey[A.aid] === r.k ? ' sel' : '') +
                     '" data-hv-cell="' + esc(A.aid) + '" data-hv-k="' + esc(r.k) + '" title="' + esc(rowTip(r)) + '">' +
-                    '<span class="v">' + fmt(r.v) + ' <i>' + flagText(r) + '</i></span>' +
+                    '<span class="v' + (r.relay ? ' hv-rv ' + (r.up ? 'up' : 'dn') : '') + '">' + dispV(r) + ' <i>' + flagText(r) + '</i></span>' +
                     gaugeHtml(r, false) + '</button></td>';
             });
             h += '</tr>';
@@ -1178,7 +1423,7 @@
                 g.members.forEach(function (m) {
                     var r = null;
                     m.rows.concat(m.derived || []).forEach(function (x) { if (x.k === c.k) r = x; });
-                    if (r && r.v !== null && r.v !== undefined && !isNaN(r.v)) { sum += r.v; n++; }
+                    if (r && !r.relay && r.v !== null && r.v !== undefined && !isNaN(r.v)) { sum += r.v; n++; }
                 });
                 h += n ? '<td class="hv-sumcell" title="Sum of ' + n + ' bank' + (n > 1 ? 's' : '') + '"><b>' + fmt(sum) + '</b><small>&Sigma; ' + n + '</small></td>' : '<td class="hv-na">--</td>';
             });
@@ -1213,7 +1458,7 @@
         var list = ids.map(readAsset);
         var counts = { fault: 0, watch: 0, ok: 0, nodata: 0 };
         for (var i = 0; i < list.length; i++) counts[list[i].status]++;
-        var ipsTabNow = (H.view === 'table') ? (H.ipsTableTab || 'voltage') : H.ipsTab;
+        var ipsTabNow = (H.view === 'table') ? (H.ipsTableTab || 'all') : H.ipsTab;
         if (isIpsType() && ipsTabNow && ipsTabNow !== 'all') {
             list.forEach(function (A) {
                 A.rows = A.rows.filter(function (r) { return (r.ipsTab || 'voltage') === ipsTabNow; });
@@ -1270,8 +1515,8 @@
             body = '<div class="hv-empty">Nothing matches this filter.</div>';
         } else {
             body = H.view === 'table'
-                ? (isIpsType() ? '<div class="hv-tabs" role="tablist">' + [['voltage', 'Voltage'], ['current', 'Current'], ['digital', 'Digital']].map(function (t) {
-                    return '<button type="button" role="tab" data-hv-ipstt="' + t[0] + '" aria-selected="' + ((H.ipsTableTab || 'voltage') === t[0]) + '">' + t[1] + '</button>';
+                ? (isIpsType() ? '<div class="hv-tabs" role="tablist">' + [['all', 'All'], ['voltage', 'Voltage'], ['current', 'Current'], ['digital', 'Digital']].map(function (t) {
+                    return '<button type="button" role="tab" data-hv-ipstt="' + t[0] + '" aria-selected="' + ((H.ipsTableTab || 'all') === t[0]) + '">' + t[1] + '</button>';
                 }).join('') + '</div>' : '') + tableHtml(shown)
                 : '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
         }
@@ -1281,6 +1526,7 @@
         var caret = hadSearch ? act.selectionStart : 0;
         var wrap = host.querySelector('.hv-tblwrap');
         var sx = wrap ? wrap.scrollLeft : 0;
+        var sy = wrap ? wrap.scrollTop : 0;   /* v618.30: keep vertical position across live rebuilds */
         host.style.setProperty('--hv-bg', cardBg());
         host.innerHTML = bar + body;
         var wrap2 = host.querySelector('.hv-tblwrap');
@@ -1290,6 +1536,18 @@
             var exps = wrap2.querySelectorAll('.hv-expin');
             for (var ei = 0; ei < exps.length; ei++) exps[ei].style.width = ew + 'px';
             if (sx) wrap2.scrollLeft = sx;
+            if (sy) wrap2.scrollTop = sy;
+            /* v618.30: bring a just-opened row to the top, just under the sticky header */
+            if (H.scrollTo) {
+                var tr = wrap2.querySelector('tr[data-hv-aid="' + String(H.scrollTo).replace(/"/g, '\\"') + '"]');
+                H.scrollTo = null;
+                if (tr) {
+                    var th = wrap2.querySelector('thead');
+                    wrap2.scrollTop += tr.getBoundingClientRect().top - wrap2.getBoundingClientRect().top - (th ? th.offsetHeight : 0);
+                    var wr = wrap2.getBoundingClientRect();
+                    if (wr.top < 0 || wr.top > window.innerHeight * 0.5) wrap2.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                }
+            }
         }
         if (hadSearch) {
             var s = document.getElementById('hvSearch');
@@ -1301,6 +1559,17 @@
         var t = e.target;
         var cl = t.closest ? t.closest('[data-hv-classic]') : null;
         if (cl) { H.classic = true; leave(); $('.tl-vmode-btn[data-vmode="Table"]').addClass('active').attr('aria-pressed', 'true'); return; }
+        var zb = t.closest ? t.closest('[data-hv-zoom]') : null;
+        if (zb) {
+            var zaid = zb.getAttribute('data-hv-zaid'), zd = parseInt(zb.getAttribute('data-hv-zoom'), 10);
+            H.zoom = H.zoom || {};
+            var nz = zd === 0 ? 1 : Math.max(1, Math.min(3, ((H.zoom[zaid] || 1) + zd * 0.25)));
+            H.zoom[zaid] = nz;
+            var zin = zb.closest('.hv-circ') && zb.closest('.hv-circ').querySelector('.hv-circ-in');
+            if (zin) { zin.style.width = Math.round(nz * 100) + '%'; zin.classList.toggle('hv-zoomed', nz !== 1); }
+            e.preventDefault(); e.stopPropagation();
+            return;
+        }
         var b = t.closest ? t.closest('[data-hv-ipstt],[data-hv-gopen],[data-hv-ipstab],[data-hv-filter],[data-hv-sort],[data-hv-view],[data-hv-circ],[data-hv-circall],[data-hv-open],[data-hv-cell],[data-hv-row]') : null;
         if (!b) return;
         if (b.hasAttribute('data-hv-ipstt')) H.ipsTableTab = b.getAttribute('data-hv-ipstt');
@@ -1315,13 +1584,18 @@
             if (H.circAll) H.circOff[ca] = !H.circOff[ca];
             else H.circ[ca] = !H.circ[ca];
         } else if (b.hasAttribute('data-hv-open')) {
+            /* v618.30: one expanded row at a time; the opened row scrolls to the top */
             var oa = b.getAttribute('data-hv-open');
-            H.open[oa] = !H.open[oa];
+            if (H.open[oa]) H.open[oa] = false;
+            else { H.open = {}; H.open[oa] = true; H.scrollTo = oa; }
         } else if (b.hasAttribute('data-hv-cell')) {
             var cA = b.getAttribute('data-hv-cell');
             var cK = b.getAttribute('data-hv-k');
             if (H.open[cA] && H.trendKey[cA] === cK) { H.open[cA] = false; }
-            else { H.open[cA] = true; H.trendKey[cA] = cK; }
+            else {
+                if (!H.open[cA]) { H.open = {}; H.scrollTo = cA; }
+                H.open[cA] = true; H.trendKey[cA] = cK;
+            }
         } else if (b.hasAttribute('data-hv-row')) {
             var aid = b.getAttribute('data-hv-row');
             var k = b.getAttribute('data-hv-k');
@@ -1339,7 +1613,11 @@
         '.ipsf-seg button[aria-pressed="true"]{background:var(--brand,#22d3ee);color:#04161A;font-weight:600;}' +
         '#ipsCardGrid[data-ipsf="voltage"] [data-ipst]:not([data-ipst="voltage"]),' +
         '#ipsCardGrid[data-ipsf="current"] [data-ipst]:not([data-ipst="current"]),' +
-        '#ipsCardGrid[data-ipsf="digital"] [data-ipst]:not([data-ipst="digital"]){display:none !important;}';
+        '#ipsCardGrid[data-ipsf="digital"] [data-ipst]:not([data-ipst="digital"]){display:none !important;}' +
+        '#ipsCardGrid .ips-asset-card.ipsf-hide{display:none !important;}' +
+        '#ipsCardGrid .ipsf-empty{grid-column:1/-1;padding:28px;text-align:center;opacity:.65;font-size:13px;}' +
+        '.ips-relay-val{font-weight:700;font-size:11.5px;padding:1px 8px;border-radius:999px;border:1.5px solid currentColor;}' +
+        '.ips-relay-val.pickup{color:#10b981;} .ips-relay-val.drop{color:#f59e0b;}';
     function tagIpsCards() {
         var grid = document.getElementById('ipsCardGrid');
         if (!grid) return;
@@ -1380,6 +1658,30 @@
         }
         var sums = grid.querySelectorAll('.ipsv2-sum');
         for (var q = 0; q < sums.length; q++) sums[q].setAttribute('data-ipst', 'current');
+        /* A tab lists only the assets that HAVE readings of that kind (as the
+           e7mriv2web IPS tabs do) -- an asset with nothing in the tab is hidden
+           instead of showing as an empty card. Each button shows its count. */
+        var tab = H.ipsTab || 'all', cards = grid.querySelectorAll('.ips-asset-card'), shown = 0;
+        var cnt = { all: cards.length, voltage: 0, current: 0, digital: 0 };
+        for (var c = 0; c < cards.length; c++) {
+            var has = {};
+            var tagged = cards[c].querySelectorAll('[data-ipst]');
+            for (var t = 0; t < tagged.length; t++) has[tagged[t].getAttribute('data-ipst')] = true;
+            for (var kk in has) if (cnt.hasOwnProperty(kk)) cnt[kk]++;
+            var match = tab === 'all' || !!has[tab];
+            cards[c].classList.toggle('ipsf-hide', !match);
+            if (match) shown++;
+        }
+        for (var b = 0; b < segBtns.length; b++) {
+            var key = segBtns[b].getAttribute('data-ipsf'), lbl = { all: 'All', voltage: 'Voltage', current: 'Current', digital: 'Digital' }[key];
+            var txt = lbl + ' (' + (cnt[key] || 0) + ')';
+            if (segBtns[b].textContent !== txt) segBtns[b].textContent = txt;
+        }
+        var empty = grid.querySelector('.ipsf-empty');
+        if (!shown && cards.length) {
+            if (!empty) { empty = document.createElement('div'); empty.className = 'ipsf-empty'; grid.appendChild(empty); }
+            empty.textContent = 'No ' + tab + ' readings for the selected IPS assets.';
+        } else if (empty) empty.parentNode.removeChild(empty);
     }
     function hookIps() {
         ['renderIpsGridView', 'updateIpsGridIncremental'].forEach(function (fname) {

@@ -12,8 +12,10 @@
         public bool IsOpenClose { get; set; }
         public int CreatedBy { get; set; }
         public System.DateTime CreatedDate { get; set; }
+        public System.DateTime AlertDate { get; set; }
         public string MaintainerRemark { get; set; }
         public bool? IsMaintainerAlert { get; set; }
+        public bool IsTest { get; set; }
 
         //Extra
         public int AssetTypeId { get; set; }

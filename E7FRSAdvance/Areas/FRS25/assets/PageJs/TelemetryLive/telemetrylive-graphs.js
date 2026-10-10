@@ -2622,7 +2622,22 @@ function _pmgShell() {
             '.pmg-pane-head{padding:11px 14px;border-bottom:1px solid var(--at-edge,rgba(255,255,255,.10));font-size:13px;font-weight:700;color:var(--at-brand,#22d3ee);}' +
             '.pmg-muted{color:var(--at-t3,rgba(255,255,255,.50));font-weight:500;}' +
             '.pmg-opsel{font-size:13px;color:var(--at-t2,rgba(255,255,255,.72));font-weight:600;min-height:18px;}' +
-            '.pmg-opempty{text-align:center;padding:50px;color:var(--at-t3,rgba(255,255,255,.50));}';
+            '.pmg-opempty{text-align:center;padding:50px;color:var(--at-t3,rgba(255,255,255,.50));}' +
+            /* operation events list: neutral text, colour only on the direction bar + badge */
+            '.pmg-ev{position:relative;padding:8px 10px 8px 14px;border-radius:8px;cursor:pointer;margin-bottom:5px;border:1px solid var(--at-edge,rgba(255,255,255,.10));background:var(--at-g1,rgba(255,255,255,.03));transition:background .12s,border-color .12s;}' +
+            '.pmg-ev::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:3px;border-radius:2px;background:#22C55E;}' +
+            '.pmg-ev.rev::before{background:#F59E0B;}' +
+            '.pmg-ev:hover{border-color:rgba(100,116,139,.45);}' +
+            '.pmg-ev.on{border-color:#0EA5B7;background:rgba(14,165,183,.10);box-shadow:0 0 0 1px #0EA5B7 inset;}' +
+            '.pmg-ev-top{display:flex;align-items:center;justify-content:space-between;gap:6px;}' +
+            '.pmg-ev-time{font-size:13px;font-weight:700;color:var(--at-t1,#fff);font-variant-numeric:tabular-nums;letter-spacing:.01em;}' +
+            '.pmg-ev-date{font-size:11px;color:var(--at-t3,rgba(255,255,255,.5));margin-top:1px;}' +
+            '.pmg-ev-av{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;}' +
+            '.pmg-ev-av span{font-size:10px;font-weight:600;padding:0 5px;border-radius:4px;border:1px solid var(--at-edge,rgba(255,255,255,.10));color:var(--at-t2,rgba(255,255,255,.72));}' +
+            '.pmg-dir{display:inline-block;font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;}' +
+            '.pmg-dir.nor{background:rgba(34,197,94,.16);color:#86EFAC;} .pmg-dir.rev{background:rgba(245,158,11,.18);color:#FCD34D;}' +
+            'body[data-aurora="light"] .pmg-dir.nor{background:#DCFCE7;color:#166534;} body[data-aurora="light"] .pmg-dir.rev{background:#FEF3C7;color:#92400E;}' +
+            'body[data-aurora="light"] .pmg-ev{background:#fff;} body[data-aurora="light"] .pmg-ev.on{background:#ECFEFF;border-color:#0891B2;box-shadow:0 0 0 1px #0891B2 inset;}';
         document.head.appendChild(st);
     }
 
@@ -3500,13 +3515,16 @@ function pmgLoadOpEvents() {
         '&endDate=' +
         encodeURIComponent(
             formatDateForHistoryApi(endDate)
-        );
+        ) +
+        // e7mriv2web: operation-event fetch = PM op columns (incl. …001
+        // waveform arrays), no window edges, per-operation grouping
+        '&_pmop=1';
 
     $.ajax({
         url: url,
         type: 'GET',
         dataType: 'json',
-        timeout: 60000,
+        timeout: 150000,
 
         success: function (response) {
             $('#pmgOpLoad').hide();
@@ -4258,8 +4276,8 @@ function pmgLoadOpEvents() {
 //}
 
 function _pmgDirBadge(dir) {
-    if (dir === 'R') return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(249,115,22,0.18);color:#fdba74;">Reverse</span>';
-    return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(34,211,238,0.18);color:#22d3ee;">Normal</span>';
+    if (dir === 'R') return '<span class="pmg-dir rev">Reverse</span>';
+    return '<span class="pmg-dir nor">Normal</span>';
 }
 
 function pmgRenderOpList() {
@@ -4277,11 +4295,10 @@ function pmgRenderOpList() {
             );
         });
 
-        var avail = av.join(' / ');
-        html += '<div onclick="pmgShowOpEvent(' + i + ')" style="padding:8px 10px;border-radius:7px;cursor:pointer;margin-bottom:4px;border:1px solid ' + (active ? '#22d3ee' : 'rgba(255,255,255,0.10)') + ';background:' + (active ? 'rgba(34,211,238,0.14)' : 'rgba(255,255,255,0.04)') + ';">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span style="font-size:12px;font-weight:700;color:#22d3ee;">' + timeStr + '</span>' + _pmgDirBadge(ev.dir) + '</div>' +
-            '<div style="font-size:10px;color:rgba(255,255,255,0.45);">' + dateStr + '</div>' +
-            (avail ? '<div style="font-size:9px;color:#cbd5e1;margin-top:2px;">' + avail + '</div>' : '') +
+        html += '<div onclick="pmgShowOpEvent(' + i + ')" class="pmg-ev' + (ev.dir === 'R' ? ' rev' : '') + (active ? ' on' : '') + '">' +
+            '<div class="pmg-ev-top"><span class="pmg-ev-time">' + timeStr + '</span>' + _pmgDirBadge(ev.dir) + '</div>' +
+            '<div class="pmg-ev-date">' + dateStr + '</div>' +
+            (av.length ? '<div class="pmg-ev-av">' + av.map(function (t) { return '<span>' + t + '</span>'; }).join('') + '</div>' : '') +
             '</div>';
     });
     $('#pmgOpList').html(html);
@@ -4816,6 +4833,17 @@ function pmgShowOpEvent(index) {
                 _tlgLeaveGraphSurface();
                 window._atCurrentView = $(this).attr('data-vmode');
             }
+        });
+
+        // v618.33: switching asset type always comes back to Card view. Only the
+        // view state is reset here (no repaint) -- the core type-change handler
+        // clears the data and the next Search renders the active (Cards) view.
+        $('#drpAssetType').on('change.tlgraphbtn', function () {
+            if (window._atCurrentView === 'Graph') _tlgLeaveGraphSurface();
+            window._atCurrentView = 'Cards';
+            $('#drpView').val('Cards');
+            $('.tl-vmode-btn').removeClass('active').attr('aria-pressed', 'false');
+            $('.tl-vmode-btn[data-vmode="Cards"]').addClass('active').attr('aria-pressed', 'true');
         });
     });
 

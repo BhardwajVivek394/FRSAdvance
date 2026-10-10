@@ -1,0 +1,117 @@
+@model Domain.Asset
+
+@* Returned by GetPointMachineEvent and injected into #divpmEventPartial of Index. *@
+@{
+    bool isFullPointMachine = Model.IsHalfPointMachine == null || (Model.IsHalfPointMachine != null && !Model.IsHalfPointMachine.Value);
+}
+
+<div class="modal fade bm-modal" id="model-benchmarking-pointmachine-eventgraph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><span>Graph</span></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="bm-asset-label">
+                    <strong>Asset:</strong><span id="lblAssetName"></span>
+                </div>
+                <div class="table-border">
+                    <div class="table-responsive bm-scroll">
+                        <table class="table table-hover bm-table" id="tblPoint@(Model.Id)">
+                            <thead class="thead-light2">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Name</th>
+                                    <th>Direction</th>
+
+                                    @if (isFullPointMachine)
+                                    {
+                                        <th>A Current(Max/Avg)</th>
+                                        <th>A Voltage</th>
+                                        <th>A Time (ms)</th>
+                                    }
+                                    else
+                                    {
+                                        <th>Current(Max/Avg)</th>
+                                        <th>Voltage</th>
+                                        <th>Time (ms)</th>
+                                    }
+
+                                    @if (isFullPointMachine)
+                                    {
+                                        <th>B Current(Max/Avg)</th>
+                                        <th>B Voltage</th>
+                                        <th>B Time (ms)</th>
+                                    }
+                                    <th class="text-center">Is Primary</th>
+                                    <th class="text-center">Delete</th>
+                                </tr>
+                            </thead>
+                            <tbody class="fbody@(Model.Id)">
+                                @if (Model != null && Model.BenchMarkingPointMachines != null)
+                                {
+                                    foreach (var point in Model.BenchMarkingPointMachines.OrderByDescending(x => x.TimeStamp))
+                                    {
+                                        var date = Convert.ToDateTime(point.TsTime).ToString("MM/dd/yyyy");
+                                        <tr>
+                                            <td class="text-nowrap">
+                                                @point.TsTime
+                                            </td>
+                                            <td class="assetname">
+                                                @Model.Name
+                                            </td>
+                                            <td>
+                                                @point.Direction  Operation
+                                            </td>
+
+                                            <td class="bm-click bm-val-normal" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AC',' @point.TsTime','@point.Direction','@point.AssetType')">
+                                                @string.Format("{0:0.00}", point.PointMachineJson.A_C_MAX) / @string.Format("{0:0.00}", point.PointMachineJson.A_C_AVERAGE) (@point.PointMachineJson.A_C_CurveArea)
+                                            </td>
+                                            <td class="bm-click" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.TsTime','@point.Direction','@point.AssetType')">
+                                                @point.PointMachineJson.A_V_AVERAGE
+                                            </td>
+                                            <td>
+                                                <span> @point.PointMachineJson.A_C_TIME </span>
+                                            </td>
+                                            @if (isFullPointMachine)
+                                            {
+                                                <td class="bm-click bm-val-normal" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BC',' @point.TsTime','@point.Direction','@point.AssetType')">
+                                                    @string.Format("{0:0.00}", point.PointMachineJson.B_C_MAX) / @string.Format("{0:0.00}", point.PointMachineJson.B_C_AVERAGE) (@point.PointMachineJson.B_C_CurveArea)
+                                                </td>
+                                                <td class="bm-click" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.TsTime','@point.Direction','@point.AssetType')">
+                                                    @point.PointMachineJson.B_V_AVERAGE
+                                                </td>
+                                                <td>
+                                                    @point.PointMachineJson.B_C_TIME
+                                                </td>
+                                            }
+                                            <td class="text-center">
+                                                @if (point.IsPrimary)
+                                                {
+                                                    <input type="checkbox" onchange="fnUpdatePointMachineBenchMarking('@point.TsTime','@point.Direction',this)" checked>
+                                                }
+                                                else
+                                                {
+                                                    <input type="checkbox" onchange="fnUpdatePointMachineBenchMarking('@point.TsTime','@point.Direction',this)">
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                <a href="#" class="bm-icon-btn" title="Delete" onclick="fnDeletePointMachineBenchMarking('@point.Id'); return false;"><i class="fa fa-trash"></i></a>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

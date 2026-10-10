@@ -1,0 +1,178 @@
+@model Domain.AIClustersLister
+
+@{
+    int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+    if (Model.AIClusters == null || Model.AIClusters.Count == 0)
+    {
+        start = 0;
+    }
+    decimal end = Math.Floor(Model.Pager.TotalRecord);
+    if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+    {
+        if (Model.Pager.PageSize == -1)
+        {
+            end = Model.Pager.TotalRecord;
+        }
+        else
+        {
+            end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+            if (end > Model.Pager.TotalRecord)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+        }
+    }
+}
+
+<div class="table-border">
+    <div class="pmc-section-head">
+        <h5>Clusters</h5>
+        <div class="d-flex flex-wrap align-items-center gap-10">
+            <span class="pmc-count">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> Cluster</span>
+            <div class="pmc-pager">
+                @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                <button type="button" class="btn btn-inactive" title="Previous" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+                <button type="button" class="btn btn-inactive" title="Next" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive" style="max-height: 620px;">
+        <table class="table table-hover pmc-table">
+            <thead class="thead-light2">
+                <tr>
+                    <th style="width:70px;" class="text-center">Action</th>
+                    <th>Asset Type</th>
+                    <th>Cluster</th>
+                    <th>Remark</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.AIClusters != null && Model.AIClusters.Count > 0)
+                {
+                    foreach (var item in Model.AIClusters)
+                    {
+                        <tr>
+                            <td class="text-center" style="width:50px;">
+                                <a href="javascript:void(0)" title="Delete" onclick="Delete('@item.Id')">
+                                    <i class="text-danger fa fa-trash"></i>
+                                </a>
+                            </td>
+                            <td>
+                                @item.AssetType
+                            </td>
+                            <td>
+                                <a href="javascript:void(0)" onclick="ShowImage('@item.Id')">@item.Cluster</a>
+                            </td>
+                            <td>
+                                @item.Remark
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="4" class="pmc-empty">
+                            No record found
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // This partial is first rendered inside Index (before the layout loads jQuery) and later
+    // re-rendered by the Ajax form, so defer jQuery work until it is available.
+    (function (fn) {
+        if (window.jQuery) { jQuery(fn); } else { document.addEventListener('DOMContentLoaded', fn); }
+    })(function () {
+
+        $(".txtSearchName").keyup(function (e) {
+            e.preventDefault();
+            if (e.keyCode === 13) {
+                $("#hdnSkip").val('0');
+                $("#frmAIClusteringList").submit();
+            }
+        });
+
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmAIClusteringList").submit();
+        });
+    });
+
+    function Delete(id) {
+        if (confirm('Are you sure you want to delete this record?')) {
+            $("#loader, #e7-loader").show();
+            $.ajax({
+                url: '/FRS25/PointClustering/Delete',
+                type: 'Post',
+                data: '{id:' + id + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    $("#loader, #e7-loader").hide();
+                    if (data.type == "success") {
+                        CommonNotification("success", "Cluster has been deleted.");
+                        $("#frmAIClusteringList").submit();
+                    } else if (data.type == "error") {
+                        CommonNotification("ERROR", "Error occured while deleting cluster!");
+                    } else {
+                        CommonNotification("ERROR", "Internal server error.");
+                    }
+                },
+                error: function (response) {
+                    $("#loader, #e7-loader").hide();
+                    CommonNotification("ERROR", "Internal server error.");
+                }
+            });
+        }
+    }
+
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (Number('@Model.Pager.TotalPage') != Number('@Model.Pager.CurrentPage')) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmAIClusteringList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize) {
+                var prevSkip = @Model.Pager.Skip;
+                prevSkip = prevSkip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(prevSkip);
+                $("#frmAIClusteringList").submit();
+            }
+        }
+    }
+
+    function ShowImage(id) {
+        $("#loader, #e7-loader").show();
+        $.ajax({
+            url: '/FRS25/PointClustering/GetAIClustersById',
+            type: 'Post',
+            data: '{id:' + id + '}',
+            contentType: 'application/json',
+            success: function (data) {
+                $("#loader, #e7-loader").hide();
+                if (data != null && data.ImageBase64 != null && data.ImageBase64 != undefined && data.ImageBase64 != '') {
+                    // The old page wired this to a non-existent '#btn' element (TypeError); show the
+                    // stored cluster image in the page's cluster-image modal instead.
+                    if (typeof fnPmcShowClusterImage === 'function') {
+                        fnPmcShowClusterImage(data.ImageBase64);
+                    }
+                }
+            },
+            error: function (response) {
+                $("#loader, #e7-loader").hide();
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+</script>

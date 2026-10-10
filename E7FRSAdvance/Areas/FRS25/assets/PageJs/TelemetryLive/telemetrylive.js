@@ -299,10 +299,7 @@ function atBuildTrackCard(aid) {
         var val = (raw !== null && !isNaN(parseFloat(raw))) ? tlZeroFloor(parseFloat(raw)).toFixed(2) : '--';
         var cls = '';
         var num = parseFloat(raw);
-        if (an === 'Vr' && ((num > 0.1 && num < 2.5) || num > 4.2)) cls = 'danger';
-        else if ((an === 'TPR V' || an === 'TPR V (Loc)') && num > 0.1 && num < 20) cls = 'danger';
-        else if (an === 'Charger mA' && num < 100) cls = 'warn';
-        else if (an === 'Choke V' && num > 1.8) cls = 'danger';
+        if (trackDangerClass(an, num)) cls = 'danger';   // e7mriv2web rules, alias-aware
         var attrId = ad ? (ad.AttrId || ad.AssetAttributeId) : null;
         var lbl = (typeof getAttrDisplayName === 'function') ? getAttrDisplayName(an, attrId, aid) : an;
         var zone = i < 4 ? 'z1' : (i < 7 ? 'z2' : 'z3');
@@ -322,7 +319,7 @@ function atBuildTrackCard(aid) {
     if (!isAxc && _isTrackType && typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
-        grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg) + '</span></div>';
+        grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg, 'itcBattCharg') + '</span></div>';
         grid += '<div class="z2"><span class="at-tdg-lbl" title="VTC VAR RES (V)">VTC VAR RES (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcVarRes) + '</span></div>';
         grid += '<div class="z3"><span class="at-tdg-lbl" title="RTC CH FEED END (Ω)">RTC CH FEED END (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcChFeedEnd) + '</span></div>';
         grid += '<div class="z3"><span class="at-tdg-lbl" title="RTC VAR RES (Ω)">RTC VAR RES (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rtcVarRes) + '</span></div>';
@@ -398,7 +395,7 @@ function atBuildTrackCard(aid) {
 //    // Add derived values for Track
 //    if (typeof window.calculateDerivedValues === 'function') {
 //        var derived = window.calculateDerivedValues(attrs);
-//        grid += '<div class="z2"><span class="at-tdg-lbl">I TC BATT CHARG</span><span class="at-tdg-val">' + (window.formatDerivedValue ? window.formatDerivedValue(derived.itcBattCharg) : derived.itcBattCharg.toFixed(2)) + '</span></div>';
+//        grid += '<div class="z2"><span class="at-tdg-lbl">I TC BATT CHARG</span><span class="at-tdg-val">' + (window.formatDerivedValue ? window.formatDerivedValue(derived.itcBattCharg, 'itcBattCharg') : derived.itcBattCharg.toFixed(2)) + '</span></div>';
 //        grid += '<div class="z2"><span class="at-tdg-lbl">V TC VAR RES</span><span class="at-tdg-val">' + (window.formatDerivedValue ? window.formatDerivedValue(derived.vtcVarRes) : derived.vtcVarRes.toFixed(2)) + '</span></div>';
 //        grid += '<div class="z3"><span class="at-tdg-lbl">R TC CH FEED</span><span class="at-tdg-val">' + (window.formatDerivedValue ? window.formatDerivedValue(derived.rtcChFeedEnd) : derived.rtcChFeedEnd.toFixed(2)) + '</span></div>';
 //        grid += '<div class="z3"><span class="at-tdg-lbl">R TC VAR RES</span><span class="at-tdg-val">' + (window.formatDerivedValue ? window.formatDerivedValue(derived.rtcVarRes) : derived.rtcVarRes.toFixed(2)) + '</span></div>';
@@ -1383,8 +1380,7 @@ function calculateDerivedValues(attrs, assetIdHint) {
     var irMa = gv(['Ir mA', 'ITC RELAY END(mA)', 'ITC RELAY END'], 2);
     var chargerMa = gv(['Charger mA', 'ITC TFC O/P(mA)', 'ITC TFC O/P'], 5);
     var chokeV = gv(['Choke V', 'VTC CH FEED END(V)', 'VTC CH FEED END'], 4);
-    var chargerOpV = gv(['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)',
-        'VTC TFC I/P', 'VTC TFC I/P(V)'], null);
+    var chargerOpV = gv(['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)'], null);   // e7mriv2web: O/P only (I/P is the charger INPUT)
     var vf = gv(['Vf', 'Vf V', 'VTC FEED END',
         'VTC FEED END(V)'], null);
     var trVRelay = gv(['Vr', 'VTC TR', 'VTC RELAY END', 'VTC RELAY END(V)'], null);
@@ -1423,8 +1419,7 @@ function calculateDerivedValues(attrs, assetIdHint) {
     var irMa = gv(['Ir mA', 'ITC RELAY END(mA)', 'ITC RELAY END'], 2);
     var chargerMa = gv(['Charger mA', 'ITC TFC O/P(mA)', 'ITC TFC O/P'], 5);
     var chokeV = gv(['Choke V', 'VTC CH FEED END(V)', 'VTC CH FEED END'], 4);
-    var chargerOpV = gv(['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)',
-        'VTC TFC I/P', 'VTC TFC I/P(V)'], null);
+    var chargerOpV = gv(['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)'], null);   // e7mriv2web: O/P only (I/P is the charger INPUT)
     var vf = gv(['Vf', 'Vf V', 'VTC FEED END',
         'VTC FEED END(V)'], null);
     var trVRelay = gv(['Vr', 'VTC TR', 'VTC RELAY END', 'VTC RELAY END(V)'], null);
@@ -1452,9 +1447,12 @@ function calculateDerivedValues(attrs, assetIdHint) {
 }
 
 
-function formatDerivedValue(val) {
+/* e7mriv2web: ITC BATT CHARG keeps its sign (negative = battery discharging);
+   every other derived value is floored at 0. */
+var DERIVED_ALLOW_NEGATIVE = { itcBattCharg: true };
+function formatDerivedValue(val, key) {
     if (val === null || val === undefined || isNaN(val)) return '-';
-    return tlZeroFloor(val).toFixed(2);
+    return (key && DERIVED_ALLOW_NEGATIVE[key]) ? Number(val).toFixed(2) : tlZeroFloor(val).toFixed(2);
 }
 
 function getDerivedHeaders() {
@@ -1468,7 +1466,7 @@ function getDerivedHeaders() {
 }
 
 function getDerivedCells(derived) {
-    return '<td class="derived-val">' + formatDerivedValue(derived.itcBattCharg) + '</td>' +
+    return '<td class="derived-val">' + formatDerivedValue(derived.itcBattCharg, 'itcBattCharg') + '</td>' +
         '<td class="derived-val">' + formatDerivedValue(derived.vtcVarRes) + '</td>' +
         '<td class="derived-val">' + formatDerivedValue(derived.rtcChFeedEnd) + '</td>' +
         '<td class="derived-val">' + formatDerivedValue(derived.rtcVarRes) + '</td>' +
@@ -3689,42 +3687,40 @@ function arraysEqual(a, b) {
 // getValueColorClass - returns CSS class for dangerous/warning values
 // based on attribute ID and numeric value.
 // ================================================================
+/* e7mriv2web track danger rules, on EXACT attribute names. FRS sites use long
+   aliases ('VTC RELAY END(V)' = Vr, 'ITC TFC O/P(mA)' = Charger mA, ...), so the
+   name is first mapped to its short name through TRACK_CIRCUIT_LABEL_MAP.
+   (Before: substring matching -- e.g. any name containing "charger" below 100
+   was red, including Charger V / Charger OP V; and the track card compared the
+   long names to 'Vr' etc., so it never coloured anything.) */
+function trackShortAttrName(name) {
+    var n = String(name || '').trim().toUpperCase();
+    if (!n || typeof TRACK_CIRCUIT_LABEL_MAP === 'undefined') return String(name || '').trim();
+    for (var shortName in TRACK_CIRCUIT_LABEL_MAP) {
+        if (!TRACK_CIRCUIT_LABEL_MAP.hasOwnProperty(shortName)) continue;
+        var al = TRACK_CIRCUIT_LABEL_MAP[shortName];
+        for (var i = 0; i < al.length; i++) if (String(al[i]).toUpperCase() === n) return shortName;
+    }
+    return String(name || '').trim();
+}
+function trackDangerClass(name, num) {
+    if (num === undefined || num === null || isNaN(num)) return '';
+    var an = trackShortAttrName(name);
+    if (an === 'Vr' && ((num > 0.1 && num < 2.5) || num > 4.2)) return 'val-danger';
+    if ((an === 'TPR V' || an === 'TPR V (Loc)') && num > 0.1 && num < 20) return 'val-danger';
+    if (an === 'Charger mA' && num < 100) return 'val-danger';
+    if (an === 'Choke V' && num > 1.8) return 'val-danger';
+    return '';
+}
+window.trackDangerClass = trackDangerClass;
 function getValueColorClass(attrId, value) {
     if (value === undefined || value === null || isNaN(value)) return '';
-
-    // Map attribute ID to name (if needed, use global assetAttributeMap)
     var attrName = '';
     if (typeof assetAttributeMap !== 'undefined' && attrId) {
         attrName = assetAttributeMap[String(attrId)] || assetAttributeMap[attrId] || '';
     }
-    // Fallback: if no name found via ID, we cannot colour – return empty
     if (!attrName) return '';
-
-    var lowerName = attrName.toLowerCase();
-
-    // Danger rules (copied from original buildTableRow comments)
-    // Vr: danger if (value > 0.1 && value < 2.5) || value > 4.2
-    if ((lowerName === 'vr' || lowerName.indexOf('vr') !== -1) &&
-        ((value > 0.1 && value < 2.5) || value > 4.2)) {
-        return 'val-danger';
-    }
-    // TPR V / TPR V (Loc): danger if value > 0.1 && value < 20
-    if ((lowerName.indexOf('tpr') !== -1) &&
-        (value > 0.1 && value < 20)) {
-        return 'val-danger';
-    }
-    // Charger mA: danger if value < 100
-    if ((lowerName === 'charger ma' || lowerName.indexOf('charger') !== -1) &&
-        value < 100) {
-        return 'val-danger';
-    }
-    // Choke V: danger if value > 1.8
-    if ((lowerName === 'choke v' || lowerName.indexOf('choke') !== -1) &&
-        value > 1.8) {
-        return 'val-danger';
-    }
-
-    return '';
+    return trackDangerClass(attrName, value);
 }
 
 // Returns a short hover tooltip for danger/warn/stale cells
@@ -3994,7 +3990,7 @@ function updateRowCells($row, asset, isTrack) {
         var derived = calculateDerivedValues(asset.attrs);
         var $derivedCells = $row.find('td.derived-val');
         if ($derivedCells.length >= 7) {
-            $derivedCells.eq(0).text(formatDerivedValue(derived.itcBattCharg));
+            $derivedCells.eq(0).text(formatDerivedValue(derived.itcBattCharg, 'itcBattCharg'));
             $derivedCells.eq(1).text(formatDerivedValue(derived.vtcVarRes));
             $derivedCells.eq(2).text(formatDerivedValue(derived.rtcChFeedEnd));
             $derivedCells.eq(3).text(formatDerivedValue(derived.rtcVarRes));
@@ -5057,7 +5053,18 @@ function processItemsInternal(items) {
         if (parseInt(wsCurrentAssetTypeId) === 2 && typeof storeWsAttribute === 'function') {
             storeWsAttribute(d);
         } else {
-            wsLiveData[aid].attrs[attrName] = buildWsAttrData(d, existingAttr); // PC-03: common writer
+            var _newAttr = buildWsAttrData(d, existingAttr); // PC-03: common writer
+            /* e7mriv2web (storeWsAttribute) PM merge precedence: for a PM
+               operation attribute at the SAME TimestampDevice, a fresh value
+               beats a replay-stale snapshot -- otherwise the snapshot greys out
+               a good live value. (Strictly older is already skipped above.) */
+            if (existingAttr && typeof parsePmAttrName === 'function' && parsePmAttrName(attrName) &&
+                typeof isPmReplayStale === 'function' && existingAttr.TimestampDevice && incomingTimestampDevice &&
+                new Date(incomingTimestampDevice).getTime() === new Date(existingAttr.TimestampDevice).getTime() &&
+                isPmReplayStale(_newAttr) && !isPmReplayStale(existingAttr)) {
+                continue;
+            }
+            wsLiveData[aid].attrs[attrName] = _newAttr;
         }
         // NOTE: checkStaleForAsset moved to post-loop (see below) so it fires
         // once per unique asset, not once per attribute message.
@@ -5170,7 +5177,12 @@ function processItemsInternal(items) {
         }
     }
 
-    if ($('#drpView').val() === 'PointMachine' && (wsCurrentAssetTypeId == 3 || wsCurrentAssetTypeId === '3')) {
+    /* e7mriv2web: the live path never builds card-history rows from raw
+       operation messages (those are labelled by the OPERATION type, so a
+       Reverse op message produced a "Reverse Operation" row while the machine
+       indicated Normal). updatePmCard -> buildPmDataRow616 owns the history,
+       using the indication-first direction. Disabled (was: PointMachine view). */
+    if (false && $('#drpView').val() === 'PointMachine' && (wsCurrentAssetTypeId == 3 || wsCurrentAssetTypeId === '3')) {
         var _pmKeys = Object.keys(pendingPmOps);
         for (var _pi = 0; _pi < _pmKeys.length; _pi++) {
             var _op = pendingPmOps[_pmKeys[_pi]];
@@ -8956,6 +8968,212 @@ var rdpmsGraphRequestSeq = 0;
 var rdpmsGraphXhr = null;
 // Use server-side proxy to avoid mixed content (HTTPS page calling HTTP API)
 var HISTORY_API_BASE = '/FRS25/Telemetry/GetHistoryData';
+
+/* ===========================================================================
+   HISTORY API = e7mriv2web's (source of truth)
+   Every history graph fetches /api/DashboardHistory through
+   /FRS25/Telemetry/GetGraphHistory (tsLimit=10000, fillGaps=true, sort=asc,
+   cursor-paged) -- the same API e7mriv2web's Telemetry Live uses -- instead
+   of the old /api/HistoryValue proxy (GetHistoryData).
+   tlFetchDashboardHistory below is ported VERBATIM from e7mriv2web; it adapts
+   the DashboardHistory columns/rows response to the HistoryValue shape
+   ({ Data: [{ AssetId, AttributeId, AttributeName, Values }] }) that every
+   graph renderer here already parses, so no renderer had to change.
+   =========================================================================== */
+// Graph data source: /api/DashboardHistory (tsLimit=10000, fillGaps=true,
+// sort=asc — set server-side by GetGraphHistory).
+var TL_GRAPH_HISTORY_API = '/FRS25/Telemetry/GetGraphHistory';
+
+// PM operation columns reported together: one signal of one end and
+// direction, i.e. one thousand-block (1xxx Normal A current, 2xxx Normal A
+// voltage, … 9xxx Reverse B voltage) — Array, Avg, Max, OperationTime.
+function _tlPmOpGroup(attrId) {
+    var b = Math.floor(attrId / 1000);
+    return (b >= 1 && b <= 9 && b !== 5) ? 'op' + b : '';
+}
+
+/*
+ * Fetch a DashboardHistory range ({ columns[], rows[{ts, v[]}], firstRow,
+ * lastRow }) and adapt it to the HistoryValue shape every graph renderer
+ * already consumes:
+ *   { Data: [{ AssetId, AttributeId, AttributeName,
+ *              Values: { n: { Value, DataType, Timestamp } } }] }
+ * Walks nextCursor when the range holds more than one 10000-row page.
+ * Columns are kept apart by roleType + attrId (Track has an RDPMS and a
+ * DataLogger attribute both numbered 6).
+ *
+ * opts:
+ *   assetId, startDate, endDate   ddMMyyyy_HHmmss strings
+ *   attrIds       optional column whitelist (e.g. PM waveform arrays)
+ *   changesOnly   default true. fillGaps=true copies every value onto every
+ *                 later row; the renderers draw a dot per reading and carry
+ *                 values forward themselves, so a value is kept only where
+ *                 it differs from that column's previous value.
+ *   edges         default true. Also plot firstRow / lastRow, the values in
+ *                 effect at the From and To instants, so every line spans
+ *                 the whole range. firstRow is shaped like HistoryValue's
+ *                 window-start entry (Local = From, Device = the value's
+ *                 real earlier time); lastRow is stamped at To.
+ *   pmOpGroups    PM operation tab only: a signal block (see _tlPmOpGroup)
+ *                 counts as a real operation on a row when any of its
+ *                 columns changed; its scalars are then all kept, even ones
+ *                 equal to the previous operation's. Waveform arrays (…001)
+ *                 are kept only when they themselves changed, so an
+ *                 operation whose array never arrived never shows the
+ *                 previous operation's waveform.
+ *   success(resp) / error(xhr, status, message)   $.ajax-style callbacks
+ * Returns a promise with abort(); an aborted fetch calls neither callback.
+ */
+function tlFetchDashboardHistory(opts) {
+    var changesOnly = opts.changesOnly !== false;
+    var edges = opts.edges !== false;
+    var dfd = $.Deferred();
+    var data = [], byKey = {}, prev = {};
+    var page = 1, cursor = '', guard = 0, xhr = null, aborted = false;
+
+    function fail(x, status, msg) {
+        if (aborted) return;
+        dfd.reject(x, status, msg);
+        if (opts.error) opts.error(x, status, msg);
+    }
+
+    function merge(r, isLast) {
+        var cols = [];
+        r.columns.forEach(function (col, ci) {
+            if (!col || col.attrId === null || col.attrId === undefined || col.attrId === '') return;
+            var id = parseInt(col.attrId, 10);
+            if (isNaN(id)) return;
+            var key = (col.roleType || '') + '|' + id;
+            var at = byKey[key];
+            if (!at) {
+                at = byKey[key] = { AssetId: opts.assetId, AttributeId: id, AttributeName: col.name, Values: {}, _n: 0 };
+                data.push(at);
+            }
+            var grp = opts.pmOpGroups ? _tlPmOpGroup(id) : '';
+            cols.push({ ci: ci, key: key, grp: grp || key, own: !grp || id % 1000 === 1, dt: col.dataType || '', at: at });
+        });
+
+        var rows = r.rows.slice();
+        var first = (page === 1 && r.firstRow && Array.isArray(r.firstRow.v)) ? r.firstRow : null;
+        var last = (isLast && r.lastRow && Array.isArray(r.lastRow.v)) ? r.lastRow : null;
+        if (first) {
+            if (edges) { first._edge = true; rows.unshift(first); }
+            else if (changesOnly) {
+                // Not plotted, but what was carried in from before the window
+                // must not count as a change on the first row.
+                cols.forEach(function (c) {
+                    var fv = first.v[c.ci];
+                    if (fv !== null && fv !== undefined) prev[c.key] = String(fv);
+                });
+            }
+        }
+        if (last && edges) { last._edge = true; rows.push(last); }
+
+        for (var ri = 0; ri < rows.length; ri++) {
+            var row = rows[ri];
+            if (!row || !row.ts || !Array.isArray(row.v)) continue;
+            var live = null, changed = null;
+            if (changesOnly && !row._edge) {
+                live = {}; changed = {};
+                cols.forEach(function (c) {
+                    var v = row.v[c.ci];
+                    if (v === null || v === undefined) return;
+                    var sv = String(v);
+                    if (prev[c.key] !== sv) { live[c.grp] = true; changed[c.key] = true; }
+                    prev[c.key] = sv;
+                });
+            }
+            cols.forEach(function (c) {
+                var val = row.v[c.ci];
+                if (val === null || val === undefined) return;
+                if (row._edge) prev[c.key] = String(val);
+                else if (live && !(c.own ? changed[c.key] : live[c.grp])) return;
+                // firstRow carries the real (pre-window) device time of each
+                // value in tsDev, stamped Local at the From instant — exactly
+                // HistoryValue's window-start entry.
+                var dev = (row === first && Array.isArray(first.tsDev) && first.tsDev[c.ci]) || row.ts;
+                c.at.Values[String(++c.at._n)] = {
+                    Value: val, DataType: c.dt,
+                    Timestamp: { TimestampDevice: dev, TimestampLocal: row.ts }
+                };
+            });
+        }
+    }
+
+    function fetchPage() {
+        var q = { assetId: opts.assetId, startDate: opts.startDate, endDate: opts.endDate, page: page };
+        if (cursor) q.cursor = cursor;
+        if (opts.attrIds) q.attrIds = opts.attrIds;
+        xhr = $.ajax({ url: TL_GRAPH_HISTORY_API, type: 'GET', dataType: 'json', timeout: 150000, data: q });
+        xhr.then(function (r) {
+            if (aborted) return;
+            if (r && r.error) { fail(null, 'error', r.error); return; }
+            if (!r || !Array.isArray(r.columns) || !Array.isArray(r.rows)) { fail(null, 'parsererror', 'Unexpected response'); return; }
+            guard++;
+            var nc = r.nextCursor;
+            var more = !!(r.hasNextPage && nc && nc !== cursor && guard < 50);
+            merge(r, !more);
+            if (more) {
+                page++; cursor = nc;
+                fetchPage();
+                return;
+            }
+            data.forEach(function (at) { delete at._n; });
+            var resp = { Data: data };
+            dfd.resolve(resp);
+            if (opts.success) opts.success(resp);
+        }, function (x, status, err) { fail(x, status, err); });
+    }
+    fetchPage();
+
+    var p = dfd.promise();
+    p.abort = function () { aborted = true; if (xhr) { try { xhr.abort(); } catch (x) { } } };
+    return p;
+}
+window.tlFetchDashboardHistory = tlFetchDashboardHistory;
+
+/* Route every $.ajax GET to the old HISTORY_API_BASE (GetHistoryData) URL
+   through tlFetchDashboardHistory, so the ~15 existing callers (cards, graph
+   modal, multi-asset graph, IPS / PM graphs, circuit, drawer helpers) all use
+   the e7mriv2web API without each being rewritten. The caller still gets a
+   normal jqXHR (success / error / abort / timeout work as before).
+   '&_pmop=1' marks the PM operation-event fetch (e7mriv2web _pmgLoadOp opts).
+   Set window.TL_USE_LEGACY_HISTORY_API = true to fall back to GetHistoryData. */
+var PMG_OP_ATTR_IDS =
+    '1001,1002,1004,1005,2001,2002,2004,3001,3002,3004,3005,4001,4002,4004,' +
+    '6001,6002,6004,6005,7001,7002,7004,8001,8002,8004,8005,9001,9002,9004';
+(function installDashboardHistoryTransport() {
+    if (!window.jQuery || !jQuery.ajaxTransport || window._tlHistTransport) return;
+    window._tlHistTransport = true;
+    function qp(url, name) {
+        var m = String(url).match(new RegExp('[?&]' + name + '=([^&#]*)', 'i'));
+        return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : '';
+    }
+    jQuery.ajaxTransport('+*', function (options) {
+        if (window.TL_USE_LEGACY_HISTORY_API) return;
+        var url = String(options.url || '');
+        if (String(options.type || 'GET').toUpperCase() !== 'GET') return;
+        if (url.toLowerCase().indexOf('/frs25/telemetry/gethistorydata') === -1) return;
+        var p = null;
+        return {
+            send: function (headers, complete) {
+                var pmOp = qp(url, '_pmop') === '1';
+                var o = {
+                    assetId: qp(url, 'assetId'),
+                    startDate: qp(url, 'startDate'),
+                    endDate: qp(url, 'endDate'),
+                    success: function (resp) { complete(200, 'success', { text: JSON.stringify(resp) }); },
+                    error: function (x, status, msg) {
+                        complete((x && x.status) || 500, status || 'error', { text: JSON.stringify({ error: msg || status || 'error' }) });
+                    }
+                };
+                if (pmOp) { o.attrIds = PMG_OP_ATTR_IDS; o.edges = false; o.pmOpGroups = true; }
+                p = tlFetchDashboardHistory(o);
+            },
+            abort: function () { if (p && p.abort) p.abort(); }
+        };
+    });
+})();
 
 // Helper function to format date for HistoryValue API (ddMMyyyy_HHmmss)
 function formatDateForHistoryApi(date) {
@@ -14462,7 +14680,6 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         h += 'Direction A : <span id="pmDirLabelA_' + assetId + '">' + pmEsc(name) + '</span> ';
         h += '<span class="pm-dir-badge normal" id="pmDirBadgeA_' + assetId + '">POINT IN NORMAL</span>';
         h += ' <i class="fas fa-chart-line ms-auto" style="cursor:pointer;color:#259dab;font-size:14px;" onclick="fnPmDirGraph(\'' + assetId + '\',\'A\')" title="Historical Graph"></i>';
-        h += ' <i class="fas fa-wave-square" style="cursor:pointer;color:#7c3aed;font-size:14px;margin-left:6px;" onclick="fnShowVibrationModal(\'' + assetId + '\')" title="Vibration Data"></i>';
         h += '</span>';
         h += '</td>';
     }
@@ -14474,7 +14691,6 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         h += 'Direction B : <span id="pmDirLabelB_' + assetId + '">' + pmEsc(name) + '</span> ';
         h += '<span class="pm-dir-badge normal" id="pmDirBadgeB_' + assetId + '">POINT IN NORMAL</span>';
         h += ' <i class="fas fa-chart-line ms-auto" style="cursor:pointer;color:#259dab;font-size:14px;" onclick="fnPmDirGraph(\'' + assetId + '\',\'B\')" title="Historical Graph"></i>';
-        h += ' <i class="fas fa-wave-square" style="cursor:pointer;color:#7c3aed;font-size:14px;margin-left:6px;" onclick="fnShowVibrationModal(\'' + assetId + '\')" title="Vibration Data"></i>';
         h += '</span>';
         h += '</td>';
     }
@@ -17594,7 +17810,7 @@ function updateDerivedValuesForRow(assetId, $row) {
     var $derivedCells = $row.find('td.derived-val');
 
     if ($derivedCells.length >= 7) {
-        $derivedCells.eq(0).text(formatDerivedValue(derived.itcBattCharg));
+        $derivedCells.eq(0).text(formatDerivedValue(derived.itcBattCharg, 'itcBattCharg'));
         $derivedCells.eq(1).text(formatDerivedValue(derived.vtcVarRes));
         $derivedCells.eq(2).text(formatDerivedValue(derived.rtcChFeedEnd));
         $derivedCells.eq(3).text(formatDerivedValue(derived.rtcVarRes));
@@ -19208,6 +19424,13 @@ window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, 
 
     if (!displayName) displayName = attrName;
 
+    /* e7mriv2web: a relay whose name can't be resolved (empty / just a number)
+       is not stored -- otherwise it shows up as a meaningless "123: Pickup" pill */
+    if (!displayName || /^\d+$/.test(String(displayName).trim())) {
+        if (window.console) console.warn('[DataLogger Name Unresolved]', assetId, attrName, roleOrAttrId);
+        return false;
+    }
+
     if (!window.wsLiveData[assetId].dlRelays) {
         window.wsLiveData[assetId].dlRelays = {};
     }
@@ -19252,6 +19475,18 @@ window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, 
 
     var viewType = $('#drpView').val();
 
+    /* e7mriv2web: a relay frame can change a signal's aspect (Tier-2 relay
+       fallback) -- recompute it now in EVERY view, not only on the next lamp
+       current batch, so tables / grouping / sort order don't lag. */
+    if (typeof isSignalAssetType === 'function' && isSignalAssetType() && typeof computeSignalState === 'function') {
+        try { signalState[assetId] = computeSignalState(assetId); } catch (e) { /* keep previous state */ }
+    }
+    /* e7mriv2web: IPS digital readings refresh on relay-only frames too */
+    if (typeof isIpsAssetType === 'function' && isIpsAssetType()) {
+        if (typeof window.updateIpsGridIncremental === 'function' && $('#ipsCardGrid').length) window.updateIpsGridIncremental([assetId]);
+        else if (typeof window.updateIpsTableIncremental === 'function' && $('#ipsLiveTable').length) window.updateIpsTableIncremental([assetId]);
+    }
+
     if (viewType === 'Table' && typeof window.updateDataLoggerColumnInTable === 'function') {
         window.updateDataLoggerColumnInTable(assetId);
     }
@@ -19281,6 +19516,39 @@ window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, 
 window.updateDataLoggerColumnInTable = function (assetId) {
     var $row = $('#wsLiveTable tbody tr[data-id="' + assetId + '"]');
     if (!$row.length) return;
+
+    /* Point Machine table (ported from e7mriv2web): it has FOUR separate
+       relay columns NWKR / RWKR / NWCR / RWCR (td.dl-col-cell). Fill each with
+       its own relay -- the generic path below would take the last one (RWCR)
+       as "the" DataLogger cell and overwrite it with every relay. Matcher:
+       Combined-X, A End - X, B End - X, X (same as the table builder). */
+    var $dlColCells = $row.find('td.dl-col-cell');
+    if ($dlColCells.length) {
+        var pmRelays = (window.wsLiveData[assetId] && window.wsLiveData[assetId].dlRelays) || {};
+        var pmKeys = Object.keys(pmRelays);
+        $dlColCells.each(function (idx) {
+            var f = String(this.getAttribute('data-field') || '');
+            var col = f.indexOf('dl.') === 0 ? f.slice(3) : ['NWKR', 'RWKR', 'NWCR', 'RWCR'][idx];
+            if (!col) return;
+            var accepted = ['Combined-' + col, 'A End - ' + col, 'B End - ' + col, col], match = null;
+            for (var a = 0; a < accepted.length && !match; a++) {
+                var want = accepted[a].toLowerCase();
+                for (var k = 0; k < pmKeys.length; k++) {
+                    var r = pmRelays[pmKeys[k]];
+                    if (r && String(r.displayName || pmKeys[k] || '').toLowerCase() === want) { match = r; break; }
+                }
+            }
+            var html = match
+                ? '<span class="rdpms-dl-badge pm616-dl-badge ' + (match.isPickup ? 'pickup' : 'drop') + '">' + (match.isPickup ? 'Pickup' : 'Drop') + '</span>'
+                : '<span class="pm616-na">—</span>';
+            var $td = $(this);
+            if ($td.html() !== html) {
+                $td.html(html).addClass('ws-cell-flash');
+                setTimeout(function () { $td.removeClass('ws-cell-flash'); }, 1200);
+            }
+        });
+        return; // PM table handled
+    }
 
     var $dlCell = $row.find('td.dl-cell');
     if (!$dlCell.length) {

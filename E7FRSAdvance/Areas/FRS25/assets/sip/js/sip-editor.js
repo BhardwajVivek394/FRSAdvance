@@ -99,7 +99,7 @@
             // Both ends freely placed (offsets from the body centre).
             const ax0 = mx + (+sg.standAx || 0), ay0 = my + (+sg.standAy || 0);
             const ex0 = mx + (+sg.standEx || 0), ey0 = my + (+sg.standEy || 0);
-            return { sPos: 'FREE', free: true, ax: ax0, ay: ay0, ex: ex0, ey: ey0, hasArm: true, hasAttach: true, bodyCx: mx, bodyCy: my };
+            return { sPos: 'FREE', free: true, order: sg.standOrder === 'hv' ? 'hv' : 'vh', ax: ax0, ay: ay0, ex: ex0, ey: ey0, hasArm: true, hasAttach: true, bodyCx: mx, bodyCy: my };
         }
         const len = Math.max(8, +sg.standLength || 24);
         const arm = Math.max(0, +sg.standArm || Math.max(10, len * 0.45));
@@ -122,6 +122,63 @@
         return { sPos: sPos, ax: ax, ay: ay, ex: ex, ey: ey, hasArm: hasArm, vFactor: vFactor, hasAttach: hasAttach, attachBase: attachBase, bodyH: b.h };
     }
 
+    /* Waypoints of the drawn stand (attach → bend → tip), mirroring renderStand8. */
+    function standPoints(sgm) {
+        if (!sgm) return null;
+        const A = [sgm.ax, sgm.ay], E = [sgm.ex, sgm.ey];
+        if (Math.abs(A[0] - E[0]) < 0.5 || Math.abs(A[1] - E[1]) < 0.5) return [A, E];
+        // C / FREE drop vertically first; side & corner brackets (and FREE 'hv') run the arm first.
+        if (sgm.sPos === 'C' || (sgm.sPos === 'FREE' && sgm.order !== 'hv')) return [A, [A[0], E[1]], E];
+        return [A, [E[0], A[1]], E];
+    }
+
+    /* "Cut" a stand loose: convert whatever stand mode the signal uses into a
+       FREE stand with the SAME on-screen geometry, so both ends (and the whole
+       post) can then be dragged anywhere independently of the head. */
+    function detachStand(cell) {
+        const sgm = standGeom(cell);
+        if (!sgm) return null;
+        if (sgm.free) return sgm;
+        const b = cellBox(cell), mx = b.x + b.w / 2, my = b.y + b.h / 2;
+        cell.attrs = cell.attrs || {};
+        const sp = cell.attrs.signal = cell.attrs.signal || {};
+        sp.standPos = 'FREE';
+        sp.standOrder = (sgm.sPos === 'C' || sgm.sPos === 'T' || sgm.sPos === 'B') ? 'vh' : 'hv';
+        sp.standAx = Math.round(sgm.ax - mx); sp.standAy = Math.round(sgm.ay - my);
+        sp.standEx = Math.round(sgm.ex - mx); sp.standEy = Math.round(sgm.ey - my);
+        delete sp.stand; delete sp.standSide; delete sp.standArmBefore;
+        return standGeom(cell);
+    }
+
+    /* Whole-signal box: head + stand. Used to outline the complete stand when selected. */
+    function signalAssemblyBox(cell) {
+        const b = cellBox(cell);
+        let x1 = b.x, y1 = b.y, x2 = b.x + b.w, y2 = b.y + b.h;
+        const pts = standPoints(standGeom(cell));
+        if (pts) for (const p of pts) {
+            if (p[0] < x1) x1 = p[0]; if (p[0] > x2) x2 = p[0];
+            if (p[1] < y1) y1 = p[1]; if (p[1] > y2) y2 = p[1];
+        }
+        return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+    }
+
+    /* Cell markup for the editor canvas. Signals with a stand get a wide,
+       invisible hit path along the stand so the thin post can be grabbed:
+       clicking it selects the signal and dragging moves head + stand together. */
+    function renderEditorCell(c) {
+        const inner = SIP.renderCell(c);
+        const pts = standPoints(standGeom(c));
+        if (!pts) return inner;
+        const d = 'M ' + pts.map(p => p[0] + ' ' + p[1]).join(' L ');
+        let hit = `<path class="stand-move-hit" d="${d}" fill="none" stroke="transparent" stroke-width="12" ` +
+            `stroke-linecap="round" stroke-linejoin="round" pointer-events="stroke" style="cursor:move"/>`;
+        if (c.angle && Math.abs(c.angle) > 0.01) {
+            const cx = c.position.x + (c.size.width || 60) / 2, cy = c.position.y + (c.size.height || 60) / 2;
+            hit = `<g transform="rotate(${c.angle} ${cx} ${cy})">${hit}</g>`;
+        }
+        return inner + hit;
+    }
+
     /* ---- multi-selection helpers (selectedIds) ---------------------------- */
     function isSelected(id) { return state.selectedIds.indexOf(id) !== -1; }
     function toggleInSelection(id) {
@@ -129,7 +186,7 @@
         if (i === -1) { state.selectedIds.push(id); state.selectedId = id; }
         else { state.selectedIds.splice(i, 1); state.selectedId = state.selectedIds.length ? state.selectedIds[state.selectedIds.length - 1] : null; }
     }
-    function clearSelection() { state.selectedIds = []; state.selectedId = null }
+    function clearSelection() { state.selectedIds = []; state.selectedId = null; state.standFocusId = null; }
     function selectAll() {
         if (!state.cells.length) { toast('Nothing to select.'); return; }
         state.selectedIds = state.cells.map(c => c.id);
@@ -167,6 +224,11 @@
             const x = c.position.x, y = c.position.y, w = c.size.width, h = c.size.height;
             if (x < minX) minX = x; if (y < minY) minY = y;
             if (x + w > maxX) maxX = x + w; if (y + h > maxY) maxY = y + h; n++;
+            if (standGeom(c)) {   // include the stand so the whole signal is boxed
+                const ab = signalAssemblyBox(c);
+                if (ab.x < minX) minX = ab.x; if (ab.y < minY) minY = ab.y;
+                if (ab.x + ab.w > maxX) maxX = ab.x + ab.w; if (ab.y + ab.h > maxY) maxY = ab.y + ab.h;
+            }
         }
         if (!n || minX === Infinity) return '';
         const pad = 6;
@@ -356,7 +418,7 @@
         if (typeof SIP.prepareRailContext === 'function') SIP.prepareRailContext(state.cells);   // ← ADD THIS LINE
 
         const fragments = state.cells.map(c => {
-            const inner = SIP.renderCell(c);
+            const inner = renderEditorCell(c);
             const sel = (isSelected(c.id) || c.id === state.selectedId) ? ' selected' : '';
             return `<g data-eid="${c.id}" class="editable${sel}">${inner}</g>`;
         });
@@ -437,7 +499,7 @@
         if (!svg || !c) { render(true); return; }
         const g = svg.querySelector('g.editable[data-eid="' + cssEsc(c.id) + '"]');
         if (!g) { render(true); return; }
-        if (!_replaceSvgChildren(g, SIP.renderCell(c))) { render(true); return; }
+        if (!_replaceSvgChildren(g, renderEditorCell(c))) { render(true); return; }
         const ov = svg.querySelector('.selection-overlay');
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
         const box = (state.selectedIds.length > 1) ? renderGroupBox(state.selectedIds)
@@ -456,7 +518,7 @@
         for (const id of ids) {
             const c = cellById(id); if (!c) continue;
             const g = svg.querySelector('g.editable[data-eid="' + cssEsc(id) + '"]');
-            if (!g || !_replaceSvgChildren(g, SIP.renderCell(c))) { render(true); return; }
+            if (!g || !_replaceSvgChildren(g, renderEditorCell(c))) { render(true); return; }
         }
         const ov = svg.querySelector('.selection-overlay');
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
@@ -557,6 +619,17 @@
         return `<g class="grid" pointer-events="none">${lines}</g>`;
     }
 
+    /* viewBox units per screen pixel (meet-fit scale) — keeps magnets / handles a constant on-screen size. */
+    function worldPerPixel() {
+        try {
+            const vb = parseViewBox(state.viewBox);
+            const rc = canvasEl.getBoundingClientRect();
+            const sc = Math.min((rc.width || 1) / vb.w, (rc.height || 1) / vb.h);
+            if (sc > 0 && isFinite(sc)) return 1 / sc;
+        } catch (e) { }
+        return 1;
+    }
+
     function renderSelectionBox(cell) {
         if (!cell) return '';
         const _b = cellBox(cell);   // visible icon box (handles align with what's drawn)
@@ -605,17 +678,30 @@
         // from the blue head-resize handles. Shown for signals that have a stand.
         const _sgm = standGeom(cell);
         if (_sgm) {
-            const _cur = _sgm.hasArm ? 'move' : 'ns-resize';   // L stands stretch in 2D
-            svg += `<line x1="${_sgm.ax}" y1="${_sgm.ay}" x2="${_sgm.ex}" y2="${_sgm.ey}" stroke="#f59e0b" stroke-width="${SW}" stroke-dasharray="${3 * u},${3 * u}" pointer-events="none"/>`;
-            // Amber = stand TIP (stretch height / arm).
-            svg += `<circle class="stand-handle" data-handle="stand" cx="${_sgm.ex}" cy="${_sgm.ey}" r="${HIT_ISO}" fill="transparent" style="cursor:${_cur}"/>`;
+            // Outline the COMPLETE stand (head + post) — drag the head or the post to move it all.
+            const _ab = signalAssemblyBox(cell), _p = 5 * u;
+            svg += `<rect x="${_ab.x - _p}" y="${_ab.y - _p}" width="${_ab.w + 2 * _p}" height="${_ab.h + 2 * _p}" rx="${3 * u}" ` +
+                `fill="rgba(34,211,238,0.05)" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="${SW * 0.8}" stroke-dasharray="${2 * u},${3 * u}" pointer-events="none"/>`;
+            // Stand path highlight — solid + thicker when the STAND itself is
+            // selected (clicked on the post), dashed otherwise. Dragging the post
+            // moves the stand alone ("cut" it from the head and re-attach anywhere).
+            const _pts = standPoints(_sgm);
+            const _d = 'M ' + _pts.map(p => p[0] + ' ' + p[1]).join(' L ');
+            const _focus = state.standFocusId === cell.id;
+            svg += `<path d="${_d}" fill="none" stroke="#f59e0b" stroke-opacity="${_focus ? 0.85 : 1}" stroke-width="${_focus ? 4 * u : SW}" ` +
+                (_focus ? '' : `stroke-dasharray="${3 * u},${3 * u}" `) + `stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`;
+            // End handles are smaller than HIT_ISO so the middle of a short post
+            // stays grabbable for moving the whole stand.
+            const _HE = 9 * u;
+            // Amber square = stand TIP — drag anywhere to set that end's height / reach.
+            svg += `<circle class="stand-handle" data-handle="stand" cx="${_sgm.ex}" cy="${_sgm.ey}" r="${_HE}" fill="transparent" style="cursor:move"/>`;
             svg += `<rect x="${_sgm.ex - R}" y="${_sgm.ey - R}" width="${2 * R}" height="${2 * R}" rx="${2 * u}" fill="#0f172a" stroke="#f59e0b" stroke-width="${SW}" pointer-events="none"/>`;
-            // Green = ATTACH point (drag along the body to attach at centre / lower).
-            if (_sgm.hasAttach) {
-                svg += `<circle class="attach-handle" data-handle="attach" cx="${_sgm.ax}" cy="${_sgm.ay}" r="${HIT_ISO}" fill="transparent" style="cursor:ns-resize"/>`;
-                svg += `<circle cx="${_sgm.ax}" cy="${_sgm.ay}" r="${R}" fill="#0f172a" stroke="#22c55e" stroke-width="${SW}" pointer-events="none"/>`;
-            }
+            // Green dot = ATTACH end — drag anywhere to set the other end / where it joins the head.
+            svg += `<circle class="attach-handle" data-handle="attach" cx="${_sgm.ax}" cy="${_sgm.ay}" r="${_HE}" fill="transparent" style="cursor:move"/>`;
+            svg += `<circle cx="${_sgm.ax}" cy="${_sgm.ay}" r="${R}" fill="#0f172a" stroke="#22c55e" stroke-width="${SW}" pointer-events="none"/>`;
         }
+        // Stand selected → stand-only handles (the rotate handle would sit on the post).
+        if (state.standFocusId === cell.id && _sgm) return svg + `</g>`;
         // Rotate handle (also a big hit target), on a stalk above top-centre.
         const rotY = y - 26 * u;
         const rotWrap = (cell.angle && Math.abs(cell.angle) > 0.01) ? `<g transform="rotate(${cell.angle} ${mx} ${my})">` : '<g>';
@@ -1595,6 +1681,7 @@
                     // Always (re)centre: attach on the CENTRE of the body, tip up above it.
                     sp.standAx = 0; sp.standAy = 0;
                     sp.standEx = 0; sp.standEy = -(Math.round(bb.h / 2) + 60);
+                    delete sp.standOrder;
                     delete sp.stand; delete sp.standSide; delete sp.standArmBefore; delete sp.signalSide;
                     render();
                     pushHistory();
@@ -1833,8 +1920,8 @@
     let drag = null;    // { id, offX, offY, moved }   — moving an existing cell
     let resize = null;  // { id, handle, ox, oy, ow, oh, moved } — resizing
     let rotate = null;  // { id, cx, cy, moved } — rotating via the rotate handle
-    let standDrag = null; // { id, ... } — dragging the stand TIP (height / arm)
-    let attachDrag = null; // { id, base, bodyH, moved } — dragging the stand ATTACH point
+    let standEndDrag = null; // { id, end: 'A'|'E', moved } — dragging one END of the stand
+    let standMove = null;    // { id, startX, startY, base, moved } — dragging the whole stand (post) off the head
     let labelDrag = null; // { id, startX, startY, baseDx, baseDy, moved } — moving a label
     let canvasPan = null; // { startX, startY, vb, moved } — left-drag panning the view
 
@@ -1853,31 +1940,15 @@
             evt.preventDefault();
             return;
         }
-        // (a0a) Was it the stand ATTACH handle? (moves where the stand connects
-        // to the body — centre / lower — without touching the head.)
-        if (node && node.classList && node.classList.contains('attach-handle')) {
+        // (a0a) Was it one of the stand END handles? Green = attach end, amber =
+        // tip. Either end can be dragged anywhere, so the height on each side is
+        // set independently. The stand is converted to a FREE stand on the first
+        // real move (a plain click changes nothing).
+        if (node && node.classList && (node.classList.contains('attach-handle') || node.classList.contains('stand-handle'))) {
             const c = selectedCell();
-            if (!c) return;
-            const sgm = standGeom(c);
-            if (!sgm || !sgm.hasAttach) return;
-            attachDrag = { id: c.id, base: sgm.attachBase, bodyH: sgm.bodyH, free: !!sgm.free, cx: sgm.bodyCx, cy: sgm.bodyCy, moved: false };
-            evt.preventDefault();
-            return;
-        }
-        // (a0b) Was it the stand-length handle? (adjusts the stand only, not the head)
-        if (node && node.classList && node.classList.contains('stand-handle')) {
-            const c = selectedCell();
-            if (!c) return;
-            const sgm = standGeom(c);
-            if (!sgm) return;
-            standDrag = {
-                id: c.id,
-                ax: sgm.ax, ay: sgm.ay,
-                hasArm: sgm.hasArm,
-                vFactor: sgm.vFactor || 1,
-                free: !!sgm.free, cx: sgm.bodyCx, cy: sgm.bodyCy,
-                moved: false
-            };
+            if (!c || !standGeom(c)) return;
+            standEndDrag = { id: c.id, end: node.classList.contains('attach-handle') ? 'A' : 'E', moved: false };
+            state.standFocusId = c.id;
             evt.preventDefault();
             return;
         }
@@ -1945,9 +2016,26 @@
             return;
         }
 
+        // Clicked the stand POST itself → select the STAND. Dragging it moves the
+        // stand alone ("cut" it off the head and attach it anywhere); dragging
+        // the head still moves head + stand together.
+        if (evt.target && evt.target.classList && evt.target.classList.contains('stand-move-hit')) {
+            state.selectedId = eid;
+            state.selectedIds = [eid];
+            state.standFocusId = eid;
+            render();
+            const sc = cellById(eid);
+            if (!sc) return;
+            const s0 = clientToWorld(evt);
+            standMove = { id: eid, startX: s0.x, startY: s0.y, base: null, moved: false };
+            evt.preventDefault();
+            return;
+        }
+
         // Otherwise: single select + drag that one element.
         state.selectedId = eid;
         state.selectedIds = [eid];
+        state.standFocusId = null;
         render();
 
         const c = cellById(eid);
@@ -1979,47 +2067,50 @@
             return;
         }
 
-        // STAND ATTACH — drag the green handle to move where the stand connects
-        // to the body (attach at centre / lower).
-        if (attachDrag) {
-            const c = cellById(attachDrag.id);
+        // STAND END — drag the green (attach) or amber (tip) end anywhere. Each
+        // end is independent, so the height on either side is whatever you set.
+        // Snaps to the grid (hold Alt for free placement), with a magnet to the
+        // head's centre line and to the other end (for a straight post).
+        if (standEndDrag) {
+            const c = cellById(standEndDrag.id);
             if (!c) return;
-            c.attrs = c.attrs || {}; c.attrs.signal = c.attrs.signal || {};
+            if (!standEndDrag.moved) detachStand(c);
+            const sgm = standGeom(c);
+            if (!sgm || !sgm.free) return;
             const sig = c.attrs.signal;
-            let ch = false;
-            if (attachDrag.free) {
-                // Lock the attach X to the body centre so the vertical leg always
-                // stays centred on the shunt; only the vertical position moves.
-                const ay = Math.round(w.y - attachDrag.cy);
-                if ((sig.standAx || 0) !== 0 || ay !== (sig.standAy || 0)) { sig.standAx = 0; sig.standAy = ay; ch = true; }
-            } else {
-                const off = Math.max(0, Math.min(attachDrag.bodyH, snap(Math.abs(w.y - attachDrag.base))));
-                if (off !== (sig.standAttachOff || 0)) { sig.standAttachOff = off; ch = true; }
-            }
-            if (ch) { attachDrag.moved = true; renderCellLive(c); }
+            const u = worldPerPixel();
+            let px = evt.altKey ? w.x : snap(w.x), py = evt.altKey ? w.y : snap(w.y);
+            const ox = standEndDrag.end === 'A' ? sgm.ex : sgm.ax, oy = standEndDrag.end === 'A' ? sgm.ey : sgm.ay;
+            if (Math.abs(w.x - sgm.bodyCx) < 6 * u) px = sgm.bodyCx;
+            if (Math.abs(w.x - ox) < 6 * u) px = ox;
+            if (Math.abs(w.y - oy) < 6 * u) py = oy;
+            const kx = standEndDrag.end === 'A' ? 'standAx' : 'standEx', ky = standEndDrag.end === 'A' ? 'standAy' : 'standEy';
+            const nx = Math.round(px - sgm.bodyCx), ny = Math.round(py - sgm.bodyCy);
+            if (nx !== (sig[kx] || 0) || ny !== (sig[ky] || 0)) { sig[kx] = nx; sig[ky] = ny; standEndDrag.moved = true; renderCellLive(c); }
             return;
         }
 
-        // STAND STRETCH — drag the amber tip handle to change the stand drop
-        // (height) and, for L-shaped stands, the arm (horizontal reach).
-        if (standDrag) {
-            const c = cellById(standDrag.id);
+        // STAND MOVE — drag the post: the whole stand (both ends) moves together,
+        // detached from its old spot on the head; the head stays put.
+        if (standMove) {
+            const c = cellById(standMove.id);
             if (!c) return;
-            c.attrs = c.attrs || {}; c.attrs.signal = c.attrs.signal || {};
-            const sig = c.attrs.signal;
-            let ch = false;
-            if (standDrag.free) {
-                const ex = Math.round(w.x - standDrag.cx), ey = Math.round(w.y - standDrag.cy);
-                if (ex !== (sig.standEx || 0) || ey !== (sig.standEy || 0)) { sig.standEx = ex; sig.standEy = ey; ch = true; }
-            } else {
-                const len = Math.max(8, snap(Math.abs(w.y - standDrag.ay) / (standDrag.vFactor || 1)));
-                if (len !== (sig.standLength || 0)) { sig.standLength = len; ch = true; }
-                if (standDrag.hasArm) {
-                    const arm = Math.max(0, snap(Math.abs(w.x - standDrag.ax)));
-                    if (arm !== (sig.standArm || 0)) { sig.standArm = arm; ch = true; }
-                }
+            const dx = evt.altKey ? w.x - standMove.startX : snap(w.x - standMove.startX);
+            const dy = evt.altKey ? w.y - standMove.startY : snap(w.y - standMove.startY);
+            if (!standMove.base) {
+                if (dx === 0 && dy === 0) return;
+                detachStand(c);
+                const sp = c.attrs.signal;
+                standMove.base = { ax: +sp.standAx || 0, ay: +sp.standAy || 0, ex: +sp.standEx || 0, ey: +sp.standEy || 0 };
             }
-            if (ch) { standDrag.moved = true; renderCellLive(c); }
+            const sig = c.attrs.signal, b0 = standMove.base;
+            const nax = Math.round(b0.ax + dx), nay = Math.round(b0.ay + dy);
+            if (nax !== sig.standAx || nay !== sig.standAy) {
+                sig.standAx = nax; sig.standAy = nay;
+                sig.standEx = Math.round(b0.ex + dx); sig.standEy = Math.round(b0.ey + dy);
+                standMove.moved = true;
+                renderCellLive(c);
+            }
             return;
         }
 
@@ -2131,8 +2222,8 @@
         let changed = false;
         if (rotate && rotate.moved) { pushHistory(); changed = true; }
         if (resize && resize.moved) { pushHistory(); changed = true; }
-        if (standDrag && standDrag.moved) { pushHistory(); changed = true; }
-        if (attachDrag && attachDrag.moved) { pushHistory(); changed = true; }
+        if (standEndDrag) { if (standEndDrag.moved) pushHistory(); changed = true; }
+        if (standMove) { if (standMove.moved) pushHistory(); changed = true; }
         if (labelDrag && labelDrag.moved) { pushHistory(); changed = true; }
         if (drag && drag.group) {
             if (drag.moved) { pushHistory(); changed = true; }
@@ -2157,8 +2248,8 @@
         drag = null;
         resize = null;
         rotate = null;
-        standDrag = null;
-        attachDrag = null;
+        standEndDrag = null;
+        standMove = null;
         labelDrag = null;
         canvasPan = null;
         if (changed) render();
@@ -2170,6 +2261,26 @@
             if (state.selectedIds.length || state.selectedId) { deleteSelected(); evt.preventDefault(); }
         } else if (evt.key === 'Escape') {
             if (state.selectedIds.length || state.selectedId) { clearSelection(); render(); }
+        } else if (/^Arrow(Up|Down|Left|Right)$/.test(evt.key) && !evt.ctrlKey && !evt.metaKey) {
+            // Nudge the selection (whole signal incl. stand): 1 unit, Shift = 10.
+            const ids = state.selectedIds.length ? state.selectedIds : (state.selectedId ? [state.selectedId] : []);
+            if (!ids.length) return;
+            const step = evt.shiftKey ? 10 : 1;
+            const dx = evt.key === 'ArrowLeft' ? -step : evt.key === 'ArrowRight' ? step : 0;
+            const dy = evt.key === 'ArrowUp' ? -step : evt.key === 'ArrowDown' ? step : 0;
+            const fc = (ids.length === 1 && state.standFocusId === ids[0]) ? cellById(ids[0]) : null;
+            if (fc && detachStand(fc)) {
+                // Stand selected → nudge only the stand, not the head.
+                const sp = fc.attrs.signal;
+                sp.standAx = (+sp.standAx || 0) + dx; sp.standEx = (+sp.standEx || 0) + dx;
+                sp.standAy = (+sp.standAy || 0) + dy; sp.standEy = (+sp.standEy || 0) + dy;
+                evt.preventDefault(); pushHistory(); render();
+                return;
+            }
+            for (const id of ids) { const c = cellById(id); if (c) { c.position.x += dx; c.position.y += dy; } }
+            evt.preventDefault();
+            pushHistory();
+            render();
         } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'a') {
             evt.preventDefault(); selectAll();
         } else if ((evt.ctrlKey || evt.metaKey) && evt.key.toLowerCase() === 'z') {

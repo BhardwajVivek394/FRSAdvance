@@ -14,5 +14,7 @@ namespace E7FRSAdvance.Interface
         Asset Get(int id);
 
         Asset GetSignalAspectData(int id);
+
+        List<Asset> GetAllAssetOnly(int siteId, int assetTypeId);
     }
 }

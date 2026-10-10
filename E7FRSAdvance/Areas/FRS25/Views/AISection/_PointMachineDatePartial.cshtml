@@ -1,0 +1,67 @@
+@model Domain.Asset
+
+@if (Model != null && Model.mPointMachineData != null)
+{
+    bool isFullPointMachine = Model.IsHalfPointMachine == null || (Model.IsHalfPointMachine != null && !Model.IsHalfPointMachine.Value);
+
+    foreach (var point in Model.mPointMachineData.OrderByDescending(x => x.Date))
+    {
+        <tr>
+            <td>@point.Date</td>
+            <td class="assetname">@point.AssetType</td>
+            <td>@point.Direction  Operation</td>
+            @if (Model.IsSeriesOpration != null && Model.IsSeriesOpration.Value)
+            {
+                var sumTime = point.PointMachineJson.A_C_TIME + point.PointMachineJson.B_C_TIME;
+                <td>
+                    <a href="#" class="ai-sec-link" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','CC',' @point.Date','@point.Direction','@point.AssetType'); return false;">C</a>/<a href="#" class="ai-sec-link" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','CV',' @point.Date','@point.Direction','@point.AssetType'); return false;">V</a>/<a>T(@sumTime)</a>
+                </td>
+            }
+
+            <td>
+                <a class="ai-sec-link" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AC',' @point.Date','@point.Direction','@point.AssetType')">
+                    @string.Format("{0:0.00}", point.PointMachineJson.A_C_MAX)  /  @string.Format("{0:0.00}", point.PointMachineJson.A_C_AVERAGE)
+                </a>
+                @* Reference rendered identical markup for IsThickWave true/false, so a single select is emitted. *@
+                <select class="form-control clsDRPRemark" data-array="@Newtonsoft.Json.JsonConvert.SerializeObject(point.PointMachineJson.A_C)">
+                    @if (ViewBag.mAIRemarks != null)
+                    {
+                        <option>Select</option>
+                        foreach (var remark in ViewBag.mAIRemarks)
+                        {
+                            <option value="@remark.Id">@remark.Remark</option>
+                        }
+                    }
+                </select>
+            </td>
+            <td class="ai-sec-click" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','AV',' @point.Date','@point.Direction','@point.AssetType')">
+                @point.PointMachineJson.A_V_AVERAGE
+            </td>
+            <td>
+                <span>@point.PointMachineJson.A_C_TIME</span>
+            </td>
+            @if (isFullPointMachine)
+            {
+                <td>
+                    <a class="ai-sec-link" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BC',' @point.Date','@point.Direction','@point.AssetType')">@string.Format("{0:0.00}", point.PointMachineJson.B_C_MAX)  /  @string.Format("{0:0.00}", point.PointMachineJson.B_C_AVERAGE)</a>
+                    <select class="form-control clsDRPRemark" data-array="@Newtonsoft.Json.JsonConvert.SerializeObject(point.PointMachineJson.B_C)">
+                        @if (ViewBag.mAIRemarks != null)
+                        {
+                            <option>Select</option>
+                            foreach (var remark in ViewBag.mAIRemarks)
+                            {
+                                <option value="@remark.Id">@remark.Remark</option>
+                            }
+                        }
+                    </select>
+                </td>
+                <td class="ai-sec-click" onclick="fnBindSignatureGragh('@Json.Encode(point.PointMachineJson)','BV',' @point.Date','@point.Direction','@point.AssetType')">
+                    @point.PointMachineJson.B_V_AVERAGE
+                </td>
+                <td>
+                    @point.PointMachineJson.B_C_TIME
+                </td>
+            }
+        </tr>
+    }
+}

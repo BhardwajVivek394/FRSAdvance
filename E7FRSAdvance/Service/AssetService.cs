@@ -120,5 +120,27 @@ namespace E7FRSAdvance.Service
             }
             return mAsset;
         }
+
+        public List<Asset> GetAllAssetOnly(int siteId, int assetTypeId)
+        {
+            List<Asset> mAssets = new List<Asset>();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync(String.Format("Asset/GetAllAssetOnly/{0}/{1}", siteId, assetTypeId)).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mAssets = JsonConvert.DeserializeObject<List<Asset>>(jsonString);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            return mAssets;
+        }
     }
 }

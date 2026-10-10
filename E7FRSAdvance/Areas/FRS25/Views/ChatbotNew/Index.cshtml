@@ -1,0 +1,3444 @@
+@{
+
+    var __userName = E7FRSAdvance.Utility.ClsHttpContent.LoginUser != null
+        ? E7FRSAdvance.Utility.ClsHttpContent.LoginUser.FirstName
+        : "User";
+
+    // v1.2.1.0: engine picker for site-keeping users and the configured emails only. Decided HERE,
+    // in Razor, because the page renders synchronously -- the controller cannot read LoginUser after
+    // its first await (the ConfigureAwait(false) trap fixed in AiChat 1.0.160.85).
+    var __lu = E7FRSAdvance.Utility.ClsHttpContent.LoginUser;
+    var __overrideList = (System.Configuration.ConfigurationManager.AppSettings["SiteKeepingOverrideEmails"] ?? "");
+    var __email = (__lu != null && __lu.EmailAddress != null) ? __lu.EmailAddress.Trim() : "";
+    // Plain loop rather than .Any() -- this view has no @using System.Linq, and adding one for a
+    // single call is a wider change than the check deserves.
+    var __privileged = (__lu != null && __lu.IsSiteKeeping);
+    if (!__privileged && __email.Length > 0 && __overrideList.Length > 0)
+    {
+        foreach (var __e in __overrideList.Split(new char[] { ',', ';' }))
+        {
+            if (string.Equals(__e.Trim(), __email, StringComparison.OrdinalIgnoreCase))
+            {
+                __privileged = true;
+                break;
+            }
+        }
+    }
+    var __engineBrand = System.Configuration.ConfigurationManager.AppSettings["AiEngineBrand"] ?? "ENERGY7 ULTRA";
+
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+    ViewBag.Title = "ChatbotNew";
+
+}
+<style>
+    /* ================================================================
+       ENERGY7 RDPMS AI ASSISTANT - enterprise page UI
+       Presentation-only update. Chat endpoints and streaming logic stay intact.
+       ================================================================ */
+    #e7ChatBotMount,
+    #e7ChatBotMount *,
+    #e7ChatBotMount *::before,
+    #e7ChatBotMount *::after {
+        box-sizing: border-box;
+    }
+
+    #e7ChatBotMount {
+        --e7-primary: var(--primary, var(--bs-primary, #0b6fae));
+        --e7-primary-dark: #0b3558;
+        --e7-primary-deep: #082b49;
+        --e7-accent: #14a7bf;
+        --e7-accent-soft: #e8f7fa;
+        --e7-page: #eef3f8;
+        --e7-surface: #ffffff;
+        --e7-surface-muted: #f6f8fb;
+        --e7-border: #dce5ee;
+        --e7-border-soft: #eaf0f5;
+        --e7-text: #1c2b39;
+        --e7-text-muted: #6b7c8d;
+        --e7-text-soft: #93a2b1;
+        display: flex;
+        width: 100%;
+        height: calc(100vh - 136px);
+        min-height: 560px;
+        padding: 12px;
+        background: radial-gradient(circle at 4% 0%, rgba(20,167,191,.10), transparent 28%), linear-gradient(180deg, #f5f8fb 0%, var(--e7-page) 100%);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    #aiChatTrigger,
+    #aiChatOverlay,
+    #aiFullscreenBtn {
+        display: none !important;
+    }
+
+    #e7cbChatPanel {
+        position: relative;
+        isolation: isolate;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        color: var(--e7-text);
+        background: var(--e7-surface);
+        border: 1px solid rgba(11,53,88,.13);
+        border-radius: 14px;
+        box-shadow: 0 18px 46px rgba(23,52,77,.12), 0 2px 8px rgba(23,52,77,.06);
+    }
+
+        #e7cbChatPanel::before {
+            content: "";
+            position: absolute;
+            z-index: 3;
+            inset: 0 0 auto;
+            height: 3px;
+            background: linear-gradient(90deg, var(--e7-accent), #3f8dcc 58%, #7cc7d7);
+        }
+
+    /* Header */
+    .ai-chat-header {
+        position: relative;
+        z-index: 2;
+        flex-shrink: 0;
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 13px 18px;
+        color: #fff;
+        background: radial-gradient(circle at 85% 15%, rgba(38,177,199,.20), transparent 30%), linear-gradient(112deg, var(--e7-primary-deep), var(--e7-primary-dark) 58%, #0b5575);
+        border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+
+    .ai-chat-brand {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .ai-chat-avatar {
+        width: 42px;
+        height: 42px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        background: linear-gradient(145deg, rgba(255,255,255,.22), rgba(255,255,255,.08));
+        border: 1px solid rgba(255,255,255,.25);
+        border-radius: 11px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 8px 20px rgba(0,0,0,.14);
+    }
+
+        .ai-chat-avatar svg {
+            width: 21px;
+            height: 21px;
+        }
+
+    .ai-chat-header-info {
+        min-width: 0;
+    }
+
+    .ai-chat-brand-kicker {
+        margin-bottom: 1px;
+        color: rgba(255,255,255,.62);
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+    }
+
+    .ai-chat-header-title {
+        overflow: hidden;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ai-chat-header-status {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        flex-shrink: 0;
+        min-height: 28px;
+        padding: 5px 10px;
+        color: rgba(255,255,255,.82);
+        background: rgba(255,255,255,.09);
+        border: 1px solid rgba(255,255,255,.13);
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 600;
+        backdrop-filter: blur(8px);
+    }
+
+    .ai-chat-status-dot {
+        width: 7px;
+        height: 7px;
+        flex-shrink: 0;
+        border-radius: 50%;
+        background: #56d88f;
+        box-shadow: 0 0 0 3px rgba(86,216,143,.14);
+    }
+
+        .ai-chat-status-dot.connecting {
+            background: #f8c35c;
+            box-shadow: 0 0 0 3px rgba(248,195,92,.14);
+            animation: e7pulse 1.2s ease-in-out infinite;
+        }
+
+        .ai-chat-status-dot.error {
+            background: #ff7a7a;
+            box-shadow: 0 0 0 3px rgba(255,122,122,.14);
+        }
+
+    @@keyframes e7pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: .35;
+        }
+    }
+
+    .ai-chat-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        flex-shrink: 0;
+    }
+
+    .ai-chat-header-btn {
+        min-width: 34px;
+        height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 0 10px;
+        color: rgba(255,255,255,.84);
+        background: rgba(255,255,255,.08);
+        border: 1px solid rgba(255,255,255,.16);
+        border-radius: 8px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        transition: background .15s ease, border-color .15s ease, transform .15s ease;
+    }
+
+        .ai-chat-header-btn:hover {
+            color: #fff;
+            background: rgba(255,255,255,.15);
+            border-color: rgba(255,255,255,.28);
+            transform: translateY(-1px);
+        }
+
+        .ai-chat-header-btn svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+
+    /* Conversation */
+    .ai-chat-messages {
+        position: relative;
+        flex: 1;
+        overflow-x: hidden;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        background: linear-gradient(rgba(255,255,255,.94), rgba(255,255,255,.94)), radial-gradient(circle at 1px 1px, #bfd0dd 1px, transparent 1.2px);
+        background-size: auto, 24px 24px;
+        scrollbar-width: thin;
+        scrollbar-color: #c7d4de transparent;
+    }
+
+        .ai-chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .ai-chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .ai-chat-messages::-webkit-scrollbar-thumb {
+            background: #c7d4de;
+            border-radius: 8px;
+        }
+
+    .ai-chat-messages-inner {
+        flex: 1;
+        width: 100%;
+        max-width: 980px;
+        min-height: 100%;
+        margin: 0 auto;
+        padding: 26px 30px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    @@keyframes e7msgIn {
+        from {
+            opacity: 0;
+            transform: translateY(7px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .ai-msg {
+        width: 100%;
+        max-width: 100%;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        animation: e7msgIn .2s ease-out;
+    }
+
+        .ai-msg.user {
+            flex-direction: row-reverse;
+        }
+
+            .ai-msg.user > div:last-child {
+                align-items: flex-end;
+            }
+
+    .ai-msg-avatar {
+        width: 31px;
+        height: 31px;
+        margin-top: 1px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        border-radius: 9px;
+        font-size: 10.5px;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(17,57,88,.12);
+    }
+
+    .ai-msg.ai .ai-msg-avatar {
+        background: linear-gradient(145deg, var(--e7-primary-dark), #117fa1);
+    }
+
+    .ai-msg.user .ai-msg-avatar {
+        background: linear-gradient(145deg, #617489, #34495d);
+    }
+
+    .ai-msg > div:last-child {
+        max-width: min(78%, 760px);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .ai-msg-bubble {
+        position: relative;
+        padding: 11px 14px;
+        color: var(--e7-text);
+        background: #fff;
+        border: 1px solid var(--e7-border);
+        border-radius: 4px 13px 13px 13px;
+        box-shadow: 0 4px 14px rgba(30,62,88,.055);
+        font-size: 13px;
+        line-height: 1.62;
+        overflow-wrap: anywhere;
+        word-break: normal;
+    }
+
+    .ai-msg.user .ai-msg-bubble {
+        color: #fff;
+        background: linear-gradient(135deg, #0b557d, #0b78a5);
+        border-color: transparent;
+        border-radius: 13px 4px 13px 13px;
+        box-shadow: 0 5px 16px rgba(11,85,125,.16);
+    }
+
+    .ai-msg.ai.ai-msg-error .ai-msg-bubble {
+        color: #a53842;
+        background: #fff5f5;
+        border-color: #f2c9cd;
+    }
+
+    .ai-msg-bubble strong {
+        color: #173b57;
+    }
+
+    .ai-msg.user .ai-msg-bubble strong {
+        color: #fff;
+    }
+
+    /* v1.2.9.5: maintenance plan cards ([[CARD]] blocks) */
+    .ai-msg-bubble .plan-card {
+        margin: 10px 0;
+        border: 1px solid var(--e7-border);
+        border-left: 4px solid #94a3b8;
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(30,62,88,.06);
+        overflow: hidden;
+    }
+
+    .ai-msg-bubble .plan-card.urgent { border-left-color: #dc2626; }
+    .ai-msg-bubble .plan-card.soon { border-left-color: #d97706; }
+    .ai-msg-bubble .plan-card.monitor { border-left-color: #059669; }
+
+    .ai-msg-bubble .pc-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 9px 12px;
+        background: #f6f9fc;
+        border-bottom: 1px solid var(--e7-border);
+    }
+
+    .ai-msg-bubble .pc-pill {
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .6px;
+        color: #fff;
+        background: #94a3b8;
+    }
+
+    .ai-msg-bubble .plan-card.urgent .pc-pill { background: #dc2626; }
+    .ai-msg-bubble .plan-card.soon .pc-pill { background: #d97706; }
+    .ai-msg-bubble .plan-card.monitor .pc-pill { background: #059669; }
+
+    .ai-msg-bubble .pc-asset {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--e7-primary-dark);
+    }
+
+    .ai-msg-bubble .pc-sub {
+        font-size: 11px;
+        color: #64748b;
+    }
+
+    .ai-msg-bubble .pc-body { padding: 4px 12px 9px; }
+
+    .ai-msg-bubble .pc-row {
+        display: grid;
+        grid-template-columns: 128px 1fr;
+        gap: 10px;
+        padding: 5px 0;
+        border-bottom: 1px dashed rgba(15,23,42,.07);
+    }
+
+    .ai-msg-bubble .pc-row:last-child { border-bottom: 0; }
+
+    .ai-msg-bubble .pc-k {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: .5px;
+        text-transform: uppercase;
+        color: #64748b;
+        padding-top: 1px;
+    }
+
+    .ai-msg-bubble .pc-v { font-size: 12.5px; line-height: 1.5; }
+    .ai-msg-bubble .pc-row.pc-action .pc-v { font-weight: 600; color: var(--e7-primary-dark); }
+    .ai-msg-bubble .pc-row.pc-note .pc-v { font-size: 11.5px; color: #64748b; font-style: italic; }
+
+    @@media (max-width: 560px) {
+        .ai-msg-bubble .pc-row { grid-template-columns: 1fr; gap: 2px; }
+    }
+
+    /* v1.3.0.0: fast maintenance plan (SSE "plan" event). Scoped to .fp-*; uses the page tokens. */
+    #e7ChatBotMount {
+        --fp-u: #b42318;
+        --fp-u-bg: #fde6e3;
+        --fp-s: #8a4b00;
+        --fp-s-bg: #fff0d6;
+        --fp-m: #1f4fb8;
+        --fp-m-bg: #e3ebfd;
+        --fp-ok: #11674f;
+        --fp-ok-bg: #ddf2ea;
+    }
+
+    .ai-msg.fp-msg > div:last-child {
+        max-width: min(100%, 1100px);
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .fp-plan {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--e7-text);
+    }
+
+    .fp-head,
+    .fp-card,
+    .fp-fam {
+        background: #fff;
+        border: 1px solid var(--e7-border);
+        border-radius: 12px;
+    }
+
+    .fp-head {
+        padding: 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .fp-head-top {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .fp-title {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--e7-primary-dark);
+    }
+
+    .fp-headline {
+        margin: 3px 0 0;
+        color: var(--e7-text-muted);
+    }
+
+    .fp-chips,
+    .fp-pills,
+    .fp-reasons,
+    .fp-subtabs,
+    .fp-foot {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .fp-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 26px;
+        padding: 0 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--e7-surface-muted);
+        border: 1px solid var(--e7-border);
+        white-space: nowrap;
+    }
+
+    .fp-chip i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--fp-ok);
+    }
+
+    .fp-partial {
+        background: var(--fp-s-bg);
+        color: #5c3500;
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-size: 12px;
+    }
+
+    .fp-ctrls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        font-size: 12.5px;
+        color: var(--e7-text-muted);
+    }
+
+    .fp-ctrls select {
+        height: 32px;
+        border: 1px solid var(--e7-border);
+        border-radius: 7px;
+        background: #fff;
+        padding: 0 8px;
+        color: var(--e7-text);
+    }
+
+    .fp-budget {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .fp-bar {
+        display: flex;
+        height: 28px;
+        border-radius: 7px;
+        overflow: hidden;
+        background: var(--e7-border-soft);
+    }
+
+    .fp-bar span {
+        display: flex;
+        align-items: center;
+        padding: 0 7px;
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        border-right: 2px solid #fff;
+    }
+
+    .fp-b-u { background: var(--fp-u-bg); color: var(--fp-u); }
+    .fp-b-s { background: var(--fp-s-bg); color: var(--fp-s); }
+    .fp-b-m { background: var(--fp-m-bg); color: var(--fp-m); }
+    .fp-b-ok { background: var(--fp-ok-bg); color: var(--fp-ok); }
+    .fp-b-x { background: var(--e7-surface-muted); color: var(--e7-text-muted); }
+    .fp-b-buf { color: var(--e7-text-muted); }
+
+    .fp-blegend {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--e7-text-muted);
+    }
+
+    .fp-order {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 6px;
+    }
+
+    .fp-order li {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        padding: 6px 9px;
+        border: 1px solid var(--e7-border-soft);
+        border-radius: 8px;
+        background: var(--e7-surface-muted);
+    }
+
+    .fp-order li.fp-later { opacity: .6; }
+
+    .fp-n {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--e7-primary-dark);
+        color: #fff;
+        font-size: 11.5px;
+        font-weight: 600;
+        display: grid;
+        place-items: center;
+    }
+
+    .fp-later .fp-n { background: var(--e7-text-muted); }
+
+    .fp-linkbtn {
+        border: 0;
+        background: none;
+        padding: 0;
+        color: var(--e7-primary-dark);
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        font: inherit;
+    }
+
+    .fp-fams {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 8px;
+    }
+
+    .fp-fam {
+        padding: 10px 12px;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        font: inherit;
+        color: inherit;
+    }
+
+    .fp-fam[aria-pressed="true"] {
+        border: 2px solid var(--e7-accent);
+        padding: 9px 11px;
+        background: var(--e7-accent-soft);
+    }
+
+    .fp-fam-h {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: baseline;
+    }
+
+    .fp-fam-h b { font-size: 14px; }
+    .fp-fam-h span { font-size: 12px; color: var(--e7-text-muted); }
+
+    .fp-squares {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+    }
+
+    .fp-sq {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+    }
+
+    .fp-sq-u { background: var(--fp-u); }
+    .fp-sq-s { background: #d98b19; }
+    .fp-sq-m { background: var(--fp-m); }
+    .fp-sq-ok { background: var(--fp-ok-bg); box-shadow: inset 0 0 0 1px var(--fp-ok); }
+
+    .fp-pill {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .fp-u { background: var(--fp-u-bg); color: var(--fp-u); }
+    .fp-s { background: var(--fp-s-bg); color: var(--fp-s); }
+    .fp-m { background: var(--fp-m-bg); color: var(--fp-m); }
+    .fp-ok { background: var(--fp-ok-bg); color: var(--fp-ok); }
+
+    .fp-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .fp-cards > .fp-btn { align-self: flex-start; }
+
+    .fp-card { overflow: hidden; }
+    .fp-card-u { border-color: #f1b3ab; }
+
+    .fp-ch {
+        width: 100%;
+        border: 0;
+        background: #fff;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        text-align: left;
+        font: inherit;
+        color: inherit;
+    }
+
+    .fp-ch-static { cursor: default; }
+
+    .fp-name {
+        font-weight: 700;
+        font-size: 14.5px;
+        color: var(--e7-primary-dark);
+    }
+
+    .fp-verdict {
+        flex: 1 1 260px;
+        min-width: 0;
+    }
+
+    .fp-mins {
+        font-size: 12px;
+        color: var(--e7-text-muted);
+        white-space: nowrap;
+    }
+
+    .fp-caret { transition: transform .15s; }
+    .fp-ch[aria-expanded="true"] .fp-caret { transform: rotate(180deg); }
+
+    .fp-cb {
+        border-top: 1px solid var(--e7-border-soft);
+        padding: 10px 12px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .fp-chip-r {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 11.5px;
+        background: var(--e7-surface-muted);
+        border: 1px solid var(--e7-border);
+    }
+
+    .fp-st {
+        height: 30px;
+        padding: 0 11px;
+        border-radius: 999px;
+        border: 1px solid var(--e7-border);
+        background: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--e7-text);
+    }
+
+    .fp-st[aria-pressed="true"] {
+        background: var(--e7-primary-dark);
+        border-color: var(--e7-primary-dark);
+        color: #fff;
+    }
+
+    .fp-grid2,
+    .fp-machines {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 10px;
+    }
+
+    .fp-box {
+        border: 1px solid var(--e7-border-soft);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--e7-surface-muted);
+        min-width: 0;
+    }
+
+    .fp-box h4 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    .fp-kv {
+        display: grid;
+        grid-template-columns: minmax(100px, max-content) minmax(0, 1fr);
+        gap: 5px 12px;
+        margin: 0;
+    }
+
+    .fp-kv dt { color: var(--e7-text-muted); }
+    .fp-kv dd { margin: 0; }
+
+    .fp-mut { color: var(--e7-text-muted); }
+    .fp-note { margin: 8px 0 0; font-size: 11.5px; color: var(--e7-text-muted); font-style: italic; }
+    .fp-bad { color: var(--fp-u); font-weight: 600; }
+    .fp-good { color: var(--fp-ok); font-weight: 600; }
+
+    .fp-metric {
+        display: grid;
+        grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 7px;
+    }
+
+    .fp-mbar {
+        position: relative;
+        height: 9px;
+        border-radius: 999px;
+        background: var(--e7-border-soft);
+        overflow: hidden;
+    }
+
+    .fp-mbar b {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        background: var(--e7-accent);
+        border-radius: 999px;
+    }
+
+    .fp-mbar b.fp-mbad { background: var(--fp-u); }
+    .fp-mv { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+    .fp-bars15 {
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+        height: 64px;
+        margin-top: 10px;
+        border-bottom: 1px solid var(--e7-border);
+    }
+
+    .fp-bars15 span {
+        flex: 1;
+        background: var(--e7-accent);
+        border-radius: 2px 2px 0 0;
+        min-height: 2px;
+    }
+
+    .fp-bars15 span.fp-half { opacity: .55; }
+
+    .fp-axis {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--e7-text-muted);
+        margin-top: 3px;
+    }
+
+    .fp-rail,
+    .fp-wave {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    .fp-sleeper { fill: #c3ccd8; }
+    .fp-railline { stroke: #4e6075; stroke-width: 5; }
+    .fp-endbox { fill: #fff; stroke: #4e6075; }
+    .fp-endtext { font-size: 13px; font-weight: 700; fill: var(--e7-text); }
+    .fp-svgmut { font-size: 11px; fill: var(--e7-text-muted); }
+    .fp-hit-area { fill: rgba(180, 35, 24, .14); stroke: var(--fp-u); stroke-width: 2; }
+    .fp-hit-line { stroke: var(--fp-u); stroke-width: 4; stroke-linecap: round; }
+    .fp-hit-text { font-size: 12.5px; font-weight: 700; fill: var(--fp-u); }
+    .fp-gridline { stroke: var(--e7-border); }
+    .fp-trace-a { fill: none; stroke: #0f6e8c; stroke-width: 2.2; stroke-linejoin: round; }
+    .fp-trace-b { fill: none; stroke: #7a3fb8; stroke-width: 2.2; stroke-linejoin: round; }
+
+    .fp-loc {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 5px;
+        margin-top: 8px;
+    }
+
+    .fp-loc div {
+        border: 1px solid var(--e7-border);
+        border-radius: 8px;
+        padding: 6px 7px;
+        background: #fff;
+        font-size: 11.5px;
+    }
+
+    .fp-loc div b { display: block; font-size: 12px; }
+    .fp-loc div span { color: var(--e7-text-muted); }
+    .fp-loc div.fp-loc-hit { border: 2px solid var(--fp-u); background: var(--fp-u-bg); padding: 5px 6px; }
+    .fp-loc div.fp-loc-was { border: 2px dashed #d98b19; padding: 5px 6px; }
+
+    .fp-scroll { overflow-x: auto; }
+
+    .fp-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 8px;
+    }
+
+    .fp-table th {
+        text-align: left;
+        color: var(--e7-text-muted);
+        font-weight: 600;
+        padding: 5px 7px;
+        border-bottom: 1px solid var(--e7-border);
+    }
+
+    .fp-table td {
+        padding: 5px 7px;
+        border-bottom: 1px solid var(--e7-border-soft);
+        vertical-align: top;
+    }
+
+    .fp-clsrow {
+        display: grid;
+        grid-template-columns: minmax(80px, 110px) minmax(0, 1fr) 46px;
+        gap: 8px;
+        align-items: center;
+        font-size: 12.5px;
+        margin-bottom: 5px;
+    }
+
+    .fp-clsrow b { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .fp-tr {
+        height: 9px;
+        border-radius: 999px;
+        background: var(--e7-border-soft);
+        overflow: hidden;
+    }
+
+    .fp-tr i { display: block; height: 100%; }
+
+    .fp-mhead {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .fp-pmv { margin: 0; }
+
+    .fp-act {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: flex-start;
+        justify-content: space-between;
+        background: var(--e7-accent-soft);
+        border-radius: 10px;
+        padding: 10px 12px;
+    }
+
+    .fp-act p { margin: 0; font-weight: 600; flex: 1 1 300px; color: var(--e7-primary-dark); }
+    .fp-act small { display: block; font-weight: 400; color: var(--e7-text-muted); margin-top: 2px; }
+
+    .fp-btn {
+        display: inline-flex;
+        align-items: center;
+        height: 34px;
+        padding: 0 12px;
+        border-radius: 7px;
+        border: 1px solid var(--e7-border);
+        background: #fff;
+        color: var(--e7-text);
+        cursor: pointer;
+        font-size: 12.5px;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    .fp-btn-sm { height: 30px; font-size: 12px; }
+    .fp-btn-p { background: var(--e7-primary-dark); border-color: var(--e7-primary-dark); color: #fff; }
+    .fp-copied { font-size: 12px; color: var(--fp-ok); }
+
+    .fp-ok-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .fp-ok-list span {
+        font-size: 12px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: var(--fp-ok-bg);
+        color: var(--fp-ok);
+        font-weight: 600;
+    }
+
+    .fp-why-h {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--e7-primary-dark);
+        margin-bottom: 4px;
+    }
+
+    .fp-cite {
+        border: 0;
+        background: var(--e7-accent-soft);
+        color: var(--e7-primary-dark);
+        font-size: 11.5px;
+        font-weight: 700;
+        border-radius: 5px;
+        padding: 1px 6px;
+        cursor: pointer;
+    }
+
+    .fp-plan :focus-visible,
+    .fp-cite:focus-visible {
+        outline: 3px solid var(--e7-accent);
+        outline-offset: 2px;
+    }
+
+    @@media (max-width: 640px) {
+        .fp-loc { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .fp-metric { grid-template-columns: minmax(70px, 100px) minmax(0, 1fr); }
+        .fp-metric .fp-mv { grid-column: 1 / -1; }
+    }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .fp-caret { transition: none; }
+    }
+
+    /* v1.2.9.4: block markup produced by renderMarkdown -- headings, rules, lists, quotes.
+       Answers are structured documents now, so they need document typography. */
+    .ai-msg-bubble .md-h {
+        margin: 14px 0 6px;
+        color: var(--e7-primary-dark);
+        font-weight: 700;
+        line-height: 1.3;
+        letter-spacing: .1px;
+    }
+
+    .ai-msg-bubble .md-h:first-child {
+        margin-top: 0;
+    }
+
+    .ai-msg-bubble h2.md-h {
+        padding-bottom: 5px;
+        border-bottom: 1px solid var(--e7-border);
+        font-size: 14.5px;
+    }
+
+    .ai-msg-bubble h3.md-h {
+        font-size: 13.5px;
+    }
+
+    .ai-msg-bubble h4.md-h {
+        font-size: 12.5px;
+        text-transform: uppercase;
+        letter-spacing: .6px;
+        color: var(--e7-accent);
+    }
+
+    .ai-msg-bubble .md-hr {
+        margin: 13px 0;
+        border: 0;
+        border-top: 1px solid var(--e7-border);
+    }
+
+    .ai-msg-bubble .md-list {
+        margin: 6px 0 8px;
+        padding-left: 20px;
+    }
+
+    .ai-msg-bubble .md-list li {
+        margin: 3px 0;
+        padding-left: 2px;
+    }
+
+    .ai-msg-bubble .md-list li::marker {
+        color: var(--e7-accent);
+        font-weight: 700;
+    }
+
+    .ai-msg-bubble .md-q {
+        margin: 8px 0;
+        padding: 7px 12px;
+        border-left: 3px solid var(--e7-accent);
+        background: var(--e7-accent-soft);
+        border-radius: 0 8px 8px 0;
+        color: var(--e7-primary-dark);
+    }
+
+    .ai-msg.user .ai-msg-bubble .md-h,
+    .ai-msg.user .ai-msg-bubble .md-q {
+        color: #fff;
+        border-color: rgba(255,255,255,.25);
+        background: transparent;
+    }
+
+    .ai-msg.user .ai-msg-bubble .md-list li::marker {
+        color: rgba(255,255,255,.75);
+    }
+
+    .ai-msg-bubble code {
+        padding: 2px 5px;
+        color: #075985;
+        background: #e9f3f7;
+        border: 1px solid #d8e8ef;
+        border-radius: 4px;
+        font-family: Consolas, "Courier New", monospace;
+        font-size: 11.5px;
+    }
+
+    .ai-msg.user .ai-msg-bubble code {
+        color: #fff;
+        background: rgba(255,255,255,.12);
+        border-color: rgba(255,255,255,.18);
+    }
+
+    .ai-msg-bubble pre {
+        max-width: 100%;
+        margin: 9px 0 3px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        color: #d8e7f2;
+        background: #102b3e;
+        border: 1px solid #24475e;
+        border-radius: 8px;
+    }
+
+        .ai-msg-bubble pre code {
+            padding: 0;
+            color: inherit;
+            background: transparent;
+            border: 0;
+        }
+
+    .ai-msg-bubble table {
+        width: 100%;
+        margin: 9px 0;
+        border-collapse: separate;
+        border-spacing: 0;
+        overflow: hidden;
+        border: 1px solid var(--e7-border);
+        border-radius: 8px;
+        font-size: 11.5px;
+    }
+
+    .ai-msg-bubble th,
+    .ai-msg-bubble td {
+        padding: 7px 9px;
+        border-right: 1px solid var(--e7-border-soft);
+        border-bottom: 1px solid var(--e7-border-soft);
+        text-align: left;
+    }
+
+    .ai-msg-bubble th {
+        color: #27465f;
+        background: #edf4f8;
+        font-weight: 700;
+    }
+
+    .ai-msg-time {
+        margin-top: 4px;
+        padding: 0 2px;
+        color: var(--e7-text-soft);
+        font-size: 9.5px;
+        font-weight: 500;
+    }
+
+    .ai-typing-bubble {
+        display: inline-flex;
+        gap: 4px;
+        padding: 12px 16px;
+        background: #fff;
+        border: 1px solid var(--e7-border);
+        border-radius: 4px 13px 13px 13px;
+        box-shadow: 0 4px 14px rgba(30,62,88,.055);
+    }
+
+    .ai-typing-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--e7-accent);
+        animation: e7typingBounce 1.2s ease-in-out infinite;
+    }
+
+        .ai-typing-dot:nth-child(2) {
+            animation-delay: .15s;
+        }
+
+        .ai-typing-dot:nth-child(3) {
+            animation-delay: .30s;
+        }
+
+    @@keyframes e7typingBounce {
+        0%, 60%, 100% {
+            transform: translateY(0);
+            opacity: .4;
+        }
+
+        30% {
+            transform: translateY(-4px);
+            opacity: 1;
+        }
+    }
+
+    /* Composer */
+    .ai-chat-input-area {
+        position: relative;
+        z-index: 2;
+        flex-shrink: 0;
+        padding: 11px 20px 13px;
+        background: rgba(255,255,255,.98);
+        border-top: 1px solid var(--e7-border);
+        box-shadow: 0 -10px 28px rgba(27,63,90,.04);
+    }
+
+    .ai-input-wrapper {
+        width: 100%;
+        max-width: 920px;
+        min-height: 48px;
+        margin: 0 auto;
+        padding: 6px 7px 6px 14px;
+        display: flex;
+        align-items: flex-end;
+        gap: 9px;
+        background: #fff;
+        border: 1px solid #cfdbe5;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(32,67,91,.05);
+        transition: border-color .15s ease, box-shadow .15s ease;
+    }
+
+        .ai-input-wrapper:focus-within {
+            border-color: var(--e7-accent);
+            box-shadow: 0 0 0 3px rgba(20,167,191,.12), 0 4px 14px rgba(32,67,91,.06);
+        }
+
+    #aiChatInput {
+        flex: 1;
+        min-height: 34px;
+        max-height: 108px;
+        padding: 7px 0 5px;
+        resize: none;
+        outline: none;
+        color: var(--e7-text);
+        background: transparent;
+        border: 0;
+        font-family: inherit;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+        #aiChatInput::placeholder {
+            color: #96a5b3;
+        }
+
+    .ai-send-btn {
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        background: linear-gradient(135deg, #0b5d88, #0e91ae);
+        border: 0;
+        border-radius: 8px;
+        box-shadow: 0 5px 12px rgba(11,93,136,.22);
+        cursor: pointer;
+        transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+
+        .ai-send-btn svg {
+            width: 15px;
+            height: 15px;
+        }
+
+        .ai-send-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 7px 16px rgba(11,93,136,.28);
+        }
+
+        .ai-send-btn:disabled {
+            opacity: .34;
+            cursor: default;
+            box-shadow: none;
+        }
+
+    .e7-input-footer {
+        width: 100%;
+        max-width: 920px;
+        margin: 6px auto 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .e7-input-hint,
+    .e7-char-count {
+        color: var(--e7-text-soft);
+        font-size: 9.5px;
+        letter-spacing: .01em;
+    }
+
+    @@media (max-width: 768px) {
+        #e7ChatBotMount {
+            height: calc(100vh - 112px);
+            min-height: 500px;
+            padding: 6px;
+        }
+
+        #e7cbChatPanel {
+            border-radius: 10px;
+        }
+
+        .ai-chat-header {
+            min-height: 64px;
+            padding: 10px 12px;
+            gap: 9px;
+        }
+
+        .ai-chat-avatar {
+            width: 38px;
+            height: 38px;
+        }
+
+        .ai-chat-header-status {
+            display: none;
+        }
+
+        .ai-chat-header-btn {
+            width: 32px;
+            min-width: 32px;
+            padding: 0;
+        }
+
+            .ai-chat-header-btn .e7-btn-text {
+                display: none;
+            }
+
+        .ai-chat-messages-inner {
+            padding: 18px 13px;
+            gap: 13px;
+        }
+
+        .ai-msg > div:last-child {
+            max-width: calc(100% - 42px);
+        }
+
+        .ai-chat-input-area {
+            padding: 9px 10px 10px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .ai-chat-brand-kicker {
+            display: none;
+        }
+
+        .ai-chat-header-title {
+            font-size: 13px;
+        }
+
+        .ai-chat-header-actions {
+            gap: 4px;
+        }
+
+        .ai-msg-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+        }
+
+        .ai-msg-bubble {
+            padding: 10px 12px;
+            font-size: 12.5px;
+        }
+
+        .e7-input-hint {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+</style>
+
+<!-- Hidden marker so the widget's getUserInitial() shows the real user's initial -->
+<span class="e7-user-name" style="display:none">@__userName</span>
+
+@* FRS advance port: the FRS25 layout loads the global AI chat sidebar (ai-chat-sidebar.js/.css) and styles it by
+   id/class (#aiChatPanel, .e7-welcome, .e7-prompt-btn ...). This page IS the chat, so: the sidebar script is told to
+   stand down (window.E7AI_PAGE_OWNS_CHAT, checked at the top of ai-chat-sidebar.js), its stylesheet is disabled here,
+   the page panel id is e7cbChatPanel (was aiChatPanel) so the layout's #aiChatPanel overrides do not hit it, and the
+   few layout/theme rules that match by class are pinned back to this page's own colours. *@
+<script>
+    window.E7AI_PAGE_OWNS_CHAT = true;
+    (function () {
+        try {
+            var links = document.querySelectorAll('link[href*="ai-chat-sidebar.css"]');
+            for (var i = 0; i < links.length; i++) { links[i].disabled = true; }
+        } catch (e) { }
+        // The header "Ask AI" pill clicks the sidebar trigger, which does not exist here: focus this page's input instead.
+        document.addEventListener('DOMContentLoaded', function () {
+            var b = document.getElementById('e7AiHeaderBtn');
+            if (b) b.onclick = function () { var inp = document.getElementById('aiChatInput'); if (inp) inp.focus(); };
+        });
+    })();
+</script>
+<style>
+    body #e7ChatBotMount {
+        --e7-surface-2: #ffffff;
+        --e7-border-2: #dce5ee;
+    }
+    body #e7ChatBotMount .e7-welcome h3 { color: #fff !important; }
+    body #e7ChatBotMount .e7-welcome p { color: rgba(255,255,255,.76) !important; }
+    body #e7ChatBotMount .e7-cat-tab { color: #66798a !important; }
+    body #e7ChatBotMount .e7-cat-tab:hover { color: #0b6787 !important; }
+    body #e7ChatBotMount .e7-cat-tab.active { color: #fff !important; }
+    body #e7ChatBotMount .e7-prompt-btn { color: #506679 !important; }
+    body #e7ChatBotMount .e7-prompt-btn:hover,
+    body #e7ChatBotMount .e7-prompt-btn.active { color: #0b6787 !important; }
+    body #e7ChatBotMount .e7-prompt-panel { background: #f5f8fb; }
+    body #e7ChatBotMount .e7-input-hint { font-size: 9.5px; color: var(--e7-text-soft); }
+    body #e7ChatBotMount #aiChatInput,
+    body #e7ChatBotMount #aiChatInput:focus {
+        background: transparent !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        color: var(--e7-text) !important;
+    }
+</style>
+
+<div id="e7ChatBotMount"></div>
+
+<script>
+        (function () {
+            'use strict';
+
+            // Endpoints point back to THIS controller (ChatBot), not AiChat.
+            const CHAT_ENDPOINT = '@Url.Action("Chat", "ChatBotNew", new { area = "FRS25" })';
+            const STATUS_ENDPOINT = '@Url.Action("Status", "ChatBotNew", new { area = "FRS25" })';
+            const STORAGE_KEY = 'e7ai_history';
+            const MAX_HISTORY = 20;
+
+            /* ══════════════════════════════════════════════════════════
+               SCOPE — only RDPMS domain allowed
+            ══════════════════════════════════════════════════════════ */
+            const OUT_OF_SCOPE = [
+                'weather', 'recipe', 'cook', 'poem', 'joke', 'capital of',
+                'javascript', 'python', '2+2', 'math', 'history of india',
+                'news', 'stock', 'bitcoin', 'translate', 'who is', 'president',
+                'cricket', 'football', 'movie', 'song', 'write a story',
+                'write an essay', 'email', 'time in'
+            ];
+
+            /* ══════════════════════════════════════════════════════════
+               PROMPT CATEGORIES
+               All prompts are concrete, tool-callable, scope-safe.
+               Each requires: asset name OR site name from user input.
+            ══════════════════════════════════════════════════════════ */
+            // Engine list -- the server validates every selection.
+            var E7_BRAND = "@__engineBrand";
+            var E7_PROVIDER = "quantum11";
+            var E7_ENGINE_PICKER = "";
+@if (__privileged)
+{
+    <text>
+            var E7_ENGINES = [
+                { id: "nexus10",   label: "ENERGY7 NEXUS" },
+                { id: "nexus16",   label: "ENERGY7 NEXUS 1.6" },
+                { id: "nexus19",   label: "ENERGY7 NEXUS 1.9" },
+                { id: "nexus49",   label: "ENERGY7 NEXUS 4.9" },
+                { id: "orion10",   label: "ENERGY7 ORION" },
+                { id: "orion16",   label: "ENERGY7 ORION 1.6" },
+                { id: "orion17",   label: "ENERGY7 ORION 1.7" },
+                { id: "quantum10", label: "ENERGY7 QUANTUM" },
+                { id: "quantum11", label: "ENERGY7 QUANTUM 1.1" }
+            ];
+            // A saved id is honoured only if it is still in the list; anything else (including an
+            // id from a page cached before this release) is discarded and the default applies.
+            try {
+                var _saved = sessionStorage.getItem("e7ChatEngine");
+                if (_saved) {
+                    for (var _i = 0; _i < E7_ENGINES.length; _i++) {
+                        if (E7_ENGINES[_i].id === _saved) { E7_PROVIDER = _saved; break; }
+                    }
+                }
+            } catch (e) { }
+
+            E7_ENGINE_PICKER =
+                '<select id="e7EngineSel" aria-label="Model" ' +
+                'style="margin-left:auto;font:inherit;font-size:12px;padding:5px 9px;border-radius:7px;' +
+                'border:1px solid #cfd6de;background:#fff;color:#253041;max-width:210px;">' +
+                E7_ENGINES.map(function (m) {
+                    return '<option value="' + m.id + '"' +
+                        (m.id === E7_PROVIDER ? ' selected' : '') + '>' + m.label + '</option>';
+                }).join("") + '</select>';
+
+            document.addEventListener("change", function (ev) {
+                var t = ev.target;
+                if (!t || t.id !== "e7EngineSel") { return; }
+                E7_PROVIDER = t.value;
+                try { sessionStorage.setItem("e7ChatEngine", E7_PROVIDER); } catch (e) { }
+            });
+    </text>
+}
+
+            const PROMPT_CATEGORIES = [
+                {
+                    id: 'plan',
+                    icon: '\uD83D\uDCCB',
+                    label: 'Maintenance plan',
+                    prompts: [
+                        { label: 'Station plan - 4 hours', ask: 'site', tpl: 'Maintenance plan for {input} - 4 hours' },
+                        { label: 'Station plan - 2 hours', ask: 'site', tpl: 'Maintenance plan for {input} - 2 hours' },
+                        { label: 'Station plan - full day', ask: 'site', tpl: 'Maintenance plan for {input} - 8 hours' },
+                    ]
+                },
+                {
+                    id: 'alerts',
+                    icon: '🚨',
+                    label: 'Alerts',
+                    prompts: [
+                        { label: 'Active alerts on a site', ask: 'site', tpl: 'Show all active alerts for site {input}' },
+                        { label: 'Active alerts for an asset', ask: 'asset', tpl: 'Show active alerts for asset {input}' },
+                        { label: 'Alert history — last 7 days', ask: 'asset', tpl: 'Show alert history for asset {input} over the last 7 days' },
+                        { label: 'Alert summary — site', ask: 'site', tpl: 'Give an alert summary for site {input}' },
+                    ]
+                },
+                {
+                    id: 'live',
+                    icon: '📊',
+                    label: 'Live Values',
+                    prompts: [
+                        { label: 'All current values — asset', ask: 'asset', tpl: 'Show all current tag values for asset {input}' },
+                        { label: 'All current values — site', ask: 'site', tpl: 'Show all current values for site {input}' },
+                        { label: 'TPR state', ask: 'asset', tpl: 'What is the current TPR state of {input}?' },
+                        { label: 'Feed current (If mA)', ask: 'asset', tpl: 'What is the current If mA of {input}?' },
+                        { label: 'Relay voltage (Vr)', ask: 'asset', tpl: 'What is the current Vr voltage of {input}?' },
+                        { label: 'Charger voltage', ask: 'asset', tpl: 'What is the current charger voltage of {input}?' },
+                    ]
+                },
+                {
+                    id: 'history',
+                    icon: '📈',
+                    label: 'History',
+                    prompts: [
+                        { label: 'Last 10 readings', ask: 'asset', tpl: 'Show the last 10 readings for asset {input}' },
+                        { label: 'If mA — last 10 readings', ask: 'asset', tpl: 'Show last 10 If mA readings for {input}' },
+                        { label: 'TPR history — today', ask: 'asset', tpl: "Show today's TPR history for {input}" },
+                        { label: 'History — today', ask: 'asset', tpl: "Show today's history for asset {input}" },
+                    ]
+                },
+                {
+                    id: 'timestamps',
+                    icon: '⏰',
+                    label: 'Timestamps',
+                    prompts: [
+                        { label: 'Last updated (device time)', ask: 'asset', tpl: 'When was asset {input} last updated? Show TimestampDevice.' },
+                        { label: 'Last channel timestamp', ask: 'asset', tpl: 'Show TimestampChannel for all tags of asset {input}' },
+                        { label: 'All timestamp fields', ask: 'asset', tpl: 'Show all timestamp fields for asset {input}' },
+                    ]
+                },
+                {
+                    id: 'search',
+                    icon: '🔍',
+                    label: 'Search',
+                    prompts: [
+                        { label: 'Find a site', ask: 'site', tpl: 'Find site information for {input}' },
+                        { label: 'Find an asset', ask: 'asset', tpl: 'Find asset information for {input}' },
+                        { label: 'All tags for an asset', ask: 'asset', tpl: 'List all measurement tags available for asset {input}' },
+                        { label: 'All assets on a site', ask: 'site', tpl: 'List all assets at site {input}' },
+                    ]
+                },
+                {
+                    id: 'health',
+                    icon: '🛠️',
+                    label: 'Health',
+                    prompts: [
+                        { label: 'Health summary — asset', ask: 'asset', tpl: 'Give a health summary for asset {input}' },
+                        { label: 'Health index score', ask: 'asset', tpl: 'What is the health index score for asset {input}?' },
+                        { label: 'Leakage current', ask: 'asset', tpl: 'What is the leakage current for asset {input}?' },
+                        { label: 'Choke resistance', ask: 'asset', tpl: 'What is the choke resistance for asset {input}?' },
+                    ]
+                },
+            ];
+
+            /* ══════════════════════════════════════════════════════════
+               STATE
+            ══════════════════════════════════════════════════════════ */
+            let isOpen = false;
+            let isStreaming = false;
+            let chatHistory = [];
+            let _botMsgEl = null;
+
+            let activeCategory = null;
+            let activePrompt = null;
+
+            let panel, messagesEl, inputEl, sendBtn, statusDot, statusText, charCountEl;
+
+            window.E7AI = {
+                open: () => openChat(),
+                clear: () => clearChat(),
+            };
+
+            /* ══════════════════════════════════════════════════════════
+               INIT
+            ══════════════════════════════════════════════════════════ */
+            function init() {
+                buildHTML();
+                addStyles();
+                bindRefs();
+                bindEvents();
+                loadHistory();
+                pingStatus();
+                openChat(); // this page IS the chat — always open
+            }
+
+            async function pingStatus() {
+                setStatus('connecting', 'Connecting…');
+                try {
+                    const r = await fetch(STATUS_ENDPOINT, { credentials: 'same-origin' });
+                    if (r.status === 401) { setStatus('error', 'Not signed in'); return; }
+                    const d = await r.json();
+                    setStatus(d.ok ? 'online' : 'error', d.ok ? 'Ready' : (d.error || 'Unavailable'));
+                } catch {
+                    setStatus('error', 'Unavailable');
+                }
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               HTML
+            ══════════════════════════════════════════════════════════ */
+            function buildHTML() {
+                document.getElementById('e7ChatBotMount').insertAdjacentHTML('beforeend', `
+<aside id="e7cbChatPanel" role="complementary" aria-label="RDPMS AI Assistant">
+
+  <div class="ai-chat-header">
+    <div class="ai-chat-brand">
+      <div class="ai-chat-avatar" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3a4 4 0 0 0-4 4v1.2A4.8 4.8 0 0 0 5 12.7V16a2 2 0 0 0 2 2h1.2"/>
+          <path d="M12 3a4 4 0 0 1 4 4v1.2a4.8 4.8 0 0 1 3 4.5V16a2 2 0 0 1-2 2h-1.2"/>
+          <path d="M9 21h6M12 18v3M8.5 12h.01M15.5 12h.01"/>
+        </svg>
+      </div>
+      <div class="ai-chat-header-info">
+        <div class="ai-chat-brand-kicker">ENERGY7 · RDPMS</div>
+        <div class="ai-chat-header-title">AI Operations Assistant</div>
+      </div>
+    </div>
+
+    <div class="ai-chat-header-status" aria-live="polite">
+      <span class="ai-chat-status-dot" id="aiStatusDot"></span>
+      <span id="aiStatusText">Connecting…</span>
+    </div>
+
+    <div class="ai-chat-header-actions">
+      <button class="ai-chat-header-btn" id="aiClearBtn" type="button" title="Start a new conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span class="e7-btn-text">New chat</span>
+      </button>
+      <button class="ai-chat-header-btn" id="aiCloseBtn" type="button" title="Back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="ai-chat-messages" id="aiMessages">
+    <div class="ai-chat-messages-inner" id="aiMessagesInner"></div>
+  </div>
+
+  <div class="e7-prompt-panel" id="e7PromptPanel"></div>
+
+  <div class="ai-chat-input-area">
+    <div class="e7-input-label" id="e7InputLabel" style="display:none"></div>
+    <div class="ai-input-wrapper">
+      <textarea id="aiChatInput" placeholder="Ask about a site, asset, alert, health value or recent history…" rows="1" maxlength="500" aria-label="Message"></textarea>
+      <button class="ai-send-btn" id="aiSendBtn" type="button" disabled title="Send message">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="e7-input-footer">
+      <div class="e7-input-hint">Enter to send · Shift+Enter for a new line · Esc to cancel a selected query</div>
+      <div class="e7-char-count" id="e7CharCount">0 / 500</div>
+    </div>
+  </div>
+
+</aside>`);
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               STYLES — prompt panel, welcome screen, follow-up chips, tool badges
+            ══════════════════════════════════════════════════════════ */
+            function addStyles() {
+                if (document.getElementById('e7ai-styles')) return;
+                const s = document.createElement('style');
+                s.id = 'e7ai-styles';
+                s.textContent = `
+/* WELCOME */
+.e7-welcome {
+  width: 100%;
+  max-width: 940px;
+  margin: auto;
+  padding: 8px 0 2px;
+  animation: e7msgIn .22s ease-out;
+}
+.e7-welcome-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 24px 26px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% 10%, rgba(65,193,211,.27), transparent 32%),
+    linear-gradient(120deg, #0b3558, #0b5d7d 68%, #0d7892);
+  border: 1px solid rgba(11,53,88,.22);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(25,63,92,.12);
+}
+.e7-welcome-hero::after {
+  content: "";
+  position: absolute;
+  right: -35px;
+  bottom: -62px;
+  width: 210px;
+  height: 210px;
+  border: 28px solid rgba(255,255,255,.05);
+  border-radius: 50%;
+}
+.e7-welcome-eyebrow {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  color: #9fe5ee;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.e7-welcome-eyebrow::before {
+  content: "";
+  width: 18px;
+  height: 2px;
+  background: #55cfde;
+  border-radius: 99px;
+}
+.e7-welcome h3 {
+  position: relative;
+  z-index: 1;
+  max-width: 680px;
+  margin: 0;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1.28;
+  font-weight: 700;
+  letter-spacing: -.025em;
+}
+.e7-welcome p {
+  position: relative;
+  z-index: 1;
+  max-width: 650px;
+  margin: 9px 0 0;
+  color: rgba(255,255,255,.76);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.e7-welcome-security {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 15px;
+  padding: 5px 9px;
+  color: rgba(255,255,255,.78);
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.e7-welcome-security svg { width: 12px; height: 12px; }
+/* v1.2.6.0: welcome sample-line chips (professional AI-chat suggestions) */
+.e7-welcome-suggest { margin-top: 18px; }
+.e7-suggest-label { display: block; font-size: 12px; font-weight: 600; letter-spacing: .02em;
+  color: #64748b; margin-bottom: 8px; }
+.e7-suggest-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.e7-suggest-chip { border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 8px 12px;
+  font-size: 13px; line-height: 1.2; color: #1a3a6b; cursor: pointer;
+  transition: border-color .15s ease, background .15s ease; }
+.e7-suggest-chip:hover { border-color: #2563eb; background: #f8fafc; }
+.e7-section-label {
+  margin: 18px 2px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.e7-section-label strong {
+  color: #29455c;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.e7-section-label span {
+  color: #8999a8;
+  font-size: 9.5px;
+}
+.e7-cap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.e7-cap-card {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  color: inherit;
+  background: rgba(255,255,255,.96);
+  border: 1px solid #dce5ee;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(31,65,90,.04);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.e7-cap-card:hover {
+  border-color: #8fc9d6;
+  box-shadow: 0 8px 18px rgba(31,65,90,.08);
+  transform: translateY(-1px);
+}
+.e7-cap-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0c7291;
+  background: #e8f7fa;
+  border: 1px solid #d2edf2;
+  border-radius: 8px;
+}
+.e7-cap-icon svg { width: 17px; height: 17px; }
+.e7-cap-copy { min-width: 0; }
+.e7-cap-title {
+  display: block;
+  overflow: hidden;
+  color: #263f54;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.e7-cap-desc {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: #8191a0;
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.e7-cap-arrow {
+  color: #9bb1c1;
+  transition: transform .15s ease, color .15s ease;
+}
+.e7-cap-card:hover .e7-cap-arrow { color: #0c7897; transform: translateX(2px); }
+.e7-cap-arrow svg { width: 14px; height: 14px; }
+
+/* QUICK QUERY PANEL */
+.e7-prompt-panel {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  background: #f5f8fb;
+  border-top: 1px solid #dce5ee;
+}
+.e7-prompt-panel:empty { display: none; }
+.e7-prompt-inner {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 9px 30px 10px;
+}
+.e7-prompt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.e7-prompt-heading {
+  min-width: 112px;
+}
+.e7-prompt-heading strong {
+  display: block;
+  color: #29455c;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.e7-prompt-heading span {
+  display: block;
+  margin-top: 1px;
+  color: #91a0ae;
+  font-size: 8.5px;
+}
+.e7-cat-tabs {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 1px;
+  scrollbar-width: none;
+}
+.e7-cat-tabs::-webkit-scrollbar { display: none; }
+.e7-cat-tab {
+  min-height: 30px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: #66798a;
+  background: #fff;
+  border: 1px solid #dce5ee;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  transition: all .14s ease;
+}
+.e7-cat-tab svg { width: 13px; height: 13px; }
+.e7-cat-tab:hover { color: #0b6787; border-color: #9dcbd5; }
+.e7-cat-tab.active {
+  color: #fff;
+  background: linear-gradient(135deg, #0b557d, #0d819b);
+  border-color: transparent;
+  box-shadow: 0 4px 10px rgba(11,85,125,.17);
+}
+.e7-prompt-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.e7-prompt-btn {
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #506679;
+  background: #fff;
+  border: 1px solid #dfe7ee;
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: left;
+  transition: all .14s ease;
+}
+.e7-prompt-btn > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.e7-prompt-btn:hover {
+  color: #0b6787;
+  background: #f4fbfc;
+  border-color: #a8d5dd;
+}
+.e7-prompt-btn.active {
+  color: #0b6787;
+  background: #e8f7fa;
+  border-color: #8fcbd6;
+  box-shadow: inset 3px 0 #12a2ba;
+}
+.e7-prompt-arrow {
+  margin-left: auto;
+  color: #9aafbf;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.e7-prompt-arrow svg { width: 12px; height: 12px; }
+
+/* SELECTED QUERY */
+.e7-input-label {
+  width: 100%;
+  max-width: 920px;
+  min-height: 26px;
+  margin: 0 auto 5px;
+  padding: 4px 8px;
+  align-items: center;
+  gap: 8px;
+  color: #0b6787;
+  background: #eef9fb;
+  border: 1px solid #d5edf1;
+  border-radius: 6px;
+  font-size: 9.5px;
+  font-weight: 650;
+}
+.e7-input-label svg { width: 12px; height: 12px; margin-right: 4px; vertical-align: -2px; }
+.e7-input-label em { color: #7e909e !important; }
+.e7-label-cancel {
+  margin-left: auto;
+  padding: 2px 6px;
+  color: #718493;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 600;
+}
+.e7-label-cancel:hover { color: #9e3841; background: #fff0f1; }
+
+/* TOOL STATUS */
+.e7-tool-badge {
+  width: fit-content;
+  margin: 0 0 0 41px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #6d5a22;
+  background: #fff9e9;
+  border: 1px solid #eadcae;
+  border-radius: 7px;
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.e7-spinner {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  display: inline-block;
+  border: 1.5px solid #c19b36;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: e7spin .55s linear infinite;
+}
+@@keyframes e7spin { to { transform: rotate(360deg); } }
+
+/* FOLLOW-UP ACTIONS */
+.e7-followup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.e7-followup-chip {
+  padding: 5px 9px;
+  color: #0b6787;
+  background: #f2fafc;
+  border: 1px solid #cce7ec;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+  transition: all .13s ease;
+}
+.e7-followup-chip:hover {
+  color: #fff;
+  background: #0b718e;
+  border-color: #0b718e;
+}
+
+@@media (max-width: 900px) {
+  .e7-cap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .e7-prompt-inner { padding-left: 14px; padding-right: 14px; }
+  .e7-prompt-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@@media (max-width: 620px) {
+  .e7-welcome-hero { padding: 20px 18px; }
+  .e7-welcome h3 { font-size: 18px; }
+  .e7-cap-grid { grid-template-columns: 1fr; }
+  .e7-cap-desc { white-space: normal; }
+  .e7-prompt-toolbar { display: block; }
+  .e7-prompt-heading { display: none; }
+  .e7-cat-tabs { width: 100%; }
+  .e7-prompt-list { grid-template-columns: 1fr; }
+  .e7-prompt-list .e7-prompt-btn:nth-child(n+4) { display: none; }
+  .e7-input-label { font-size: 9px; }
+}
+`;
+                document.head.appendChild(s);
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               BIND
+            ══════════════════════════════════════════════════════════ */
+            function bindRefs() {
+                panel = document.getElementById('e7cbChatPanel');
+                // Use the inner container for all message appends
+                messagesEl = document.getElementById('aiMessagesInner');
+                inputEl = document.getElementById('aiChatInput');
+                sendBtn = document.getElementById('aiSendBtn');
+                statusDot = document.getElementById('aiStatusDot');
+                statusText = document.getElementById('aiStatusText');
+                charCountEl = document.getElementById('e7CharCount');
+            }
+
+            function bindEvents() {
+                // Close (✕) leaves the page instead of hiding the panel —
+                // there's nothing behind it on this standalone page.
+                document.getElementById('aiCloseBtn').addEventListener('click', function () {
+                    window.location.href = '@Url.Action("Index", "ChatBotNew", new { Area = "FRS25" })';
+                });
+                document.getElementById('aiClearBtn').addEventListener('click', clearChat);
+                sendBtn.addEventListener('click', sendMessage);
+
+                inputEl.addEventListener('input', function () {
+                    autoResize(this);
+                    sendBtn.disabled = !this.value.trim() || isStreaming;
+                    if (charCountEl) charCountEl.textContent = this.value.length + ' / 500';
+                });
+
+                inputEl.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (!sendBtn.disabled) sendMessage();
+                    }
+                    if (e.key === 'Escape') cancelPrompt();
+                });
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               PANEL
+            ══════════════════════════════════════════════════════════ */
+            function openChat() {
+                isOpen = true;
+                if (!messagesEl.children.length) {
+                    if (chatHistory.length) renderSavedHistory();
+                    else renderWelcome();
+                }
+                renderPromptPanel();
+                setTimeout(() => inputEl.focus(), 150);
+            }
+
+            function renderSavedHistory() {
+                chatHistory.forEach(item => {
+                    if (!item || !item.content) return;
+                    if (item.role === 'user') appendUserMsg(item.content);
+                    else if (item.role === 'assistant') appendBotMsg(item.content, false);
+                });
+            }
+
+            function clearChat() {
+                chatHistory = [];
+                saveHistory();
+                messagesEl.innerHTML = '';
+                cancelPrompt();
+                renderWelcome();
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               WELCOME
+            ══════════════════════════════════════════════════════════ */
+            // v1.2.6.0: professional, ready-to-run example prompts shown on the welcome screen in
+            // place of the capability-card grid.
+            const E7_SAMPLE_LINES = [
+                'Show live values for 11T at Arnetha',
+                'Last 10 readings for asset 2T',
+                'Any active alerts today?',
+                'Asset health for PM07'
+            ];
+
+            function renderWelcome() {
+                const el = document.createElement('div');
+                el.className = 'e7-welcome';
+                el.id = 'e7WelcomeBlock';
+                el.innerHTML = `
+                  <div class="e7-welcome-hero">
+                    <div class="e7-welcome-eyebrow">Railway asset intelligence</div>
+                    <h3>Operational answers from your RDPMS data</h3>
+                    <p>Ask about live values, active alerts, device timestamps, recent history, asset health and site-level status across tracks, signals and point machines.</p>
+                    <div class="e7-welcome-security">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+                      </svg>
+                      Restricted to authorised RDPMS operational data
+                    </div>
+                  </div>
+                  <div class="e7-welcome-suggest">
+                    <span class="e7-suggest-label">Try asking</span>
+                    <div class="e7-suggest-list">
+                      ${E7_SAMPLE_LINES.map(sx => `<button type="button" class="e7-suggest-chip">${esc(sx)}</button>`).join('')}
+                    </div>
+                  </div>`;
+                messagesEl.appendChild(el);
+
+                // v1.2.6.0: sample lines fill the composer (the operator can adjust the site/asset
+                // before sending) -- the normal send path; no capability grid.
+                el.querySelectorAll('.e7-suggest-chip').forEach(chip => {
+                    chip.addEventListener('click', () => {
+                        cancelPrompt();
+                        inputEl.value = chip.textContent;
+                        inputEl.dispatchEvent(new Event('input'));
+                        inputEl.focus();
+                    });
+                });
+            }
+
+            function getCategoryIcon(id) {
+                const icons = {
+                    plan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="m9 11 2 2 4-4"/><path d="M9 17h6"/></svg>',
+                    alerts: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>',
+                    live: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>',
+                    history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.5 8A9 9 0 1 1 6 18.5"/><path d="M12 7v5l3 2"/></svg>',
+                    timestamps: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+                    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
+                    health: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13h4l2-5 4 9 2-4h4"/><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>'
+                };
+                return icons[id] || icons.search;
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               PROMPT PANEL — category tabs + prompt list
+            ══════════════════════════════════════════════════════════ */
+            function renderPromptPanel(openCatId) {
+                const panelEl = document.getElementById('e7PromptPanel');
+
+                if (!openCatId) openCatId = activeCategory || PROMPT_CATEGORIES[0].id;
+                activeCategory = openCatId;
+
+                const cat = PROMPT_CATEGORIES.find(c => c.id === openCatId);
+
+                panelEl.innerHTML = `
+                  <div class="e7-prompt-inner">
+                    <div class="e7-prompt-toolbar">
+                      <div class="e7-prompt-heading">
+                        <strong>Quick queries</strong>
+                        <span>Choose a data request</span>
+                      </div>
+                      ${E7_ENGINE_PICKER}
+                      <div class="e7-cat-tabs" role="tablist" aria-label="Query categories">
+                        ${PROMPT_CATEGORIES.map(c => `
+                          <button type="button" class="e7-cat-tab ${c.id === openCatId ? 'active' : ''}" data-cat="${c.id}" role="tab" aria-selected="${c.id === openCatId}">
+                            ${getCategoryIcon(c.id)}<span>${c.label}</span>
+                          </button>`).join('')}
+                      </div>
+                    </div>
+                    <div class="e7-prompt-list">
+                      ${cat.prompts.map((p, i) => `
+                        <button type="button" class="e7-prompt-btn" data-cat="${openCatId}" data-idx="${i}">
+                          <span>${p.label}</span>
+                          <span class="e7-prompt-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                        </button>`).join('')}
+                    </div>
+                  </div>`;
+
+                panelEl.querySelectorAll('.e7-cat-tab').forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        cancelPrompt();
+                        renderPromptPanel(tab.dataset.cat);
+                    });
+                });
+
+                panelEl.querySelectorAll('.e7-prompt-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const cat2 = PROMPT_CATEGORIES.find(c => c.id === btn.dataset.cat);
+                        const pmt = cat2.prompts[parseInt(btn.dataset.idx)];
+                        selectPrompt(pmt, btn);
+                    });
+                });
+            }
+
+            function selectPrompt(prompt, btnEl) {
+                document.querySelectorAll('.e7-prompt-btn').forEach(b => b.classList.remove('active'));
+                if (btnEl) btnEl.classList.add('active');
+
+                activePrompt = prompt;
+
+                const label = document.getElementById('e7InputLabel');
+                const askText = prompt.ask === 'site' ? 'Enter site name' : 'Enter asset name (e.g. 2T, SH04, PM07)';
+                label.style.display = 'flex';
+                label.innerHTML = `
+                  <span>${getCategoryIcon(activeCategory)} ${esc(prompt.label)}&nbsp;·&nbsp;<em>${askText}</em></span>
+                  <button type="button" class="e7-label-cancel" id="e7CancelBtn">Cancel</button>`;
+                document.getElementById('e7CancelBtn').addEventListener('click', cancelPrompt);
+
+                inputEl.placeholder = prompt.ask === 'site'
+                    ? 'Type site name, e.g. Arnetha, Patliputra…'
+                    : 'Type asset name, e.g. 2T, 11T, SH04, PM07…';
+
+                inputEl.value = '';
+                inputEl.dispatchEvent(new Event('input'));
+                inputEl.focus();
+            }
+
+            function cancelPrompt() {
+                activePrompt = null;
+                document.querySelectorAll('.e7-prompt-btn').forEach(b => b.classList.remove('active'));
+                const label = document.getElementById('e7InputLabel');
+                if (label) label.style.display = 'none';
+                inputEl.placeholder = 'Ask about a site, asset, alert, health value or recent history…';
+                inputEl.value = '';
+                inputEl.dispatchEvent(new Event('input'));
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               SEND
+            ══════════════════════════════════════════════════════════ */
+            async function sendMessage() {
+                const raw = inputEl.value.trim();
+                if (!raw || isStreaming) return;
+
+                let text;
+
+                if (activePrompt) {
+                    text = activePrompt.tpl.replace('{input}', raw);
+                    cancelPrompt();
+                } else {
+                    if (isOutOfScope(raw)) {
+                        appendUserMsg(raw);
+                        inputEl.value = '';
+                        autoResize(inputEl);
+                        sendBtn.disabled = true;
+                        if (charCountEl) charCountEl.textContent = '0 / 500';
+                        appendScopeRefusal();
+                        return;
+                    }
+                    text = raw;
+                }
+
+                inputEl.value = '';
+                autoResize(inputEl);
+                sendBtn.disabled = true;
+                if (charCountEl) charCountEl.textContent = '0 / 500';
+
+                const welcome = document.getElementById('e7WelcomeBlock');
+                if (welcome) welcome.remove();
+
+                appendUserMsg(text);
+                chatHistory.push({ role: 'user', content: text });
+                if (chatHistory.length > MAX_HISTORY * 2)
+                    chatHistory = chatHistory.slice(-MAX_HISTORY * 2);
+
+                const typingEl = appendTyping();
+                let activeBadge = null;
+                let botText = '';
+                _botMsgEl = null;
+                isStreaming = true;
+                setStatus('connecting', 'Fetching data…');
+
+                try {
+                    const res = await fetch(CHAT_ENDPOINT, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: chatHistory, provider: E7_PROVIDER }),
+                    });
+
+                    if (res.status === 401) {
+                        typingEl.remove();
+                        appendBotMsg('Session expired — please sign in again.', true);
+                        setStatus('error', 'Session expired');
+                        return;
+                    }
+                    if (!res.ok) throw new Error('Server error ' + res.status);
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buf = '';
+                    typingEl.remove();
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buf += decoder.decode(value, { stream: true });
+                        const lines = buf.split('\n');
+                        buf = lines.pop();
+
+                        for (const line of lines) {
+                            if (!line.startsWith('data: ')) continue;
+                            const raw2 = line.slice(6).trim();
+                            if (raw2 === '[DONE]') continue;
+                            let evt;
+                            try { evt = JSON.parse(raw2); } catch { continue; }
+
+                            if (evt.type === 'text') {
+                                botText += evt.text;
+                                streamBotBubble(botText);
+                                if (activeBadge) { activeBadge.remove(); activeBadge = null; }
+                            }
+                            if (evt.type === 'tool_use') {
+                                if (activeBadge) activeBadge.remove();
+                                activeBadge = appendToolBadge(evt.name);
+                                setStatus('connecting', 'Fetching data…');
+                            }
+                            // v1.3.0.0: fast maintenance plan -- cards first, the explanation streams below them
+                            if (evt.type === 'plan') {
+                                if (activeBadge) { activeBadge.remove(); activeBadge = null; }
+                                appendPlanMsg(evt.plan);
+                                _botMsgEl = null;
+                                setStatus('connecting', 'Writing explanation...');
+                            }
+                            if (evt.type === 'plan_error') {
+                                if (activeBadge) { activeBadge.remove(); activeBadge = null; }
+                                appendBotMsg(evt.message || 'The quick plan could not be built.', false);
+                                _botMsgEl = null;
+                            }
+                            if (evt.type === 'error') {
+                                appendBotMsg('⚠ ' + (evt.message || 'Error'), true);
+                                setStatus('error', 'Error');
+                            }
+                        }
+                    }
+
+                    if (botText) {
+                        chatHistory.push({ role: 'assistant', content: botText });
+                        saveHistory();
+                        showFollowUps(text, botText);
+                    }
+                    setStatus('online', 'Ready');
+
+                } catch (err) {
+                    if (typingEl.parentNode) typingEl.remove();
+                    appendBotMsg('Connection error — please try again.', true);
+                    setStatus('error', 'Error');
+                } finally {
+                    if (activeBadge) activeBadge.remove();
+                    isStreaming = false;
+                    sendBtn.disabled = !inputEl.value.trim();
+                    inputEl.focus();
+                }
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               FOLLOW-UP CHIPS
+            ══════════════════════════════════════════════════════════ */
+            function showFollowUps(question, answer) {
+                const q = question.toLowerCase();
+                const a = answer.toLowerCase();
+                const chips = [];
+
+                const assetMatch = question.match(/\b(\d+T\d*|SH\d+|PM\d+|DL\d+|A10\d*)\b/i);
+                const asset = assetMatch ? assetMatch[1] : null;
+
+                if (asset) {
+                    if (q.includes('tpr') || q.includes('current') || q.includes('live') || q.includes('value')) {
+                        chips.push({ label: '📈 History today', prompt: `Show today's history for asset ${asset}` });
+                        chips.push({ label: '🚨 Active alerts', prompt: `Show active alerts for asset ${asset}` });
+                    }
+                    if (q.includes('alert') || a.includes('alert')) {
+                        chips.push({ label: '📋 Alert history 7d', prompt: `Show alert history for asset ${asset} over the last 7 days` });
+                        chips.push({ label: '📊 Current values', prompt: `Show all current tag values for asset ${asset}` });
+                    }
+                    if (q.includes('history') || q.includes('reading')) {
+                        chips.push({ label: '⏰ Last updated', prompt: `When was asset ${asset} last updated? Show TimestampDevice.` });
+                        chips.push({ label: '🛠️ Health summary', prompt: `Give a health summary for asset ${asset}` });
+                    }
+                } else {
+                    if (a.includes('alert') || q.includes('alert')) {
+                        chips.push({ label: '📋 All active alerts', prompt: 'Show all active alerts' });
+                    }
+                    chips.push({
+                        label: '🔍 Search asset', prompt: null, action: () => {
+                            renderPromptPanel('search');
+                            inputEl.focus();
+                        }
+                    });
+                }
+
+                if (!chips.length) return;
+
+                if (_botMsgEl) {
+                    const bubble = _botMsgEl.querySelector('.ai-msg-bubble');
+                    if (bubble) {
+                        const row = document.createElement('div');
+                        row.className = 'e7-followup';
+                        chips.slice(0, 4).forEach(chip => {
+                            const btn = document.createElement('button');
+                            btn.className = 'e7-followup-chip';
+                            btn.textContent = chip.label;
+                            btn.addEventListener('click', () => {
+                                if (chip.action) { chip.action(); return; }
+                                if (chip.prompt && !isStreaming) {
+                                    chatHistory.push({ role: 'user', content: chip.prompt });
+                                    inputEl.value = chip.prompt;
+                                    sendMessage();
+                                }
+                            });
+                            row.appendChild(btn);
+                        });
+                        bubble.appendChild(row);
+                        scrollDown();
+                    }
+                }
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               SCOPE
+            ══════════════════════════════════════════════════════════ */
+            function isOutOfScope(text) {
+                const l = text.toLowerCase();
+                return OUT_OF_SCOPE.some(k => l.includes(k));
+            }
+
+            function appendScopeRefusal() {
+                const el = document.createElement('div');
+                el.className = 'ai-msg ai';
+                el.innerHTML = `
+                  <div class="ai-msg-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="ai-msg-bubble">
+                      I am not trained to answer that. I can only assist with EdgeX RDPMS railway monitoring data — asset values, history, alerts and timestamps.
+                    </div>
+                    <div class="ai-msg-time">${fmtTime()}</div>
+                  </div>`;
+                messagesEl.appendChild(el);
+                scrollDown();
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               MESSAGES
+            ══════════════════════════════════════════════════════════ */
+            function appendUserMsg(text) {
+                _botMsgEl = null;
+                const el = document.createElement('div');
+                el.className = 'ai-msg user';
+                el.innerHTML = `
+                  <div class="ai-msg-avatar">${getUserInitial()}</div>
+                  <div>
+                    <div class="ai-msg-bubble">${esc(text)}</div>
+                    <div class="ai-msg-time">${fmtTime()}</div>
+                  </div>`;
+                messagesEl.appendChild(el);
+                scrollDown();
+            }
+
+            function streamBotBubble(content) {
+                if (!_botMsgEl || !_botMsgEl.parentNode) {
+                    _botMsgEl = document.createElement('div');
+                    _botMsgEl.className = 'ai-msg ai';
+                    _botMsgEl.innerHTML = `
+                      <div class="ai-msg-avatar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div class="ai-msg-bubble"></div>
+                        <div class="ai-msg-time">${fmtTime()}</div>
+                      </div>`;
+                    messagesEl.appendChild(_botMsgEl);
+                }
+                _botMsgEl.querySelector('.ai-msg-bubble').innerHTML = renderMarkdown(content);
+                scrollDown();
+            }
+
+            function appendBotMsg(text, isErr) {
+                const el = document.createElement('div');
+                el.className = 'ai-msg ai' + (isErr ? ' ai-msg-error' : '');
+                el.innerHTML = `
+                  <div class="ai-msg-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="ai-msg-bubble">${isErr ? esc(text) : renderMarkdown(text)}</div>
+                    <div class="ai-msg-time">${fmtTime()}</div>
+                  </div>`;
+                messagesEl.appendChild(el);
+                scrollDown();
+            }
+
+            function appendTyping() {
+                _botMsgEl = null;
+                const el = document.createElement('div');
+                el.className = 'ai-msg ai';
+                el.innerHTML = `
+                  <div class="ai-msg-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="ai-typing-bubble">
+                      <div class="ai-typing-dot"></div>
+                      <div class="ai-typing-dot"></div>
+                      <div class="ai-typing-dot"></div>
+                    </div>
+                  </div>`;
+                messagesEl.appendChild(el);
+                scrollDown();
+                return el;
+            }
+
+            function appendToolBadge(name) {
+                const TOOL_LABELS = {
+                    search_sites: 'Searching sites…',
+                    search_assets: 'Searching assets…',
+                    search_tags: 'Searching tags…',
+                    get_asset_tags: 'Loading tags…',
+                    get_tag_current: 'Reading live value…',
+                    get_live_values: 'Reading live values…',
+                    state_get: 'Getting state…',
+                    get_history: 'Loading history…',
+                    get_history_compact: 'Loading history…',
+                    get_limited_history: 'Loading recent readings…',
+                    get_timestamps: 'Reading timestamps…',
+                    get_alerts: 'Checking alerts…',
+                    get_alert_history: 'Loading alert history…',
+                    alert_smart: 'Summarising alerts…',
+                    summary_get: 'Calculating summary…',
+                    trend_get: 'Analysing trend…',
+                };
+                const label = TOOL_LABELS[name] || (name + '…');
+                const el = document.createElement('div');
+                el.className = 'e7-tool-badge';
+                el.innerHTML = `<span class="e7-spinner"></span><span>${esc(label)}</span>`;
+                messagesEl.appendChild(el);
+                scrollDown();
+                return el;
+            }
+
+            /* ==========================================================
+               v1.3.0.0 FAST MAINTENANCE PLAN -- renderer for the SSE "plan" event.
+               The plan is computed on the server (E7.AiCore); this code only draws it.
+               All text goes through esc(); the page stays pure ASCII (\u escapes).
+            ========================================================== */
+            const FP_WORKSHEET = '@Url.Action("Worksheet", "MaintenceRoster", new { area = "FRS25" })';
+            const FP = { seq: 0, plans: {}, names: {}, rendered: {} };
+            const FP_PR = {
+                URGENT: { label: 'Urgent', cls: 'u' },
+                INSPECT_SOON: { label: 'Inspect soon', cls: 's' },
+                MONITOR: { label: 'Monitor', cls: 'm' }
+            };
+            const FP_FAMS = ['TC', 'PM', 'SG', 'IPS'];
+            const FP_FAM_LABEL = { TC: 'Track circuits', PM: 'Point machines', SG: 'Signals', IPS: 'IPS' };
+            const FP_SUBS = {
+                TC: [['cond', 'Leakage & condition'], ['avg', 'Average insight'], ['alerts', 'Alert info'], ['events', 'Major events']],
+                PM: [['cls', 'Model classification'], ['last', 'Last operation'], ['avg', 'Average insight'], ['alerts', 'Alert info']],
+                SG: [['lamp', 'Lamp & ECR'], ['alerts', 'Alert info']],
+                IPS: [['avg', 'Average insight'], ['alerts', 'Alert info']]
+            };
+            const FP_RISING = {
+                i_run: 'running current',
+                end_rise: 'end-of-stroke current',
+                work: 'effort per throw',
+                i_trough: 'mid-stroke current dip'
+            };
+            const FP_LOCS = [
+                ['FeedSide', 'Feed side', 'Feed current only'],
+                ['GluedJoint', 'Glued joint', 'Both currents move'],
+                ['SleeperBallast', 'Sleeper / ballast', 'Spread along section'],
+                ['RelaySide', 'Relay side', 'Relay current only'],
+                ['ExternalShorting', 'External shorting', 'Object across rails']
+            ];
+            const FP_DOT = ' \u00b7 ';
+
+            // Builds an SVG text element without spelling its tag name in the page: Razor treats that
+            // bare tag name specially inside code blocks, so it never appears literally here.
+            function fpSvgText(x, y, cls, anchor, content) {
+                const tag = 'te' + 'xt';
+                return '<' + tag + ' x="' + x + '" y="' + y + '"' + (anchor ? ' text-anchor="' + anchor + '"' : '') + ' class="' + cls + '">' + content + '</' + tag + '>';
+            }
+
+            function fpNum(v, d) {
+                if (v === null || v === undefined || isNaN(Number(v))) {
+                    return '\u2014';
+                }
+                return Number(v).toFixed(d === undefined ? 0 : d);
+            }
+
+            function fpTime(iso) {
+                if (!iso) {
+                    return '';
+                }
+                const m = String(iso).match(/T?(\d{2}):(\d{2})/);
+                return m ? m[1] + ':' + m[2] : String(iso);
+            }
+
+            function fpPill(priority) {
+                const p = FP_PR[priority] || { label: 'Healthy', cls: 'ok' };
+                return '<span class="fp-pill fp-' + p.cls + '">' + p.label + '</span>';
+            }
+
+            function fpFit(plan, hours) {
+                const total = hours * 60;
+                const setup = plan.timeBudget ? plan.timeBudget.setupMinutes || 0 : 0;
+                let left = total - setup;
+                const inPlan = [];
+                const later = [];
+                plan.assets.forEach(function (a) {
+                    if (a.minutes <= left) {
+                        inPlan.push(a);
+                        left -= a.minutes;
+                    } else {
+                        later.push(a);
+                    }
+                });
+                return { inPlan: inPlan, later: later, left: Math.max(0, left), setup: setup, total: total };
+            }
+
+            function appendPlanMsg(plan) {
+                if (!plan || !plan.site || !Array.isArray(plan.assets)) {
+                    return;
+                }
+                const id = 'fp' + (++FP.seq);
+                const first = plan.assets.length ? plan.assets[0].key : null;
+                const state = { plan: plan, hours: plan.hours || 4, fam: 'all', open: {}, sub: {} };
+                if (first) {
+                    state.open[first] = true;
+                }
+                if (plan.singleAsset && first) {
+                    state.open[first] = true;
+                }
+                FP.plans[id] = state;
+                FP.rendered[String(plan.site.id)] = true;
+                plan.assets.forEach(function (a) {
+                    FP.names[a.key] = a.name;
+                });
+
+                const el = document.createElement('div');
+                el.className = 'ai-msg ai fp-msg';
+                el.innerHTML = '<div class="ai-msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>'
+                    + '<div><div class="fp-plan" id="' + id + '"></div><div class="ai-msg-time">' + fmtTime() + '</div></div>';
+                messagesEl.appendChild(el);
+                fpRender(id);
+                scrollDown();
+            }
+
+            function fpRender(id) {
+                const host = document.getElementById(id);
+                const st = FP.plans[id];
+                if (!host || !st) {
+                    return;
+                }
+                host.innerHTML = fpHeader(id, st) + fpBudget(id, st) + fpFamilies(id, st) + fpCards(id, st) + fpFooter(id, st);
+            }
+
+            function fpHeader(id, st) {
+                const p = st.plan;
+                const name = p.site.name + (p.site.code ? ' (' + p.site.code + ')' : '');
+                const src = p.source || {};
+                const from = src.rosterRunAt ? 'From roster run ' + fpTime(src.rosterRunAt) + ' + live check ' + fpTime(src.liveCheckAt) : 'From alerts and live models ' + fpTime(src.liveCheckAt);
+                const hoursOpts = [2, 4, 6, 8].concat([2, 4, 6, 8].indexOf(st.hours) < 0 ? [st.hours] : []).sort(function (a, b) { return a - b; });
+                let partial = '';
+                if (Array.isArray(src.partial) && src.partial.length) {
+                    partial = '<div class="fp-partial"><b>Some data could not be read.</b> ' + src.partial.map(esc).join(FP_DOT) + '</div>';
+                }
+                return '<div class="fp-head">'
+                    + '<div class="fp-head-top"><div><h3 class="fp-title">' + esc(name) + FP_DOT + st.hours + '-hour maintenance plan</h3>'
+                    + '<p class="fp-headline">' + esc(p.headline || '') + '</p></div>'
+                    + '<div class="fp-chips"><span class="fp-chip"><i></i>Plan ready in ' + fpNum((src.buildMs || 0) / 1000, 1) + ' s</span>'
+                    + '<span class="fp-chip fp-chip-plain">' + esc(from) + '</span></div></div>'
+                    + partial
+                    + '<div class="fp-ctrls"><label for="' + id + '-hrs">Time on site</label>'
+                    + '<select id="' + id + '-hrs" data-fp-hours="' + id + '">'
+                    + hoursOpts.map(function (h) { return '<option value="' + h + '"' + (h === st.hours ? ' selected' : '') + '>' + h + ' hours</option>'; }).join('')
+                    + '</select></div></div>';
+            }
+
+            function fpBudget(id, st) {
+                const p = st.plan;
+                const f = fpFit(p, st.hours);
+                if (!p.assets.length) {
+                    return '';
+                }
+                let bar = '<span class="fp-b-x" style="width:' + (100 * f.setup / f.total) + '%" title="' + esc(p.timeBudget.setupLabel || 'Setup') + '">Setup</span>';
+                f.inPlan.forEach(function (a) {
+                    const c = (FP_PR[a.priority] || { cls: 'm' }).cls;
+                    bar += '<span class="fp-b-' + c + '" style="width:' + (100 * a.minutes / f.total) + '%" title="' + esc(a.name) + FP_DOT + a.minutes + ' min">' + esc(a.name) + '</span>';
+                });
+                if (f.left > 0) {
+                    bar += '<span class="fp-b-buf" style="width:' + (100 * f.left / f.total) + '%">Buffer</span>';
+                }
+                let n = 1;
+                let order = '<li><span class="fp-n">' + (n++) + '</span><span>' + esc(p.timeBudget.setupLabel || 'Setup') + '</span><span class="fp-mut">' + f.setup + ' min</span></li>';
+                f.inPlan.forEach(function (a) {
+                    order += '<li><span class="fp-n">' + (n++) + '</span><span><button type="button" class="fp-linkbtn" data-fp-jump="' + esc(a.key) + '">' + esc(a.name) + '</button>' + FP_DOT + esc((a.subtitle || '').toLowerCase()) + '</span><span class="fp-mut">' + a.minutes + ' min</span></li>';
+                });
+                f.later.forEach(function (a) {
+                    order += '<li class="fp-later"><span class="fp-n">\u2013</span><span><button type="button" class="fp-linkbtn" data-fp-jump="' + esc(a.key) + '">' + esc(a.name) + '</button>' + FP_DOT + 'next visit</span><span class="fp-mut">' + a.minutes + ' min</span></li>';
+                });
+                const used = f.total - f.left;
+                return '<div class="fp-budget" aria-label="Time budget"><div class="fp-bar">' + bar + '</div>'
+                    + '<div class="fp-blegend"><span>' + used + ' of ' + f.total + ' min planned</span><span>'
+                    + (f.later.length ? f.later.length + ' item(s) for the next visit' : f.left + ' min buffer for travel or a surprise') + '</span></div>'
+                    + '<ol class="fp-order">' + order + '</ol></div>';
+            }
+
+            function fpFamilies(id, st) {
+                const fams = (st.plan.families || []).filter(function (f) { return FP_FAMS.indexOf(f.family) >= 0; });
+                if (!fams.length) {
+                    return '';
+                }
+                return '<div class="fp-fams" role="group" aria-label="Asset family">' + fams.map(function (f) {
+                    const cards = st.plan.assets.filter(function (a) { return a.family === f.family; });
+                    const sq = cards.map(function (a) { return '<span class="fp-sq fp-sq-' + ((FP_PR[a.priority] || { cls: 'ok' }).cls) + '" title="' + esc(a.name) + '"></span>'; }).join('')
+                        + (f.healthy || []).map(function (n) { return '<span class="fp-sq fp-sq-ok" title="' + esc(n) + ' (healthy)"></span>'; }).join('');
+                    const pills = (f.urgent ? '<span class="fp-pill fp-u">' + f.urgent + ' urgent</span>' : '')
+                        + (f.soon ? '<span class="fp-pill fp-s">' + f.soon + ' soon</span>' : '')
+                        + (f.monitor ? '<span class="fp-pill fp-m">' + f.monitor + ' monitor</span>' : '')
+                        + '<span class="fp-pill fp-ok">' + (f.healthy || []).length + ' healthy</span>';
+                    return '<button type="button" class="fp-fam" data-fp-fam="' + id + '|' + f.family + '" aria-pressed="' + (st.fam === f.family) + '">'
+                        + '<span class="fp-fam-h"><b>' + esc(f.label || FP_FAM_LABEL[f.family]) + '</b><span>' + (f.total || 0) + ' assets</span></span>'
+                        + '<span class="fp-pills">' + pills + '</span><span class="fp-squares" aria-hidden="true">' + sq + '</span></button>';
+                }).join('') + '</div>';
+            }
+
+            function fpCards(id, st) {
+                const p = st.plan;
+                const list = p.assets.filter(function (a) { return st.fam === 'all' || a.family === st.fam; });
+                let html = '<div class="fp-cards">';
+                if (st.fam !== 'all') {
+                    html += '<button type="button" class="fp-btn fp-btn-sm" data-fp-fam="' + id + '|all">Show all families</button>';
+                }
+                html += list.map(function (a) { return fpCard(id, st, a); }).join('');
+                const healthy = [];
+                (p.families || []).forEach(function (f) {
+                    if (st.fam === 'all' || st.fam === f.family) {
+                        (f.healthy || []).forEach(function (n) { healthy.push(n); });
+                    }
+                });
+                if (healthy.length) {
+                    html += '<div class="fp-card"><div class="fp-ch fp-ch-static"><span class="fp-pill fp-ok">Healthy</span><span class="fp-mut">No finding in 15 days. Nothing to do today.</span></div>'
+                        + '<div class="fp-cb"><div class="fp-ok-list">' + healthy.map(function (n) { return '<span>' + esc(n) + '</span>'; }).join('') + '</div></div></div>';
+                }
+                if (!list.length && !healthy.length) {
+                    html += '<p class="fp-mut">Nothing at this station needs attention today.</p>';
+                }
+                return html + '</div>';
+            }
+
+            function fpCard(id, st, a) {
+                const open = !!st.open[a.key];
+                const pr = FP_PR[a.priority] || { cls: 'ok' };
+                let body = '';
+                if (open) {
+                    const subs = FP_SUBS[a.family] || FP_SUBS.IPS;
+                    const sub = st.sub[a.key] || subs[0][0];
+                    body = '<div class="fp-cb">'
+                        + (a.reasons && a.reasons.length ? '<div class="fp-reasons">' + a.reasons.map(function (r) { return '<span class="fp-chip-r">' + esc(r) + '</span>'; }).join('') + '</div>' : '')
+                        + '<div class="fp-subtabs" role="group" aria-label="Sections for ' + esc(a.name) + '">'
+                        + subs.map(function (s) { return '<button type="button" class="fp-st" data-fp-sub="' + id + '|' + esc(a.key) + '|' + s[0] + '" aria-pressed="' + (sub === s[0]) + '">' + s[1] + '</button>'; }).join('')
+                        + '</div>' + fpSection(a, sub) + fpAction(st, a) + '</div>';
+                }
+                return '<article class="fp-card fp-card-' + pr.cls + '" data-fp-card="' + esc(a.key) + '">'
+                    + '<button type="button" class="fp-ch" data-fp-toggle="' + id + '|' + esc(a.key) + '" aria-expanded="' + open + '">'
+                    + fpPill(a.priority) + '<span class="fp-name">' + esc(a.name) + '</span><span class="fp-mut">' + esc(a.subtitle || '') + '</span>'
+                    + '<span class="fp-verdict">' + esc(a.verdict || '') + '</span><span class="fp-mins">' + (a.minutes || 0) + ' min</span>'
+                    + '<svg class="fp-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>'
+                    + body + '</article>';
+            }
+
+            function fpSection(a, sub) {
+                if (sub === 'alerts') {
+                    return fpAlertsBox(a.alerts15d);
+                }
+                if (sub === 'avg') {
+                    return fpDriftBox(a.drift, a.family === 'TC' ? 'Shunted samples are excluded by the roster run.' : '');
+                }
+                if (sub === 'cond') {
+                    return fpTrackCond(a.track);
+                }
+                if (sub === 'events') {
+                    return fpTrackEvents(a.track);
+                }
+                if (sub === 'cls') {
+                    return fpPmClass(a.pm);
+                }
+                if (sub === 'last') {
+                    return fpPmLast(a.pm);
+                }
+                if (sub === 'lamp') {
+                    return '<div class="fp-grid2">' + fpDriftBox(a.drift, '') + fpSignalBox(a.signal) + '</div>';
+                }
+                return '';
+            }
+
+            function fpAlertsBox(al) {
+                if (!al) {
+                    return '<div class="fp-box"><p class="fp-mut">Alert history was not available.</p></div>';
+                }
+                let trend = '<span class="fp-mut">too few alerts for a trend</span>';
+                if (al.count >= 3) {
+                    if (al.secondHalf > al.firstHalf) {
+                        trend = '<span class="fp-bad">degrading (' + al.firstHalf + ' \u2192 ' + al.secondHalf + ')</span>';
+                    } else if (al.secondHalf < al.firstHalf) {
+                        trend = '<span class="fp-good">improving (' + al.firstHalf + ' \u2192 ' + al.secondHalf + ')</span>';
+                    } else {
+                        trend = 'steady (' + al.firstHalf + ' \u2192 ' + al.secondHalf + ')';
+                    }
+                }
+                const days = Array.isArray(al.perDay) ? al.perDay : [];
+                const max = Math.max.apply(null, days.concat([1]));
+                const half = Math.ceil(days.length / 2);
+                const bars = days.map(function (v, i) {
+                    return '<span class="' + (i < half ? 'fp-half' : '') + '" style="height:' + Math.max(v ? 8 : 2, 100 * v / max) + '%" title="' + v + ' alert(s)"></span>';
+                }).join('');
+                return '<div class="fp-box"><h4>Alerts' + FP_DOT + 'last ' + (days.length || 15) + ' days</h4><dl class="fp-kv">'
+                    + '<dt>Count</dt><dd><b>' + (al.count || 0) + '</b></dd>'
+                    + '<dt>Active now</dt><dd>' + (al.active ? '<span class="fp-pill fp-u">' + al.active + ' active</span>' : '<span class="fp-pill fp-ok">None</span>') + '</dd>'
+                    + '<dt>Trend</dt><dd>' + trend + '</dd>'
+                    + (al.topCause ? '<dt>Most frequent</dt><dd>' + esc(al.topCause) + '</dd>' : '')
+                    + (al.latest ? '<dt>Latest</dt><dd>' + esc(al.latest) + '</dd>' : '')
+                    + '</dl>'
+                    + (days.length ? '<div class="fp-bars15" aria-label="Alerts per day">' + bars + '</div><div class="fp-axis"><span>' + esc(al.fromDay || '') + '</span><span>first half' + FP_DOT + 'second half</span><span>' + esc(al.toDay || '') + '</span></div>' : '')
+                    + '</div>';
+            }
+
+            function fpSigned(attr) {
+                let v = Number(attr.drift);
+                if (isNaN(v)) {
+                    return null;
+                }
+                const dir = String(attr.dir || '').toLowerCase();
+                if (v > 0 && (dir.indexOf('down') >= 0 || dir.indexOf('dec') >= 0 || dir.indexOf('low') >= 0)) {
+                    v = -v;
+                }
+                return v;
+            }
+
+            function fpDriftBox(d, note) {
+                if (!d || ((!d.attrs || !d.attrs.length) && (d.value === undefined || d.value === null))) {
+                    return '<div class="fp-box"><h4>Average insight</h4><p class="fp-mut">Comparison unavailable: the roster run has no average-drift reading for this asset.</p></div>';
+                }
+                let rows = '';
+                (d.attrs || []).forEach(function (at) {
+                    const v = fpSigned(at);
+                    const w = v === null ? 0 : Math.min(100, Math.abs(v) * 5);
+                    const bad = v !== null && Math.abs(v) >= 5;
+                    rows += '<div class="fp-metric"><span>' + esc(at.attr) + '</span><span class="fp-mbar"><b class="' + (bad ? 'fp-mbad' : '') + '" style="width:' + w + '%"></b></span>'
+                        + '<span class="fp-mv">avg ' + fpNum(at.avg, 2) + ' <span class="' + (bad ? 'fp-bad' : 'fp-mut') + '">' + (v === null ? '' : (v > 0 ? '+' : '') + fpNum(v, 1) + '%') + '</span></span></div>';
+                });
+                const head = (d.value !== undefined && d.value !== null) ? '<p class="fp-mut" style="margin:0 0 8px">Overall drift <b>' + ((d.value > 0 ? '+' : '') + fpNum(d.value, 1)) + '%</b>' + (d.worstAttr ? ', worst on ' + esc(d.worstAttr) : '') + '</p>' : '';
+                return '<div class="fp-box"><h4>Average insight' + FP_DOT + 'drift against the asset\'s own normal</h4>' + head + rows
+                    + '<p class="fp-note">Bar length = size of the drift (20% fills the bar).' + (note ? ' ' + esc(note) : '') + '</p></div>';
+            }
+
+            function fpTrackDiagram(t) {
+                const hit = t ? t.leakType : 'None';
+                const pos = { FeedSide: [70, 'Feed end'], GluedJoint: [612, 'Glued joint'], SleeperBallast: [340, 'Sleeper / ballast'], RelaySide: [668, 'Relay end'], ExternalShorting: [300, 'Shorting across rails'] }[hit];
+                let sl = '';
+                for (let x = 60; x <= 680; x += 26) {
+                    sl += '<rect x="' + x + '" y="34" width="10" height="62" rx="2" class="fp-sleeper"/>';
+                }
+                let mark = '';
+                if (pos) {
+                    if (hit === 'ExternalShorting') {
+                        mark = '<line x1="' + pos[0] + '" y1="44" x2="' + (pos[0] + 30) + '" y2="86" class="fp-hit-line"/>';
+                    } else if (hit === 'SleeperBallast') {
+                        mark = '<rect x="250" y="30" width="190" height="70" rx="10" class="fp-hit-area"/>';
+                    } else {
+                        mark = '<circle cx="' + pos[0] + '" cy="65" r="22" class="fp-hit-area"/>';
+                    }
+                    mark += fpSvgText(Math.min(640, Math.max(80, pos[0])), 122, 'fp-hit-text', 'middle', pos[1]);
+                }
+                const svg = '<svg viewBox="0 0 740 130" class="fp-rail" role="img" aria-label="Track circuit leak location: ' + esc(pos ? pos[1] : 'none found') + '">' + sl
+                    + '<line x1="40" y1="44" x2="700" y2="44" class="fp-railline"/><line x1="40" y1="86" x2="700" y2="86" class="fp-railline"/>'
+                    + '<rect x="4" y="52" width="30" height="26" rx="4" class="fp-endbox"/>' + fpSvgText(19, 70, 'fp-endtext', 'middle', 'F')
+                    + '<rect x="706" y="52" width="30" height="26" rx="4" class="fp-endbox"/>' + fpSvgText(721, 70, 'fp-endtext', 'middle', 'R')
+                    + fpSvgText(48, 22, 'fp-svgmut', '', 'glued joint') + fpSvgText(600, 22, 'fp-svgmut', '', 'glued joint') + mark + '</svg>';
+                const locs = '<div class="fp-loc">' + FP_LOCS.map(function (l) {
+                    const cls = l[0] === hit ? 'fp-loc-hit' : (t && l[0] === t.seenEarlier ? 'fp-loc-was' : '');
+                    const txt = l[0] === hit ? 'Found by model' : (t && l[0] === t.seenEarlier ? 'Seen earlier' : l[2]);
+                    return '<div class="' + cls + '"><b>' + l[1] + '</b><span>' + txt + '</span></div>';
+                }).join('') + '</div>';
+                return svg + locs;
+            }
+
+            function fpTrackCond(t) {
+                if (!t) {
+                    return '<div class="fp-box"><p class="fp-mut">The track model could not be read for this circuit.</p></div>';
+                }
+                const stat = String(t.status || '').toLowerCase();
+                let pill = '<span class="fp-pill fp-ok">No leak</span>';
+                if (stat === 'ongoing') {
+                    pill = '<span class="fp-pill fp-u">Happening now</span>';
+                } else if (stat === 'active') {
+                    pill = '<span class="fp-pill fp-s">Active in last hours</span>';
+                } else if (stat === 'recovery') {
+                    pill = '<span class="fp-pill fp-s">Receding now</span>';
+                } else if (stat === 'resolved') {
+                    pill = '<span class="fp-pill fp-ok">Resolved</span>';
+                }
+                return '<div class="fp-grid2"><div class="fp-box"><h4>Where the leak is</h4>' + fpTrackDiagram(t) + '</div>'
+                    + '<div class="fp-box"><h4>Track model reading</h4><dl class="fp-kv">'
+                    + (t.overall ? '<dt>Overall</dt><dd><b>' + esc(t.overall) + '</b></dd>' : '')
+                    + '<dt>Leakage type</dt><dd>' + esc(t.leakTypeRaw || 'None') + '</dd>'
+                    + '<dt>Status</dt><dd>' + pill + '</dd>'
+                    + (t.severity ? '<dt>Severity</dt><dd>' + esc(t.severity) + '</dd>' : '')
+                    + (t.band ? '<dt>Band</dt><dd>' + esc(t.band) + (t.bandReason ? FP_DOT + esc(t.bandReason) : '') + '</dd>' : '')
+                    + (t.summary ? '<dt>In plain words</dt><dd>' + esc(t.summary) + '</dd>' : '')
+                    + (t.reason && t.reason !== t.summary ? '<dt>Model reason</dt><dd>' + esc(t.reason) + '</dd>' : '')
+                    + '</dl><p class="fp-note">' + (t.source === 'roster' ? 'From the roster run; the live model was not reached. ' : '') + 'Model classification. Confirm on site.</p></div></div>';
+            }
+
+            function fpTrackEvents(t) {
+                if (!t || !t.events || !t.events.length) {
+                    return '<div class="fp-box"><p class="fp-mut">No major events in the model history' + (t && t.eventCount ? ' (' + t.eventCount + ' in the roster run)' : '') + '.</p></div>';
+                }
+                return '<div class="fp-box"><h4>Major events</h4><div class="fp-scroll"><table class="fp-table"><thead><tr><th>Start</th><th>End</th><th>Hours</th><th>Dominant cause</th></tr></thead><tbody>'
+                    + t.events.map(function (e) { return '<tr><td>' + esc(e.start || '\u2014') + '</td><td>' + esc(e.end || '\u2014') + '</td><td>' + fpNum(e.hours, 1) + '</td><td><b>' + esc(e.cause || '\u2014') + '</b></td></tr>'; }).join('')
+                    + '</tbody></table></div></div>';
+            }
+
+            function fpPmClass(pm) {
+                if (!pm) {
+                    return '<div class="fp-box"><p class="fp-mut">The point-machine model could not be read.</p></div>';
+                }
+                if (!pm.machines || !pm.machines.length) {
+                    return '<div class="fp-box"><h4>Point-machine model (roster run)</h4><dl class="fp-kv"><dt>Throws</dt><dd>' + (pm.opsInWindow || 0) + '</dd><dt>Flagged</dt><dd>' + (pm.flaggedInWindow || 0) + '</dd>'
+                        + (pm.worstState ? '<dt>Worst state</dt><dd>' + esc(pm.worstState) + '</dd>' : '') + (pm.condition ? '<dt>Condition</dt><dd>' + esc(pm.condition) + '</dd>' : '') + '</dl></div>';
+                }
+                const colors = { NORMAL: 'var(--fp-ok)', CREEPING: '#d98b19', OBSTRUCTION: 'var(--fp-u)', SLUGGISH: '#7a3fb8', INVALID: '#9aa6b8' };
+                return '<div class="fp-machines">' + pm.machines.map(function (m) {
+                    const keys = Object.keys(m.grades || {}).sort(function (x, y) { return m.grades[y] - m.grades[x]; });
+                    const tot = keys.reduce(function (s, k) { return s + m.grades[k]; }, 0) || 1;
+                    const share = m.opsInWindow ? m.flagged / m.opsInWindow : 0;
+                    const rows = keys.map(function (k) {
+                        return '<div class="fp-clsrow"><span>' + esc(k.charAt(0) + k.slice(1).toLowerCase()) + '</span><span class="fp-tr"><i style="width:' + (100 * m.grades[k] / tot) + '%;background:' + (colors[k] || '#1f4fb8') + '"></i></span><b>' + m.grades[k] + '</b></div>';
+                    }).join('');
+                    const dirs = (m.directions || []).map(function (d) {
+                        return '<tr><td>' + esc(d.dir) + '</td><td>' + esc(d.state || '\u2014') + '</td><td>' + fpNum(d.throws) + '</td><td>' + esc(d.worst || '\u2014') + '</td><td>' + (d.rising && d.rising.length ? d.rising.map(function (r) { return esc(FP_RISING[r] || r); }).join(', ') : '\u2014') + '</td></tr>';
+                    }).join('');
+                    return '<div class="fp-box"><div class="fp-mhead"><b>Machine ' + esc(m.end) + FP_DOT + esc(m.tag || '') + '</b><span class="fp-pill ' + (share >= 0.5 ? 'fp-u' : (share >= 0.1 ? 'fp-s' : 'fp-ok')) + '">' + (m.flagged || 0) + ' of ' + (m.opsInWindow || 0) + ' flagged</span></div>'
+                        + (rows || '<p class="fp-mut">No graded throws in the window.</p>')
+                        + (dirs ? '<div class="fp-scroll"><table class="fp-table"><thead><tr><th>Direction</th><th>State</th><th>Throws</th><th>Worst</th><th>Rising</th></tr></thead><tbody>' + dirs + '</tbody></table></div>' : '')
+                        + '</div>';
+                }).join('') + '</div>'
+                    + (pm.verdict ? '<p class="fp-pmv"><b>Model summary:</b> ' + esc(pm.verdict) + (pm.recommendation ? FP_DOT + esc(pm.recommendation) : '') + '</p>' : '')
+                    + '<p class="fp-note">Model classification over the last 15 days. Confirm with the waveform on site.</p>';
+            }
+
+            function fpWave(samples, cls) {
+                if (!samples || samples.length < 5) {
+                    return '';
+                }
+                const W = 360;
+                const H = 140;
+                const pad = 26;
+                const max = Math.max.apply(null, samples.concat([1]));
+                const pts = samples.map(function (v, i) {
+                    const x = pad + (W - pad - 8) * i / (samples.length - 1);
+                    const y = H - 20 - (H - 32) * v / max;
+                    return x.toFixed(1) + ',' + y.toFixed(1);
+                }).join(' ');
+                return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="fp-wave" role="img" aria-label="Current through the last throw">'
+                    + '<line x1="' + pad + '" x2="' + (W - 8) + '" y1="' + (H - 20) + '" y2="' + (H - 20) + '" class="fp-gridline"/>'
+                    + fpSvgText(pad - 4, H - 16, 'fp-svgmut', 'end', '0')
+                    + fpSvgText(pad - 4, 16, 'fp-svgmut', 'end', fpNum(max, 1) + ' A')
+                    + '<polyline points="' + pts + '" class="' + cls + '"/></svg>';
+            }
+
+            function fpPmLast(pm) {
+                if (!pm || !pm.machines || !pm.machines.length) {
+                    return '<div class="fp-box"><p class="fp-mut">No operation details in the model reply.</p></div>';
+                }
+                return '<div class="fp-machines">' + pm.machines.map(function (m, i) {
+                    const op = m.lastOp;
+                    if (!op) {
+                        return '<div class="fp-box"><div class="fp-mhead"><b>Machine ' + esc(m.end) + '</b></div><p class="fp-mut">No operation in the window.</p></div>';
+                    }
+                    const wave = fpWave(op.samples, i === 0 ? 'fp-trace-a' : 'fp-trace-b');
+                    return '<div class="fp-box"><div class="fp-mhead"><b>Machine ' + esc(m.end) + FP_DOT + esc(m.tag || '') + '</b><span class="fp-mut">' + esc(op.at || '') + '</span></div>'
+                        + '<dl class="fp-kv"><dt>Grade</dt><dd><b>' + esc(op.grade || '\u2014') + '</b></dd>'
+                        + '<dt>Average current</dt><dd>' + fpNum(op.avgA, 2) + ' A</dd><dt>Peak current</dt><dd>' + fpNum(op.maxA, 2) + ' A</dd><dt>Operation time</dt><dd>' + fpNum(op.timeS, 2) + ' s</dd></dl>'
+                        + (wave || '<p class="fp-note">The model reply carries no stroke samples. Open Telemetry Live for the trace.</p>') + '</div>';
+                }).join('') + '</div>';
+            }
+
+            function fpSignalBox(sg) {
+                if (!sg) {
+                    return '';
+                }
+                const pattern = sg.nightFailures > 2 && sg.dayFailures === 0 ? 'Failures only at night usually mean a loose termination that opens as it cools.' : 'No clear time pattern.';
+                return '<div class="fp-box"><h4>When failures happen</h4><dl class="fp-kv"><dt>Night (22:00\u201306:00)</dt><dd><b>' + (sg.nightFailures || 0) + '</b></dd><dt>Day</dt><dd><b>' + (sg.dayFailures || 0) + '</b></dd></dl><p class="fp-mut" style="margin:8px 0 0">' + pattern + '</p></div>';
+            }
+
+            function fpWorksheetUrl(plan) {
+                const d = new Date();
+                const day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                return FP_WORKSHEET + '?divisionId=' + encodeURIComponent(plan.site.divisionId || '') + '&siteId=' + encodeURIComponent(plan.site.id) + '&rosterDate=' + day;
+            }
+
+            function fpAction(st, a) {
+                const act = a.action || {};
+                return '<div class="fp-act"><p>' + esc(act.text || 'No action suggested.') + '<small>Estimated ' + (a.minutes || 0) + ' min on site' + (act.id ? FP_DOT + esc(act.id) : '') + '</small></p>'
+                    + '<a class="fp-btn" href="' + esc(fpWorksheetUrl(st.plan)) + '" target="_blank" rel="noopener">Record outcome in roster</a></div>';
+            }
+
+            function fpFooter(id, st) {
+                return '<div class="fp-foot"><a class="fp-btn fp-btn-p" href="' + esc(fpWorksheetUrl(st.plan)) + '" target="_blank" rel="noopener">Open station worksheet</a>'
+                    + '<button type="button" class="fp-btn" data-fp-copy="' + id + '">Copy plan as text</button><span class="fp-copied" id="' + id + '-copied" role="status"></span></div>';
+            }
+
+            function fpPlanText(st) {
+                const p = st.plan;
+                const f = fpFit(p, st.hours);
+                const lines = [p.site.name + (p.site.code ? ' (' + p.site.code + ')' : '') + ' - ' + st.hours + '-hour maintenance plan', p.headline || '', ''];
+                lines.push('1. ' + (p.timeBudget.setupLabel || 'Setup') + ' - ' + f.setup + ' min');
+                f.inPlan.forEach(function (a, i) {
+                    lines.push((i + 2) + '. ' + a.name + ' [' + ((FP_PR[a.priority] || {}).label || '') + ', ' + a.minutes + ' min] ' + (a.action ? a.action.text : ''));
+                });
+                if (f.later.length) {
+                    lines.push('');
+                    lines.push('Next visit: ' + f.later.map(function (a) { return a.name; }).join(', '));
+                }
+                return lines.join('\n');
+            }
+
+            function fpJump(key) {
+                const ids = Object.keys(FP.plans);
+                for (let i = ids.length - 1; i >= 0; i--) {
+                    const st = FP.plans[ids[i]];
+                    if (st.plan.assets.some(function (a) { return a.key === key; })) {
+                        st.fam = 'all';
+                        st.open[key] = true;
+                        fpRender(ids[i]);
+                        const card = document.querySelector('#' + ids[i] + ' [data-fp-card="' + key + '"]');
+                        if (card) {
+                            card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+                            const btn = card.querySelector('.fp-ch');
+                            if (btn) {
+                                btn.focus({ preventScroll: true });
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+
+            document.addEventListener('click', function (ev) {
+                const t = ev.target.closest ? ev.target.closest('[data-fp-toggle],[data-fp-sub],[data-fp-fam],[data-fp-jump],[data-fp-copy]') : null;
+                if (!t) {
+                    return;
+                }
+                if (t.hasAttribute('data-fp-toggle')) {
+                    const p = t.getAttribute('data-fp-toggle').split('|');
+                    const st = FP.plans[p[0]];
+                    if (st) {
+                        st.open[p[1]] = !st.open[p[1]];
+                        fpRender(p[0]);
+                        const again = document.querySelector('[data-fp-toggle="' + p[0] + '|' + p[1] + '"]');
+                        if (again) {
+                            again.focus();
+                        }
+                    }
+                } else if (t.hasAttribute('data-fp-sub')) {
+                    const p = t.getAttribute('data-fp-sub').split('|');
+                    const st = FP.plans[p[0]];
+                    if (st) {
+                        st.sub[p[1]] = p[2];
+                        fpRender(p[0]);
+                        const again = document.querySelector('[data-fp-sub="' + p.join('|') + '"]');
+                        if (again) {
+                            again.focus();
+                        }
+                    }
+                } else if (t.hasAttribute('data-fp-fam')) {
+                    const p = t.getAttribute('data-fp-fam').split('|');
+                    const st = FP.plans[p[0]];
+                    if (st) {
+                        st.fam = (p[1] === 'all' || st.fam === p[1]) ? 'all' : p[1];
+                        fpRender(p[0]);
+                    }
+                } else if (t.hasAttribute('data-fp-jump')) {
+                    fpJump(t.getAttribute('data-fp-jump'));
+                } else if (t.hasAttribute('data-fp-copy')) {
+                    const id = t.getAttribute('data-fp-copy');
+                    const st = FP.plans[id];
+                    const out = document.getElementById(id + '-copied');
+                    if (!st) {
+                        return;
+                    }
+                    const text = fpPlanText(st);
+                    const done = function (msg) {
+                        if (out) {
+                            out.textContent = msg;
+                        }
+                    };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text).then(function () { done('Copied'); }, function () { done('Copy blocked by the browser'); });
+                    } else {
+                        done('Copy not supported in this browser');
+                    }
+                }
+            });
+
+            document.addEventListener('change', function (ev) {
+                const t = ev.target;
+                if (!t || !t.hasAttribute || !t.hasAttribute('data-fp-hours')) {
+                    return;
+                }
+                const id = t.getAttribute('data-fp-hours');
+                const st = FP.plans[id];
+                if (st) {
+                    st.hours = Number(t.value) || st.hours;
+                    fpRender(id);
+                    const again = document.getElementById(id + '-hrs');
+                    if (again) {
+                        again.focus();
+                    }
+                }
+            });
+
+            // Used by renderMarkdown: plan marker -> heading, [[asset:key]] -> jump chip.
+            function fpDecorateText(raw) {
+                const m = String(raw).match(/\[\[plan:(\d+):[^\]]*\]\]\s*/);
+                if (!m) {
+                    return { raw: raw, prefix: '' };
+                }
+                const live = !!FP.rendered[m[1]];
+                const prefix = live
+                    ? '<div class="fp-why-h">Why this order</div>'
+                    : '<div class="fp-why-h">Station plan from earlier</div><p class="fp-mut">Ask again to rebuild the plan cards.</p>';
+                return { raw: String(raw).replace(/\[\[plan:[^\]]*\]\]\s*/g, ''), prefix: prefix };
+            }
+
+            function fpAssetChips(html) {
+                return html.replace(/\[\[asset:([A-Za-z0-9_-]+)\]\]/g, function (_, key) {
+                    const name = FP.names[key];
+                    if (!name) {
+                        return '';
+                    }
+                    return '<button type="button" class="fp-cite" data-fp-jump="' + key + '">' + esc(name) + '</button>';
+                });
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               MARKDOWN
+            ══════════════════════════════════════════════════════════ */
+            // v1.2.9.4: the renderer had NO heading support, so "## Alert ka Summary" and "---"
+            // reached the bubble as literal text -- that, not the styling, is why an answer read
+            // like a dump. Headings, rules, ordered lists and blockquotes are handled here, and
+            // the <br> pass no longer fires inside block markup (it was adding a blank line after
+            // every </li> and </h3>, which is what made the spacing look broken).
+            // v1.2.9.5: [[CARD]] blocks -> real cards. Runs BEFORE the markdown pass so a card
+            // body is never mangled by the list/heading rules, and the card HTML is spliced back
+            // in afterwards so the markdown pass cannot re-escape it. Anything that is not a
+            // well-formed block is left completely alone -- a model that ignores the format
+            // degrades to plain text instead of producing broken markup.
+            const CARD_FIELDS = { '15-DAY': '15-day record', 'ML': 'Model classification', 'LASTOP': 'Last operation', 'ACTION': 'Action', 'NOTE': 'Note' };
+            function renderPlanCards(raw, stash) {
+                if (!raw || raw.indexOf('[[CARD]]') < 0) return raw;
+                return raw.replace(/\[\[CARD\]\]([\s\S]*?)\[\[\/CARD\]\]/g, function (_, body) {
+                    const lines = body.split('\n').map(function (l) { return l.replace(/^\s*[-*\u2022]\s?/, '').trim(); }).filter(function (l) { return l.length; });
+                    if (!lines.length) return '';
+                    const head = {};
+                    lines[0].split('|').forEach(function (p) {
+                        const kv = p.split('=');
+                        if (kv.length >= 2) head[kv[0].trim().toLowerCase()] = kv.slice(1).join('=').trim();
+                    });
+                    const pr = (head.priority || 'MONITOR').toUpperCase();
+                    const cls = pr.indexOf('URGENT') >= 0 ? 'urgent' : (pr.indexOf('INSPECT') >= 0 ? 'soon' : 'monitor');
+                    let rows = '';
+                    for (let i = 1; i < lines.length; i++) {
+                        const c = lines[i].indexOf(':');
+                        if (c < 0) { rows += '<div class="pc-row"><div class="pc-v">' + esc(lines[i]) + '</div></div>'; continue; }
+                        const key = lines[i].substring(0, c).trim().toUpperCase();
+                        const val = lines[i].substring(c + 1).trim();
+                        const label = CARD_FIELDS[key] || (key.charAt(0) + key.slice(1).toLowerCase());
+                        const extra = (key === 'NOTE') ? ' pc-note' : (key === 'ACTION' ? ' pc-action' : '');
+                        rows += '<div class="pc-row' + extra + '"><div class="pc-k">' + esc(label) + '</div><div class="pc-v">' + esc(val) + '</div></div>';
+                    }
+                    const sub = [head.type, head.site].filter(Boolean).map(esc).join(' &middot; ');
+                    const html = '<div class="plan-card ' + cls + '">'
+                        + '<div class="pc-head"><span class="pc-pill">' + esc(pr) + '</span>'
+                        + '<span class="pc-asset">' + esc(head.asset || 'Asset') + '</span>'
+                        + (sub ? '<span class="pc-sub">' + sub + '</span>' : '') + '</div>'
+                        + '<div class="pc-body">' + rows + '</div></div>';
+                    stash.push(html);
+                    return '\n\u0000CARD' + (stash.length - 1) + '\u0000\n';
+                });
+            }
+
+            function renderMarkdown(raw) {
+                if (!raw) return '';
+                const fpText = fpDecorateText(raw);   // v1.3.0.0: plan marker and asset chips
+                raw = fpText.raw;
+                const cardStash = [];
+                raw = renderPlanCards(String(raw), cardStash);
+                let h = String(raw)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                h = h.replace(/```[\w]*\n?([\s\S]*?)```/g,
+                    (_, c) => '<pre><code>' + c.trim() + '</code></pre>');
+                h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+                // headings BEFORE bold, so "## **Verdict**" still resolves both
+                h = h.replace(/^\s{0,3}####\s+(.+?)\s*#*$/gm, '<h4 class="md-h">$1</h4>');
+                h = h.replace(/^\s{0,3}###\s+(.+?)\s*#*$/gm, '<h3 class="md-h">$1</h3>');
+                h = h.replace(/^\s{0,3}##\s+(.+?)\s*#*$/gm, '<h2 class="md-h">$1</h2>');
+                h = h.replace(/^\s{0,3}#\s+(.+?)\s*#*$/gm, '<h2 class="md-h">$1</h2>');
+                h = h.replace(/^\s*(?:---|\*\*\*|___)\s*$/gm, '<hr class="md-hr">');
+                h = h.replace(/^\s*&gt;\s+(.+)$/gm, '<blockquote class="md-q">$1</blockquote>');
+                h = h.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+                h = h.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+                h = h.replace(/((\|[^\n]+\|\n?)+)/g, function (m) {
+                    const rows = m.trim().split('\n').filter(r => r.trim());
+                    if (rows.length < 2) return m;
+                    let t = '<table style="border-collapse:collapse;font-size:12px;margin:6px 0;width:100%">';
+                    rows.forEach((row, i) => {
+                        if (/^\|[\s\-:|]+\|$/.test(row.trim())) return;
+                        const cells = row.split('|').filter((c, ci, a) => ci > 0 && ci < a.length - 1);
+                        const tag = i === 0 ? 'th' : 'td';
+                        t += '<tr>' + cells.map(c =>
+                            `<${tag} style="border:1px solid rgba(15,23,42,.10);padding:4px 8px">${c.trim()}</${tag}>`
+                        ).join('') + '</tr>';
+                    });
+                    return t + '</table>';
+                });
+                // ordered list first, tagged so it can be wrapped in <ol> rather than <ul>
+                h = h.replace(/^\s*\d+[.)] (.+)$/gm, '<li data-ol="1">$1</li>');
+                h = h.replace(/^\s*[\u2022\-\*] (.+)$/gm, '<li>$1</li>');
+                h = h.replace(/(?:<li(?: data-ol="1")?>[\s\S]*?<\/li>\n?)+/g, function (m) {
+                    const ordered = m.indexOf('data-ol') >= 0;
+                    const body = m.replace(/ data-ol="1"/g, '').replace(/\n/g, '');
+                    return '<' + (ordered ? 'ol' : 'ul') + ' class="md-list">' + body + '</' + (ordered ? 'ol' : 'ul') + '>';
+                });
+                // only NEWLINES BETWEEN INLINE TEXT become <br>; a newline that merely sits beside
+                // block markup would otherwise render as an empty line.
+                h = h.replace(/\n{2,}/g, '\n');
+                h = h.replace(/\n(?!\s*<\/?(?:h2|h3|h4|ul|ol|li|pre|table|tr|hr|blockquote))/g, '<br>');
+                h = h.replace(/\n/g, '');
+                h = h.replace(/(<br>\s*)+(<(?:h2|h3|h4|ul|ol|pre|table|hr|blockquote))/g, '$2');
+                h = h.replace(/(<\/(?:h2|h3|h4|ul|ol|pre|table|blockquote)>)(\s*<br>)+/g, '$1');
+                if (cardStash.length) {
+                    h = h.replace(/(<br>\s*)*\u0000CARD(\d+)\u0000(\s*<br>)*/g, function (_, a, idx) { return cardStash[Number(idx)] || ''; });
+                }
+                return fpText.prefix + fpAssetChips(h);
+            }
+
+            /* ══════════════════════════════════════════════════════════
+               UTILS
+            ══════════════════════════════════════════════════════════ */
+            function esc(s) {
+                return String(s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+            function scrollDown() {
+                const outer = document.getElementById('aiMessages');
+                if (outer) outer.scrollTop = outer.scrollHeight;
+            }
+            function fmtTime() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+            function autoResize(el) { el.style.height = ''; el.style.height = Math.min(el.scrollHeight, 100) + 'px'; }
+            function getUserInitial() {
+                const el = document.querySelector('.e7-user-name');
+                return el ? (el.textContent.trim()[0] || 'U').toUpperCase() : 'U';
+            }
+            function setStatus(state, text) {
+                if (!statusDot || !statusText) return;
+                statusDot.className = 'ai-chat-status-dot' + (state === 'online' ? '' : ' ' + state);
+                statusText.textContent = text;
+            }
+            function saveHistory() {
+                try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory.slice(-MAX_HISTORY * 2))); }
+                catch (_) { }
+            }
+            function loadHistory() {
+                try { const s = sessionStorage.getItem(STORAGE_KEY); if (s) chatHistory = JSON.parse(s); }
+                catch (_) { }
+            }
+
+            /* ── Boot ── */
+            if (document.readyState === 'loading')
+                document.addEventListener('DOMContentLoaded', init);
+            else
+                init();
+
+        })();
+</script>

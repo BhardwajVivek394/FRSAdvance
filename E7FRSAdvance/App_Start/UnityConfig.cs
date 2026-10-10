@@ -56,6 +56,7 @@ namespace E7FRSAdvance
             container.RegisterType<Interface.ISectionService, Service.SectionService>();
             container.RegisterType<Interface.IFRSAlertService, Service.FRSAlertService>();
             container.RegisterType<Interface.ICardLineService, Service.CardLineService>();
+            container.RegisterType<Interface.IPendingAlertService, Service.PendingAlertService>();
             
         }
     }

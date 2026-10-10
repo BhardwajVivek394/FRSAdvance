@@ -1,0 +1,392 @@
+@{
+    ViewBag.Title = "Predict";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+@* jQuery, Bootstrap 4 (modal) and the air-datepicker (.datepicker-here) are loaded by the FRS25 layout.
+   Chart.js 2.x is needed for the signature graph (Chart.Line API); no local 2.x copy exists in the app. *@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+
+<style>
+    .ai-sec-asset {
+        border: 1px solid var(--e7-edge);
+        border-radius: var(--e7-r-md, 12px);
+        background: var(--e7-g1);
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+
+    .ai-sec-asset-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--e7-edge);
+        background: var(--e7-g2);
+    }
+
+    .ai-sec-asset-head h6 {
+        margin: 0;
+        font-weight: 600;
+        color: var(--e7-t1);
+    }
+
+    .ai-sec-asset-head h6 a {
+        color: var(--e7-brand, var(--primary));
+        text-decoration: none;
+    }
+
+    .ai-sec-score {
+        font-size: 13px;
+        color: var(--e7-t2);
+    }
+
+    .ai-sec-asset-body {
+        padding: 12px 16px 4px;
+    }
+
+    .ai-sec-scroll {
+        overflow: auto;
+        max-height: 420px;
+        margin-bottom: 12px;
+    }
+
+    .ai-sec-asset .table {
+        color: var(--e7-t1);
+        margin-bottom: 0;
+    }
+
+    .ai-sec-asset .table td,
+    .ai-sec-asset .table th {
+        border-color: var(--e7-edge);
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    .ai-sec-link {
+        cursor: pointer;
+        color: var(--e7-warn, #fbbf24) !important;
+    }
+
+    .ai-sec-click {
+        cursor: pointer;
+    }
+
+    .ai-sec-remark {
+        display: inline-block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--e7-t2);
+    }
+
+    .ai-sec-empty {
+        padding: 24px;
+        margin: 0;
+        font-size: 15px;
+        color: var(--e7-t2);
+    }
+
+    #modal-graph .modal-title span {
+        display: inline-block;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+</style>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI Section</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Predict</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Predict</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header mb-4">
+                    <div class="d-flex justify-content-between">
+                        <h4 class="m-0">Search</h4>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="row mb-lg-5 mb-3">
+                        <div class="col">
+                            <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="TypeId">Type</label>
+                                    @Html.DropDownList("TypeId", new List<SelectListItem>
+                                    {
+                                        new SelectListItem { Text = "POINT MACHINE", Value = "1" },
+                                    }, new { @class = "form-control", tabindex = 2 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="SiteId">Station</label>
+                                    @Html.DropDownList("SiteId", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 1 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="txtFromDate">From Date</label>
+                                    <input type="text" class="datepicker-here form-control digits from-date" id="txtFromDate" data-language="en" autocomplete="off" />
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="txtToDate">To Date</label>
+                                    <input type="text" class="datepicker-here form-control digits to-date" id="txtToDate" data-language="en" autocomplete="off" />
+                                </div>
+
+                                <div class="form-group w-sm-100">
+                                    <label class="d-none d-md-block">&nbsp;</label>
+                                    <button type="button" class="btn btn-primary-search" onclick="fnSearch()" title="Search">
+                                        <img src="~/Areas/FRS25/assets/img/search.svg" alt="Search" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="divPointMachine">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="modal fade" id="modal-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="myModalLabel">
+                    <span id="line1">52 2021-05-26 17:07:00 <b id="op">Normal Operation:</b></span><br />
+                    <span id="line2">- A Max / Average Current: 3.8 / 2.34</span><br />
+                    <span id="line3">- A Max / Average Voltage: 118.9 / 116.00</span><br />
+                    <span id="line4">- A Operating Time (ms): 3300</span><br />
+                    <span id="line5">B Max / Average Current: null / 0.0</span><br />
+                    <span id="line6">- B Max / Average Voltage: 0 / 0.00</span><br />
+                    <span id="line7">- B Operating Time (ms): 0</span><br />
+                </h6>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 mainclass" id="mainId">
+                        <canvas id="basicflot" style="height: 263px"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modal-pointmachine-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12">
+                        <div class="row" id="pointmachine-select-mainId">
+                        </div>
+                    </div>
+                    <div class="col-sm-12 mainclass" id="pointmachine-mainId">
+                        <canvas id="pointmachine-basicflot"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // The FRS25 layout renders #e7-loader; #loader is kept for parity with other FRS25 pages.
+    function fnAiLoader(show) {
+        if (show) { $("#loader, #e7-loader").show(); } else { $("#loader, #e7-loader").hide(); }
+    }
+
+    function fnAiCssVar(name, fallback) {
+        var v = getComputedStyle(document.body).getPropertyValue(name);
+        return (v && v.trim()) ? v.trim() : fallback;
+    }
+
+    function fnSearch() {
+        var mPointMachineDataLister = {};
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = $("#SiteId").val();
+        mSearchCriteria.AssetTypeId = 3;
+        mSearchCriteria.StartDate = $("#txtFromDate").val();
+        mSearchCriteria.EndDate = $("#txtToDate").val();
+        mPointMachineDataLister.SearchCriteria = mSearchCriteria;
+
+        fnAiLoader(true);
+        $.ajax({
+            url: '/FRS25/AISection/GetPrediction',
+            type: 'Post',
+            data: '{mPointMachineDataLister:' + JSON.stringify(mPointMachineDataLister) + '}',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                fnAiLoader(false);
+                $("#divPointMachine").empty().append(data);
+            },
+            error: function (response) {
+                fnAiLoader(false);
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnBindSignatureGragh(data, type, datevalue, direction, name) {
+        $("div").remove(".chartjs-size-monitor");
+        var j = JSON.parse(data);
+        var acg;
+        var bcg;
+        var avg;
+        var bvg;
+        if (j.A_C_AVERAGE != null) {
+            acg = parseFloat(j.A_C_AVERAGE).toFixed(2);
+        }
+        if (j.B_C_AVERAGE != null) {
+            bcg = parseFloat(j.B_C_AVERAGE).toFixed(2);
+        }
+        if (j.A_V_AVERAGE != null) {
+            avg = parseFloat(j.A_V_AVERAGE).toFixed(2);
+        }
+        if (j.B_V_AVERAGE != null) {
+            bvg = parseFloat(j.B_V_AVERAGE).toFixed(2);
+        }
+
+        $("#line1").empty().text(name + " " + datevalue);
+        $("#op").text(direction + " Operation");
+        $("#line2").empty().text("- A Max / Average Current:" + j.A_C_MAX + "/" + acg);
+        $("#line3").empty().text("-  Average Voltage:" + avg);
+        $("#line4").empty().text("- A Operating Time (ms):" + j.A_C_TIME);
+        $("#line5").empty().text("- B Max / Average Current:" + j.B_C_MAX + "/" + bcg);
+        $("#line6").empty().text("- Average Voltage:" + bvg);
+        $("#line7").empty().text("- B Operating Time (ms):" + j.B_C_TIME);
+
+        var array = [];
+        var labels = "";
+        var total = 0;
+        function collect(values) {
+            $.each(values, function (id, val) {
+                total += parseInt(val);
+                array.push(val);
+            });
+        }
+
+        if (type == "CC") {
+            labels = "Combine C";
+            collect(j.A_C);
+            collect(j.B_C);
+        }
+        if (type == "CV") {
+            labels = "Combine V";
+            collect(j.A_V);
+            collect(j.B_V);
+        }
+        if (type == "AC") {
+            labels = "A End";
+            collect(j.A_C);
+        }
+        if (type == "BC") {
+            labels = "B End";
+            collect(j.B_C);
+        }
+        if (type == "AV") {
+            labels = "A End";
+            collect(j.A_V);
+        }
+        if (type == "BV") {
+            labels = "B End";
+            collect(j.B_V);
+        }
+
+        var label = [];
+        for (var i = 0; i <= array.length; i++) {
+            label.push(i * 100);
+        }
+
+        var chartContainer = document.getElementById('mainId');
+        chartContainer.innerHTML = '&nbsp;';
+        $('#mainId').append('<canvas id="basicflot" style="height: 263px"></canvas>');
+        var canvas = $("#basicflot").get(0).getContext("2d");
+
+        var lineColor = fnAiCssVar('--e7-cyan', 'rgba(75,192,192,1)');
+        var textColor = fnAiCssVar('--e7-t2', '#666');
+        var gridColor = fnAiCssVar('--e7-edge', 'rgba(0,0,0,0.1)');
+        Chart.defaults.global.defaultFontColor = textColor;
+
+        var chartData = {
+            labels: label,
+            datasets: [
+                {
+                    label: labels + " Current",
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: lineColor,
+                    borderColor: lineColor,
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: lineColor,
+                    pointBackgroundColor: "#fff",
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: lineColor,
+                    pointHoverBorderColor: "rgba(220,220,220,1)",
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array
+                }
+            ]
+        };
+
+        var option = {
+            showLines: true,
+            scales: {
+                xAxes: [{ gridLines: { color: gridColor } }],
+                yAxes: [{ gridLines: { color: gridColor } }]
+            }
+        };
+        Chart.Line(canvas, {
+            data: chartData,
+            options: option
+        });
+
+        $("#modal-graph").modal("show");
+    }
+</script>

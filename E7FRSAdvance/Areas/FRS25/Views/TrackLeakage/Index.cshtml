@@ -1,0 +1,2440 @@
+@{
+    ViewBag.Title = "Track Shorting";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css?family=Rubik:400,400i,500,500i,700,700i&display=swap" rel="stylesheet">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* FRS Advance: scoped to #tlkApp (was :root / body / nav) so the page palette,
+       font and nav rules do not restyle the 617 layout chrome (sidebar nav, header). */
+    #tlkApp {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --border: #e2e8f0;
+      --accent: #00A4E0;
+      --accent-hover: #0084B4;
+      --green: #10b981;
+      --red: #ef4444;
+      --orange: #f97316;
+      --blue: #3b82f6;
+      --text: #0f172a;
+      --muted: #64748b;
+    }
+
+    #tlkApp {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rubik', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* NAV */
+    #tlkApp > nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 40px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--accent), var(--red));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      color: #fff;
+    }
+
+    .logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-text span {
+      color: var(--accent);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    /* CSV Upload button in nav */
+    .csv-upload-btn {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: 0.2s;
+    }
+
+    .csv-upload-btn:hover {
+      background: var(--surface2);
+      border-color: var(--accent);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    /* LAYOUT */
+    .layout-container {
+      display: flex;
+      height: calc(100vh - 73px);
+      overflow: hidden;
+    }
+
+    /* Sidebar Toggle Button */
+    .sidebar-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .sidebar-toggle-btn:hover {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+      transform: scale(1.08);
+      box-shadow: 0 4px 12px rgba(0, 164, 224, 0.3);
+    }
+
+    .sidebar-toggle-btn:active {
+      transform: scale(0.95);
+    }
+
+    .sidebar-toggle-btn.collapsed-active {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+    }
+
+    .sidebar {
+      width: 340px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      overflow-y: auto;
+      flex-shrink: 0;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease, opacity 0.25s ease;
+    }
+
+    .sidebar.collapsed {
+      width: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      border-right: none !important;
+      opacity: 0;
+    }
+
+    /* Mode Selector Tabs */
+    .mode-tab-btn {
+      flex: 1;
+      padding: 8px 10px;
+      font-size: 12.5px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .mode-tab-btn.active {
+      background: var(--surface);
+      color: var(--accent);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    }
+
+    .tl-main-content {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg);
+      padding: 32px;
+      position: relative;
+    }
+
+    /* API FORM */
+    .api-form {
+      text-align: left;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .form-control {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      outline: none;
+      transition: 0.2s;
+    }
+
+    .form-control:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+    }
+
+    .track-list {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      max-height: 180px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: max-height 0.2s ease;
+    }
+
+    .track-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .track-item input {
+      accent-color: var(--accent);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .track-item label {
+      margin: 0 !important;
+      cursor: pointer;
+      font-weight: 500 !important;
+    }
+
+    .analyze-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: 0.2s;
+      width: 100%;
+    }
+
+    .analyze-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .analyze-btn.secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .analyze-btn.secondary:hover {
+      background: rgba(0, 164, 224, 0.08);
+    }
+
+    /* EXPORT JSON button (results toolbar) */
+    .export-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 16px;
+      font-family: 'Rubik', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .export-btn:hover {
+      background: var(--surface2);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .export-btn svg {
+      flex-shrink: 0;
+    }
+
+    /* SUMMARY BAR */
+    .summary-row {
+      display: none;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      max-width: 1400px;
+      margin: 0 auto 32px;
+    }
+
+    .sum-card {
+      background: linear-gradient(145deg, #ffffff, #f8fafc);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.05), inset 0 2px 4px rgba(255, 255, 255, 0.8);
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sum-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.1);
+    }
+
+    .sum-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+    }
+
+    .sum-card.total::before {
+      background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    }
+
+    .sum-card.critical::before {
+      background: linear-gradient(90deg, #ef4444, #f87171);
+    }
+
+    .sum-card.high::before {
+      background: linear-gradient(90deg, #f97316, #fb923c);
+    }
+
+    .sum-card.ok::before {
+      background: linear-gradient(90deg, #10b981, #34d399);
+    }
+
+    .sum-card .val {
+      font-size: 36px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .sum-card .lbl {
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .sum-card.critical .val {
+      color: var(--red);
+    }
+
+    .sum-card.high .val {
+      color: var(--orange);
+    }
+
+    .sum-card.ok .val {
+      color: var(--green);
+    }
+
+    .sum-card.total .val {
+      color: #1e293b;
+    }
+
+    /* RESULTS SECTION */
+    .results-section {
+      max-width: 1400px;
+      margin: 0 auto 80px;
+      display: none;
+    }
+
+    .track-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    .track-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .track-id {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .track-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      border: 1px solid var(--border);
+    }
+
+    .track-name {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .track-sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .risk-badge {
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+    }
+
+    .risk-Critical {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .risk-Moderate {
+      background: rgba(249, 115, 22, 0.1);
+      color: var(--orange);
+      border: 1px solid rgba(249, 115, 22, 0.2);
+    }
+
+    .risk-Normal {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    /* ACCORDIONS (Condition Cards) */
+    .primary-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .primary-boxes {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+
+    .primary-box {
+      flex: 1;
+      min-width: 250px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      background: var(--surface);
+      cursor: pointer;
+      transition: 0.2s;
+      position: relative;
+    }
+
+    .primary-box:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      transform: translateY(-2px);
+    }
+
+    .primary-box.status-Active.sev-High,
+    .primary-box.status-Active.sev-Critical,
+    .primary-box.status-Persistent.sev-High,
+    .primary-box.status-Persistent.sev-Critical {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: rgba(239, 68, 68, 0.02);
+    }
+
+    .primary-box.status-Active,
+    .primary-box.status-Emerging,
+    .primary-box.status-Ongoing,
+    .primary-box.status-Recovering {
+      border-color: rgba(249, 115, 22, 0.5);
+      background: rgba(249, 115, 22, 0.02);
+    }
+
+    .pb-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .pb-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+    }
+
+    .pb-icon.icon-Leakage {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--red);
+    }
+
+    .pb-icon.icon-Bond {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--green);
+    }
+
+    .pb-icon.icon-Cable {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--orange);
+    }
+
+    .pb-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+      line-height: 1.2;
+    }
+
+    .pb-status {
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pb-status span.active-text {
+      color: var(--red);
+      font-weight: 600;
+    }
+
+    .pb-status span.normal-text {
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .pb-badge {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .pb-badge.Sev-Critical,
+    .pb-badge.Sev-High {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--red);
+    }
+
+    .pb-badge.Sev-Moderate,
+    .pb-badge.Sev-Low {
+      background: rgba(249, 115, 22, 0.1);
+      color: var(--orange);
+    }
+
+    .pb-badge.Sev-Normal {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--green);
+    }
+
+    .pb-footer {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--green);
+      margin-top: 16px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    .primary-box.status-Active.sev-High .pb-footer,
+    .primary-box.status-Active.sev-Critical .pb-footer,
+    .primary-box.status-Ongoing.sev-High .pb-footer,
+    .primary-box.status-Ongoing.sev-Critical .pb-footer {
+      color: var(--red);
+    }
+
+    .primary-box.status-Active .pb-footer,
+    .primary-box.status-Emerging .pb-footer,
+    .primary-box.status-Ongoing .pb-footer,
+    .primary-box.status-Recovering .pb-footer {
+      color: var(--orange);
+    }
+
+    .overall-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 20px;
+      min-width: 180px;
+    }
+
+    .overall-lbl {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+
+    .overall-val {
+      font-size: 18px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .overall-Moderate {
+      color: var(--orange);
+    }
+
+    .overall-Critical {
+      color: var(--red);
+    }
+
+    .overall-Normal {
+      color: var(--green);
+    }
+
+    .severity-legend {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface2);
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-top: 24px;
+      border: 1px solid var(--border);
+    }
+
+    .leg-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .leg-items {
+      display: flex;
+      gap: 24px;
+    }
+
+    .leg-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .leg-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .condition-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .condition-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .condition-card.active-fault {
+      border-left: 4px solid var(--red);
+    }
+
+    .condition-card.warning-fault {
+      border-left: 4px solid var(--orange);
+    }
+
+    .condition-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      background: var(--surface2);
+      transition: 0.2s;
+      border-bottom: 1px solid transparent;
+    }
+
+    .condition-header:hover {
+      background: #e2e8f0;
+    }
+
+    .condition-card.expanded .condition-header {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .condition-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .condition-icon {
+      font-size: 16px;
+    }
+
+    .condition-meta {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .cond-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .status-Active,
+    .status-Ongoing {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .status-Normal,
+    .status-Resolved,
+    .status-None {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+
+    .status-Recovering {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--orange);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .cond-sev {
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .cond-sev span {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .chevron {
+      transition: transform 0.3s;
+      color: var(--muted);
+    }
+
+    .condition-card.expanded .chevron {
+      transform: rotate(180deg);
+    }
+
+    .condition-body {
+      display: none;
+    }
+
+    .condition-card.expanded .condition-body {
+      display: block;
+    }
+
+    .condition-inner {
+      padding: 20px;
+      background: var(--surface);
+    }
+
+
+
+    /* ERROR CARDS */
+    .error-card {
+      background: rgba(239, 68, 68, 0.05);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .error-card h4 {
+      color: var(--red);
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .error-card p {
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    /* LOADER */
+    .tl-loader {
+      display: none;
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      padding: 40px;
+      z-index: 100;
+    }
+
+    .tl-spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(245, 158, 11, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @@keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .tl-loader p {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .empty-state {
+      text-align: center;
+      margin-top: 100px;
+    }
+
+    .empty-state h2 {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .empty-state p {
+      font-size: 15px;
+      color: var(--muted);
+      max-width: 400px;
+      margin: 0 auto;
+    }
+</style>
+
+<style>
+    /* FRS Advance: 617's aurora-bridge.css forces day/night colours on labels, form controls and
+       .card with !important. This page's internals are light-only, so keep its own palette inside
+       #tlkApp (the id selector out-ranks the bridge rules). */
+    body #tlkApp label { color: var(--text) !important; }
+    body #tlkApp select, body #tlkApp textarea, body #tlkApp .form-control,
+    body #tlkApp input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+        background-color: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important;
+    }
+    body #tlkApp select option { background: var(--surface) !important; color: var(--text) !important; }
+    body #tlkApp .card { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    body #tlkApp .card-header, body #tlkApp .card-body { color: inherit !important; }
+</style>
+
+@* FRS Advance page header (617 theme): breadcrumb card like EquipmentRoom/Index. *@
+<section class="section e7-page-head">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI/ML Analysis</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Track Shorting</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Track Shorting</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div id="tlkApp">
+  <nav>
+    <div style="display:flex; align-items:center; gap: 14px;">
+      <div class="logo"
+        style="display:flex; align-items:center; border: 4px solid black; padding: 4px 8px 4px 4px; background: white; margin: 5px;">
+        <div style="margin-right: 12px; display: flex;">
+          <svg width="36" height="46" viewBox="0 0 40 50">
+            <rect width="40" height="50" fill="black" />
+            <path d="M 10 10 L 30 10 L 30 16 L 16 16 L 16 21 L 26 21 L 26 27 L 16 27 L 16 34 L 30 34 L 30 40 L 10 40 Z"
+              fill="none" stroke="white" stroke-width="1.5" />
+          </svg>
+        </div>
+        <span
+          style="font-family: 'Courier New', Courier, monospace; font-size: 32px; font-weight: normal; color: black; letter-spacing: 1px;">Energy<sup
+            style="font-size: 20px;">7</sup></span>
+      </div>
+
+      <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Collapse Sidebar (&lt;&lt;)">
+        <svg id="toggle-icon-left" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="11 17 6 12 11 7"></polyline>
+          <polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+        <svg id="toggle-icon-right" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+          <polyline points="13 17 18 12 13 7"></polyline>
+          <polyline points="6 17 11 12 6 7"></polyline>
+        </svg>
+      </button>
+    </div>
+    <div class="nav-actions">
+      <!-- CSV Upload removed -->
+    </div>
+  </nav>
+
+  <div class="layout-container">
+    <!-- LEFT SIDEBAR -->
+    <div class="sidebar">
+      <div style="font-size: 17px; font-weight: 800; margin-bottom: 16px; color: var(--text);">Live API Fetch</div>
+
+      <!-- Mode Selector Tabs -->
+      <div style="display:flex; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:3px; margin-bottom:20px;">
+        <button id="mode-quick-btn" class="mode-tab-btn active" onclick="switchAnalysisMode('quick')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>7-Day Overview</span>
+        </button>
+        <button id="mode-custom-btn" class="mode-tab-btn" onclick="switchAnalysisMode('custom')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            <path d="M8 14h4v4H8z"></path>
+          </svg>
+          <span>Custom Dates</span>
+        </button>
+      </div>
+
+      <div class="api-form">
+        <div class="form-group">
+          <label>Select Site</label>
+          <select class="form-control" id="site-select" onchange="loadTracks()">
+            <option value="">Loading sites...</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Select Tracks</span>
+            <a href="#" id="select-all-btn" onclick="selectAllTracks(event)"
+              style="font-size:12px; color:var(--accent); text-decoration:none; font-weight:600;">Select All</a>
+          </label>
+          <div class="track-list" id="track-list">
+            <div style="color:var(--muted); font-size:13px;">Select a site first.</div>
+          </div>
+        </div>
+
+        <!-- Custom Date Range Panel (Visible in Custom Mode) -->
+        <div id="custom-date-panel" style="display:none; background:rgba(0,164,224,0.04); border:1px solid rgba(0,164,224,0.2); border-radius:10px; padding:10px 12px; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:12.5px; font-weight:700; color:var(--text);">Custom Date Range</span>
+            <span style="font-size:10px; font-weight:700; color:var(--accent); background:rgba(0,164,224,0.12); padding:2px 6px; border-radius:12px;">Max 15 Days</span>
+          </div>
+          
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <div>
+              <label style="font-size:10.5px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">From Date</label>
+              <input type="date" id="custom-from-date" class="form-control" style="font-size:11.5px; padding:5px 7px; width:100%; margin-bottom:6px;" onchange="validateDateRange()">
+              <label style="font-size:10.5px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">From Time</label>
+              <input type="time" id="custom-from-time" value="00:00:00" step="1" class="form-control" style="font-size:11.5px; padding:5px 7px; width:100%;" onchange="validateDateRange()">
+            </div>
+            <div>
+              <label style="font-size:10.5px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">To Date</label>
+              <input type="date" id="custom-to-date" class="form-control" style="font-size:11.5px; padding:5px 7px; width:100%; margin-bottom:6px;" onchange="validateDateRange()">
+              <label style="font-size:10.5px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">To Time</label>
+              <input type="time" id="custom-to-time" value="23:59:59" step="1" class="form-control" style="font-size:11.5px; padding:5px 7px; width:100%;" onchange="validateDateRange()">
+            </div>
+          </div>
+
+          <div id="date-range-error" style="display:none; font-size:11px; font-weight:600; color:var(--red); margin-top:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); padding:6px 8px; border-radius:6px;">
+          </div>
+        </div>
+
+        <input type="hidden" id="duration-select" value="7">
+
+        <div style="margin-top: 10px; display:flex; flex-direction:column; gap:8px;">
+          <label style="display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer;" title="Ignore any cached result and always re-fetch/re-analyze live">
+            <input type="checkbox" id="force-live-checkbox">
+            Fetch &amp; Compute (live)
+          </label>
+          <button class="analyze-btn" id="get-results-btn" onclick="fetchApiData(document.getElementById('force-live-checkbox').checked)" title="Run analysis for selected tracks and date range">Get Results</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="tl-main-content">
+      <div class="empty-state" id="empty-state">
+        <h2>Ready for Analysis</h2>
+        <p>Select a site and tracks from the left sidebar to fetch live data, or upload a CSV file from the navigation
+          bar.</p>
+      </div>
+
+      <div class="tl-loader" id="tl-loader">
+        <div class="tl-spinner"></div>
+        <p>Analyzing telemetry data...</p>
+      </div>
+
+      <div id="fleet-ai-summary" style="display:none; margin-bottom:16px; padding:14px 16px; background:rgba(0,164,224,0.06); border-left:3px solid var(--accent); border-radius:0 10px 10px 0;">
+        <div style="font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:var(--accent); margin-bottom:6px;">AI Summary</div>
+        <div id="fleet-ai-summary-text" style="font-size:13px; line-height:1.6; color:var(--text); white-space:pre-line;"></div>
+      </div>
+
+      <div class="summary-row" id="summary-row">
+        <div class="sum-card total">
+          <div class="val" id="s-total">0</div>
+          <div class="lbl">Tracks Analyzed</div>
+        </div>
+        <div class="sum-card critical">
+          <div class="val" id="s-critical">0</div>
+          <div class="lbl">Critical Risk</div>
+        </div>
+        <div class="sum-card high">
+          <div class="val" id="s-high">0</div>
+          <div class="lbl">Moderate Risk</div>
+        </div>
+        <div class="sum-card ok">
+          <div class="val" id="s-ok">0</div>
+          <div class="lbl">Normal State</div>
+        </div>
+      </div>
+
+      <div class="results-section" id="results-section">
+        <div id="results-toolbar"
+          style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+          <div>
+            <div id="results-site-label" style="font-size: 16px; font-weight: 800; color: var(--text);"></div>
+            <div id="results-updated-label" style="font-size: 12px; color: var(--muted); margin-top: 2px;"></div>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="export-btn" id="export-json-btn" onclick="exportResultsJson()" title="Download all track results as JSON">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export as JSON
+            </button>
+            <button class="export-btn" id="export-pdf-btn" onclick="exportResultsPdf(this)" title="Download a full PDF report with charts">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+              Export as PDF
+            </button>
+          </div>
+        </div>
+        <div id="results-container" style="display: flex; flex-direction: column; gap: 12px;"></div>
+      </div>
+    </div>
+  </div>
+</div>@* /#tlkApp *@
+<script>
+    var TL_ENDPOINTS = {
+        sites: '@Url.Action("GetSites", "TrackLeakage", new { area = "FRS25" })',
+        tracks: '@Url.Action("GetTracks", "TrackLeakage", new { area = "FRS25" })',
+        predictApi: '@Url.Action("PredictApi", "TrackLeakage", new { area = "FRS25" })',
+        predictAi: '@Url.Action("PredictAi", "TrackLeakage", new { area = "FRS25" })',
+        aiSummary: '@Url.Action("AiSummary", "TrackLeakage", new { area = "FRS25" })',
+        trackPlots: '@Url.Action("GetTrackPlots", "TrackLeakage", new { area = "FRS25" })'
+    };
+</script>
+<script>
+
+
+    function toggleSidebar() {
+      const sidebar = document.querySelector('#tlkApp .sidebar');
+      const toggleBtn = document.getElementById('sidebar-toggle-btn');
+      const iconLeft = document.getElementById('toggle-icon-left');
+      const iconRight = document.getElementById('toggle-icon-right');
+      
+      if (!sidebar) return;
+      
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      if (isCollapsed) {
+        if (iconLeft) iconLeft.style.display = 'none';
+        if (iconRight) iconRight.style.display = 'block';
+        if (toggleBtn) {
+          toggleBtn.title = 'Expand Sidebar (>>)';
+          toggleBtn.classList.add('collapsed-active');
+        }
+      } else {
+        if (iconLeft) iconLeft.style.display = 'block';
+        if (iconRight) iconRight.style.display = 'none';
+        if (toggleBtn) {
+          toggleBtn.title = 'Collapse Sidebar (<<)';
+          toggleBtn.classList.remove('collapsed-active');
+        }
+      }
+
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 300);
+    }
+
+    let currentAnalysisMode = 'quick'; // 'quick' or 'custom'
+
+    function switchAnalysisMode(mode) {
+      currentAnalysisMode = mode;
+      const quickBtn = document.getElementById('mode-quick-btn');
+      const customBtn = document.getElementById('mode-custom-btn');
+      const customPanel = document.getElementById('custom-date-panel');
+      const trackList = document.getElementById('track-list');
+
+      if (mode === 'custom') {
+        quickBtn.classList.remove('active');
+        customBtn.classList.add('active');
+        customPanel.style.display = 'block';
+        if (trackList) trackList.style.maxHeight = '130px';
+
+        // Auto-check force-live checkbox in Custom mode & hide fleet AI summary
+        const liveCb = document.getElementById('force-live-checkbox');
+        if (liveCb) {
+          liveCb.checked = true;
+          liveCb.disabled = true;
+        }
+        const aiBox = document.getElementById('fleet-ai-summary');
+        if (aiBox) aiBox.style.display = 'none';
+
+        // Pre-fill default dates if empty: To = Today, From = 7 Days ago
+        const today = new Date().toISOString().split('T')[0];
+        const past7Obj = new Date();
+        past7Obj.setDate(past7Obj.getDate() - 7);
+        const past7 = past7Obj.toISOString().split('T')[0];
+
+        const fromInput = document.getElementById('custom-from-date');
+        const toInput = document.getElementById('custom-to-date');
+        const fromTimeInput = document.getElementById('custom-from-time');
+        const toTimeInput = document.getElementById('custom-to-time');
+
+        if (!toInput.value) toInput.value = today;
+        if (!fromInput.value) fromInput.value = past7;
+        if (fromTimeInput && !fromTimeInput.value) fromTimeInput.value = "00:00:00";
+        if (toTimeInput && !toTimeInput.value) toTimeInput.value = "23:59:59";
+
+        toInput.max = today;
+        fromInput.max = today;
+
+        validateDateRange();
+      } else {
+        customBtn.classList.remove('active');
+        quickBtn.classList.add('active');
+        customPanel.style.display = 'none';
+        if (trackList) trackList.style.maxHeight = '200px';
+
+        const selectAllLink = document.getElementById('select-all-btn');
+        if (selectAllLink) selectAllLink.style.display = 'inline';
+
+        // Enable and uncheck force-live checkbox in Quick 7-Day mode
+        const liveCb = document.getElementById('force-live-checkbox');
+        if (liveCb) {
+          liveCb.checked = false;
+          liveCb.disabled = false;
+        }
+
+        const errorEl = document.getElementById('date-range-error');
+        if (errorEl) errorEl.style.display = 'none';
+        const btn = document.getElementById('get-results-btn');
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function validateDateRange() {
+      const fromVal = document.getElementById('custom-from-date').value;
+      const fromTimeVal = (document.getElementById('custom-from-time')?.value || '00:00:00').trim();
+      const toVal = document.getElementById('custom-to-date').value;
+      const toTimeVal = (document.getElementById('custom-to-time')?.value || '23:59:59').trim();
+      const errorEl = document.getElementById('date-range-error');
+      const btn = document.getElementById('get-results-btn');
+
+      if (!fromVal || !toVal) {
+        if (errorEl) errorEl.style.display = 'none';
+        if (btn) btn.disabled = false;
+        return true;
+      }
+
+      const fullFromTime = fromTimeVal.length === 5 ? fromTimeVal + ':00' : fromTimeVal;
+      const fullToTime = toTimeVal.length === 5 ? toTimeVal + ':00' : toTimeVal;
+
+      const fromDate = new Date(`${fromVal}T${fullFromTime}`);
+      const toDate = new Date(`${toVal}T${fullToTime}`);
+      const diffTime = toDate - fromDate;
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+      if (diffDays < 0) {
+        if (errorEl) {
+          errorEl.innerHTML = "\u26a0\ufe0f <b>Invalid Range:</b> 'To Date &amp; Time' cannot be before 'From Date &amp; Time'.";
+          errorEl.style.display = 'block';
+        }
+        if (btn) btn.disabled = true;
+        return false;
+      } else if (diffDays > 15) {
+        if (errorEl) {
+          errorEl.innerHTML = `\u26a0\ufe0f <b>Limit Exceeded:</b> Selected range (${diffDays.toFixed(1)} days) exceeds max limit of 15 days.`;
+          errorEl.style.display = 'block';
+        }
+        if (btn) btn.disabled = true;
+        return false;
+      } else {
+        if (errorEl) errorEl.style.display = 'none';
+        if (btn) btn.disabled = false;
+        return true;
+      }
+    }
+
+    function selectSingleTrack(e, trackId) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const cbs = document.querySelectorAll('.track-cb');
+      cbs.forEach(cb => {
+        cb.checked = (String(cb.value) === String(trackId));
+      });
+    }
+
+    // Load Sites
+    async function loadSites() {
+      try {
+        const res = await fetch(TL_ENDPOINTS.sites);
+        const sites = await res.json();
+        const select = document.getElementById('site-select');
+        select.innerHTML = '<option value="">-- Choose a Site --</option>';
+        sites.forEach(s => {
+          select.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+        });
+      } catch (e) {
+        console.error(e);
+        document.getElementById('site-select').innerHTML = '<option value="">Error loading sites</option>';
+      }
+    }
+    loadSites();
+
+    // Load Tracks
+    async function loadTracks() {
+      const siteId = document.getElementById('site-select').value;
+      const list = document.getElementById('track-list');
+      if (!siteId) {
+        list.innerHTML = '<div style="color:var(--muted); font-size:13px; grid-column: span 2;">Select a site first.</div>';
+        return;
+      }
+
+      list.innerHTML = '<div style="color:var(--muted); font-size:13px; grid-column: span 2;">Loading tracks...</div>';
+      try {
+        const res = await fetch(`${TL_ENDPOINTS.tracks}?siteId=${siteId}`);
+        const tracks = await res.json();
+
+        if (tracks.length === 0) {
+          list.innerHTML = '<div style="color:var(--muted); font-size:13px; grid-column: span 2;">No tracks found.</div>';
+          return;
+        }
+
+        list.innerHTML = '';
+        tracks.forEach((t, idx) => {
+          // Select the first track by default
+          const isChecked = idx === 0 ? 'checked' : '';
+          list.innerHTML += `
+            <div class="track-item" style="display:flex; align-items:center; justify-content:space-between; width:100%; padding:2px 0;">
+                <div style="display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; width:100%;">
+                  <input type="checkbox" class="track-cb" value="${t.id}" data-name="${t.name}" id="tk-${t.id}" ${isChecked}>
+                  <label for="tk-${t.id}" style="cursor:pointer; width:100%;">${t.name}</label>
+                </div>
+            </div>
+            `;
+        });
+
+        const selectAllLink = document.getElementById('select-all-btn');
+        if (selectAllLink) selectAllLink.style.display = 'inline';
+      } catch (e) {
+        console.error(e);
+        list.innerHTML = '<div style="color:red; font-size:13px; grid-column: span 2;">Error loading tracks.</div>';
+      }
+    }
+
+    function selectAllTracks(e) {
+      if (e) e.preventDefault();
+      const cbs = document.querySelectorAll('.track-cb');
+      const allChecked = Array.from(cbs).every(cb => cb.checked);
+      cbs.forEach(cb => cb.checked = !allChecked);
+    }
+
+    // Fetch API Data
+    async function fetchApiData(forceLive) {
+      window._trackPlots = {};
+      const siteId = document.getElementById('site-select').value;
+      let checkboxes = document.querySelectorAll('.track-cb:checked');
+      let trackIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+      if (!siteId || trackIds.length === 0) {
+        alert("Please select a site and at least one track.");
+        return;
+      }
+
+      let startDate = "";
+      let endDate = "";
+      let durationDays = 7;
+
+      if (currentAnalysisMode === 'custom') {
+        const fromVal = document.getElementById('custom-from-date').value;
+        const fromTimeVal = (document.getElementById('custom-from-time')?.value || '00:00:00').trim();
+        const toVal = document.getElementById('custom-to-date').value;
+        const toTimeVal = (document.getElementById('custom-to-time')?.value || '23:59:59').trim();
+
+        if (!fromVal || !toVal) {
+          alert("Please select both From Date and To Date.");
+          return;
+        }
+
+        if (!validateDateRange()) {
+          return;
+        }
+
+        const fullFromTime = fromTimeVal.length === 5 ? fromTimeVal + ':00' : fromTimeVal;
+        const fullToTime = toTimeVal.length === 5 ? toTimeVal + ':00' : toTimeVal;
+
+        startDate = `${fromVal} ${fullFromTime}`;
+        endDate = `${toVal} ${fullToTime}`;
+
+        const fromDate = new Date(`${fromVal}T${fullFromTime}`);
+        const toDate = new Date(`${toVal}T${fullToTime}`);
+        durationDays = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) || 1;
+        // Custom date range runs live analysis
+        forceLive = true;
+      } else {
+        durationDays = parseInt(document.getElementById('duration-select').value) || 7;
+        const endDateObj = new Date();
+        const startDateObj = new Date();
+        startDateObj.setDate(endDateObj.getDate() - durationDays);
+
+        startDate = startDateObj.toISOString().split('T')[0];
+        endDate = endDateObj.toISOString().split('T')[0];
+      }
+
+      document.getElementById('empty-state').style.display = 'none';
+      document.getElementById('tl-loader').style.display = 'block';
+      document.getElementById('summary-row').style.display = 'none';
+      document.getElementById('fleet-ai-summary').style.display = 'none';
+      document.getElementById('results-section').style.display = 'none';
+      document.getElementById('results-container').innerHTML = '';
+
+      // AI button (per-track) ke liye current fetch context yaad rakho
+      const siteSel = document.getElementById('site-select');
+      const siteName = siteSel.options[siteSel.selectedIndex]?.text || String(siteId);
+
+      // track id -> display name map (plot title / card heading ke liye, aur
+      // baad me lazy per-track plot fetch ke liye bhi)
+      const trackNames = {};
+      checkboxes.forEach(cb => { trackNames[cb.value] = cb.dataset.name || cb.value; });
+
+      window._fetchCtx = {
+        site_id: parseInt(siteId),
+        site_name: siteName,
+        start_date: startDate,
+        end_date: endDate,
+        duration_days: durationDays,
+        track_names: trackNames
+      };
+
+      try {
+        const payload = {
+          site_id: parseInt(siteId),
+          track_ids: trackIds,
+          start_date: startDate,
+          end_date: endDate,
+          use_llm: false,
+          force_live: !!forceLive,
+          track_names: trackNames,
+          // "select all" ke liye ye ache tracks-worth ke heavy Plotly figure
+          // JSON ko fetch/parse hone se pehle hi strip kar deta hai - table
+          // turant load hota hai, plots sirf jab track expand ho tab lazy
+          // fetch hote hain (toggleCompactDetails/toggleDetailedPlots).
+          include_plots: false
+        };
+
+        const res = await fetch(TL_ENDPOINTS.predictApi, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Server error");
+
+        renderResults(data);
+      } catch (err) {
+        alert("Error: " + err.message);
+      } finally {
+        document.getElementById('tl-loader').style.display = 'none';
+      }
+    }
+
+    function getRiskClass(condition) {
+      if (condition.includes("Critical")) return "risk-Critical";
+      if (condition.includes("Moderate")) return "risk-Moderate";
+      return "risk-Normal";
+    }
+
+    // \u2500\u2500 EXPORT JSON \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // Ek track ke score_breakdown/major_events se sortable numeric scores nikaalo.
+    function computeTrackScores(r) {
+      // Peak severity = sabse bada event AUC (mA-days)
+      let peakEventAuc = 0;
+      (r.major_events || []).forEach(ev => {
+        if (typeof ev.Total_AUC === 'number' && ev.Total_AUC > peakEventAuc) peakEventAuc = ev.Total_AUC;
+      });
+
+      // score_breakdown = { band: { fault_cause: {Score, Count} } }
+      let last24hScore = 0;
+      let overallMaxScore = 0;
+      const sb = r.score_breakdown || {};
+      Object.keys(sb).forEach(band => {
+        const is24h = band.toLowerCase().includes('24 hour');
+        Object.values(sb[band] || {}).forEach(faultInfo => {
+          const s = (faultInfo && typeof faultInfo.Score === 'number') ? faultInfo.Score : 0;
+          if (s > overallMaxScore) overallMaxScore = s;
+          if (is24h && s > last24hScore) last24hScore = s;
+        });
+      });
+
+      // risk_rank: sorting/summary ke liye simple numeric (bada = zyada risky)
+      const cond = r.overall_condition || 'Normal';
+      const riskRank = cond.includes('Critical') ? 3 : cond.includes('Moderate') ? 2 : 1;
+
+      return {
+        risk_rank: riskRank,
+        peak_event_auc: Math.round(peakEventAuc * 100) / 100,
+        last_24h_score: Math.round(last24hScore * 100) / 100,
+        overall_max_score: Math.round(overallMaxScore * 100) / 100
+      };
+    }
+
+    function exportResultsJson() {
+      const data = window._lastResults;
+      if (!data || !data.results) {
+        alert('No results to export. Pehle "Fetch & Analyze Live Data" chalao.');
+        return;
+      }
+      const ctx = window._fetchCtx || {};
+
+      // Har track ki chhoti si ek-line summary \u2014 type, severity, magnitude.
+      // Leakage nahi hai to bas "No Leakage" likh do.
+      const tracks = (data.results || []).map(r => {
+        const info = r.leakage_info || {};
+        const scores = computeTrackScores(r);
+        const hasLeakage = !!info.leakage_detected && info.leakage_type && info.leakage_type !== 'None';
+
+        if (!hasLeakage) {
+          return {
+            track: r.track_name || r.asset_id,
+            status: 'OK',
+            leakage: 'No Leakage',
+            _rank: scores.risk_rank,
+            _mag: 0
+          };
+        }
+        return {
+          track: r.track_name || r.asset_id,
+          status: r.overall_condition,          // Critical Risk / Moderate Risk / Normal
+          leakage: info.leakage_type,            // kis type ka leakage
+          severity: info.severity || 'Normal',   // High / Moderate / Low ... (kitna zyada)
+          magnitude: scores.peak_event_auc,       // mA-days \u2014 kitni badi leakage
+          _rank: scores.risk_rank,
+          _mag: scores.peak_event_auc
+        };
+      });
+
+      // Sabse kharab track pehle, phir list ke neeche healthy wale
+      tracks.sort((a, b) => (b._rank - a._rank) || (b._mag - a._mag));
+      tracks.forEach(t => { delete t._rank; delete t._mag; });
+
+      const exportObj = {
+        export_meta: {
+          exported_at: new Date().toISOString(),
+          site_id: ctx.site_id ?? null,
+          site_name: ctx.site_name || null,
+          date_range: { start: ctx.start_date || null, end: ctx.end_date || null },
+          duration_days: ctx.duration_days ?? null
+        },
+        summary: {
+          total_tracks: data.total_tracks ?? tracks.length,
+          critical_risk: (data.results || []).filter(r => r.overall_condition === 'Critical Risk').length,
+          moderate_risk: (data.results || []).filter(r => r.overall_condition === 'Moderate Risk').length,
+          normal: (data.results || []).filter(r => r.overall_condition === 'Normal').length,
+          errors: (data.errors || []).length
+        },
+        tracks: tracks,
+        errors: (data.errors || []).map(e => ({
+          asset_id: e.asset_id,
+          track_name: e.track_name || e.asset_id,
+          error: e.error
+        }))
+      };
+
+      // Download as .json
+      const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      // Filename: "track sorting {sitename}.json" \u2014 sirf path-breaking chars hatao
+      const safeSite = (ctx.site_name || 'site').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+      a.href = url;
+      a.download = `track sorting ${safeSite}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    // Full PDF report (client-side) \u2014 text + Plotly charts as images + autoTable. No server call.
+    async function exportResultsPdf(btn) {
+      const data = window._lastResults;
+      if (!data || !data.results) { alert('No results to export. Run "Fetch & Analyze Live Data" first.'); return; }
+      if (!window.jspdf || !window.jspdf.jsPDF) { alert('PDF library not loaded \u2014 please reload the page.'); return; }
+      const ctx = window._fetchCtx || {};
+
+      const origHtml = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.style.cursor = 'wait'; btn.innerHTML = 'Generating PDF\u2026'; }
+
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const M = 36;
+        const contentW = pageW - 2 * M;
+        let y = M;
+
+        const condColor = c => (c && c.includes('Critical')) ? [220, 38, 38]
+          : (c && c.includes('Moderate')) ? [234, 88, 12] : [16, 185, 129];
+
+        const ensure = h => {
+          if (y + h > pageH - M - 20) {
+            doc.addPage();
+            y = M;
+          }
+        };
+
+        const cleanTxt = txt => String(txt || '').replace(/\u2192/g, 'to').replace(/\u2013|\u2014/g, '-');
+
+        // \u2500\u2500 1. HEADER BANNER \u2500\u2500
+        doc.setFillColor(15, 23, 42); // Dark Navy
+        doc.roundedRect(M, y, contentW, 48, 5, 5, 'F');
+
+        doc.setFontSize(15); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+        doc.text('TRACK LEAKAGE ANALYSIS REPORT', M + 14, y + 20);
+
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
+        const siteStr = cleanTxt(`Site: ${ctx.site_name || '\u2014'}   |   Range: ${ctx.start_date || ''} to ${ctx.end_date || ''}`);
+        doc.text(siteStr, M + 14, y + 36);
+        y += 56;
+
+        // \u2500\u2500 2. SUMMARY KPI TILES \u2500\u2500
+        const crit = data.results.filter(r => r.overall_condition === 'Critical Risk').length;
+        const mod = data.results.filter(r => r.overall_condition === 'Moderate Risk').length;
+        const norm = data.results.filter(r => r.overall_condition === 'Normal').length;
+        const total = data.total_tracks ?? data.results.length;
+
+        const tileW = (contentW - 18) / 4;
+        const tiles = [
+          { label: 'Total Analyzed', val: total, color: [30, 41, 59], bg: [241, 245, 249], border: [203, 213, 225] },
+          { label: 'Critical Risk', val: crit, color: [220, 38, 38], bg: [254, 242, 242], border: [254, 202, 202] },
+          { label: 'Moderate Risk', val: mod, color: [234, 88, 12], bg: [255, 247, 237], border: [254, 215, 170] },
+          { label: 'Normal State', val: norm, color: [16, 185, 129], bg: [236, 253, 245], border: [167, 243, 208] },
+        ];
+
+        tiles.forEach((t, i) => {
+          const tx = M + i * (tileW + 6);
+          doc.setFillColor(...t.bg);
+          doc.setDrawColor(...t.border);
+          doc.setLineWidth(1);
+          doc.roundedRect(tx, y, tileW, 34, 4, 4, 'FD');
+
+          doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(...t.color);
+          doc.text(String(t.val), tx + 10, y + 17);
+
+          doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
+          doc.text(t.label, tx + 10, y + 27);
+        });
+        y += 44;
+
+        // Worst-first (same ordering as JSON export)
+        const results = [...data.results].sort((a, b) => {
+          const sa = computeTrackScores(a), sb = computeTrackScores(b);
+          return (sb.risk_rank - sa.risk_rank) || (sb.peak_event_auc - sa.peak_event_auc);
+        });
+
+        // \u2500\u2500 3. TRACK RESULTS \u2500\u2500
+        for (let idx = 0; idx < results.length; idx++) {
+          const r = results[idx];
+          if (btn) btn.innerHTML = `Generating PDF (${idx + 1}/${results.length})\u2026`;
+          const info = r.leakage_info || {};
+          const sc = computeTrackScores(r);
+          const hasLeak = info.leakage_detected && info.leakage_type && info.leakage_type !== 'None';
+
+          ensure(90);
+
+          // Track Header Bar
+          const isCrit = r.overall_condition === 'Critical Risk';
+          const isMod = r.overall_condition === 'Moderate Risk';
+          const headBg = isCrit ? [254, 242, 242] : isMod ? [255, 247, 237] : [248, 250, 252];
+          const headBorder = isCrit ? [248, 113, 113] : isMod ? [251, 146, 60] : [226, 232, 240];
+
+          doc.setFillColor(...headBg);
+          doc.setDrawColor(...headBorder);
+          doc.setLineWidth(1);
+          doc.roundedRect(M, y, contentW, 24, 4, 4, 'FD');
+
+          // Track Name
+          doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+          doc.text(cleanTxt(r.track_name || r.asset_id), M + 10, y + 16);
+
+          // Overall Condition Badge
+          const condTxt = cleanTxt(r.overall_condition || 'Normal');
+          doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...condColor(r.overall_condition));
+          doc.text(condTxt, pageW - M - 10, y + 16, { align: 'right' });
+          y += 30;
+
+          // Key Metrics Summary Pill Box
+          if (hasLeak) {
+            ensure(28);
+            doc.setFillColor(254, 242, 242);
+            doc.setDrawColor(252, 165, 165);
+            doc.roundedRect(M, y, contentW, 22, 3, 3, 'FD');
+
+            doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(153, 27, 27);
+            const mText = cleanTxt(`Fault Type: ${info.leakage_type || '\u2014'}    |    Severity: ${info.severity || '\u2014'}    |    Status: ${info.leakage_status || '\u2014'}    |    Peak AUC: ${sc.peak_event_auc} mA-days`);
+            doc.text(mText, M + 8, y + 14);
+            y += 28;
+          } else {
+            ensure(20);
+            doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(16, 185, 129);
+            doc.text('Status: Healthy - No leakage detected in this timeframe', M + 4, y + 10);
+            y += 18;
+          }
+
+          // Bullet Points: Diagnostic Summary & Reason
+          if (info.simple_summary || info.reason) {
+            ensure(30);
+            doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+            doc.text('Diagnostic Insights:', M + 4, y + 6);
+            y += 18;
+
+            if (info.simple_summary) {
+              const fullSummaryStr = '\u2022 ' + cleanTxt(info.simple_summary);
+              const lines = doc.splitTextToSize(fullSummaryStr, contentW - 20);
+              ensure(lines.length * 11 + 4);
+              doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(51, 65, 85);
+              lines.forEach(ln => {
+                doc.text(ln, M + 10, y);
+                y += 11;
+              });
+              y += 4;
+            }
+
+            if (info.reason) {
+              const fullReasonStr = '\u2022 Detailed Explanation: ' + cleanTxt(info.reason);
+              const lines = doc.splitTextToSize(fullReasonStr, contentW - 20);
+              ensure(lines.length * 11 + 4);
+              doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
+              lines.forEach(ln => {
+                doc.text(ln, M + 10, y);
+                y += 11;
+              });
+              y += 6;
+            }
+          }
+
+          // \u2500\u2500 MAJOR LEAKAGE EVENTS TABLE \u2500\u2500
+          const evts = r.major_events || [];
+          if (evts.length) {
+            ensure(45);
+            doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 41, 59);
+            doc.text(`Major Leakage Events (${evts.length}):`, M + 4, y + 6);
+            y += 16;
+
+            const tableHead = [['#', 'Start Time (IST)', 'End Time (IST)', 'Duration', 'Dominant Cause', 'Total AUC']];
+            const tableRows = evts.map(ev => [
+              `#${ev.Event_ID}`,
+              cleanTxt(ev.Start_Time),
+              cleanTxt(ev.End_Time),
+              `${(+ev.Duration_Hours).toFixed(1)}h`,
+              cleanTxt(ev.Dominant_Cause),
+              `${(+ev.Total_AUC).toFixed(2)} mA-d`
+            ]);
+
+            if (typeof doc.autoTable === 'function') {
+              doc.autoTable({
+                startY: y,
+                margin: { left: M, right: M },
+                head: tableHead,
+                body: tableRows,
+                theme: 'striped',
+                headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
+                bodyStyles: { textColor: [51, 65, 85], fontSize: 7.5, cellPadding: 3.5 },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                  0: { cellWidth: 26, halign: 'center' },
+                  1: { cellWidth: 105 },
+                  2: { cellWidth: 105 },
+                  3: { cellWidth: 50, halign: 'center' },
+                  4: { cellWidth: 145 },
+                  5: { halign: 'right' }
+                }
+              });
+              y = doc.lastAutoTable.finalY + 10;
+            } else {
+              evts.forEach(ev => {
+                const evStr = cleanTxt(`  #${ev.Event_ID}   ${ev.Start_Time} to ${ev.End_Time}   (${ev.Duration_Hours}h)   ${ev.Dominant_Cause}   \u00b7   Total AUC ${(+ev.Total_AUC).toFixed(2)} mA-d`);
+                doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(71, 85, 105);
+                doc.text(evStr, M + 10, y);
+                y += 10;
+              });
+              y += 4;
+            }
+          } else {
+            y += 4;
+          }
+
+          // \u2500\u2500 CHARTS (PLOTS) \u2500\u2500
+          const plots = await ensureTrackPlotsLoaded(r.asset_id);
+          const rawPlotStr = r.raw_plot_json || (plots && plots.raw);
+          const eventsPlotStr = r.events_plot_json || (plots && plots.events);
+
+          const charts = [];
+          if (rawPlotStr) charts.push(['Raw Historian Telemetry (Unfiltered \u00b7 IST)', rawPlotStr]);
+          if (eventsPlotStr) charts.push(['Detected Leakage Events (Cleaned)', eventsPlotStr]);
+
+          for (const [title, figStr] of charts) {
+            try {
+              const fig = JSON.parse(figStr);
+              const png = await Plotly.toImage({ data: fig.data, layout: fig.layout || {} }, { format: 'png', width: 1000, height: 420 });
+              const imgH = contentW * 420 / 1000;
+              ensure(imgH + 20);
+
+              doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+              doc.text(title, M + 4, y + 8);
+              y += 12;
+
+              doc.addImage(png, 'PNG', M, y, contentW, imgH);
+              doc.setDrawColor(226, 232, 240);
+              doc.setLineWidth(0.5);
+              doc.rect(M, y, contentW, imgH);
+              y += imgH + 14;
+            } catch (e) { console.error('Plotly PDF export error:', e); }
+          }
+
+          y += 10;
+        }
+
+        // Errors Section
+        if ((data.errors || []).length) {
+          ensure(35);
+          doc.setFontSize(9.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(220, 38, 38);
+          doc.text('Tracks Excluded / Analysis Errors:', M, y);
+          y += 12;
+          data.errors.forEach(e => {
+            const errLine = cleanTxt(`\u2022 ${e.track_name || e.asset_id}: ${e.error}`);
+            const lines = doc.splitTextToSize(errLine, contentW - 10);
+            ensure(lines.length * 10);
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+            lines.forEach(ln => { doc.text(ln, M + 6, y); y += 10; });
+          });
+        }
+
+        // \u2500\u2500 4. PAGE NUMBERS AND FOOTER \u2500\u2500
+        const pageCount = doc.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.5);
+          doc.line(M, pageH - 22, pageW - M, pageH - 22);
+
+          doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
+          doc.text('Track Leakage Analytics \u2014 Energy7 Report', M, pageH - 10);
+          doc.text(`Page ${i} of ${pageCount}`, pageW - M, pageH - 10, { align: 'right' });
+        }
+
+        const safeSite = (ctx.site_name || 'site').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+        doc.save(`track report ${safeSite}.pdf`);
+      } catch (e) {
+        alert('PDF generation failed: ' + e.message);
+      } finally {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.innerHTML = origHtml; }
+      }
+    }
+
+    // Per-track on-demand AI reasoning (Diagnostic Reasoning ke 'AI Analysis' button)
+    async function runAiForTrack(assetId, btn) {
+      const ctx = window._fetchCtx;
+      if (!ctx) { alert("Pehle 'Fetch & Analyze Live Data' chalao."); return; }
+
+      const reasoningEl = document.getElementById('reasoning-' + assetId);
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      btn.style.cursor = 'wait';
+      btn.innerHTML = 'Analyzing\u2026';
+      if (reasoningEl) reasoningEl.innerHTML = '<span style="color:var(--muted);">AI is analyzing the telemetry scores\u2026</span>';
+
+      try {
+        const res = await fetch(TL_ENDPOINTS.predictAi, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            site_id: ctx.site_id,
+            track_id: parseInt(assetId),
+            start_date: ctx.start_date,
+            end_date: ctx.end_date
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Server error");
+
+        const info = data.leakage_info || {};
+        if (reasoningEl) {
+          reasoningEl.innerHTML =
+            '<div style="margin-bottom:10px; font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase;">AI Diagnosis</div>'
+            + '<div style="font-size:16px; font-weight:700; color:var(--text); margin-bottom:10px;">' + (info.simple_summary || '') + '</div>'
+            + '<div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:4px;">Why (detailed explanation)</div>'
+            + '<div style="font-size:13px; color:var(--muted); line-height:1.5;">' + (info.reason || 'No reasoning returned.') + '</div>';
+        }
+        btn.innerHTML = 'AI Analyzed';
+        btn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
+      } catch (err) {
+        if (reasoningEl) reasoningEl.innerHTML = '<span style="color:#dc2626;">AI analysis failed: ' + err.message + '</span>';
+        btn.innerHTML = 'Retry AI';
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+      }
+    }
+
+    function getIcon(name) {
+      if (name.includes('Internal')) return '\ud83d\udca7';
+      if (name.includes('External')) return '\u26a1';
+      return '\ud83d\udd0c';
+    }
+
+    function toggleAccordion(elem) {
+      elem.classList.toggle('expanded');
+    }
+
+    // Keep Plotly's internal coordinate grid in sync with the element's ACTUAL
+    // rendered size. If a plot is first drawn while its container is narrower
+    // (detail view still expanding, sidebar toggling, etc.) and then shown
+    // wider, the drawing stretches but the hover hit-test stays at the old
+    // width -> hover lands at x+n instead of x. Re-running resize on every
+    // size change fixes that horizontal offset.
+    function _keepPlotSized(el) {
+      const resize = () => { try { Plotly.Plots.resize(el); } catch (e) { } };
+      if (window.ResizeObserver && !el._ro) {
+        el._ro = new ResizeObserver(resize);
+        el._ro.observe(el);
+      }
+      // A couple of deferred resizes catch layout that settles after paint.
+      requestAnimationFrame(resize);
+      setTimeout(resize, 250);
+    }
+
+    // Ek Plotly figure (fig.to_json string) ko div me render karo (ek hi baar)
+    function renderTrackPlot(divId, figJsonStr) {
+      const el = document.getElementById(divId);
+      if (!el || !figJsonStr) return;
+      if (el.dataset.rendered === '1') { try { Plotly.Plots.resize(el); } catch (e) { } return; }
+      try {
+        const fig = JSON.parse(figJsonStr);
+        Plotly.newPlot(el, fig.data, fig.layout || {}, { responsive: true, displaylogo: false });
+        el.dataset.rendered = '1';
+        _keepPlotSized(el);
+      } catch (e) {
+        el.innerHTML = '<div style="padding:20px; color:#dc2626;">Plot render error</div>';
+      }
+    }
+
+    // "Select all" bulk fetch no longer includes plot JSON (include_plots:
+    // false) - so window._trackPlots[assetId] starts out empty for every
+    // track. This fetches JUST one track's plots (from cache if the nightly
+    // refresh/a prior live fetch already has them, else a live single-track
+    // compute) the first time its detail view is opened - not before.
+    async function ensureTrackPlotsLoaded(assetId) {
+      window._trackPlots = window._trackPlots || {};
+      const existing = window._trackPlots[assetId];
+      if (existing && (existing.raw || existing.events || (existing.zooms || []).length)) {
+        return existing; // already loaded
+      }
+      if (existing && existing._loading) return existing._loading; // fetch already in flight
+
+      const ctx = window._fetchCtx || {};
+      const trackName = (ctx.track_names || {})[assetId] || assetId;
+      const promise = (async () => {
+        try {
+          const params = new URLSearchParams({ start_date: ctx.start_date || '', end_date: ctx.end_date || '', track_name: trackName });
+          const res = await fetch(`${TL_ENDPOINTS.trackPlots}?siteId=${ctx.site_id}&assetId=${assetId}&${params}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+          const loaded = { raw: data.raw_plot_json, events: data.events_plot_json, zooms: data.zoom_plots_json || [] };
+          window._trackPlots[assetId] = loaded;
+          return loaded;
+        } catch (e) {
+          console.error('Failed to load plots for track', assetId, e);
+          const empty = { raw: null, events: null, zooms: [] };
+          window._trackPlots[assetId] = empty;
+          return empty;
+        }
+      })();
+      window._trackPlots[assetId] = { ...(existing || {}), _loading: promise };
+      return promise;
+    }
+
+    async function toggleCompactDetails(btn, targetId, assetId) {
+      const el = document.getElementById(targetId);
+      if (el.style.display === 'none') {
+        el.style.display = 'block';
+        btn.innerText = 'Hide Details \u25b2';
+        btn.style.background = 'var(--surface2)';
+        const rawEl = document.getElementById('rawplot-' + assetId);
+        if (rawEl && rawEl.dataset.rendered !== '1') rawEl.innerHTML = '<div style="padding:24px; text-align:center; color:var(--muted); font-size:13px;">Loading chart\u2026</div>';
+        const p = await ensureTrackPlotsLoaded(assetId);
+        renderTrackPlot('rawplot-' + assetId, p.raw);
+      } else {
+        el.style.display = 'none';
+        btn.innerText = 'View Details \u25bc';
+        btn.style.background = 'transparent';
+      }
+    }
+
+    // Nested dropdown: Detected Events plot + per-event zoom plots
+    async function toggleDetailedPlots(btn, targetId, assetId) {
+      const el = document.getElementById(targetId);
+      if (el.style.display === 'none' || el.style.display === '') {
+        el.style.display = 'block';
+        btn.innerHTML = 'Detailed Plots (Detected Events & Zoom \u00b7 zoomable) <span style="font-size: 12px; color: var(--muted);">\u25b2</span>';
+        btn.style.background = '#e2e8f0';
+        const p = await ensureTrackPlotsLoaded(assetId);
+        renderTrackPlot('eventsplot-' + assetId, p.events);
+        (p.zooms || []).forEach((zj, idx) => renderTrackPlot('zoomplot-' + assetId + '-' + idx, zj));
+      } else {
+        el.style.display = 'none';
+        btn.innerHTML = 'Detailed Plots (Detected Events & Zoom \u00b7 zoomable) <span style="font-size: 12px; color: var(--muted);">\u25bc</span>';
+        btn.style.background = 'var(--surface2)';
+      }
+    }
+
+    function formatBandToDates(band) {
+      const today = new Date();
+      const formatDate = (d) => {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const day = d.getDate().toString().padStart(2, '0');
+        return `${months[d.getMonth()]} ${day}`;
+      };
+
+      if (band === "Last 24 Hours" || band.toLowerCase().includes("last 24")) {
+        let yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        return `${formatDate(yesterday)} - ${formatDate(today)} (Last 24h)`;
+      }
+
+      const match = band.match(/(\d+)\s+to\s+(\d+)\s+Days ago/i);
+      if (match) {
+        const endDays = parseInt(match[1]);   // e.g., 1 (closer to today)
+        const startDays = parseInt(match[2]); // e.g., 7 (further from today)
+
+        let startD = new Date(today);
+        startD.setDate(today.getDate() - startDays);
+
+        let endD = new Date(today);
+        endD.setDate(today.getDate() - endDays);
+
+        return `${formatDate(startD)} - ${formatDate(endD)}`;
+      }
+      return band;
+    }
+
+    function renderResults(data) {
+      // Export ke liye last result + context yaad rakho
+      window._lastResults = data;
+      const ctx = window._fetchCtx || {};
+      const siteLabel = document.getElementById('results-site-label');
+      if (siteLabel) {
+        const rangeStr = (ctx.start_date && ctx.end_date) ? ` \u00b7 ${ctx.start_date} \u2192 ${ctx.end_date}` : '';
+        siteLabel.textContent = (ctx.site_name || 'Results') + rangeStr;
+      }
+
+      const updatedLabel = document.getElementById('results-updated-label');
+      if (updatedLabel) {
+        if (data.generated_at) {
+          const ts = new Date(data.generated_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
+          updatedLabel.textContent = (data._from_cache ? 'Cached result \u00b7 ' : 'Live result \u00b7 ') + ts + ' IST';
+        } else {
+          updatedLabel.textContent = '';
+        }
+      }
+
+      const sum = document.getElementById('summary-row');
+      sum.style.display = 'grid';
+      document.getElementById('s-total').textContent = data.total_tracks || data.results.length;
+
+      const critical = data.results.filter(r => r.overall_condition === 'Critical Risk').length;
+      const high = data.results.filter(r => r.overall_condition === 'Moderate Risk').length;
+      const healthy = data.results.filter(r => r.overall_condition === 'Normal').length;
+
+      document.getElementById('s-critical').textContent = critical;
+      document.getElementById('s-high').textContent = high;
+      document.getElementById('s-ok').textContent = healthy;
+
+      const sec = document.getElementById('results-section');
+      sec.style.display = 'block';
+      const container = document.getElementById('results-container');
+
+      // Render Errors (track name if available, fallback to numeric id)
+      (data.errors || []).forEach((e) => {
+        const d = document.createElement('div');
+        d.className = 'error-card';
+        const label = e.track_name || e.asset_id;
+        d.innerHTML = `<h4>\u26a0\ufe0f ${label} \u2014 could not be analyzed</h4><p>${e.error}</p>`;
+        container.appendChild(d);
+      });
+
+      // Render Tracks
+      data.results.forEach((r, i) => {
+        const card = document.createElement('div');
+        card.className = 'track-card';
+
+        // Dynamic Score Coloring
+        const maxScore = Math.max(r.score_if || 0, r.score_ir || 0, r.score_both || 0);
+        let bgCol = "var(--surface)";
+        let borderCol = "var(--border)";
+
+        const isOk = r.overall_condition === "Normal" || (r.leakage_info && (r.leakage_info.leakage_status === "Resolved" || r.leakage_info.leakage_status === "None"));
+
+        if (isOk) {
+          bgCol = "rgba(16, 185, 129, 0.08)"; // Solid light green tint for healthy/resolved tracks
+          borderCol = "rgba(16, 185, 129, 0.5)";
+        } else {
+          if (maxScore >= 1000) {
+            bgCol = "rgba(239, 68, 68, 0.1)"; // Red tint
+            borderCol = "rgba(239, 68, 68, 0.4)";
+          } else if (maxScore >= 300) {
+            bgCol = "rgba(249, 115, 22, 0.1)"; // Orange tint
+            borderCol = "rgba(249, 115, 22, 0.4)";
+          } else if (maxScore >= 50) {
+            bgCol = "rgba(245, 158, 11, 0.1)"; // Yellow tint
+            borderCol = "rgba(245, 158, 11, 0.4)";
+          } else {
+            bgCol = "rgba(16, 185, 129, 0.05)"; // Green tint fallback
+            borderCol = "rgba(16, 185, 129, 0.3)";
+          }
+        }
+
+        card.style.backgroundColor = bgCol;
+        card.style.borderColor = borderCol;
+
+        const riskClass = getRiskClass(r.overall_condition);
+        const riskBadge = `<div class="risk-badge ${riskClass}">${r.overall_condition}</div>`;
+
+        const lInfo = r.leakage_info || {};
+        const isFault = lInfo.leakage_detected;
+
+        const faultType = r.leakage_info?.leakage_type && r.leakage_info.leakage_type !== "None"
+          ? r.leakage_info.leakage_type
+          : "No Leakage Detected";
+        const statusText = r.leakage_info?.leakage_status && r.leakage_info.leakage_status !== "None"
+          ? ` <span class="status-badge ${r.leakage_info.leakage_status}">(${r.leakage_info.leakage_status})</span>`
+          : "";
+
+        const severityVal = r.leakage_info?.severity;
+        let sevColor = "#dc2626"; // Default red for Critical/High
+        if (severityVal === "Moderate" || severityVal === "Low") {
+          sevColor = "#f97316"; // Orange
+        }
+        const severityText = severityVal && severityVal !== "Normal"
+          ? ` <span style="font-size: 0.85em; font-weight: 600; color: ${sevColor}; margin-left: 5px;">[${severityVal}]</span>`
+          : "";
+
+        let relevantScoreStr = "";
+        if (faultType !== "No Leakage Detected" && r.score_breakdown) {
+          let max24hS = 0;
+          Object.keys(r.score_breakdown).forEach(band => {
+            if (band.toLowerCase().includes("24 hour")) {
+              let bandInfo = r.score_breakdown[band];
+              Object.values(bandInfo).forEach(faultInfo => {
+                if (faultInfo.Score > max24hS) max24hS = faultInfo.Score;
+              });
+            }
+          });
+          if (max24hS > 0) relevantScoreStr = `[Last 24h Score: ${max24hS.toFixed(1)}]`;
+        }
+
+        let summaryHtml = '';
+        if (isFault && lInfo.leakage_type && lInfo.leakage_type !== "None") {
+          const sevClass = "sev-" + (lInfo.severity ? lInfo.severity.split(" ")[0] : "Normal");
+          const finalStatus = lInfo.leakage_status || 'Active';
+          summaryHtml = `
+        <div class="fault-badge" style="font-size: 14px; color: ${sevColor}; padding: 4px 0;">
+          <strong>\u26a0\ufe0f Fault ${finalStatus}</strong> &mdash; ${severityVal} severity | ${faultType} detected <span style="font-size: 0.85em; opacity: 0.7; margin-left: 8px; color: var(--muted);">${relevantScoreStr}</span>
+        </div>`;
+        } else {
+          summaryHtml = `<div class="pb-badge Sev-Normal" style="margin:0;">Normal</div> 
+                       <span style="color:var(--text); font-weight:700;">No Leakage Detected</span>`;
+        }
+
+        let svgColor = "#10b981"; // green
+        if (r.overall_condition === 'Critical Risk') svgColor = "#ef4444";
+        else if (r.overall_condition === 'Moderate Risk') svgColor = "#f97316";
+
+        let html = `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+        <!-- Track Info -->
+        <div style="display: flex; align-items: center; gap: 16px; min-width: 200px;">
+            <div class="track-avatar" style="width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: transparent; border: none;">
+                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                  <!-- Rails -->
+                  <rect x="6" y="4" width="3" height="28" rx="1.5" fill="${svgColor}"/>
+                  <rect x="27" y="4" width="3" height="28" rx="1.5" fill="${svgColor}"/>
+                  <!-- Sleepers -->
+                  <rect x="4" y="8" width="28" height="3" rx="1" fill="${svgColor}" opacity="0.7"/>
+                  <rect x="4" y="14" width="28" height="3" rx="1" fill="${svgColor}" opacity="0.7"/>
+                  <rect x="4" y="20" width="28" height="3" rx="1" fill="${svgColor}" opacity="0.7"/>
+                  <rect x="4" y="26" width="28" height="3" rx="1" fill="${svgColor}" opacity="0.7"/>
+                </svg>
+            </div>
+            <div>
+                <div class="track-name" style="font-size: 16px; margin-bottom: 4px;">${r.track_name || r.asset_id}</div>
+                <div class="overall-val overall-${r.overall_condition.split(' ')[0]}" style="font-size: 13px;">
+                    ${r.overall_condition === 'Normal' ? '\u2705' : '\u26a0\ufe0f'} ${r.overall_condition}
+                </div>
+            </div>
+        </div>
+
+        <!-- Leakage Summary -->
+        <div style="flex: 1; display: flex; align-items: center; gap: 12px; background: var(--surface2); padding: 12px 20px; border-radius: 8px; border: 1px solid var(--border);">
+            ${summaryHtml}
+        </div>
+
+        <!-- Actions -->
+        <div>
+            <button onclick="toggleCompactDetails(this, 'details-${r.asset_id}', '${r.asset_id}')" style="padding: 10px 16px; border-radius: 6px; background: transparent; border: 1px solid var(--border); cursor: pointer; font-weight: 600; font-size: 13px; color: var(--text); transition: 0.2s;">View Details \u25bc</button>
+        </div>
+      </div>
+
+      <!-- Expandable Details (list view me koi plot nahi; open pe hi plots) -->
+      <div id="details-${r.asset_id}" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+
+              <!-- Reasoning + AI button -->
+              <div style="min-width: 300px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 12px;">
+                      <div style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Diagnostic Reasoning</div>
+                      <button id="ai-btn-${r.asset_id}" onclick="runAiForTrack('${r.asset_id}', this)"
+                          style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; border: none; cursor: pointer; font-weight: 700; font-size: 12px; color: #fff; background: linear-gradient(135deg, #7c3aed 0%, #2563eb 60%, #06b6d4 100%); box-shadow: 0 2px 8px rgba(37,99,235,0.35); transition: transform 0.15s, box-shadow 0.15s;"
+                          onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 14px rgba(37,99,235,0.5)';"
+                          onmouseout="this.style.transform='none'; this.style.boxShadow='0 2px 8px rgba(37,99,235,0.35)';">
+                          AI Analysis
+                      </button>
+                  </div>
+                  <div id="reasoning-${r.asset_id}" style="background: var(--surface2); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                      <div style="font-size:16px; font-weight:700; color: var(--text); margin-bottom:10px;">${lInfo.simple_summary || 'Track looks healthy right now \u2014 no signs of leakage.'}</div>
+                      <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:4px;">Why (detailed explanation)</div>
+                      <div style="font-size:13px; color:var(--muted); line-height:1.5;">${lInfo.reason || 'Track circuit baseline is stable with no signs of internal or external leakage.'}</div>
+                  </div>
+              </div>
+
+              <!-- Events list (text) + Plots -->
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                  <div id="dynamic-score-container-${r.asset_id}">
+                      ${(function () {
+            let html = '';
+            const evts = r.major_events || [];
+            if (evts.length > 0) {
+              html += '<div style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Major Leakage Events (AUC-Based, \u2265 4 Hours)</div>';
+              html += '<div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface);">';
+              html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">';
+              html += '<thead style="background: var(--surface2); border-bottom: 1px solid var(--border);">';
+              html += '<tr>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 11px;">#</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 11px;">Start</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 11px;">End</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 11px;">Duration</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 11px;">Cause</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--blue); text-transform: uppercase; font-size: 11px;">IF AUC</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--green); text-transform: uppercase; font-size: 11px;">IR AUC</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: #e11d48; text-transform: uppercase; font-size: 11px;">Total AUC</th>';
+              html += '</tr></thead><tbody>';
+
+              const causeColors = {
+                'Both (Glued Joint)': 'purple',
+                'IF Only (Internal)': 'var(--blue)',
+                'IR Only (Relay Side)': 'var(--green)'
+              };
+
+              evts.forEach(ev => {
+                let causeColor = causeColors[ev.Dominant_Cause] || 'var(--text)';
+                let causeBadge = ev.Dominant_Cause.replace('IF Only (Internal)', 'Internal').replace('IR Only (Relay Side)', 'Relay-Side').replace('Both (Glued Joint)', 'Glued Joint');
+                html += '<tr style="border-bottom: 1px solid var(--border);">';
+                html += '<td style="padding: 10px 12px; font-weight: 700; color: var(--text);">' + ev.Event_ID + '</td>';
+                html += '<td style="padding: 10px 12px; color: var(--text); font-size: 12px;">' + ev.Start_Time + '</td>';
+                html += '<td style="padding: 10px 12px; color: var(--text); font-size: 12px;">' + ev.End_Time + '</td>';
+                html += '<td style="padding: 10px 12px; font-weight: 600; color: var(--text);">' + ev.Duration_Hours + 'h</td>';
+                html += '<td style="padding: 10px 12px;"><span style="display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; color:white; background:' + causeColor + ';">' + causeBadge + '</span></td>';
+                html += '<td style="padding: 10px 12px; font-weight: 600; color: var(--text);">' + ev.IF_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
+                html += '<td style="padding: 10px 12px; font-weight: 600; color: var(--text);">' + ev.IR_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
+                html += '<td style="padding: 10px 12px; font-weight: 700; color: #e11d48;">' + ev.Total_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
+                html += '</tr>';
+              });
+              html += '</tbody></table></div>';
+            } else {
+              html = '<div style="padding:16px; border:1px solid var(--border); border-radius:8px; color:var(--muted); font-size:13px;">No major leakage events detected (no continuous faults \u2265 4 hours).</div>';
+            }
+            return html;
+          })()}
+                  </div>
+
+                  <!-- Raw data plot (Plotly, zoomable) -->
+                  <div>
+                      <div style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Raw Data (Unfiltered \u00b7 IST)</div>
+                      <div id="rawplot-${r.asset_id}" style="width: 100%; min-height: 520px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);"></div>
+                  </div>
+
+                  <!-- Nested dropdown: Detailed Plots (Events + Zoom) -->
+                  <div style="margin-top: 8px;">
+                      <button onclick="toggleDetailedPlots(this, 'detailed-${r.asset_id}', '${r.asset_id}')" style="width: 100%; padding: 12px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); transition: 0.2s; text-align: left; display: flex; justify-content: space-between; align-items: center;">
+                          Detailed Plots (Detected Events & Zoom \u00b7 zoomable) <span style="font-size: 12px; color: var(--muted);">\u25bc</span>
+                      </button>
+                      <div id="detailed-${r.asset_id}" style="display: none; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: #fafafa;">
+                          <div style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Detected Leakage Events (Cleaned \u00b7 Non-Train)</div>
+                          <div id="eventsplot-${r.asset_id}" style="width: 100%; min-height: 520px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;"></div>
+                          ${(r.zoom_plots_json && r.zoom_plots_json.length > 0) ? `
+                          <div style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin: 16px 0 8px;">Per-Event Zoom</div>
+                          <div style="overflow-x: auto; white-space: nowrap; padding-bottom: 8px; display: flex; gap: 16px;">
+                              ${r.zoom_plots_json.map((_, idx) => `<div id="zoomplot-${r.asset_id}-${idx}" style="display: inline-block; min-width: 820px; max-width: 1000px; flex-shrink: 0; min-height: 400px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;"></div>`).join('')}
+                          </div>
+                          ` : ''}
+                      </div>
+                  </div>
+              </div>
+
+          </div>
+      </div>
+    `;
+
+        card.innerHTML = html;
+        container.appendChild(card);
+
+        // Plotly figure JSONs yaad rakho \u2014 lazy render on dropdown open
+        window._trackPlots = window._trackPlots || {};
+        window._trackPlots[r.asset_id] = {
+          raw: r.raw_plot_json || null,
+          events: r.events_plot_json || null,
+          zooms: r.zoom_plots_json || []
+        };
+
+
+      });
+
+      generateFleetAiSummary(data);
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    // Renders {verdict, points, recommendation} as a scannable bullet list. Falls
+    // back to plain text if an older/unstructured summary shape is ever passed in.
+    function renderSummaryBullets(data) {
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return `<span>${escapeHtml(data || 'No summary returned.')}</span>`;
+      }
+      const points = Array.isArray(data.points) ? data.points : [];
+      const bullets = points.map(p => `<li style="margin-bottom:4px;">${escapeHtml(p)}</li>`).join('');
+      return (
+        `<div style="font-weight:800; font-size:13.5px; margin-bottom:6px;">${escapeHtml(data.verdict)}</div>`
+        + (bullets ? `<ul style="margin:0 0 6px 18px; padding:0;">${bullets}</ul>` : '')
+        + (data.recommendation
+          ? `<div style="margin-top:4px;"><b>Recommendation:</b> ${escapeHtml(data.recommendation)}</div>`
+          : '')
+      );
+    }
+
+    // \u2500\u2500 AI SUMMARY (fleet-level, server-side Claude call) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // Sends only the already-computed per-track aggregates below (condition,
+    // leakage type/status/severity, peak event AUC, last-24h score, event count)
+    // to /api/ai-summary - never raw If/Ir telemetry - which calls Claude
+    // server-side (API key never reaches the browser).
+    async function generateFleetAiSummary(data) {
+      const box = document.getElementById('fleet-ai-summary');
+      const textEl = document.getElementById('fleet-ai-summary-text');
+      if (!data || !data.results || !data.results.length || currentAnalysisMode === 'custom') { 
+        box.style.display = 'none'; 
+        return; 
+      }
+      box.style.display = 'block';
+
+      // Nightly cache already ran this exact prompt for the whole site (see
+      // trackleakage/pipeline/cache_refresh.py) - use it instantly instead of
+      // re-calling Claude live for the same data.
+      if (data._from_cache && data._cached_ai_summary) {
+        textEl.innerHTML = renderSummaryBullets(data._cached_ai_summary);
+        return;
+      }
+
+      textEl.innerHTML = 'Generating AI summary\u2026';
+
+      const ctx = window._fetchCtx || {};
+      const tracks = data.results.map(r => {
+        const info = r.leakage_info || {};
+        const scores = computeTrackScores(r);
+        return {
+          name: r.track_name || r.asset_id,
+          condition: r.overall_condition,
+          leakageType: info.leakage_type || null,
+          leakageStatus: info.leakage_status || null,
+          severity: info.severity || null,
+          peakEventAuc: scores.peak_event_auc,
+          last24hScore: scores.last_24h_score,
+          majorEventsCount: (r.major_events || []).length
+        };
+      });
+
+      const payload = {
+        site_id: ctx.site_id || null,
+        siteName: ctx.site_name || null,
+        startDate: ctx.start_date || null,
+        endDate: ctx.end_date || null,
+        tracks,
+        errorCount: (data.errors || []).length,
+        errorTracks: (data.errors || []).map(e => e.track_name || e.asset_id)
+      };
+
+      try {
+        const res = await fetch(TL_ENDPOINTS.aiSummary, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.detail || `HTTP ${res.status}`);
+        textEl.innerHTML = renderSummaryBullets(result);
+      } catch (e) {
+        textEl.innerHTML = `<span style="color:var(--muted);">AI summary unavailable: ${e.message}</span>`;
+      }
+    }
+</script>

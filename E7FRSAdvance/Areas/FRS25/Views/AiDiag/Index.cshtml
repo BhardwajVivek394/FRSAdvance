@@ -1,0 +1,508 @@
+@* ----------------------------------------------------------------
+     AiChat Diagnostic Dashboard -- component version (Major.Minor.Build.Revision)
+     Version: 1.0.0.3
+
+     DEPLOY PATH: Areas/FRS25/Views/AiDiag/Index.cshtml  (renamed from Views/AiChat/Diag.cshtml)
+
+     Version history (one line per shipped version, newest first):
+     1.0.0.3 - The page no longer calls the proxy. Site and asset lists come from same-origin
+         /FRS25/AiDiag/Sites and /FRS25/AiDiag/Assets, which fetch through ProxyBaseUrl on the
+         server (owner). The proxy host is no longer in the page, in the network tab, or in need
+         of CORS; the historian chip now reads "via server". D0a/D0b keep their meaning -- they
+         now report the SERVER's fetch, and an ok:false body gives the tile a real reason instead
+         of an empty dropdown.
+     1.0.0.2 - MOVED to its own controller and view folder (AiDiagController 1.0.0.1, owner:
+         "one separate controller with view for Diag"). Renamed Diag.cshtml -> AiDiag/Index.cshtml;
+         the run URL changes from /FRS25/AiChat/DiagRun to /FRS25/AiDiag/Run. Page markup and
+         probe rendering unchanged from 1.0.0.1. Footer now prints both component versions.
+     1.0.0.1 - FIRST CUT (controller 1.0.160.157). Standalone page, own version strand --
+         deliberately NOT part of the Index_15/Index_24 lineage. Site and Asset pickers are
+         fetched LIVE from the Historian API using the historian-client_11 pattern
+         (/api/Sites with /api/A10/Sites fallback; assets derived from /api/LiveValue rows) --
+         owner decision, no canary config keys. The two picker fetches double as checks D0a
+         (historian/site list) and D0b (site live data) and render as tiles like any probe.
+         RUN posts the selection to /FRS25/AiChat/DiagRun, which exercises the REAL analysis
+         plumbing (tool discovery, E7 session via get_attribute_range, the .155
+         SiteIds+AssetIds asset-history shape, range history, history window sanity through
+         the production HistGetSendsUtc conversion) and returns classified tiles. E-group
+         tiles SKIP with their named dependency until the DataAPI list endpoint exists.
+         Auto-runs once when both pickers are set. No chart libraries; no model calls.
+    ---------------------------------------------------------------- *@
+@* FRS Advance port (617): Layout stays null as in 616 (standalone page). Same-origin URLs go
+   through Url.Content so the page also works under a virtual directory. *@
+@{
+    Layout = null;
+    ViewBag.Title = "AiDiag";
+    var ctlVer = (string)(ViewBag.DiagComponentVersion ?? "");
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Energy7 - AiDiag</title>
+    <style>
+        :root {
+            --ok: #059669;
+            --warn: #d97706;
+            --fail: #dc2626;
+            --skip: #94a3b8;
+            --ink: #0f172a;
+            --mut: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #f1f5f9;
+            color: var(--ink);
+        }
+
+        .hdr {
+            background: linear-gradient(135deg,#1e1b4b,#312e81);
+            color: #fff;
+            padding: 14px 22px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+            .hdr h1 {
+                font-size: 17px;
+                margin: 0;
+                letter-spacing: .4px;
+            }
+
+            .hdr .sub {
+                font-size: 11px;
+                opacity: .75;
+            }
+
+        .bar {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 12px 22px;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+            .bar label {
+                font-size: 11px;
+                color: var(--mut);
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: .5px;
+                display: block;
+                margin-bottom: 3px;
+            }
+
+        select, button {
+            font: inherit;
+        }
+
+        select {
+            min-width: 220px;
+            padding: 7px 9px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .runbtn {
+            padding: 9px 26px;
+            border: 0;
+            border-radius: 9px;
+            background: linear-gradient(135deg,#4f46e5,#7c3aed);
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(79,70,229,.35);
+        }
+
+            .runbtn:disabled {
+                opacity: .5;
+                cursor: default;
+            }
+
+        .basechip {
+            font-size: 11px;
+            color: var(--mut);
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 7px;
+            padding: 5px 9px;
+        }
+
+        .sum {
+            padding: 12px 22px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .pill {
+            border-radius: 999px;
+            padding: 5px 13px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+            .pill.ok {
+                background: var(--ok);
+            }
+
+            .pill.warn {
+                background: var(--warn);
+            }
+
+            .pill.fail {
+                background: var(--fail);
+            }
+
+            .pill.skip {
+                background: var(--skip);
+            }
+
+        .sum .when {
+            font-size: 12px;
+            color: var(--mut);
+        }
+
+        .groups {
+            padding: 0 22px 30px;
+        }
+
+        .gtitle {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            color: #475569;
+            margin: 20px 0 8px;
+        }
+
+        .tiles {
+            display: grid;
+            grid-template-columns: repeat(auto-fill,minmax(330px,1fr));
+            gap: 10px;
+        }
+
+        .tile {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-left: 5px solid var(--skip);
+            border-radius: 10px;
+            padding: 10px 13px;
+            cursor: default;
+        }
+
+            .tile.OK {
+                border-left-color: var(--ok);
+            }
+
+            .tile.WARN {
+                border-left-color: var(--warn);
+            }
+
+            .tile.FAIL {
+                border-left-color: var(--fail);
+                background: #fff5f5;
+            }
+
+            .tile.SKIP {
+                opacity: .75;
+            }
+
+        .trow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tname {
+            font-weight: 700;
+            font-size: 13px;
+            flex: 1;
+        }
+
+        .tstat {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: .5px;
+        }
+
+            .tstat.OK {
+                color: var(--ok);
+            }
+
+            .tstat.WARN {
+                color: var(--warn);
+            }
+
+            .tstat.FAIL {
+                color: var(--fail);
+            }
+
+            .tstat.SKIP {
+                color: var(--skip);
+            }
+
+        .tms {
+            font-size: 10.5px;
+            color: var(--mut);
+        }
+
+        .tdet {
+            font-size: 12px;
+            color: #334155;
+            margin-top: 5px;
+            word-break: break-word;
+        }
+
+        .empty {
+            color: var(--mut);
+            font-size: 13px;
+            padding: 26px 0;
+            text-align: center;
+        }
+
+        .err {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+            border-radius: 9px;
+            padding: 9px 13px;
+            margin: 12px 22px;
+            font-size: 13px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="hdr">
+        <a href="javascript:history.back()" style="color:#c7d2fe;text-decoration:none;font-size:13px;">&larr; Back</a>
+        <h1><span style="font-weight:400;opacity:.75;">AI/ML Analysis &rsaquo; </span>AiDiag</h1>
+        <div class="sub">exercises the real analysis plumbing &middot; no model calls</div>
+        <div style="flex:1"></div>
+        <div class="basechip">Historian: via server</div>
+        <div class="basechip">view 1.0.0.3 @(string.IsNullOrEmpty(ctlVer) ? "" : ("&middot; ctl " + ctlVer))</div>
+    </div>
+    <div class="bar">
+        <div>
+            <label>Site</label>
+            <select id="siteSel"><option value="">loading sites...</option></select>
+        </div>
+        <div>
+            <label>Asset</label>
+            <select id="assetSel" disabled><option value="">-- select site first --</option></select>
+        </div>
+        <div style="align-self:flex-end;">
+            <button class="runbtn" id="runBtn" onclick="runDiag()" disabled>RUN</button>
+        </div>
+    </div>
+    <div class="err" id="errBox"></div>
+    <div class="sum" id="sumRow" style="display:none;">
+        <span class="pill ok" id="pOk">0 OK</span>
+        <span class="pill warn" id="pWarn">0 WARN</span>
+        <span class="pill fail" id="pFail">0 FAIL</span>
+        <span class="pill skip" id="pSkip">0 SKIP</span>
+        <span class="when" id="whenLbl"></span>
+    </div>
+    <div class="groups" id="groups"><div class="empty">Pick a site and asset. The pickers themselves are the first two checks.</div></div>
+
+    <script>
+        var GROUP_TITLES = { A: 'A - SESSION / TRANSPORT', B: 'B - TOOL PROBES', C: 'C - TAG RESOLUTION', D: 'D - DATA QUALITY', E: 'E - AI / CACHE HEALTH' };
+        // Client-side picker checks: rendered like server tiles, filled as the fetches land.
+        var clientChecks = {
+            D0a: { id: 'D0a', group: 'D', name: 'Historian sites list', status: 'SKIP', ms: 0, detail: 'not fetched yet' },
+            D0b: { id: 'D0b', group: 'D', name: 'Site live data (asset derivation)', status: 'SKIP', ms: 0, detail: 'select a site' }
+        };
+        var lastServer = [];
+
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+        function showErr(msg) {
+            var e = document.getElementById('errBox');
+            if (!msg) { e.style.display = 'none'; return; }
+            e.textContent = msg;
+            e.style.display = 'block';
+        }
+        function renderAll() {
+            var all = [clientChecks.D0a, clientChecks.D0b].concat(lastServer);
+            var byG = {};
+            for (var i = 0; i < all.length; i++) {
+                var g = all[i].group || '?';
+                if (!byG[g]) { byG[g] = []; }
+                byG[g].push(all[i]);
+            }
+            var order = ['A', 'B', 'C', 'D', 'E'];
+            var h = '';
+            for (var oi = 0; oi < order.length; oi++) {
+                var g2 = order[oi];
+                if (!byG[g2]) { continue; }
+                h += '<div class="gtitle">' + esc(GROUP_TITLES[g2] || g2) + '</div><div class="tiles">';
+                for (var j = 0; j < byG[g2].length; j++) {
+                    var c = byG[g2][j];
+                    h += '<div class="tile ' + esc(c.status) + '">'
+                        + '<div class="trow"><span class="tname">' + esc(c.id) + ' &middot; ' + esc(c.name) + '</span>'
+                        + '<span class="tstat ' + esc(c.status) + '">' + esc(c.status) + '</span>'
+                        + (c.ms ? '<span class="tms">' + esc(c.ms) + 'ms</span>' : '') + '</div>'
+                        + '<div class="tdet">' + esc(c.detail) + '</div></div>';
+                }
+                h += '</div>';
+            }
+            document.getElementById('groups').innerHTML = h || '<div class="empty">No checks yet.</div>';
+        }
+        function setSummary(s, ranAt, tookMs) {
+            document.getElementById('sumRow').style.display = 'flex';
+            document.getElementById('pOk').textContent = s.okCount + ' OK';
+            document.getElementById('pWarn').textContent = s.warn + ' WARN';
+            document.getElementById('pFail').textContent = s.fail + ' FAIL';
+            document.getElementById('pSkip').textContent = s.skip + ' SKIP';
+            document.getElementById('whenLbl').textContent = 'ran ' + ranAt + ' in ' + tookMs + 'ms';
+        }
+
+        // v1.0.0.3: same-origin -- the server calls the proxy (ProxyBaseUrl), not the browser.
+        async function loadSites() {
+            var t0 = Date.now();
+            var sites = null, src = '', err = '';
+            try {
+                var r = await fetch('@Url.Content("~/FRS25/AiDiag/Sites")');
+                if (r.status === 403) { err = 'restricted'; }
+                else {
+                    var j = await r.json();
+                    if (j && j.ok) { sites = j.sites; src = j.source || ''; }
+                    else if (j) { err = j.error || 'unknown error'; }
+                }
+            } catch (e) { err = e.message; }
+            var ms = Date.now() - t0;
+            var sel = document.getElementById('siteSel');
+            if (!sites || !sites.length) {
+                clientChecks.D0a = { id: 'D0a', group: 'D', name: 'Historian sites list (via server)', status: 'FAIL', ms: ms, detail: err || 'the proxy returned no sites' };
+                sel.innerHTML = '<option value="">-- historian unreachable --</option>';
+                renderAll();
+                return;
+            }
+            sites.sort(function (a, b) { return String(a.SiteName || '').localeCompare(String(b.SiteName || '')); });
+            var h = '<option value="">-- Select Site --</option>';
+            for (var i = 0; i < sites.length; i++) {
+                var sid = parseInt(sites[i].SiteId, 10) || 0;
+                h += '<option value="' + sid + '">' + esc(sites[i].SiteName || '') + ' (' + sid + ')</option>';
+            }
+            sel.innerHTML = h;
+            clientChecks.D0a = { id: 'D0a', group: 'D', name: 'Historian sites list (via server)', status: 'OK', ms: ms, detail: sites.length + ' sites' + (src ? (' via ' + src) : '') };
+            renderAll();
+        }
+
+        // -- assets derived from /api/LiveValue rows; empty LiveValue = stale site, and that IS
+        // -- the check, before any server probe runs.
+        async function onSiteChange() {
+            var siteId = document.getElementById('siteSel').value;
+            var sel = document.getElementById('assetSel');
+            document.getElementById('runBtn').disabled = true;
+            if (!siteId) {
+                sel.disabled = true;
+                sel.innerHTML = '<option value="">-- select site first --</option>';
+                clientChecks.D0b = { id: 'D0b', group: 'D', name: 'Site live data (asset derivation)', status: 'SKIP', ms: 0, detail: 'select a site' };
+                renderAll();
+                return;
+            }
+            sel.disabled = true;
+            sel.innerHTML = '<option value="">loading assets...</option>';
+            var t0 = Date.now();
+            var tags = null, aerr = '';
+            try {
+                var r = await fetch('@Url.Content("~/FRS25/AiDiag/Assets")?siteId=' + encodeURIComponent(siteId));
+                if (r.status === 403) { aerr = 'restricted'; }
+                else {
+                    var j = await r.json();
+                    if (j && j.ok) { tags = j.tags; }
+                    else if (j) { aerr = j.error || 'unknown error'; }
+                }
+            } catch (e) { aerr = e.message; }
+            var ms = Date.now() - t0;
+            if (!tags || !tags.length) {
+                clientChecks.D0b = { id: 'D0b', group: 'D', name: 'Site live data (asset derivation)', status: 'FAIL', ms: ms, detail: aerr || ('no live values for site ' + siteId + ' -- site stale or historian gap') };
+                sel.innerHTML = '<option value="">-- no live data --</option>';
+                renderAll();
+                return;
+            }
+            var byAsset = {};
+            for (var i = 0; i < tags.length; i++) {
+                var t = tags[i];
+                var aid = t.AssetId != null ? t.AssetId : t.assetId;
+                if (aid == null) { continue; }
+                if (!byAsset[aid]) {
+                    byAsset[aid] = { id: aid, name: t.AssetName || t.assetName || ('Asset ' + aid), type: t.AssetType || t.assetType || '' };
+                }
+            }
+            var assets = [];
+            for (var k in byAsset) { if (Object.prototype.hasOwnProperty.call(byAsset, k)) { assets.push(byAsset[k]); } }
+            assets.sort(function (a, b) { return String(a.type + a.name).localeCompare(String(b.type + b.name)); });
+            var h = '<option value="">-- Select Asset --</option>';
+            for (var j = 0; j < assets.length; j++) {
+                h += '<option value="' + esc(assets[j].id) + '" data-name="' + esc(assets[j].name) + '" data-type="' + esc(assets[j].type) + '">'
+                    + esc((assets[j].type ? assets[j].type + ' - ' : '') + assets[j].name + ' (' + assets[j].id + ')') + '</option>';
+            }
+            sel.innerHTML = h;
+            sel.disabled = false;
+            clientChecks.D0b = { id: 'D0b', group: 'D', name: 'Site live data (asset derivation)', status: 'OK', ms: ms, detail: tags.length + ' live tags, ' + assets.length + ' assets' };
+            renderAll();
+        }
+
+        function onAssetChange() {
+            document.getElementById('runBtn').disabled = !document.getElementById('assetSel').value;
+            // Auto-run once when both are chosen: opening the page and picking = wanting a run.
+            if (document.getElementById('assetSel').value && !window._diagAutoRan) {
+                window._diagAutoRan = true;
+                runDiag();
+            }
+        }
+
+        async function runDiag() {
+            var siteId = document.getElementById('siteSel').value;
+            var sel = document.getElementById('assetSel');
+            var assetId = sel.value;
+            if (!siteId || !assetId) { return; }
+            var opt = sel.options[sel.selectedIndex];
+            var assetName = opt ? (opt.getAttribute('data-name') || '') : '';
+            var assetType = opt ? (opt.getAttribute('data-type') || '') : '';
+            var btn = document.getElementById('runBtn');
+            btn.disabled = true;
+            btn.textContent = 'RUNNING...';
+            showErr('');
+            try {
+                var r = await fetch('@Url.Content("~/FRS25/AiDiag/Run")?siteId=' + encodeURIComponent(siteId)
+                    + '&assetId=' + encodeURIComponent(assetId)
+                    + '&assetName=' + encodeURIComponent(assetName)
+                    + '&assetType=' + encodeURIComponent(assetType), { method: 'POST' });
+                if (r.status === 403) { showErr('Restricted to site-keeping users.'); return; }
+                var j = await r.json();
+                if (!j || !j.ok) { showErr('Run failed: ' + (j && j.error ? j.error : ('HTTP ' + r.status))); return; }
+                lastServer = j.checks || [];
+                setSummary(j.summary, j.ranAt, j.tookMs);
+                renderAll();
+            } catch (e) {
+                showErr('Run failed: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'RUN';
+            }
+        }
+
+        document.getElementById('siteSel').addEventListener('change', onSiteChange);
+        document.getElementById('assetSel').addEventListener('change', onAssetChange);
+        renderAll();
+        loadSites();
+    </script>
+</body>
+</html>

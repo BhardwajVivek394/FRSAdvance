@@ -88,11 +88,24 @@
             public static string Sip = "Sip";
             public static string AdvanceAssetType = "AdvanceAssetType";
             public static string Health = "Health";
+            // AI/ML Analysis (ported from 616)
+            public static string TrackLeakage = "TrackLeakage";
+            public static string PointMachineOpration = "PointMachineOperation";
+            public static string PointMachineClustering = "PointMachineClustering";
+            public static string MaintenceRoster = "MaintenceRoster";
+            public static string AlertAnalysis = "AlertAnalysis";
+            public static string ELDAIAnalysis = "ELDAIAnalysis";
+            public static string PendingAlertAnalysis = "PendingAlertAnalysis";
+            public static string ChatbotNew = "ChatbotNew";
+            public static string AiChat = "AiChat";
+            public static string AiDiag = "AiDiag";
+            public static string UnifiedAlertAnalysis = "UnifiedAlertAnalysis";
         }
 
         public static class ActionName
         {
             public static string Index = "Index";
+            public static string WisdomManage = "WisdomManage";
             public static string MyProfile = "MyProfile";
             public static string ChangePassword = "ChangePassword";
             public static string Login = "Login";
@@ -187,7 +200,6 @@
             public static string AssetType = "fa-solid fa-users-gear";
             public static string AdvanceAssetType = "fa-solid fa-users-gear";
             public static string Health = "fa fa-heartbeat";
-
         }
     }
 }

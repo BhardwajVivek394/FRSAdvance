@@ -1,0 +1,241 @@
+@model Domain.Asset
+
+@{
+    // ViewBag.Clusters is only set (and mPointMachineData only filled) when a cluster was requested.
+    string clusters = Convert.ToString(ViewBag.Clusters);
+
+    bool isHalfPointMachine = Model.IsHalfPointMachine != null && Model.IsHalfPointMachine.Value;
+    bool isSeriesOperation = Model.IsSeriesOpration != null && Model.IsSeriesOpration.Value;
+    bool hasClusterA = Model.mPointMachineData.Any(x => x.PointMachineJson != null && (x.PointMachineJson.ClusterA ?? "").StartsWith(clusters));
+    bool hasClusterB = Model.mPointMachineData.Any(x => x.PointMachineJson != null && (x.PointMachineJson.ClusterB ?? "").StartsWith(clusters));
+
+    // Thick-wave assets were highlighted in blue (#00A4E0), the rest in orange (#dc8b33).
+    bool thickA = Model.IsThickWave != null && Model.ThickWaveTypeId != null && Model.IsThickWave.Value
+                  && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.A || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both);
+    bool thickB = Model.IsThickWave != null && Model.ThickWaveTypeId != null && Model.IsThickWave.Value
+                  && (Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.B || Model.ThickWaveTypeId == (int)E7FRSAdvance.Utility.Utility.ThickWaveType.Both);
+    string clsA = "pmc-click " + (thickA ? "pmc-val-thick" : "pmc-val-normal");
+    string clsB = "pmc-click " + (thickB ? "pmc-val-thick" : "pmc-val-normal");
+
+    int scale20 = (int)E7FRSAdvance.Utility.Utility.PMScale.Scale_20;
+}
+
+<input type="hidden" id="hdnSaveType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnSaveMessage" value="@ViewBag.Message" />
+
+<div class="modal fade" id="modal-show-PointMachineEvent" tabindex="-1" role="dialog" aria-labelledby="modal-show-PointMachineEvent" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="myModalLabel"><span id="spHeader">Point Machine Data - @Model.Name</span></h4>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body pmc-modal-fixed-height">
+                <div class="table-border">
+                    <div class="table-responsive">
+                        <table class="table table-hover pmc-table pmc-event-table">
+                            <thead class="thead-light2">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Name</th>
+                                    <th>Direction</th>
+                                    @if (isSeriesOperation)
+                                    {
+                                        <th>Combine </th>
+                                    }
+
+                                    @if (hasClusterA)
+                                    {
+                                        if (!isHalfPointMachine)
+                                        {
+                                            <th>A Current(Max/Avg)</th>
+                                            <th>A Voltage</th>
+                                            <th>A Time (ms)</th>
+                                            <th width="120">Cluster A</th>
+                                        }
+                                        else
+                                        {
+                                            <th>Current(Max/Avg)</th>
+                                            <th>Voltage</th>
+                                            <th>Time (ms)</th>
+                                            <th width="120">Cluster A</th>
+                                        }
+                                    }
+
+                                    @if (hasClusterB)
+                                    {
+                                        if (!isHalfPointMachine)
+                                        {
+                                            <th>B Current(Max/Avg)</th>
+                                            <th>B Voltage</th>
+                                            <th>B Time (ms)</th>
+                                            <th width="120">Cluster B</th>
+                                        }
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model != null && Model.mPointMachineData != null)
+                                {
+                                    foreach (var point in Model.mPointMachineData.OrderByDescending(x => x.Date))
+                                    {
+                                        var pm = point.PointMachineJson;
+                                        var pmJson = Json.Encode(point.PointMachineJson);
+                                        bool combineBoth = (pm.Combine_C_TIME > 0 && pm.Combine_V_TIME > 0) || (pm.IsCombineOperation_A && pm.IsCombineOperation_B);
+
+                                        <tr>
+                                            <td>
+                                                @point.Date
+                                            </td>
+                                            <td class="assetname">
+                                                @point.AssetName
+                                            </td>
+                                            <td>
+                                                @point.Direction  Operation
+                                            </td>
+
+                                            @if (isSeriesOperation)
+                                            {
+                                                var sumTime = pm.A_C_TIME + pm.B_C_TIME;
+
+                                                <td>
+                                                    @if (combineBoth)
+                                                    {
+                                                        <span class="pmc-muted">(Max/Avg/Time)</span>
+                                                        <span>
+                                                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson', 'CC', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">C(@pm.Combine_C_MAX/@pm.Combine_C_AVERAGE/@pm.Combine_C_TIME)</a>
+                                                            <br />
+                                                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V(@pm.Combine_V_MAX/@pm.Combine_V_AVERAGE/@pm.Combine_V_TIME)</a>
+                                                        </span>
+                                                    }
+                                                    else if (Model.MachineAScale == scale20 || Model.MachineBScale == scale20)
+                                                    {
+                                                        <span>
+                                                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson','CC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">C</a>/<a href="#" onclick="fnBindSignatureGragh('@pmJson', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@clusters'); return false;">V</a>/<a>T(@sumTime)</a>
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>
+                                                            <a href="javascript:void(0)" onclick="fnBindSignatureGragh('@pmJson','CC',' @point.Date','@point.Direction','@point.AssetType','@point.AssetId')">C</a>/<a href="#" onclick="fnBindSignatureGragh('@pmJson', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@clusters'); return false;">V</a>/<a>T(@sumTime)</a>
+                                                        </span>
+                                                    }
+                                                </td>
+                                            }
+
+                                            @if (hasClusterA)
+                                            {
+                                                if (combineBoth)
+                                                {
+                                                    <td class="@clsA" onclick="fnBindCombineSignatureGragh('@pmJson','AC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                        @string.Format("{0:0.00}", pm.A_C_MAX) / @string.Format("{0:0.00}", pm.A_C_AVERAGE) (@pm.A_C_CurveArea)
+                                                    </td>
+                                                }
+                                                else if (pm.Combine_A_C_TIME > 0 || pm.IsCombineOperation_A)
+                                                {
+                                                    <td class="@clsA" onclick="fnBindCombineSignatureGragh('@pmJson','AC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                        @string.Format("{0:0.00}", pm.A_C_MAX) / @string.Format("{0:0.00}", pm.A_C_AVERAGE) (@pm.A_C_CurveArea)
+                                                        <br />
+                                                        <span class="pmc-muted">(Max/Avg/Time)</span> <br />
+                                                        <span>
+                                                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson', 'CC', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">C(@pm.Combine_A_C_MAX/@pm.Combine_A_C_AVERAGE/@pm.Combine_A_C_TIME)</a>
+                                                            <br />
+                                                            <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V(@pm.Combine_A_V_MAX/@pm.Combine_A_V_AVERAGE/@pm.Combine_A_V_TIME)</a>
+                                                        </span>
+                                                    </td>
+                                                }
+                                                else if (Model.MachineAScale == scale20)
+                                                {
+                                                    <td class="@clsA" onclick="fnBindCombineSignatureGragh('@pmJson','AC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                        @string.Format("{0:0.00}", pm.A_C_MAX) / @string.Format("{0:0.00}", pm.A_C_AVERAGE) (@pm.A_C_CurveArea)
+                                                    </td>
+                                                }
+                                                else
+                                                {
+                                                    <td class="@clsA" onclick="fnBindSignatureGragh('@pmJson','AC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                        @string.Format("{0:0.00}", pm.A_C_MAX) / @string.Format("{0:0.00}", pm.A_C_AVERAGE) (@pm.A_C_CurveArea)
+                                                    </td>
+                                                }
+                                                <td class="pmc-click" onclick="fnBindSignatureGragh('@pmJson','AV',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                    @pm.A_V_AVERAGE
+                                                </td>
+                                                <td>
+                                                    <span> @pm.A_C_TIME </span>
+                                                </td>
+                                                <td class="PMExtraColumn_@Model.Id">
+                                                    <span> @pm.ClusterA </span>
+                                                </td>
+                                            }
+
+                                            @if (hasClusterB)
+                                            {
+                                                if (!isHalfPointMachine)
+                                                {
+                                                    if (combineBoth)
+                                                    {
+                                                        <td class="@clsB" onclick="fnBindCombineSignatureGragh('@pmJson','BC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                            @string.Format("{0:0.00}", pm.B_C_MAX) / @string.Format("{0:0.00}", pm.B_C_AVERAGE) (@pm.B_C_CurveArea)
+                                                        </td>
+                                                    }
+                                                    else if (pm.Combine_B_C_TIME > 0 || pm.IsCombineOperation_B)
+                                                    {
+                                                        <td class="@clsB" onclick="fnBindCombineSignatureGragh('@pmJson','BC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                            @string.Format("{0:0.00}", pm.B_C_MAX) / @string.Format("{0:0.00}", pm.B_C_AVERAGE) (@pm.B_C_CurveArea)
+                                                            <br />
+                                                            <span class="pmc-muted">(Max/Avg/Time)</span> <br />
+                                                            <span>
+                                                                <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson', 'CC', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">C(@pm.Combine_B_C_MAX/@pm.Combine_B_C_AVERAGE/@pm.Combine_B_C_TIME)</a>
+                                                                <br />
+                                                                <a href="javascript:void(0)" onclick="fnBindCombineSignatureGragh('@pmJson', 'CV', ' @point.Date', '@point.Direction', '@point.AssetType', '@point.AssetId'); return false;">V(@pm.Combine_B_V_MAX/@pm.Combine_B_V_AVERAGE/@pm.Combine_B_V_TIME)</a>
+                                                            </span>
+                                                        </td>
+                                                    }
+                                                    else if (Model.MachineBScale == scale20)
+                                                    {
+                                                        <td class="@clsB" onclick="fnBindCombineSignatureGragh('@pmJson','BC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                            @string.Format("{0:0.00}", pm.B_C_MAX) / @string.Format("{0:0.00}", pm.B_C_AVERAGE) (@pm.B_C_CurveArea)
+                                                        </td>
+                                                    }
+                                                    else
+                                                    {
+                                                        <td class="@clsB" onclick="fnBindSignatureGragh('@pmJson','BC',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                            @string.Format("{0:0.00}", pm.B_C_MAX) / @string.Format("{0:0.00}", pm.B_C_AVERAGE) (@pm.B_C_CurveArea)
+                                                        </td>
+                                                    }
+
+                                                    <td class="pmc-click" onclick="fnBindSignatureGragh('@pmJson','BV',' @point.Date','@point.Direction','@point.AssetType','@clusters')">
+                                                        @pm.B_V_AVERAGE
+                                                    </td>
+                                                    <td>
+                                                        @pm.B_C_TIME
+                                                    </td>
+                                                    <td class="PMExtraColumn_@Model.Id">
+                                                        <span> @pm.ClusterB </span>
+                                                    </td>
+                                                }
+                                            }
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function () {
+        var $type = $("#divPointMachineEventData #hdnSaveType");
+        if ($type.val() == 'Error' && typeof CommonNotification === 'function') {
+            CommonNotification("ERROR", $("#divPointMachineEventData #hdnSaveMessage").val(), "Error");
+        }
+    });
+</script>

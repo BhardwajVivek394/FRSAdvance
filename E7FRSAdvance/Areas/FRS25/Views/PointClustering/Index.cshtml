@@ -1,0 +1,766 @@
+@model Domain.SearchCriteria
+
+@{
+    ViewBag.Title = "P/m Clustering";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+@* jQuery, jquery.unobtrusive-ajax, Bootstrap 4 (modal / popover / dropdown) and the air-datepicker are
+   loaded by the FRS25 layout at the end of <body>, so inline page code waits for DOMContentLoaded.
+   Chart.js 2.x is needed for the signature graph (Chart.Line API); the only local copy
+   (~/assets/js/chart/chartjs/chart.min.js) is v1.0.1, so the 2.9.4 CDN build is used (as Telemetry does). *@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+
+<style>
+    .pmc-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .pmc-actions .btn {
+        white-space: nowrap;
+    }
+
+    .pmc-results:empty {
+        display: none;
+    }
+
+    .pmc-section-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--e7-border, var(--e7-edge));
+    }
+
+    .pmc-section-head h5 {
+        margin: 0;
+        font-weight: 600;
+        color: var(--e7-heading, var(--e7-t1));
+    }
+
+    .pmc-count {
+        font-size: 13px;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+
+    .pmc-count strong {
+        color: var(--e7-text, var(--e7-t1));
+    }
+
+    .pmc-pager {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pmc-pager select.form-control {
+        width: auto;
+        min-width: 72px;
+        height: 32px;
+        padding: 2px 8px;
+    }
+
+    .pmc-pager .btn {
+        height: 32px;
+        padding: 2px 10px;
+    }
+
+    .pmc-table {
+        margin-bottom: 0;
+        color: var(--e7-text, var(--e7-t1));
+    }
+
+    .pmc-table td,
+    .pmc-table th {
+        border-color: var(--e7-border, var(--e7-edge));
+        vertical-align: middle;
+    }
+
+    .pmc-table .pmc-name {
+        font-weight: 600;
+        white-space: nowrap;
+        width: 1%;
+        padding-right: 24px;
+    }
+
+    .pmc-empty {
+        padding: 24px;
+        margin: 0;
+        text-align: center;
+        font-size: 14px;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+
+    .pmc-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .pmc-chip {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 3px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.5;
+        color: #fff;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, .3);
+        cursor: pointer;
+        transition: filter .15s ease, transform .15s ease;
+    }
+
+    .pmc-chip:hover,
+    .pmc-chip:focus {
+        color: #fff;
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+    }
+
+    .pmc-chip-good { background: var(--e7-green, #22a06b); }
+    .pmc-chip-bad { background: var(--e7-red, #d64545); }
+    .pmc-chip-mid { background: var(--e7-amber, #d39b14); }
+    .pmc-chip-other { background: var(--e7-accent, var(--primary)); }
+    /* "T" prefixed groups were the *-dark variants in the old theme */
+    .pmc-chip-dark { filter: brightness(.78) saturate(1.15); }
+    .pmc-chip-dark:hover { filter: brightness(.88) saturate(1.15); }
+
+    .pmc-site-btn {
+        background: var(--e7-accent, var(--primary));
+        border-color: var(--e7-accent, var(--primary));
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .pmc-site-btn:hover,
+    .pmc-site-btn:focus {
+        color: #fff;
+        filter: brightness(1.08);
+    }
+
+    .pmc-click {
+        cursor: pointer;
+    }
+
+    .pmc-val-thick { color: var(--e7-accent, #00A4E0) !important; }
+    .pmc-val-normal { color: var(--e7-amber, #dc8b33) !important; }
+
+    .pmc-muted {
+        color: var(--e7-text-2, var(--e7-t2)) !important;
+        font-size: 12px;
+    }
+
+    .pmc-event-table th {
+        white-space: nowrap;
+    }
+
+    .pmc-modal-fixed-height {
+        max-height: 70vh;
+        overflow: auto;
+    }
+
+    #modal-graph .modal-title span {
+        display: inline-block;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    #imgClusterGraph {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+    }
+
+    /* The graph and cluster-image modals open together without a backdrop: let clicks pass the
+       transparent overlay of the top one so both stay usable side by side. */
+    #modal-graph,
+    #modal-cluster-image-graph {
+        pointer-events: none;
+    }
+
+    #modal-graph .modal-content,
+    #modal-cluster-image-graph .modal-content {
+        pointer-events: auto;
+    }
+
+    @@media (min-width: 992px) {
+        .pmc-modal-left .modal-dialog {
+            margin-left: 5%;
+            margin-right: auto;
+        }
+
+        .pmc-modal-right .modal-dialog {
+            margin-left: auto;
+            margin-right: 5%;
+        }
+    }
+</style>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI Section</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">P/m Clustering</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">P/m Clustering</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header mb-4">
+                    <div class="d-flex justify-content-between">
+                        <h4 class="m-0">Search</h4>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    <div class="row mb-lg-5 mb-3">
+                        <div class="col">
+                            <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="drpType">Type</label>
+                                    <select class="form-control" id="drpType">
+                                        <option value="ByAsset">By Asset</option>
+                                        <option value="ByCluster">By Cluster</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="drpZone">Zone</label>
+                                    @Html.DropDownListFor(x => x.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, "Select", new { @class = "form-control", @id = "drpZone", tabindex = 1 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <input type="hidden" id="hdnPMClusterDivisionId" value="@Model.DivisionId" />
+                                    <label for="drpDivision">Division</label>
+                                    @Html.DropDownListFor(x => x.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, "Select", new { @class = "form-control", @id = "drpDivision", tabindex = 2 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="drpSites">Station</label>
+                                    <input type="hidden" id="hdnPMClusterSiteId" value="@Model.SiteId" />
+                                    @Html.DropDownListFor(x => x.SiteId, (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", @id = "drpSites", tabindex = 3 })
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="txtFromDate">From Date</label>
+                                    <input type="text" class="form-control" id="txtFromDate" autocomplete="off" />
+                                </div>
+
+                                <div class="form-group w-100 w-sm-48">
+                                    <label for="txtToDate">To Date</label>
+                                    <input type="text" class="form-control" id="txtToDate" autocomplete="off" />
+                                </div>
+
+                                <div class="form-group w-sm-100">
+                                    <label class="d-none d-md-block">&nbsp;</label>
+                                    <div class="pmc-actions">
+                                        <button type="button" class="btn btn-primary-search" onclick="fnGetPointClustering()" title="Search Point Data">
+                                            <img src="~/Areas/FRS25/assets/img/search.svg" alt="Search" />
+                                        </button>
+                                        <button type="button" class="btn btn-active" onclick="fnAddCluster()" title="Add Cluster">Add Cluster</button>
+                                        <button type="button" class="btn btn-inactive" onclick="fnViewCluster()" title="View Cluster">View Cluster</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @using (Ajax.BeginForm("_AIClustersList", "PointClustering", new AjaxOptions()
+                    {
+                        HttpMethod = "POST",
+                        UpdateTargetId = "divAIClusteringList",
+                        InsertionMode = InsertionMode.Replace,
+                        LoadingElementId = "e7-loader"
+                    }, new { id = "frmAIClusteringList" }))
+                    {
+                        { HtmlHelper.ClientValidationEnabled = false; }
+                        <div id="divAIClusteringList" style="display:none">
+                            @Html.Action("_AIClustersList")
+                        </div>
+                    }
+
+                    <div id="divPointClusteringList" class="pmc-results">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+@* Modal hosts live outside the cards so no card styling (overflow / filters) can clip the fixed-position modals. *@
+<div id="divPointMachineEventData">
+</div>
+
+@using (Ajax.BeginForm("Save", "PointClustering", new AjaxOptions()
+{
+    HttpMethod = "POST",
+    UpdateTargetId = "divSaveAICluster",
+    InsertionMode = InsertionMode.Replace,
+    LoadingElementId = "e7-loader",
+    OnSuccess = "ClusterCategorySaved"
+}, new { id = "frmSaveAICluster" }))
+{
+    <div id="divSaveAICluster">
+        @Html.Partial("_AddAIClusters", new Domain.AIClusters())
+    </div>
+}
+
+<div class="modal fade pmc-modal-left" id="modal-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="myModalLabel">
+                    <span id="line1">52 2021-05-26 17:07:00 <b id="op">Normal Operation:</b></span><br />
+                    <span id="line2">- A Max / Average Current: 3.8 / 2.34</span><br />
+                    <span id="line3">- A Max / Average Voltage: 118.9 / 116.00</span><br />
+                    <span id="line4">- A Operating Time (ms): 3300</span><br />
+                    <span id="line5">B Max / Average Current: null / 0.0</span><br />
+                    <span id="line6">- B Max / Average Voltage: 0 / 0.00</span><br />
+                    <span id="line7">- B Operating Time (ms): 0</span><br />
+                </h6>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-12 mainclass" id="mainId">
+                        <canvas id="basicflot" style="height: 263px"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" id="btnClose">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade pmc-modal-right" id="modal-cluster-image-graph" tabindex="-1" role="dialog" data-backdrop="static" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">
+                    <span>Cluster Image</span>
+                </h6>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body pmc-modal-fixed-height">
+                <img id="imgClusterGraph" alt="Cluster Image" />
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var chart;
+
+    // The FRS25 layout renders #e7-loader; #loader is kept for parity with other FRS25 pages.
+    function fnPmcLoader(show) {
+        if (show) { $("#loader, #e7-loader").show(); } else { $("#loader, #e7-loader").hide(); }
+    }
+
+    function fnPmcCssVar(names, fallback) {
+        var el = document.getElementById('mainId') || document.body;
+        var style = getComputedStyle(el);
+        for (var i = 0; i < names.length; i++) {
+            var v = style.getPropertyValue(names[i]);
+            if (v && v.trim()) { return v.trim(); }
+        }
+        return fallback;
+    }
+
+    // jQuery and the datepicker plugin are loaded by the layout after the page body.
+    document.addEventListener('DOMContentLoaded', function () {
+
+        $('#txtFromDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        $('#txtToDate').datepicker({
+            dateFormat: 'm/d/yy',
+            autoClose: true
+        });
+
+        // Default both dates to today (air-datepicker API; the old page called the jQuery-UI style "setDate").
+        $('#txtFromDate, #txtToDate').each(function () {
+            var dp = $(this).data('datepicker');
+            if (dp && typeof dp.selectDate === 'function') {
+                dp.selectDate(new Date());
+            }
+        });
+
+        GetDivisionByZone($("#drpZone").val());
+
+        $("#drpZone").change(function () {
+            GetDivisionByZone($(this).val());
+        });
+
+        $("#drpDivision").change(function () {
+            GetSiteByDivisionId($(this).val());
+        });
+    });
+
+    function fnViewCluster() {
+        $('#divPointClusteringList').hide();
+        $('#divAIClusteringList').show();
+    }
+
+    function fnGetPointClustering() {
+        $('#divPointClusteringList').show();
+        $('#divAIClusteringList').hide();
+        var mSearchCriteria;
+        if ($('#drpType').val() == "ByCluster") {
+            mSearchCriteria = {};
+            mSearchCriteria.SiteId = $('#drpSites').val();
+            mSearchCriteria.StartDate = $('#txtFromDate').val();
+            mSearchCriteria.EndDate = $('#txtToDate').val();
+            mSearchCriteria.Type = $('#drpType').val();
+            fnPmcLoader(true);
+            $.ajax({
+                url: '/FRS25/PointClustering/_ListByCluster',
+                type: 'Post',
+                contentType: 'application/json',
+                data: JSON.stringify(mSearchCriteria),
+                dataType: 'html',
+                success: function (data) {
+                    fnPmcLoader(false);
+                    $("#divPointClusteringList").empty().append(data);
+                },
+                error: function (response) {
+                    fnPmcLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+
+        } else if ($('#drpType').val() == "ByAsset") {
+            if ($('#drpSites').val() != null && $('#drpSites').val() != undefined && $('#drpSites').val() != '') {
+                mSearchCriteria = {};
+                mSearchCriteria.SiteId = $('#drpSites').val();
+                mSearchCriteria.StartDate = $('#txtFromDate').val();
+                mSearchCriteria.EndDate = $('#txtToDate').val();
+                mSearchCriteria.Type = $('#drpType').val();
+                fnPmcLoader(true);
+                $.ajax({
+                    url: '/FRS25/PointClustering/_List',
+                    type: 'Post',
+                    contentType: 'application/json',
+                    data: JSON.stringify(mSearchCriteria),
+                    dataType: 'html',
+                    success: function (data) {
+                        fnPmcLoader(false);
+                        $("#divPointClusteringList").empty().append(data);
+                    },
+                    error: function (response) {
+                        fnPmcLoader(false);
+                        CommonNotification("ERROR", "Something went wrong!", "Error");
+                    }
+                });
+
+            } else {
+                CommonNotification("ERROR", "Please select site", "Error");
+            }
+        }
+    }
+
+    function fnShowPointMachineEventData(siteId, assetId, clusters) {
+        var mSearchCriteria = {};
+        mSearchCriteria.SiteId = siteId;
+        mSearchCriteria.AssetId = assetId;
+        mSearchCriteria.Clusters = clusters;
+        mSearchCriteria.StartDate = $('#txtFromDate').val();
+        mSearchCriteria.EndDate = $('#txtToDate').val();
+
+        fnPmcLoader(true);
+        $.ajax({
+            url: '/FRS25/PointClustering/_PointMachineEventData',
+            type: 'Post',
+            contentType: 'application/json',
+            data: JSON.stringify(mSearchCriteria),
+            dataType: 'html',
+            success: function (data) {
+                fnPmcLoader(false);
+                $("#divPointMachineEventData").empty().append(data);
+                $('#modal-show-PointMachineEvent').modal('show');
+            },
+            error: function (response) {
+                fnPmcLoader(false);
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    function fnAddCluster() {
+        fnPmcLoader(true);
+        $.ajax({
+            url: '/FRS25/PointClustering/_AddAIClusters',
+            type: 'Post',
+            dataType: 'html',
+            contentType: 'application/json',
+            success: function (data) {
+                fnPmcLoader(false);
+                $("#divSaveAICluster").empty().append(data);
+                $("#modal-add-AIClusters").modal('show');
+            },
+            error: function (response) {
+                fnPmcLoader(false);
+                CommonNotification("ERROR", "Something went wrong!", "Error");
+            }
+        });
+    }
+
+    // Shared body of fnBindSignatureGragh / fnBindCombineSignatureGragh (they only differ in the x-axis step).
+    function fnPmcRenderSignature(data, type, datevalue, direction, name, cluster, step) {
+        $("div").remove(".chartjs-size-monitor");
+        var j = JSON.parse(data);
+        var acg;
+        var bcg;
+        var avg;
+        var bvg;
+        if (j.A_C_AVERAGE != null) {
+            acg = parseFloat(j.A_C_AVERAGE).toFixed(2);
+        }
+        if (j.B_C_AVERAGE != null) {
+            bcg = parseFloat(j.B_C_AVERAGE).toFixed(2);
+        }
+        if (j.A_V_AVERAGE != null) {
+            avg = parseFloat(j.A_V_AVERAGE).toFixed(2);
+        }
+        if (j.B_V_AVERAGE != null) {
+            bvg = parseFloat(j.B_V_AVERAGE).toFixed(2);
+        }
+
+        $("#line1").empty().text(name + " " + datevalue);
+        $("#op").text(direction + " Operation");
+        $("#line2").empty().text("- A Max / Average Current:" + j.A_C_MAX + "/" + acg);
+        $("#line3").empty().text("-  Average Voltage:" + avg);
+        $("#line4").empty().text("- A Operating Time (ms):" + j.A_C_TIME);
+        $("#line5").empty().text("- B Max / Average Current:" + j.B_C_MAX + "/" + bcg);
+        $("#line6").empty().text("- Average Voltage:" + bvg);
+        $("#line7").empty().text("- B Operating Time (ms):" + j.B_C_TIME);
+
+        var array = [];
+        var labels = "";
+        var total = 0;
+        function collect(values) {
+            $.each(values, function (id, val) {
+                if (val != null && val != undefined && val != '') {
+                    var num = parseInt(val);
+                    total += num;
+                    array.push(val);
+                }
+            });
+        }
+
+        if (type == "CC") {
+            labels = "Combine C";
+            collect(j.A_C);
+            collect(j.B_C);
+        }
+        if (type == "CV") {
+            labels = "Combine V";
+            collect(j.A_V);
+            collect(j.B_V);
+        }
+        if (type == "AC") {
+            labels = "A End Current";
+            collect(j.A_C);
+        }
+        if (type == "BC") {
+            labels = "B End Current";
+            collect(j.B_C);
+        }
+        if (type == "AV") {
+            labels = "A End Voltage";
+            collect(j.A_V);
+        }
+        if (type == "BV") {
+            labels = "B End Voltage";
+            collect(j.B_V);
+        }
+
+        var label = [];
+        for (var i = 0; i <= array.length; i++) {
+            label.push(i * step);
+        }
+
+        var chartContainer = document.getElementById('mainId');
+        chartContainer.innerHTML = '&nbsp;';
+        $('#mainId').append('<canvas id="basicflot" style="height: 263px"></canvas>');
+        var canvas = $("#basicflot").get(0).getContext("2d");
+
+        var lineColor = fnPmcCssVar(['--e7-c1', '--e7-accent', '--e7-cyan'], 'rgba(75,192,192,1)');
+        var textColor = fnPmcCssVar(['--e7-text-2', '--e7-t2'], '#666');
+        var gridColor = fnPmcCssVar(['--e7-grid-line', '--e7-edge'], 'rgba(0,0,0,0.1)');
+        var pointFill = fnPmcCssVar(['--e7-surface', '--e7-bg-1'], '#fff');
+        Chart.defaults.global.defaultFontColor = textColor;
+
+        var chartData = {
+            labels: label,
+            datasets: [
+                {
+                    label: labels,
+                    fill: false,
+                    lineTension: 0.1,
+                    backgroundColor: lineColor,
+                    borderColor: lineColor,
+                    borderCapStyle: 'butt',
+                    borderDash: [],
+                    borderDashOffset: 0.0,
+                    borderJoinStyle: 'miter',
+                    pointBorderColor: lineColor,
+                    pointBackgroundColor: pointFill,
+                    pointBorderWidth: 0.5,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: lineColor,
+                    pointHoverBorderColor: gridColor,
+                    pointHoverBorderWidth: 1,
+                    pointRadius: 5,
+                    pointHitRadius: 10,
+                    data: array
+                }
+            ]
+        };
+
+        var option = {
+            showLines: true,
+            scales: {
+                xAxes: [{ gridLines: { color: gridColor } }],
+                yAxes: [{ gridLines: { color: gridColor } }]
+            }
+        };
+        chart = Chart.Line(canvas, {
+            data: chartData,
+            options: option
+        });
+
+        $('#modal-graph').modal({
+            backdrop: false,
+            keyboard: false
+        });
+        $("#modal-graph").modal("show");
+        fnShowAIClusters(cluster);
+    }
+
+    function fnBindSignatureGragh(data, type, datevalue, direction, name, cluster) {
+        fnPmcRenderSignature(data, type, datevalue, direction, name, cluster, 100);
+    }
+
+    function fnBindCombineSignatureGragh(data, type, datevalue, direction, name, cluster) {
+        fnPmcRenderSignature(data, type, datevalue, direction, name, cluster, 20);
+    }
+
+    function fnPmcShowClusterImage(imageBase64) {
+        $("#imgClusterGraph").attr("src", "data:image/png;base64," + imageBase64);
+        $('#modal-cluster-image-graph').modal({
+            backdrop: false,
+            keyboard: false
+        });
+        $("#modal-cluster-image-graph").modal("show");
+    }
+
+    function fnShowAIClusters(cluster) {
+        if (cluster != null && cluster != undefined && cluster != '') {
+            $.ajax({
+                url: '/FRS25/PointClustering/GetAIClusters',
+                type: 'Post',
+                data: JSON.stringify({ cluster: String(cluster) }),
+                contentType: 'application/json',
+                success: function (data) {
+                    fnPmcLoader(false);
+                    if (data != null && data != undefined && data.ImageBase64 != null && data.ImageBase64 != '') {
+                        fnPmcShowClusterImage(data.ImageBase64);
+                    }
+                },
+                error: function (response) {
+                    fnPmcLoader(false);
+                    CommonNotification("ERROR", "Internal server error.", "error");
+                }
+            });
+        }
+    }
+
+    function GetDivisionByZone(zoneId) {
+        if (zoneId != null && zoneId != undefined && zoneId != '') {
+            fnPmcLoader(true);
+            $.ajax({
+                url: '/FRS25/PointClustering/GetDivisionByZoneId',
+                type: 'POST',
+                data: '{zoneId:' + zoneId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    fnPmcLoader(false);
+                    $("#drpDivision").empty();
+                    $("#drpDivision").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchDivisionId').val() != '0' && $('#hdnSearchDivisionId').val() == value.Id) {
+                            $("#drpDivision").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#drpDivision").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    fnPmcLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+
+    function GetSiteByDivisionId(divisionId) {
+        if (divisionId != null && divisionId != undefined && divisionId != '') {
+            fnPmcLoader(true);
+            $.ajax({
+                url: '/FRS25/PointClustering/GetSiteByDivisionId',
+                type: 'POST',
+                data: '{divisionId:' + divisionId + '}',
+                contentType: 'application/json',
+                success: function (data) {
+                    fnPmcLoader(false);
+                    $("#drpSites").empty();
+                    $("#drpSites").append($("<option></option>").val('0').html('Select'));
+                    $.each(data, function (key, value) {
+                        if ($('#hdnSearchSiteId').val() != '0' && $('#hdnSearchSiteId').val() == value.Id) {
+                            $("#drpSites").append($("<option selected></option>").val(value.Id).html(value.Name));
+                        } else {
+                            $("#drpSites").append($("<option></option>").val(value.Id).html(value.Name));
+                        }
+                    });
+                },
+                error: function (response) {
+                    fnPmcLoader(false);
+                    CommonNotification("ERROR", "Something went wrong!", "Error");
+                }
+            });
+        }
+    }
+</script>

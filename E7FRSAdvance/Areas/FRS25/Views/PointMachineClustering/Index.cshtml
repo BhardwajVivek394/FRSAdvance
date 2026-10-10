@@ -1,0 +1,2503 @@
+@{
+    ViewBag.Title = "Point Machine Clustering";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+     #pmcApp <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+         #pmcApp {
+            --bg-primary: #f3f4f9; --bg-secondary: #fff; --bg-tertiary: #eef0f9; --bg-card: #fff;
+            --bg-hover: #eef0fb; --border: #e2e4f0; --border-hover: #c7cae4;
+            --text-primary: #1e2233; --text-secondary: #565b76; --text-muted: #8b90ac;
+            --accent: #4f46e5; --accent-hover: #4338ca; --accent-muted: rgba(79,70,229,0.1);
+            --current-color: #d97706; --voltage-color: #0d9488;
+        }
+         #pmcApp { background: var(--bg-primary); color: var(--text-primary); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+         #pmcApp .topbar { height: 52px; background: var(--bg-secondary); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; padding: 0 18px; position: sticky; top: 0; z-index: 50; }
+         #pmcApp .topbar .logo { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), #9333ea); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
+         #pmcApp .topbar .title { font-weight: 800; font-size: 15px; }
+         #pmcApp .topbar .sub { font-size: 12px; color: var(--text-muted); }
+         #pmcApp .layout { display: flex; height: calc(100vh - 52px); }
+        /* ADDITIVE: collapsible/resizable drawer, same behavior as
+           pm_operation_combined.html's sidebar (collapse to a 64px icon
+           rail, drag-resize when expanded) - only the drawer mechanics are
+           ported here, not that file's multi-model tab-switching. */
+         #pmcApp .sidebar { width: 300px; min-width: 240px; max-width: 420px; background: var(--bg-secondary); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; padding: 16px; transition: width 0.3s cubic-bezier(0.4,0,0.2,1), padding 0.3s ease; }
+         #pmcApp .sidebar.collapsed { width: 64px !important; flex-basis: 64px !important; min-width: 64px !important; padding: 12px 6px !important; align-items: center; cursor: pointer; }
+         #pmcApp .sidebar-full { min-width: 0; }
+         #pmcApp .sidebar.collapsed .sidebar-full { display: none; }
+         #pmcApp .sidebar-compact { display: none; }
+         #pmcApp .sidebar.collapsed .sidebar-compact { display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; width: 100%; }
+         #pmcApp .compact-icon-btn { width: 38px; height: 38px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+         #pmcApp .sidebar-compact:hover .compact-icon-btn { border-color: var(--accent); color: var(--accent); }
+         #pmcApp .compact-pm-badge { font-size: 10px; font-weight: 800; letter-spacing: 0.2px; text-align: center; line-height: 1.1; padding: 2px; overflow: hidden; }
+         #pmcApp .sidebar-toggle-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); border-radius: 8px; cursor: pointer; transition: all 0.2s ease; flex: 0 0 auto; }
+         #pmcApp .sidebar-toggle-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+         #pmcApp .sidebar-toggle-btn.collapsed-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+         #pmcApp .pm-sidebar-resizer { flex: 0 0 5px; width: 5px; cursor: col-resize; background: transparent; }
+         #pmcApp .pm-sidebar-resizer:hover, #pmcApp .pm-sidebar-resizer:active { background: rgba(79,70,229,0.35); }
+         #pmcApp .content { flex: 1; overflow-y: auto; padding: 16px; min-width: 0; }
+         #pmcApp .side-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 14px 0 8px; }
+         #pmcApp .form-control { width: 100%; background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); padding: 9px 12px; border-radius: 8px; font-size: 14px; outline: none; }
+         #pmcApp .form-control:focus { border-color: var(--accent); }
+         #pmcApp .btn { display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); transition: 0.15s; }
+         #pmcApp .btn:hover { background: var(--bg-hover); }
+         #pmcApp .btn-primary { background: var(--accent); color: #fff; border: none; }
+         #pmcApp .btn-primary:hover { background: var(--accent-hover); }
+         #pmcApp .btn-primary:disabled { opacity: 0.6; cursor: default; }
+         #pmcApp .btn.block { width: 100%; justify-content: center; margin-top: 10px; }
+         #pmcApp .pm-list { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
+         #pmcApp .pm-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; transition: 0.15s; }
+         #pmcApp .pm-item:hover { background: var(--bg-hover); border-color: var(--border-hover); }
+         #pmcApp .pm-item.active { border-color: var(--accent); background: var(--accent-muted); }
+         #pmcApp .pm-name { font-weight: 700; font-size: 14px; }
+         #pmcApp .pm-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+         #pmcApp .empty-msg { color: var(--text-muted); font-size: 13px; padding: 10px 2px; }
+         #pmcApp .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+         #pmcApp .card-title { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-secondary); margin-bottom: 12px; }
+         #pmcApp .asset-title { font-size: 22px; font-weight: 800; color: var(--accent); }
+         #pmcApp .asset-sub { font-size: 12px; color: var(--text-muted); }
+         #pmcApp .breadcrumb { font-size: 12px; color: var(--text-muted); }
+         #pmcApp .breadcrumb .current { color: var(--accent); font-weight: 700; }
+         #pmcApp .row2 { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 6px; }
+         #pmcApp .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--accent-muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; }
+        @@keyframes spin { to { transform: rotate(360deg); } }
+         #pmcApp .empty-state { text-align: center; margin-top: 90px; color: var(--text-muted); }
+         #pmcApp .empty-state h2 { font-size: 20px; color: var(--text-primary); margin-bottom: 8px; }
+         #pmcApp .chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 16px; padding: 4px 12px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); }
+         #pmcApp .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+         #pmcApp .chart-box { position: relative; }
+         #pmcApp .toast-box { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+         #pmcApp .toast { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+         #pmcApp .toast.error { border-left-color: #ef4444; }
+         #pmcApp .toast.success { border-left-color: #16a34a; }
+        /*  ADDITIVE: self-supervised anomaly score styling only (nothing above this is changed)  */
+         #pmcApp .sev-normal { color: #16a34a; }  #pmcApp .sev-watch { color: #ca8a04; }  #pmcApp .sev-anomaly { color: #dc2626; }  #pmcApp .sev-unknown { color: #94a3b8; }
+         #pmcApp .sev-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+         #pmcApp .pill-normal { background: #dcfce7; color: #16a34a; }  #pmcApp .pill-watch { background: #fef9c3; color: #ca8a04; }
+         #pmcApp .pill-anomaly { background: #fee2e2; color: #dc2626; }  #pmcApp .pill-unknown { background: #f1f5f9; color: #94a3b8; }
+        /* ADDITIVE: shape cue so severity is never color-only - applies to every
+           existing .sev-pill usage on the page for free (badges, grid, detail). */
+         #pmcApp .sev-pill::before { font-size: 9px; }
+         #pmcApp .pill-normal::before { content: ""; }  #pmcApp .pill-watch::before { content: ""; }
+         #pmcApp .pill-anomaly::before { content: ""; }  #pmcApp .pill-unknown::before { content: ""; }
+         #pmcApp .handoff-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; font-size: 11.5px; }
+         #pmcApp .handoff-chip { padding: 3px 9px; border-radius: 7px; background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap; }
+         #pmcApp .handoff-chip.active { border-color: var(--accent); color: var(--accent); background: var(--accent-muted); }
+         #pmcApp .handoff-arrow { color: var(--text-muted); }
+         #pmcApp .model-meta-row { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.6; }
+         #pmcApp .model-stale-warn { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 7px; background: #fef9c3; color: #92400e; border: 1px solid #fde68a; font-size: 11px; font-weight: 600; }
+         #pmcApp .explain-line { font-size: 11.5px; color: var(--text-secondary); background: var(--bg-tertiary); border: 1px dashed var(--border); border-radius: 7px; padding: 6px 9px; margin: 6px 0 10px; line-height: 1.5; }
+         #pmcApp .novelty-stat-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+         #pmcApp .novelty-stat { flex: 1; min-width: 100px; background: var(--bg-tertiary); border-radius: 8px; padding: 8px; text-align: center; }
+         #pmcApp .novelty-stat .v { font-size: 16px; font-weight: 800; }
+         #pmcApp .novelty-stat .l { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+
+        /*  ADDITIVE: Health Map (same-page, "same to same" layout as Task 3's
+           reference self-supervised-anomaly-monitor.html, re-themed light to
+           match the rest of this page) - scoped under .nm- so its palette
+           never conflicts with the rest of this page's own CSS vars. Wired to
+           this machine's own already-loaded S.ops, not a separate fetch.  */
+         #pmcApp .nm-wrap { --nm-bg:var(--bg-primary); --nm-panel:var(--bg-card); --nm-line:var(--border); --nm-line2:var(--border);
+            --nm-ink:var(--text-primary); --nm-muted:var(--text-secondary); --nm-faint:var(--text-muted);
+            --nm-green:#16a34a; --nm-amber:#ca8a04; --nm-red:#dc2626; --nm-cyan:#4f46e5;
+            background:var(--nm-bg); color:var(--nm-ink); border:1px solid var(--nm-line); border-radius:14px; padding:18px; margin-bottom:14px;
+            font-family:'IBM Plex Sans',var(--font-sans,sans-serif); }
+         #pmcApp .nm-wrap .mono { font-family:'IBM Plex Mono',monospace; }
+         #pmcApp .nm-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+         #pmcApp .nm-head h3 { margin:0; font-size:15px; font-weight:700; }
+         #pmcApp .nm-watching { display:flex; align-items:center; gap:8px; color:var(--nm-muted); font-size:12.5px; }
+         #pmcApp .nm-pulse { width:9px; height:9px; border-radius:50%; background:var(--nm-cyan); animation:nmPulse 2.4s ease-in-out infinite; }
+        @@keyframes nmPulse{ 0%,100%{opacity:.35; transform:scale(.85)} 50%{opacity:1; transform:scale(1.15)} }
+        @@media (prefers-reduced-motion:reduce){  #pmcApp .nm-pulse { animation:none; } }
+         #pmcApp .nm-side-toggle { display:flex; gap:6px; }
+         #pmcApp .nm-side-toggle button { background:var(--bg-tertiary); color:var(--nm-muted); border:1px solid var(--nm-line); border-radius:7px;
+            padding:5px 11px; font-size:12px; font-weight:700; cursor:pointer; font-family:inherit; }
+         #pmcApp .nm-side-toggle button.active { background:var(--nm-cyan); color:#fff; border-color:var(--nm-cyan); }
+         #pmcApp .nm-grid { display:grid; gap:14px; grid-template-columns:1.35fr 1fr; grid-template-areas:"map score" "map time" "controls feed" "note note"; }
+        @@media (max-width:860px){  #pmcApp .nm-grid { grid-template-columns:1fr; grid-template-areas:"map" "score" "time" "controls" "feed" "note"; } }
+         #pmcApp .nm-map { grid-area:map }  #pmcApp .nm-score { grid-area:score }  #pmcApp .nm-time { grid-area:time }  #pmcApp .nm-controls { grid-area:controls }  #pmcApp .nm-feed { grid-area:feed }  #pmcApp .nm-note { grid-area:note }
+         #pmcApp .nm-note { background:var(--bg-tertiary); }
+         #pmcApp .nm-note .nm-row { display:flex; gap:12px; align-items:flex-start; font-size:13.5px; line-height:1.55; color:var(--nm-ink); }
+         #pmcApp .nm-chip { font-size:11.5px; padding:4px 9px; border-radius:8px; background:var(--bg-card); border:1px solid var(--nm-line); white-space:nowrap; color:var(--nm-muted); }
+         #pmcApp .nm-chip.cyan { border-color:#4f46e555; color:var(--nm-cyan); }
+         #pmcApp .nm-handoff { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+         #pmcApp .nm-arrow { color:var(--nm-faint); }
+         #pmcApp .nm-panel { background:var(--nm-panel); border:1px solid var(--nm-line); border-radius:12px; padding:14px; display:flex; flex-direction:column; }
+         #pmcApp .nm-panel > h4 { font-size:12px; font-weight:700; color:var(--nm-muted); margin:0 0 10px; text-transform:none; letter-spacing:0; }
+         #pmcApp .nm-map { background:var(--bg-tertiary); }
+         #pmcApp .nm-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--nm-muted); margin-top:6px; }
+         #pmcApp .nm-legend span { display:flex; align-items:center; gap:5px; }
+         #pmcApp .nm-sw { width:10px; height:10px; border-radius:50%; }
+         #pmcApp .nm-src { font-size:10.5px; color:var(--nm-faint); margin-top:auto; padding-top:10px; }
+         #pmcApp .nm-gwrap { display:flex; align-items:center; gap:14px; }
+         #pmcApp .nm-gnum b { font-size:34px; font-weight:600; line-height:1; }
+         #pmcApp .nm-verdict { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; margin-top:6px; }
+         #pmcApp .nm-v-ok { background:#16a34a1a; color:var(--nm-green); border:1px solid #16a34a44; }
+         #pmcApp .nm-v-watch { background:#ca8a041a; color:var(--nm-amber); border:1px solid #ca8a0444; }
+         #pmcApp .nm-v-anom { background:#dc26261a; color:var(--nm-red); border:1px solid #dc262655; }
+         #pmcApp .nm-v-none { background:#8b90ac1a; color:var(--nm-faint); border:1px solid #8b90ac44; }
+         #pmcApp .nm-scorehint { font-size:12px; color:var(--nm-muted); margin-top:10px; line-height:1.5; }
+         #pmcApp .nm-ctrl label { display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:6px; }
+         #pmcApp .nm-ctrl label b { font-family:'IBM Plex Mono',monospace; color:var(--nm-cyan); }
+         #pmcApp .nm-wrap input[type=range] { width:100%; accent-color:var(--nm-cyan); height:20px; }
+         #pmcApp .nm-tradeoff { display:flex; justify-content:space-between; font-size:11.5px; margin-top:5px; }
+         #pmcApp .nm-reset { align-self:flex-start; margin-top:8px; background:var(--bg-tertiary); color:var(--nm-muted); border:1px solid var(--nm-line);
+            border-radius:7px; padding:5px 11px; font-family:inherit; font-size:12px; cursor:pointer; }
+         #pmcApp .nm-reset:hover { color:var(--nm-ink); border-color:var(--nm-cyan); }
+         #pmcApp .nm-feedlist { display:flex; flex-direction:column; gap:1px; max-height:220px; overflow-y:auto; }
+         #pmcApp .nm-op { display:grid; grid-template-columns:14px auto 1fr 40px; align-items:center; gap:8px; padding:6px 2px;
+            border-top:1px solid var(--nm-line2); font-size:12px; cursor:pointer; border-radius:5px; }
+         #pmcApp .nm-op:hover { background:var(--bg-hover); }  #pmcApp .nm-op.focused { background:#4f46e51a; }  #pmcApp .nm-op:first-child { border-top:none; }
+         #pmcApp .nm-op .glyph { font-size:11px; text-align:center; }
+         #pmcApp .nm-op .id { font-family:'IBM Plex Mono',monospace; color:var(--nm-muted); white-space:nowrap; }
+         #pmcApp .nm-bar { height:7px; border-radius:5px; background:var(--bg-tertiary); overflow:hidden; }
+         #pmcApp .nm-bar i { display:block; height:100%; border-radius:5px; }
+         #pmcApp .nm-op .s { font-family:'IBM Plex Mono',monospace; text-align:right; }
+</style>
+<style>
+    /* FRS Advance: 617's aurora-bridge.css forces day/night colours on labels, form controls and
+       .card with !important. This page's internals are light-only, so keep its own palette inside
+       #pmcApp (the id selector out-ranks the bridge rules). */
+    body #pmcApp label { color: var(--text-primary) !important; }
+    body #pmcApp select, body #pmcApp textarea, body #pmcApp .form-control,
+    body #pmcApp input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+        background-color: var(--bg-secondary) !important; color: var(--text-primary) !important; border-color: var(--border) !important;
+    }
+    body #pmcApp select option { background: var(--bg-secondary) !important; color: var(--text-primary) !important; }
+    body #pmcApp .card { background: var(--bg-card) !important; color: var(--text-primary) !important; border-color: var(--border) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+    body #pmcApp .card-header, body #pmcApp .card-body { color: inherit !important; }
+</style>
+
+@* FRS Advance page header (617 theme): breadcrumb card like EquipmentRoom/Index. *@
+<section class="section e7-page-head">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI/ML Analysis</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Point Machine Clustering</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Point Machine Clustering</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div id="pmcApp">
+    <div class="topbar">
+        <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebar()" title="Collapse Sidebar">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <div class="logo">PC</div>
+        <div>
+            <div class="title">Point Machine &#8212; Cluster View</div>
+            <div class="sub">Operation clustering (from historian) + self-supervised anomaly score (new, additive)</div>
+        </div>
+    </div>
+
+    <div class="layout">
+        <div class="sidebar" id="sidebarEl">
+            <!-- ADDITIVE: collapsed-rail mini view - click anywhere in it to expand -->
+            <div class="sidebar-compact" title="Click to expand" onclick="toggleSidebar(false)">
+                <div class="compact-icon-btn" title="Analysis window">
+                    <svg id="compactModeQuick" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    <svg id="compactModeCustom" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><path d="M8 14h4v4H8z"></path></svg>
+                </div>
+                <div class="compact-icon-btn compact-pm-badge" id="compactPmBadge" title="No point machine selected">&#8211;</div>
+            </div>
+            <div class="sidebar-full">
+                <div class="side-label">Site</div>
+                <select class="form-control" id="siteSelect" onchange="onSiteSelectChange()"><option value="">Loading sites&#8230;</option></select>
+                <!-- ADDITIVE: auto-fetches on site select now (onSiteSelectChange below) -
+                     button kept (hidden) only so fetchPointMachines()'s disable-while-loading
+                     logic still has an element to target. -->
+                <button class="btn btn-primary block" id="fetchPmBtn" onclick="fetchPointMachines()" style="display:none;">Fetch Point Machines</button>
+
+                <!-- ADDITIVE: Quick (last 30 days) vs Custom Dates - same idea/placement
+                     as pm_operation_combined.html's sidebar mode tabs. -->
+                <div style="display:flex; gap:4px; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; padding:3px; margin-top:14px;">
+                    <button type="button" id="modeQuickBtn" onclick="switchClusterMode('quick')"
+                        style="flex:1; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; background:var(--accent); color:#fff;">Last 30 Days</button>
+                    <button type="button" id="modeCustomBtn" onclick="switchClusterMode('custom')"
+                        style="flex:1; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; background:transparent; color:var(--text-secondary);">Custom Dates</button>
+                </div>
+
+                <div id="quickPmSection">
+                    <div class="side-label" style="display:flex; justify-content:space-between;">
+                        <span>Point Machines</span><span id="pmCount" style="color:var(--accent);">0</span>
+                    </div>
+                    <div class="pm-list" id="pmList"><div class="empty-msg">Select a site and fetch.</div></div>
+                </div>
+
+                <!-- ADDITIVE: custom date-range panel - a live, non-persisted analysis
+                     over any [start, end] the user picks (max 90 days), instead of the
+                     fixed last-30-days window. Never writes to this asset's cache. -->
+                <div id="customDatePanel" style="display:none; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <span style="font-size:12.5px; font-weight:700;">Custom Date Range</span>
+                        <span style="font-size:10px; font-weight:700; color:var(--accent); background:var(--accent-muted); padding:2px 6px; border-radius:12px;">Max 90 Days</span>
+                    </div>
+                    <label class="side-label" style="margin:0 0 4px;">Point Machine</label>
+                    <select class="form-control" id="customPmSelect" style="margin-bottom:8px;">
+                        <option value="">-- Select --</option>
+                    </select>
+                    <!-- ADDITIVE fix: native date/time inputs have a platform min-width
+                         that doesn't shrink below ~150px, so a 2-column grid inside this
+                         ~270px-wide panel overflowed the sidebar. Stacked single-column
+                         instead - still fits comfortably at any sidebar width. -->
+                    <div style="display:flex; flex-direction:column; gap:8px; min-width:0;">
+                        <div style="min-width:0;">
+                            <div class="side-label" style="margin:0 0 4px;">From date</div>
+                            <input class="form-control" id="customFromDate" type="date" style="width:100%; min-width:0;" onchange="validateCustomDateRange()">
+                            <div class="side-label" style="margin:6px 0 4px;">From time</div>
+                            <input class="form-control" id="customFromTime" type="time" step="1" value="00:00:00" style="width:100%; min-width:0;" onchange="validateCustomDateRange()">
+                        </div>
+                        <div style="min-width:0;">
+                            <div class="side-label" style="margin:0 0 4px;">To date</div>
+                            <input class="form-control" id="customToDate" type="date" style="width:100%; min-width:0;" onchange="validateCustomDateRange()">
+                            <div class="side-label" style="margin:6px 0 4px;">To time</div>
+                            <input class="form-control" id="customToTime" type="time" step="1" value="23:59:59" style="width:100%; min-width:0;" onchange="validateCustomDateRange()">
+                        </div>
+                    </div>
+                    <div id="customDateError" style="display:none; font-size:11px; font-weight:600; color:#dc2626; background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.25); padding:6px 8px; border-radius:6px; margin-top:8px;"></div>
+                    <button class="btn btn-primary block" id="applyCustomDatesBtn" style="margin-top:8px;" onclick="applyCustomDates()" disabled title="Runs clusters + self-supervised scoring for this exact range">Analyze This Range</button>
+                </div>
+            </div>
+        </div>
+        <div class="pm-sidebar-resizer" id="sidebarResizer" title="Drag to resize sidebar"></div>
+
+        <div class="content">
+            <div class="empty-state" id="emptyState">
+                <h2>Select a point machine</h2>
+                <p>Choose a site &#8594; Fetch Point Machines &#8594; click any machine. The last-30-days clustering timeline loads automatically.</p>
+            </div>
+
+            <div id="mainView" style="display:none; flex-direction:column; gap:14px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <div class="breadcrumb">Point Machines / <span class="current" id="assetBreadcrumb">--</span></div>
+                        <div class="asset-title" id="assetTitle">--</div>
+                        <div class="asset-sub" id="assetSub">--</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">
+                        <span>Monthly Cluster Timeline</span>
+                        <span id="clusterSub" style="text-transform:none; font-weight:500; color:var(--text-muted);">Last 30 days</span>
+                    </div>
+                    <!-- ADDITIVE: quick (last-30-days) controls - shown only in quick mode
+                         (see the sidebar's Quick/Custom tabs); custom-range analysis is
+                         triggered from the sidebar's custom-date-panel instead. -->
+                    <div class="row2" id="quickModeRow">
+                        <div style="flex:1;">
+                            <div class="side-label" style="margin:0 0 6px;">Window ending</div>
+                            <input class="form-control" id="refTime" type="datetime-local">
+                        </div>
+                        <button class="btn btn-primary" id="updateResultsBtn" onclick="analyzeClusters(true)" title="Always re-fetches and re-analyzes right now, ignoring any cache">Fetch &amp; Compute</button>
+                    </div>
+
+                    <div id="loading" style="display:none; text-align:center; padding:40px 20px;">
+                        <span class="spinner" style="width:28px;height:28px;"></span>
+                        <div id="loadingText" style="margin-top:12px; color:var(--text-secondary); font-weight:600;">Loading&#8230;</div>
+                    </div>
+
+                    <div id="results" style="display:none;">
+                        <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px;">
+                            <button class="btn" id="clusterExportJsonBtn" onclick="exportClusterJson()" title="Download this machine's cluster distribution as JSON">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Export JSON
+                            </button>
+                            <button class="btn" id="clusterExportPdfBtn" onclick="exportClusterPdf(this)" title="Download a full PDF report with the cluster timeline chart">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                                Export PDF
+                            </button>
+                        </div>
+                        <div id="aiSummary" style="display:none; background:linear-gradient(135deg, var(--accent-muted), rgba(147,51,234,0.08)); border:1px solid var(--accent); border-radius:12px; padding:14px 16px; margin-bottom:14px;">
+                            <div style="display:flex; align-items:center; gap:8px; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.4px; color:var(--accent); margin-bottom:6px;">
+                                <span>AI Summary</span>
+                            </div>
+                            <div id="aiSummaryText" style="font-size:13.5px; line-height:1.6; color:var(--text-primary);">Generating&#8230;</div>
+                        </div>
+
+                        <!-- ADDITIVE: self-supervised alert banner - most-visible signal, shown first, above everything else -->
+                        <div id="noveltyAlert" style="display:none;"></div>
+
+                        <div id="summary"></div>
+
+                        <!-- ADDITIVE: self-supervised anomaly score card, alongside (not replacing) the cluster summary above -->
+                        <div id="noveltySummary" style="display:none;"></div>
+
+                        <!-- ADDITIVE: self-supervised score trend, one line chart per side -->
+
+                        <!-- ADDITIVE: Health Map - "same to same" layout as Task 3's reference
+                             dashboard (New task/Task 3 .../self-supervised-anomaly-monitor.html),
+                             embedded directly on this page (not a separate route), wired to this
+                             machine's own already-loaded ops and real VAE latent coordinates. -->
+                        <div id="healthMapSection" class="nm-wrap" style="display:none;"></div>
+
+                        <!-- Each side's own color-band timeline sits directly above that
+                             SAME side's signature-per-band strip, so the two stay paired -
+                             Side A's timeline+strip as one group, then Side B's below it. -->
+                        <div id="timelineView">
+                            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">
+                                Continuous band per side &#8212; each colored segment = one operation's cluster, held until the next operation. Hover for cluster details; click a segment to view its current/voltage waveform.
+                            </div>
+
+                            <div id="timelineA" style="width:100%; min-height:90px;"></div>
+                            <!-- ADDITIVE: severity (self-supervised) band, directly under the cluster band above -->
+                            <div id="noveltyTimelineA" style="width:100%; min-height:50px;"></div>
+                            <div id="gridA" style="margin-top:6px;"></div>
+                            <!-- ADDITIVE: click a cluster chip/band above -> that cluster's operations plot right here, in place -->
+                            <div id="clusterOpsDetailA" class="card" style="display:none; margin:10px 0 22px;"></div>
+
+                            <div id="timelineB" style="width:100%; min-height:90px;"></div>
+                            <div id="noveltyTimelineB" style="width:100%; min-height:50px;"></div>
+                            <div id="gridB" style="margin-top:6px;"></div>
+                            <div id="clusterOpsDetailB" class="card" style="display:none; margin-top:10px;"></div>
+                        </div>
+
+                        <details style="margin-top:8px; font-size:12px;">
+                            <summary style="cursor:pointer; color:var(--text-secondary); font-weight:700;">Cluster code &#8212; what it means</summary>
+                            <div style="margin-top:8px; color:var(--text-secondary); line-height:1.7;">
+                                <b>1st letter</b> &#8212; <b>T</b> = TWS, <b>I</b> = IRS &nbsp;&#183;&nbsp;
+                                <b>2nd letter</b> &#8212; <b>G</b> = Good, <b>B</b> = Bad, <b>M</b> = Medium &nbsp;&#183;&nbsp;
+                                <b>trailing number</b> = cluster number.<br>
+                                <code>I0</code> / <code>T0</code> is a special reserved code, not "no letter" &#8212; it means <b>Obstruction</b>
+                                (a mechanical blockage/jam during the throw), one of the known point-machine fault types.<br>
+                                Example: <code>IB17</code> = IRS &#183; Bad &#183; #17 &nbsp;|&nbsp; <code>TG3</code> = TWS &#183; Good &#183; #3 &nbsp;|&nbsp; <code>T0</code> = TWS &#183; Obstruction.
+                                (Any leading <code>NORMAL/ABNORMAL</code> label in the raw data is stripped &#8212; only the cluster code is shown.)<br>
+                                <b>Colors</b> follow this same quality letter &#8212; every <b>Good</b> cluster is a shade of green, every <b>Medium</b> a shade of amber, every <b>Bad</b> a shade of red (each cluster number gets its own shade within that family).
+                            </div>
+                        </details>
+                        <!-- ADDITIVE: explains the new self-supervised score alongside the existing cluster-code legend above -->
+                        <details style="margin-top:8px; font-size:12px;">
+                            <summary style="cursor:pointer; color:var(--text-secondary); font-weight:700;">Self-supervised anomaly score &#8212; what it means (new)</summary>
+                            <div style="margin-top:8px; color:var(--text-secondary); line-height:1.7;">
+                                A separate, additive signal from an autoencoder trained ONLY on this machine's own normal-looking
+                                current shapes (no fault labels, no cluster names) &#8212; a 0-100 score per operation, based on how
+                                hard that operation's shape is to reconstruct vs. this machine's own recent history.
+                                <span class="sev-pill pill-normal">normal</span> &lt; 35 &#183;
+                                <span class="sev-pill pill-watch">watch</span> 35-70 &#183;
+                                <span class="sev-pill pill-anomaly">anomaly</span> &gt; 70 &#183;
+                                <span class="sev-pill pill-unknown">unscored</span> not enough history yet for this machine/direction.
+                                This score only detects deviation &#8212; it does not diagnose a fault type (that's what the cluster code above is for).
+                            </div>
+                        </details>
+                        <div id="detail" style="display:none; margin-top:14px;"></div>
+
+                        <!-- ADDITIVE: always-visible "how to read this" band at the very
+                             end of the page - a plain-language walkthrough for a first-time
+                             or non-technical viewer, not another collapsed <details>. -->
+                        <div class="card" style="margin-top:18px; border-left:4px solid var(--accent); background:linear-gradient(135deg, var(--accent-muted), var(--bg-card));">
+                            <div class="card-title" style="text-transform:none; font-size:15px; color:var(--text-primary);">
+                                <span>&#128214; How to Read This Report</span>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.65; color:var(--text-secondary);">
+                                <div>
+                                    <b style="color:var(--text-primary);">1. Start with the alert banner at the top.</b>
+                                    It tells you in plain words whether this machine needs a look, and links straight to the
+                                    worst cluster - that is the fastest path to "is something wrong?".
+                                </div>
+                                <div>
+                                    <b style="color:var(--text-primary);">2. The colored band under each machine's title is a timeline.</b>
+                                    Each colored segment is one operation's cluster, held until the next operation - hover any
+                                    segment for details, click it to plot that operation's current/voltage waveform below.
+                                    <span class="chip" style="margin-left:4px;"><span class="dot" style="background:#16a34a;"></span>Green = Good</span>
+                                    <span class="chip"><span class="dot" style="background:#ca8a04;"></span>Amber = Medium</span>
+                                    <span class="chip"><span class="dot" style="background:#dc2626;"></span>Red = Bad / Obstruction</span>
+                                </div>
+                                <div>
+                                    <b style="color:var(--text-primary);">3. The cluster chips (e.g. "TG3", "T0") group similar-shaped operations.</b>
+                                    Letter 1 = wave type (T/I), letter 2 = quality (G=Good, B=Bad, M=Medium), the number just
+                                    tells clusters of the same quality apart. <code>T0</code>/<code>I0</code> is a special code
+                                    meaning <b>Obstruction</b>. Click any chip to see every operation in that cluster.
+                                </div>
+                                <div>
+                                    <b style="color:var(--text-primary);">4. The self-supervised score (0-100) is a second, independent opinion.</b>
+                                    It does not know about clusters or fault names - it just learns what "normal" looks like for
+                                    this exact machine, then flags operations whose shape looks unusual compared to that machine's
+                                    own history. You will see it marked three ways, not just by color, so it is still clear on a
+                                    printout or for anyone who has trouble telling colors apart:
+                                    <span class="sev-pill pill-normal" style="margin-left:4px;">normal</span> = looks like usual behavior &#183;
+                                    <span class="sev-pill pill-watch">watch</span> = mildly unusual, worth keeping an eye on &#183;
+                                    <span class="sev-pill pill-anomaly">anomaly</span> = clearly different from this machine's history.
+                                    <b>Anomaly means different, not broken</b> - a re-adjusted machine or a weather change can score
+                                    high too, so always confirm before acting; nothing on this page takes any action by itself.
+                                    Each score also shows which model version produced it and how old its training/baseline is -
+                                    an amber warning there means that particular score deserves extra scrutiny, not automatic trust.
+                                </div>
+                                <div>
+                                    <b style="color:var(--text-primary);">5. A flagged score is never the end of the story - it is routed onward.</b>
+                                    Think of it as a 4-step relay, shown near the score and again in the Health Map below:
+                                    <span class="chip" style="margin-left:4px;">detect (this score)</span><span style="color:var(--text-muted);">&#8594;</span>
+                                    <span class="chip">name (CNN classifier)</span><span style="color:var(--text-muted);">&#8594;</span>
+                                    <span class="chip">confirm (RDSO rules)</span><span style="color:var(--text-muted);">&#8594;</span>
+                                    <span class="chip">human review</span>.
+                                    This page only ever does step 1 - it spots that something looks different and raises a hand;
+                                    naming the exact fault and deciding what to do about it always stays a separate, human-checked step.
+                                </div>
+                                <div>
+                                    <b style="color:var(--text-primary);">6. The "Health Map" panel is the same score, drawn as a picture instead of a number.</b>
+                                    Each dot is one real operation; dots that cluster tightly together are this machine's learned
+                                    "normal" - the further a dot sits from that cluster, the higher its score. The small gauge next
+                                    to it shows the score for whichever dot you last clicked ("focused"), the line chart shows the
+                                    last several operations' scores over time (a rising line is an early warning, before anything
+                                    crosses into "anomaly"), and the list below that is the same operations as a simple feed you can
+                                    click through. The <b>sensitivity slider</b> only changes how strict the grading is when looking
+                                    back at this same real data - it never changes the data itself or re-runs anything live.
+                                </div>
+                                <div>
+                                    <b style="color:var(--text-primary);">7. Click anything to dig deeper.</b>
+                                    A band segment, a cluster chip, a dot on the Health Map, or a point on the score trend chart all
+                                    open that exact operation's current/voltage waveform right below where you clicked - no need to
+                                    scroll away. Once opened, you will also see a short "why" line explaining that one operation's
+                                    score: how many times worse than usual its error was, the nearest already-labelled cluster to it,
+                                    and (once there is enough history for this machine) whether it has been drifting.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="empty2" style="color:var(--text-muted); font-size:13px; padding:8px 0;">
+                        Click "Analyze Last 30 Days".
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-box" id="toastBox"></div>
+</div>
+<script>
+    var PMC_ENDPOINTS = {
+        sites: '@Url.Action("GetSites", "PointMachineClustering", new { area = "FRS25" })',
+        liveValue: '@Url.Action("GetLiveValue", "PointMachineClustering", new { area = "FRS25" })',
+        clusterCache: '@Url.Action("GetClusterCache", "PointMachineClustering", new { area = "FRS25" })',
+        clusterCachePost: '@Url.Action("PostClusterCache", "PointMachineClustering", new { area = "FRS25" })',
+        clusterSummary: '@Url.Action("PostClusterSummary", "PointMachineClustering", new { area = "FRS25" })',
+        refreshLive: '@Url.Action("PostRefreshLive", "PointMachineClustering", new { area = "FRS25" })',
+        refreshCustomRange: '@Url.Action("PostRefreshCustomRange", "PointMachineClustering", new { area = "FRS25" })'
+    };
+</script>
+<script>
+        const S = { sites: [], pointMachines: [], selectedAsset: null, currentSiteId: null, ops: [], colorMap: {}, shadeIndex: {}, charts: {}, timelineShapes: { A: [], B: [] }, trendFilter: { a: null, b: null } };
+
+        // \u2500\u2500 ADDITIVE: collapsible/resizable sidebar drawer, ported from
+        // pm_operation_combined.html's sidebar (same collapse-to-64px-rail +
+        // drag-resize behavior, just for this page's single sidebar instead
+        // of that file's 4 model tabs). \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        const SIDEBAR_WIDTH_KEY = 'pmcluster-sidebar-width';
+        function getSavedSidebarWidth() {
+            const saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10);
+            return (saved >= 180 && saved <= 420) ? saved : 300;
+        }
+        function applySidebarWidth(px) {
+            const sidebar = document.getElementById('sidebarEl');
+            if (!sidebar) return;
+            sidebar.style.flexBasis = px + 'px';
+            sidebar.style.width = px + 'px';
+        }
+        function toggleSidebar(forceCollapsed) {
+            const sidebar = document.getElementById('sidebarEl');
+            const toggleBtn = document.getElementById('sidebarToggleBtn');
+            if (!sidebar) return;
+            const isCollapsed = typeof forceCollapsed === 'boolean'
+                ? (sidebar.classList.toggle('collapsed', forceCollapsed), forceCollapsed)
+                : sidebar.classList.toggle('collapsed');
+            if (toggleBtn) {
+                toggleBtn.title = isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
+                toggleBtn.classList.toggle('collapsed-active', isCollapsed);
+            }
+            applySidebarWidth(isCollapsed ? 64 : getSavedSidebarWidth());
+            setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+        }
+        function updateCompactSidebar() {
+            const badge = document.getElementById('compactPmBadge');
+            if (badge) {
+                const pm = S.selectedAsset;
+                badge.textContent = pm ? (pm.assetName || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || '?' : '\u2013';
+                badge.title = pm ? pm.assetName : 'No point machine selected';
+            }
+            const quickIcon = document.getElementById('compactModeQuick');
+            const customIcon = document.getElementById('compactModeCustom');
+            if (quickIcon && customIcon) {
+                const isCustom = S.clusterMode === 'custom';
+                quickIcon.style.display = isCustom ? 'none' : 'block';
+                customIcon.style.display = isCustom ? 'block' : 'none';
+            }
+        }
+        (function setupSidebarResizer() {
+            const sidebar = document.getElementById('sidebarEl');
+            const handle = document.getElementById('sidebarResizer');
+            if (!sidebar || !handle) return;
+            applySidebarWidth(getSavedSidebarWidth());
+            let dragging = false, startX = 0, startWidth = 0;
+            const clientX = e => (e.touches ? e.touches[0].clientX : e.clientX);
+            const onDown = e => {
+                if (sidebar.classList.contains('collapsed')) return;
+                dragging = true;
+                startX = clientX(e);
+                startWidth = sidebar.getBoundingClientRect().width;
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                e.preventDefault();
+            };
+            const onMove = e => {
+                if (!dragging) return;
+                const next = Math.max(180, Math.min(420, startWidth + (clientX(e) - startX)));
+                applySidebarWidth(next);
+            };
+            const onUp = () => {
+                if (!dragging) return;
+                dragging = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                localStorage.setItem(SIDEBAR_WIDTH_KEY, Math.round(sidebar.getBoundingClientRect().width));
+                window.dispatchEvent(new Event('resize'));
+            };
+            handle.addEventListener('mousedown', onDown);
+            handle.addEventListener('touchstart', onDown, { passive: false });
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('mouseup', onUp);
+            window.addEventListener('touchend', onUp);
+        })();
+        // Collapsed rail -> click anywhere in it expands; expanded -> clicking
+        // blank sidebar space (not a real control) collapses it.
+        document.addEventListener('click', (e) => {
+            const sidebar = document.getElementById('sidebarEl');
+            const toggleBtn = document.getElementById('sidebarToggleBtn');
+            if (!sidebar || (toggleBtn && toggleBtn.contains(e.target))) return;
+            if (sidebar.classList.contains('collapsed')) {
+                if (sidebar.contains(e.target)) toggleSidebar(false);
+                return;
+            }
+            if (!sidebar.contains(e.target)) return;
+            let el = e.target;
+            while (el && el !== sidebar) {
+                if (['SELECT', 'INPUT', 'BUTTON', 'A', 'TEXTAREA'].includes(el.tagName) || el.hasAttribute('onclick')) return;
+                el = el.parentElement;
+            }
+            toggleSidebar(true);
+        });
+
+        // Color by cluster QUALITY (code's 2nd letter: G=Good, M=Medium, B=Bad -
+        // see the "Cluster code" legend below) so condition is visible at a
+        // glance: greens = good, ambers = medium, reds = bad. Each cluster still
+        // gets its own shade within that family so individual clusters stay
+        // distinguishable. T0/I0 ("Obstruction") and anything unrecognized fall
+        // back to a neutral gray family.
+        const QUALITY_SHADES = {
+            G: ['#15803d', '#16a34a', '#22c55e', '#4ade80', '#059669', '#10b981', '#65a30d', '#84cc16'],
+            M: ['#b45309', '#d97706', '#f59e0b', '#eab308', '#ca8a04', '#facc15', '#f97316', '#ea580c'],
+            B: ['#b91c1c', '#dc2626', '#ef4444', '#e11d48', '#be123c', '#f43f5e', '#9f1239', '#f87171'],
+        };
+        const NEUTRAL_SHADES = ['#64748b', '#475569', '#94a3b8', '#334155'];
+
+        function colorFor(cluster) {
+            if (cluster in S.colorMap) return S.colorMap[cluster];
+            const m = String(cluster).trim().toUpperCase().match(/^([TI])([GBM]?)(\d+)$/);
+            const q = m ? m[2] : '';
+            const shades = QUALITY_SHADES[q] || NEUTRAL_SHADES;
+            const bucket = q || '_neutral';
+            const i = S.shadeIndex[bucket] || 0;
+            S.shadeIndex[bucket] = i + 1;
+            S.colorMap[cluster] = shades[i % shades.length];
+            return S.colorMap[cluster];
+        }
+
+        function toast(msg, type) {
+            const box = document.getElementById('toastBox');
+            const el = document.createElement('div');
+            el.className = 'toast ' + (type || '');
+            el.textContent = msg;
+            box.appendChild(el);
+            setTimeout(() => el.remove(), 4000);
+        }
+
+        function toLocalISO(d) { return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+
+        // \u2500\u2500 SITES / POINT MACHINES (same endpoints as operation page) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        async function loadSites() {
+            try {
+                const r = await fetch(PMC_ENDPOINTS.sites);
+                const sites = await r.json();
+                S.sites = sites;
+                const sel = document.getElementById('siteSelect');
+                sel.innerHTML = '<option value="">-- Select Site --</option>';
+                sites.sort((a, b) => (a.SiteName || '').localeCompare(b.SiteName || ''));
+                sites.forEach(s => {
+                    const o = document.createElement('option');
+                    o.value = s.SiteId; o.textContent = `${s.SiteName} (${s.SiteId})`;
+                    sel.appendChild(o);
+                });
+            } catch (e) { toast('Load sites failed: ' + e.message, 'error'); }
+        }
+        loadSites();
+
+        // ADDITIVE: auto-fetch point machines as soon as a site is picked -
+        // same pattern as pm_operation_combined.html's onSiteChange().
+        function onSiteSelectChange() {
+            if (document.getElementById('siteSelect').value) fetchPointMachines();
+        }
+
+        async function fetchPointMachines() {
+            const siteId = document.getElementById('siteSelect').value;
+            if (!siteId) return toast('Select a site first', 'error');
+            S.currentSiteId = siteId;
+            const btn = document.getElementById('fetchPmBtn');
+            btn.disabled = true;
+            try {
+                const r = await fetch(`${PMC_ENDPOINTS.liveValue}?SiteId=${encodeURIComponent(siteId)}`);
+                const tags = await r.json();
+                if (!Array.isArray(tags)) throw new Error('Unexpected response');
+                const assets = new Map();
+                tags.forEach(t => {
+                    if (String(t.AssetTypeId) !== '3') return;   // Point Machine asset type
+                    if (!assets.has(t.AssetId)) assets.set(t.AssetId, { assetId: t.AssetId, assetName: t.AssetName || `Asset ${t.AssetId}`, tags: [] });
+                    assets.get(t.AssetId).tags.push(t);
+                });
+                S.pointMachines = Array.from(assets.values());
+                renderPmList();
+                toast(`${S.pointMachines.length} point machines found`, 'success');
+            } catch (e) { toast('Fetch failed: ' + e.message, 'error'); }
+            btn.disabled = false;
+        }
+
+        function renderPmList() {
+            const list = document.getElementById('pmList');
+            document.getElementById('pmCount').textContent = S.pointMachines.length;
+            renderCustomPmSelect();
+            if (!S.pointMachines.length) { list.innerHTML = '<div class="empty-msg">No point machines for this site.</div>'; return; }
+            list.innerHTML = S.pointMachines.map((pm, i) =>
+                `<div class="pm-item ${S.selectedAsset && S.selectedAsset.assetId === pm.assetId ? 'active' : ''}" onclick="selectPointMachine(${i})">
+                    <div class="pm-name">${pm.assetName}</div>
+                    <div class="pm-meta">Asset ID ${pm.assetId} &middot; ${pm.tags.length} tags</div>
+                </div>`).join('');
+        }
+
+        function selectPointMachine(idx) {
+            S.selectedAsset = S.pointMachines[idx];
+            renderPmList();
+            updateCompactSidebar();
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('mainView').style.display = 'flex';
+            document.getElementById('assetTitle').textContent = S.selectedAsset.assetName;
+            document.getElementById('assetBreadcrumb').textContent = S.selectedAsset.assetName;
+            document.getElementById('assetSub').textContent = `Asset ID ${S.selectedAsset.assetId}`;
+            const rt = document.getElementById('refTime');
+            if (!rt.value) rt.value = toLocalISO(new Date());
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('detail').style.display = 'none';
+            document.getElementById('clusterSub').textContent = 'Last 30 days';
+            analyzeClusters();   // auto-run on select
+        }
+
+        // \u2500\u2500 SIGNAL PARSING (for click\u2192waveform) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function parseArrayValue(raw) {
+            if (raw == null) return [];
+            if (Array.isArray(raw)) {
+                if (raw.length === 1 && typeof raw[0] === 'string') return parseArrayValue(raw[0]);
+                return raw.map(Number).filter(Number.isFinite);
+            }
+            if (typeof raw === 'string') {
+                let s = raw.trim();
+                if (s.startsWith('[')) s = s.slice(1);
+                if (s.endsWith(']')) s = s.slice(0, -1);
+                s = s.replace(/[\r\n]+/g, '');
+                if (s.includes(',')) return s.split(',').map(v => parseFloat(v)).filter(Number.isFinite);
+                try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(Number).filter(Number.isFinite) : []; }
+                catch (e) { const n = parseFloat(s); return Number.isFinite(n) ? [n] : []; }
+            }
+            return [];
+        }
+
+        function extractPmj(rec) {
+            let pmj = rec.PointMachineJson;
+            if (typeof pmj === 'string') { try { pmj = JSON.parse(pmj); } catch (e) { pmj = null; } }
+            if (Array.isArray(pmj)) pmj = pmj[0];
+            return (pmj && typeof pmj === 'object') ? pmj : null;
+        }
+
+        // \u2500\u2500 CLUSTER STRING PARSER \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Do formats aate hain:
+        //   "TB5 - 58.53 - 87.54% -- Top 3 close clusters: TB5 (58.53), ..."
+        //   "ABNORMAL (100.00) - I0 - 55.51 - 100.00% -- Top 3 close clusters: I0 (55.51), ..."
+        // Doosre mein leading "NORMAL/ABNORMAL (xx.xx)" ek EXTRA prefix hai \u2014 usko
+        // strip karke sirf code (I0 / TB5 / IB17) rakhte hain.
+        function parseCluster(str) {
+            if (!str || typeof str !== 'string') return null;
+            const parts = str.split('--');
+            let head = parts[0].trim().split(/\s+-\s+/).map(s => s.trim());
+            if (head.length && /^(NORMAL|ABNORMAL)\b/i.test(head[0])) head = head.slice(1);
+            const cluster = (head[0] || '').trim();
+            if (!cluster) return null;
+            const distance = head.length > 1 ? parseFloat(head[1]) : null;
+            const match = head.length > 2 ? parseFloat(head[2].replace('%', '')) : null;
+            const top3 = [];
+            if (parts.length > 1) {
+                const after = parts[1].replace(/^[^:]*:/, '');
+                const re = /([A-Za-z0-9]+)\s*\(\s*([\d.]+)\s*\)/g;
+                let m;
+                while ((m = re.exec(after))) top3.push({ id: m[1], dist: parseFloat(m[2]) });
+            }
+            return { cluster, distance, match, top3, raw: str };
+        }
+
+        function expandCode(code) {
+            if (!code) return '';
+            const c = code.trim().toUpperCase();
+            if (c === 'T0' || c === 'I0') return (c[0] === 'T' ? 'TWS' : 'IRS') + ' \u00b7 Obstruction';
+            const m = code.match(/^([TI])([GBM]?)(\d+)$/i);
+            if (!m) return '';
+            const wave = m[1].toUpperCase() === 'T' ? 'TWS' : 'IRS';
+            const q = { G: 'Good', B: 'Bad', M: 'Medium' }[m[2].toUpperCase()] || '';
+            return wave + (q ? ' \u00b7 ' + q : '') + ' \u00b7 #' + m[3];
+        }
+
+        // \u2500\u2500 ONE shared severity system (Part A #1): color + label + shape,
+        // used EVERYWHERE on this page - the main badges/Plotly charts/grid
+        // AND the Health Map below (which used to have its own separate
+        // NM_SEV_COLOR with a different "normal" color - gray instead of this
+        // page's established green - now unified onto this single source). \u2500\u2500
+        const SEV = {
+            normal: { color: '#16a34a', glyph: '\u25cf', label: 'Normal' },
+            watch: { color: '#ca8a04', glyph: '\u25b2', label: 'Watch' },
+            anomaly: { color: '#dc2626', glyph: '\u25a0', label: 'Anomaly' },
+            unknown: { color: '#94a3b8', glyph: '\u25cb', label: 'Unscored' },
+        };
+        function sevColor(sev) { return (SEV[sev] || SEV.unknown).color; }
+        function sevGlyph(sev) { return (SEV[sev] || SEV.unknown).glyph; }
+        function sevLabel(sev) { return (SEV[sev] || SEV.unknown).label; }
+        function severityColor(sev) { return sevColor(sev); } // kept: still called a few places below
+
+        function noveltySideSummary(ops, side) {
+            const scoreKey = 'novelty_score_' + side, sevKey = 'novelty_severity_' + side;
+            const scores = ops.map(o => o[scoreKey]).filter(v => v != null);
+            const counts = { normal: 0, watch: 0, anomaly: 0, unknown: 0 };
+            ops.forEach(o => {
+                const sev = o[sevKey] || 'unknown';
+                counts[sev] = (counts[sev] || 0) + 1;
+            });
+            return {
+                total: ops.length,
+                avg: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null,
+                worst: scores.length ? Math.max(...scores) : null,
+                counts,
+            };
+        }
+
+        function noveltySideBlock(label, s, meta) {
+            const sideLetter = label.toLowerCase();
+            // ADDITIVE: each pill is clickable - jumps to the Health Map below
+            // and focuses the latest operation of that severity on that side.
+            const pill = (sev, count, text) => {
+                const active = S.trendFilter[sideLetter] === sev;
+                const ring = active ? 'box-shadow:0 0 0 2px currentColor;' : '';
+                return `<span class="sev-pill pill-${sev}" style="cursor:pointer; ${ring}" title="Click to focus a ${sev} operation in the Health Map below" onclick="filterNoveltyTrend('${sideLetter}','${sev}')">${count} ${text}</span>`;
+            };
+            const abnormal = s.counts.watch + s.counts.anomaly;
+            return `<div style="flex:1; min-width:280px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                <div style="font-size:15px; font-weight:800; margin-bottom:10px;">Machine ${label}</div>
+                <div class="novelty-stat-row" style="margin-bottom:8px;">
+                    <div class="novelty-stat"><div class="v">${s.total}</div><div class="l">Total ops</div></div>
+                    <div class="novelty-stat"><div class="v sev-anomaly">${abnormal}</div><div class="l">Abnormal</div></div>
+                    <div class="novelty-stat"><div class="v sev-watch">${s.counts.watch}</div><div class="l">Watch</div></div>
+                    <div class="novelty-stat"><div class="v">${s.worst != null ? s.worst : '\u2014'}</div><div class="l">Worst score</div></div>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    ${pill('normal', s.counts.normal, 'normal')}
+                    ${pill('watch', s.counts.watch, 'watch')}
+                    ${pill('anomaly', s.counts.anomaly, 'anomaly')}
+                    ${s.counts.unknown ? pill('unknown', s.counts.unknown, 'unscored') : ''}
+                </div>
+                ${meta ? noveltyMetaBlock(meta) : ''}
+            </div>`;
+        }
+
+        // \u2500\u2500 ADDITIVE: click a severity pill above -> jump to + focus that
+        // severity's latest operation in the Health Map below (the dedicated
+        // trend chart this used to redraw was removed - the Health Map's own
+        // score-over-time panel supersedes it) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function filterNoveltyTrend(sideLetter, sev) {
+            S.trendFilter[sideLetter] = (S.trendFilter[sideLetter] === sev) ? null : sev;
+            renderNoveltySummary(S.ops);   // re-render pills so the active one gets its highlight ring
+            const box = document.getElementById('healthMapSection');
+            if (!box || box.style.display === 'none') return;
+            nmSetSide(sideLetter);
+            const active = S.trendFilter[sideLetter];
+            if (active) {
+                const match = nmScoredOps().filter(p => nmSeverityAt(p.ratio) === active);
+                if (match.length) { NM.focusedIdx = match[match.length - 1].i; nmRenderAll(); }
+            }
+            box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // \u2500\u2500 ADDITIVE (Part A #3/#4): one model/baseline summary per side, read
+        // straight off the already-fetched ops - every op already carries its
+        // own novelty_model_version_x/novelty_model_trained_at_x/
+        // novelty_normal_baseline_version_x (Spec \u00a75.1 fields, from
+        // cache_refresh.py). A side can show 2 distinct models here (Normal-
+        // direction ops use one VAE, Reverse-direction ops use another). \u2500\u2500\u2500\u2500\u2500\u2500
+        function noveltyMetaSummary(ops, side) {
+            const verKey = 'novelty_model_version_' + side, atKey = 'novelty_model_trained_at_' + side;
+            const baseKey = 'novelty_normal_baseline_version_' + side;
+            const seen = new Map();
+            let minCount = null;
+            ops.forEach(o => {
+                const ver = o[verKey];
+                if (!ver || seen.has(ver)) {
+                    if (ver) return;
+                } else {
+                    seen.set(ver, o[atKey] || null);
+                }
+                const m = (o[baseKey] || '').match(/\(n=(\d+)\)/);
+                if (m) {
+                    const n = parseInt(m[1], 10);
+                    if (minCount == null || n < minCount) minCount = n;
+                }
+            });
+            const models = Array.from(seen.entries()).map(([version, trainedAt]) => {
+                const known = trainedAt && trainedAt !== 'unknown';
+                const ageDays = known ? Math.floor((Date.now() - new Date(trainedAt + 'T00:00:00')) / 86400000) : null;
+                return { version, trainedAt, ageDays, stale: ageDays != null && ageDays > 90 };
+            });
+            // Part B final step #1: shadow-baseline quality, read from any
+            // op that has it (most machines won't, until the server-side
+            // one-time build command runs) - shown so low_confidence/fallback
+            // is visible on the page, not just inside the baseline JSON file.
+            let shadowQuality = null;
+            for (const o of ops) {
+                const src = o['novelty_baseline_source_' + side];
+                if (src) { shadowQuality = { source: src, lowConfidence: o['novelty_baseline_low_confidence_' + side] }; break; }
+            }
+            return { models, minBaselineOps: minCount, baselineThin: minCount != null && minCount < 8, shadowQuality };
+        }
+
+        function noveltyMetaBlock(meta) {
+            if (!meta.models.length) return '';
+            const modelLines = meta.models.map(m => {
+                const ageTxt = m.ageDays != null ? `${m.ageDays}d old` : 'age unknown';
+                const warn = m.stale ? `<span class="model-stale-warn">\u26a0 baseline ${ageTxt} \u2014 confidence reduced</span>` : '';
+                return `<div><span class="mono">${m.version}</span> \u00b7 trained ${m.trainedAt || '\u2014'} (${ageTxt}) ${warn}</div>`;
+            }).join('');
+            const baselineWarn = meta.baselineThin
+                ? `<div class="model-stale-warn" style="margin-top:4px;">\u26a0 baseline built from only ${meta.minBaselineOps} ops this window \u2014 below the recommended minimum (8), severity may be unreliable</div>`
+                : '';
+            const sq = meta.shadowQuality;
+            const shadowLine = sq
+                ? `<div style="margin-top:4px;">Fixed baseline (not yet displayed): <span class="mono">${sq.source}</span>${sq.lowConfidence ? ' <span class="model-stale-warn">\u26a0 low confidence</span>' : ''}</div>`
+                : '';
+            return `<div class="model-meta-row">${modelLines}${baselineWarn}${shadowLine}</div>`;
+        }
+
+        // \u2500\u2500 ADDITIVE (Part A #6): detect -> name -> confirm -> human handoff,
+        // shown near the main score section too (previously only inside the
+        // Health Map's own note panel below) - nothing here suggests automatic
+        // action on the asset, every step before "human review" is advisory. \u2500\u2500
+        function handoffRow() {
+            return `<div class="handoff-row">
+                <span class="handoff-chip active">detect (this score)</span><span class="handoff-arrow">\u2192</span>
+                <span class="handoff-chip">name (CNN classifier)</span><span class="handoff-arrow">\u2192</span>
+                <span class="handoff-chip">confirm (RDSO rules)</span><span class="handoff-arrow">\u2192</span>
+                <span class="handoff-chip">human review (safety cap)</span>
+            </div>`;
+        }
+
+        function renderNoveltySummary(ops) {
+            const box = document.getElementById('noveltySummary');
+            const hasAny = ops.some(o => o.novelty_score_a != null || o.novelty_score_b != null);
+            if (!hasAny) { box.style.display = 'none'; box.innerHTML = ''; return; }
+            const sA = noveltySideSummary(ops, 'a'), sB = noveltySideSummary(ops, 'b');
+            const metaA = noveltyMetaSummary(ops, 'a'), metaB = noveltyMetaSummary(ops, 'b');
+            box.style.display = 'block';
+            box.innerHTML = `<div class="card" style="margin-bottom:14px; background:var(--bg-tertiary);">
+                <div class="card-title"><span>Self-Supervised Anomaly Score (new, additive)</span></div>
+                <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                    ${noveltySideBlock('A', sA, metaA)}
+                    ${noveltySideBlock('B', sB, metaB)}
+                </div>
+                ${handoffRow()}
+            </div>`;
+        }
+
+        // \u2500\u2500 ADDITIVE #1: alert banner - the loudest, first-seen signal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // ADDITIVE helpers: the worst-scoring operation for a side, and which
+        // cluster code carries the most watch/anomaly ops on that side - what
+        // actually makes an alert banner "detailed" instead of just a count.
+        function noveltyWorstOp(ops, sideLetter) {
+            let worst = null;
+            ops.forEach(o => {
+                const score = o['novelty_score_' + sideLetter];
+                if (score != null && (!worst || score > worst['novelty_score_' + sideLetter])) worst = o;
+            });
+            return worst;
+        }
+
+        function topAbnormalCluster(ops, side, sideLetter) {
+            const clusterKey = side === 'A' ? 'clusterA' : 'clusterB';
+            const counts = {};
+            ops.forEach(o => {
+                const sev = o['novelty_severity_' + sideLetter];
+                if ((sev === 'anomaly' || sev === 'watch') && o[clusterKey]) {
+                    const c = o[clusterKey].cluster;
+                    counts[c] = (counts[c] || 0) + 1;
+                }
+            });
+            let top = null, topCount = 0;
+            Object.entries(counts).forEach(([c, n]) => { if (n > topCount) { top = c; topCount = n; } });
+            return top ? { code: top, count: topCount } : null;
+        }
+
+        function renderNoveltyAlert(ops) {
+            const box = document.getElementById('noveltyAlert');
+            const hasAny = ops.some(o => o.novelty_score_a != null || o.novelty_score_b != null);
+            if (!hasAny) { box.style.display = 'none'; box.innerHTML = ''; return; }
+            const sA = noveltySideSummary(ops, 'a'), sB = noveltySideSummary(ops, 'b');
+            const rows = [];
+            [['A', sA], ['B', sB]].forEach(([label, s]) => {
+                const sideLetter = label.toLowerCase();
+                if (s.counts.anomaly === 0 && s.counts.watch === 0) return;
+                const level = s.counts.anomaly > 0 ? 'anomaly' : 'watch';
+                const abnormalCount = s.counts.anomaly + s.counts.watch;
+                const scoredTotal = s.counts.normal + s.counts.watch + s.counts.anomaly;
+                const pct = scoredTotal ? Math.round(abnormalCount / scoredTotal * 100) : 0;
+                const worstOp = noveltyWorstOp(ops, sideLetter);
+                const topCluster = topAbnormalCluster(ops, label, sideLetter);
+                rows.push({ label, level, s, abnormalCount, pct, worstOp, topCluster, sideLetter });
+            });
+            if (!rows.length) {
+                box.style.display = 'block';
+                box.innerHTML = `<div class="card" style="margin-bottom:14px; border-left:4px solid #16a34a; background:#f0fdf4;">
+                    <b style="color:#16a34a;">\u2713 No anomalies detected</b> \u2014 both machines' current shapes matched their own recent normal, self-supervised score-wise.
+                </div>`;
+                return;
+            }
+            const worst = rows.some(r => r.level === 'anomaly') ? 'anomaly' : 'watch';
+            const color = worst === 'anomaly' ? '#dc2626' : '#ca8a04';
+            const bg = worst === 'anomaly' ? '#fef2f2' : '#fffbeb';
+            const icon = worst === 'anomaly' ? '\u26a0' : '\ud83d\udc41';
+            box.style.display = 'block';
+            box.innerHTML = `<div class="card" style="margin-bottom:14px; border-left:4px solid ${color}; background:${bg};">
+                <div style="font-weight:800; color:${color}; margin-bottom:8px;">${icon} This machine needs a look</div>
+                ${rows.map(r => `
+                    <div style="margin-bottom:${rows.length > 1 ? '10px' : '0'}; padding-bottom:${rows.length > 1 ? '10px' : '0'}; ${rows.length > 1 ? 'border-bottom:1px solid rgba(0,0,0,0.08);' : ''}">
+                        <div style="font-size:13.5px; margin-bottom:3px;">
+                            <b>Machine ${r.label}:</b> <b class="sev-${r.level}">${r.pct}%</b> of its recent operations (${r.abnormalCount} out of ${r.s.counts.normal + r.s.counts.watch + r.s.counts.anomaly}) looked unusual.
+                            The worst one scored <b>${r.s.worst}/100</b>${r.worstOp ? ` on ${r.worstOp.time.toLocaleDateString()}` : ''}.
+                        </div>
+                        ${r.topCluster ? `<div style="font-size:12.5px; color:var(--text-secondary);">Most of these happened in cluster <span class="chip" style="cursor:pointer; padding:1px 8px; font-size:11px;" onclick="showClusterOps('${r.label}','${r.topCluster.code.replace(/'/g, "\\'")}')"><span class="dot" style="background:${colorFor(r.topCluster.code)};"></span>${r.topCluster.code}</span> \u2014 click it to see those operations.</div>` : ''}
+                        <button class="btn" style="width:auto; margin-top:6px; padding:4px 10px; font-size:11.5px;" onclick="filterNoveltyTrend('${r.sideLetter}','${r.level}')">Show these in the Health Map \u2193</button>
+                    </div>`).join('')}
+            </div>`;
+        }
+
+        // \u2500\u2500 ADDITIVE #2: severity timeline (continuous band, colored by severity
+        // instead of cluster) - sits directly under each side's cluster timeline \u2500\u2500
+        function renderNoveltyTimelines(ops, xStart, xEnd) {
+            renderNoveltySideTimeline(ops, 'a', 'A', 'noveltyTimelineA', xStart, xEnd);
+            renderNoveltySideTimeline(ops, 'b', 'B', 'noveltyTimelineB', xStart, xEnd);
+        }
+
+        function renderNoveltySideTimeline(ops, sideLetter, label, elId, xStart, xEnd) {
+            const el = document.getElementById(elId);
+            const pts = ops.filter(o => o['novelty_score_' + sideLetter] != null);
+            if (!pts.length) { el.innerHTML = ''; return; }
+            const grid = 'rgba(0,0,0,0.08)';
+            const shapes = pts.map((p, i) => ({
+                type: 'rect', xref: 'x', yref: 'y', x0: p.time,
+                x1: (i + 1 < pts.length) ? pts[i + 1].time : (xEnd || p.time),
+                y0: 0.5, y1: 1.5, fillcolor: severityColor(p['novelty_severity_' + sideLetter]), line: { width: 0 }, layer: 'below',
+            }));
+            const x = [], y = [], colors = [], text = [];
+            pts.forEach(o => {
+                const score = o['novelty_score_' + sideLetter], sev = o['novelty_severity_' + sideLetter];
+                x.push(o.time); y.push(1); colors.push(severityColor(sev));
+                text.push(`<b>Self-supervised score</b> \u00b7 ${o.time.toLocaleString()}<br>Score: ${score} (${sev})`);
+            });
+            const data = [{
+                x, y, text, mode: 'markers', type: 'scatter', name: label,
+                marker: { color: colors, size: 12, opacity: 0.01 },
+                hovertemplate: '%{text}<extra></extra>',
+            }];
+            const layout = {
+                height: 50, margin: { l: 36, r: 20, t: 2, b: 18 },
+                paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#565b76', size: 10 }, shapes,
+                xaxis: { type: 'date', gridcolor: grid, range: xStart && xEnd ? [xStart, xEnd] : undefined, showticklabels: false },
+                yaxis: { tickmode: 'array', tickvals: [1], ticktext: ['score'], range: [0.5, 1.5], gridcolor: grid, fixedrange: true },
+                showlegend: false, hovermode: 'closest',
+            };
+            Plotly.newPlot(el, data, layout, { responsive: true, displaylogo: false });
+            el.removeAllListeners && el.removeAllListeners('plotly_click');
+            el.on('plotly_click', (ev) => {
+                const pt = ev.points && ev.points[0];
+                if (!pt) return;
+                const t = +new Date(pt.x);
+                let best = null;
+                pts.forEach(o => { const d = Math.abs(+o.time - t); if (!best || d < best.d) best = { o, d }; });
+                if (best) showDetail(best.o, label);
+            });
+        }
+
+        // \u2500\u2500 ADDITIVE: Health Map - "same to same" layout as Task 3's reference
+        // dashboard (self-supervised-anomaly-monitor.html), embedded right on
+        // this page using the SAME S.ops this whole page already loaded (no
+        // separate fetch, no separate route). Real VAE latent (novelty_x_*/
+        // novelty_y_*) and real ratio-based severity - the "sensitivity"
+        // slider recomputes severity live from each op's stored ratio, it
+        // never fakes a point's position. \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        const NM = { side: 'a', ops: [], focusedIdx: null, alertRatio: 8.0, watchRatio: 4.0 };
+        // shape marker for the Health Map's SVG points - circle/triangle/square,
+        // same severity->shape mapping as the .sev-pill::before glyphs above
+        function nmMarker(cx, cy, sev, r, dataI) {
+            const color = sevColor(sev);
+            const attrs = dataI != null ? ` data-i="${dataI}" style="cursor:pointer"` : '';
+            if (sev === 'watch') {
+                const h = r * 2.1;
+                const pts = `${cx},${cy - h * 0.6} ${cx - h * 0.55},${cy + h * 0.4} ${cx + h * 0.55},${cy + h * 0.4}`;
+                return `<polygon points="${pts}" fill="${color}" opacity="0.9"${attrs}/>`;
+            }
+            if (sev === 'anomaly') {
+                const s = r * 1.9;
+                return `<rect x="${cx - s / 2}" y="${cy - s / 2}" width="${s}" height="${s}" rx="1" fill="${color}" opacity="0.9"${attrs}/>`;
+            }
+            return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" opacity="${sev === 'unknown' ? 0.5 : 0.85}"${attrs}/>`;
+        }
+
+        function renderHealthMap(ops) {
+            const box = document.getElementById('healthMapSection');
+            const hasLatent = ops.some(o => o.novelty_x_a != null || o.novelty_x_b != null);
+            if (!hasLatent) { box.style.display = 'none'; box.innerHTML = ''; return; }
+            NM.ops = ops;
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div class="nm-head">
+                    <h3>\ud83d\udcc8 Health Map \u2014 self-supervised VAE latent space</h3>
+                    <div class="nm-watching"><span class="nm-pulse"></span>watching \u00b7 learns normal, flags deviation</div>
+                    <div class="nm-side-toggle">
+                        <button id="nmSideA" class="active" onclick="nmSetSide('a')">Side A</button>
+                        <button id="nmSideB" onclick="nmSetSide('b')">Side B</button>
+                    </div>
+                </div>
+                <div class="nm-grid">
+                    <div class="nm-panel nm-map">
+                        <h4>Each dot = one real operation (hover/click to focus)</h4>
+                        <svg id="nmMap" viewBox="0 0 520 360" width="100%" role="img" aria-label="Self-supervised VAE latent health map"></svg>
+                        <div class="nm-legend">
+                            <span><i style="color:#16a34a; font-size:11px;">\u25cf</i>normal</span>
+                            <span><i style="color:#ca8a04; font-size:11px;">\u25b2</i>watch</span>
+                            <span><i style="color:#dc2626; font-size:11px;">\u25a0</i>anomaly</span>
+                            <span><i class="nm-sw" style="background:#4f46e5"></i>focused</span>
+                        </div>
+                        <div class="nm-src">Real (x, y) from this wave/direction's trained ConvVAE - not simulated</div>
+                    </div>
+                    <div class="nm-panel nm-score">
+                        <h4>Anomaly score \u2014 focused operation</h4>
+                        <div class="nm-gwrap">
+                            <svg width="92" height="92" viewBox="0 0 108 108">
+                                <circle cx="54" cy="54" r="46" fill="none" stroke="var(--border)" stroke-width="9"/>
+                                <circle id="nmScoreArc" cx="54" cy="54" r="46" fill="none" stroke="var(--nm-amber)" stroke-width="9"
+                                    stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="289" transform="rotate(-90 54 54)"/>
+                                <text id="nmScoreTxt" x="54" y="52" text-anchor="middle" fill="var(--nm-ink)" font-size="24" class="mono" font-weight="500">\u2013</text>
+                                <text x="54" y="70" text-anchor="middle" fill="var(--nm-muted)" font-size="9">/ 100</text>
+                            </svg>
+                            <div class="nm-gnum">
+                                <span style="font-size:11.5px; color:var(--nm-muted);" id="nmFocusedTime">no operation focused</span><br>
+                                <span id="nmVerdict" class="nm-verdict nm-v-none">--</span>
+                            </div>
+                        </div>
+                        <p class="nm-scorehint">How far this operation sits from this machine's own learned normal - not a fault name.</p>
+                        <div class="explain-line" id="nmExplain" style="background:transparent; border-color:var(--nm-line); color:var(--nm-muted);"></div>
+                    </div>
+                    <div class="nm-panel nm-time">
+                        <h4>Score over recent operations</h4>
+                        <svg id="nmTchart" viewBox="0 0 460 150" width="100%" role="img" aria-label="Score over recent operations"></svg>
+                    </div>
+                    <div class="nm-panel nm-controls">
+                        <h4>Tune detection sensitivity</h4>
+                        <div class="nm-ctrl">
+                            <label>Sensitivity <b id="nmVSens">medium</b></label>
+                            <input type="range" id="nmSens" min="0" max="100" value="50" step="1">
+                            <div class="nm-tradeoff"><span style="color:var(--nm-muted)">fewer false alarms</span><span style="color:var(--nm-muted)">catch earlier</span></div>
+                        </div>
+                        <div class="nm-tradeoff"><span>Would flag at this setting</span><span class="mono" id="nmFp" style="font-weight:700;">\u2013</span></div>
+                        <button class="nm-reset" id="nmReset">Reset (ratio \u2265 8.0)</button>
+                        <div class="nm-src">Real recompute from each op's stored ratio - every point above actually re-grades</div>
+                    </div>
+                    <div class="nm-panel nm-feed">
+                        <h4>Recent operations</h4>
+                        <div class="nm-feedlist" id="nmFeed"></div>
+                    </div>
+                    <div class="nm-panel nm-note">
+                        <h4>What happens when an operation is flagged</h4>
+                        <div class="nm-row">
+                            <span>Self-supervised detection answers <b>"is this like normal?"</b> When an operation is flagged, it is <b>routed onward to be named and confirmed</b> \u2014 anomaly detection never diagnoses on its own, and never acts on a signalling asset without a human.</span>
+                        </div>
+                        <div class="nm-handoff">
+                            <span class="nm-chip cyan">anomaly flagged</span><span class="nm-arrow">\u2192</span>
+                            <span class="nm-chip">cluster: name the closest known pattern</span><span class="nm-arrow">\u2192</span>
+                            <span class="nm-chip">RDSO rules: confirm</span><span class="nm-arrow">\u2192</span>
+                            <span class="nm-chip">human review (safety cap)</span>
+                        </div>
+                    </div>
+                </div>`;
+
+            document.getElementById('nmSens').addEventListener('input', nmOnSensChange);
+            document.getElementById('nmReset').addEventListener('click', () => { document.getElementById('nmSens').value = 50; nmOnSensChange(); });
+            nmOnSensChange();
+        }
+
+        function nmSetSide(side) {
+            NM.side = side;
+            document.getElementById('nmSideA').classList.toggle('active', side === 'a');
+            document.getElementById('nmSideB').classList.toggle('active', side === 'b');
+            NM.focusedIdx = null;
+            nmRenderAll();
+        }
+
+        function nmScoredOps() {
+            return NM.ops
+                .map((o, i) => ({ o, i, ratio: o['novelty_ratio_' + NM.side], x: o['novelty_x_' + NM.side], y: o['novelty_y_' + NM.side] }))
+                .filter(r => r.ratio != null && r.x != null && r.y != null);
+        }
+        function nmScoreAt(ratio) { return ratio == null ? null : Math.max(0, Math.min(100, Math.round((ratio / NM.alertRatio) * 70))); }
+        function nmSeverityAt(ratio) {
+            if (ratio == null) return 'unknown';
+            if (ratio >= NM.alertRatio) return 'anomaly';
+            if (ratio >= NM.watchRatio) return 'watch';
+            return 'normal';
+        }
+
+        function nmOnSensChange() {
+            const v = +document.getElementById('nmSens').value;
+            const sensTxt = ['very loose', 'loose', 'medium', 'tight', 'very tight'];
+            document.getElementById('nmVSens').textContent = sensTxt[Math.min(4, Math.floor(v / 20.01))];
+            NM.alertRatio = 11 - (v / 100) * 7.5;
+            NM.watchRatio = NM.alertRatio / 2;
+            const pts = nmScoredOps();
+            const flagged = pts.filter(p => nmSeverityAt(p.ratio) !== 'normal').length;
+            const pct = pts.length ? Math.round(flagged / pts.length * 100) : 0;
+            const fpEl = document.getElementById('nmFp');
+            fpEl.textContent = `${flagged} / ${pts.length} (${pct}%)`;
+            fpEl.style.color = pct <= 10 ? 'var(--nm-green)' : pct <= 30 ? 'var(--nm-amber)' : 'var(--nm-red)';
+            nmRenderAll();
+        }
+
+        function nmRenderAll() {
+            const pts = nmScoredOps();
+            if (!pts.length) {
+                document.getElementById('nmMap').innerHTML = '';
+                document.getElementById('nmTchart').innerHTML = '';
+                document.getElementById('nmFeed').innerHTML = '<div style="color:var(--nm-muted); font-size:12px; padding:8px;">No scored operations yet on this side.</div>';
+                return;
+            }
+            if (NM.focusedIdx == null || !pts.find(p => p.i === NM.focusedIdx)) NM.focusedIdx = pts[pts.length - 1].i;
+            nmDrawMap(pts);
+            nmDrawGauge(pts);
+            nmDrawTime(pts);
+            nmDrawFeed(pts);
+        }
+
+        function nmDrawMap(pts) {
+            const svg = document.getElementById('nmMap');
+            const cx = 240, cy = 180, scale = 38;
+            const toPx = (x, y) => [cx + x * scale, cy + y * scale];
+            let s = `<circle cx="${cx}" cy="${cy}" r="${1.5 * scale}" fill="#16a34a0f" stroke="#16a34a33" stroke-width="1"/>`;
+            s += `<text x="${cx}" y="${cy - 1.5 * scale - 7}" text-anchor="middle" fill="#16a34a" font-size="10" font-family="IBM Plex Sans">learned normal (~1.5\u03c3)</text>`;
+            pts.forEach(p => {
+                if (p.i === NM.focusedIdx) return;
+                const [px, py] = toPx(p.x, p.y);
+                s += nmMarker(px, py, nmSeverityAt(p.ratio), 3.2, p.i);
+            });
+            const f = pts.find(p => p.i === NM.focusedIdx);
+            if (f) {
+                const [px, py] = toPx(f.x, f.y);
+                s += `<circle cx="${px}" cy="${py}" r="6.5" fill="#4f46e5" stroke="#fff" stroke-width="2"/>`;
+                s += `<circle cx="${px}" cy="${py}" r="10" fill="none" stroke="#4f46e5" stroke-width="1" opacity="0.5"/>`;
+            }
+            svg.innerHTML = s;
+            svg.querySelectorAll('[data-i]').forEach(el => {
+                el.addEventListener('click', () => { NM.focusedIdx = parseInt(el.getAttribute('data-i'), 10); nmRenderAll(); });
+            });
+        }
+
+        function nmDrawGauge(pts) {
+            const f = pts.find(p => p.i === NM.focusedIdx);
+            const score = f ? nmScoreAt(f.ratio) : null;
+            const sev = f ? nmSeverityAt(f.ratio) : 'unknown';
+            document.getElementById('nmScoreTxt').textContent = score == null ? '\u2013' : score;
+            const C = 289, off = score == null ? C : C * (1 - score / 100);
+            const arc = document.getElementById('nmScoreArc');
+            arc.setAttribute('stroke-dashoffset', off);
+            arc.setAttribute('stroke', sev === 'anomaly' ? 'var(--nm-red)' : sev === 'watch' ? 'var(--nm-amber)' : sev === 'normal' ? 'var(--nm-green)' : '#cbd5e1');
+            const v = document.getElementById('nmVerdict');
+            const labels = { normal: ['Normal', 'nm-v-ok'], watch: ['Watch', 'nm-v-watch'], anomaly: ['Anomaly', 'nm-v-anom'], unknown: ['--', 'nm-v-none'] };
+            v.textContent = labels[sev][0]; v.className = 'nm-verdict ' + labels[sev][1];
+            document.getElementById('nmFocusedTime').textContent = f ? f.o.time.toLocaleString() : 'no operation focused';
+            document.getElementById('nmExplain').innerHTML = f ? noveltyExplainLine(f.o, NM.side) : '';
+        }
+
+        function nmDrawTime(pts) {
+            const c = document.getElementById('nmTchart'), W = 460, H = 150, mL = 28, mR = 10, mT = 12, mB = 20;
+            const n = Math.min(14, pts.length);
+            const recent = pts.slice(-n);
+            const watchScore = nmScoreAt(NM.watchRatio), alertScore = nmScoreAt(NM.alertRatio);
+            const px = i => mL + (n > 1 ? i / (n - 1) * (W - mL - mR) : (W - mL - mR) / 2);
+            const py = v => mT + (100 - v) / 100 * (H - mT - mB);
+            let s = '';
+            [0, 50, 100].forEach(g => { s += `<line x1="${mL}" y1="${py(g)}" x2="${W - mR}" y2="${py(g)}" stroke="#e2e4f0"/>`; });
+            s += `<line x1="${mL}" y1="${py(alertScore)}" x2="${W - mR}" y2="${py(alertScore)}" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="5 4"/>`;
+            s += `<line x1="${mL}" y1="${py(watchScore)}" x2="${W - mR}" y2="${py(watchScore)}" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3 4"/>`;
+            let path = '';
+            recent.forEach((p, i) => { const v = nmScoreAt(p.ratio); path += (i ? 'L' : 'M') + px(i) + ' ' + py(v) + ' '; });
+            s += `<path d="${path}" fill="none" stroke="#4f46e5" stroke-width="2"/>`;
+            recent.forEach((p, i) => {
+                const v = nmScoreAt(p.ratio), sev = nmSeverityAt(p.ratio), focused = p.i === NM.focusedIdx;
+                s += nmMarker(px(i), py(v), sev, focused ? 4.5 : 2.4, p.i);
+            });
+            c.innerHTML = s;
+            c.querySelectorAll('[data-i]').forEach(el => {
+                el.addEventListener('click', () => { NM.focusedIdx = parseInt(el.getAttribute('data-i'), 10); nmRenderAll(); });
+            });
+        }
+
+        function nmDrawFeed(pts) {
+            const el = document.getElementById('nmFeed');
+            const recent = pts.slice(-10).reverse();
+            el.innerHTML = recent.map(p => {
+                const v = nmScoreAt(p.ratio), sev = nmSeverityAt(p.ratio);
+                return `<div class="nm-op${p.i === NM.focusedIdx ? ' focused' : ''}" data-i="${p.i}">
+                    <span class="glyph" style="color:${sevColor(sev)}">${sevGlyph(sev)}</span>
+                    <span class="id">${p.o.time.toLocaleDateString()}</span>
+                    <span class="nm-bar"><i style="width:${v}%; background:${sevColor(sev)}"></i></span>
+                    <span class="s">${v}</span></div>`;
+            }).join('');
+            el.querySelectorAll('.nm-op').forEach(row => {
+                row.addEventListener('click', () => { NM.focusedIdx = parseInt(row.getAttribute('data-i'), 10); nmRenderAll(); });
+            });
+        }
+
+// After an "Update Results" (or a "Get Results" that fell back to live), write
+// the fresh ops+AI-summary into the SAME cache file the GET endpoint reads -
+// so the next "Get Results" click reflects this run, not a stale one.
+async function writeClusterCache(pm, start, refTime, ops, dist, aiSummary) {
+    try {
+        const siteObj = (S.sites || []).find(s => String(s.SiteId) === String(S.currentSiteId));
+        await fetch(PMC_ENDPOINTS.clusterCachePost, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                site_id: S.currentSiteId,
+                site_name: (siteObj && siteObj.SiteName) || null,
+                asset_id: pm.assetId,
+                asset_name: pm.assetName,
+                window_start: start.toISOString(),
+                window_end: refTime.toISOString(),
+                ops: ops,
+                total_a: dist.a.total, counts_a: dist.a.counts,
+                total_b: dist.b.total, counts_b: dist.b.counts,
+                ai_summary: aiSummary,
+            })
+        });
+    } catch (e) {
+        console.warn('Cluster cache write-through failed:', e.message);
+    }
+}
+
+// \u2500\u2500 EXPORT JSON / PDF (same pattern as Track Leakage's export buttons) \u2500\u2500\u2500\u2500\u2500\u2500
+function exportClusterJson() {
+    if (!S.ops.length) { alert('No results to export. Click "Fetch & Compute" first.'); return; }
+    const pm = S.selectedAsset;
+    const siteObj = (S.sites || []).find(s => String(s.SiteId) === String(S.currentSiteId));
+    const dA = sideDistribution(S.ops, 'clusterA');
+    const dB = sideDistribution(S.ops, 'clusterB');
+    const machinePayload = dist => ({
+        total: dist.total,
+        clusters: dist.sorted.map(code => ({
+            code, label: expandCode(code), count: dist.counts[code],
+            pct: dist.total ? Math.round(dist.counts[code] / dist.total * 1000) / 10 : 0,
+        })),
+    });
+
+    const exportObj = {
+        export_meta: {
+            exported_at: new Date().toISOString(),
+            site_id: S.currentSiteId ?? null,
+            site_name: (siteObj && siteObj.SiteName) || null,
+            asset_id: pm ? pm.assetId : null,
+            asset_name: pm ? pm.assetName : null,
+            window_start: S.windowStart ? S.windowStart.toISOString() : null,
+            window_end: S.windowEnd ? S.windowEnd.toISOString() : null,
+        },
+        ai_summary: S.lastAiSummary || null,
+        machine_a: machinePayload(dA),
+        machine_b: machinePayload(dB),
+        // ADDITIVE: self-supervised anomaly score, alongside the cluster export above
+        novelty_score: {
+            machine_a: noveltySideSummary(S.ops, 'a'),
+            machine_b: noveltySideSummary(S.ops, 'b'),
+        },
+    };
+
+    const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeAsset = (pm ? pm.assetName : 'asset').replace(/[\\/:*?"<>|]+/g, ' ').trim();
+    a.href = url;
+    a.download = `point machine cluster ${safeAsset}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Full PDF report (client-side) \u2014 text + the Monthly Cluster Timeline chart as
+// an image, straight off the live Plotly div. No server call.
+// Same consecutive-run grouping renderOperationStrip() uses, but returns each
+// band's canvas as a PNG data URL (synchronous - Chart.js already drew it to
+// the canvas, toDataURL just reads the existing pixel buffer) instead of DOM
+// elements.
+function collectOperationStripImages(ops, clusterKey, curKey, containerId) {
+    const items = ops.filter(o => o[clusterKey] && o[curKey] && o[curKey].length);
+    const bands = [];
+    items.forEach(o => {
+        const code = o[clusterKey].cluster;
+        const last = bands[bands.length - 1];
+        if (last && last.code === code) last.ops.push(o);
+        else bands.push({ code, ops: [o] });
+    });
+    return bands.map((band, idx) => {
+        const canvas = document.getElementById(containerId + '_band' + idx);
+        if (!canvas) return null;
+        const label = `${band.ops[0].time.toLocaleString()} \u00b7 ${band.ops.length} op${band.ops.length > 1 ? 's' : ''}`;
+        return { code: band.code, label, dataUrl: canvas.toDataURL('image/png') };
+    }).filter(Boolean);
+}
+
+// \u2500\u2500 PDF report: professional layout, plain-language explanations for a
+// non-technical reader. Colored verdict banner + real tables (jspdf-autotable)
+// instead of the old plain text dump - same underlying data, easier to read. \u2500\u2500
+const PDF_COLORS = {
+    accent: [79, 70, 229], accentDark: [55, 48, 163],
+    green: [22, 163, 74], greenBg: [220, 252, 231],
+    amber: [202, 138, 4], amberBg: [254, 249, 195],
+    red: [220, 38, 38], redBg: [254, 226, 226],
+    gray: [107, 114, 128], grayBg: [243, 244, 246], text: [30, 34, 51],
+};
+
+function pdfSeverityRgb(sev) {
+    return sev === 'anomaly' ? PDF_COLORS.red : sev === 'watch' ? PDF_COLORS.amber : sev === 'normal' ? PDF_COLORS.green : PDF_COLORS.gray;
+}
+
+async function exportClusterPdf(btn) {
+    if (!S.ops.length) { alert('No results to export. Click "Fetch & Compute" first.'); return; }
+    const pm = S.selectedAsset;
+    const siteObj = (S.sites || []).find(s => String(s.SiteId) === String(S.currentSiteId));
+    const origLabel = btn ? btn.innerHTML : null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating PDF\u2026'; }
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const M = 40;
+        let y = M;
+        const ensure = (h) => {
+            if (y + h > pageH - 50) { doc.addPage(); y = M; return true; }
+            return false;
+        };
+        const setColor = (rgb) => doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+        const setFill = (rgb) => doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+
+        const assetName = pm ? pm.assetName : 'asset';
+        const siteName = (siteObj && siteObj.SiteName) || '';
+        const winStartStr = S.windowStart ? S.windowStart.toLocaleString() : '';
+        const winEndStr = S.windowEnd ? S.windowEnd.toLocaleString() : '';
+
+        // \u2500\u2500 Header banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        setFill(PDF_COLORS.accent); doc.rect(0, 0, pageW, 86, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(18); doc.setFont(undefined, 'bold');
+        doc.text('Point Machine Cluster Report', M, 34);
+        doc.setFontSize(12); doc.setFont(undefined, 'normal');
+        doc.text(`${assetName}${siteName ? '  \u00b7  ' + siteName : ''}`, M, 54);
+        doc.setFontSize(9);
+        doc.text(`Period: ${winStartStr} to ${winEndStr}`, M, 70);
+        doc.setFontSize(8);
+        doc.text(`Generated ${new Date().toLocaleString()}`, pageW - M, 70, { align: 'right' });
+        y = 108;
+
+        // \u2500\u2500 Plain-language explainer (for a non-technical reader) \u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        doc.setFontSize(8.5); doc.setFont(undefined, 'italic'); setColor(PDF_COLORS.gray);
+        const explainer = 'This report combines two independent checks on this point machine: (1) Cluster Analysis - grouping every '
+            + 'operation by the shape of its electrical signature, using patterns already recorded in the historian, and (2) Self-Supervised '
+            + 'Anomaly Score - a model trained only on this machine\'s own past operations that flags any operation whose shape looks unusual, '
+            + 'without needing a human to label faults in advance.';
+        const explainerLines = doc.splitTextToSize(explainer, pageW - 2 * M);
+        doc.text(explainerLines, M, y); y += explainerLines.length * 10.5 + 14;
+        doc.setFont(undefined, 'normal');
+
+        // \u2500\u2500 Executive verdict banner - the one thing a busy reader needs first \u2500\u2500
+        const sA = noveltySideSummary(S.ops, 'a'), sB = noveltySideSummary(S.ops, 'b');
+        const totalAnomaly = sA.counts.anomaly + sB.counts.anomaly;
+        const totalWatch = sA.counts.watch + sB.counts.watch;
+        const totalScored = (sA.total - sA.counts.unknown) + (sB.total - sB.counts.unknown);
+        const hasNovelty = totalScored > 0;
+        let verdictColor, verdictBg, verdictText, verdictDetail;
+        if (!hasNovelty) {
+            verdictColor = PDF_COLORS.gray; verdictBg = PDF_COLORS.grayBg;
+            verdictText = 'Not enough history yet to score this machine';
+            verdictDetail = 'The self-supervised model needs more past operations before it can judge what is "normal" for this machine.';
+        } else if (totalAnomaly > 0) {
+            verdictColor = PDF_COLORS.red; verdictBg = PDF_COLORS.redBg;
+            verdictText = 'This machine needs a closer look';
+            verdictDetail = `${totalAnomaly} operation${totalAnomaly === 1 ? '' : 's'} scored as a clear anomaly, and ${totalWatch} more as borderline (watch), across both machines in this period.`;
+        } else if (totalWatch > 0) {
+            verdictColor = PDF_COLORS.amber; verdictBg = PDF_COLORS.amberBg;
+            verdictText = 'A few operations look borderline';
+            verdictDetail = `${totalWatch} operation${totalWatch === 1 ? '' : 's'} scored as "watch" (mildly unusual). No clear anomalies were found.`;
+        } else {
+            verdictColor = PDF_COLORS.green; verdictBg = PDF_COLORS.greenBg;
+            verdictText = 'No unusual behavior detected';
+            verdictDetail = `All ${totalScored} scored operations in this period matched this machine's normal historical pattern.`;
+        }
+        ensure(56);
+        setFill(verdictBg); doc.roundedRect(M, y, pageW - 2 * M, 46, 6, 6, 'F');
+        setFill(verdictColor); doc.circle(M + 18, y + 23, 6, 'F');
+        setColor(verdictColor); doc.setFontSize(12.5); doc.setFont(undefined, 'bold');
+        doc.text(verdictText, M + 34, y + 19);
+        doc.setFontSize(9); doc.setFont(undefined, 'normal'); setColor(PDF_COLORS.text);
+        doc.text(doc.splitTextToSize(verdictDetail, pageW - 2 * M - 40), M + 34, y + 34);
+        y += 46 + 18;
+
+        // \u2500\u2500 AI-generated summary (existing feature, kept) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        if (S.lastAiSummary) {
+            const verdictLines = doc.splitTextToSize(S.lastAiSummary.verdict || '', pageW - 2 * M - 20);
+            const pointLines = (S.lastAiSummary.points || []).map(p => doc.splitTextToSize('\u2022  ' + p, pageW - 2 * M - 20));
+            const recLines = S.lastAiSummary.recommendation ? doc.splitTextToSize('Recommendation: ' + S.lastAiSummary.recommendation, pageW - 2 * M - 20) : [];
+            const boxH = 24 + verdictLines.length * 12 + pointLines.reduce((a, l) => a + l.length * 11, 0) + recLines.length * 11 + 14;
+            ensure(boxH + 10);
+            setFill(PDF_COLORS.grayBg); doc.roundedRect(M, y, pageW - 2 * M, boxH, 6, 6, 'F');
+            let iy = y + 18;
+            doc.setFontSize(10.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.accentDark);
+            doc.text('AI-Generated Summary', M + 12, iy); iy += 14;
+            doc.setFontSize(9.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+            doc.text(verdictLines, M + 12, iy); iy += verdictLines.length * 12 + 4;
+            doc.setFont(undefined, 'normal');
+            pointLines.forEach(lines => { doc.text(lines, M + 12, iy); iy += lines.length * 11; });
+            if (recLines.length) {
+                iy += 3; doc.setFont(undefined, 'italic'); setColor(PDF_COLORS.accentDark);
+                doc.text(recLines, M + 12, iy); doc.setFont(undefined, 'normal');
+            }
+            y += boxH + 18;
+        }
+
+        // \u2500\u2500 Per-machine sections - ALL of Machine A first (score, cluster
+        // breakdown, timeline, waveforms), then ALL of Machine B, per the
+        // user's requested order. Any section with no data for that machine
+        // is simply skipped rather than leaving a gap. \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        const SAMPLE_CAP = 12;
+        for (const side of ['A', 'B']) {
+            const sideLower = side.toLowerCase();
+            const machineLabel = `Machine ${side}`;
+            const sSide = side === 'A' ? sA : sB;
+            const sideHasNovelty = (sSide.total - sSide.counts.unknown) > 0;
+
+            ensure(26);
+            doc.setFontSize(13); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.accentDark);
+            doc.text(machineLabel, M, y); y += 6;
+            doc.setDrawColor(PDF_COLORS.accent[0], PDF_COLORS.accent[1], PDF_COLORS.accent[2]);
+            doc.setLineWidth(1.4); doc.line(M, y, M + 40, y); doc.setLineWidth(0.5);
+            y += 16;
+
+            // Self-Supervised Anomaly Score (this machine only)
+            if (sideHasNovelty) {
+                ensure(30);
+                doc.setFontSize(11); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+                doc.text(`${machineLabel} - Self-Supervised Anomaly Score`, M, y); y += 6;
+                doc.setFontSize(8); doc.setFont(undefined, 'normal'); setColor(PDF_COLORS.gray);
+                doc.text('0-100 per operation - higher means this operation looked harder for the model to reconstruct vs. this machine\'s own history.', M, y + 10);
+                y += 22;
+                doc.autoTable({
+                    startY: y, margin: { left: M, right: M },
+                    head: [['Total Ops', 'Normal', 'Watch', 'Anomaly', 'Avg Score', 'Worst Score']],
+                    body: [[sSide.total, sSide.counts.normal, sSide.counts.watch, sSide.counts.anomaly, sSide.avg ?? '-', sSide.worst ?? '-']],
+                    theme: 'grid', styles: { fontSize: 9, cellPadding: 5 },
+                    headStyles: { fillColor: PDF_COLORS.accent, textColor: 255, fontStyle: 'bold' },
+                    didParseCell: (data) => {
+                        if (data.section !== 'body') return;
+                        if (data.column.index === 2 && Number(data.cell.raw) > 0) data.cell.styles.textColor = PDF_COLORS.amber;
+                        if (data.column.index === 3 && Number(data.cell.raw) > 0) { data.cell.styles.textColor = PDF_COLORS.red; data.cell.styles.fontStyle = 'bold'; }
+                    },
+                });
+                y = doc.lastAutoTable.finalY + 18;
+            }
+
+            // Cluster Breakdown (this machine only)
+            const dist = sideDistribution(S.ops, side === 'A' ? 'clusterA' : 'clusterB');
+            if (dist.sorted.length) {
+                ensure(30);
+                doc.setFontSize(11); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+                doc.text(`${machineLabel} - Cluster Breakdown (${dist.total} operations)`, M, y); y += 8;
+                const rows = dist.sorted.map(code => {
+                    const count = dist.counts[code];
+                    const pct = dist.total ? Math.round(count / dist.total * 1000) / 10 : 0;
+                    const ab = clusterAbnormalStats(S.ops, side, code);
+                    return [code, expandCode(code) || '-', count, `${pct}%`, ab.scored ? `${ab.pct}%` : 'n/a'];
+                });
+                doc.autoTable({
+                    startY: y + 6, margin: { left: M, right: M },
+                    head: [['Code', 'Meaning', 'Ops', '% of Total', 'Abnormal %']],
+                    body: rows,
+                    theme: 'grid', styles: { fontSize: 8.5, cellPadding: 4 },
+                    headStyles: { fillColor: PDF_COLORS.accentDark, textColor: 255, fontStyle: 'bold' },
+                    didParseCell: (data) => {
+                        if (data.section !== 'body' || data.column.index !== 4) return;
+                        const v = parseInt(data.cell.raw, 10);
+                        if (!isNaN(v) && v >= 50) { data.cell.styles.textColor = PDF_COLORS.red; data.cell.styles.fontStyle = 'bold'; }
+                        else if (!isNaN(v) && v > 0) data.cell.styles.textColor = PDF_COLORS.amber;
+                    },
+                });
+                y = doc.lastAutoTable.finalY + 18;
+            }
+
+            // Cluster Timeline (this machine only)
+            const elId = side === 'A' ? 'timelineA' : 'timelineB';
+            const el = document.getElementById(elId);
+            if (el && el.data) {
+                try {
+                    const png = await Plotly.toImage(el, { format: 'png', width: 900, height: 220 });
+                    const w = pageW - 2 * M, h = w * (220 / 900);
+                    ensure(h + 26);
+                    doc.setFontSize(10.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+                    doc.text(`${machineLabel} - Cluster Timeline`, M, y); y += 12;
+                    doc.setDrawColor(226, 228, 240); doc.rect(M, y, w, h);
+                    doc.addImage(png, 'PNG', M, y, w, h);
+                    y += h + 16;
+                } catch (e) { /* chart not ready - skip rather than fail the whole export */ }
+            }
+
+            // Sample Waveforms (this machine only) - capped so the PDF stays a
+            // reasonable size; the on-screen dashboard has the full set.
+            const clusterKey = side === 'A' ? 'clusterA' : 'clusterB', curKey = side === 'A' ? 'aCur' : 'bCur', containerId = side === 'A' ? 'gridA' : 'gridB';
+            const images = collectOperationStripImages(S.ops, clusterKey, curKey, containerId).slice(0, SAMPLE_CAP);
+            if (images.length) {
+                ensure(24);
+                doc.setFontSize(10.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+                doc.text(`${machineLabel} - Sample Waveforms (first ${images.length} bands)`, M, y); y += 12;
+                doc.setFont(undefined, 'normal');
+                let x = M;
+                const w = 115, h = 74;
+                images.forEach(img => {
+                    if (x + w > pageW - M) { x = M; y += h + 20; ensure(h + 20); }
+                    ensure(h + 20);
+                    doc.setFontSize(7.5); setColor(PDF_COLORS.text);
+                    doc.text(`${img.code}`, x, y);
+                    doc.setDrawColor(226, 228, 240); doc.rect(x, y + 3, w, h);
+                    doc.addImage(img.dataUrl, 'PNG', x, y + 3, w, h);
+                    x += w + 8;
+                });
+                y += h + 26;
+            }
+
+            y += 6;
+        }
+
+        // \u2500\u2500 ADDITIVE: final "How to Read This Report" page - a plain-language
+        // walkthrough so a first-time or non-technical reader knows what every
+        // color/table/chart above actually means, without re-reading the app. \u2500\u2500
+        doc.addPage(); y = M;
+        doc.setFontSize(15); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.accentDark);
+        doc.text('How to Read This Report', M, y); y += 10;
+        doc.setDrawColor(PDF_COLORS.accent[0], PDF_COLORS.accent[1], PDF_COLORS.accent[2]);
+        doc.setLineWidth(1.4); doc.line(M, y, M + 60, y); doc.setLineWidth(0.5);
+        y += 22;
+
+        const guideItem = (title, body) => {
+            const titleLines = doc.splitTextToSize(title, pageW - 2 * M);
+            const bodyLines = doc.splitTextToSize(body, pageW - 2 * M);
+            ensure(titleLines.length * 13 + bodyLines.length * 11 + 12);
+            doc.setFontSize(10.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+            doc.text(titleLines, M, y); y += titleLines.length * 13 + 2;
+            doc.setFontSize(9.5); doc.setFont(undefined, 'normal'); setColor(PDF_COLORS.gray);
+            doc.text(bodyLines, M, y); y += bodyLines.length * 11 + 12;
+        };
+
+        guideItem('1. Start with the colored banner near the top of this report.',
+            'Green means no unusual behavior was found, amber means a few operations looked borderline, and red means '
+            + 'at least one operation clearly stood out from this machine\'s own history - that banner is the fastest way '
+            + 'to tell whether this machine needs a closer look.');
+        guideItem('2. The Cluster Breakdown table groups operations by shape.',
+            'Every code has a wave letter (T=TWS, I=IRS), a quality letter (G=Good, B=Bad, M=Medium), and a number that just '
+            + 'tells clusters of the same quality apart. The code "T0" or "I0" is a special reserved code meaning Obstruction '
+            + '(a mechanical blockage/jam), not "no letter".');
+        guideItem('3. The Self-Supervised Anomaly Score is a second, independent opinion.',
+            'It does not know about cluster codes or fault names at all - a small model learns what "normal" looks like from '
+            + 'this machine\'s own history, then scores every new operation 0-100 by how hard it is to match to that pattern. '
+            + 'Normal is below 35, Watch is 35-70 (mildly unusual), and Anomaly is above 70 (clearly different).');
+        guideItem('4. The Cluster Timeline chart shows how this machine behaved over time.',
+            'Each colored bar is one operation, held until the next one - a run of the same color means the machine kept '
+            + 'behaving consistently; a sudden change in color is worth investigating first.');
+        guideItem('5. The Sample Waveforms are the actual electrical signal for a few real operations.',
+            'The current (top, orange on-screen) and voltage (bottom, teal on-screen) shapes are what both the cluster match '
+            + 'and the anomaly score are based on - useful for a quick visual sanity check against what the tables above say.');
+
+        ensure(50);
+        doc.setFontSize(9.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
+        doc.text('Severity color legend (used throughout this report):', M, y); y += 14;
+        const legend = [['Normal', PDF_COLORS.green], ['Watch', PDF_COLORS.amber], ['Anomaly', PDF_COLORS.red], ['Not enough history', PDF_COLORS.gray]];
+        let lx = M;
+        legend.forEach(([text, rgb]) => {
+            setFill(rgb); doc.roundedRect(lx, y - 8, 10, 10, 2, 2, 'F');
+            doc.setFontSize(9); doc.setFont(undefined, 'normal'); setColor(PDF_COLORS.text);
+            doc.text(text, lx + 14, y);
+            lx += doc.getTextWidth(text) + 34;
+        });
+        y += 24;
+
+        // \u2500\u2500 Footer on every page: page numbers + a plain-language disclaimer \u2500\u2500
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setDrawColor(226, 228, 240); doc.line(M, pageH - 34, pageW - M, pageH - 34);
+            doc.setFontSize(7.5); doc.setFont(undefined, 'normal'); setColor(PDF_COLORS.gray);
+            doc.text('The self-supervised score is a statistical deviation signal, not a certified fault diagnosis - use it alongside the cluster codes above.', M, pageH - 22);
+            doc.text(`Page ${i} of ${pageCount}`, pageW - M, pageH - 22, { align: 'right' });
+        }
+
+        const safeAsset = assetName.replace(/[\\/:*?"<>|]+/g, ' ').trim();
+        doc.save(`point machine cluster ${safeAsset}.pdf`);
+    } catch (e) {
+        alert('PDF export failed: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+    }
+}
+
+        async function analyzeClusters(forceLive) {
+            const pm = S.selectedAsset;
+            if (!pm) { toast('Select a point machine first', 'error'); return; }
+            const refInput = document.getElementById('refTime').value;
+            const refTime = refInput ? new Date(refInput) : new Date();
+
+            const loading = document.getElementById('loading');
+            const loadingText = document.getElementById('loadingText');
+            const results = document.getElementById('results');
+            const empty2 = document.getElementById('empty2');
+            const btns = [document.getElementById('updateResultsBtn')];
+
+            empty2.style.display = 'none';
+            results.style.display = 'none';
+            loading.style.display = 'block';
+            loadingText.textContent = 'Fetching last 30 days of operations\u2026';
+            btns.forEach(b => b.disabled = true);
+            // Reset the additive cluster-detail panels + trend filter from any previous machine.
+            ['clusterOpsDetailA', 'clusterOpsDetailB'].forEach(id => {
+                const el = document.getElementById(id);
+                el.style.display = 'none'; el.innerHTML = '';
+            });
+            S.trendFilter = { a: null, b: null };
+
+            try {
+                let start = new Date(refTime.getTime() - 30 * 24 * 3600 * 1000);
+                let ops = null;
+                let cachedAiSummary = null;
+                let fromCache = false;
+
+                // Fast path: last write-through for this asset. "Update Results"
+                // always skips this and forces a fresh live run.
+                if (!forceLive) {
+                    loadingText.textContent = 'Checking local cache\u2026';
+                    try {
+                        const cacheUrl = `${PMC_ENDPOINTS.clusterCache}?SiteId=${encodeURIComponent(S.currentSiteId)}&AssetId=${encodeURIComponent(pm.assetId)}`;
+                        const cr = await fetch(cacheUrl);
+                        if (cr.ok) {
+                            const cached = await cr.json();
+                            if (cached && Array.isArray(cached.ops)) {
+                                ops = cached.ops.map(o => ({ ...o, time: new Date(o.time) }));
+                                start = new Date(cached.window_start);
+                                cachedAiSummary = cached.ai_summary || null;
+                                fromCache = true;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Cluster cache check failed, falling back to live fetch:', e.message);
+                    }
+                }
+
+                if (!ops) {
+                    // ADDITIVE: this used to build `ops` here by hand from
+                    // /api/pmdata (parsing ClusterA/B client-side only) - that
+                    // path never computed novelty_score_a/b, so any asset that
+                    // hadn't yet gone through the scheduled server-side refresh
+                    // silently showed no self-supervised section at all. Now it
+                    // calls the SAME server-side refresh (cluster parsing +
+                    // novelty scoring together) the nightly job uses, so a live
+                    // "Fetch & Compute" and a cache hit always agree.
+                    loadingText.textContent = 'Running live analysis (clusters + self-supervised scoring)\u2026';
+                    const r = await fetch(PMC_ENDPOINTS.refreshLive, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ site_id: S.currentSiteId, asset_id: pm.assetId }),
+                    });
+                    if (!r.ok) {
+                        let detail = '';
+                        try { detail = (await r.json()).detail || ''; } catch (e) { /* ignore */ }
+                        throw new Error(`HTTP ${r.status}${detail ? ' - ' + detail : ''}`);
+                    }
+                    const cached = await r.json();
+                    if (!cached || !Array.isArray(cached.ops) || !cached.ops.length) {
+                        loading.style.display = 'none'; empty2.style.display = 'block';
+                        empty2.textContent = 'No operations found for this asset in the last 30 days.';
+                        return;
+                    }
+
+                    ops = cached.ops.map(o => ({ ...o, time: new Date(o.time) }));
+                    start = new Date(cached.window_start);
+                    cachedAiSummary = cached.ai_summary || null;
+                    fromCache = true; // already persisted server-side by refresh_live - skip writeClusterCache below
+                }
+
+                if (!ops.length) {
+                    loading.style.display = 'none'; empty2.style.display = 'block';
+                    empty2.textContent = 'No operations found for this asset in the last 30 days.';
+                    return;
+                }
+
+                await renderClusterView(pm, ops, start, refTime, cachedAiSummary, !fromCache);
+            } catch (e) {
+                loading.style.display = 'none'; empty2.style.display = 'block';
+                empty2.textContent = 'Failed: ' + e.message;
+                toast('Cluster analysis failed: ' + e.message, 'error');
+            } finally {
+                btns.forEach(b => b.disabled = false);
+            }
+        }
+
+        // \u2500\u2500 ADDITIVE: shared render tail for BOTH quick (last-30-days) and
+        // custom-date-range results - identical rendering pipeline either way,
+        // just `shouldPersist` differs (custom ranges are never cached). \u2500\u2500\u2500\u2500\u2500\u2500
+        async function renderClusterView(pm, ops, start, end, cachedAiSummary, shouldPersist) {
+            S.colorMap = {};
+            S.shadeIndex = {};
+            S.timelineShapes = { A: [], B: [] };
+            S.ops = ops;
+
+            const withClusters = ops.filter(o => o.clusterA || o.clusterB).length;
+            document.getElementById('clusterSub').textContent =
+                `${ops.length} operations \u00b7 ${withClusters} clustered \u00b7 ${start.toLocaleDateString()} \u2192 ${end.toLocaleDateString()}`;
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('results').style.display = 'block';
+            document.getElementById('empty2').style.display = 'none';
+            document.getElementById('detail').style.display = 'none';
+            const dA = renderSummary(ops);
+            renderNoveltyAlert(ops);
+            renderNoveltySummary(ops);
+            renderHealthMap(ops);
+            renderTimelines(ops, start, end);
+            renderNoveltyTimelines(ops, start, end);
+            renderGridView(ops, end);
+            const aiSummary = await renderAiSummary(pm.assetName, dA.a, dA.b, cachedAiSummary);
+            S.lastAiSummary = aiSummary;  // for Export JSON/PDF
+            S.windowStart = start; S.windowEnd = end;
+
+            // Live computation (forced, or a cache-miss fallback) - persist it
+            // into the cache so the next "Get Results" click sees this run.
+            // Custom-date-range results never persist (see applyCustomDates).
+            if (shouldPersist) {
+                writeClusterCache(pm, start, end, ops, dA, aiSummary);
+            }
+        }
+
+        // \u2500\u2500 ADDITIVE: Custom Dates mode (same idea as pm_operation3) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function switchClusterMode(mode) {
+            S.clusterMode = mode;
+            updateCompactSidebar();
+            const quickBtn = document.getElementById('modeQuickBtn');
+            const customBtn = document.getElementById('modeCustomBtn');
+            quickBtn.style.background = mode === 'quick' ? 'var(--accent)' : 'transparent';
+            quickBtn.style.color = mode === 'quick' ? '#fff' : 'var(--text-secondary)';
+            customBtn.style.background = mode === 'custom' ? 'var(--accent)' : 'transparent';
+            customBtn.style.color = mode === 'custom' ? '#fff' : 'var(--text-secondary)';
+            document.getElementById('quickModeRow').style.display = mode === 'quick' ? 'flex' : 'none';
+            document.getElementById('quickPmSection').style.display = mode === 'quick' ? 'block' : 'none';
+            document.getElementById('customDatePanel').style.display = mode === 'custom' ? 'block' : 'none';
+            if (mode === 'custom') {
+                const toInput = document.getElementById('customToDate');
+                const fromInput = document.getElementById('customFromDate');
+                const today = new Date().toISOString().split('T')[0];
+                const past30 = new Date(); past30.setDate(past30.getDate() - 30);
+                if (!toInput.value) toInput.value = today;
+                if (!fromInput.value) fromInput.value = past30.toISOString().split('T')[0];
+                toInput.max = today; fromInput.max = today;
+                renderCustomPmSelect();
+                validateCustomDateRange();
+            }
+        }
+
+        // \u2500\u2500 ADDITIVE: custom-mode's own Point Machine dropdown (sidebar) - kept
+        // in sync with S.pointMachines the same way renderPmList() is. \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function renderCustomPmSelect() {
+            const sel = document.getElementById('customPmSelect');
+            if (!sel) return;
+            const current = sel.value;
+            sel.innerHTML = '<option value="">-- Select --</option>' +
+                S.pointMachines.map((pm, i) => `<option value="${i}">${pm.assetName}</option>`).join('');
+            if (current !== '' && S.pointMachines[current]) sel.value = current;
+            else if (S.selectedAsset) {
+                const idx = S.pointMachines.findIndex(p => p.assetId === S.selectedAsset.assetId);
+                if (idx >= 0) sel.value = String(idx);
+            }
+        }
+
+        function getCustomDateRange() {
+            const fromVal = document.getElementById('customFromDate').value;
+            const toVal = document.getElementById('customToDate').value;
+            if (!fromVal || !toVal) return null;
+            const fromTime = document.getElementById('customFromTime').value || '00:00:00';
+            const toTime = document.getElementById('customToTime').value || '23:59:59';
+            const fullFromTime = fromTime.length === 5 ? fromTime + ':00' : fromTime;
+            const fullToTime = toTime.length === 5 ? toTime + ':00' : toTime;
+            return {
+                startDate: new Date(`${fromVal}T${fullFromTime}`),
+                endDate: new Date(`${toVal}T${fullToTime}`),
+            };
+        }
+
+        function validateCustomDateRange() {
+            const errorEl = document.getElementById('customDateError');
+            const applyBtn = document.getElementById('applyCustomDatesBtn');
+            const range = getCustomDateRange();
+            if (!range) { errorEl.style.display = 'none'; applyBtn.disabled = true; return false; }
+            const diffDays = (range.endDate - range.startDate) / (1000 * 60 * 60 * 24);
+            if (diffDays <= 0) {
+                errorEl.textContent = 'Invalid range: "To" must be after "From".';
+                errorEl.style.display = 'block'; applyBtn.disabled = true; return false;
+            }
+            if (diffDays > 90) {
+                errorEl.textContent = `Range exceeds the 90-day max (selected: ${diffDays.toFixed(1)} days).`;
+                errorEl.style.display = 'block'; applyBtn.disabled = true; return false;
+            }
+            errorEl.style.display = 'none'; applyBtn.disabled = false; return true;
+        }
+
+        async function applyCustomDates() {
+            const idx = document.getElementById('customPmSelect').value;
+            if (idx === '') { toast('Select a point machine first', 'error'); return; }
+            if (!validateCustomDateRange()) return;
+            const range = getCustomDateRange();
+            const pm = S.pointMachines[idx];
+            S.selectedAsset = pm;
+            renderPmList();
+            updateCompactSidebar();
+
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('mainView').style.display = 'flex';
+            document.getElementById('assetTitle').textContent = pm.assetName;
+            document.getElementById('assetBreadcrumb').textContent = pm.assetName;
+            document.getElementById('assetSub').textContent = `Asset ID ${pm.assetId}`;
+
+            const loading = document.getElementById('loading');
+            const loadingText = document.getElementById('loadingText');
+            const results = document.getElementById('results');
+            const empty2 = document.getElementById('empty2');
+            const applyBtn = document.getElementById('applyCustomDatesBtn');
+
+            empty2.style.display = 'none';
+            results.style.display = 'none';
+            loading.style.display = 'block';
+            loadingText.textContent = 'Running live analysis for selected range (clusters + self-supervised scoring)\u2026';
+            applyBtn.disabled = true;
+            ['clusterOpsDetailA', 'clusterOpsDetailB'].forEach(id => {
+                const el = document.getElementById(id);
+                el.style.display = 'none'; el.innerHTML = '';
+            });
+            S.trendFilter = { a: null, b: null };
+
+            try {
+                const r = await fetch(PMC_ENDPOINTS.refreshCustomRange, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        site_id: S.currentSiteId, asset_id: pm.assetId,
+                        start: range.startDate.toISOString(), end: range.endDate.toISOString(),
+                    }),
+                });
+                if (!r.ok) {
+                    let detail = '';
+                    try { detail = (await r.json()).detail || ''; } catch (e) { /* ignore */ }
+                    throw new Error(`HTTP ${r.status}${detail ? ' - ' + detail : ''}`);
+                }
+                const result = await r.json();
+                if (!result || !Array.isArray(result.ops) || !result.ops.length) {
+                    loading.style.display = 'none'; empty2.style.display = 'block';
+                    empty2.textContent = 'No operations found for this asset in the selected date range.';
+                    return;
+                }
+
+                const ops = result.ops.map(o => ({ ...o, time: new Date(o.time) }));
+                const start = new Date(result.window_start);
+                const end = new Date(result.window_end);
+                await renderClusterView(pm, ops, start, end, result.ai_summary || null, false);
+            } catch (e) {
+                loading.style.display = 'none'; empty2.style.display = 'block';
+                empty2.textContent = 'Failed: ' + e.message;
+                toast('Custom-range analysis failed: ' + e.message, 'error');
+            } finally {
+                applyBtn.disabled = false;
+            }
+        }
+
+        // \u2500\u2500 SUMMARY: per-side cluster distribution \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function sideDistribution(ops, key) {
+            const counts = {};
+            let total = 0;
+            ops.forEach(o => {
+                const c = o[key];
+                if (!c) return;
+                total++;
+                counts[c.cluster] = (counts[c.cluster] || 0) + 1;
+            });
+            const sorted = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+            return { total, counts, sorted };
+        }
+
+        function sideBlock(label, dist, ops) {
+            const chips = dist.sorted.map(cl => {
+                const c = dist.counts[cl];
+                const p = dist.total ? Math.round(c / dist.total * 1000) / 10 : 0;
+                const safeCl = cl.replace(/'/g, "\\'");
+                // ADDITIVE: how abnormal does the self-supervised score think THIS
+                // cluster's own operations are - not a per-op score, a per-cluster rate.
+                const ab = ops ? clusterAbnormalStats(ops, label, cl) : null;
+                let abBadge = '';
+                if (ab && ab.scored) {
+                    const sev = ab.pct >= 50 ? 'anomaly' : ab.pct > 0 ? 'watch' : 'normal';
+                    abBadge = ` <span class="sev-pill pill-${sev}" title="${ab.abnormal} of ${ab.scored} scored operations in this cluster were watch/anomaly">${ab.pct}% abnormal</span>`;
+                }
+                return `<span class="chip" style="cursor:pointer;" title="Click to plot all ${c} operations of this cluster" onclick="showClusterOps('${label}','${safeCl}')"><span class="dot" style="background:${colorFor(cl)};"></span>${cl} <b>${c}</b> <span style="opacity:0.7;">(${p}%)</span>${abBadge}</span>`;
+            }).join('');
+            return `<div style="flex:1; min-width:320px; background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:16px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                    <span style="font-size:15px; font-weight:800;">${label}</span>
+                    <span style="font-size:12px; color:var(--text-muted); font-weight:700;">${dist.total} ops \u00b7 ${dist.sorted.length} clusters</span>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">${chips || '<span style="font-size:12px; color:var(--text-muted);">No cluster data</span>'}</div>
+            </div>`;
+        }
+
+        // \u2500\u2500 ADDITIVE: click a cluster chip/band -> plot ALL of that cluster's
+        // operations right below that SAME side's strip (no auto-scroll - it
+        // appears in place, right where you clicked, not jumping elsewhere). \u2500\u2500
+        function showClusterOps(side, code) {
+            const clusterKey = side === 'A' ? 'clusterA' : 'clusterB';
+            const curKey = side === 'A' ? 'aCur' : 'bCur';
+            const sideLetter = side.toLowerCase();
+            const matches = S.ops.filter(o => o[clusterKey] && o[clusterKey].cluster === code && o[curKey] && o[curKey].length);
+            const box = document.getElementById('clusterOpsDetail' + side);
+            box.style.display = 'block';
+
+            if (!matches.length) {
+                box.innerHTML = `<div class="card-title"><span>Cluster ${code} \u2014 Side ${side}</span></div>
+                    <div style="font-size:13px; color:var(--text-muted);">No plottable operations for this cluster.</div>`;
+                return;
+            }
+
+            const ab = clusterAbnormalStats(S.ops, side, code);
+            const abText = ab.scored
+                ? `<span style="text-transform:none; font-weight:500;">Self-supervised: <b class="sev-${ab.pct >= 50 ? 'anomaly' : ab.pct > 0 ? 'watch' : 'normal'}">${ab.pct}% abnormal</b> (${ab.abnormal} of ${ab.scored} scored)</span>`
+                : `<span style="text-transform:none; font-weight:500; color:var(--text-muted);">not enough scored operations yet</span>`;
+            box.innerHTML = `<div class="card-title">
+                    <span><span class="chip" style="background:${colorFor(code)}22; border-color:${colorFor(code)};"><span class="dot" style="background:${colorFor(code)};"></span>${code}</span> \u2014 Side ${side}</span>
+                    <span style="text-transform:none; font-weight:500; color:var(--text-muted);">${matches.length} operations, time order</span>
+                </div>
+                <div style="font-size:12.5px; margin-bottom:10px;">${abText} \u2014 how much of THIS cluster's own history does the self-supervised score consider unusual for this machine.</div>
+                <div style="display:flex; overflow-x:auto; gap:10px; padding-bottom:8px;" id="clusterOpsStrip${side}"></div>
+                <div id="clusterOpPointDetail${side}" style="display:none; margin-top:10px;"></div>`;
+
+            const strip = document.getElementById('clusterOpsStrip' + side);
+            matches.forEach((o, idx) => {
+                const score = o['novelty_score_' + sideLetter];
+                const sev = o['novelty_severity_' + sideLetter] || 'unknown';
+                const cell = document.createElement('div');
+                cell.style.cssText = `flex:0 0 150px; min-width:0; border:1px solid var(--border); border-radius:10px; padding:8px; background:var(--bg-tertiary); cursor:pointer;`;
+                const canvasId = 'clusterOp_' + side + '_' + idx;
+                const badge = score != null ? `<span class="sev-pill pill-${sev}" style="float:right;">Score ${score}</span>` : '';
+                cell.innerHTML = `<div style="margin-bottom:4px;">${badge}</div>
+                    <div style="font-size:9px; color:var(--text-muted); margin-bottom:4px;">${o.time.toLocaleString()}</div>
+                    <div style="height:90px; width:100%; position:relative;"><canvas id="${canvasId}"></canvas></div>`;
+                // Plot THIS operation's waveform right here, inside this same
+                // cluster-detail box (not the shared #detail panel far below).
+                cell.addEventListener('click', () => showDetail(o, side, 'clusterOpPointDetail' + side));
+                strip.appendChild(cell);
+                drawStripChart(canvasId, [o[curKey]], colorFor(code));
+            });
+        }
+
+        function renderSummary(ops) {
+            const dA = sideDistribution(ops, 'clusterA');
+            const dB = sideDistribution(ops, 'clusterB');
+            document.getElementById('summary').innerHTML =
+                `<div style="display:flex; gap:16px; flex-wrap:wrap;">
+                    ${sideBlock('A', dA, ops)}
+                    ${sideBlock('B', dB, ops)}
+                </div>`;
+            return { a: dA, b: dB };
+        }
+
+        // \u2500\u2500 ADDITIVE: for one cluster code on one side, what % of ITS OWN
+        // operations does the self-supervised score call abnormal (watch+anomaly)?
+        // This is the real question - "is this cluster actually abnormal-looking
+        // to the self-supervised model" - not just a per-op label. \u2500\u2500
+        function clusterAbnormalStats(ops, side, code) {
+            const clusterKey = side === 'A' ? 'clusterA' : 'clusterB';
+            const sevKey = 'novelty_severity_' + side.toLowerCase();
+            const matches = ops.filter(o => o[clusterKey] && o[clusterKey].cluster === code);
+            const scored = matches.filter(o => o[sevKey] && o[sevKey] !== 'unknown');
+            const abnormal = scored.filter(o => o[sevKey] === 'watch' || o[sevKey] === 'anomaly');
+            return {
+                total: matches.length, scored: scored.length, abnormal: abnormal.length,
+                pct: scored.length ? Math.round(abnormal.length / scored.length * 100) : null,
+            };
+        }
+
+        // \u2500\u2500 AI SUMMARY (Claude, server-side) \u2014 structured verdict + bullets \u2500\u2500\u2500\u2500
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s == null ? '' : String(s);
+            return d.innerHTML;
+        }
+
+        function renderSummaryHtml(data) {
+            const points = Array.isArray(data.points) ? data.points : [];
+            const bullets = points.map(p => `<li style="margin-bottom:4px;">${escapeHtml(p)}</li>`).join('');
+            return `<div style="font-weight:800; font-size:14.5px; margin-bottom:8px;">${escapeHtml(data.verdict)}</div>`
+                + (bullets ? `<ul style="margin:0 0 8px 18px; padding:0;">${bullets}</ul>` : '')
+                + (data.recommendation
+                    ? `<div style="margin-top:6px;"><b>Recommendation:</b> ${escapeHtml(data.recommendation)}</div>`
+                    : '');
+        }
+
+        // Returns the {verdict,points,recommendation} object it rendered (cached
+        // or freshly generated), or null on failure - callers use this to write a
+        // live result through to the local cache (see analyzeClusters).
+        async function renderAiSummary(assetName, dA, dB, cachedSummary) {
+            const box = document.getElementById('aiSummary');
+            const txt = document.getElementById('aiSummaryText');
+            box.style.display = 'block';
+
+            // Cache already has this exact summary (see point_machine_cluster
+            // cache write-through) - use it instantly instead of re-calling
+            // Claude live for the same data.
+            if (cachedSummary) {
+                txt.innerHTML = renderSummaryHtml(cachedSummary);
+                return cachedSummary;
+            }
+
+            txt.textContent = 'Generating\u2026';
+            const siteObj = (S.sites || []).find(s => String(s.SiteId) === String(S.currentSiteId));
+            try {
+                const r = await fetch(PMC_ENDPOINTS.clusterSummary, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        asset_name: assetName,
+                        site_name: (siteObj && siteObj.SiteName) || null,
+                        total_a: dA.total, counts_a: dA.counts,
+                        total_b: dB.total, counts_b: dB.counts,
+                    }),
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+                txt.innerHTML = renderSummaryHtml(data);
+                return data;
+            } catch (e) {
+                box.style.display = 'none';
+                console.warn('AI summary unavailable:', e.message);
+                return null;
+            }
+        }
+
+        // \u2500\u2500 OPERATION STRIP: one mini-chart per OPERATION (not per cluster) in
+        // the SAME left-to-right time order as the timeline bands above it, so
+        // scrolling this strip mirrors scrolling through the timeline. \u2500\u2500
+        function renderGridView(ops, xEnd) {
+            renderOperationStrip('gridA', ops, 'clusterA', 'aCur', 'A', xEnd);
+            renderOperationStrip('gridB', ops, 'clusterB', 'bCur', 'B', xEnd);
+        }
+
+        function renderOperationStrip(containerId, ops, clusterKey, curKey, label, xEnd) {
+            const container = document.getElementById(containerId);
+            const items = ops.filter(o => o[clusterKey] && o[curKey] && o[curKey].length);
+
+            if (!items.length) {
+                container.innerHTML = `<div class="card-title"><span>Side ${label}</span></div>
+                    <div style="font-size:12px; color:var(--text-muted);">No cluster data.</div>`;
+                return;
+            }
+
+            // Group CONSECUTIVE ops with the same cluster into one band - this
+            // mirrors the timeline above, where a run of same-cluster ops merges
+            // visually into one continuous colored block. One band = one plot
+            // (all its ops' signals overlaid together), not one plot per op.
+            // Each band also remembers its own [startTime, endTime) on the
+            // timeline (endTime = next band's start, or xEnd for the last one -
+            // same rule renderSideTimeline uses for its rects) so hovering a
+            // tile can highlight exactly that range up on the timeline.
+            const bands = [];
+            items.forEach((o, i) => {
+                const code = o[clusterKey].cluster;
+                const last = bands[bands.length - 1];
+                if (last && last.code === code) { last.ops.push(o); last.endIdx = i; }
+                else bands.push({ code, ops: [o], endIdx: i });
+            });
+            bands.forEach(band => {
+                band.startTime = band.ops[0].time;
+                const nextItem = items[band.endIdx + 1];
+                band.endTime = nextItem ? nextItem.time : (xEnd || band.ops[band.ops.length - 1].time);
+            });
+
+            container.innerHTML = `<div class="card-title"><span>Side ${label} \u2014 signature per band</span>
+                    <span style="text-transform:none; font-weight:500; color:var(--text-muted);">${bands.length} bands \u00b7 ${items.length} ops, time order</span></div>
+                <div style="display:flex; overflow-x:auto; gap:10px; padding-bottom:8px;" id="${containerId}Strip"></div>`;
+
+            const strip = document.getElementById(containerId + 'Strip');
+            bands.forEach((band, idx) => {
+                const color = colorFor(band.code);
+                const cell = document.createElement('div');
+                // Width scales with the band's op-count, so a wide grey band up on
+                // the timeline (many consecutive ops) gets a proportionally wider
+                // tile down here too, instead of every tile being the same size.
+                const width = Math.min(140 + (band.ops.length - 1) * 18, 450);
+                // min-width:0 overrides flexbox's default "never shrink below
+                // content size" - without it, Chart.js's canvas (which defaults
+                // to an intrinsic 300px) forces every tile to the same ~300px+
+                // width regardless of flex-basis, silently ignoring it.
+                // ADDITIVE: border color/thickness reflects this band's WORST self-supervised
+                // severity (not just cluster quality) - cluster-color chip inside still shows
+                // cluster identity, this is purely an extra signal, not a replacement.
+                const sideLetter = label.toLowerCase();
+                const SEV_RANK = { anomaly: 3, watch: 2, normal: 1, unknown: 0 };
+                let worstSev = 'unknown';
+                band.ops.forEach(o => {
+                    const sev = o['novelty_severity_' + sideLetter];
+                    if (sev && SEV_RANK[sev] > SEV_RANK[worstSev]) worstSev = sev;
+                });
+                const noveltyScores = band.ops.map(o => o['novelty_score_' + sideLetter]).filter(v => v != null);
+                const borderColor = noveltyScores.length ? severityColor(worstSev) : 'var(--border)';
+                const borderWidth = (worstSev === 'anomaly') ? 3 : (worstSev === 'watch') ? 2 : 1;
+                cell.style.cssText = `flex:0 0 ${width}px; min-width:0; border:${borderWidth}px solid ${borderColor}; border-radius:10px; padding:8px; background:var(--bg-tertiary); cursor:pointer;`;
+                const canvasId = containerId + '_band' + idx;
+                const noveltyBadge = noveltyScores.length
+                    ? `<span class="sev-pill pill-${worstSev}" style="float:right;" title="Self-supervised anomaly score (0-100, worst in this band)">Score ${Math.max(...noveltyScores)}</span>`
+                    : '';
+                cell.innerHTML = `<div style="margin-bottom:4px;">
+                        <span class="chip" style="background:${color}22; border-color:${color}; font-size:10px; padding:2px 6px;">
+                            <span class="dot" style="background:${color};"></span>${band.code}
+                        </span>${noveltyBadge}
+                    </div>
+                    <div style="font-size:9px; color:var(--text-muted); margin-bottom:4px;">${band.ops[0].time.toLocaleString()} \u00b7 ${band.ops.length} op${band.ops.length > 1 ? 's' : ''}</div>
+                    <div style="height:120px; width:100%; position:relative;"><canvas id="${canvasId}"></canvas></div>`;
+                // Hover a tile -> outline that exact time-range on this side's
+                // timeline above, so you can always see where this plot sits.
+                cell.addEventListener('mouseenter', () => highlightTimelineRange(label, band.startTime, band.endTime));
+                cell.addEventListener('mouseleave', () => clearTimelineHighlight(label));
+                // Click the band tile -> plot ALL operations of this cluster code
+                // (not just this one band's ops) - same view as clicking the
+                // cluster chip in the summary box above.
+                cell.addEventListener('click', () => showClusterOps(label, band.code));
+                strip.appendChild(cell);
+                drawStripChart(canvasId, band.ops.map(o => o[curKey]), color);
+            });
+        }
+
+        function drawStripChart(canvasId, signals, color) {
+            const key = 'strip_' + canvasId;
+            if (S.charts[key]) { S.charts[key].destroy(); S.charts[key] = null; }
+            const maxLen = Math.max(...signals.map(s => s.length));
+            // Semi-transparent only matters when a band has 2+ ops overlaid -
+            // a single-op band just draws one solid line.
+            const lineColor = signals.length > 1 ? hexToRgba(color, 0.55) : color;
+            const datasets = signals.map(s => ({
+                data: s, borderColor: lineColor, borderWidth: signals.length > 1 ? 1.25 : 1.5,
+                pointRadius: 0, tension: 0.15, fill: false,
+            }));
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            S.charts[key] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: Array.from({ length: maxLen }, (_, i) => i * 20), datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    elements: { line: { borderJoinStyle: 'round' } },
+                    scales: {
+                        x: { display: false },
+                        // Fixed 0-10 range (not auto-scaled) so every strip cell is directly
+                        // comparable \u2014 a rare outlier spike in one band shouldn't squash
+                        // the visible shape of every other band's chart.
+                        y: { min: 0, max: 10, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#8b90ac', font: { size: 8 } } },
+                    },
+                },
+            });
+        }
+
+        // Hovering a signature-strip tile outlines that exact [x0,x1) time
+        // range on the SAME side's timeline above it (S.timelineShapes[side]
+        // holds that timeline's base band-fill shapes - relayout adds one more
+        // shape on top, outline-only, spanning the full plot height).
+        function highlightTimelineRange(side, x0, x1) {
+            const elId = side === 'A' ? 'timelineA' : 'timelineB';
+            const el = document.getElementById(elId);
+            if (!el || !el.data) return;
+            const highlight = {
+                type: 'rect', xref: 'x', yref: 'paper', x0, x1, y0: 0, y1: 1,
+                fillcolor: 'rgba(0,0,0,0)', line: { color: '#1e2233', width: 3 }, layer: 'above',
+            };
+            Plotly.relayout(el, { shapes: [...(S.timelineShapes[side] || []), highlight] });
+        }
+
+        function clearTimelineHighlight(side) {
+            const elId = side === 'A' ? 'timelineA' : 'timelineB';
+            const el = document.getElementById(elId);
+            if (!el || !el.data) return;
+            Plotly.relayout(el, { shapes: S.timelineShapes[side] || [] });
+        }
+
+        function hexToRgba(hex, alpha) {
+            const h = hex.replace('#', '');
+            const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+            return `rgba(${r},${g},${b},${alpha})`;
+        }
+
+        // \u2500\u2500 TIMELINE \u2014 continuous CLUSTER BAND, one per side (not scattered dots,
+        // not the two sides combined into one plot) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        // Har operation apne cluster ka color us operation ke time se agle operation
+        // ke time tak "fill" karta hai -> ek continuous colored band. Hover/click
+        // ke liye upar invisible-blended markers (band ke same color) rakhte hain.
+        // Side A and Side B each get their OWN small timeline, positioned directly
+        // above that same side's signature-per-band strip (see renderOperationStrip)
+        // so the pair reads as one paired group, not one merged combined chart.
+        function renderTimelines(ops, xStart, xEnd) {
+            renderSideTimeline(ops, 'clusterA', 'A', 'timelineA', xStart, xEnd);
+            renderSideTimeline(ops, 'clusterB', 'B', 'timelineB', xStart, xEnd);
+        }
+
+        function renderSideTimeline(ops, key, label, elId, xStart, xEnd) {
+            const grid = 'rgba(0,0,0,0.08)';
+            const pts = ops.filter(o => o[key]);   // time-sorted already
+            const shapes = pts.map((p, i) => ({
+                type: 'rect', xref: 'x', yref: 'y', x0: p.time,
+                x1: (i + 1 < pts.length) ? pts[i + 1].time : (xEnd || p.time),
+                y0: 0.5, y1: 1.5, fillcolor: colorFor(p[key].cluster), line: { width: 0 }, layer: 'below',
+            }));
+            S.timelineShapes[label] = shapes;   // base shapes, reused by hover-highlight (see highlightTimelineRange)
+
+            const sideLetter = label.toLowerCase();
+            const x = [], y = [], colors = [], text = [];
+            pts.forEach(o => {
+                const c = o[key];
+                x.push(o.time); y.push(1); colors.push(colorFor(c.cluster));
+                const exp = expandCode(c.cluster);
+                const top = (c.top3 || []).map(t => `${t.id} (${t.dist})`).join(', ') || '\u2014';
+                // ADDITIVE: append the self-supervised score/severity to the existing hover text, if present
+                const noveltyScore = o['novelty_score_' + sideLetter];
+                const noveltyLine = noveltyScore != null
+                    ? `<br>Anomaly score (self-supervised): ${noveltyScore} (${o['novelty_severity_' + sideLetter]})`
+                    : '';
+                text.push(`<b>${label} \u00b7 ${c.cluster}</b>${exp ? ' (' + exp + ')' : ''} \u00b7 ${o.time.toLocaleString()}`
+                    + `<br>Distance: ${isFinite(c.distance) ? c.distance : '\u2014'}`
+                    + `<br>Match: ${isFinite(c.match) ? c.match + '%' : '\u2014'}`
+                    + `<br>Direction: ${o.direction || '\u2014'}`
+                    + `<br>Top 3 close: ${top}`
+                    + noveltyLine);
+            });
+            // Marker band ke same color (blend) \u2014 dikhte nahi, sirf hover/click ke liye.
+            const data = [{
+                x, y, text, mode: 'markers', type: 'scatter', name: label,
+                marker: { color: colors, size: 12, opacity: 0.01 },
+                hovertemplate: '%{text}<extra></extra>',
+            }];
+            const layout = {
+                height: 90, margin: { l: 36, r: 20, t: 6, b: 26 },
+                paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#565b76', size: 11 }, shapes,
+                xaxis: { type: 'date', gridcolor: grid, range: xStart && xEnd ? [xStart, xEnd] : undefined },
+                yaxis: { tickmode: 'array', tickvals: [1], ticktext: [label], range: [0.5, 1.5], gridcolor: grid, fixedrange: true },
+                showlegend: false, hovermode: 'closest',
+            };
+            const el = document.getElementById(elId);
+            Plotly.newPlot(el, data, layout, { responsive: true, displaylogo: false });
+            el.removeAllListeners && el.removeAllListeners('plotly_click');
+            el.on('plotly_click', (ev) => {
+                const pt = ev.points && ev.points[0];
+                if (!pt) return;
+                const t = +new Date(pt.x);
+                let best = null;
+                pts.forEach(o => { const d = Math.abs(+o.time - t); if (!best || d < best.d) best = { o, d }; });
+                if (best) showDetail(best.o, label);
+            });
+        }
+
+        // \u2500\u2500 CLICK DETAIL: cluster info + current/voltage waveform \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function drawChart(canvasId, key, data, yMax, color) {
+            if (S.charts[key]) { S.charts[key].destroy(); S.charts[key] = null; }
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            S.charts[key] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: data.map((_, i) => i * 20), datasets: [{ data, borderColor: color, borderWidth: 2, pointRadius: 0, tension: 0.15, fill: true, backgroundColor: color + '22' }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#8b90ac', font: { size: 8 }, maxTicksLimit: 10 }, title: { display: true, text: 'ms', color: '#8b90ac', font: { size: 9 } } },
+                        y: { min: 0, max: yMax, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#8b90ac', font: { size: 8 } } }
+                    }
+                }
+            });
+        }
+
+        // targetId (optional): where to render - defaults to the shared bottom
+        // #detail panel (with its scroll-into-view, unchanged behavior for
+        // cluster-tile/timeline clicks). Pass a different id (e.g. from the
+        // trend chart) to render in-place instead, with no scrolling.
+        // \u2500\u2500 ADDITIVE (Part A #5): nearest cluster via a real nearest-neighbor
+        // search in this machine's OWN already-scored latent points (this page
+        // has no invented named zones like the mock's TG28/IM16/IB10 - the
+        // honest equivalent here is "which of this machine's own real,
+        // already-labelled operations sits closest in latent space"). \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        function noveltyNearestCluster(op, sideLetter) {
+            const x = op['novelty_x_' + sideLetter], y = op['novelty_y_' + sideLetter];
+            if (x == null || y == null || !S.ops) return null;
+            const clusterKey = sideLetter === 'a' ? 'clusterA' : 'clusterB';
+            let best = null, bestD = Infinity;
+            S.ops.forEach(o => {
+                if (o === op) return;
+                const ox = o['novelty_x_' + sideLetter], oy = o['novelty_y_' + sideLetter];
+                if (ox == null || oy == null || !o[clusterKey]) return;
+                const d = Math.hypot(ox - x, oy - y);
+                if (d < bestD) { bestD = d; best = o[clusterKey].cluster; }
+            });
+            return best;
+        }
+
+        // Real drift signal: compares how far this machine's OWN points sit
+        // from their OWN median position in the earlier half of the window
+        // vs the later half - needs >=6 same-direction scored ops to say
+        // anything; below that, returns null (shown as nothing - never faked).
+        function noveltyDriftDirection(op, sideLetter) {
+            if (!S.ops) return null;
+            const sameDir = S.ops
+                .filter(o => o.direction === op.direction && o['novelty_x_' + sideLetter] != null && o['novelty_y_' + sideLetter] != null)
+                .sort((a, b) => a.time - b.time);
+            if (sameDir.length < 6) return null;
+            const med = arr => arr.slice().sort((a, b) => a - b)[Math.floor(arr.length / 2)];
+            const mx = med(sameDir.map(o => o['novelty_x_' + sideLetter]));
+            const my = med(sameDir.map(o => o['novelty_y_' + sideLetter]));
+            const half = Math.floor(sameDir.length / 2);
+            const avgDistFromMed = pts => pts.reduce((s, o) => s + Math.hypot(o['novelty_x_' + sideLetter] - mx, o['novelty_y_' + sideLetter] - my), 0) / pts.length;
+            const delta = avgDistFromMed(sameDir.slice(-half)) - avgDistFromMed(sameDir.slice(0, half));
+            if (Math.abs(delta) < 0.1) return 'stable \u2014 no meaningful drift from its own typical position this window';
+            return delta > 0
+                ? `drifting away from its own typical position this window (\u0394${delta.toFixed(2)})`
+                : `drifting back toward its own typical position this window (\u0394${delta.toFixed(2)})`;
+        }
+
+        function noveltyExplainLine(op, sideLetter) {
+            const ratio = op['novelty_ratio_' + sideLetter];
+            if (ratio == null) return '';
+            const parts = [`<b>${ratio.toFixed(1)}\u00d7</b> this machine's usual error`];
+            const nearest = noveltyNearestCluster(op, sideLetter);
+            if (nearest) parts.push(`nearest cluster <b>${nearest}</b> (by latent distance)`);
+            const drift = noveltyDriftDirection(op, sideLetter);
+            if (drift) parts.push(drift);
+            const modelVer = op['novelty_model_version_' + sideLetter];
+            const trainedAt = op['novelty_model_trained_at_' + sideLetter];
+            if (modelVer) {
+                const ageDays = trainedAt ? Math.floor((Date.now() - new Date(trainedAt + 'T00:00:00')) / 86400000) : null;
+                const staleTxt = ageDays != null && ageDays > 90 ? ` <span class="model-stale-warn">\u26a0 model ${ageDays}d old</span>` : '';
+                parts.push(`model <span class="mono">${modelVer}</span>${staleTxt}`);
+            }
+            return `<div class="explain-line">${parts.join(' \u00b7 ')}</div>`;
+        }
+
+        function showDetail(op, side, targetId) {
+            targetId = targetId || 'detail';
+            const c = side === 'A' ? op.clusterA : op.clusterB;
+            const cur = side === 'A' ? op.aCur : op.bCur;
+            const volt = side === 'A' ? op.aVolt : op.bVolt;
+            const det = document.getElementById(targetId);
+            det.style.display = 'block';
+            const curCanvasId = targetId + 'Current', voltCanvasId = targetId + 'Voltage';
+
+            const sideLetter = side.toLowerCase();
+            const noveltyScore = op['novelty_score_' + sideLetter];
+            const noveltyRow = noveltyScore != null
+                ? `<div style="font-size:12px; color:var(--text-secondary); margin:2px 0 4px;">
+                    Self-supervised anomaly score: <span class="sev-pill pill-${op['novelty_severity_' + sideLetter]}">${noveltyScore} \u00b7 ${op['novelty_severity_' + sideLetter]}</span>
+                   </div>
+                   ${noveltyExplainLine(op, sideLetter)}`
+                : '';
+
+            let clusterSection;
+            if (c) {
+                const top = (c.top3 || []).map(t => `<span class="chip"><span class="dot" style="background:${colorFor(t.id)};"></span>${t.id} <span style="opacity:0.7;">(${t.dist})</span></span>`).join(' ');
+                clusterSection = `
+                    <span class="chip" style="background:${colorFor(c.cluster)}22; border-color:${colorFor(c.cluster)};"><span class="dot" style="background:${colorFor(c.cluster)};"></span>${c.cluster}${expandCode(c.cluster) ? ' \u00b7 ' + expandCode(c.cluster) : ''}</span>
+                    <div style="font-size:12px; color:var(--text-secondary); margin:6px 0 10px;">
+                        Distance: <b>${isFinite(c.distance) ? c.distance : '\u2014'}</b> \u00b7 Match: <b>${isFinite(c.match) ? c.match + '%' : '\u2014'}</b> \u00b7 Direction: <b>${op.direction || '\u2014'}</b></div>
+                    ${noveltyRow}
+                    <div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; font-weight:700; margin-bottom:6px;">Top 3 close clusters</div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">${top || '\u2014'}</div>`;
+            } else {
+                // ADDITIVE: previously this branch showed text only, no waveform -
+                // now it still draws the real current/voltage charts below, since
+                // "no cluster data" doesn't mean "no operation data".
+                clusterSection = `<div style="font-size:12px; color:var(--text-muted); margin:2px 0 10px;">No cluster data for this operation.</div>${noveltyRow}`;
+            }
+
+            const bodyId = targetId + 'Body';
+            det.innerHTML = `
+                <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+                    <span>${side} \u00b7 ${op.time.toLocaleString()}</span>
+                    <button onclick="toggleDetailCollapse('${targetId}')" id="${targetId}ToggleBtn"
+                        title="Hide/expand plot" style="background:none; border:1px solid var(--border); border-radius:6px; cursor:pointer; width:26px; height:26px; font-size:13px; line-height:1; color:var(--text-secondary);">\u25b2</button>
+                </div>
+                <div id="${bodyId}">
+                    ${clusterSection}
+                    <div class="chart-box" style="height:220px; width:100%;"><canvas id="${curCanvasId}"></canvas></div>
+                    <div class="chart-box" style="height:220px; width:100%; margin-top:12px;"><canvas id="${voltCanvasId}"></canvas></div>
+                </div>`;
+            drawChart(curCanvasId, curCanvasId, cur, 8, '#d97706');
+            drawChart(voltCanvasId, voltCanvasId, volt, 150, '#0d9488');
+            if (targetId === 'detail') det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // ADDITIVE: collapse/expand arrow for showDetail()'s plot card, top-right
+        function toggleDetailCollapse(targetId) {
+            const body = document.getElementById(targetId + 'Body');
+            const btn = document.getElementById(targetId + 'ToggleBtn');
+            if (!body || !btn) return;
+            const collapsed = body.style.display === 'none';
+            body.style.display = collapsed ? '' : 'none';
+            btn.textContent = collapsed ? '\u25b2' : '\u25bc';
+        }</script>

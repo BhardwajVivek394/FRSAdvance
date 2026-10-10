@@ -32,8 +32,20 @@ namespace Domain
         public string AlertInsight { get; set; }
         public int? PTAlertInfoId { get; set; }
         public int? MaintainerId { get; set; }
+        public System.DateTime? NotificationSentAt { get; set; }
+        public string NotificationSentBy { get; set; }
+        public DateTime? LocalSetAt { get; set; }
+        public DateTime? LocalResetAt { get; set; }
+        public DateTime? CloudSetAt { get; set; }
+        public DateTime? CloudResetAt { get; set; }
+        public string LocalRawJsonData { get; set; }
+        public string LocalResetRawJsonData { get; set; }
+        public string LocalAlertCardJson { get; set; }
+        public string CloudAlertCardJson { get; set; }
+        public string ResetAlertCardJson { get; set; }
 
         //Extra
+        public string AnalyzeResponse { get; set; }
         public string StationCode { get; set; }
         public string ZoneName { get; set; }
         public string DivisionName { get; set; }

@@ -159,6 +159,52 @@ namespace E7FRSAdvance.MenuBuilder
                 userProfile.Childs.Add(userProfile.SetMenuAttribute("User Management", ControllerName.UserManagement, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
             menus.Add(userProfile);
 
+
+
+
+            Menu trackLeakage = new Menu();
+            trackLeakage.Main = trackLeakage.SetMenuAttribute("AI/ML Analysis", "#", "#", FRSIconName.UserMgmt);
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Track Shorting", ControllerName.TrackLeakage, ActionName.Index, FRSIconName.Dashbord, "FRS25"));
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Point Machine Operation", ControllerName.PointMachineOpration, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Point Machine Clustering", ControllerName.PointMachineClustering, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Maintenance Roster", ControllerName.MaintenceRoster, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Alert Analysis", ControllerName.AlertAnalysis, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("ELD AI Analysis", ControllerName.ELDAIAnalysis, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+
+            //trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Asset Knowledge Graph", ControllerName.AssetKnowledgeGraph, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            //trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Future Trend Analysis", ControllerName.TSFMForecasting, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+
+            if (loginUser.IsSiteKeeping)
+            {
+                trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Pending Alert Analysis", ControllerName.PendingAlertAnalysis, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+
+
+            }
+            trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Chatbot", ControllerName.ChatBot, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+
+            if (loginUser.IsSiteKeeping || ClsHttpContent.LoginUser.EmailAddress.Trim() == "9410500007@energy7.in")
+            {
+                trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("ChatbotNew", ControllerName.ChatbotNew, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            }
+            if (loginUser.IsSiteKeeping || loginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+            {
+                trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Wisdom Manage", ControllerName.AiChat, ActionName.WisdomManage, FRSIconName.UserMgmt, "FRS25"));
+            }
+            //if (loginUser.IsSiteKeeping || loginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+            //{
+            //    trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("AiDiag", ControllerName.AiDiag, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            //}
+            if (loginUser.IsSiteKeeping || (System.Configuration.ConfigurationManager.AppSettings["DiagAllowedEmails"] ?? "").Contains(loginUser.EmailAddress) || loginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+            {
+                trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("AiDiag", ControllerName.AiDiag, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            }
+            if (loginUser.IsSiteKeeping || (System.Configuration.ConfigurationManager.AppSettings["DiagAllowedEmails"] ?? "").Contains(loginUser.EmailAddress) || loginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+            {
+                trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Unified Alert Analysis", ControllerName.UnifiedAlertAnalysis, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            }
+            menus.Add(trackLeakage);
+
+
             return menus;
         }
     }

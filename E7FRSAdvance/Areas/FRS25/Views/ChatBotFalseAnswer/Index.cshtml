@@ -1,0 +1,199 @@
+@model Domain.ChatBotFalseAnswerLister
+
+@{
+    ViewBag.Title = "ChatBot False Answer";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+}
+
+@* jQuery, jquery.unobtrusive-ajax and Bootstrap 4 are loaded by the FRS25 layout at the end of <body>,
+   so start-up code in this page and its partial waits for DOMContentLoaded (or runs at once when
+   the partial is re-rendered by Ajax and jQuery is already present). *@
+
+<style>
+    .ais-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .ais-actions .btn {
+        white-space: nowrap;
+    }
+
+    .ais-section-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--e7-border, var(--e7-edge));
+    }
+
+    .ais-section-head h5 {
+        margin: 0;
+        font-weight: 600;
+        color: var(--e7-heading, var(--e7-t1));
+    }
+
+    .ais-count {
+        font-size: 13px;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+
+    .ais-count strong {
+        color: var(--e7-text, var(--e7-t1));
+    }
+
+    .ais-pager {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .ais-pager select.form-control {
+        width: auto;
+        min-width: 72px;
+        height: 32px;
+        padding: 2px 8px;
+    }
+
+    .ais-pager .btn {
+        height: 32px;
+        padding: 2px 10px;
+    }
+
+    .ais-table {
+        margin-bottom: 0;
+        color: var(--e7-text, var(--e7-t1));
+    }
+
+    .ais-table td,
+    .ais-table th {
+        border-color: var(--e7-border, var(--e7-edge));
+        vertical-align: middle;
+    }
+
+    .ais-table td {
+        word-break: break-word;
+    }
+
+    .ais-table .ais-action {
+        width: 50px;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    .ais-table .ais-action a {
+        display: inline-block;
+        padding: 2px 6px;
+    }
+
+    .ais-empty {
+        padding: 24px !important;
+        text-align: center;
+        font-size: 14px;
+        color: var(--e7-text-2, var(--e7-t2));
+    }
+</style>
+
+<section class="section">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-5">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">AI Section</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">ChatBot False Answer</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">ChatBot False Answer</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header mb-4">
+                    <div class="d-flex justify-content-between">
+                        <h4 class="m-0">Search</h4>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    @* The Name filter sits inside the list form so SearchCriteria.UserName is posted with the
+                       pager fields, exactly as when it lived inside _List. *@
+                    @using (Ajax.BeginForm("_List", "ChatBotFalseAnswer", new { area = "FRS25" }, new AjaxOptions()
+                    {
+                        HttpMethod = "POST",
+                        UpdateTargetId = "divList",
+                        InsertionMode = InsertionMode.Replace,
+                        LoadingElementId = "e7-loader"
+                    }, new { id = "frmChatBotFalseAnswerList" }))
+                    {
+                        <div class="row mb-lg-5 mb-3">
+                            <div class="col">
+                                <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
+                                    <div class="form-group w-100 w-sm-48">
+                                        <label for="txtSearchName">Name</label>
+                                        <input type="text" class="form-control" id="txtSearchName" name="SearchCriteria.UserName" autocomplete="off" />
+                                    </div>
+
+                                    <div class="form-group w-sm-100">
+                                        <label class="d-none d-md-block">&nbsp;</label>
+                                        <div class="ais-actions">
+                                            <button type="button" class="btn btn-primary-search" onclick="Search()" title="Search">
+                                                <img src="~/Areas/FRS25/assets/img/search.svg" alt="Search" />
+                                            </button>
+                                            <button type="button" class="btn btn-inactive" onclick="Clear()" title="Clear">Clear</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="divList">
+                            @Html.Action("_List", "ChatBotFalseAnswer", new { area = "FRS25" })
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        $("#txtSearchName").keydown(function (e) {
+            if (e.keyCode === 13) {
+                e.preventDefault();
+                Search();
+            }
+        });
+    });
+
+    // Search() / Clear() were referenced by the old page but never defined (its RemarkList.js include
+    // was commented out); they behave like the AI Remark page's versions.
+    function Search() {
+        $("#hdnSkip").val('0');
+        $("#frmChatBotFalseAnswerList").submit();
+    }
+
+    function Clear() {
+        $("#hdnSkip").val('0');
+        $("#txtSearchName").val("");
+        $("#frmChatBotFalseAnswerList").submit();
+    }
+
+    // No delete here: the old page's DeleteById posted to /ChatBotRemark/Delete (a different table, same id),
+    // and ChatBotFalseAnswerController has no Delete action, so the trash column was not carried over.
+</script>

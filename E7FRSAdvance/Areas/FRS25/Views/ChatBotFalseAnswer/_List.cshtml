@@ -1,0 +1,113 @@
+@model Domain.ChatBotFalseAnswerLister
+
+@Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
+@Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
+
+<input type="hidden" id="hdnCatListType" value="@ViewBag.Type" />
+<input type="hidden" id="hdnCatListMessage" value="@ViewBag.Message" />
+
+@{
+    int start = Convert.ToInt32(Model.Pager.CurrentPage - 1) * Model.Pager.PageSize + 1;
+    if (Model.ChatBotFalseAnswers == null || Model.ChatBotFalseAnswers.Count == 0)
+    {
+        start = 0;
+    }
+    decimal end = Math.Floor(Model.Pager.TotalRecord);
+    if (Model.Pager.PageSize < Model.Pager.TotalRecord)
+    {
+        if (Model.Pager.PageSize == -1)
+        {
+            end = Model.Pager.TotalRecord;
+        }
+        else
+        {
+            end = Model.Pager.PageSize * Model.Pager.CurrentPage;
+            if (end > Model.Pager.TotalRecord)
+            {
+                end = Model.Pager.TotalRecord;
+            }
+        }
+    }
+}
+
+<div class="table-border">
+    <div class="ais-section-head">
+        <h5>ChatBot False Answers</h5>
+        <div class="d-flex flex-wrap align-items-center gap-10">
+            <span class="ais-count">Showing <strong>@start - @Math.Floor(end)</strong> of <strong>@Math.Floor(Model.Pager.TotalRecord)</strong> ChatBot False Answer</span>
+            <div class="ais-pager">
+                @Html.HiddenFor(model => model.Pager.Skip, new { id = "hdnSkip" })
+                @Html.DropDownListFor(model => model.Pager.PageSize, new List<SelectListItem> { new SelectListItem { Text = "5", Value = "5" }, new SelectListItem { Text = "10", Value = "10" }, new SelectListItem { Text = "20", Value = "20" }, new SelectListItem { Text = "50", Value = "50" }, new SelectListItem { Text = "100", Value = "100" }, new SelectListItem { Text = "All", Value = "-1" } }, new { @class = "drpSearch form-control", id = "drpPageSize" })
+                <button type="button" class="btn btn-inactive" title="Previous" onclick="GetPagerButtonClick('Previous')"><i class="fa fa-chevron-left"></i></button>
+                <button type="button" class="btn btn-inactive" title="Next" onclick="GetPagerButtonClick('Next')"><i class="fa fa-chevron-right"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive" style="max-height: 620px;">
+        <table class="table table-hover ais-table">
+            <thead class="thead-light2">
+                <tr>
+                    <th>Question</th>
+                    <th>Answer</th>
+                    <th>User Name</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.ChatBotFalseAnswers != null && Model.ChatBotFalseAnswers.Count > 0)
+                {
+                    foreach (var item in Model.ChatBotFalseAnswers)
+                    {
+                        <tr>
+                            <td>@item.Question</td>
+                            <td>@item.Answer</td>
+                            <td>@item.UserName</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="3" class="ais-empty">
+                            No record found
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // First rendered inside Index (before the layout loads jQuery), later re-rendered by the Ajax form.
+    (function (fn) {
+        if (window.jQuery) { jQuery(fn); } else { document.addEventListener('DOMContentLoaded', fn); }
+    })(function () {
+        $('#drpPageSize').change(function (e) {
+            $("#hdnSkip").val('0');
+            $("#frmChatBotFalseAnswerList").submit();
+        });
+    });
+
+    // The old page submitted a non-existent '#frmGetRemarkList' here, so paging never worked; it now
+    // submits this page's list form.
+    function GetPagerButtonClick(btn) {
+        if (btn == "Next") {
+            if (Number('@Model.Pager.TotalPage') != Number('@Model.Pager.CurrentPage')) {
+                var hdnSkip = $("#hdnSkip").val();
+                var pageSize = @Model.Pager.PageSize;
+                var skip = parseInt(hdnSkip) + parseInt(pageSize);
+                $("#hdnSkip").val(skip);
+                $("#frmChatBotFalseAnswerList").submit();
+            }
+        }
+        else if (btn == "Previous") {
+            if (@Model.Pager.Skip >= @Model.Pager.PageSize) {
+                var prevSkip = @Model.Pager.Skip;
+                prevSkip = prevSkip - @Model.Pager.PageSize;
+                $("#hdnSkip").val(prevSkip);
+                $("#frmChatBotFalseAnswerList").submit();
+            }
+        }
+    }
+</script>

@@ -18,7 +18,10 @@ namespace E7FRSAdvance.Areas.FRS25.Filter
         {
             { "maintenceroster", "telemetry" },
             { "trackleakage", "telemetry" },
-            { "chatbot", "telemetry" }
+            { "chatbot", "telemetry" },
+            // Unified Alert Analysis reads pending-alert details and alert cards from these controllers.
+            { "pendingalertanalysis", "unifiedalertanalysis" },
+            { "alertlive", "alerts" }
         };
 
         public override void OnActionExecuting(ActionExecutingContext filterContext)
