@@ -33,6 +33,13 @@
     var ROSTER_STATE_URL = '/FRS25/MaintenceRoster/GetMaintenanceState';
     var ROSTER_PAGE_URL = '/FRS25/MaintenceRoster/Index';   /* v618.34: Asset Health API (Roster 2.11.0.0 / E7.AiCore AssetHealthEngine) */
     var CHAT_URL = '/FRS25/ChatBot/Chat';   /* v618.37: E7MRIWeb ChatBot endpoint (E7.AiCore ChatEngine), was /FRS25/AiChat/Chat */
+    /* Same engine the Chatbot page uses: its picker saves sessionStorage.e7ChatEngine, default quantum10.
+       Without a provider the server falls back to its own default (Anthropic for privileged users), so the
+       drawer and the Chatbot page answered the same question with different models. */
+    function chatEngine() {
+        try { var s = W.sessionStorage.getItem('e7ChatEngine'); if (s && /^[a-z0-9]+$/i.test(s)) return s; } catch (e) { }
+        return 'quantum10';
+    }
     var ALERTS_URL = '/FRS25/Telemetry/GetSipReplayAlerts';
     var HIST_URL = '/FRS25/TelemetryHistory/GetDashboardHistoryData';
     var TL_PREDICT_URL = '/FRS25/TrackLeakage/PredictApi';                  /* v618.36 track shorting (E7MRIWeb TrackLeakage port) */
@@ -58,14 +65,17 @@
     /* v618.32: 'pm' for point machines (asset type 3), 'signal' (type 2, v618.33), else 'track' */
     function kind() {
         var a = live()[D.aid] || {};
-        var t = parseInt(a.AssetTypeId || W.wsCurrentAssetTypeId || ($('#drpAssetType').val && $('#drpAssetType').val()) || 0, 10);
+        /* the asset's own type (tlAssetTypeOf: server metadata first); the page's
+           selected type is only a last resort -- the SIP opens assets of every type */
+        var t = typeof W.tlAssetTypeOf === 'function' ? W.tlAssetTypeOf(D.aid, D.typeHint)
+            : parseInt(a.AssetTypeId || W.wsCurrentAssetTypeId || ($('#drpAssetType').val && $('#drpAssetType').val()) || 0, 10);
         return t === 3 ? 'pm' : t === 2 ? 'signal' : 'track';
     }
     function siteId() { return String((W.jQuery && $('#drpSite').val()) || ''); }
     function live() { return W.wsLiveData || {}; }
     function describe(aid) {
         if (W.TlHealthView && typeof W.TlHealthView.describe === 'function') {
-            try { return W.TlHealthView.describe(aid); } catch (e) { /* fall through */ }
+            try { return W.TlHealthView.describe(aid, String(aid) === D.aid ? D.typeHint : null); } catch (e) { /* fall through */ }
         }
         return null;
     }
@@ -277,7 +287,7 @@
     function valuesHtml(A) {
         if (!A || !A.rows.length) return '<div class="tld-empty">Waiting for live values...</div>';
         var h = '<div class="tld-tiles">' + A.rows.map(tileHtml).join('') + '</div>';
-        if (A.derived && A.derived.length) {
+        if (kind() === 'track' && A.derived && A.derived.length) {   /* calculated values exist for track circuits only */
             h += '<div class="tld-calc">' + A.derived.map(function (r) {
                 var sel = D.sel && D.sel.key === r.key;
                 return '<button type="button" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" class="' + (sel ? 'sel' : '') + '" title="' + esc(r.alias || r.label) + ' -- click for details"><span>' + esc(r.alias || r.label) + '</span><b>' + fmt(r.v) + '</b></button>';
@@ -1386,7 +1396,20 @@
     };
     var CARD_FIELDS = { '15-DAY': '15-day record', 'ML': 'Model classification', 'LASTOP': 'Last operation', 'ACTION': 'Action', 'NOTE': 'Note' };
     function chatState() { return D.chat[D.aid] || (D.chat[D.aid] = { msgs: [], busy: false }); }
+    /* ChatBot 1.3.3.0 wraps a site's cards in [[PLANBOARD]] with a "site=.. | urgent=.." header line.
+       Turn the header into a summary line and drop the wrapper; the [[CARD]]s inside render as usual. */
+    function planBoard(raw) {
+        if (!raw || raw.indexOf('[[PLANBOARD]]') < 0) return raw;
+        return raw.replace(/\[\[PLANBOARD\]\]\s*\n?([^\n]*)\n?/g, function (_, head) {
+            var m = {};
+            String(head || '').split('|').forEach(function (p) { var kv = p.split('='); if (kv.length >= 2) m[kv[0].trim().toLowerCase()] = kv.slice(1).join('=').trim(); });
+            if (!m.site) return '\n' + head + '\n';
+            return '\n**' + m.site + ' - Maintenance plan**  \nUrgent ' + (m.urgent || 0) + ' | Inspect soon ' + (m.soon || 0) + ' | Monitor ' + (m.monitor || 0) +
+                (m.live ? ' | Live alerts ' + (m.live === 'unavailable' ? 'offline' : m.live) : '') + '\n\n';
+        }).replace(/\[\[\/PLANBOARD\]\]/g, '');
+    }
     function planCards(raw, stash) {
+        raw = planBoard(raw);
         if (!raw || raw.indexOf('[[CARD]]') < 0) return raw;
         return raw.replace(/\[\[CARD\]\]([\s\S]*?)\[\[\/CARD\]\]/g, function (_, body) {
             var lines = body.split('\n').map(function (l) { return l.replace(/^\s*[-*•]\s?/, '').trim(); }).filter(function (l) { return l.length; });
@@ -1564,7 +1587,7 @@
         /* timer, not requestAnimationFrame: rAF stops in a hidden tab and the answer would only appear at the end */
         var render = function () { if (rq) return; rq = setTimeout(function () { rq = null; paintBot(aid, bi); }, 60); };
         W.fetch(CHAT_URL, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, signal: C.ctrl ? C.ctrl.signal : undefined,
-            body: JSON.stringify({ messages: history, pageContext: pageContext(describe(aid)) }) })
+            body: JSON.stringify({ messages: history, provider: chatEngine(), pageContext: pageContext(describe(aid)) }) })
             .then(function (res) {
                 var ct = (res.headers.get('content-type') || '').toLowerCase();
                 if (res.status === 401 || res.redirected || ct.indexOf('text/html') >= 0) throw { session: true };
@@ -1848,10 +1871,11 @@
             var v = e.target.value; e.target.value = ''; ask(v);
         }
     }
-    function open(aid) {
+    function open(aid, typeHint) {
         if (!aid) return;
         ensureCss();
         D.aid = String(aid);
+        D.typeHint = parseInt(typeHint, 10) || null;   /* caller-known asset type (SIP shape) */
         D.liveSig = '';
         D.alertFilter = 'all';
         D.sel = null;
@@ -1894,6 +1918,6 @@
         document.removeEventListener('keydown', onKey);
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureCss); else ensureCss();
-    W.tlOpenAssetDrawer = function (aid) { open(aid); };
+    W.tlOpenAssetDrawer = function (aid, typeHint) { open(aid, typeHint); };
     W.TlAssetDrawer = { open: open, close: close, isOpen: function () { return !!D.aid; } };
 })();

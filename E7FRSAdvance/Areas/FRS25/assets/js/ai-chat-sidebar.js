@@ -11,8 +11,26 @@
     // they set this flag before this script loads so the floating sidebar is not built on top of them.
     if (window.E7AI_PAGE_OWNS_CHAT) return;
 
-    const CHAT_ENDPOINT = '/FRS25/AiChat/Chat';
-    const STATUS_ENDPOINT = '/FRS25/AiChat/Status';
+    // Same backend as the Chatbot page (ChatBot/Chat: engine picker, site wisdom, page context).
+    // AiChat/Chat is the Alert Analysis follow-up chat (alert-card grounding) and answered general
+    // questions differently from the Chatbot page.
+    const CHAT_ENDPOINT = '/FRS25/ChatBot/Chat';
+    const STATUS_ENDPOINT = '/FRS25/ChatBot/Status';
+
+    // The Chatbot page's engine picker saves sessionStorage.e7ChatEngine (default quantum10 = ENERGY7
+    // QUANTUM). Send the same so both answer with the same model; the server still forces QUANTUM for
+    // non-privileged users.
+    function chatEngine() {
+        try { const s = sessionStorage.getItem('e7ChatEngine'); if (s && /^[a-z0-9]+$/i.test(s)) return s; } catch (e) { }
+        return 'quantum10';
+    }
+
+    // Which page the drawer was opened on, so "this site" / "this asset" resolve like on the Chatbot page.
+    function chatPageContext() {
+        if (window.E7_CHAT_CONTEXT && typeof window.E7_CHAT_CONTEXT === 'object') return window.E7_CHAT_CONTEXT;
+        const page = (document.title || '').replace(/^\s*Energy7\s*-\s*/i, '').trim();
+        return page ? { page: page } : null;
+    }
     const STORAGE_KEY = 'e7ai_history';
     const MAX_HISTORY = 20;
 
@@ -232,6 +250,40 @@
         const s = document.createElement('style');
         s.id = 'e7ai-styles';
         s.textContent = `
+/* Theme tokens — dark by default, light when the site theme (data-aurora) is light */
+#aiChatPanel {
+  --e7c-t1: rgba(255,255,255,0.92);
+  --e7c-t2: rgba(255,255,255,0.72);
+  --e7c-t3: rgba(255,255,255,0.50);
+  --e7c-t4: rgba(255,255,255,0.40);
+  --e7c-accent: #22d3ee;
+  --e7c-accent-soft: rgba(34,211,238,0.10);
+  --e7c-accent-mid: rgba(34,211,238,0.16);
+  --e7c-accent-edge: rgba(34,211,238,0.22);
+  --e7c-hover: rgba(255,255,255,0.05);
+  --e7c-edge: rgba(255,255,255,0.08);
+  --e7c-tray: rgba(255,255,255,0.025);
+  --e7c-warn: #fbbf24;
+  --e7c-warn-soft: rgba(251,191,36,0.10);
+  --e7c-warn-edge: rgba(251,191,36,0.24);
+}
+[data-aurora="light"] #aiChatPanel {
+  --e7c-t1: #0b1530;
+  --e7c-t2: #334155;
+  --e7c-t3: #64748b;
+  --e7c-t4: #64748b;
+  --e7c-accent: #0891b2;
+  --e7c-accent-soft: rgba(8,145,178,0.08);
+  --e7c-accent-mid: rgba(8,145,178,0.14);
+  --e7c-accent-edge: rgba(8,145,178,0.26);
+  --e7c-hover: rgba(15,23,42,0.05);
+  --e7c-edge: rgba(15,23,42,0.09);
+  --e7c-tray: rgba(15,23,42,0.025);
+  --e7c-warn: #b45309;
+  --e7c-warn-soft: rgba(217,119,6,0.10);
+  --e7c-warn-edge: rgba(217,119,6,0.28);
+}
+
 /* Fullscreen */
 #aiChatPanel.e7-fullscreen {
   width: 100vw !important;
@@ -243,8 +295,8 @@
   flex-shrink: 0;
   overflow-y: auto;
   max-height: 55vh;
-  border-top: 1px solid rgba(255,255,255,0.07);
-  background: rgba(0,0,0,0.15);
+  border-top: 1px solid var(--e7c-edge);
+  background: var(--e7c-tray);
 }
 .e7-prompt-panel:empty { display: none; }
 
@@ -263,7 +315,7 @@
   border-radius: 8px 8px 0 0;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255,255,255,0.45);
+  color: var(--e7c-t3);
   cursor: pointer;
   white-space: nowrap;
   border: 1px solid transparent;
@@ -273,11 +325,12 @@
   transition: color .14s, background .14s;
   flex-shrink: 0;
 }
-.e7-cat-tab:hover { color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.04); }
+.e7-cat-tab:hover { color: var(--e7c-t1); background: var(--e7c-hover); }
 .e7-cat-tab.active {
-  color: #22d3ee;
-  background: rgba(34,211,238,0.08);
-  border-color: rgba(34,211,238,0.18);
+  color: var(--e7c-accent);
+  background: var(--e7c-accent-soft);
+  border-color: var(--e7c-accent-edge);
+  font-weight: 600;
 }
 
 /* Prompt list */
@@ -295,7 +348,7 @@
   border-radius: 8px;
   border: none;
   background: none;
-  color: rgba(255,255,255,0.72);
+  color: var(--e7c-t2);
   font-size: 13px;
   font-family: var(--chat-font, system-ui);
   cursor: pointer;
@@ -304,24 +357,25 @@
   width: 100%;
 }
 .e7-prompt-btn:hover {
-  background: rgba(34,211,238,0.08);
-  color: rgba(255,255,255,0.95);
+  background: var(--e7c-accent-soft);
+  color: var(--e7c-t1);
 }
 .e7-prompt-btn.active {
-  background: rgba(34,211,238,0.14);
-  color: #22d3ee;
+  background: var(--e7c-accent-mid);
+  color: var(--e7c-accent);
 }
 .e7-prompt-arrow {
   margin-left: auto;
   font-size: 10px;
-  color: rgba(34,211,238,0.5);
+  color: var(--e7c-accent);
+  opacity: .6;
   flex-shrink: 0;
 }
 
 /* Input label (shows selected prompt) */
 .e7-input-label {
   font-size: 11px;
-  color: rgba(34,211,238,0.75);
+  color: var(--e7c-accent);
   padding: 6px 4px 4px;
   font-weight: 500;
   display: flex;
@@ -331,7 +385,7 @@
 .e7-label-cancel {
   margin-left: auto;
   font-size: 11px;
-  color: rgba(255,255,255,0.30);
+  color: var(--e7c-t3);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
@@ -340,12 +394,12 @@
   font-family: var(--chat-font, system-ui);
   transition: color .12s;
 }
-.e7-label-cancel:hover { color: rgba(255,255,255,0.70); }
+.e7-label-cancel:hover { color: var(--e7c-t1); }
 
 /* Input hint */
 .e7-input-hint {
   font-size: 10.5px;
-  color: rgba(255,255,255,0.18);
+  color: var(--e7c-t4);
   margin-top: 5px;
   padding: 0 2px;
 }
@@ -357,16 +411,16 @@
   gap: 6px;
   padding: 4px 11px;
   border-radius: 20px;
-  background: rgba(251,191,36,0.09);
-  border: 1px solid rgba(251,191,36,0.20);
-  color: rgba(251,191,36,0.85);
+  background: var(--e7c-warn-soft);
+  border: 1px solid var(--e7c-warn-edge);
+  color: var(--e7c-warn);
   font-size: 11px;
   margin: 2px 0 2px 37px;
   font-family: var(--chat-font, system-ui);
 }
 .e7-spinner {
   width: 9px; height: 9px;
-  border: 1.5px solid rgba(251,191,36,0.7);
+  border: 1.5px solid var(--e7c-warn);
   border-top-color: transparent;
   border-radius: 50%;
   animation: e7spin .55s linear infinite;
@@ -388,17 +442,18 @@
 .e7-welcome-icon {
   width: 50px; height: 50px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(34,211,238,.14), rgba(99,102,241,.14));
-  border: 1px solid rgba(34,211,238,.18);
+  background: linear-gradient(135deg, rgba(34,211,238,.14), rgba(167,139,250,.14));
+  border: 1px solid var(--e7c-accent-edge);
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 4px;
 }
-.e7-welcome-icon svg { width: 24px; height: 24px; color: #22d3ee; }
-.e7-welcome h3 { font-size: 14px; font-weight: 600; color: rgba(255,255,255,.88); margin: 0; }
-.e7-welcome p  { font-size: 12px; color: rgba(255,255,255,.42); line-height: 1.6; margin: 0; }
+.e7-welcome-icon svg { width: 24px; height: 24px; color: var(--e7c-accent); }
+.e7-welcome h3 { font-size: 14px; font-weight: 600; color: var(--e7c-t1); margin: 0; }
+.e7-welcome p  { font-size: 12px; color: var(--e7c-t3); line-height: 1.6; margin: 0; }
 .e7-welcome-hint {
   font-size: 11.5px;
-  color: rgba(34,211,238,0.60);
+  color: var(--e7c-accent);
+  opacity: .85;
   margin-top: 4px;
 }
 
@@ -412,15 +467,15 @@
 .e7-followup-chip {
   padding: 4px 11px;
   border-radius: 16px;
-  background: rgba(34,211,238,0.08);
-  border: 1px solid rgba(34,211,238,0.18);
+  background: var(--e7c-accent-soft);
+  border: 1px solid var(--e7c-accent-edge);
   font-size: 11.5px;
-  color: rgba(34,211,238,0.78);
+  color: var(--e7c-accent);
   cursor: pointer;
   transition: all .13s;
   font-family: var(--chat-font, system-ui);
 }
-.e7-followup-chip:hover { background: rgba(34,211,238,0.16); color: #22d3ee; }
+.e7-followup-chip:hover { background: var(--e7c-accent-mid); }
 `;
         document.head.appendChild(s);
     }
@@ -498,6 +553,9 @@
     function toggleFullscreen() {
         isFullscreen = !isFullscreen;
         panel.classList.toggle('e7-fullscreen', isFullscreen);
+        // _Layout's full-screen styling (centred column, larger bubbles) keys off this body class
+        document.body.classList.toggle('ai-chat-fullscreen', isFullscreen);
+        document.getElementById('aiFullscreenBtn').title = isFullscreen ? 'Exit full screen (Esc)' : 'Full screen';
         document.getElementById('aiFsIcon').innerHTML = isFullscreen
             ? '<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3"/>'
             : '<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>';
@@ -653,10 +711,12 @@
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: chatHistory }),
+                body: JSON.stringify({ messages: chatHistory, provider: chatEngine(), pageContext: chatPageContext() }),
             });
 
-            if (res.status === 401) {
+            // An expired session is redirected to the login page (HTML 200), not a 401
+            const ctype = (res.headers.get('content-type') || '').toLowerCase();
+            if (res.status === 401 || res.redirected || ctype.indexOf('text/html') >= 0) {
                 typingEl.remove();
                 appendBotMsg('Session expired — please sign in again.', true);
                 setStatus('error', 'Session expired');
@@ -919,14 +979,52 @@
     /* ══════════════════════════════════════════════════════════
        MARKDOWN
     ══════════════════════════════════════════════════════════ */
+    // ChatBot answers can carry [[PLANBOARD]] / [[CARD]] blocks (rendered as cards on the Chatbot page).
+    // Reduce them to plain markdown here so the drawer never shows the raw markers.
+    function chatBlocksToMarkdown(raw) {
+        let s = String(raw);
+        if (s.indexOf('[[') < 0) return s;
+        const kv = (line) => {
+            const m = {};
+            String(line || '').replace(/^\s*\[\[CARD\]\]/, '').split('|').forEach(p => {
+                const i = p.indexOf('=');
+                if (i > 0) m[p.slice(0, i).trim().toLowerCase()] = p.slice(i + 1).trim();
+            });
+            return m;
+        };
+        s = s.replace(/\[\[PLANBOARD\]\]\s*\n?([^\n]*)\n?/g, (_, head) => {
+            const m = kv(head);
+            if (!m.site) return '\n' + head + '\n';
+            return '\n**' + m.site + ' — Maintenance plan**\nUrgent ' + (m.urgent || 0) + ' · Inspect soon ' + (m.soon || 0) +
+                ' · Monitor ' + (m.monitor || 0) + (m.live ? ' · Live alerts ' + (m.live === 'unavailable' ? 'offline' : m.live) : '') + '\n\n';
+        }).replace(/\[\[\/PLANBOARD\]\]/g, '');
+        s = s.replace(/\[\[CARD\]\]([^\n]*)\n?([\s\S]*?)\[\[\/CARD\]\]/g, (_, head, body) => {
+            const m = kv(head);
+            const title = [m.priority, m.asset].filter(Boolean).join(' · ') || 'Item';
+            const sub = [m.type, m.site].filter(Boolean).join(', ');
+            const rows = body.split('\n').map(l => l.replace(/^\s*[-*•]\s?/, '').trim()).filter(Boolean).map(l => {
+                const i = l.indexOf(':');
+                if (i > 0 && i < 24) {
+                    const k = l.slice(0, i).trim().toLowerCase().replace(/(^|\s|-)\S/g, c => c.toUpperCase());
+                    return '- **' + k + ':** ' + l.slice(i + 1).trim();
+                }
+                return '- ' + l;
+            });
+            return '\n**' + title + '**' + (sub ? ' (' + sub + ')' : '') + '\n' + rows.join('\n') + '\n\n';
+        });
+        return s.replace(/\n{3,}/g, '\n\n');
+    }
+
     function renderMarkdown(raw) {
         if (!raw) return '';
+        raw = chatBlocksToMarkdown(raw);
         let h = String(raw)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;')
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         h = h.replace(/```[\w]*\n?([\s\S]*?)```/g,
             (_, c) => '<pre><code>' + c.trim() + '</code></pre>');
         h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+        h = h.replace(/^\s{0,3}#{1,4}\s+(.+?)\s*#*$/gm, '<strong>$1</strong>');
         h = h.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
         h = h.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
         h = h.replace(/((\|[^\n]+\|\n?)+)/g, function (m) {
@@ -938,7 +1036,7 @@
                 const cells = row.split('|').filter((c, ci, a) => ci > 0 && ci < a.length - 1);
                 const tag = i === 0 ? 'th' : 'td';
                 t += '<tr>' + cells.map(c =>
-                    `<${tag} style="border:1px solid rgba(255,255,255,.10);padding:4px 8px">${c.trim()}</${tag}>`
+                    `<${tag} style="border:1px solid var(--e7c-edge, rgba(255,255,255,.10));padding:4px 8px">${c.trim()}</${tag}>`
                 ).join('') + '</tr>';
             });
             return t + '</table>';

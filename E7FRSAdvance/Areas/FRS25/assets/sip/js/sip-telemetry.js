@@ -1741,8 +1741,10 @@
         clearTimeout(el._t);
         el._t = setTimeout(function () { el.style.opacity = '0'; }, 2600);
     }
-    function openSipAssetDrawer(aid) {
-        window.tlOpenAssetDrawer(aid);
+    function openSipAssetDrawer(aid, typeHint) {
+        /* typeHint: the clicked shape's asset type, so the drawer never falls back
+           to the page's selected type (e.g. Track) for a signal / point machine */
+        window.tlOpenAssetDrawer(aid, typeHint);
         /* the full-screen SIP card sits at z-index 9999, above the drawer */
         if (inspectorVisible()) {
             var ov = document.getElementById('tldOverlay'), dr = document.getElementById('tldDrawer');
@@ -1752,10 +1754,15 @@
     }
 
     function openSipAssetPopupForCell(cell, evt) {
-        var assetName = getCellAssetName(cell);
+        /* Signal+Shunt: a click on the shunt triangle opens the shunt's own asset */
+        var sigLink = (cell.attrs && cell.attrs.signal) || {};
+        var shuntHit = !!(cell._sipShuntAsset && evt && evt.target && evt.target.closest &&
+            evt.target.closest('.sip-sigshunt-shunt'));
+        var assetName = shuntHit ? cell._sipShuntAsset : getCellAssetName(cell);
         var label = getCellLabel(cell);
         var rec = state.assets[assetName];
-        var assetId = (rec && rec.id) || '';
+        var assetId = (rec && rec.id) ||
+            (shuntHit ? sigLink.shuntAssetId : ((cell.attrs && cell.attrs.route && cell.attrs.route.assetId) || sigLink.assetId)) || '';
         slog('SIP asset clicked:', assetName, cell.type, assetId);
 
         var ctx = {
@@ -1769,7 +1776,7 @@
         if (typeof window.tlOpenAssetDrawer === 'function') {
             var drawerId = sipResolveAssetId(assetName, assetId);
             if (drawerId) {
-                try { openSipAssetDrawer(drawerId); return; }
+                try { openSipAssetDrawer(drawerId, sipTypeOfCell(cell)); return; }
                 catch (exD) { swarn('Asset drawer failed, falling back to popup:', exD && exD.message); }
             } else {
                 /* decorative / unbound shape (e.g. RouteCallingSignal): there is
@@ -2084,6 +2091,16 @@
             if (!c) continue;
             if (c.id == null) c.id = 'sip-' + i;
             state.cellById[String(c.id)] = c;
+            /* Route/Calling Signal: explicit link to its signal asset (set in SIP Creation) */
+            if (ROUTE_CALLING_TYPES[c.type] && c.attrs && c.attrs.route && c.attrs.route.assetName) {
+                registerCellName(c, String(c.attrs.route.assetName).trim());
+            }
+            /* Signal / Signal+Shunt: explicit links set in SIP Creation win over post-binding */
+            var sigLink = c.attrs && c.attrs.signal;
+            if (sigLink && COMPOSITE_SIGNAL[c.type]) {
+                if (sigLink.assetName) registerCellName(c, String(sigLink.assetName).trim());
+                if (sigLink.shuntAssetName && c.type === 'examples.SignalShunt') c._sipShuntAsset = String(sigLink.shuntAssetName).trim();
+            }
             var raw = c.attrs && c.attrs.label && c.attrs.label.text;
             if (raw == null || raw === '') continue;
             var lbl = String(raw).trim();
@@ -2135,16 +2152,25 @@
     }
     function bindPostsToSignals() {
         var posts = [], shapes = [], i, c;
+        /* names already claimed by an explicit SIP Creation link: their posts are taken */
+        var linked = {};
+        for (i = 0; i < state.cells.length; i++) {
+            var ls = state.cells[i] && state.cells[i].attrs && state.cells[i].attrs.signal;
+            if (!ls || !COMPOSITE_SIGNAL[state.cells[i].type]) continue;
+            if (ls.assetName) linked[_normLabel(ls.assetName)] = 1;
+            if (ls.shuntAssetName) linked[_normLabel(ls.shuntAssetName)] = 1;
+        }
         for (i = 0; i < state.cells.length; i++) {
             c = state.cells[i]; if (!c) continue;
             if (POST_TYPES[c.type]) {
                 var nm = getCellLabel(c);
-                if (nm) posts.push({ name: nm, shunt: isShuntName(nm), c: cellCenter(c), used: false });
-            } else if ((COMPOSITE_SIGNAL[c.type] || SHUNT_TYPES[c.type]) && !getCellLabel(c)) {
+                if (nm) posts.push({ name: nm, shunt: isShuntName(nm), c: cellCenter(c), used: !!linked[_normLabel(nm)] });
+            } else if ((COMPOSITE_SIGNAL[c.type] || SHUNT_TYPES[c.type]) && !getCellLabel(c) &&
+                !(c.attrs && c.attrs.signal && c.attrs.signal.assetName)) {
                 shapes.push({ cell: c, shunt: !!SHUNT_TYPES[c.type], c: cellCenter(c) });
             }
         }
-        if (!posts.length || !shapes.length) return;
+        if (!posts.length) return;
 
         var pairs = [], si, pi;
         for (si = 0; si < shapes.length; si++) {
@@ -2167,6 +2193,33 @@
             slog('Post-bind: ' + shapes[pr.si].cell.type + ' ' + shapes[pr.si].cell.id + ' -> "' + posts[pr.pi].name + '"');
         }
         if (bound) { state.findMemo = {}; sinfo('Post→signal binding: ' + bound + ' unlabelled shape(s) bound to the nearest named post.'); }
+
+        /* A Signal+Shunt shape draws two assets (e.g. S3 head + SH-3 shunt) but carries one
+           name. Give its shunt part the nearest still-free SH- post, so a click on the shunt
+           triangle opens that shunt's own drawer (cell._sipShuntAsset). */
+        var sh = [];
+        for (i = 0; i < state.cells.length; i++) {
+            c = state.cells[i];
+            if (c && c.type === 'examples.SignalShunt' && !c._sipShuntAsset) sh.push({ cell: c, c: cellCenter(c) });
+        }
+        var spairs = [];
+        for (si = 0; si < sh.length; si++) {
+            for (pi = 0; pi < posts.length; pi++) {
+                if (!posts[pi].shunt || posts[pi].used) continue;
+                var sdx = sh[si].c.x - posts[pi].c.x, sdy = sh[si].c.y - posts[pi].c.y;
+                var sd = Math.sqrt(sdx * sdx + sdy * sdy);
+                if (sd <= POSTBIND_MAX_DIST) spairs.push({ si: si, pi: pi, cost: sd });
+            }
+        }
+        spairs.sort(function (a, b) { return a.cost - b.cost; });
+        var shUsed = {};
+        for (i = 0; i < spairs.length; i++) {
+            var sp = spairs[i];
+            if (shUsed[sp.si] || posts[sp.pi].used) continue;
+            shUsed[sp.si] = 1; posts[sp.pi].used = true;
+            sh[sp.si].cell._sipShuntAsset = posts[sp.pi].name;
+            slog('Shunt-bind: ' + sh[sp.si].cell.id + ' shunt -> "' + posts[sp.pi].name + '"');
+        }
     }
 
     /* ── SIP all-asset-types metadata cache ──────────────────────────────
@@ -2673,6 +2726,24 @@
     /* Gap-fill mirror into the SHARED window.wsLiveData store (in the shape
        telemetrylive.js consumes) so the asset popup and computeSignalState can
        see SIP-only assets. Never touches a Telemetry-Live-owned entry.      */
+    /* Asset type from the SIP shapes bound to this asset (1 track, 3 point machine,
+       2 signal) -- used when a WS message carries no AssetTypeId, so a point
+       machine is not mirrored as a signal and the drawer picks the right circuit. */
+    function sipTypeOfCell(cell) {
+        var t = cell && cell.type;
+        if (PM_TYPES[t]) return 3;
+        if (TRACK_STROKE[t] || TRACK_FILL[t]) return 1;
+        if (COMPOSITE_SIGNAL[t] || LAMP_SIGNAL[t] || ROUTE_CALLING_TYPES[t]) return 2;
+        return null;
+    }
+    function sipTypeFromCells(assetName) {
+        var cells = findCells(assetName);
+        for (var i = 0; i < cells.length; i++) {
+            var ty = sipTypeOfCell(cells[i]);
+            if (ty) return ty;
+        }
+        return null;
+    }
     function mirrorToShared(d, assetName, assetId, attrName, rawAttr, attrId, num, isDL, tsDev, hasFresh, fresh, rawFresh, kind) {
         if (assetId == null || assetId === '') return;
         try {
@@ -2682,7 +2753,7 @@
             if (!we) {
                 we = ld[wid] = {
                     __sipMirror: true, AssetId: assetId, AssetName: assetName,
-                    AssetTypeId: (d.AssetTypeId != null ? d.AssetTypeId : 2),
+                    AssetTypeId: (d.AssetTypeId != null ? d.AssetTypeId : (sipTypeFromCells(assetName) || 2)),
                     SiteId: d.SiteId, attrs: {}, dlRelays: {}, lastUpdated: new Date()
                 };
             }

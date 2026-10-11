@@ -20,6 +20,8 @@
     function applyTheme(theme, skipPersist) {
         // 1. body — used by aurora-bridge.css selectors
         document.body.setAttribute('data-aurora', theme);
+        //    legacy style.css components are scoped under body.dark-mode
+        document.body.classList.toggle('dark-mode', theme === 'dark');
         // 2. html — used by :root CSS var overrides
         document.documentElement.setAttribute('data-aurora', theme);
         document.documentElement.setAttribute('data-theme', theme);

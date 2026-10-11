@@ -1,4 +1,4 @@
-@{
+﻿@{
 
     var __userName = E7FRSAdvance.Utility.ClsHttpContent.LoginUser != null
         ? E7FRSAdvance.Utility.ClsHttpContent.LoginUser.FirstName
@@ -30,6 +30,7 @@
     ViewBag.Title = "Chatbot";
 
 }
+<meta charset="utf-8">
 <style>
     /* ================================================================
        ENERGY7 RDPMS AI ASSISTANT - enterprise page UI
@@ -56,6 +57,17 @@
         --e7-text: #1c2b39;
         --e7-text-muted: #6b7c8d;
         --e7-text-soft: #93a2b1;
+        /* answer typography (the host-proof !important block); dark values in the dark-theme block */
+        --cb-ans-text: #1c2b39;
+        --cb-ans-strong: #0b3558;
+        --cb-ans-h4: #0e7a91;
+        --cb-code-text: #075985;
+        --cb-code-bg: #e9f3f7;
+        --cb-code-edge: #d8e8ef;
+        --cb-soft-bg: #f3f7fa;
+        --cb-rule: #dce5ee;
+        --cb-quote-text: #3b4c5c;
+        --cb-link: #0b6fae;
         display: flex;
         width: 100%;
         height: calc(100vh - 136px);
@@ -457,6 +469,46 @@
         .ai-msg-bubble .pc-row { grid-template-columns: 1fr; gap: 2px; }
     }
 
+    /* v1.3.3.0: PLAN BOARD ([[PLANBOARD]]) -- code-built site maintenance plan.
+       Summary strip + responsive card grid: 2 columns on desktop, 1 on phones. */
+    .ai-msg-bubble .plan-board { margin: 4px 0 10px; }
+    .ai-msg-bubble .pb-head {
+        display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;
+    }
+    .ai-msg-bubble .pb-title { font-weight: 700; font-size: 14px; color: var(--e7-primary-dark); }
+    .ai-msg-bubble .pb-sub { font-size: 11px; color: #64748b; font-family: Consolas, "Courier New", monospace; }
+    .ai-msg-bubble .pb-tiles {
+        display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px;
+    }
+    .ai-msg-bubble .pb-tile {
+        border: 1px solid var(--e7-border); border-radius: 9px; padding: 8px 10px; background: #f8fafc;
+        border-left: 3px solid #94a3b8;
+    }
+    .ai-msg-bubble .pb-tile .k { font-size: 18px; font-weight: 700; line-height: 1; font-family: Consolas, "Courier New", monospace; }
+    .ai-msg-bubble .pb-tile .l { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+    .ai-msg-bubble .pb-tile.urgent { border-left-color: #dc2626; } .ai-msg-bubble .pb-tile.urgent .k { color: #dc2626; }
+    .ai-msg-bubble .pb-tile.soon { border-left-color: #d97706; } .ai-msg-bubble .pb-tile.soon .k { color: #d97706; }
+    .ai-msg-bubble .pb-tile.monitor { border-left-color: #2563eb; } .ai-msg-bubble .pb-tile.monitor .k { color: #2563eb; }
+    .ai-msg-bubble .pb-tile.live { border-left-color: #059669; } .ai-msg-bubble .pb-tile.live .k { color: #059669; font-size: 13px; padding-top: 3px; }
+    .ai-msg-bubble .pb-lane { margin: 10px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .ai-msg-bubble .pb-lane.urgent { color: #dc2626; } .ai-msg-bubble .pb-lane.soon { color: #d97706; } .ai-msg-bubble .pb-lane.monitor { color: #2563eb; }
+    .ai-msg-bubble .pb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .ai-msg-bubble .pb-grid .plan-card { margin: 0; min-width: 0; }
+    /* inside the board grid a card is narrow: stack key over value instead of a 128px key column */
+    .ai-msg-bubble .pb-grid .pc-row { grid-template-columns: 1fr; gap: 2px; padding: 6px 0; }
+    .ai-msg-bubble .pb-grid .pc-k { font-size: 9.5px; }
+    .ai-msg-bubble .pb-grid .pc-v { font-size: 12px; line-height: 1.45; }
+    /* a lane with a single card (typically Urgent) spans the full width */
+    .ai-msg-bubble .pb-grid.single { grid-template-columns: 1fr; }
+    .ai-msg-bubble .pb-grid.single .pc-row { grid-template-columns: 118px 1fr; gap: 10px; }
+    .ai-msg-bubble .plan-card.monitor { border-left-color: #2563eb; }
+    .ai-msg-bubble .plan-card.monitor .pc-pill { background: #2563eb; }
+    @@media (max-width: 760px) {
+        .ai-msg-bubble .pb-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ai-msg-bubble .pb-grid { grid-template-columns: 1fr; }
+        .ai-msg-bubble .pb-grid.single .pc-row { grid-template-columns: 1fr; gap: 2px; }
+    }
+
     /* v1.2.9.4: block markup produced by renderMarkdown -- headings, rules, lists, quotes.
        Answers are structured documents now, so they need document typography. */
     .ai-msg-bubble .md-h {
@@ -814,6 +866,238 @@
             text-overflow: ellipsis;
         }
     }
+
+    /* ================================================================
+       v1.3.2.3 -- ANSWER TYPOGRAPHY, HOST-PROOF.
+       The host layout (E7MRIWeb) ships its own h2/h3/h4/strong/code/li rules that
+       were winning inside the chat bubble: bold labels and section headings rendered
+       near-white, so every bullet looked like it started mid-sentence and table
+       "Condition" cells looked empty. These rules pin explicit colours (no inherited
+       --primary/--bs-primary) at high specificity with !important on the properties
+       the host overrides. Scoped to AI bubbles only; user bubbles keep white text.
+       ================================================================ */
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble {
+        color: var(--cb-ans-text) !important;
+        text-align: left !important;
+        direction: ltr !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble strong,
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble b {
+        color: var(--cb-ans-strong) !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+        display: inline !important;
+        visibility: visible !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble em,
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble i {
+        color: inherit !important;
+        font-style: italic !important;
+        opacity: 1 !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble code {
+        display: inline !important;
+        color: var(--cb-code-text) !important;
+        background: var(--cb-code-bg) !important;
+        border: 1px solid var(--cb-code-edge) !important;
+        border-radius: 4px !important;
+        padding: 1px 5px !important;
+        font-family: Consolas, "Courier New", monospace !important;
+        font-size: 11.5px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        white-space: pre-wrap !important;
+        vertical-align: baseline !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble pre {
+        display: block !important;
+        color: var(--cb-ans-text) !important;
+        background: var(--cb-soft-bg) !important;
+        border: 1px solid var(--cb-rule) !important;
+        border-radius: 8px !important;
+        padding: 9px 11px !important;
+        margin: 8px 0 !important;
+        font-size: 11.5px !important;
+        line-height: 1.5 !important;
+        white-space: pre-wrap !important;
+        overflow-x: auto !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble pre code {
+        background: transparent !important;
+        border: 0 !important;
+        padding: 0 !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble h2.md-h,
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble h3.md-h,
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble h4.md-h {
+        display: block !important;
+        color: var(--cb-ans-strong) !important;
+        font-weight: 700 !important;
+        opacity: 1 !important;
+        text-align: left !important;
+        margin: 14px 0 6px !important;
+        line-height: 1.3 !important;
+        text-shadow: none !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble h2.md-h { font-size: 14.5px !important; padding-bottom: 5px !important; border-bottom: 1px solid var(--cb-rule) !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble h3.md-h { font-size: 13.5px !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble h4.md-h { font-size: 12.5px !important; text-transform: uppercase !important; letter-spacing: .6px !important; color: var(--cb-ans-h4) !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble ul.md-list,
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble ol.md-list {
+        display: block !important;
+        margin: 6px 0 8px !important;
+        padding-left: 20px !important;
+        text-align: left !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble ul.md-list { list-style: disc !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble ol.md-list { list-style: decimal !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble ul.md-list li { list-style: disc !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble ol.md-list li { list-style: decimal !important; }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble .md-list li {
+        display: list-item !important;
+        color: var(--cb-ans-text) !important;
+        text-align: left !important;
+        margin: 3px 0 !important;
+        padding: 0 !important;
+        text-indent: 0 !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble table {
+        display: table !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin: 8px 0 !important;
+        font-size: 12px !important;
+        text-align: left !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble th,
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble td {
+        color: var(--cb-ans-text) !important;
+        text-align: left !important;
+        vertical-align: top !important;
+        padding: 5px 8px !important;
+        border: 1px solid var(--cb-rule) !important;
+        background: transparent !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble th {
+        background: var(--cb-soft-bg) !important;
+        font-weight: 700 !important;
+        color: var(--cb-ans-strong) !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble hr.md-hr {
+        border: 0 !important;
+        border-top: 1px solid var(--cb-rule) !important;
+        margin: 10px 0 !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble blockquote.md-q {
+        margin: 6px 0 !important;
+        padding: 4px 10px !important;
+        border-left: 3px solid var(--e7-accent) !important;
+        color: var(--cb-quote-text) !important;
+        background: var(--cb-soft-bg) !important;
+    }
+    #e7ChatBotMount .ai-msg.ai .ai-msg-bubble a { color: var(--cb-link) !important; }
+</style>
+
+<style>
+    /* Dark theme: the mount re-declares --e7-* locally (light values), which shadows the app tokens,
+       so mirror the Energy7 dark token values here. Surface + text are set together in every rule. */
+    html[data-aurora="dark"] body #e7ChatBotMount {
+        --e7-accent: #5cc0e2;
+        --e7-accent-soft: rgba(92,192,226,.14);
+        --e7-page: #12171f;
+        --e7-surface: #212934;
+        --e7-surface-muted: #1d242e;
+        --e7-surface-2: #1d242e;
+        --e7-border: #2c3644;
+        --e7-border-2: #36424f;
+        --e7-border-soft: #262f3b;
+        --e7-text: #dce4ee;
+        --e7-text-muted: #aab6c6;
+        --e7-text-soft: #8b99ab;
+        --cb-ans-text: #dce4ee;
+        --cb-ans-strong: #eaf1f8;
+        --cb-ans-h4: #5cc0e2;
+        --cb-code-text: #8fd8ee;
+        --cb-code-bg: #1b2a36;
+        --cb-code-edge: #2c4253;
+        --cb-soft-bg: #1d242e;
+        --cb-rule: #36424f;
+        --cb-quote-text: #aab6c6;
+        --cb-link: #6cc4ee;
+        background: var(--e7-page);
+        color: var(--e7-text);
+    }
+    html[data-aurora="dark"] body #e7ChatBotMount #e7cbChatPanel { border-color: #2c3644; box-shadow: 0 18px 46px rgba(0,0,0,.45); }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-chat-messages {
+        background: linear-gradient(rgba(33,41,52,.96), rgba(33,41,52,.96)), radial-gradient(circle at 1px 1px, #3a4656 1px, transparent 1.2px);
+        background-size: auto, 24px 24px;
+        scrollbar-color: #3a4656 transparent;
+    }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-chat-messages::-webkit-scrollbar-thumb { background: #3a4656; }
+    /* AI message bubbles */
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-typing-bubble { background: #262f3b; color: #dce4ee; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg.ai.ai-msg-error .ai-msg-bubble { background: #3a1f24; color: #ffb4bc; border-color: #6b2c35; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble strong { color: #eaf1f8; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble .md-h,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble .md-q,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pc-asset,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pc-row.pc-action .pc-v { color: #8fd8ee; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble h4.md-h { color: #5cc0e2; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble code { color: #8fd8ee; background: #1b2a36; border-color: #2c4253; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg:not(.user) .ai-msg-bubble pre code { background: transparent; border: 0; color: inherit; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble th { color: #dce4ee; background: #1d242e; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .plan-card { background: #212934; color: #dce4ee; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pc-head { background: #1d242e; color: #dce4ee; }
+    /* v1.3.3.0 plan board */
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pb-title { color: #8fd8ee; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pb-sub,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pb-tile .l { color: #aab6c6; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pb-tile { background: #1d242e; color: #dce4ee; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pc-sub,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pc-k,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg-bubble .pc-row.pc-note .pc-v { color: #aab6c6; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-msg-act,
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-msg.user .e7-msg-act { color: #8fd8ee; }
+    /* Welcome screen cards */
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-card { background: #262f3b; color: #dce4ee; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-card:hover { border-color: #3d6a80; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-title,
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-section-label strong { color: #dce4ee; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-desc,
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-section-label span,
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-suggest-label { color: #aab6c6; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-arrow { color: #8b99ab; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-card:hover .e7-cap-arrow { color: #8fd8ee; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cap-icon { color: #8fd8ee; background: #1b3140; border-color: #2a4a5c; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-suggest-chip { background: #262f3b; color: #8fd8ee; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-suggest-chip:hover { background: #2c3644; border-color: #5cc0e2; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-followup-chip { background: #1b3140; color: #8fd8ee; border-color: #2a4a5c; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-followup-chip:hover { background: #0b718e; color: #fff; border-color: #0b718e; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-tool-badge { background: #3a3216; color: #f3d98b; border-color: #5c4d1f; }
+    /* Quick-query panel */
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-panel { background: #1d242e; color: #dce4ee; border-color: #2c3644; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-heading strong { color: #dce4ee; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-heading span { color: #aab6c6; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cat-tab { background: #212934; color: #aab6c6 !important; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cat-tab:hover { color: #8fd8ee !important; border-color: #3d6a80; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-cat-tab.active { background: linear-gradient(135deg, #0b557d, #0d819b); color: #fff !important; border-color: transparent; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-btn { background: #212934; color: #c9d3df !important; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-btn:hover,
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-btn.active { background: #1b3140; color: #8fd8ee !important; border-color: #3d6a80; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-prompt-arrow { color: #8b99ab; }
+    /* Input */
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-chat-input-area { background: #212934; color: #dce4ee; border-top-color: #2c3644; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-input-wrapper { background: #1d242e; color: #dce4ee; border-color: #36424f; }
+    html[data-aurora="dark"] body #e7ChatBotMount .ai-input-wrapper:focus-within { border-color: #5cc0e2; }
+    html[data-aurora="dark"] body #e7ChatBotMount #aiChatInput { color: #dce4ee !important; }
+    html[data-aurora="dark"] body #e7ChatBotMount #aiChatInput::placeholder { color: #8b99ab; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-input-hint,
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-char-count { color: #aab6c6; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-input-label { background: #1b3140; color: #8fd8ee; border-color: #2a4a5c; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-input-label em { color: #aab6c6 !important; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-label-cancel { color: #aab6c6; }
+    html[data-aurora="dark"] body #e7ChatBotMount .e7-label-cancel:hover { background: #3a1f24; color: #ffb4bc; }
 </style>
 
 <!-- Hidden marker so the widget's getUserInitial() shows the real user's initial -->
@@ -822,8 +1106,9 @@
 @* FRS advance port: the FRS25 layout loads the global AI chat sidebar (ai-chat-sidebar.js/.css) and styles it by
    id/class (#aiChatPanel, .e7-welcome, .e7-prompt-btn ...). This page IS the chat, so: the sidebar script is told to
    stand down (window.E7AI_PAGE_OWNS_CHAT, checked at the top of ai-chat-sidebar.js), its stylesheet is disabled here,
-   the page panel id is e7cbChatPanel (was aiChatPanel) so the layout's #aiChatPanel overrides do not hit it, and the
-   few layout/theme rules that match by class are pinned back to this page's own colours. *@
+   the page panel id is e7cbChatPanel (was aiChatPanel) so the layout's #aiChatPanel overrides (width: 400px !important,
+   glass background, light-blue input bar ...) do not hit it, and the few layout/theme rules that match by class are
+   pinned back to this page's own colours. Keep this block when porting newer ChatBot views from 616. *@
 <script>
     window.E7AI_PAGE_OWNS_CHAT = true;
     (function () {
@@ -874,9 +1159,9 @@
             const STORAGE_KEY = 'e7ai_history';
             const MAX_HISTORY = 20;
 
-            /* ══════════════════════════════════════════════════════════
-               SCOPE — only RDPMS domain allowed
-            ══════════════════════════════════════════════════════════ */
+            /* ==========================================================
+               SCOPE \u2014 only RDPMS domain allowed
+            ========================================================== */
             const OUT_OF_SCOPE = [
                 'weather', 'recipe', 'cook', 'poem', 'joke', 'capital of',
                 'javascript', 'python', '2+2', 'math', 'history of india',
@@ -885,11 +1170,11 @@
                 'write an essay', 'email', 'time in'
             ];
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                PROMPT CATEGORIES
                All prompts are concrete, tool-callable, scope-safe.
                Each requires: asset name OR site name from user input.
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             // Engine list -- the server validates every selection.
             var E7_BRAND = "@__engineBrand";
             var E7_PROVIDER = "quantum10";   // v1.2.9.7: default mode = Pro (ENERGY7 QUANTUM = deepseek-v4-pro)
@@ -940,22 +1225,22 @@
             const PROMPT_CATEGORIES = [
                 {
                     id: 'alerts',
-                    icon: '🚨',
+                    icon: '\uD83D\uDEA8',
                     label: 'Alerts',
                     prompts: [
                         { label: 'Active alerts on a site', ask: 'site', tpl: 'Show all active alerts for site {input}' },
                         { label: 'Active alerts for an asset', ask: 'asset', tpl: 'Show active alerts for asset {input}' },
-                        { label: 'Alert history — last 7 days', ask: 'asset', tpl: 'Show alert history for asset {input} over the last 7 days' },
-                        { label: 'Alert summary — site', ask: 'site', tpl: 'Give an alert summary for site {input}' },
+                        { label: 'Alert history \u2014 last 7 days', ask: 'asset', tpl: 'Show alert history for asset {input} over the last 7 days' },
+                        { label: 'Alert summary \u2014 site', ask: 'site', tpl: 'Give an alert summary for site {input}' },
                     ]
                 },
                 {
                     id: 'live',
-                    icon: '📊',
+                    icon: '\uD83D\uDCCA',
                     label: 'Live Values',
                     prompts: [
-                        { label: 'All current values — asset', ask: 'asset', tpl: 'Show all current tag values for asset {input}' },
-                        { label: 'All current values — site', ask: 'site', tpl: 'Show all current values for site {input}' },
+                        { label: 'All current values \u2014 asset', ask: 'asset', tpl: 'Show all current tag values for asset {input}' },
+                        { label: 'All current values \u2014 site', ask: 'site', tpl: 'Show all current values for site {input}' },
                         { label: 'TPR state', ask: 'asset', tpl: 'What is the current TPR state of {input}?' },
                         { label: 'Feed current (If mA)', ask: 'asset', tpl: 'What is the current If mA of {input}?' },
                         { label: 'Relay voltage (Vr)', ask: 'asset', tpl: 'What is the current Vr voltage of {input}?' },
@@ -964,18 +1249,18 @@
                 },
                 {
                     id: 'history',
-                    icon: '📈',
+                    icon: '\uD83D\uDCC8',
                     label: 'History',
                     prompts: [
                         { label: 'Last 10 readings', ask: 'asset', tpl: 'Show the last 10 readings for asset {input}' },
-                        { label: 'If mA — last 10 readings', ask: 'asset', tpl: 'Show last 10 If mA readings for {input}' },
-                        { label: 'TPR history — today', ask: 'asset', tpl: "Show today's TPR history for {input}" },
-                        { label: 'History — today', ask: 'asset', tpl: "Show today's history for asset {input}" },
+                        { label: 'If mA \u2014 last 10 readings', ask: 'asset', tpl: 'Show last 10 If mA readings for {input}' },
+                        { label: 'TPR history \u2014 today', ask: 'asset', tpl: "Show today's TPR history for {input}" },
+                        { label: 'History \u2014 today', ask: 'asset', tpl: "Show today's history for asset {input}" },
                     ]
                 },
                 {
                     id: 'timestamps',
-                    icon: '⏰',
+                    icon: '\u23F0',
                     label: 'Timestamps',
                     prompts: [
                         { label: 'Last updated (device time)', ask: 'asset', tpl: 'When was asset {input} last updated? Show TimestampDevice.' },
@@ -985,7 +1270,7 @@
                 },
                 {
                     id: 'search',
-                    icon: '🔍',
+                    icon: '\uD83D\uDD0D',
                     label: 'Search',
                     prompts: [
                         { label: 'Find a site', ask: 'site', tpl: 'Find site information for {input}' },
@@ -996,10 +1281,10 @@
                 },
                 {
                     id: 'health',
-                    icon: '🛠️',
+                    icon: '\uD83D\uDEE0\uFE0F',
                     label: 'Health',
                     prompts: [
-                        { label: 'Health summary — asset', ask: 'asset', tpl: 'Give a health summary for asset {input}' },
+                        { label: 'Health summary \u2014 asset', ask: 'asset', tpl: 'Give a health summary for asset {input}' },
                         { label: 'Health index score', ask: 'asset', tpl: 'What is the health index score for asset {input}?' },
                         { label: 'Leakage current', ask: 'asset', tpl: 'What is the leakage current for asset {input}?' },
                         { label: 'Choke resistance', ask: 'asset', tpl: 'What is the choke resistance for asset {input}?' },
@@ -1007,9 +1292,9 @@
                 },
             ];
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                STATE
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             let isOpen = false;
             let isStreaming = false;
             let chatHistory = [];
@@ -1025,9 +1310,9 @@
                 clear: () => clearChat(),
             };
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                INIT
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function init() {
                 buildHTML();
                 addStyles();
@@ -1035,11 +1320,11 @@
                 bindEvents();
                 loadHistory();
                 pingStatus();
-                openChat(); // this page IS the chat — always open
+                openChat(); // this page IS the chat \u2014 always open
             }
 
             async function pingStatus() {
-                setStatus('connecting', 'Connecting…');
+                setStatus('connecting', 'Connecting\u2026');
                 try {
                     const r = await fetch(STATUS_ENDPOINT, { credentials: 'same-origin' });
                     if (r.status === 401) { setStatus('error', 'Not signed in'); return; }
@@ -1050,9 +1335,9 @@
                 }
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                HTML
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function buildHTML() {
                 document.getElementById('e7ChatBotMount').insertAdjacentHTML('beforeend', `
 <aside id="e7cbChatPanel" role="complementary" aria-label="RDPMS AI Assistant">
@@ -1067,14 +1352,14 @@
         </svg>
       </div>
       <div class="ai-chat-header-info">
-        <div class="ai-chat-brand-kicker">ENERGY7 · RDPMS</div>
+        <div class="ai-chat-brand-kicker">ENERGY7 \u00B7 RDPMS</div>
         <div class="ai-chat-header-title">AI Operations Assistant</div>
       </div>
     </div>
 
     <div class="ai-chat-header-status" aria-live="polite">
       <span class="ai-chat-status-dot" id="aiStatusDot"></span>
-      <span id="aiStatusText">Connecting…</span>
+      <span id="aiStatusText">Connecting\u2026</span>
     </div>
 
     <div class="ai-chat-header-actions">
@@ -1107,7 +1392,7 @@
   <div class="ai-chat-input-area">
     <div class="e7-input-label" id="e7InputLabel" style="display:none"></div>
     <div class="ai-input-wrapper">
-      <textarea id="aiChatInput" placeholder="Ask about a site, asset, alert, health value or recent history…" rows="1" maxlength="500" aria-label="Message"></textarea>
+      <textarea id="aiChatInput" placeholder="Ask about a site, asset, alert, health value or recent history\u2026" rows="1" maxlength="500" aria-label="Message"></textarea>
       <button class="ai-send-btn" id="aiSendBtn" type="button" disabled title="Send message">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4Z"/>
@@ -1115,7 +1400,7 @@
       </button>
     </div>
     <div class="e7-input-footer">
-      <div class="e7-input-hint">Enter to send · Shift+Enter for a new line · Esc to cancel a selected query</div>
+      <div class="e7-input-hint">Enter to send \u00B7 Shift+Enter for a new line \u00B7 Esc to cancel a selected query</div>
       <div class="e7-char-count" id="e7CharCount">0 / 500</div>
     </div>
   </div>
@@ -1123,9 +1408,9 @@
 </aside>`);
             }
 
-            /* ══════════════════════════════════════════════════════════
-               STYLES — prompt panel, welcome screen, follow-up chips, tool badges
-            ══════════════════════════════════════════════════════════ */
+            /* ==========================================================
+               STYLES \u2014 prompt panel, welcome screen, follow-up chips, tool badges
+            ========================================================== */
             function addStyles() {
                 if (document.getElementById('e7ai-styles')) return;
                 const s = document.createElement('style');
@@ -1559,9 +1844,9 @@
                 document.head.appendChild(s);
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                BIND
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function bindRefs() {
                 panel = document.getElementById('e7cbChatPanel');
                 // Use the inner container for all message appends
@@ -1574,7 +1859,7 @@
             }
 
             function bindEvents() {
-                // Close (✕) leaves the page instead of hiding the panel —
+                // Close (\u2715) leaves the page instead of hiding the panel \u2014
                 // there's nothing behind it on this standalone page.
                 document.getElementById('aiCloseBtn').addEventListener('click', function () {
                     window.location.href = '@Url.Action("Index", "ChatBot", new { Area = "FRS25" })';
@@ -1601,9 +1886,9 @@
                 });
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                PANEL
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function openChat() {
                 isOpen = true;
                 if (!messagesEl.children.length) {
@@ -1630,9 +1915,9 @@
                 renderWelcome();
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                WELCOME
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             // v1.2.6.0: professional, ready-to-run example prompts shown on the welcome screen in
             // place of the capability-card grid.
             const E7_SAMPLE_LINES = [
@@ -1690,9 +1975,9 @@
                 return icons[id] || icons.search;
             }
 
-            /* ══════════════════════════════════════════════════════════
-               PROMPT PANEL — category tabs + prompt list
-            ══════════════════════════════════════════════════════════ */
+            /* ==========================================================
+               PROMPT PANEL \u2014 category tabs + prompt list
+            ========================================================== */
             function renderPromptPanel(openCatId) {
                 const panelEl = document.getElementById('e7PromptPanel');
 
@@ -1751,13 +2036,13 @@
                 const askText = prompt.ask === 'site' ? 'Enter site name' : 'Enter asset name (e.g. 2T, SH04, PM07)';
                 label.style.display = 'flex';
                 label.innerHTML = `
-                  <span>${getCategoryIcon(activeCategory)} ${esc(prompt.label)}&nbsp;·&nbsp;<em>${askText}</em></span>
+                  <span>${getCategoryIcon(activeCategory)} ${esc(prompt.label)}&nbsp;\u00B7&nbsp;<em>${askText}</em></span>
                   <button type="button" class="e7-label-cancel" id="e7CancelBtn">Cancel</button>`;
                 document.getElementById('e7CancelBtn').addEventListener('click', cancelPrompt);
 
                 inputEl.placeholder = prompt.ask === 'site'
-                    ? 'Type site name, e.g. Arnetha, Patliputra…'
-                    : 'Type asset name, e.g. 2T, 11T, SH04, PM07…';
+                    ? 'Type site name, e.g. Arnetha, Patliputra\u2026'
+                    : 'Type asset name, e.g. 2T, 11T, SH04, PM07\u2026';
 
                 inputEl.value = '';
                 inputEl.dispatchEvent(new Event('input'));
@@ -1769,14 +2054,14 @@
                 document.querySelectorAll('.e7-prompt-btn').forEach(b => b.classList.remove('active'));
                 const label = document.getElementById('e7InputLabel');
                 if (label) label.style.display = 'none';
-                inputEl.placeholder = 'Ask about a site, asset, alert, health value or recent history…';
+                inputEl.placeholder = 'Ask about a site, asset, alert, health value or recent history\u2026';
                 inputEl.value = '';
                 inputEl.dispatchEvent(new Event('input'));
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                SEND
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             async function sendMessage() {
                 const raw = inputEl.value.trim();
                 if (!raw || isStreaming) return;
@@ -1817,7 +2102,7 @@
                 let botText = '';
                 _botMsgEl = null;
                 isStreaming = true;
-                setStatus('connecting', 'Fetching data…');
+                setStatus('connecting', 'Fetching data\u2026');
 
                 try {
                     const res = await fetch(CHAT_ENDPOINT, {
@@ -1829,7 +2114,7 @@
 
                     if (res.status === 401) {
                         typingEl.remove();
-                        appendBotMsg('Session expired — please sign in again.', true);
+                        appendBotMsg('Session expired \u2014 please sign in again.', true);
                         setStatus('error', 'Session expired');
                         return;
                     }
@@ -1862,10 +2147,10 @@
                             if (evt.type === 'tool_use') {
                                 if (activeBadge) activeBadge.remove();
                                 activeBadge = appendToolBadge(evt.name);
-                                setStatus('connecting', 'Fetching data…');
+                                setStatus('connecting', 'Fetching data\u2026');
                             }
                             if (evt.type === 'error') {
-                                appendBotMsg('⚠ ' + (evt.message || 'Error'), true);
+                                appendBotMsg('\u26A0 ' + (evt.message || 'Error'), true);
                                 setStatus('error', 'Error');
                             }
                         }
@@ -1880,7 +2165,7 @@
 
                 } catch (err) {
                     if (typingEl.parentNode) typingEl.remove();
-                    appendBotMsg('Connection error — please try again.', true);
+                    appendBotMsg('Connection error \u2014 please try again.', true);
                     setStatus('error', 'Error');
                 } finally {
                     if (activeBadge) activeBadge.remove();
@@ -1890,9 +2175,9 @@
                 }
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                FOLLOW-UP CHIPS
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function showFollowUps(question, answer) {
                 const q = question.toLowerCase();
                 const a = answer.toLowerCase();
@@ -1903,23 +2188,23 @@
 
                 if (asset) {
                     if (q.includes('tpr') || q.includes('current') || q.includes('live') || q.includes('value')) {
-                        chips.push({ label: '📈 History today', prompt: `Show today's history for asset ${asset}` });
-                        chips.push({ label: '🚨 Active alerts', prompt: `Show active alerts for asset ${asset}` });
+                        chips.push({ label: '\uD83D\uDCC8 History today', prompt: `Show today's history for asset ${asset}` });
+                        chips.push({ label: '\uD83D\uDEA8 Active alerts', prompt: `Show active alerts for asset ${asset}` });
                     }
                     if (q.includes('alert') || a.includes('alert')) {
-                        chips.push({ label: '📋 Alert history 7d', prompt: `Show alert history for asset ${asset} over the last 7 days` });
-                        chips.push({ label: '📊 Current values', prompt: `Show all current tag values for asset ${asset}` });
+                        chips.push({ label: '\uD83D\uDCCB Alert history 7d', prompt: `Show alert history for asset ${asset} over the last 7 days` });
+                        chips.push({ label: '\uD83D\uDCCA Current values', prompt: `Show all current tag values for asset ${asset}` });
                     }
                     if (q.includes('history') || q.includes('reading')) {
-                        chips.push({ label: '⏰ Last updated', prompt: `When was asset ${asset} last updated? Show TimestampDevice.` });
-                        chips.push({ label: '🛠️ Health summary', prompt: `Give a health summary for asset ${asset}` });
+                        chips.push({ label: '\u23F0 Last updated', prompt: `When was asset ${asset} last updated? Show TimestampDevice.` });
+                        chips.push({ label: '\uD83D\uDEE0\uFE0F Health summary', prompt: `Give a health summary for asset ${asset}` });
                     }
                 } else {
                     if (a.includes('alert') || q.includes('alert')) {
-                        chips.push({ label: '📋 All active alerts', prompt: 'Show all active alerts' });
+                        chips.push({ label: '\uD83D\uDCCB All active alerts', prompt: 'Show all active alerts' });
                     }
                     chips.push({
-                        label: '🔍 Search asset', prompt: null, action: () => {
+                        label: '\uD83D\uDD0D Search asset', prompt: null, action: () => {
                             renderPromptPanel('search');
                             inputEl.focus();
                         }
@@ -1953,9 +2238,9 @@
                 }
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                SCOPE
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function isOutOfScope(text) {
                 const l = text.toLowerCase();
                 return OUT_OF_SCOPE.some(k => l.includes(k));
@@ -1972,7 +2257,7 @@
                   </div>
                   <div>
                     <div class="ai-msg-bubble">
-                      I am not trained to answer that. I can only assist with EdgeX RDPMS railway monitoring data — asset values, history, alerts and timestamps.
+                      I am not trained to answer that. I can only assist with EdgeX RDPMS railway monitoring data \u2014 asset values, history, alerts and timestamps.
                     </div>
                     <div class="ai-msg-time">${fmtTime()}</div>
                   </div>`;
@@ -1980,9 +2265,9 @@
                 scrollDown();
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                MESSAGES
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function appendUserMsg(text) {
                 _botMsgEl = null;
                 const el = document.createElement('div');
@@ -2075,24 +2360,24 @@
 
             function appendToolBadge(name) {
                 const TOOL_LABELS = {
-                    search_sites: 'Searching sites…',
-                    search_assets: 'Searching assets…',
-                    search_tags: 'Searching tags…',
-                    get_asset_tags: 'Loading tags…',
-                    get_tag_current: 'Reading live value…',
-                    get_live_values: 'Reading live values…',
-                    state_get: 'Getting state…',
-                    get_history: 'Loading history…',
-                    get_history_compact: 'Loading history…',
-                    get_limited_history: 'Loading recent readings…',
-                    get_timestamps: 'Reading timestamps…',
-                    get_alerts: 'Checking alerts…',
-                    get_alert_history: 'Loading alert history…',
-                    alert_smart: 'Summarising alerts…',
-                    summary_get: 'Calculating summary…',
-                    trend_get: 'Analysing trend…',
+                    search_sites: 'Searching sites\u2026',
+                    search_assets: 'Searching assets\u2026',
+                    search_tags: 'Searching tags\u2026',
+                    get_asset_tags: 'Loading tags\u2026',
+                    get_tag_current: 'Reading live value\u2026',
+                    get_live_values: 'Reading live values\u2026',
+                    state_get: 'Getting state\u2026',
+                    get_history: 'Loading history\u2026',
+                    get_history_compact: 'Loading history\u2026',
+                    get_limited_history: 'Loading recent readings\u2026',
+                    get_timestamps: 'Reading timestamps\u2026',
+                    get_alerts: 'Checking alerts\u2026',
+                    get_alert_history: 'Loading alert history\u2026',
+                    alert_smart: 'Summarising alerts\u2026',
+                    summary_get: 'Calculating summary\u2026',
+                    trend_get: 'Analysing trend\u2026',
                 };
-                const label = TOOL_LABELS[name] || (name + '…');
+                const label = TOOL_LABELS[name] || (name + '\u2026');
                 const el = document.createElement('div');
                 el.className = 'e7-tool-badge';
                 el.innerHTML = `<span class="e7-spinner"></span><span>${esc(label)}</span>`;
@@ -2101,9 +2386,9 @@
                 return el;
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                MARKDOWN
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             // v1.2.9.4: the renderer had NO heading support, so "## Alert ka Summary" and "---"
             // reached the bubble as literal text -- that, not the styling, is why an answer read
             // like a dump. Headings, rules, ordered lists and blockquotes are handled here, and
@@ -2114,7 +2399,49 @@
             // in afterwards so the markdown pass cannot re-escape it. Anything that is not a
             // well-formed block is left completely alone -- a model that ignores the format
             // degrades to plain text instead of producing broken markup.
-            const CARD_FIELDS = { '15-DAY': '15-day record', 'ML': 'Model classification', 'LASTOP': 'Last operation', 'ACTION': 'Action', 'NOTE': 'Note' };
+            const CARD_FIELDS = { '15-DAY': '15-day record', 'ML': 'Model classification', 'LASTOP': 'Last operation', 'ACTION': 'Action', 'NOTE': 'Note', 'CAUSE': 'Cause', 'WHEN': 'When', 'EVIDENCE': 'Evidence' };
+            // v1.3.3.0: [[PLANBOARD]] -> summary tiles + lanes + responsive card grid. Runs BEFORE
+            // the single-card pass, consuming the cards inside the board. Anything malformed falls
+            // through to the ordinary card renderer, so a partial board never produces broken markup.
+            function renderPlanBoard(raw, stash) {
+                if (!raw || raw.indexOf('[[PLANBOARD]]') < 0) return raw;
+                return raw.replace(/\[\[PLANBOARD\]\]([\s\S]*?)\[\[\/PLANBOARD\]\]/g, function (_, body) {
+                    const lines = body.split('\n');
+                    const headLine = (lines.find(function (l) { return l.indexOf('site=') === 0; }) || '');
+                    const meta = {};
+                    headLine.split('|').forEach(function (p) { const kv = p.split('='); if (kv.length >= 2) meta[kv[0].trim().toLowerCase()] = kv.slice(1).join('=').trim(); });
+                    const innerStash = [];
+                    const cardsHtml = renderPlanCards(body.replace(headLine, ''), innerStash);
+                    // group cards by priority lane, in order
+                    const lanes = { urgent: [], soon: [], monitor: [] };
+                    const re = /\u0000CARD(\d+)\u0000/g; let m;
+                    while ((m = re.exec(cardsHtml)) !== null) {
+                        const h = innerStash[Number(m[1])] || '';
+                        const lane = h.indexOf('plan-card urgent') >= 0 ? 'urgent' : (h.indexOf('plan-card soon') >= 0 ? 'soon' : 'monitor');
+                        lanes[lane].push(h);
+                    }
+                    const n = function (k) { return parseInt(meta[k] || '0', 10) || 0; };
+                    const live = (meta.live || '').toLowerCase();
+                    let out = '<div class="plan-board">'
+                        + '<div class="pb-head"><span class="pb-title">' + esc(meta.site || 'Site') + ' \u2014 Maintenance plan</span>'
+                        + '<span class="pb-sub">' + esc((meta.code ? meta.code + ' \u00B7 ' : '') + 'SiteId ' + (meta.siteid || '')) + '</span></div>'
+                        + '<div class="pb-tiles">'
+                        + '<div class="pb-tile urgent"><div class="k">' + n('urgent') + '</div><div class="l">Urgent</div></div>'
+                        + '<div class="pb-tile soon"><div class="k">' + n('soon') + '</div><div class="l">Inspect soon</div></div>'
+                        + '<div class="pb-tile monitor"><div class="k">' + n('monitor') + '</div><div class="l">Monitor</div></div>'
+                        + '<div class="pb-tile live"><div class="k">' + (live === 'unavailable' ? 'offline' : (live + ' rows')) + '</div><div class="l">Live alerts</div></div>'
+                        + '</div>';
+                    const laneLabel = { urgent: 'Urgent \u2014 attend now', soon: 'Inspect soon', monitor: 'Monitor \u2014 cleared, keep watch' };
+                    ['urgent', 'soon', 'monitor'].forEach(function (k) {
+                        if (!lanes[k].length) return;
+                        out += '<div class="pb-lane ' + k + '">' + laneLabel[k] + ' (' + lanes[k].length + ')</div><div class="pb-grid' + (lanes[k].length === 1 ? ' single' : '') + '">' + lanes[k].join('') + '</div>';
+                    });
+                    out += '</div>';
+                    stash.push(out);
+                    return '\n\u0000CARD' + (stash.length - 1) + '\u0000\n';
+                });
+            }
+
             function renderPlanCards(raw, stash) {
                 if (!raw || raw.indexOf('[[CARD]]') < 0) return raw;
                 return raw.replace(/\[\[CARD\]\]([\s\S]*?)\[\[\/CARD\]\]/g, function (_, body) {
@@ -2129,7 +2456,11 @@
                     const cls = pr.indexOf('URGENT') >= 0 ? 'urgent' : (pr.indexOf('INSPECT') >= 0 ? 'soon' : 'monitor');
                     let rows = '';
                     for (let i = 1; i < lines.length; i++) {
-                        const c = lines[i].indexOf(':');
+                        // v1.3.1.3: only treat "KEY: value" as a field when KEY is a short label
+                        // (letters/digits/-, no spaces beyond one) -- a line like
+                        // "27AT - TC SHORT 10 Oct 10:35, reset 10:38" must NOT split on the clock.
+                        const m = /^([A-Za-z0-9][A-Za-z0-9\-]{0,14}(?:\s[A-Za-z][A-Za-z0-9\-]{0,14})?):\s*(.*)$/.exec(lines[i]);
+                        const c = m ? m[1].length : -1;
                         if (c < 0) { rows += '<div class="pc-row"><div class="pc-v">' + esc(lines[i]) + '</div></div>'; continue; }
                         const key = lines[i].substring(0, c).trim().toUpperCase();
                         const val = lines[i].substring(c + 1).trim();
@@ -2151,6 +2482,7 @@
             function renderMarkdown(raw) {
                 if (!raw) return '';
                 const cardStash = [];
+                raw = renderPlanBoard(String(raw), cardStash);   // v1.3.3.0: board first (consumes its cards)
                 raw = renderPlanCards(String(raw), cardStash);
                 let h = String(raw)
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -2202,9 +2534,9 @@
                 return h;
             }
 
-            /* ══════════════════════════════════════════════════════════
+            /* ==========================================================
                UTILS
-            ══════════════════════════════════════════════════════════ */
+            ========================================================== */
             function esc(s) {
                 return String(s)
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -2216,9 +2548,9 @@
             }
             function fmtTime() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
-            /* ══════════════════════════════════════════════════════════
-               v1.2.9.6 — PER-MESSAGE ACTIONS (#1) + PDF EXPORT (#3)
-            ══════════════════════════════════════════════════════════ */
+            /* ==========================================================
+               v1.2.9.6 \u2014 PER-MESSAGE ACTIONS (#1) + PDF EXPORT (#3)
+            ========================================================== */
             // Rebuild chatHistory from whatever messages are still on screen, so Edit can drop a turn
             // and everything after it without any index bookkeeping. Error bubbles are never in history.
             function rebuildHistoryFromDom() {
@@ -2269,14 +2601,14 @@
 
                 // EXPORT one answer (#3).
                 if (t.classList.contains('e7-msg-export')) {
-                    exportToPdf([{ role: 'assistant', content: raw }], 'RDPMS AI — Answer');
+                    exportToPdf([{ role: 'assistant', content: raw }], 'RDPMS AI \u2014 Answer');
                     return;
                 }
             }
 
             function exportChatPdf() {
                 if (!chatHistory.length) { return; }
-                exportToPdf(chatHistory, 'RDPMS AI — Conversation');
+                exportToPdf(chatHistory, 'RDPMS AI \u2014 Conversation');
             }
 
             // Dependency-free, CSP-safe: open a plain print window and trigger the browser's print /
@@ -2305,14 +2637,26 @@
                         + '.body{white-space:normal;}'
                         + '.body table{border-collapse:collapse;}'
                         + '.body td,.body th{border:1px solid #cdd6df;padding:3px 6px;}'
-                        + '.plan-card{border:1px solid #cdd6df;border-radius:6px;padding:6px 8px;margin:6px 0;}'
+                        + '.plan-card{border:1px solid #cdd6df;border-radius:8px;padding:8px 10px;margin:8px 0;page-break-inside:avoid;}'
+                        /* v1.3.1.3: card header pieces were running together in the export ("URGENT1TTrack Circuit") */
+                        + '.pc-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;}'
+                        + '.pc-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:999px;color:#fff;background:#4a5a6a;}'
+                        + '.plan-card.urgent .pc-pill{background:#c42b2b;}.plan-card.soon .pc-pill{background:#b26a00;}.plan-card.monitor .pc-pill{background:#2060b0;}'
+                        + '.pc-asset{font-weight:700;}.pc-sub{color:#667;font-size:11px;}'
+                        + '.pc-row{display:flex;gap:8px;margin:3px 0;}.pc-k{flex:0 0 120px;color:#556;font-size:11px;font-weight:600;}.pc-v{flex:1;}'
+                        + '.pc-row.pc-action .pc-v{font-weight:600;}.pc-row.pc-note .pc-v{color:#667;font-style:italic;}'
+                        + '.plan-board{margin:6px 0 10px;}.pb-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px;}.pb-title{font-weight:700;font-size:14px;color:#0a4d8c;}.pb-sub{font-size:11px;color:#667;}'
+                        + '.pb-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;}.pb-tile{border:1px solid #cdd6df;border-left:3px solid #94a3b8;border-radius:8px;padding:6px 9px;background:#f8fafc;}.pb-tile .k{font-size:16px;font-weight:700;}.pb-tile .l{font-size:9.5px;color:#667;text-transform:uppercase;}'
+                        + '.pb-tile.urgent{border-left-color:#c42b2b}.pb-tile.urgent .k{color:#c42b2b}.pb-tile.soon{border-left-color:#b26a00}.pb-tile.soon .k{color:#b26a00}.pb-tile.monitor{border-left-color:#2060b0}.pb-tile.monitor .k{color:#2060b0}.pb-tile.live .k{color:#1f7a48;font-size:12px}'
+                        + '.pb-lane{margin:8px 0 3px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}.pb-lane.urgent{color:#c42b2b}.pb-lane.soon{color:#b26a00}.pb-lane.monitor{color:#2060b0}'
+                        + '.pb-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}.pb-grid .plan-card{margin:0;}'
                         + '@@media print{body{margin:0;}.row{break-inside:avoid;}}';
                     const w = window.open('', '_blank');
                     if (!w) { alert('Please allow pop-ups to export the PDF.'); return; }
-                    w.document.open();
+                    w.document.open('text/html','replace');
                     w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'
                         + esc(title) + '</title><style>' + css + '</style></head><body>'
-                        + '<header><h1>' + esc(title) + '</h1><div class="meta">ENERGY7 &middot; RDPMS — '
+                        + '<header><h1>' + esc(title) + '</h1><div class="meta">ENERGY7 &middot; RDPMS &mdash; '
                         + esc(when) + '</div></header>' + rows + '</body></html>');
                     w.document.close();
                     setTimeout(function () { try { w.focus(); w.print(); } catch (e) { } }, 350);
@@ -2337,7 +2681,7 @@
                 catch (_) { }
             }
 
-            /* ── Boot ── */
+            /* -- Boot -- */
             if (document.readyState === 'loading')
                 document.addEventListener('DOMContentLoaded', init);
             else

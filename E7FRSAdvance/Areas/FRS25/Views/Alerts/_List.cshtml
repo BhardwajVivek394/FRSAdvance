@@ -16,7 +16,7 @@
 
 @if (!alerts.Any())
 {
-    <div style="text-align:center;padding:48px;color:#94a3b8;">
+    <div style="text-align:center;padding:48px;color:var(--e7-text-2, #55657a);">
         <i class="fas fa-bell-slash" style="font-size:32px;margin-bottom:12px;display:block;opacity:.35;"></i>
         No active alerts found for the selected filters.
     </div>
@@ -443,15 +443,13 @@ else
                                         onclick="openFeedbackSlidePanel('@a.Id','full','@a.AcknowledgemenStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
                                     <i class="fas fa-comment-dots"></i>
                                 </button>
-                                <button class="alrt-act-btn"
+                                <button class="alrt-act-btn alrt-act-analysis"
                                         title="Alert Analysis"
-                                        style="background:#0077cc;color:#fff;border-color:#0077cc;"
                                         onclick="alrtOpenAnalysis(@a.Id)">
                                     <i class="fas fa-chart-bar"></i>
                                 </button>
-                                <button class="alrt-act-btn"
+                                <button class="alrt-act-btn alrt-act-esc"
                                         title="Escalation Timeline"
-                                        style="background:#4f46e5;color:#fff;border-color:#4f46e5;"
                                         onclick="alrtLoadEscalation(@a.Id, '@Html.AttributeEncode(station)', '@Html.AttributeEncode(cause)')">
                                     <i class="fas fa-arrow-up-right-dots"></i>
                                 </button>
@@ -591,13 +589,13 @@ _alrtAnalysisRows[@dbgA.Id] = {
 function fnUpdateAckStatus(alertId, acknowledgemenStatusId) {
     if (!confirm('Are you sure you want to update acknowledgement?')) return;
     var mFRSAlert = { Id: alertId, AcknowledgemenStatusId: acknowledgemenStatusId };
-    $("#loader").show();
+    window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
         url: '/FRS25/Alerts/UpdateAcknowledgementStatus',
         type: 'POST', contentType: 'application/json',
         data: JSON.stringify(mFRSAlert), dataType: 'json',
         success: function (data) {
-            $("#loader").hide();
+            window.E7Loader && E7Loader.hide();
             if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(@skip);
             else location.reload();
             if (data != null) {
@@ -605,18 +603,18 @@ function fnUpdateAckStatus(alertId, acknowledgemenStatusId) {
                 else if (data.type === 'error') CommonNotification("ERROR", data.result, "error");
             }
         },
-        error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        error: function () { window.E7Loader && E7Loader.hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
     });
 }
 
 function AddRemark(id, statusId) {
     if (id == null || id === '') return;
-    $("#loader").show();
+    window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
         url: '/FRS25/Alerts/GetBy',
         type: 'POST', data: '{id:' + id + '}', contentType: 'application/json',
         success: function (data) {
-            $("#loader").hide();
+            window.E7Loader && E7Loader.hide();
             if (data != null && data.Id > 0) {
                 $('#hdnAlertRemarkId').val(id);
                 $('#txtAlertRemark').val(data.Remark);
@@ -635,7 +633,7 @@ function AddRemark(id, statusId) {
             }
             $('#modelAddRemark').modal('show');
         },
-        error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        error: function () { window.E7Loader && E7Loader.hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
     });
 }
 
@@ -656,13 +654,13 @@ function fnUpdateRemark() {
         mFRSAlert.PTAlertInfoId = $('#drpRemarkAlertInfo').val();
         if (!mFRSAlert.PTAlertInfoId) { alert('Cause Code is required.'); return; }
     }
-    $("#loader").show();
+    window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
         url: '/FRS25/Alerts/UpdateRemark',
         type: 'POST', contentType: 'application/json',
         data: JSON.stringify(mFRSAlert), dataType: 'json',
         success: function (data) {
-            $("#loader").hide();
+            window.E7Loader && E7Loader.hide();
             $('#modelAddRemark').modal('hide');
             if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(@skip);
             else location.reload();
@@ -672,7 +670,7 @@ function fnUpdateRemark() {
                 else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
             }
         },
-        error: function () { $('#modelAddRemark').modal('hide'); $("#loader").hide(); alert("Something went wrong!"); }
+        error: function () { $('#modelAddRemark').modal('hide'); window.E7Loader && E7Loader.hide(); alert("Something went wrong!"); }
     });
 }
 
@@ -690,13 +688,13 @@ function fnUpdateRemarkWithoutFeedback() {
     mFRSAlert.Id = $('#hdnAlertRemarkWithOutFeedbackId').val();
     mFRSAlert.Remark = remarkVal;
     mFRSAlert.AcknowledgemenStatusId = $('#hdnAlertAlertStatusWithOutFeedbackId').val();
-    $("#loader").show();
+    window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
         url: '/FRS25/Alerts/UpdateRemark',
         type: 'POST', contentType: 'application/json',
         data: JSON.stringify(mFRSAlert), dataType: 'json',
         success: function (data) {
-            $("#loader").hide();
+            window.E7Loader && E7Loader.hide();
             $('#modelAddRemarkWithOutFeedback').modal('hide');
             if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(@skip);
             else location.reload();
@@ -706,22 +704,22 @@ function fnUpdateRemarkWithoutFeedback() {
                 else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
             }
         },
-        error: function () { $('#modelAddRemarkWithOutFeedback').modal('hide'); $("#loader").hide(); alert("Something went wrong!"); }
+        error: function () { $('#modelAddRemarkWithOutFeedback').modal('hide'); window.E7Loader && E7Loader.hide(); alert("Something went wrong!"); }
     });
 }
 
 function fnShowRemark(id) {
-    $("#loader").show();
+    window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
         url: '/FRS25/Alerts/_FRSRemark',
         type: 'POST', dataType: 'html',
         data: '{id:' + id + '}', contentType: 'application/json',
         success: function (data) {
-            $("#loader").hide();
+            window.E7Loader && E7Loader.hide();
             $("#divFRSAlertRemark").empty().append(data);
             $('#modalFRSAlertRemark').modal('show');
         },
-        error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+        error: function () { window.E7Loader && E7Loader.hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
     });
 }
 
@@ -737,13 +735,13 @@ function fnShowAlertMessage(id) {
 
 function fnUpdateMaintenanceInActiveMode(assetId) {
     if (!confirm('Clear this maintenance window now? Alerts will resume immediately.')) return;
-    $("#loader").show();
+    window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
         url: '/FRS25/MaintenanceMode/UpdateMaintenanceInActiveMode',
         type: 'POST', contentType: 'application/json',
         data: JSON.stringify({ AssetId: assetId }), dataType: 'json',
         success: function (data) {
-            $("#loader").hide();
+            window.E7Loader && E7Loader.hide();
             if (data && data.type === 'success') {
                 showSuccess(data.result || 'Maintenance cleared. Alerts have resumed.', 'Cleared');
                 setTimeout(function () { location.reload(); }, 800);
@@ -751,7 +749,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 showError((data && data.result) || 'Server rejected the request.', 'Clear Failed');
             }
         },
-        error: function () { $("#loader").hide(); showError('Network error. Please try again.', 'Error'); }
+        error: function () { window.E7Loader && E7Loader.hide(); showError('Network error. Please try again.', 'Error'); }
     });
 }
 </script>
@@ -1271,12 +1269,12 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             }
 
             /* load existing remark + cause codes from server */
-            $("#loader").show();
+            window.E7Loader && E7Loader.show('Please wait…');
             $.ajax({
                 url: '/FRS25/Alerts/GetBy', type: 'POST',
                 data: '{id:' + alertId + '}', contentType: 'application/json',
                 success: function (data) {
-                    $("#loader").hide();
+                    window.E7Loader && E7Loader.hide();
                     if (data && data.Id > 0) {
                         if (data.Remark) document.getElementById('fbRemark').value = data.Remark;
                         document.getElementById('fbHdnStatusId').value = statusId;
@@ -1290,7 +1288,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                         });
                     }
                 },
-                error: function () { $("#loader").hide(); }
+                error: function () { window.E7Loader && E7Loader.hide(); }
             });
 
         } else {
@@ -1380,13 +1378,13 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             };
         }
 
-        $("#loader").show();
+        window.E7Loader && E7Loader.show('Please wait…');
         $.ajax({
             url: '/FRS25/Alerts/UpdateRemark',
             type: 'POST', contentType: 'application/json', dataType: 'json',
             data: JSON.stringify(payload),
             success: function (data) {
-                $("#loader").hide();
+                window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
                 if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
                 else location.reload();
@@ -1396,7 +1394,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                     else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
                 }
             },
-            error: function () { $("#loader").hide(); window.closeFbPanel(); alert("Something went wrong!"); }
+            error: function () { window.E7Loader && E7Loader.hide(); window.closeFbPanel(); alert("Something went wrong!"); }
         });
     };
 
@@ -1469,7 +1467,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 if (statusId === ptId) document.getElementById('fbCauseRow').style.display = 'block';
             }
 
-            $("#loader").show();
+            // (removed: loader shown with no matching hide -- the fetch below is commented out)
             //$.ajax({
             //    url: '/FRS25/Alerts/GetBy', type: 'POST',
             //    data: '{id:' + alertId + '}', contentType: 'application/json',
@@ -1759,7 +1757,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         }
 
         // ── Single AJAX call to UpdateRemark ──
-        $("#loader").show();
+        window.E7Loader && E7Loader.show('Please wait…');
         $.ajax({
             url: '/FRS25/Alerts/UpdateRemark',
             type: 'POST',
@@ -1767,7 +1765,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             dataType: 'json',
             data: JSON.stringify(payload),
             success: function (data) {
-                $("#loader").hide();
+                window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
                 if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
                 else location.reload();
@@ -1777,7 +1775,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 }
             },
             error: function () {
-                $("#loader").hide();
+                window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
                 alert("Something went wrong!");
             }
@@ -1786,7 +1784,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
 
     // ── Calls existing UpdateRemark endpoint with full payload including PhotoEvidence ──
     function fbSubmitRemarkPayload(payload, skip) {
-        $("#loader").show();
+        window.E7Loader && E7Loader.show('Please wait…');
         $.ajax({
             url: '/FRS25/Alerts/UpdateRemark',
             type: 'POST',
@@ -1794,7 +1792,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             dataType: 'json',
             data: JSON.stringify(payload),
             success: function (data) {
-                $("#loader").hide();
+                window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
                 if (typeof fnGetAlertDetailReport === 'function') fnGetAlertDetailReport(skip);
                 else location.reload();
@@ -1804,7 +1802,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 }
             },
             error: function () {
-                $("#loader").hide();
+                window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
                 alert("Something went wrong!");
             }

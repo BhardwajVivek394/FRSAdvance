@@ -218,6 +218,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                             Id = a.Id,
                             SiteId = a.SiteId,
                             SiteName = a.SiteName,
+                            StationCode = a.StationCode ?? "",   // timetable key for the AI train-context card
                             ZoneName = a.ZoneName ?? "",
                             DivisionName = a.DivisionName ?? "",
                             AlertType = alertType,
@@ -398,6 +399,90 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
 
             return mFRSAlert;
+        }
+
+        // ------------------------------------------------------------------
+        // POST /FRS25/AlertAnalysis/GetTrainRunningMoments
+        // 616 Train Running Moment for one alert: the same E7 API call 616 SiteKeeping /
+        // UserSite use (SiteKeeping/GetTrainRunningMomentLister -- per-day TrainMoment.csv,
+        // one row per train passage: IfMa / IrMa / Leakage / Vr / Tpr / Block / LokedRecord),
+        // narrowed to the alert's site and +/- windowMin around the alert time.
+        // The API reads WHOLE days and compares full DateTimes in its day loop, so the
+        // request carries date-only bounds and the time window is applied here.
+        // allAssets=false -> only the alerted asset; true -> every track of the site.
+        // ------------------------------------------------------------------
+        [HttpPost]
+        public JsonResult GetTrainRunningMoments(int alertId, int windowMin = 30, bool allAssets = false)
+        {
+            windowMin = Math.Max(1, Math.Min(windowMin, 720));
+            var alert = GetFRSAlert(alertId);
+            if (alert == null || alert.Id <= 0 || alert.SiteId <= 0 || alert.SetTimeStamp == DateTime.MinValue)
+            {
+                return Json(new { ok = false, message = "Alert not found." });
+            }
+            DateTime from = alert.SetTimeStamp.AddMinutes(-windowMin);
+            DateTime to = alert.SetTimeStamp.AddMinutes(windowMin);
+
+            var lister = new TrainRunningMomentLister();
+            lister.SearchCriteria.SiteId = alert.SiteId;
+            lister.SearchCriteria.AssetId = allAssets ? 0 : alert.AssetId;
+            lister.SearchCriteria.StartDate = from.Date;
+            lister.SearchCriteria.EndDate = to.Date;
+            lister.SearchCriteria.TimeStamp = alert.SetTimeStamp.Date;
+            lister.Pager.Take = -1;   // all rows, as 616
+
+            var rows = new List<TrainRunningMoment>();
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var str = new StringContent(JsonConvert.SerializeObject(lister), Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("SiteKeeping/GetTrainRunningMomentLister", str).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        var res = JsonConvert.DeserializeObject<TrainRunningMomentLister>(response.Content.ReadAsStringAsync().Result);
+                        if (res != null && res.TrainRunningMoments != null) { rows = res.TrainRunningMoments; }
+                    }
+                    else
+                    {
+                        return Json(new { ok = false, message = "Train moment service returned " + (int)response.StatusCode + "." });
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return Json(new { ok = false, message = "Train moment service unreachable." });
+            }
+
+            var inWindow = rows
+                .Where(r => r != null && r.TimeStamp >= from && r.TimeStamp <= to)
+                .OrderBy(r => r.TimeStamp)
+                .Select(r => new
+                {
+                    Time = r.TimeStamp.ToString("dd/MM/yyyy HH:mm:ss"),
+                    DeltaSec = (int)Math.Round((r.TimeStamp - alert.SetTimeStamp).TotalSeconds),
+                    r.AssetId,
+                    r.AssetName,
+                    r.IfMa,
+                    r.IrMa,
+                    r.Leakage,
+                    r.Vr,
+                    r.Tpr,
+                    r.BlockId,
+                    Locked = r.LokedRecord == "1"
+                })
+                .ToList();
+
+            return Json(new
+            {
+                ok = true,
+                alertTime = alert.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss"),
+                assetId = alert.AssetId,
+                assetName = alert.AssetName ?? "",
+                windowMin = windowMin,
+                dayRows = rows.Count,
+                rows = inWindow
+            });
         }
 
         // ------------------------------------------------------------------

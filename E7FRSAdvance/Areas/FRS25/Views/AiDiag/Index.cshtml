@@ -29,7 +29,10 @@
          Auto-runs once when both pickers are set. No chart libraries; no model calls.
     ---------------------------------------------------------------- *@
 @* FRS Advance port (617): Layout stays null as in 616 (standalone page). Same-origin URLs go
-   through Url.Content so the page also works under a virtual directory. *@
+   through Url.Content so the page also works under a virtual directory.
+   Developer tool, kept standalone on purpose: a small "Developer diagnostics" bar with
+   "Back to dashboard" (/FRS25/Home/Index) replaces the old history.back() link, and the page
+   follows the app's light/dark preference (localStorage 'e7-theme-pref'). *@
 @{
     Layout = null;
     ViewBag.Title = "AiDiag";
@@ -41,14 +44,87 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Energy7 - AiDiag</title>
+    @* Theme: same rule as the FRS25 layout's flash-prevention script -- localStorage
+       'e7-theme-pref' ('light'|'dark'), no saved choice follows the OS scheme. Runs before
+       first paint so the page never flashes the wrong scheme. This page is standalone (no
+       layout), so the --e7-* tokens are not loaded; every colour below reads the token with
+       a fallback copied from e7-energy7-theme.css for each scheme. *@
+    <script>
+        (function () {
+            var k = 'e7-theme-pref';
+            function osTheme() {
+                return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+            }
+            function resolve() {
+                var t = null;
+                try { t = localStorage.getItem(k); } catch (e) { }
+                return (t === 'light' || t === 'dark') ? t : osTheme();
+            }
+            function apply(t) {
+                document.documentElement.setAttribute('data-aurora', t);
+                document.documentElement.setAttribute('data-theme', t);
+                if (document.body) {
+                    document.body.setAttribute('data-aurora', t);
+                    document.body.classList.toggle('dark-mode', t === 'dark');
+                }
+            }
+            var cur = resolve();
+            apply(cur);
+            document.addEventListener('DOMContentLoaded', function () { apply(cur); });
+            // Follow a theme change made in another tab of the app.
+            window.addEventListener('storage', function (ev) {
+                if (ev.key === k || ev.key === null) { cur = resolve(); apply(cur); }
+            });
+        })();
+    </script>
     <style>
-        :root {
+        :root,
+        html[data-aurora="light"] {
             --ok: #059669;
-            --warn: #d97706;
+            --warn: #b45309;
             --fail: #dc2626;
             --skip: #94a3b8;
-            --ink: #0f172a;
-            --mut: #64748b;
+            --ink: var(--e7-text, #22303f);
+            --ink-2: var(--e7-text-2, #55657a);
+            --mut: var(--e7-text-3, #627186);
+            --head: var(--e7-heading, #1b3c55);
+            --page: var(--e7-page, #e7e9ec);
+            --surf: var(--e7-surface, #ffffff);
+            --surf-2: var(--e7-surface-2, #f6f8fa);
+            --surf-3: var(--e7-surface-3, #eef2f6);
+            --line: var(--e7-border, #e7ebf1);
+            --line-2: var(--e7-border-2, #dde3ec);
+            --accent: var(--e7-accent, #2f9ec4);
+            --accent-ink: var(--e7-accent-ink, #1d6f8d);
+            --fail-bg: #fff5f5;
+            --err-bg: #fef2f2;
+            --err-line: #fecaca;
+            --err-ink: #991b1b;
+            color-scheme: light;
+        }
+
+        html[data-aurora="dark"] {
+            --ok: #10b981;
+            --warn: #f59e0b;
+            --fail: #f87171;
+            --skip: #7b8798;
+            --ink: var(--e7-text, #dce4ee);
+            --ink-2: var(--e7-text-2, #aab6c6);
+            --mut: var(--e7-text-3, #8391a3);
+            --head: var(--e7-heading, #eaf1f8);
+            --page: var(--e7-page, #12171f);
+            --surf: var(--e7-surface, #212934);
+            --surf-2: var(--e7-surface-2, #1d242e);
+            --surf-3: var(--e7-surface-3, #262f3b);
+            --line: var(--e7-border, #2c3644);
+            --line-2: var(--e7-border-2, #36424f);
+            --accent: var(--e7-accent, #5cc0e2);
+            --accent-ink: var(--e7-accent-ink, #8fd8ee);
+            --fail-bg: rgba(248, 113, 113, .10);
+            --err-bg: rgba(248, 113, 113, .12);
+            --err-line: rgba(248, 113, 113, .35);
+            --err-ink: #fca5a5;
+            color-scheme: dark;
         }
 
         * {
@@ -58,13 +134,47 @@
         body {
             margin: 0;
             font-family: 'Segoe UI', system-ui, sans-serif;
-            background: #f1f5f9;
+            background: var(--page);
             color: var(--ink);
         }
 
+        .devbar {
+            background: var(--surf-2);
+            border-bottom: 1px solid var(--line);
+            padding: 8px 22px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+            font-size: 13px;
+        }
+
+            .devbar .back {
+                color: var(--accent-ink);
+                text-decoration: none;
+                font-weight: 600;
+            }
+
+                .devbar .back:hover,
+                .devbar .back:focus-visible {
+                    text-decoration: underline;
+                }
+
+            .devbar .devtag {
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: .6px;
+                text-transform: uppercase;
+                color: var(--warn);
+                border: 1px solid currentColor;
+                border-radius: 999px;
+                padding: 2px 10px;
+            }
+
         .hdr {
-            background: linear-gradient(135deg,#1e1b4b,#312e81);
-            color: #fff;
+            background: var(--surf);
+            color: var(--head);
+            border-bottom: 1px solid var(--line);
             padding: 14px 22px;
             display: flex;
             align-items: center;
@@ -78,14 +188,19 @@
                 letter-spacing: .4px;
             }
 
+                .hdr h1 .crumb {
+                    font-weight: 400;
+                    color: var(--mut);
+                }
+
             .hdr .sub {
                 font-size: 11px;
-                opacity: .75;
+                color: var(--mut);
             }
 
         .bar {
-            background: #fff;
-            border-bottom: 1px solid #e2e8f0;
+            background: var(--surf);
+            border-bottom: 1px solid var(--line);
             padding: 12px 22px;
             display: flex;
             gap: 12px;
@@ -110,9 +225,10 @@
         select {
             min-width: 220px;
             padding: 7px 9px;
-            border: 1px solid #cbd5e1;
+            border: 1px solid var(--line-2);
             border-radius: 8px;
-            background: #fff;
+            background: var(--surf);
+            color: var(--ink);
         }
 
         .runbtn {
@@ -134,8 +250,8 @@
         .basechip {
             font-size: 11px;
             color: var(--mut);
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
+            background: var(--surf-2);
+            border: 1px solid var(--line);
             border-radius: 7px;
             padding: 5px 9px;
         }
@@ -185,7 +301,7 @@
             font-size: 12px;
             font-weight: 800;
             letter-spacing: 1.2px;
-            color: #475569;
+            color: var(--ink-2);
             margin: 20px 0 8px;
         }
 
@@ -196,8 +312,8 @@
         }
 
         .tile {
-            background: #fff;
-            border: 1px solid #e2e8f0;
+            background: var(--surf);
+            border: 1px solid var(--line);
             border-left: 5px solid var(--skip);
             border-radius: 10px;
             padding: 10px 13px;
@@ -214,7 +330,7 @@
 
             .tile.FAIL {
                 border-left-color: var(--fail);
-                background: #fff5f5;
+                background: var(--fail-bg);
             }
 
             .tile.SKIP {
@@ -262,7 +378,7 @@
 
         .tdet {
             font-size: 12px;
-            color: #334155;
+            color: var(--ink-2);
             margin-top: 5px;
             word-break: break-word;
         }
@@ -275,9 +391,9 @@
         }
 
         .err {
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #991b1b;
+            background: var(--err-bg);
+            border: 1px solid var(--err-line);
+            color: var(--err-ink);
             border-radius: 9px;
             padding: 9px 13px;
             margin: 12px 22px;
@@ -287,13 +403,16 @@
     </style>
 </head>
 <body>
+    <div class="devbar">
+        <a class="back" href="@Url.Content("~/FRS25/Home/Index")">&larr; Back to dashboard</a>
+        <span class="devtag" title="Internal tool for developers and site-keeping staff">Developer diagnostics</span>
+    </div>
     <div class="hdr">
-        <a href="javascript:history.back()" style="color:#c7d2fe;text-decoration:none;font-size:13px;">&larr; Back</a>
-        <h1><span style="font-weight:400;opacity:.75;">AI/ML Analysis &rsaquo; </span>AiDiag</h1>
+        <h1><span class="crumb">AI/ML Analysis &rsaquo; </span>AiDiag</h1>
         <div class="sub">exercises the real analysis plumbing &middot; no model calls</div>
         <div style="flex:1"></div>
         <div class="basechip">Historian: via server</div>
-        <div class="basechip">view 1.0.0.3 @(string.IsNullOrEmpty(ctlVer) ? "" : ("&middot; ctl " + ctlVer))</div>
+        <div class="basechip">view 1.0.0.3 @if (!string.IsNullOrEmpty(ctlVer)) {<text>&middot; ctl @ctlVer</text>}</div>
     </div>
     <div class="bar">
         <div>

@@ -410,7 +410,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //  GET /FRS25/ChatBot/Index — the fullscreen chat page itself
         // ═════════════════════════════════════════════════════════
         // v1.1.0: there was NO version constant in this file -- you could not tell what was deployed.
-        public const string ComponentVersion = "1.3.1.0";
+        public const string ComponentVersion = "1.3.3.0";
         // 1.2.9.5 - MAINTENANCE PLANS: 15-day evidence rule + CARD output (owner spec, 18.08).
         //           A plan answers one of two shapes -- a STATION plan (rank the assets) or a
         //           SINGLE ASSET plan -- and every asset in it must carry the same five pieces of
@@ -1042,6 +1042,31 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             List<object> workMessages = TrimHistory(messages, _maxHistory).Cast<object>().ToList();
             object[] toolsArray = loaded.Tools.ToObject<object[]>();
 
+            // v1.3.1.2: SITE FAST PATH ENFORCED IN CODE. A maintenance-plan question for a site that
+            // has a hardcoded reference (SiteWisdom) must not become a 49-asset tool tour. The prompt
+            // already says so; this makes it deterministic: prune the tool list to alert tools only
+            // and cap the loop at a couple of steps. The model literally cannot call
+            // predict_pm_operation / get_attribute_range / history here.
+            int siteFastMaxIter = _maxIter;
+            bool siteFastPlan = IsSiteFastPathPlan(messages);
+            string lastAlertResult = null, lastTrackHealth = null;   // v1.3.3.0: inputs for the code-built board
+            if (siteFastPlan)
+            {
+                toolsArray = PruneToolsForSitePlan(loaded.Tools);
+                siteFastMaxIter = Math.Min(_maxIter, SiteFastPathMaxIter);
+                WriteSse("tool_use", new { name = "site reference" });
+            }
+
+            // v1.3.2.3: ALERT INTENT ENFORCED IN CODE. When the user asks for alerts, the
+            // health / sensor / modem / A10 / gateway tools are removed from the tool list, so the
+            // model cannot answer an alert question with telemetry rows, and every tool result is
+            // filtered to FRS alert rows (see FrsFilterAlertRows). Health is asked for by name.
+            bool alertIntent = IsAlertIntent(messages);
+            if (alertIntent)
+            {
+                toolsArray = PruneHealthToolsForAlerts(toolsArray);
+            }
+
             // v1.2.9.6 (#4): loop-guard state. forceAnswer makes the NEXT model turn tool-less so it
             // must answer in text (from the tool results it already has) rather than calling another
             // tool; it is set on a repeat tool call or when the wall budget is spent. seenToolSigs
@@ -1059,7 +1084,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 // v1.2.9.6 (#4): on the last allowed step, after a repeat, or past the wall budget,
                 // withhold tools (null = the clients' existing no-tools path) so the model produces a
                 // final answer instead of dead-ending on the step limit.
-                bool lastTurn = _loopGuard && (forceAnswer || iter == _maxIter - 1
+                bool lastTurn = _loopGuard && (forceAnswer || iter == siteFastMaxIter - 1
                                    || guardWatch.Elapsed.TotalSeconds >= _maxWallSec);
                 object[] turnTools = lastTurn ? null
                                               : (toolsArray == null ? null : toolsArray.ToArray());
@@ -1148,6 +1173,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         {
                             result = await CallToolRoutedAsync(toolName, toolArgs)
                                 .ConfigureAwait(false);
+                            // v1.3.2.3: an ALERT question gets FRS alert rows only. Sensor-health /
+                            // CorrelationBreak / modem / A10 / gateway rows are stripped from the tool
+                            // result in code, so the model never sees them and cannot list them.
+                            if (alertIntent) { result = FrsFilterAlertRows(toolName, result); }
+                            // v1.3.3.0: keep the alert payload so the site plan board can be built in code.
+                            if (siteFastPlan && IsAlertToolName(toolName)) { lastAlertResult = result; }
+                            if (siteFastPlan && string.Equals(toolName, "predict_track_health", StringComparison.OrdinalIgnoreCase)) { lastTrackHealth = result; }
                             sw.Stop();
 
                             LogToolEvent(
@@ -1204,6 +1236,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                     // v1.2.5.0: scope the COMPLETE answer by question mode before chunking.
                     string fullText = ScrubInstructionEcho(ApplyMaintenanceScope(FilterOperationalActions(sb.ToString()), qmode));
+
+                    // v1.3.3.0: SITE PLAN BOARD BUILT IN CODE. For a hardcoded-site maintenance plan the
+                    // responsive card board is assembled server-side from the site reference + the live
+                    // alert rows, and prepended. The model's prose follows as notes. The format no longer
+                    // depends on the model choosing to emit [[CARD]] blocks.
+                    if (siteFastPlan)
+                    {
+                        string board = BuildSitePlanBoard(messages, lastAlertResult, lastTrackHealth);
+                        if (!string.IsNullOrEmpty(board)) { fullText = board + "\n\n" + fullText; }
+                    }
                     string[] words = fullText.Split(' ');
                     StringBuilder chunk = new StringBuilder();
                     for (int w = 0; w < words.Length; w++)
@@ -1554,8 +1596,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                  + "STATION PLAN (no asset named): rank the station's assets and report the ones "
                  + "needing attention. SINGLE ASSET (an asset is named): that asset only, in depth, "
                  + "no ranking.\n"
-                 + "EVIDENCE -- gather over the LAST 15 DAYS for every asset you report, and state "
-                 + "each item explicitly:\n"
+                 + "SITE FAST PATH: if a SITE REFERENCE block is present for the station asked about, "
+                 + "follow ITS 'FAST PATH FOR A MAINTENANCE PLAN' instead of the evidence sweep below -- "
+                 + "the reference already carries the asset map and known items, so a plan there is "
+                 + "one alert call plus the reference, not a per-asset tour.\n"
+                 + "EVIDENCE (sites WITHOUT a reference block) -- gather over the LAST 15 DAYS for every "
+                 + "asset you report, and state each item explicitly:\n"
                  + "1. Alert count in 15 days (get_frs_alerts, FromDate = today minus 15 days).\n"
                  + "2. Whether any alert is ACTIVE now (IsActive true / no ResetTimeStamp). An "
                  + "ACTIVE alert outranks a higher count that has fully reset.\n"

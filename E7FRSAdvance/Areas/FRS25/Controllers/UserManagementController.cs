@@ -15,6 +15,11 @@ using System.Web.Mvc;
 namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
     [E7FRSAdvance.Areas.FRS25.Filter.Authenticate]
+    // The page fires ~6 AJAX calls at once (counts, users, roles, divisions, sites...). With the
+    // default exclusive session lock ASP.NET runs them one at a time, so GetUserListJson queued
+    // behind the slower calls and blew the client's timeout ("Error loading users."). Nothing in
+    // this controller writes to Session, so a read-only lock lets the calls run concurrently.
+    [System.Web.Mvc.SessionState(System.Web.SessionState.SessionStateBehavior.ReadOnly)]
     public class UserManagementController : Controller
     {
         // GET: FRS25/UserManagement
@@ -60,6 +65,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpPost]
         public JsonResult GetUserListJson(UserLister mUserLister)
         {
+            // Guard against a missing/partial body: these used to throw a NullReferenceException
+            // outside the try block, which surfaced as an HTML 500 and the generic client error.
+            if (mUserLister == null) mUserLister = new UserLister();
+            if (mUserLister.Pager == null) mUserLister.Pager = new Pager();
+            if (mUserLister.SearchCriteria == null) mUserLister.SearchCriteria = new User();
+
+            if (mUserLister.Pager.PageSize <= 0) mUserLister.Pager.PageSize = 10;
             mUserLister.Pager.Take = mUserLister.Pager.PageSize;
             mUserLister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
 
@@ -68,6 +80,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mUserLister.SearchCriteria.ZoneId = ClsHttpContent.LoginUser.ZoneId;
             }
 
+            var requestPager = mUserLister.Pager;
+            string message = "Couldn't load users.";
             try
             {
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
@@ -78,22 +92,38 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
                         string jsonString = response.Content.ReadAsStringAsync().Result;
-                        mUserLister = JsonConvert.DeserializeObject<UserLister>(jsonString);
-                        return Json(new
+                        var result = JsonConvert.DeserializeObject<UserLister>(jsonString) ?? new UserLister();
+                        var users = result.Users ?? new List<User>();
+                        // Never ship credentials to the browser (the lister returns full User rows).
+                        foreach (var u in users)
+                        {
+                            u.Password = null;
+                            u.Token = null;
+                        }
+                        var jr = Json(new
                         {
                             IsSuccess = true,
-                            Users = mUserLister.Users,
-                            Pager = mUserLister.Pager
+                            Users = users,
+                            Pager = result.Pager ?? requestPager
                         }, JsonRequestBehavior.AllowGet);
+                        jr.MaxJsonLength = int.MaxValue;
+                        return jr;
                     }
+                    message = "User service returned " + (int)response.StatusCode + " (" + response.ReasonPhrase + ").";
                 }
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                var root = ex.GetBaseException();
+                message = "Couldn't load users: " + root.Message;
+                System.Diagnostics.Trace.TraceError("[UserManagement.GetUserListJson] " + ex);
+            }
             return Json(new
             {
                 IsSuccess = false,
+                Message = message,
                 Users = new List<User>(),
-                Pager = mUserLister.Pager
+                Pager = requestPager
             }, JsonRequestBehavior.AllowGet);
         }
 

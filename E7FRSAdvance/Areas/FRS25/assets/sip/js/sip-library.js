@@ -1333,7 +1333,11 @@
         if (hasShunt) {
             const shuntState = sigProps.shuntState || sigProps.shuntVariant || sigProps.shuntLit || (cell.attrs && (cell.attrs.shuntState || cell.attrs.shuntLit)) || 'PROCEED';
             const dotSet = normaliseCombinedShuntState(shuntState);
+            // Own group + hit area so a click on the shunt can be told apart from the main head (live SIP: SH-x drawer)
+            svg += `<g class="sip-sigshunt-shunt">`;
+            svg += `<rect x="${shX}" y="${shY}" width="${shW}" height="${shH}" fill="transparent"/>`;
             svg += renderCombinedShuntSymbol(shX, shY, shW, shH, dotSet, '#5B6168');
+            svg += `</g>`;
         }
 
         // ── Centre-attached L stand for combined signal + shunt ──
@@ -1728,8 +1732,9 @@
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
 
         let svg = `<g class="sip-asset sip-route-calling sip-route-calling-simple-asset" data-id="${cell.id}" data-type="${cell.type}">`;
-        // Transparent hit area keeps the asset easy to select without drawing a big box.
-        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent"/>`;
+        // Layout box only: no hit area, so it never steals clicks from the adjacent
+        // signal head. The drawn lamps / arms / stand stay clickable.
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent" pointer-events="none"/>`;
         svg += renderStand8({ x: x, y: y, w: w, h: h }, standPos, standLen, 4, sigProps);
         svg += renderRouteCallingGraphic(cx, cy, cfg, { includeCalling: true });
 

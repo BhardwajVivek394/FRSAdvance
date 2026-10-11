@@ -739,8 +739,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
         // GET /AiChat/WisdomManage -- full-page management UI (cause-code grouped).
-        // Reviewer-gated like ListWisdom; renders a self-contained HTML page that
-        // calls the existing JSON endpoints. Kept as a string so it needs no view file.
+        // Reviewer-gated like ListWisdom; renders Views/Aichat/WisdomManage.cshtml inside the
+        // FRS25 layout (sidebar/navbar/footer + light/dark theme) and calls the existing JSON
+        // endpoints. Previously a self-contained HTML string returned via Content(), which
+        // had no shell, no way back and was always dark.
         [HttpGet]
         public ActionResult WisdomManage()
         {
@@ -748,8 +750,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             {
                 if (!_wisdomEnabled) { Response.StatusCode = 404; return Content("not found", "text/plain"); }
                 if (!IsWisdomReviewer()) { return WisdomDenied("WisdomManage"); }
-                string html = WisdomManageHtml();
-                return Content(html, "text/html");
+                // The FRS25 layout iterates the session menu; without it (expired/partial
+                // session) the shell would throw, so send the user to log in again.
+                if (E7FRSAdvance.Utility.ClsHttpContent.FRS25Menus == null)
+                {
+                    return RedirectToAction("Index", "Login", new { area = "FRS25" });
+                }
+                ViewBag.Title = "Wisdom Manage";
+                return View("WisdomManage");
             }
             catch (Exception wex)
             {
@@ -805,238 +813,6 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 return WisdomFail("BulkScopeWisdom", wex);
             }
         }
-
-
-        // Self-contained management page markup (no Razor view needed). The token is
-        // rendered server-side via AntiForgeryToken helper so POSTs carry X-Wisdom-Token.
-        private string WisdomManageHtml()
-        {
-            string tokenField;
-            try { tokenField = System.Web.Helpers.AntiForgery.GetHtml().ToString(); }
-            catch { tokenField = ""; }
-            string body = WISDOM_MANAGE_TEMPLATE.Replace("{{TOKEN}}", tokenField);
-            return body;
-        }
-
-        private const string WISDOM_MANAGE_TEMPLATE = @"<!doctype html>
-<html><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1"">
-<title>ENERGY7 Wisdom Management</title>
-<style>
- body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#0f1115;color:#e8eaed}
- header{background:#151922;padding:14px 20px;border-bottom:1px solid #232a36;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:5}
- header h1{font-size:16px;margin:0;font-weight:600}
- .who{font-size:12px;color:#9aa4b2;margin-left:auto}
- .wrap{max-width:1100px;margin:0 auto;padding:18px 20px 60px}
- .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
- .filters button{background:#1b2130;color:#cbd3df;border:1px solid #2a3342;border-radius:20px;padding:6px 14px;cursor:pointer;font-size:13px}
- .filters button.on{background:#2563eb;border-color:#2563eb;color:#fff}
- .nav2{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
- .nav2 button{background:#161b26;color:#aeb8c6;border:1px solid #2a3342;border-radius:16px;padding:5px 12px;cursor:pointer;font-size:12px}
- .nav2 button.on{background:#0e7490;border-color:#0e7490;color:#fff}
- .atype{font-size:15px;font-weight:700;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid #2a3342;letter-spacing:.4px}
- .cause{border:1px solid #232a36;border-radius:12px;margin-bottom:14px;overflow:hidden;background:#141922}
- .cause>summary{cursor:pointer;padding:12px 16px;font-weight:600;font-size:14px;background:#171d28;list-style:none;display:flex;align-items:center;gap:10px}
- .cause>summary::-webkit-details-marker{display:none}
- .badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
- .b-p{background:#3a2f00;color:#ffd666}.b-a{background:#06371f;color:#5eead4}.b-r{background:#3a0d0d;color:#fca5a5}.b-s{background:#22262e;color:#8b95a3}
- .cnt{margin-left:auto;font-size:12px;color:#8b95a3;font-weight:400}
- .rule{border-top:1px solid #232a36;padding:12px 16px}
- .rule .scope{font-size:12px;color:#93c5fd;margin-bottom:6px}
- .rule textarea{width:100%;box-sizing:border-box;background:#0d1017;color:#e8eaed;border:1px solid #2a3342;border-radius:8px;padding:8px;font:inherit;font-size:13px;min-height:40px}
- .rule .corr{font-size:12px;color:#8b95a3;margin:6px 0;white-space:pre-wrap;border-left:2px solid #2a3342;padding-left:8px}
- .rule .meta{font-size:11px;color:#6b7280;margin-top:4px}
- .acts{margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
- .acts button{border:0;border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600}
- .ap{background:#059669;color:#fff}.rj{background:#dc2626;color:#fff}.ed{background:#334155;color:#e8eaed}.sc{background:#1d4ed8;color:#fff}
- .bulk{background:#161b24;border:1px dashed #2a3342;border-radius:8px;padding:8px 12px;margin:8px 16px;font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
- .bulk input{background:#0d1017;color:#e8eaed;border:1px solid #2a3342;border-radius:6px;padding:5px 8px;font:inherit;font-size:12px;width:90px}
- .empty{color:#6b7280;padding:30px;text-align:center}
- .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1f2937;border:1px solid #374151;color:#e8eaed;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:.2s;z-index:10}
- .toast.show{opacity:1}
- a.back{color:#93c5fd;text-decoration:none;font-size:13px}
-</style></head>
-<body>
-<header>
- <h1>ENERGY7 Wisdom Management</h1>
- <span id=""who"" class=""who"">...</span>
-</header>
-<div class=""wrap"">
- <div style=""display:none"">{{TOKEN}}</div>
- <div class=""filters"">
-   <button data-f=""ALL"" class=""on"">All</button>
-   <button data-f=""PENDING"">Pending</button>
-   <button data-f=""APPROVED"">Approved</button>
-   <button data-f=""REJECTED"">Rejected</button>
-   <button data-f=""SUPERSEDED"">Superseded</button>
-   <button data-f=""CANDIDATES"">Candidates</button>
-   <button id=""refresh"" style=""margin-left:auto"">Refresh</button>
- </div>
- <div id=""list""><div class=""empty"">Loading...</div></div>
-</div>
-<div id=""toast"" class=""toast""></div>
-<script>
-(function(){
- var F='ALL', DATA=[], AT='', CC='';   // AT/CC: asset-type / cause-code chip drill-down (''=all)
- function tok(){var t=document.querySelector('input[name=""__RequestVerificationToken""]');return t?t.value:'';}
- function esc(s){return String(s==null?'':s).replace(/[&<>""']/g,function(m){return({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;',""'"":'&#39;'})[m];});}
- function toast(m){var t=document.getElementById('toast');t.textContent=m;t.className='toast show';setTimeout(function(){t.className='toast';},2200);}
- function post(url,obj){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-Wisdom-Token':tok()},body:JSON.stringify(obj)}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.slice(0,200));});});}
- function badge(st){var c=st==='PENDING'?'b-p':(st.indexOf('APPROVED')===0?'b-a':(st==='REJECTED'?'b-r':'b-s'));return '<span class=""badge '+c+'"">'+esc(st)+'</span>';}
-
- function load(){
-   fetch('WhoAmI'.replace('WhoAmI','WisdomWhoAmI'),{headers:{'X-Wisdom-Token':tok()}}).then(function(r){return r.json();}).then(function(w){
-     document.getElementById('who').textContent='Signed in as '+(w.displayName||w.identity||'?')+' - reviewer:'+(w.isReviewer?'yes':'no')+' approver:'+(w.isApprover?'yes':'no');
-     window.__isApprover=!!w.isApprover;
-   }).catch(function(){});
-   if(F==='CANDIDATES'){
-     fetch('ListCandidates',{headers:{'X-Wisdom-Token':tok()}}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.slice(0,200));});})
-      .then(function(d){renderCandidates(d.items||[],d.date);})
-      .catch(function(e){document.getElementById('list').innerHTML='<div class=""empty"">Error: '+esc(e.message)+'</div>';});
-     return;
-   }
-   fetch('ListWisdom',{headers:{'X-Wisdom-Token':tok()}}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.slice(0,200));});})
-    .then(function(d){DATA=d.items||[];render();})
-    .catch(function(e){document.getElementById('list').innerHTML='<div class=""empty"">Error: '+esc(e.message)+'</div>';});
- }
-
- function tsVal(it){var t=Date.parse(it.ts||'');return isNaN(t)?0:t;}
- function render(){
-   var items=DATA.filter(function(it){return F==='ALL'||it.status===F||(F==='APPROVED'&&it.status==='APPROVED_GLOBAL');});
-   // v1.0.141.0: chip drill-down -- ASSET TYPE chips, then CAUSE CODE chips, then rules.
-   var byAsset={};
-   items.forEach(function(it){
-     var at=(it.scope&&it.scope.assetType)||'(no asset type)';
-     var c=(it.scope&&it.scope.causeCode)||'(no cause)';
-     var g=(byAsset[at]=byAsset[at]||{});
-     (g[c]=g[c]||[]).push(it);
-   });
-   var akeys=Object.keys(byAsset).sort();
-   if(AT && akeys.indexOf(AT)<0){AT='';CC='';}
-   var h='';
-   // asset-type chip row
-   h+='<div class=""nav2"">';
-   h+='<button class=""'+(AT===''?'on':'')+'"" data-at="""">All assets</button>';
-   akeys.forEach(function(at){
-     var n=0;Object.keys(byAsset[at]).forEach(function(c){n+=byAsset[at][c].length;});
-     h+='<button class=""'+(AT===at?'on':'')+'"" data-at=""'+esc(at)+'"">'+esc(at)+' ('+n+')</button>';
-   });
-   h+='</div>';
-   // cause-code chip row (only when an asset type is chosen)
-   if(AT){
-     var ckeys=Object.keys(byAsset[AT]||{}).sort();
-     if(CC && ckeys.indexOf(CC)<0){CC='';}
-     h+='<div class=""nav2"">';
-     h+='<button class=""'+(CC===''?'on':'')+'"" data-cc="""">All causes</button>';
-     ckeys.forEach(function(c){
-       h+='<button class=""'+(CC===c?'on':'')+'"" data-cc=""'+esc(c)+'"">'+esc(c)+' ('+byAsset[AT][c].length+')</button>';
-     });
-     h+='</div>';
-   }
-   if(!akeys.length){document.getElementById('list').innerHTML=h+'<div class=""empty"">No wisdom in this view.</div>';return;}
-   var shown=0;
-   akeys.forEach(function(at){
-     if(AT && at!==AT){return;}
-     var causes=byAsset[at];
-     var atCount=0;Object.keys(causes).forEach(function(c){atCount+=causes[c].length;});
-     h+='<div class=""atype"">'+esc(at)+' <span class=""cnt"">'+atCount+' rule(s)</span></div>';
-     Object.keys(causes).sort().forEach(function(c){
-     if(AT && CC && c!==CC){return;}
-     shown++;
-     var rows=causes[c];
-     var pend=rows.filter(function(r){return r.status==='PENDING';}).length;
-     h+='<details class=""cause"" open><summary>'+esc(c)+' <span class=""cnt"">'+rows.length+' rule(s)'+(pend?(' , '+pend+' pending'):'')+'</span></summary>';
-     if(window.__isApprover){
-       h+='<div class=""bulk"">Bulk (pending only): set siteId <input id=""bs_'+esc(c)+'"" placeholder=""siteId""> <button class=""sc"" data-bulk=""'+esc(c)+'"">Apply to all pending</button></div>';
-     }
-     rows.sort(function(a,b){return tsVal(b)-tsVal(a);});   // latest first
-     rows.forEach(function(it){
-       var sc=it.scope||{};
-       h+='<div class=""rule"" data-id=""'+esc(it.id)+'"">';
-       h+='<div class=""scope"">'+badge(it.status)+' &nbsp; '+esc(sc.causeCode||'')+' | '+esc(sc.assetType||'')+' | site '+esc(sc.siteId||'(any)')+'</div>';
-       h+='<textarea data-rule=""'+esc(it.id)+'"" '+(it.status==='PENDING'?'':'readonly')+'>'+esc(it.distilledRule||'')+'</textarea>';
-       if(it.aiText){h+='<div class=""corr""><b>AI said:</b> '+esc((it.aiText||'').slice(0,300))+'</div>';}
-       if(it.userText){h+='<div class=""corr""><b>Correction:</b> '+esc((it.userText||'').slice(0,300))+'</div>';}
-       h+='<div class=""meta"">by '+esc(it.createdBy||'?')+(it.approvedBy?(' , approved by '+esc(it.approvedBy)):'')+' , '+esc(it.ts||'')+'</div>';
-       h+='<div class=""acts"">';
-       if(it.status==='PENDING'){
-         h+='<button class=""ed"" data-act=""edit"" data-id=""'+esc(it.id)+'"">Save edit</button>';
-         if(window.__isApprover){h+='<button class=""ap"" data-act=""approve"" data-id=""'+esc(it.id)+'"">Approve</button><button class=""rj"" data-act=""reject"" data-id=""'+esc(it.id)+'"">Reject</button>';}
-       } else if(it.status.indexOf('APPROVED')===0 && window.__isApprover){
-         h+='<button class=""rj"" data-act=""reject"" data-id=""'+esc(it.id)+'"">Reject (retire)</button>';
-       }
-       h+='</div></div>';
-     });
-     h+='</details>';
-     });
-   });
-   if(!shown){h+='<div class=""empty"">No rules under this selection.</div>';}
-   document.getElementById('list').innerHTML=h;
- }
-
-
- function renderCandidates(items,day){
-   // group by cause code (falls back to '(no cause in log)')
-   var groups={};
-   items.forEach(function(it){var c=it.causeCode||'(no cause in log)';(groups[c]=groups[c]||[]).push(it);});
-   var keys=Object.keys(groups).sort();
-   if(!keys.length){document.getElementById('list').innerHTML='<div class=""empty"">No analyses logged for '+esc(day||'')+'.</div>';return;}
-   var h='<div style=""font-size:12px;color:#8b95a3;margin-bottom:8px;"">Auto-captured from '+esc(day||'')+' analyses + chat. Promote turns one into a PENDING wisdom rule.</div>';
-   keys.forEach(function(c){
-     var rows=groups[c];
-     h+='<details class=""cause"" open><summary>'+esc(c)+' <span class=""cnt"">'+rows.length+' analysis(es)</span></summary>';
-     rows.forEach(function(it){
-       h+='<div class=""rule"">';
-       h+='<div class=""scope"">'+esc(it.verdict||'(no verdict)')+' &nbsp; alert '+esc(it.alertId)+' , site '+esc(it.siteId||'?')+(it.hasChat?' , <span style=""color:#5eead4"">has chat</span>':'')+'</div>';
-       if(it.headline){h+='<div class=""corr"">'+esc(it.headline)+'</div>';}
-       if(it.chat){h+='<div class=""corr""><b>Chat:</b> '+esc(it.chat)+'</div>';}
-       h+='<div class=""meta"">'+esc(it.ts||'')+'</div>';
-       h+='<div class=""acts""><input class=""cand-rule"" data-id=""'+esc(it.alertId)+'"" placeholder=""rule to teach (optional - blank = distill from verdict/chat)"" style=""flex:1;min-width:200px;background:#0d1017;color:#e8eaed;border:1px solid #2a3342;border-radius:6px;padding:6px 8px;font:inherit;font-size:12px;"">';
-       h+='<button class=""sc"" data-promote=""'+esc(it.alertId)+'"" data-cause=""'+esc(it.causeCode||'')+'"" data-site=""'+esc(it.siteId||'')+'"" data-station=""'+esc(it.station||'')+'"">Promote to wisdom</button></div>';
-       h+='</div>';
-     });
-     h+='</details>';
-   });
-   document.getElementById('list').innerHTML=h;
-   // stash for promote lookups
-   window.__cands={}; items.forEach(function(it){window.__cands[it.alertId]=it;});
- }
-
- document.addEventListener('click',function(e){
-   var b=e.target; if(b.tagName!=='BUTTON')return;
-   var promoteId=b.getAttribute('data-promote');
-   if(promoteId!=null){
-     var it=(window.__cands||{})[promoteId]||{};
-     var typed=document.querySelector('input.cand-rule[data-id=""'+promoteId+'""]'); var manual=typed?typed.value.trim():'';
-     var ctx={alertId:String(promoteId),causeCode:b.getAttribute('data-cause')||'',siteId:b.getAttribute('data-site')||'',station:b.getAttribute('data-station')||'',provider:''};
-     // aiText = the AI's verdict/headline; userText = the engineer signal (typed rule, else the chat, else the verdict)
-     var aiText=(it.verdict?('['+it.verdict+'] '):'')+(it.headline||'');
-     var userText=manual||it.chat||it.headline||'';
-     if(!ctx.causeCode){toast('This analysis has no cause code in the log - cannot scope a rule');return;}
-     post('SaveWisdom',{context:ctx,verdictGiven:it.verdict||'',userText:userText,aiText:aiText}).then(function(d){toast('Promoted -> pending wisdom ('+(d.distilledRule?('rule: '+d.distilledRule.slice(0,40)):'needs edit')+')');}).catch(function(e2){toast('Promote failed: '+e2.message);});
-     return;
-   }
-   if(b.hasAttribute('data-at')){AT=b.getAttribute('data-at')||'';CC='';render();return;}
-   if(b.hasAttribute('data-cc')){CC=b.getAttribute('data-cc')||'';render();return;}
-   if(b.hasAttribute('data-f')){F=b.getAttribute('data-f');document.querySelectorAll('.filters button[data-f]').forEach(function(x){x.className=x===b?'on':'';});render();return;}
-   if(b.id==='refresh'){load();return;}
-   var bulk=b.getAttribute('data-bulk');
-   if(bulk!=null){
-     var inp=document.getElementById('bs_'+bulk); var sid=inp?inp.value.trim():'';
-     if(!sid){toast('Enter a siteId first');return;}
-     post('BulkScopeWisdom',{causeCode:bulk,newSiteId:sid}).then(function(d){toast('Updated '+d.changed+' pending rule(s)');load();}).catch(function(e2){toast('Bulk failed: '+e2.message);});
-     return;
-   }
-   var act=b.getAttribute('data-act'), id=b.getAttribute('data-id'); if(!act||!id)return;
-   var ta=document.querySelector('textarea[data-rule=""'+id+'""]'); var rule=ta?ta.value:'';
-   if(act==='edit'){post('UpdateWisdomRule',{id:id,editedRule:rule}).then(function(){toast('Saved');load();}).catch(function(e2){toast('Edit failed: '+e2.message);});}
-   else if(act==='approve'){post('SetWisdomStatus',{id:id,status:'APPROVED',editedRule:rule}).then(function(){toast('Approved');load();}).catch(function(e2){toast('Approve failed: '+e2.message);});}
-   else if(act==='reject'){post('SetWisdomStatus',{id:id,status:'REJECTED'}).then(function(){toast('Rejected');load();}).catch(function(e2){toast('Reject failed: '+e2.message);});}
- });
-
- load();
-})();
-</script>
-</body></html>";
 
         // GET /AiChat/ListCandidates?date=YYYYMMDD  (reviewer-gated)
         // Candidates are DERIVED from the date-wise logs (no separate store):

@@ -1,13 +1,108 @@
-@{
+﻿@{
     ViewBag.Title = "Point Machine Operation";
     Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
 }
 
+<script>
+    /* FRS Advance: show the shared layout loader before the parser-blocking CDN libraries below
+       start downloading (they used to leave a blank page for several seconds). Hidden by
+       pmoPageReady() once the landing model's sites fetch settles (success or failure), or after 20 s. */
+    (function () {
+        var done = false;
+        window.pmoPageReady = function () {
+            if (done) return;
+            done = true;
+            if (window.E7Loader) window.E7Loader.hide();
+        };
+        if (window.E7Loader) window.E7Loader.show('Loading analysis' + String.fromCharCode(8230));
+        setTimeout(window.pmoPageReady, 20000);
+    })();
+    /* The models follow the app's Light/Dark toggle (html[data-aurora]) instead of their own */
+    window.pmAppTheme = function () {
+        return document.documentElement.getAttribute('data-aurora') === 'dark' ? 'dark' : 'light';
+    };
+</script>
+<style>
+    /* Keep the page's model sections well-behaved children of the layout's .e7-body flex column. */
+    .pm-combined-section, #pm-switch-bar { min-width: 0; }
+</style>
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script>
+    /* FRS Advance: theme every Plotly chart on this page from the app tokens. Several models
+       set no font colour (Plotly falls back to #444) and hard-code a light grid (#eef2f6),
+       which vanish on the dark surface. Wrapping newPlot/react fixes all four models in one
+       place; explicit trace colours are left alone, only text / grid / axis lines change. */
+    (function () {
+        if (!window.Plotly) return;
+        var LIGHT_GRIDS = { '#eef2f6': 1, '#eef2f7': 1, '#e2e8f0': 1, '#f1f5f9': 1, '#e5e7eb': 1 };
+        function tok(name, fb) {
+            var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return v || fb;
+        }
+        function palette() {
+            var dark = document.documentElement.getAttribute('data-aurora') === 'dark';
+            return {
+                dark: dark,
+                text: tok('--e7-text-2', dark ? '#aab6c6' : '#55657a'),
+                grid: dark ? 'rgba(140,175,235,0.12)' : tok('--e7-grid-line', '#eef2f7'),
+                line: tok('--e7-border-2', dark ? '#36424f' : '#dde3ec')
+            };
+        }
+        function themeAxis(ax, p) {
+            if (!ax || typeof ax !== 'object') return;
+            if (!ax.gridcolor || LIGHT_GRIDS[String(ax.gridcolor).toLowerCase()] || p.dark) ax.gridcolor = p.grid;
+            if (!ax.linecolor || p.dark) ax.linecolor = p.line;
+            if (!ax.zerolinecolor || p.dark) ax.zerolinecolor = p.line;
+            ax.tickfont = ax.tickfont || {};
+            if (!ax.tickfont.color || p.dark) ax.tickfont.color = p.text;
+            if (ax.title && typeof ax.title === 'object') {
+                ax.title.font = ax.title.font || {};
+                if (!ax.title.font.color || p.dark) ax.title.font.color = p.text;
+            }
+        }
+        function themeLayout(layout) {
+            if (!layout || typeof layout !== 'object') layout = {};
+            var p = palette();
+            layout.font = layout.font || {};
+            if (!layout.font.color || p.dark) layout.font.color = p.text;
+            if (layout.legend) {
+                layout.legend.font = layout.legend.font || {};
+                if (!layout.legend.font.color || p.dark) layout.legend.font.color = p.text;
+            }
+            Object.keys(layout).forEach(function (k) {
+                if (/^[xy]axis\d*$/.test(k)) themeAxis(layout[k], p);
+            });
+            if (!layout.xaxis) themeAxis(layout.xaxis = {}, p);
+            if (!layout.yaxis) themeAxis(layout.yaxis = {}, p);
+            (layout.annotations || []).forEach(function (a) {
+                if (a && (!a.font || !a.font.color || (p.dark && /^#(1e293b|0f172a|334155|475569|64748b)$/i.test(a.font.color)))) {
+                    a.font = a.font || {}; a.font.color = p.text;
+                }
+            });
+            return layout;
+        }
+        ['newPlot', 'react'].forEach(function (fn) {
+            var orig = Plotly[fn];
+            if (typeof orig !== 'function') return;
+            Plotly[fn] = function (el, data, layout, config) {
+                if (data && !Array.isArray(data) && typeof data === 'object' && data.data) {
+                    data.layout = themeLayout(data.layout);   // react(el, {data, layout, config})
+                    return orig.call(this, el, data);
+                }
+                return orig.call(this, el, data, themeLayout(layout), config);
+            };
+        });
+        window.addEventListener('e7ThemeChange', function () {
+            document.querySelectorAll('.pm-combined-section .js-plotly-plot').forEach(function (el) {
+                try { if (el.layout) Plotly.relayout(el, themeLayout(JSON.parse(JSON.stringify(el.layout)))); } catch (e) { }
+            });
+        });
+    })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -2677,7 +2772,7 @@
         feedbackClear: '@Url.Action("PostPm4FeedbackClear", "PointMachineOperation", new { area = "FRS25" })'
     };
 </script>
-<body>
+@* FRS Advance: a stray <body> tag used to sit here (the layout already owns <body>). *@
     <script>
         // API base is configurable for deployments where this HTML is hosted on a
         // different server from FastAPI. Set ?pmApiBase=https://api.example.com once
@@ -2843,29 +2938,137 @@
     </script>
 
     <style>
-        /* FRS Advance: 617's aurora-bridge.css forces day/night colours on labels, form controls and
-           .card with !important. Keep each model's own palette (its CSS variables follow the model's
-           own light/dark toggle); the id selectors out-rank the bridge rules. */
-        body #model1-wrap label, body #model3-wrap label, body #model4-wrap label { color: var(--text-muted) !important; }
-        body #model1-wrap select, body #model1-wrap textarea, body #model1-wrap .form-control,
-        body #model3-wrap select, body #model3-wrap textarea, body #model3-wrap .form-control,
-        body #model4-wrap select, body #model4-wrap textarea, body #model4-wrap .form-control,
-        body #model1-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]),
-        body #model3-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]),
-        body #model4-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
-            background-color: var(--bg-primary, var(--bg-card, #fff)) !important; color: var(--text-primary) !important; border-color: var(--border) !important;
+        /* FRS Advance theme bridge for the four PM models.
+           1. Each model's palette variables are mapped to the app's --e7-* tokens, so every model
+              follows the app's Light/Dark toggle (html[data-aurora]). There is no separate in-page
+              theme any more: the models' own toggle buttons are hidden, and models 1 and 3 get
+              data-theme synced from the app (their status colours / chart code read it).
+           2. Components are re-asserted with #e7Body #modelN-wrap (2,1,0), which out-ranks both
+              aurora-bridge (body[data-aurora] .x) and e7-energy7-theme (#e7Body .e7-body .x). */
+        #e7Body #model1-wrap, #e7Body #model1-wrap[data-theme="dark"],
+        #e7Body #model3-wrap, #e7Body #model3-wrap[data-theme="dark"],
+        #e7Body #model4-wrap {
+            --bg-primary: var(--e7-surface-2);
+            --bg-secondary: var(--e7-surface);
+            --bg-tertiary: var(--e7-surface-3);
+            --bg-card: var(--e7-surface);
+            --bg-hover: var(--e7-surface-3);
+            --border: var(--e7-border);
+            --border-hover: var(--e7-border-2);
+            --text-primary: var(--e7-text);
+            --text-secondary: var(--e7-text-2);
+            --text-muted: var(--e7-text-3);
+            --accent: var(--e7-accent);
+            --accent-hover: var(--e7-accent-ink);
+            --accent-muted: var(--e7-accent-soft);
+            --shadow: var(--e7-shadow-card);
+            --shadow-lg: var(--e7-shadow-pop);
         }
-        body #model1-wrap select option, body #model3-wrap select option, body #model4-wrap select option { background: var(--bg-card, #fff) !important; color: var(--text-primary) !important; }
-        body #model1-wrap .card, body #model3-wrap .card, body #model4-wrap .card { background: var(--bg-card) !important; color: var(--text-primary) !important; border-color: var(--border) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
-        body #model2-wrap label { color: var(--muted) !important; }
-        body #model2-wrap select, body #model2-wrap textarea, body #model2-wrap .form-control,
-        body #model2-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
-            background-color: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important;
+
+        #e7Body #model2-wrap {
+            --bg: var(--e7-surface-2);
+            --surface: var(--e7-surface);
+            --border: var(--e7-border);
+            --text: var(--e7-text);
+            --muted: var(--e7-text-3);
+            --accent: var(--e7-accent);
+            --accent-muted: var(--e7-accent-soft);
         }
-        body #model2-wrap select option { background: var(--surface) !important; color: var(--text) !important; }
-        body #model2-wrap .card { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
-        body #model1-wrap .card-header, body #model1-wrap .card-body, body #model2-wrap .card-header, body #model2-wrap .card-body,
-        body #model3-wrap .card-header, body #model3-wrap .card-body, body #model4-wrap .card-header, body #model4-wrap .card-body { color: inherit !important; }
+
+        /* Models 2 and 4 never had a dark palette: lift their status colours for dark surfaces */
+        html[data-aurora="dark"] #e7Body #model2-wrap,
+        html[data-aurora="dark"] #e7Body #model4-wrap {
+            --normal: #3fb950;
+            --watch: #f5c96b;
+            --alert: #f0883e;
+            --fault: #f85149;
+            --invalid: #8b949e;
+        }
+
+        /* The models' own theme toggles: the header's Light/Dark pill is the only switch now */
+        #e7Body #themeBtn, #e7Body #themeBtn3 { display: none !important; }
+
+        /* Model switch bar (was hard-coded dark in both themes) */
+        #e7Body #pm-switch-bar {
+            background: var(--e7-surface);
+            border-bottom: 1px solid var(--e7-border);
+        }
+
+            #e7Body #pm-switch-bar button {
+                background: var(--e7-surface-2);
+                border-color: var(--e7-border-2);
+                color: var(--e7-text-2);
+            }
+
+                #e7Body #pm-switch-bar button:hover { color: var(--e7-text); }
+
+                #e7Body #pm-switch-bar button.active {
+                    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+                    border-color: transparent;
+                    color: #fff;
+                }
+
+        /* Components the global theme sheets repaint with !important */
+        #e7Body #model1-wrap label, #e7Body #model3-wrap label, #e7Body #model4-wrap label { color: var(--text-muted) !important; }
+        #e7Body #model2-wrap label { color: var(--muted) !important; }
+
+        #e7Body #model1-wrap select, #e7Body #model1-wrap textarea, #e7Body #model1-wrap .form-control,
+        #e7Body #model3-wrap select, #e7Body #model3-wrap textarea, #e7Body #model3-wrap .form-control,
+        #e7Body #model4-wrap select, #e7Body #model4-wrap textarea, #e7Body #model4-wrap .form-control,
+        #e7Body #model1-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]),
+        #e7Body #model3-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]),
+        #e7Body #model4-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+            background-color: var(--bg-primary) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border) !important;
+        }
+
+        #e7Body #model2-wrap select, #e7Body #model2-wrap textarea, #e7Body #model2-wrap .form-control,
+        #e7Body #model2-wrap input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+            background-color: var(--bg) !important;
+            color: var(--text) !important;
+            border-color: var(--border) !important;
+        }
+
+        #e7Body #model1-wrap select option, #e7Body #model3-wrap select option, #e7Body #model4-wrap select option { background: var(--bg-card) !important; color: var(--text-primary) !important; }
+        #e7Body #model2-wrap select option { background: var(--surface) !important; color: var(--text) !important; }
+
+        /* native date/time pickers draw their icon + popup in the right scheme */
+        html[data-aurora="dark"] #e7Body .pm-combined-section input { color-scheme: dark; }
+
+        #e7Body #model1-wrap .card, #e7Body #model3-wrap .card, #e7Body #model4-wrap .card {
+            background: var(--bg-card) !important;
+            color: var(--text-primary) !important;
+            border-color: var(--border) !important;
+            border-radius: var(--radius, 8px);
+            box-shadow: var(--shadow) !important;
+            -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+        }
+
+        #e7Body #model2-wrap .card {
+            background: var(--surface) !important;
+            color: var(--text) !important;
+            border-color: var(--border) !important;
+            -webkit-backdrop-filter: none !important;
+            backdrop-filter: none !important;
+        }
+
+        #e7Body .pm-combined-section .card-header,
+        #e7Body .pm-combined-section .card-body { color: inherit !important; }
+
+        /* headings inside the models keep the model's text colour (Energy7 forces --e7-heading) */
+        #e7Body .pm-combined-section h1, #e7Body .pm-combined-section h2, #e7Body .pm-combined-section h3,
+        #e7Body .pm-combined-section h4, #e7Body .pm-combined-section h5, #e7Body .pm-combined-section h6 { color: inherit !important; }
+
+        /* Pastel chips / warning banners were light-only */
+        html[data-aurora="dark"] #e7Body .pm-combined-section .wave-chip.tws { background: rgba(139,92,246,.18); color: #c4b5fd; }
+        html[data-aurora="dark"] #e7Body .pm-combined-section .wave-chip.irs { background: rgba(59,130,246,.18); color: #93c5fd; }
+        html[data-aurora="dark"] #e7Body .pm-combined-section .wave-chip.mixed { background: rgba(245,158,11,.18); color: #fcd34d; }
+        html[data-aurora="dark"] #e7Body .pm-combined-section .wave-chip.unresolved { background: rgba(239,68,68,.18); color: #fca5a5; }
+        html[data-aurora="dark"] #e7Body #model2-wrap .banner.warn,
+        html[data-aurora="dark"] #e7Body #model4-wrap .banner.warn { background: rgba(245,158,11,.16); color: #fcd34d; }
+        html[data-aurora="dark"] #e7Body #model3-wrap .banner.warn { background: rgba(245,201,107,.2); color: #fcd34d; }
     </style>
 
     @* FRS Advance page header (617 theme): breadcrumb card like EquipmentRoom/Index. *@
@@ -3138,7 +3341,7 @@
                     // endpoints injected
 
                     const S = {
-                        theme: localStorage.getItem('pm-theme') || 'light',
+                        theme: window.pmAppTheme(),
                         waveType: 'Both',
                         sites: [],
                         pointMachines: [],       // [{assetId, assetName, tags: [...], currentTag, voltageTag}]
@@ -3195,13 +3398,15 @@
 
                     document.addEventListener('DOMContentLoaded', async () => {
                         applyTheme();
-                        document.getElementById('themeBtn').onclick = () => {
-                            S.theme = S.theme === 'dark' ? 'light' : 'dark';
-                            localStorage.setItem('pm-theme', S.theme);
+                        // Follow the app header's Light/Dark toggle; redraw what's on screen so the
+                        // canvas/Plotly colours (picked from S.theme at draw time) switch too.
+                        window.addEventListener('e7ThemeChange', () => {
+                            S.theme = window.pmAppTheme();
                             applyTheme();
-                        };
+                            try { if (MH.ops && MH.ops.length) renderHealthTimeline(); } catch (e) { }
+                        });
                         initModels();
-                        loadSites();
+                        loadSites().then(window.pmoPageReady, window.pmoPageReady);
                     });
 
                     function applyTheme() {
@@ -5852,7 +6057,7 @@
             (function () {
                 // endpoints injected
 
-                const S = { sites: [], pointMachines: [], currentSiteId: null, selectedAsset: null, lastData: null, theme: localStorage.getItem('pm3-theme') || 'light' };
+                const S = { sites: [], pointMachines: [], currentSiteId: null, selectedAsset: null, lastData: null, theme: window.pmAppTheme() };
                 const WINDOW_DAYS = 30;
                 const TOP_FAULTS_N = 5;
 
@@ -7630,12 +7835,15 @@
 
                 document.addEventListener('DOMContentLoaded', () => {
                     applyTheme();
-                    document.getElementById('themeBtn3').onclick = () => {
-                        S.theme = S.theme === 'dark' ? 'light' : 'dark';
-                        localStorage.setItem('pm3-theme', S.theme);
+                    // Follow the app header's Light/Dark toggle (applyTheme re-renders the timeline)
+                    window.addEventListener('e7ThemeChange', () => {
+                        S.theme = window.pmAppTheme();
                         applyTheme();
-                    };
-                    loadSites().then(autoLoadFromUrl3);
+                    });
+                    var sites3 = loadSites();
+                    sites3.then(autoLoadFromUrl3);
+                    // Model 3 is the landing tab when Model 1 isn't rendered (non site-keeping users).
+                    if (!document.getElementById('model1-wrap')) sites3.then(window.pmoPageReady, window.pmoPageReady);
                 });
 
                 // Deep-link auto-load (?model=3&SiteId=&AssetId=&autoload=1) - drives this
@@ -9403,5 +9611,6 @@
             }
         });
     </script>
-</body>
-</div>
+@* FRS Advance: removed a stray </body></div> here. The extra </div> closed the layout's .e7-body
+   early, so the layout's own closing tag ended .e7-main and the footer became a flex-row sibling
+   of .e7-main inside .e7-app (header squeezed, footer drawn top-right). *@

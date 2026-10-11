@@ -5086,6 +5086,27 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     }
                     catch { }
                     JObject _cachedVerdict = (_cachedEnv["verdict"] as JObject) ?? _cachedEnv;
+                    // A stored verdict from before train context worked (feature off, no station code,
+                    // fetch failed) never gains it: the cache skips the prefetch, and a reset alert's
+                    // row never expires. Add it now, same best-effort lookup as the fresh path; any
+                    // failure simply serves the verdict as stored.
+                    if (_trainCtxEnabled && _cachedVerdict["train_context"] == null)
+                    {
+                        try
+                        {
+                            DateTime _tcInc;
+                            string _tcStn = ResolveStationCode(ctx, null);
+                            if (TryParseAlertTime(GetCtx(ctx, "time"), out _tcInc) && !string.IsNullOrEmpty(_tcStn))
+                            {
+                                string _tcHtml = await SafeAwait(FetchStationTrainsAsync(_tcStn, System.Threading.CancellationToken.None)).ConfigureAwait(false);
+                                JObject _tcx = string.IsNullOrEmpty(_tcHtml) ? null : BuildTrainContext(_tcHtml, _tcStn.Trim().ToUpperInvariant(), _tcInc);
+                                if (_tcx != null) { _cachedVerdict["train_context"] = _tcx; AiLog("INFO", "CACHE", "train-context added to cached verdict (station " + _tcStn + ")"); }
+                                else { AiLog("INFO", "CACHE", "train-context: none for cached verdict (station " + _tcStn + ")"); }
+                            }
+                            else { AiLog("INFO", "CACHE", "train-context skipped on cache hit: " + (string.IsNullOrEmpty(_tcStn) ? "no station code" : "alert time unresolved")); }
+                        }
+                        catch (Exception _tcEx) { AiLog("WARN", "CACHE", "train-context on cache hit failed: " + _tcEx.Message); }
+                    }
                     WriteSse("verdict", new { verdict = _cachedVerdict });
                     WriteSse("stats", new { cached = true });
                     // v1.0.160.138 (audit Gap 1): CLOSE the row this request opened. Without this,

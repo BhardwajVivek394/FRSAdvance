@@ -1313,6 +1313,48 @@
             color: var(--um-muted) !important;
             font-size: .8rem !important;
         }
+
+    /* ── Users load error state (themed) ── */
+    .um-load-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 36px 16px;
+        margin: 8px 0;
+        text-align: center;
+        background: var(--e7-surface-2, #f8fafc);
+        border: 1px dashed var(--e7-border, #e2e8f0);
+        border-radius: 10px;
+        color: var(--e7-text-2, #475569);
+    }
+
+    .um-load-error-icon {
+        font-size: 1.75rem;
+        color: var(--um-danger, #dc2626);
+    }
+
+    .um-load-error-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--e7-heading, var(--e7-text, #0f172a));
+    }
+
+    .um-load-error-detail {
+        font-size: .82rem;
+        color: var(--e7-text-3, #64748b);
+        max-width: 520px;
+    }
+
+    .um-load-error-retry {
+        margin-top: 6px;
+    }
+
+    #umUserTable tr.um-error-row > td,
+    #umUserTable tr.um-error-row:hover > td {
+        background: transparent !important;
+        border: 0 !important;
+    }
 </style>
 
 <!-- LOADING OVERLAY & TOAST -->
@@ -2412,7 +2454,7 @@
         $.ajax({
             url: '@Url.Action("GetUserListJson", "UserManagement", new { Area = "FRS25" })',
             type: 'POST', contentType: 'application/json; charset=utf-8', dataType: 'json',
-            timeout: 15000,
+            timeout: 60000,
             data: JSON.stringify({
                 SearchCriteria: {Id:@E7FRSAdvance.Utility.ClsHttpContent.LoginUser.Id, FirstName: umSearch.FirstName || '', LastName: umSearch.LastName || '', PhoneNumber: umSearch.PhoneNumber || '', EmailAddress: umSearch.EmailAddress || '', ZoneId: UM_ZONE_ID, ZoneIds: [UM_ZONE_ID], DivisionId: umSearch.DivisionId || 0, DivisionIds: cleanDivIds, SiteId: umSearch.SiteId || 0, SiteIds: cleanSiteIds, Designations: umSearch.Designations || [], StatusList: umSearch.StatusList || [], ColumnName: umSearch.ColumnName || 'Id', SortDirection: umSearch.SortDirection || 'DESC', RoleId: @E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId },
                 Pager: { Skip: parseInt(umPager.Skip) || 0, Take: parseInt(umPager.Take) || 10, PageSize: parseInt(umPager.Take) || 10, TotalRecord: 0, CurrentPage: 1, TotalPage: "1" }
@@ -2441,15 +2483,38 @@
 
                     // ✅ FIX 2: Confirm users array exists before rendering
                     var users = r.Users || r.users || [];
-                    console.log('Users received:', users.length, users[0]); // ← remove after confirming
                     umRenderTable(users);
                 } else {
-                    umRenderTable([]);
+                    umRenderUsersError((r && r.Message) || 'The user service did not return any data.');
+                    return;
                 }
                 umRenderPagination();
             },
-            error: function () { umHideLoad(); umRenderTable([]); umRenderPagination(); umToast('Error loading users.', 'danger'); }
+            error: function (xhr, status) {
+                umHideLoad();
+                var why = status === 'timeout' ? 'The request timed out.'
+                        : status === 'parsererror' ? 'Unexpected response from the server (your session may have expired — try signing in again).'
+                        : (xhr && xhr.status ? 'Server error ' + xhr.status + '.' : 'Network error.');
+                umRenderUsersError(why);
+            }
         });
+    }
+
+    // Visible, themed error state inside the users table (replaces the old silent toast).
+    function umRenderUsersError(detail) {
+        var safe = $('<div>').text(detail || '').html();
+        $('#umUserTableBody').html(
+            '<tr class="um-error-row"><td colspan="10">' +
+              '<div class="um-load-error" role="alert">' +
+                '<i class="fas fa-triangle-exclamation um-load-error-icon" aria-hidden="true"></i>' +
+                '<div class="um-load-error-title">Couldn\'t load users</div>' +
+                (safe ? '<div class="um-load-error-detail">' + safe + '</div>' : '') +
+                '<button type="button" class="btn btn-primary-c um-load-error-retry" onclick="umPager.Skip = 0; umLoadUserList();">' +
+                  '<i class="fas fa-rotate-right me-1"></i>Retry</button>' +
+              '</div>' +
+            '</td></tr>');
+        umPager.TotalRecord = 0; umPager.CurrentPage = 1; umPager.TotalPage = '1';
+        umRenderPagination();
     }
 
     function umRenderTable(users) {

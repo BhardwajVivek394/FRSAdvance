@@ -1,4 +1,4 @@
-@{ ViewBag.Title = "Telemetry Live";
+﻿@{ ViewBag.Title = "Telemetry Live";
     Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
 
 
@@ -10466,6 +10466,11 @@
     <div class="at-table-scroll">
         <div id="divTelemetryLive">
             <div id="trackCardContainer" class="sites-cards" style="display:none;"></div>
+            @* First-render guidance so the data area is never a blank box; removed on the first auto-load. *@
+            <div id="tlInitHint" class="tl-init-hint">
+                <i class="fas fa-list-check" aria-hidden="true"></i>
+                Select a <strong>Station</strong> and <strong>Asset Type</strong> to load live data.
+            </div>
         </div>
     </div>
 </div>
@@ -10984,7 +10989,7 @@
                 if (!siteId || siteId === '0' || siteId === '' || !atId || atId === '0' || atId === '') {
                     $('#trackCardContainer, #atCardView').hide();
                     $('#divTelemetryLive').html(
-                        '<div style="padding:50px;text-align:center;color:#94a3b8;font-family:Manrope,sans-serif;">' +
+                        '<div style="padding:50px;text-align:center;color:var(--e7-text-2,#55657a);font-family:Manrope,sans-serif;">' +
                         '<i class="fas fa-list-check" style="font-size:30px;display:block;margin-bottom:12px;opacity:.4;"></i>' +
                         'Select a <strong>Station</strong> and <strong>Asset Type</strong> first.</div>'
                     );
@@ -10993,7 +10998,7 @@
                 if (!ids || ids.length === 0) {
                     $('#trackCardContainer, #atCardView').hide();
                     $('#divTelemetryLive').html(
-                        '<div style="padding:50px;text-align:center;color:#94a3b8;font-family:Manrope,sans-serif;">' +
+                        '<div style="padding:50px;text-align:center;color:var(--e7-text-2,#55657a);font-family:Manrope,sans-serif;">' +
                         '<i class="fas fa-list-check" style="font-size:30px;display:block;margin-bottom:12px;opacity:.4;"></i>' +
                         'Select one or more <strong>Asset Numbers</strong> above.</div>'
                     );
@@ -11536,12 +11541,12 @@
 <!-- Telemetry Live extensions (v616 ports, IPS card v2, interactive graph views). Must load after the scripts above. -->
 <script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-ext.js?v=618.42"></script>
 <!-- v618.7 Health view (separate view in Live Asset Data; reads wsLiveData only) -->
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-health.js?v=618.42"></script>
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-drawer.js?v=618.38"></script>
-<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.15"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-health.js?v=618.44"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-drawer.js?v=618.41"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.16"></script>
 <script src="~/Areas/FRS25/assets/sip/js/sip-asset-popup.js?v=618.25"></script>
 
-<script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js?v=618.33"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js?v=618.37"></script>
 <script src="~/Areas/FRS25/assets/sip/js/sip-replay.js?v=618.30"></script>
 <script>
     // ═══════════════════════════════════════════════════════════════
@@ -11728,3 +11733,72 @@
     })();
 </script>
 
+<style>
+    /* Contrast fixes. Light theme: cyan #22d3ee on white is 1.8:1, so the eyebrow / Export button
+       use the accent-ink token (>= 5:1); dark theme keeps the cyan. */
+    html[data-aurora="light"] body .at-page-eyebrow { color: var(--e7-accent-ink, #1d6f8d) !important; }
+    html[data-aurora="light"] body .at-page-eyebrow::before { background: linear-gradient(90deg, var(--e7-accent-ink, #1d6f8d), transparent) !important; }
+    html[data-aurora="light"] body #downloadContainer > button.at-btn-sm {
+        background: var(--e7-surface, #fff) !important;
+        color: var(--e7-accent-ink, #1d6f8d) !important;
+        border-color: var(--e7-accent-ink, #1d6f8d) !important;
+    }
+    html[data-aurora="light"] body #downloadContainer > button.at-btn-sm:hover { background: var(--e7-surface-3, #eef2f6) !important; }
+
+    /* Empty states: --e7-text-2 (>= 4.5:1 on the card surface in both themes). */
+    html body #divTelemetryLive .tl-init-hint {
+        padding: 50px 16px;
+        text-align: center;
+        color: var(--e7-text-2, #55657a);
+        font-family: Manrope, sans-serif;
+        font-size: 13px;
+    }
+    html body #divTelemetryLive .tl-init-hint i { display: block; font-size: 30px; margin-bottom: 12px; opacity: .5; }
+    html body #divTelemetryLive #trackCardContainer:not([style*="none"]) ~ .tl-init-hint,
+    html body #atCardView:not([style*="none"]) ~ .at-table-scroll .tl-init-hint { display: none; }
+    html body #divTelemetryLive .text-muted { color: var(--e7-text-2, #55657a) !important; }
+    html body#e7Body .sip-card #sipWaiting,
+    html body#e7Body .sip-card #sipSiteName,
+    html body .dropdown-empty { color: var(--e7-text-2, #55657a) !important; }
+</style>
+<script>
+    // Initial-load indicator: when the page opens with a station + asset type already selected the
+    // data area is filled by async calls. Show the shared loader until every jQuery request has
+    // settled (success OR error), with a hard timeout so it can never stick.
+    (function () {
+        'use strict';
+        var $ = window.jQuery;
+        if (!$) return;
+
+        // Drop the first-render hint as soon as a real load starts.
+        ['_tlAutoLoad', 'fnAdvSearch'].forEach(function (name) {
+            var _orig = window[name];
+            if (typeof _orig !== 'function') return;
+            window[name] = function () {
+                try { $('#tlInitHint').remove(); } catch (e) { }
+                return _orig.apply(this, arguments);
+            };
+        });
+
+        $(function () {
+            var L = window.E7Loader;
+            if (!L || typeof L.show !== 'function') return;
+            var site = $('#drpSite').val(), at = $('#drpAssetType').val();
+            if (!site || site === '0' || !at || at === '0') return;   // nothing loads until the user picks; the hint is shown
+
+            var done = false, guard = null;
+            function finish() {
+                if (done) return;
+                done = true;
+                if (guard) clearTimeout(guard);
+                $(document).off('ajaxStop.tlInitLoader');
+                try { L.hide(); } catch (e) { }
+            }
+            try { L.show('Loading telemetry…'); } catch (e) { finish(); return; }
+            $(document).on('ajaxStop.tlInitLoader', finish);
+            guard = setTimeout(finish, 15000);
+            // Cache hits / skipped calls never start a request, so ajaxStop would not fire.
+            setTimeout(function () { if (!$.active) finish(); }, 400);
+        });
+    })();
+</script>

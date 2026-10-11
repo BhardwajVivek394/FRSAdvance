@@ -979,6 +979,30 @@
         z-index: 9999999 !important;
     }
 </style>
+<style>
+    /* SIP Creation: the yard canvas stays a dark drawing surface, but the Inspector panel follows
+       the app theme. Background and text both come from Energy7 tokens; !important so the dark
+       editor palette in sip-editor.css can never win here. */
+    html body .sip-app .workspace > aside.inspector {
+        background: var(--e7-surface, #fff) !important;
+        color: var(--e7-text, #22303f) !important;
+        border-left-color: var(--e7-border, #dde5ee) !important;
+    }
+    html body .sip-app aside.inspector h3,
+    html body .sip-app aside.inspector .muted,
+    html body .sip-app aside.inspector .field label,
+    html body .sip-app aside.inspector .insp-row b { color: var(--e7-text-2, #55657a) !important; }
+    html body .sip-app aside.inspector .insp-row { border-bottom-color: var(--e7-border, #dde5ee) !important; }
+    html body .sip-app aside.inspector .insp-row code { color: var(--e7-accent-ink, #1d6f8d) !important; }
+    html body .sip-app aside.inspector select,
+    html body .sip-app aside.inspector textarea,
+    html body .sip-app aside.inspector input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=range]) {
+        background: var(--e7-surface-2, #f5f8fb) !important;
+        color: var(--e7-text, #22303f) !important;
+        border-color: var(--e7-border-2, #c9d4e0) !important;
+    }
+    html body .sip-app aside.inspector select option { background: var(--e7-surface, #fff); color: var(--e7-text, #22303f); }
+</style>
 
 <script>
     (function () {
@@ -1213,6 +1237,7 @@
                     <button class="tb" id="undo-btn" onclick="SipEditor.undo()">Undo</button>
                     <button class="tb" id="redo-btn" onclick="SipEditor.redo()">Redo</button>
                     <button class="tb" onclick="SipEditor.fitAll()">Fit All</button>
+                    <button class="tb" onclick="SipEditor.autoLinkRouteCalling()" title="Link every unlinked Route/Calling shape to the signal it sits on (shows the list first)">Link Route/Calling</button>
                     <span class="sep"></span>
                     <button class="tb" onclick="SipEditor.openImport()">Import</button>
                     <button class="tb" onclick="SipEditor.exportLayoutJs()">Export .js</button>
@@ -1474,8 +1499,8 @@
 @*=============================================================================
         Editor library — MUST load before any SipEditor.* call.
     =============================================================================*@
-<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.15"></script>
-<script src="~/Areas/FRS25/assets/sip/js/sip-editor.js?v=618.15"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.16"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-editor.js?v=618.21"></script>
 
 <script>
     /* =========================================================================
@@ -1619,6 +1644,27 @@
 
         var layout = SipEditor.getLayout();   // { cells: [...] } — OLD RAPPID
 
+        /* A Route/Calling Signal must be linked to its signal asset, or the live
+           SIP can neither light its lamps nor open its asset drawer. */
+        var unlinked = (layout.cells || []).filter(function (c) {
+            return c && c.type === 'examples.RouteCallingSignal' &&
+                !(c.attrs && c.attrs.route && c.attrs.route.assetName) &&
+                !(c.attrs && c.attrs.label && c.attrs.label.text);
+        });
+        if (unlinked.length) {
+            console.table(unlinked.map(function (c) {
+                return { id: c.id, x: c.position && c.position.x, y: c.position && c.position.y, routes: c.attrs && c.attrs.route && c.attrs.route.labels };
+            }));
+            if (!confirm(unlinked.length + " Route/Calling signal(s) are not linked to a signal asset, so they will not light or open a drawer in the live SIP.\n\n" +
+                "Tip: Cancel, then use the 'Link Route/Calling' toolbar button to link them all at once.\n\n" +
+                "OK = save anyway\nCancel = go to the first one and link it")) {
+                /* jump to the first unlinked one so it can be fixed right away */
+                if (typeof SipEditor.focusCell === 'function') SipEditor.focusCell(unlinked[0].id);
+                CommonNotification("warning", "Type or pick its signal in 'Linked signal asset' at the top of the Inspector, press Tab, then Save again.", "Link required");
+                return;
+            }
+        }
+
         var sipView = {
             SiteId: siteId,
             Id: $("#hdnId").val(),
@@ -1750,7 +1796,6 @@
         };
 
         window.OpenSipAssetPopupFromCell = function (cellOrContext, sourceInfo) {
-            debugger;
             bindPopupUiOnce();
             bindEditorAssetClickEventOnce();
             initialisePopupDates();

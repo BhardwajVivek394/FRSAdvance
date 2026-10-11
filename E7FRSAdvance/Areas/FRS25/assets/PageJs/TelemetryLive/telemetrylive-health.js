@@ -113,7 +113,26 @@
        assetMatchesSelectedType). wsCurrentAssetTypeId can be overwritten by
        other paths (e.g. the circuit view stores the last message's type), which
        made the Health view filter out every asset of the selected type. */
-    function assetTypeId() { return parseInt($('#drpAssetType').val() || window.wsCurrentAssetTypeId || 0, 10) || 0; }
+    function assetTypeId() {
+        if (H.forType) return H.forType;   /* describe(aid): the asset's own type, not the page filter */
+        return parseInt($('#drpAssetType').val() || window.wsCurrentAssetTypeId || 0, 10) || 0;
+    }
+    /* An asset's OWN type. The drawer can be opened for any asset (e.g. from the
+       SIP, which shows every type at once), so the page's selected type is only
+       the last resort. Server metadata first: wsLiveData.AssetTypeId may be
+       missing on WS messages or back-filled from the page filter. */
+    function assetTypeOf(aid, typeHint) {
+        aid = String(aid || '');
+        var sm = window.sipMetaAll && window.sipMetaAll.assets && window.sipMetaAll.assets[aid];
+        var bm = window.bulkAssetMap && window.bulkAssetMap[aid];
+        var lv = live()[aid];
+        /* typeHint = the caller's own knowledge (e.g. the SIP shape clicked); it
+           beats the live record, which may have been back-filled from the page filter */
+        var t = (sm && sm.AssetTypeId) || (bm && bm.AssetTypeId) || typeHint || (lv && lv.AssetTypeId) ||
+            $('#drpAssetType').val() || window.wsCurrentAssetTypeId || 0;
+        return parseInt(t, 10) || 0;
+    }
+    window.tlAssetTypeOf = assetTypeOf;
     function isTrackType() { return assetTypeId() === 1; }
 
     /* ======================================================================
@@ -239,7 +258,10 @@
             if (!attrs.hasOwnProperty(k)) continue;
             var a = attrs[k] || {};
             var attrId = String(a.AttrId || a.AssetAttributeId || '');
-            var m = meta[aid + '_' + attrId] || {};
+            /* userAssetSimpleMap holds only the page's selected type; the SIP's
+               all-types store covers an asset of any other type */
+            var m = meta[aid + '_' + attrId] ||
+                (window.sipMetaAll && window.sipMetaAll.simple && window.sipMetaAll.simple[aid + '_' + attrId]) || {};
             var title = strip(m.attributeName || m.AttributeName || k);
             var alias = strip(m.name || m.AliasName || byName[k] || k);
             var v = num(a.Value);
@@ -1790,6 +1812,11 @@
         enter: enter, leave: leave, isOn: function () { return H.on; }, render: function () { H.sig = ''; render(true); },
         classify: classify, ensureRanges: function () { loadRanges(); }, _h: H,
         /* v618.30: one asset's readings, derived values, relays, health -- for the asset drawer */
-        describe: function (aid) { loadRanges(); return readAsset(String(aid)); }
+        describe: function (aid, typeHint) {
+            loadRanges();
+            var prev = H.forType;
+            H.forType = assetTypeOf(aid, typeHint);   /* track / PM / signal rules follow the asset, not the page */
+            try { return readAsset(String(aid)); } finally { H.forType = prev; }
+        }
     };
 })();

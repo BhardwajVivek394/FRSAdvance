@@ -3,10 +3,209 @@
     Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
 }
 
+<script>
+    /* FRS Advance: show the shared layout loader before the parser-blocking CDN libraries below
+       start downloading (they used to leave a blank page for several seconds). Hidden by
+       pmcPageReady() once the initial sites fetch settles (success or failure), or after 20 s. */
+    (function () {
+        var done = false;
+        window.pmcPageReady = function () {
+            if (done) return;
+            done = true;
+            if (window.E7Loader) window.E7Loader.hide();
+        };
+        if (window.E7Loader) window.E7Loader.show('Loading analysis' + String.fromCharCode(8230));
+        setTimeout(window.pmcPageReady, 20000);
+    })();
+</script>
+<style>
+    /* Keep the page root a well-behaved child of the layout's .e7-body flex column. */
+    #pmcApp { width: 100%; min-width: 0; }
+</style>
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script>
+    /* FRS Advance: theme this page's Plotly charts from the app tokens (html[data-aurora]).
+       The figures come from the analysis service with a light template (white paper, slate
+       text, light grid), which vanishes on the dark surface. Wrapping newPlot/react recolours
+       text / grid / axis lines / paper + plot backgrounds; trace colours are left alone.
+       On the header's e7ThemeChange every chart under #pmcApp is re-themed from its original
+       layout (current zoom kept). Plotly.toImage (PDF export) does not go through the
+       wrapper, so the report stays light. */
+    (function () {
+        if (!window.Plotly) return;
+        var LIGHT_GRIDS = { '#eef2f6': 1, '#eef2f7': 1, '#e2e8f0': 1, '#f1f5f9': 1, '#e5e7eb': 1, '#e5ecf6': 1, '#fff': 1, '#ffffff': 1, 'white': 1 };
+        var DARK_INKS = /^#(1e293b|0f172a|334155|475569|64748b|2a3f5f|444|444444|000|000000)$|^black$/i;
+        function tok(name, fb) {
+            var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return v || fb;
+        }
+        function palette(forceLight) {
+            var dark = !forceLight && document.documentElement.getAttribute('data-aurora') === 'dark';
+            if (forceLight) return { dark: false, text: '#55657a', grid: '#eef2f7', line: '#dde3ec', pop: '#ffffff' };
+            return {
+                dark: dark,
+                text: tok('--e7-text-2', dark ? '#aab6c6' : '#55657a'),
+                grid: dark ? 'rgba(140,175,235,0.12)' : tok('--e7-grid-line', '#eef2f7'),
+                line: tok('--e7-border-2', dark ? '#36424f' : '#dde3ec'),
+                pop: tok('--e7-surface', dark ? '#212934' : '#ffffff')
+            };
+        }
+        /* rough luminance 0..1 of a CSS colour; -1 = unknown / mostly transparent */
+        function lum(c) {
+            if (!c) return -1;
+            c = String(c).trim().toLowerCase();
+            if (c === 'white') return 1;
+            var m, r, g, b;
+            if ((m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(c))) { r = parseInt(m[1] + m[1], 16); g = parseInt(m[2] + m[2], 16); b = parseInt(m[3] + m[3], 16); }
+            else if ((m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/.exec(c))) { r = parseInt(m[1], 16); g = parseInt(m[2], 16); b = parseInt(m[3], 16); }
+            else if ((m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?/.exec(c))) {
+                if (m[4] !== undefined && parseFloat(m[4]) < 0.35) return -1;
+                r = +m[1]; g = +m[2]; b = +m[3];
+            } else return -1;
+            return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        }
+        function themeAxis(ax, p, tplAx) {
+            if (!ax || typeof ax !== 'object') return;
+            var grid = ax.gridcolor || (tplAx && tplAx.gridcolor);
+            if (!grid || LIGHT_GRIDS[String(grid).toLowerCase()] || p.dark) ax.gridcolor = p.grid;
+            if (!ax.linecolor || p.dark) ax.linecolor = p.line;
+            if (!ax.zerolinecolor || p.dark) ax.zerolinecolor = p.line;
+            ax.tickfont = ax.tickfont || {};
+            if (!ax.tickfont.color || p.dark) ax.tickfont.color = p.text;
+            if (ax.title && typeof ax.title === 'object') {
+                ax.title.font = ax.title.font || {};
+                if (!ax.title.font.color || p.dark) ax.title.font.color = p.text;
+            }
+        }
+        function themeLayout(layout, forceLight) {
+            if (!layout || typeof layout !== 'object') layout = {};
+            var p = palette(forceLight);
+            var tpl = (layout.template && layout.template.layout) || {};
+            layout.font = layout.font || {};
+            if (!layout.font.color || p.dark) layout.font.color = p.text;
+            if (layout.title && typeof layout.title === 'object') {
+                layout.title.font = layout.title.font || {};
+                if (!layout.title.font.color || p.dark) layout.title.font.color = p.text;
+            }
+            if (p.dark) {
+                /* light paper / plot area (own or from the template): let the dark surface show through */
+                var paper = layout.paper_bgcolor || tpl.paper_bgcolor || '#ffffff';
+                var plot = layout.plot_bgcolor || tpl.plot_bgcolor || '#ffffff';
+                if (lum(paper) > 0.6) layout.paper_bgcolor = 'rgba(0,0,0,0)';
+                if (lum(plot) > 0.6) layout.plot_bgcolor = 'rgba(0,0,0,0)';
+            }
+            if (layout.legend) {
+                layout.legend.font = layout.legend.font || {};
+                if (!layout.legend.font.color || p.dark) layout.legend.font.color = p.text;
+                if (p.dark && lum(layout.legend.bgcolor) > 0.6) layout.legend.bgcolor = 'rgba(0,0,0,0)';
+            }
+            Object.keys(layout).forEach(function (k) {
+                if (/^[xy]axis\d*$/.test(k)) themeAxis(layout[k], p, tpl[k.replace(/\d+$/, '')]);
+            });
+            if (!layout.xaxis) themeAxis(layout.xaxis = {}, p, tpl.xaxis);
+            if (!layout.yaxis) themeAxis(layout.yaxis = {}, p, tpl.yaxis);
+            (layout.annotations || []).forEach(function (a) {
+                if (!a) return;
+                if (!a.font || !a.font.color || (p.dark && DARK_INKS.test(a.font.color))) {
+                    a.font = a.font || {}; a.font.color = p.text;
+                }
+                if (p.dark && lum(a.bgcolor) > 0.6) a.bgcolor = p.pop;
+            });
+            if (p.dark && layout.hoverlabel && lum(layout.hoverlabel.bgcolor) > 0.6) {
+                layout.hoverlabel.bgcolor = p.pop;
+                layout.hoverlabel.font = layout.hoverlabel.font || {};
+                layout.hoverlabel.font.color = tok('--e7-text', '#dce4ee');
+            }
+            return layout;
+        }
+        function copy(o) { try { return JSON.parse(JSON.stringify(o || {})); } catch (e) { return {}; } }
+        function node(el) { return typeof el === 'string' ? document.getElementById(el) : el; }
+        var orig = {};
+        ['newPlot', 'react'].forEach(function (fn) {
+            orig[fn] = Plotly[fn];
+            if (typeof orig[fn] !== 'function') return;
+            Plotly[fn] = function (el, data, layout, config) {
+                var gd = node(el);
+                if (data && !Array.isArray(data) && typeof data === 'object' && data.data) {
+                    if (gd) { gd.__e7Layout = copy(data.layout); gd.__e7Config = data.config; }
+                    data.layout = themeLayout(data.layout);   // react(el, {data, layout, config})
+                    return orig[fn].call(this, el, data);
+                }
+                if (gd) { gd.__e7Layout = copy(layout); gd.__e7Config = config; }
+                return orig[fn].call(this, el, data, themeLayout(layout), config);
+            };
+        });
+        /* The chart's untouched original layout plus its live state (zoom, relayout shapes), so a
+           re-theme (light -> dark -> light) restores the figure's own backgrounds. */
+        function rebase(el) {
+            var base = copy(el.__e7Layout || el.layout);
+            Object.keys(el.layout).forEach(function (k) {
+                if (/^[xy]axis\d*$/.test(k) && el.layout[k]) {
+                    base[k] = base[k] || {};
+                    if (el.layout[k].range) base[k].range = el.layout[k].range.slice();
+                    base[k].autorange = el.layout[k].autorange;
+                }
+            });
+            if (el.layout.shapes) base.shapes = copy(el.layout.shapes);
+            return base;
+        }
+        window.addEventListener('e7ThemeChange', function () {
+            document.querySelectorAll('#pmcApp .js-plotly-plot').forEach(function (el) {
+                try {
+                    if (!el.layout || !el.data || typeof orig.react !== 'function') return;
+                    orig.react.call(Plotly, el, el.data, themeLayout(rebase(el)), el.__e7Config);
+                } catch (e) { }
+            });
+        });
+        /* PDF export: a light-themed copy of a rendered chart (the PDF page is white whatever the
+           app theme is). Usage: Plotly.toImage(e7PlotlyPrintFigure(el), {...}). */
+        window.e7PlotlyPrintFigure = function (el) {
+            try {
+                if (!el || !el.layout || !el.data) return el;
+                return { data: el.data, layout: themeLayout(rebase(el), true) };
+            } catch (e) { return el; }
+        };
+    })();
+</script>
+<script>
+    /* FRS Advance: the Chart.js strips / waveforms on this page take tick + grid colours from the
+       app tokens at draw time (pmcChartTheme) and are recoloured in place on e7ThemeChange.
+       pmcInk() is the strong ink used for the Plotly timeline hover outline. */
+    (function () {
+        function tok(name, fb) {
+            var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return v || fb;
+        }
+        window.pmcChartTheme = function () {
+            var dark = document.documentElement.getAttribute('data-aurora') === 'dark';
+            return {
+                tick: tok('--e7-text-3', dark ? '#8391a3' : '#627186'),
+                grid: dark ? 'rgba(140,175,235,0.12)' : 'rgba(0,0,0,0.06)'
+            };
+        };
+        window.pmcInk = function () { return tok('--e7-text', '#1e2233'); };
+        window.addEventListener('e7ThemeChange', function () {
+            if (!window.Chart || !window.Chart.instances) return;
+            var t = window.pmcChartTheme();
+            Object.keys(Chart.instances).forEach(function (k) {
+                var c = Chart.instances[k];
+                if (!c || !c.canvas || !c.canvas.closest || !c.canvas.closest('#pmcApp')) return;
+                var sc = (c.options && c.options.scales) || {};
+                Object.keys(sc).forEach(function (a) {
+                    var s = sc[a];
+                    if (!s) return;
+                    if (s.ticks) s.ticks.color = t.tick;
+                    if (s.title) s.title.color = t.tick;
+                    if (s.grid && s.grid.display !== false) s.grid.color = t.grid;
+                });
+                try { c.update('none'); } catch (e) { }
+            });
+        });
+    })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -176,6 +375,123 @@
     body #pmcApp .card-header, body #pmcApp .card-body { color: inherit !important; }
 </style>
 
+<style>
+    /* FRS Advance theme bridge for Point Machine Clustering (#pmcApp).
+       1. The page palette (and the Health Map's .nm-wrap palette) is mapped to the app's --e7-*
+          tokens, so the page follows the header's Light/Dark toggle (html[data-aurora]); status
+          colours are lifted for dark surfaces.
+       2. Components the global sheets repaint with !important (cards, labels, form controls,
+          headings) are re-asserted with #e7Body #pmcApp (2,x,x), which out-ranks both
+          aurora-bridge (body[data-aurora] .x) and e7-energy7-theme (#e7Body .e7-body .x). This
+          supersedes the older "body #pmcApp" block above, which loses to #e7Body .e7-body .x. */
+    #e7Body #pmcApp {
+        --bg-primary: var(--e7-surface-2);
+        --bg-secondary: var(--e7-surface);
+        --bg-tertiary: var(--e7-surface-3);
+        --bg-card: var(--e7-surface);
+        --bg-hover: var(--e7-surface-3);
+        --border: var(--e7-border);
+        --border-hover: var(--e7-border-2);
+        --text-primary: var(--e7-text);
+        --text-secondary: var(--e7-text-2);
+        --text-muted: var(--e7-text-3);
+        --accent: var(--e7-accent);
+        --accent-hover: var(--e7-accent-ink);
+        --accent-muted: var(--e7-accent-soft);
+        /* primary (filled) controls: the app's primary-button gradient */
+        --pmc-primary-bg: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+        /* status colours used by the JS-built alert boxes */
+        --pmc-green: #16a34a;
+        --pmc-amber: #ca8a04;
+        --pmc-red: #dc2626;
+    }
+
+    #e7Body #pmcApp .nm-wrap { --nm-cyan: var(--accent); }
+
+    html[data-aurora="dark"] #e7Body #pmcApp {
+        --pmc-green: #3fb950;
+        --pmc-amber: #f5c96b;
+        --pmc-red: #f85149;
+    }
+
+    html[data-aurora="dark"] #e7Body #pmcApp .nm-wrap {
+        --nm-green: #3fb950;
+        --nm-amber: #f5c96b;
+        --nm-red: #f85149;
+    }
+
+    /* cards (Energy7 repaints .card with its own surface, radius and shadow) */
+    #e7Body #pmcApp .card {
+        background: var(--bg-card) !important;
+        color: var(--text-primary) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 12px;
+        box-shadow: none !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+    #e7Body #pmcApp .card-header, #e7Body #pmcApp .card-body { color: inherit !important; }
+    /* cards whose inline background / accent edge the global !important rule used to wipe out */
+    #e7Body #pmcApp .card[style*="border-left:4px solid var(--accent)"] {
+        border-left: 4px solid var(--accent) !important;
+        background: linear-gradient(135deg, var(--accent-muted), var(--bg-card)) !important;
+    }
+    #e7Body #pmcApp .card[style*="background:var(--bg-tertiary)"] { background: var(--bg-tertiary) !important; }
+    /* novelty alert box (JS sets --pmc-tint to the status colour): a tint of it over the card */
+    #e7Body #pmcApp .card.pmc-tint {
+        border-left: 4px solid var(--pmc-tint) !important;
+        background: color-mix(in srgb, var(--pmc-tint) 9%, var(--bg-card)) !important;
+    }
+
+    /* labels: the bridge forces one colour on every label */
+    #e7Body #pmcApp label { color: var(--text-primary) !important; }
+    #e7Body #pmcApp label.side-label { color: var(--text-muted) !important; }
+
+    /* form controls */
+    #e7Body #pmcApp select, #e7Body #pmcApp textarea, #e7Body #pmcApp .form-control,
+    #e7Body #pmcApp input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+        background-color: var(--bg-secondary) !important;
+        color: var(--text-primary) !important;
+        border-color: var(--border) !important;
+    }
+    #e7Body #pmcApp select:focus, #e7Body #pmcApp textarea:focus, #e7Body #pmcApp .form-control:focus,
+    #e7Body #pmcApp input:not([type=checkbox]):not([type=radio]):not([type=range]):focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 3px var(--accent-muted) !important;
+    }
+    #e7Body #pmcApp select option { background: var(--bg-card) !important; color: var(--text-primary) !important; }
+    #e7Body #pmcApp input::placeholder, #e7Body #pmcApp textarea::placeholder { color: var(--text-muted) !important; }
+    /* native date/time pickers draw their icon + popup in the right scheme */
+    html[data-aurora="dark"] #e7Body #pmcApp input, html[data-aurora="dark"] #e7Body #pmcApp select { color-scheme: dark; }
+
+    /* headings keep the page colours (Energy7 forces --e7-heading on h1-h6) */
+    #e7Body #pmcApp h1, #e7Body #pmcApp h2, #e7Body #pmcApp h3,
+    #e7Body #pmcApp h4, #e7Body #pmcApp h5, #e7Body #pmcApp h6 { color: inherit !important; }
+    #e7Body #pmcApp .empty-state h2 { color: var(--text-primary) !important; }
+    #e7Body #pmcApp .nm-panel > h4 { color: var(--nm-muted) !important; }
+
+    /* filled accent controls: white text needs the darker app gradient (dark-mode accent is light) */
+    #e7Body #pmcApp .btn-primary { background: var(--pmc-primary-bg); }
+    #e7Body #pmcApp .nm-side-toggle button.active { background: var(--pmc-primary-bg); border-color: transparent; }
+    html[data-aurora="dark"] #e7Body #pmcApp .sidebar-toggle-btn:hover,
+    html[data-aurora="dark"] #e7Body #pmcApp .sidebar-toggle-btn.collapsed-active { color: var(--e7-surface-2); }
+    #e7Body #pmcApp .pm-sidebar-resizer:hover, #e7Body #pmcApp .pm-sidebar-resizer:active { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+    #e7Body #pmcApp .nm-chip.cyan { border-color: color-mix(in srgb, var(--nm-cyan) 35%, transparent); }
+    #e7Body #pmcApp .nm-op.focused { background: var(--accent-muted); }
+    html[data-aurora="dark"] #e7Body #pmcApp .toast { box-shadow: var(--e7-shadow-pop); }
+
+    /* severity text + pastel pills were light-only */
+    html[data-aurora="dark"] #e7Body #pmcApp .sev-normal { color: #3fb950; }
+    html[data-aurora="dark"] #e7Body #pmcApp .sev-watch { color: #f5c96b; }
+    html[data-aurora="dark"] #e7Body #pmcApp .sev-anomaly { color: #f85149; }
+    html[data-aurora="dark"] #e7Body #pmcApp .sev-unknown { color: #8b949e; }
+    html[data-aurora="dark"] #e7Body #pmcApp .pill-normal { background: rgba(63, 185, 80, .16); color: #56d364; }
+    html[data-aurora="dark"] #e7Body #pmcApp .pill-watch { background: rgba(245, 201, 107, .16); color: #f5c96b; }
+    html[data-aurora="dark"] #e7Body #pmcApp .pill-anomaly { background: rgba(248, 81, 73, .16); color: #ff7b72; }
+    html[data-aurora="dark"] #e7Body #pmcApp .pill-unknown { background: rgba(139, 148, 158, .16); color: #8b949e; }
+    html[data-aurora="dark"] #e7Body #pmcApp .model-stale-warn { background: rgba(245, 158, 11, .16); color: #fcd34d; border-color: rgba(245, 158, 11, .35); }
+</style>
+
 @* FRS Advance page header (617 theme): breadcrumb card like EquipmentRoom/Index. *@
 <section class="section e7-page-head">
     <div class="row">
@@ -235,7 +551,7 @@
                      as pm_operation_combined.html's sidebar mode tabs. -->
                 <div style="display:flex; gap:4px; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; padding:3px; margin-top:14px;">
                     <button type="button" id="modeQuickBtn" onclick="switchClusterMode('quick')"
-                        style="flex:1; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; background:var(--accent); color:#fff;">Last 30 Days</button>
+                        style="flex:1; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; background:var(--pmc-primary-bg); color:#fff;">Last 30 Days</button>
                     <button type="button" id="modeCustomBtn" onclick="switchClusterMode('custom')"
                         style="flex:1; border:none; border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; background:transparent; color:var(--text-secondary);">Custom Dates</button>
                 </div>
@@ -277,7 +593,7 @@
                             <input class="form-control" id="customToTime" type="time" step="1" value="23:59:59" style="width:100%; min-width:0;" onchange="validateCustomDateRange()">
                         </div>
                     </div>
-                    <div id="customDateError" style="display:none; font-size:11px; font-weight:600; color:#dc2626; background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.25); padding:6px 8px; border-radius:6px; margin-top:8px;"></div>
+                    <div id="customDateError" style="display:none; font-size:11px; font-weight:600; color:var(--pmc-red, #dc2626); background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.25); padding:6px 8px; border-radius:6px; margin-top:8px;"></div>
                     <button class="btn btn-primary block" id="applyCustomDatesBtn" style="margin-top:8px;" onclick="applyCustomDates()" disabled title="Runs clusters + self-supervised scoring for this exact range">Analyze This Range</button>
                 </div>
             </div>
@@ -652,7 +968,7 @@
                 });
             } catch (e) { toast('Load sites failed: ' + e.message, 'error'); }
         }
-        loadSites();
+        loadSites().then(window.pmcPageReady, window.pmcPageReady);
 
         // ADDITIVE: auto-fetch point machines as soon as a site is picked -
         // same pattern as pm_operation_combined.html's onSiteChange().
@@ -987,20 +1303,19 @@
             });
             if (!rows.length) {
                 box.style.display = 'block';
-                box.innerHTML = `<div class="card" style="margin-bottom:14px; border-left:4px solid #16a34a; background:#f0fdf4;">
-                    <b style="color:#16a34a;">\u2713 No anomalies detected</b> \u2014 both machines' current shapes matched their own recent normal, self-supervised score-wise.
+                box.innerHTML = `<div class="card pmc-tint" style="margin-bottom:14px; --pmc-tint:var(--pmc-green, #16a34a);">
+                    <b style="color:var(--pmc-green, #16a34a);">\u2713 No anomalies detected</b> \u2014 both machines' current shapes matched their own recent normal, self-supervised score-wise.
                 </div>`;
                 return;
             }
             const worst = rows.some(r => r.level === 'anomaly') ? 'anomaly' : 'watch';
-            const color = worst === 'anomaly' ? '#dc2626' : '#ca8a04';
-            const bg = worst === 'anomaly' ? '#fef2f2' : '#fffbeb';
+            const color = worst === 'anomaly' ? 'var(--pmc-red, #dc2626)' : 'var(--pmc-amber, #ca8a04)';
             const icon = worst === 'anomaly' ? '\u26a0' : '\ud83d\udc41';
             box.style.display = 'block';
-            box.innerHTML = `<div class="card" style="margin-bottom:14px; border-left:4px solid ${color}; background:${bg};">
+            box.innerHTML = `<div class="card pmc-tint" style="margin-bottom:14px; --pmc-tint:${color};">
                 <div style="font-weight:800; color:${color}; margin-bottom:8px;">${icon} This machine needs a look</div>
                 ${rows.map(r => `
-                    <div style="margin-bottom:${rows.length > 1 ? '10px' : '0'}; padding-bottom:${rows.length > 1 ? '10px' : '0'}; ${rows.length > 1 ? 'border-bottom:1px solid rgba(0,0,0,0.08);' : ''}">
+                    <div style="margin-bottom:${rows.length > 1 ? '10px' : '0'}; padding-bottom:${rows.length > 1 ? '10px' : '0'}; ${rows.length > 1 ? 'border-bottom:1px solid var(--border);' : ''}">
                         <div style="font-size:13.5px; margin-bottom:3px;">
                             <b>Machine ${r.label}:</b> <b class="sev-${r.level}">${r.pct}%</b> of its recent operations (${r.abnormalCount} out of ${r.s.counts.normal + r.s.counts.watch + r.s.counts.anomaly}) looked unusual.
                             The worst one scored <b>${r.s.worst}/100</b>${r.worstOp ? ` on ${r.worstOp.time.toLocaleDateString()}` : ''}.
@@ -1107,7 +1422,7 @@
                             <span><i style="color:#16a34a; font-size:11px;">\u25cf</i>normal</span>
                             <span><i style="color:#ca8a04; font-size:11px;">\u25b2</i>watch</span>
                             <span><i style="color:#dc2626; font-size:11px;">\u25a0</i>anomaly</span>
-                            <span><i class="nm-sw" style="background:#4f46e5"></i>focused</span>
+                            <span><i class="nm-sw" style="background:var(--nm-cyan)"></i>focused</span>
                         </div>
                         <div class="nm-src">Real (x, y) from this wave/direction's trained ConvVAE - not simulated</div>
                     </div>
@@ -1232,8 +1547,8 @@
             const f = pts.find(p => p.i === NM.focusedIdx);
             if (f) {
                 const [px, py] = toPx(f.x, f.y);
-                s += `<circle cx="${px}" cy="${py}" r="6.5" fill="#4f46e5" stroke="#fff" stroke-width="2"/>`;
-                s += `<circle cx="${px}" cy="${py}" r="10" fill="none" stroke="#4f46e5" stroke-width="1" opacity="0.5"/>`;
+                s += `<circle cx="${px}" cy="${py}" r="6.5" fill="var(--nm-cyan)" stroke="var(--nm-panel)" stroke-width="2"/>`;
+                s += `<circle cx="${px}" cy="${py}" r="10" fill="none" stroke="var(--nm-cyan)" stroke-width="1" opacity="0.5"/>`;
             }
             svg.innerHTML = s;
             svg.querySelectorAll('[data-i]').forEach(el => {
@@ -1249,7 +1564,7 @@
             const C = 289, off = score == null ? C : C * (1 - score / 100);
             const arc = document.getElementById('nmScoreArc');
             arc.setAttribute('stroke-dashoffset', off);
-            arc.setAttribute('stroke', sev === 'anomaly' ? 'var(--nm-red)' : sev === 'watch' ? 'var(--nm-amber)' : sev === 'normal' ? 'var(--nm-green)' : '#cbd5e1');
+            arc.setAttribute('stroke', sev === 'anomaly' ? 'var(--nm-red)' : sev === 'watch' ? 'var(--nm-amber)' : sev === 'normal' ? 'var(--nm-green)' : 'var(--border-hover)');
             const v = document.getElementById('nmVerdict');
             const labels = { normal: ['Normal', 'nm-v-ok'], watch: ['Watch', 'nm-v-watch'], anomaly: ['Anomaly', 'nm-v-anom'], unknown: ['--', 'nm-v-none'] };
             v.textContent = labels[sev][0]; v.className = 'nm-verdict ' + labels[sev][1];
@@ -1265,12 +1580,12 @@
             const px = i => mL + (n > 1 ? i / (n - 1) * (W - mL - mR) : (W - mL - mR) / 2);
             const py = v => mT + (100 - v) / 100 * (H - mT - mB);
             let s = '';
-            [0, 50, 100].forEach(g => { s += `<line x1="${mL}" y1="${py(g)}" x2="${W - mR}" y2="${py(g)}" stroke="#e2e4f0"/>`; });
+            [0, 50, 100].forEach(g => { s += `<line x1="${mL}" y1="${py(g)}" x2="${W - mR}" y2="${py(g)}" stroke="var(--nm-line)"/>`; });
             s += `<line x1="${mL}" y1="${py(alertScore)}" x2="${W - mR}" y2="${py(alertScore)}" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="5 4"/>`;
             s += `<line x1="${mL}" y1="${py(watchScore)}" x2="${W - mR}" y2="${py(watchScore)}" stroke="#ca8a04" stroke-width="1" stroke-dasharray="3 4"/>`;
             let path = '';
             recent.forEach((p, i) => { const v = nmScoreAt(p.ratio); path += (i ? 'L' : 'M') + px(i) + ' ' + py(v) + ' '; });
-            s += `<path d="${path}" fill="none" stroke="#4f46e5" stroke-width="2"/>`;
+            s += `<path d="${path}" fill="none" stroke="var(--nm-cyan)" stroke-width="2"/>`;
             recent.forEach((p, i) => {
                 const v = nmScoreAt(p.ratio), sev = nmSeverityAt(p.ratio), focused = p.i === NM.focusedIdx;
                 s += nmMarker(px(i), py(v), sev, focused ? 4.5 : 2.4, p.i);
@@ -1586,7 +1901,7 @@ async function exportClusterPdf(btn) {
             const el = document.getElementById(elId);
             if (el && el.data) {
                 try {
-                    const png = await Plotly.toImage(el, { format: 'png', width: 900, height: 220 });
+                    const png = await Plotly.toImage(window.e7PlotlyPrintFigure ? window.e7PlotlyPrintFigure(el) : el, { format: 'png', width: 900, height: 220 });
                     const w = pageW - 2 * M, h = w * (220 / 900);
                     ensure(h + 26);
                     doc.setFontSize(10.5); doc.setFont(undefined, 'bold'); setColor(PDF_COLORS.text);
@@ -1836,9 +2151,9 @@ async function exportClusterPdf(btn) {
             updateCompactSidebar();
             const quickBtn = document.getElementById('modeQuickBtn');
             const customBtn = document.getElementById('modeCustomBtn');
-            quickBtn.style.background = mode === 'quick' ? 'var(--accent)' : 'transparent';
+            quickBtn.style.background = mode === 'quick' ? 'var(--pmc-primary-bg)' : 'transparent';
             quickBtn.style.color = mode === 'quick' ? '#fff' : 'var(--text-secondary)';
-            customBtn.style.background = mode === 'custom' ? 'var(--accent)' : 'transparent';
+            customBtn.style.background = mode === 'custom' ? 'var(--pmc-primary-bg)' : 'transparent';
             customBtn.style.color = mode === 'custom' ? '#fff' : 'var(--text-secondary)';
             document.getElementById('quickModeRow').style.display = mode === 'quick' ? 'flex' : 'none';
             document.getElementById('quickPmSection').style.display = mode === 'quick' ? 'block' : 'none';
@@ -2256,7 +2571,7 @@ async function exportClusterPdf(btn) {
                         // Fixed 0-10 range (not auto-scaled) so every strip cell is directly
                         // comparable \u2014 a rare outlier spike in one band shouldn't squash
                         // the visible shape of every other band's chart.
-                        y: { min: 0, max: 10, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#8b90ac', font: { size: 8 } } },
+                        y: { min: 0, max: 10, grid: { color: pmcChartTheme().grid }, ticks: { color: pmcChartTheme().tick, font: { size: 8 } } },
                     },
                 },
             });
@@ -2272,7 +2587,7 @@ async function exportClusterPdf(btn) {
             if (!el || !el.data) return;
             const highlight = {
                 type: 'rect', xref: 'x', yref: 'paper', x0, x1, y0: 0, y1: 1,
-                fillcolor: 'rgba(0,0,0,0)', line: { color: '#1e2233', width: 3 }, layer: 'above',
+                fillcolor: 'rgba(0,0,0,0)', line: { color: (window.pmcInk ? window.pmcInk() : '#1e2233'), width: 3 }, layer: 'above',
             };
             Plotly.relayout(el, { shapes: [...(S.timelineShapes[side] || []), highlight] });
         }
@@ -2369,8 +2684,8 @@ async function exportClusterPdf(btn) {
                 options: {
                     responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
                     scales: {
-                        x: { grid: { display: false }, ticks: { color: '#8b90ac', font: { size: 8 }, maxTicksLimit: 10 }, title: { display: true, text: 'ms', color: '#8b90ac', font: { size: 9 } } },
-                        y: { min: 0, max: yMax, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#8b90ac', font: { size: 8 } } }
+                        x: { grid: { display: false }, ticks: { color: pmcChartTheme().tick, font: { size: 8 }, maxTicksLimit: 10 }, title: { display: true, text: 'ms', color: pmcChartTheme().tick, font: { size: 9 } } },
+                        y: { min: 0, max: yMax, grid: { color: pmcChartTheme().grid }, ticks: { color: pmcChartTheme().tick, font: { size: 8 } } }
                     }
                 }
             });

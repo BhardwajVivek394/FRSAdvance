@@ -1,0 +1,285 @@
+﻿@* ----------------------------------------------------------------
+     Wisdom Management -- rendered inside the FRS25 shell (_Layout via _ViewStart).
+     Formerly a self-contained HTML string (AiChatController.Wisdom.cs WISDOM_MANAGE_TEMPLATE)
+     returned with Content(): no sidebar/navbar/footer, always dark, no way back.
+     All page CSS is scoped under #wisdomManage so it cannot restyle the shell, and every
+     colour reads the --e7-* theme tokens (light/dark) with dark fallbacks.
+     JSON endpoints are unchanged: ListWisdom, ListCandidates, WisdomWhoAmI, SaveWisdom,
+     UpdateWisdomRule, SetWisdomStatus, BulkScopeWisdom (anti-forgery via X-Wisdom-Token).
+    ---------------------------------------------------------------- *@
+@{
+    ViewBag.Title = "Wisdom Manage";
+}
+<style>
+    #wisdomManage {
+        --wm-surface: var(--e7-surface, #141922);
+        --wm-surface-2: var(--e7-surface-2, #171d28);
+        --wm-surface-3: var(--e7-surface-3, #1b2130);
+        --wm-border: var(--e7-border, #2a3342);
+        --wm-text: var(--e7-text, #e8eaed);
+        --wm-text-2: var(--e7-text-2, #aeb8c6);
+        --wm-text-3: var(--e7-text-3, #8b95a3);
+        --wm-heading: var(--e7-heading, #eaf1f8);
+        --wm-accent-ink: var(--e7-accent-ink, #93c5fd);
+        --wm-b-p-bg: #3a2f00; --wm-b-p-fg: #ffd666;
+        --wm-b-a-bg: #06371f; --wm-b-a-fg: #5eead4;
+        --wm-b-r-bg: #3a0d0d; --wm-b-r-fg: #fca5a5;
+        --wm-b-s-bg: #22262e; --wm-b-s-fg: #8b95a3;
+        --wm-ok-fg: #5eead4;
+        color: var(--wm-text);
+        font-size: 14px;
+    }
+    html[data-aurora="light"] #wisdomManage {
+        --wm-surface: var(--e7-surface, #ffffff);
+        --wm-surface-2: var(--e7-surface-2, #f6f8fa);
+        --wm-surface-3: var(--e7-surface-3, #eef2f6);
+        --wm-border: var(--e7-border, #e7ebf1);
+        --wm-text: var(--e7-text, #22303f);
+        --wm-text-2: var(--e7-text-2, #55657a);
+        --wm-text-3: var(--e7-text-3, #627186);
+        --wm-heading: var(--e7-heading, #1b3c55);
+        --wm-accent-ink: var(--e7-accent-ink, #1d6f8d);
+        --wm-b-p-bg: #fff4cc; --wm-b-p-fg: #8a6100;
+        --wm-b-a-bg: #d6f5e8; --wm-b-a-fg: #04704a;
+        --wm-b-r-bg: #fde2e2; --wm-b-r-fg: #b42318;
+        --wm-b-s-bg: #eceff3; --wm-b-s-fg: #5b6573;
+        --wm-ok-fg: #047a5f;
+    }
+    #wisdomManage .wm-head {
+        background: var(--wm-surface-2);
+        border: 1px solid var(--wm-border);
+        border-radius: 12px;
+        padding: 12px 18px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    #wisdomManage .wm-head h1 { font-size: 16px; margin: 0; font-weight: 600; color: var(--wm-heading); }
+    #wisdomManage .who { font-size: 12px; color: var(--wm-text-2); margin-left: auto; }
+    #wisdomManage .wrap { max-width: 1100px; margin: 0 auto; padding: 0 0 40px; }
+    #wisdomManage .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    #wisdomManage .filters button { background: var(--wm-surface-3); color: var(--wm-text-2); border: 1px solid var(--wm-border); border-radius: 20px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+    #wisdomManage .filters button.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #wisdomManage .nav2 { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+    #wisdomManage .nav2 button { background: var(--wm-surface-2); color: var(--wm-text-2); border: 1px solid var(--wm-border); border-radius: 16px; padding: 5px 12px; cursor: pointer; font-size: 12px; }
+    #wisdomManage .nav2 button.on { background: #0e7490; border-color: #0e7490; color: #fff; }
+    #wisdomManage .atype { font-size: 15px; font-weight: 700; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--wm-border); letter-spacing: .4px; color: var(--wm-heading); }
+    #wisdomManage .cause { border: 1px solid var(--wm-border); border-radius: 12px; margin-bottom: 14px; overflow: hidden; background: var(--wm-surface); }
+    #wisdomManage .cause > summary { cursor: pointer; padding: 12px 16px; font-weight: 600; font-size: 14px; background: var(--wm-surface-2); color: var(--wm-heading); list-style: none; display: flex; align-items: center; gap: 10px; }
+    #wisdomManage .cause > summary::-webkit-details-marker { display: none; }
+    #wisdomManage .wm-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    #wisdomManage .b-p { background: var(--wm-b-p-bg); color: var(--wm-b-p-fg); }
+    #wisdomManage .b-a { background: var(--wm-b-a-bg); color: var(--wm-b-a-fg); }
+    #wisdomManage .b-r { background: var(--wm-b-r-bg); color: var(--wm-b-r-fg); }
+    #wisdomManage .b-s { background: var(--wm-b-s-bg); color: var(--wm-b-s-fg); }
+    #wisdomManage .cnt { margin-left: auto; font-size: 12px; color: var(--wm-text-3); font-weight: 400; }
+    #wisdomManage .rule { border-top: 1px solid var(--wm-border); padding: 12px 16px; }
+    #wisdomManage .rule .scope { font-size: 12px; color: var(--wm-accent-ink); margin-bottom: 6px; }
+    #wisdomManage .rule textarea { width: 100%; box-sizing: border-box; background: var(--wm-surface-2); color: var(--wm-text); border: 1px solid var(--wm-border); border-radius: 8px; padding: 8px; font: inherit; font-size: 13px; min-height: 40px; }
+    #wisdomManage .rule .corr { font-size: 12px; color: var(--wm-text-3); margin: 6px 0; white-space: pre-wrap; border-left: 2px solid var(--wm-border); padding-left: 8px; }
+    #wisdomManage .rule .meta { font-size: 11px; color: var(--wm-text-3); margin-top: 4px; }
+    #wisdomManage .acts { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+    #wisdomManage .acts button { border: 0; border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    #wisdomManage .ap { background: #059669; color: #fff; }
+    #wisdomManage .rj { background: #dc2626; color: #fff; }
+    #wisdomManage .acts button.ed { background: var(--wm-surface-3); color: var(--wm-text); border: 1px solid var(--wm-border); }
+    #wisdomManage .sc { background: #1d4ed8; color: #fff; border: 0; border-radius: 7px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight: 600; }
+    #wisdomManage .bulk { background: var(--wm-surface-2); border: 1px dashed var(--wm-border); border-radius: 8px; padding: 8px 12px; margin: 8px 16px; font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; color: var(--wm-text-2); }
+    #wisdomManage .bulk input,
+    #wisdomManage input.cand-rule { background: var(--wm-surface-2); color: var(--wm-text); border: 1px solid var(--wm-border); border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px; }
+    #wisdomManage .bulk input { width: 90px; }
+    #wisdomManage input.cand-rule { flex: 1; min-width: 200px; padding: 6px 8px; }
+    #wisdomManage .wm-note { font-size: 12px; color: var(--wm-text-3); margin-bottom: 8px; }
+    #wisdomManage .wm-haschat { color: var(--wm-ok-fg); }
+    #wisdomManage .empty { color: var(--wm-text-3); padding: 30px; text-align: center; }
+    #wisdomManage .wm-toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--wm-surface); border: 1px solid var(--wm-border); color: var(--wm-text); box-shadow: var(--e7-shadow-pop, 0 18px 40px rgba(0,0,0,.35)); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 1080; }
+    #wisdomManage .wm-toast.show { opacity: 1; }
+</style>
+<div id="wisdomManage">
+    <div class="wrap">
+        <div class="wm-head">
+            <h1>ENERGY7 Wisdom Management</h1>
+            <span id="wmWho" class="who">...</span>
+        </div>
+        <div style="display:none">@Html.AntiForgeryToken()</div>
+        <div class="filters">
+            <button type="button" data-f="ALL" class="on">All</button>
+            <button type="button" data-f="PENDING">Pending</button>
+            <button type="button" data-f="APPROVED">Approved</button>
+            <button type="button" data-f="REJECTED">Rejected</button>
+            <button type="button" data-f="SUPERSEDED">Superseded</button>
+            <button type="button" data-f="CANDIDATES">Candidates</button>
+            <button type="button" id="wmRefresh" style="margin-left:auto">Refresh</button>
+        </div>
+        <div id="wmList"><div class="empty">Loading...</div></div>
+    </div>
+    <div id="wmToast" class="wm-toast"></div>
+</div>
+<script>
+(function(){
+ // Scoped to the page root: the page now lives inside the FRS25 shell. Endpoint URLs are
+ // absolute (Url.Content) so they no longer depend on the current URL's trailing segment.
+ var ROOT=document.getElementById('wisdomManage'), BASE='@Url.Content("~/FRS25/AiChat/")';
+ if(!ROOT){return;}
+ var F='ALL', DATA=[], AT='', CC='';   // AT/CC: asset-type / cause-code chip drill-down (''=all)
+ function tok(){var t=ROOT.querySelector('input[name="__RequestVerificationToken"]');return t?t.value:'';}
+ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(m){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m];});}
+ function toast(m){var t=document.getElementById('wmToast');t.textContent=m;t.className='wm-toast show';setTimeout(function(){t.className='wm-toast';},2200);}
+ function post(url,obj){return fetch(BASE+url,{method:'POST',headers:{'Content-Type':'application/json','X-Wisdom-Token':tok()},body:JSON.stringify(obj)}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.slice(0,200));});});}
+ function badge(st){var c=st==='PENDING'?'b-p':(st.indexOf('APPROVED')===0?'b-a':(st==='REJECTED'?'b-r':'b-s'));return '<span class="wm-badge '+c+'">'+esc(st)+'</span>';}
+
+ function load(){
+   fetch(BASE+'WisdomWhoAmI',{headers:{'X-Wisdom-Token':tok()}}).then(function(r){return r.json();}).then(function(w){
+     document.getElementById('wmWho').textContent='Signed in as '+(w.displayName||w.identity||'?')+' - reviewer:'+(w.isReviewer?'yes':'no')+' approver:'+(w.isApprover?'yes':'no');
+     window.__isApprover=!!w.isApprover;
+   }).catch(function(){});
+   if(F==='CANDIDATES'){
+     fetch(BASE+'ListCandidates',{headers:{'X-Wisdom-Token':tok()}}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.slice(0,200));});})
+      .then(function(d){renderCandidates(d.items||[],d.date);})
+      .catch(function(e){document.getElementById('wmList').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>';});
+     return;
+   }
+   fetch(BASE+'ListWisdom',{headers:{'X-Wisdom-Token':tok()}}).then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t.slice(0,200));});})
+    .then(function(d){DATA=d.items||[];render();})
+    .catch(function(e){document.getElementById('wmList').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>';});
+ }
+
+ function tsVal(it){var t=Date.parse(it.ts||'');return isNaN(t)?0:t;}
+ function render(){
+   var items=DATA.filter(function(it){return F==='ALL'||it.status===F||(F==='APPROVED'&&it.status==='APPROVED_GLOBAL');});
+   // v1.0.141.0: chip drill-down -- ASSET TYPE chips, then CAUSE CODE chips, then rules.
+   var byAsset={};
+   items.forEach(function(it){
+     var at=(it.scope&&it.scope.assetType)||'(no asset type)';
+     var c=(it.scope&&it.scope.causeCode)||'(no cause)';
+     var g=(byAsset[at]=byAsset[at]||{});
+     (g[c]=g[c]||[]).push(it);
+   });
+   var akeys=Object.keys(byAsset).sort();
+   if(AT && akeys.indexOf(AT)<0){AT='';CC='';}
+   var h='';
+   // asset-type chip row
+   h+='<div class="nav2">';
+   h+='<button class="'+(AT===''?'on':'')+'" data-at="">All assets</button>';
+   akeys.forEach(function(at){
+     var n=0;Object.keys(byAsset[at]).forEach(function(c){n+=byAsset[at][c].length;});
+     h+='<button class="'+(AT===at?'on':'')+'" data-at="'+esc(at)+'">'+esc(at)+' ('+n+')</button>';
+   });
+   h+='</div>';
+   // cause-code chip row (only when an asset type is chosen)
+   if(AT){
+     var ckeys=Object.keys(byAsset[AT]||{}).sort();
+     if(CC && ckeys.indexOf(CC)<0){CC='';}
+     h+='<div class="nav2">';
+     h+='<button class="'+(CC===''?'on':'')+'" data-cc="">All causes</button>';
+     ckeys.forEach(function(c){
+       h+='<button class="'+(CC===c?'on':'')+'" data-cc="'+esc(c)+'">'+esc(c)+' ('+byAsset[AT][c].length+')</button>';
+     });
+     h+='</div>';
+   }
+   if(!akeys.length){document.getElementById('wmList').innerHTML=h+'<div class="empty">No wisdom in this view.</div>';return;}
+   var shown=0;
+   akeys.forEach(function(at){
+     if(AT && at!==AT){return;}
+     var causes=byAsset[at];
+     var atCount=0;Object.keys(causes).forEach(function(c){atCount+=causes[c].length;});
+     h+='<div class="atype">'+esc(at)+' <span class="cnt">'+atCount+' rule(s)</span></div>';
+     Object.keys(causes).sort().forEach(function(c){
+     if(AT && CC && c!==CC){return;}
+     shown++;
+     var rows=causes[c];
+     var pend=rows.filter(function(r){return r.status==='PENDING';}).length;
+     h+='<details class="cause" open><summary>'+esc(c)+' <span class="cnt">'+rows.length+' rule(s)'+(pend?(' , '+pend+' pending'):'')+'</span></summary>';
+     if(window.__isApprover){
+       h+='<div class="bulk">Bulk (pending only): set siteId <input id="bs_'+esc(c)+'" placeholder="siteId"> <button class="sc" data-bulk="'+esc(c)+'">Apply to all pending</button></div>';
+     }
+     rows.sort(function(a,b){return tsVal(b)-tsVal(a);});   // latest first
+     rows.forEach(function(it){
+       var sc=it.scope||{};
+       h+='<div class="rule" data-id="'+esc(it.id)+'">';
+       h+='<div class="scope">'+badge(it.status)+' &nbsp; '+esc(sc.causeCode||'')+' | '+esc(sc.assetType||'')+' | site '+esc(sc.siteId||'(any)')+'</div>';
+       h+='<textarea data-rule="'+esc(it.id)+'" '+(it.status==='PENDING'?'':'readonly')+'>'+esc(it.distilledRule||'')+'</textarea>';
+       if(it.aiText){h+='<div class="corr"><b>AI said:</b> '+esc((it.aiText||'').slice(0,300))+'</div>';}
+       if(it.userText){h+='<div class="corr"><b>Correction:</b> '+esc((it.userText||'').slice(0,300))+'</div>';}
+       h+='<div class="meta">by '+esc(it.createdBy||'?')+(it.approvedBy?(' , approved by '+esc(it.approvedBy)):'')+' , '+esc(it.ts||'')+'</div>';
+       h+='<div class="acts">';
+       if(it.status==='PENDING'){
+         h+='<button class="ed" data-act="edit" data-id="'+esc(it.id)+'">Save edit</button>';
+         if(window.__isApprover){h+='<button class="ap" data-act="approve" data-id="'+esc(it.id)+'">Approve</button><button class="rj" data-act="reject" data-id="'+esc(it.id)+'">Reject</button>';}
+       } else if(it.status.indexOf('APPROVED')===0 && window.__isApprover){
+         h+='<button class="rj" data-act="reject" data-id="'+esc(it.id)+'">Reject (retire)</button>';
+       }
+       h+='</div></div>';
+     });
+     h+='</details>';
+     });
+   });
+   if(!shown){h+='<div class="empty">No rules under this selection.</div>';}
+   document.getElementById('wmList').innerHTML=h;
+ }
+
+
+ function renderCandidates(items,day){
+   // group by cause code (falls back to '(no cause in log)')
+   var groups={};
+   items.forEach(function(it){var c=it.causeCode||'(no cause in log)';(groups[c]=groups[c]||[]).push(it);});
+   var keys=Object.keys(groups).sort();
+   if(!keys.length){document.getElementById('wmList').innerHTML='<div class="empty">No analyses logged for '+esc(day||'')+'.</div>';return;}
+   var h='<div class="wm-note">Auto-captured from '+esc(day||'')+' analyses + chat. Promote turns one into a PENDING wisdom rule.</div>';
+   keys.forEach(function(c){
+     var rows=groups[c];
+     h+='<details class="cause" open><summary>'+esc(c)+' <span class="cnt">'+rows.length+' analysis(es)</span></summary>';
+     rows.forEach(function(it){
+       h+='<div class="rule">';
+       h+='<div class="scope">'+esc(it.verdict||'(no verdict)')+' &nbsp; alert '+esc(it.alertId)+' , site '+esc(it.siteId||'?')+(it.hasChat?' , <span class="wm-haschat">has chat</span>':'')+'</div>';
+       if(it.headline){h+='<div class="corr">'+esc(it.headline)+'</div>';}
+       if(it.chat){h+='<div class="corr"><b>Chat:</b> '+esc(it.chat)+'</div>';}
+       h+='<div class="meta">'+esc(it.ts||'')+'</div>';
+       h+='<div class="acts"><input class="cand-rule" data-id="'+esc(it.alertId)+'" placeholder="rule to teach (optional - blank = distill from verdict/chat)">';
+       h+='<button class="sc" data-promote="'+esc(it.alertId)+'" data-cause="'+esc(it.causeCode||'')+'" data-site="'+esc(it.siteId||'')+'" data-station="'+esc(it.station||'')+'">Promote to wisdom</button></div>';
+       h+='</div>';
+     });
+     h+='</details>';
+   });
+   document.getElementById('wmList').innerHTML=h;
+   // stash for promote lookups
+   window.__cands={}; items.forEach(function(it){window.__cands[it.alertId]=it;});
+ }
+
+ ROOT.addEventListener('click',function(e){
+   var b=e.target; if(b.tagName!=='BUTTON')return;
+   var promoteId=b.getAttribute('data-promote');
+   if(promoteId!=null){
+     var it=(window.__cands||{})[promoteId]||{};
+     var typed=ROOT.querySelector('input.cand-rule[data-id="'+promoteId+'"]'); var manual=typed?typed.value.trim():'';
+     var ctx={alertId:String(promoteId),causeCode:b.getAttribute('data-cause')||'',siteId:b.getAttribute('data-site')||'',station:b.getAttribute('data-station')||'',provider:''};
+     // aiText = the AI's verdict/headline; userText = the engineer signal (typed rule, else the chat, else the verdict)
+     var aiText=(it.verdict?('['+it.verdict+'] '):'')+(it.headline||'');
+     var userText=manual||it.chat||it.headline||'';
+     if(!ctx.causeCode){toast('This analysis has no cause code in the log - cannot scope a rule');return;}
+     post('SaveWisdom',{context:ctx,verdictGiven:it.verdict||'',userText:userText,aiText:aiText}).then(function(d){toast('Promoted -> pending wisdom ('+(d.distilledRule?('rule: '+d.distilledRule.slice(0,40)):'needs edit')+')');}).catch(function(e2){toast('Promote failed: '+e2.message);});
+     return;
+   }
+   if(b.hasAttribute('data-at')){AT=b.getAttribute('data-at')||'';CC='';render();return;}
+   if(b.hasAttribute('data-cc')){CC=b.getAttribute('data-cc')||'';render();return;}
+   if(b.hasAttribute('data-f')){F=b.getAttribute('data-f');ROOT.querySelectorAll('.filters button[data-f]').forEach(function(x){x.className=x===b?'on':'';});render();return;}
+   if(b.id==='wmRefresh'){load();return;}
+   var bulk=b.getAttribute('data-bulk');
+   if(bulk!=null){
+     var inp=document.getElementById('bs_'+bulk); var sid=inp?inp.value.trim():'';
+     if(!sid){toast('Enter a siteId first');return;}
+     post('BulkScopeWisdom',{causeCode:bulk,newSiteId:sid}).then(function(d){toast('Updated '+d.changed+' pending rule(s)');load();}).catch(function(e2){toast('Bulk failed: '+e2.message);});
+     return;
+   }
+   var act=b.getAttribute('data-act'), id=b.getAttribute('data-id'); if(!act||!id)return;
+   var ta=ROOT.querySelector('textarea[data-rule="'+id+'"]'); var rule=ta?ta.value:'';
+   if(act==='edit'){post('UpdateWisdomRule',{id:id,editedRule:rule}).then(function(){toast('Saved');load();}).catch(function(e2){toast('Edit failed: '+e2.message);});}
+   else if(act==='approve'){post('SetWisdomStatus',{id:id,status:'APPROVED',editedRule:rule}).then(function(){toast('Approved');load();}).catch(function(e2){toast('Approve failed: '+e2.message);});}
+   else if(act==='reject'){post('SetWisdomStatus',{id:id,status:'REJECTED'}).then(function(){toast('Rejected');load();}).catch(function(e2){toast('Reject failed: '+e2.message);});}
+ });
+
+ load();
+})();
+</script>

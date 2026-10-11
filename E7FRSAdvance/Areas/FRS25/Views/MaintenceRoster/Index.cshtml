@@ -3616,17 +3616,195 @@
 </style>
 
 <style>
-    /* FRS Advance: 617's aurora-bridge.css forces day/night colours on labels, form controls and
-       .card with !important. This page's internals are light-only, so keep its own palette inside
-       #ros (the id selector out-ranks the bridge rules). */
-    body #ros label { color: var(--ink3) !important; }
-    body #ros select, body #ros textarea, body #ros .form-control,
-    body #ros input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
-        background-color: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important;
+    /* Controls bar follows the app theme (Energy7 tokens) so it is not a white slab in dark mode.
+       Background and text both come from tokens. Id selectors (#rosDiv/#rosDate) out-rank the
+       generic #e7Body #ros input rule in the theme bridge below. */
+    body #ros .ros-bar {
+        background: var(--e7-surface, #fff);
+        border-color: var(--e7-border, #dde5ee);
+        color: var(--e7-text, #22303f);
     }
-    body #ros select option { background: var(--surface) !important; color: var(--ink) !important; }
-    body #ros .card { background: var(--surface) !important; color: var(--ink) !important; border-color: var(--line) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
-    body #ros .card-header, body #ros .card-body { color: inherit !important; }
+    body #ros .ros-bar label { color: var(--e7-text-2, #55657a) !important; }
+    body #ros .ros-bar #rosDiv, body #ros .ros-bar #rosDate {
+        background-color: var(--e7-surface, #fff) !important;
+        color: var(--e7-text, #22303f) !important;
+        border-color: var(--e7-border-2, #c9d4e0) !important;
+        color-scheme: light;
+    }
+    html[data-aurora="dark"] body #ros .ros-bar #rosDiv, html[data-aurora="dark"] body #ros .ros-bar #rosDate { color-scheme: dark; }
+    body #ros .ros-bar #rosDiv option { background: var(--e7-surface, #fff) !important; color: var(--e7-text, #22303f) !important; }
+    body #ros .ros-bar button {
+        background: var(--e7-surface, #fff);
+        color: var(--e7-text, #22303f);
+        border-color: var(--e7-border-2, #c9d4e0);
+    }
+    body #ros .ros-bar button:hover {
+        background: var(--e7-surface-2, #f5f8fb);
+        border-color: var(--e7-text-3, #87919f);
+    }
+    body #ros .ros-bar button.pri {
+        background: var(--e7-heading, var(--e7-text, #22303f));
+        color: var(--e7-surface, #fff);
+        border-color: var(--e7-heading, var(--e7-text, #22303f));
+    }
+    body #ros .ros-bar button.pri:hover { opacity: .88; }
+    body #ros .ros-ver { color: var(--e7-text-2, #55657a); }
+</style>
+<style>
+    /* FRS Advance theme bridge for Maintenance Roster (#ros). Replaces the old light-only
+       "keep its own palette" block; the controls-bar block above stays as is.
+       1. The page palette is mapped to the app's --e7-* tokens so the whole page follows the header's
+          Light/Dark toggle (html[data-aurora]). Status colours (urgent/soon/ok/ai/teal/...) keep their
+          light values and get lifted values + dark-tinted backgrounds/lines for dark surfaces.
+          The deliberate dark "instrument" panels (--panel*, station rail, verdict band, AI evidence,
+          alert-popup header) are dark in both themes with their own light text, so they are kept.
+       2. Components the global sheets repaint with !important (labels, inputs, .card, headings,
+          p/small/strong) are re-asserted with #e7Body #ros (2,0,x), which out-ranks
+          e7-energy7-theme (#e7Body .e7-body .x) and aurora-bridge (body[data-aurora] .x).
+       3. Hard-coded white surfaces / pastel chips / dark inks follow tokens or get dark overrides. */
+    #e7Body #ros {
+        --bg: var(--e7-surface-2);
+        --surface: var(--e7-surface);
+        --surface2: var(--e7-surface-2);
+        --ink: var(--e7-text);
+        --ink2: var(--e7-text-2);
+        --ink3: var(--e7-text-3);
+        --line: var(--e7-border-2);
+        --line2: var(--e7-border);
+        --sh1: var(--e7-shadow-card);
+        --sh2: var(--e7-shadow-pop);
+    }
+
+    html[data-aurora="dark"] #e7Body #ros {
+        --urgent: #f85149;
+        --urgentbg: rgba(248,81,73,.15);
+        --urgentln: rgba(248,81,73,.38);
+        --soon: #f5c96b;
+        --soonbg: rgba(245,201,107,.13);
+        --soonln: rgba(245,201,107,.36);
+        --ok: #3fb950;
+        --okbg: rgba(63,185,80,.14);
+        --okln: rgba(63,185,80,.36);
+        --ai: #a197f7;
+        --aibg: rgba(124,108,240,.18);
+        --ailn: rgba(124,108,240,.42);
+        --teal: #2fc9b6;
+        --tealbg: rgba(18,165,148,.16);
+        --tealln: rgba(18,165,148,.42);
+        --api: #9fb0c2;
+        --apibg: rgba(90,107,126,.24);
+        --apiln: rgba(140,160,180,.36);
+        --blue: #6ca6e8;
+        --slate: #5d7590;
+        /* text on a solid (lifted) status fill */
+        --ros-on-fill: #0d1117;
+    }
+
+    /* ---- components the global theme sheets repaint ---- */
+    #e7Body #ros label { color: var(--ink3) !important; }
+    #e7Body #ros .ros-bar label { color: var(--e7-text-2, #55657a) !important; }
+
+    #e7Body #ros select, #e7Body #ros textarea, #e7Body #ros .form-control,
+    #e7Body #ros input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+        background-color: var(--surface) !important;
+        color: var(--ink) !important;
+        border-color: var(--line) !important;
+    }
+
+    #e7Body #ros select option { background: var(--surface) !important; color: var(--ink) !important; }
+    html[data-aurora="dark"] #e7Body #ros input, html[data-aurora="dark"] #e7Body #ros select, html[data-aurora="dark"] #e7Body #ros textarea { color-scheme: dark; }
+
+    #e7Body #ros .card {
+        background: var(--surface) !important;
+        color: var(--ink) !important;
+        border-color: var(--line) !important;
+        box-shadow: none !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+
+    #e7Body #ros .card-header, #e7Body #ros .card-body { color: inherit !important; }
+
+    #e7Body #ros h1, #e7Body #ros h2, #e7Body #ros h3,
+    #e7Body #ros h4, #e7Body #ros h5, #e7Body #ros h6 { color: inherit !important; }
+
+    /* aurora-bridge forces p / small / strong to fixed white or slate; restore the page's own colours */
+    #e7Body #ros p, #e7Body #ros small, #e7Body #ros strong { color: inherit !important; }
+    #e7Body #ros .stn-name small, #e7Body #ros .dsitem .as small, #e7Body #ros .divsite .nm small { color: var(--ink3) !important; }
+    #e7Body #ros .dvgh small { color: #9CA7B6 !important; }
+    #e7Body #ros .aistory p { color: var(--ink) !important; }
+
+    /* the controls-bar primary button hovered to a fixed dark slate (dark text on dark in dark mode) */
+    #e7Body #ros .ros-bar button.pri:hover { background: var(--e7-heading, var(--e7-text, #22303f)); }
+
+    /* ---- white surfaces / white-ended gradients -> page surface ---- */
+    #e7Body #ros .aap, #e7Body #ros .apchip:not(.on), #e7Body #ros .apask, #e7Body #ros .rschip:not(.on), #e7Body #ros .rsarr,
+    #e7Body #ros .eyetab:not(.on), #e7Body #ros .apname, #e7Body #ros .dvhd .dvcount, #e7Body #ros .dvhd .dvpri.m,
+    #e7Body #ros .aix, #e7Body #ros .aitab:not(.on), #e7Body #ros .aireset b { background: var(--surface); }
+    #e7Body #ros .apask:hover { background: var(--aibg); }
+    #e7Body #ros .vband.ok { background: linear-gradient(120deg,var(--okbg) 0%,var(--surface) 62%); }
+    #e7Body #ros .vband.warn { background: linear-gradient(120deg,var(--soonbg) 0%,var(--surface) 62%); }
+    #e7Body #ros .vband.bad { background: linear-gradient(120deg,var(--urgentbg) 0%,var(--surface) 62%); }
+    #e7Body #ros .apverd.yes { background: linear-gradient(90deg,var(--urgentbg),var(--surface) 88%); }
+    #e7Body #ros .apverd.watch { background: linear-gradient(90deg,var(--soonbg),var(--surface) 88%); }
+    #e7Body #ros .apverd.no { background: linear-gradient(90deg,var(--okbg),var(--surface) 88%); }
+    #e7Body #ros .dvverd.yes { background: linear-gradient(90deg, var(--urgentbg), var(--surface) 80%); }
+    #e7Body #ros .dvverd.no { background: linear-gradient(90deg, var(--okbg), var(--surface) 80%); }
+    #e7Body #ros .dvverd.watch { background: linear-gradient(90deg, var(--soonbg), var(--surface) 80%); }
+    #e7Body #ros .dvbody .dvrow.do { background: linear-gradient(180deg, var(--okbg), var(--surface) 92%); }
+    #e7Body #ros .apmove { background: linear-gradient(180deg,var(--okbg),var(--surface) 92%); }
+    #e7Body #ros .aistory { background: linear-gradient(180deg, var(--tealbg), var(--surface) 90%); }
+    #e7Body #ros .rstory { background: linear-gradient(160deg,var(--surface2),var(--surface) 58%); }
+
+    /* light-only pastels: kept in light, dark-tinted in dark */
+    html[data-aurora="dark"] #e7Body #ros .tag.ml,
+    html[data-aurora="dark"] #e7Body #ros .rpred { background: rgba(45,111,181,.18); border-color: rgba(108,166,232,.4); }
+    html[data-aurora="dark"] #e7Body #ros .tag.ml { color: #8fbeea; }
+    html[data-aurora="dark"] #e7Body #ros .rosrun .rc.warn,
+    html[data-aurora="dark"] #e7Body #ros .ttab .pc.s { background: var(--soonbg); border-color: var(--soonln); }
+    html[data-aurora="dark"] #e7Body #ros .fcard.def { background: linear-gradient(180deg,var(--surface),rgba(248,81,73,.08)); }
+    html[data-aurora="dark"] #e7Body #ros .fcard.wrk { background: linear-gradient(180deg,var(--surface),rgba(63,185,80,.08)); }
+    html[data-aurora="dark"] #e7Body #ros .rmeye { background: linear-gradient(180deg,var(--surface),rgba(248,81,73,.08)); }
+    html[data-aurora="dark"] #e7Body #ros .rmeye .spk i { background: rgba(248,81,73,.5); }
+    html[data-aurora="dark"] #e7Body #ros .rmai { background: linear-gradient(180deg,var(--surface),rgba(124,108,240,.10)); }
+    html[data-aurora="dark"] #e7Body #ros .rmai.big { background: linear-gradient(180deg,rgba(124,108,240,.08),rgba(124,108,240,.14)); }
+    html[data-aurora="dark"] #e7Body #ros .rsparkcol.sel { background: var(--e7-accent-soft); }
+    html[data-aurora="dark"] #e7Body #ros .vchip { background: rgba(33,41,52,.78); }
+    html[data-aurora="dark"] #e7Body #ros .rsfoot { background: rgba(33,41,52,.72); }
+    html[data-aurora="dark"] #e7Body #ros .rrdbar { background: linear-gradient(90deg,rgba(245,201,107,.35) 0,rgba(63,185,80,.32) 24%,rgba(63,185,80,.32) 76%,rgba(245,201,107,.35) 100%); }
+    html[data-aurora="dark"] #e7Body #ros .rmai.off .dot { background: var(--e7-text-4); }
+
+    /* dark-green inks that were hard-coded for light chips */
+    html[data-aurora="dark"] #e7Body #ros .rosrun .rc.ok, html[data-aurora="dark"] #e7Body #ros .ttab .pc.m,
+    html[data-aurora="dark"] #e7Body #ros .fcard.wrk .ft, html[data-aurora="dark"] #e7Body #ros .rmsc,
+    html[data-aurora="dark"] #e7Body #ros .rmack .un, html[data-aurora="dark"] #e7Body #ros .dvbody .dvrow.do b,
+    html[data-aurora="dark"] #e7Body #ros .aireset.rec, html[data-aurora="dark"] #e7Body #ros .aihvm .dp.ok { color: #6fd59a; }
+
+    /* selected chips filled with --ink (now light in dark): text takes the surface colour */
+    html[data-aurora="dark"] #e7Body #ros .stn-chev:hover, html[data-aurora="dark"] #e7Body #ros .stn-chev.on,
+    html[data-aurora="dark"] #e7Body #ros .dsseg button[aria-pressed=true], html[data-aurora="dark"] #e7Body #ros .dsseg button[aria-pressed=true] b,
+    html[data-aurora="dark"] #e7Body #ros .rtab.on, html[data-aurora="dark"] #e7Body #ros .apchip.on,
+    html[data-aurora="dark"] #e7Body #ros .apstep .n, html[data-aurora="dark"] #e7Body #ros .rstep .n,
+    html[data-aurora="dark"] #e7Body #ros .eyetab.on:not(.track):not(.point):not(.signal) { color: var(--e7-surface); }
+    html[data-aurora="dark"] #e7Body #ros .rtab.on .tn { background: rgba(0,0,0,.2); color: var(--e7-surface); }
+
+    /* solid lifted status fills: dark text keeps them >= 4.5:1 */
+    html[data-aurora="dark"] #e7Body #ros .rtabs .rtab:nth-child(2) .tn, html[data-aurora="dark"] #e7Body #ros .rtabs .rtab:nth-child(3) .tn,
+    html[data-aurora="dark"] #e7Body #ros .apverd.yes .apvdot, html[data-aurora="dark"] #e7Body #ros .apverd.watch .apvdot,
+    html[data-aurora="dark"] #e7Body #ros .apverd.no .apvdot,
+    html[data-aurora="dark"] #e7Body #ros .apsl .b.a, html[data-aurora="dark"] #e7Body #ros .apsl .b.r, html[data-aurora="dark"] #e7Body #ros .apsl .b.v,
+    html[data-aurora="dark"] #e7Body #ros .rrdpill.low, html[data-aurora="dark"] #e7Body #ros .rrdpill.high,
+    html[data-aurora="dark"] #e7Body #ros .rpmaction.URGENT, html[data-aurora="dark"] #e7Body #ros .rmeye .fam:not(.point):not(.signal),
+    html[data-aurora="dark"] #e7Body #ros .aitab.on, html[data-aurora="dark"] #e7Body #ros .askrow button,
+    html[data-aurora="dark"] #e7Body #ros .rsy .ic2.bad, html[data-aurora="dark"] #e7Body #ros .rsy .ic2.warn, html[data-aurora="dark"] #e7Body #ros .rsy .ic2.ok,
+    html[data-aurora="dark"] #e7Body #ros .rschip.on { color: var(--ros-on-fill); }
+    html[data-aurora="dark"] #e7Body #ros .rschip.on .n { background: rgba(0,0,0,.18); color: var(--ros-on-fill); }
+    html[data-aurora="dark"] #e7Body #ros .rschip .n[style] { color: var(--ros-on-fill) !important; }
+    /* --ink3 (lighter in dark) used as a fill under white text */
+    html[data-aurora="dark"] #e7Body #ros .pkf.other, html[data-aurora="dark"] #e7Body #ros .dva .fm.other,
+    html[data-aurora="dark"] #e7Body #ros .dvhd .dvfam.other, html[data-aurora="dark"] #e7Body #ros .apverd.inc .apvdot, html[data-aurora="dark"] #e7Body #ros .ic2.n { background: var(--e7-text-4); }
+
+    #e7Body #ros .apdlg::backdrop, #e7Body #ros .aidlg::backdrop { background: rgba(10,14,20,.6); }
 </style>
 
 @* FRS Advance page header (617 theme): breadcrumb card like EquipmentRoom/Index. *@

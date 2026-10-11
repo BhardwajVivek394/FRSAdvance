@@ -920,6 +920,13 @@
         let html = '';
         html += `<div class="insp-row"><b>Type</b><span>${s ? s.label : c.type}</span></div>`;
         html += `<div class="insp-row"><b>Stencil</b><code>${c.type}</code></div>`;
+        if (c.type === 'examples.RouteCallingSignal') {
+            /* Explicit asset link, separate from the display label: the route mA /
+               relays live on the parent signal's asset (drives lamps + drawer).
+               Kept at the top so it is the first thing seen after a blocked Save. */
+            html += assetLinkFieldHtml('insp-route-asset', 'Linked signal asset',
+                (c.attrs && c.attrs.route && c.attrs.route.assetName) || '', true);
+        }
         html += `<div class="field"><label>Asset name (label)</label>` +
             `<input type="text" id="insp-label" value="${escAttr(labelTxt)}" placeholder="e.g. 3T1, S18 RG, 06"/></div>`;
         html += `<div class="field"><label>Asset (from registry)</label>` +
@@ -984,6 +991,12 @@
 
             /* Lamp/lit controls apply to main signal and combined signal+shunt */
             if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
+                /* Explicit asset links (separate from the display label), so the live
+                   SIP never has to guess the asset from the nearest Signal Post. */
+                html += assetLinkFieldHtml('insp-sig-asset', 'Linked signal asset', sigProps.assetName, false);
+                if (c.type === 'examples.SignalShunt') {
+                    html += assetLinkFieldHtml('insp-shunt-asset', 'Linked shunt asset', sigProps.shuntAssetName, false);
+                }
                 const defaultLamps = c.type === 'examples.SignalShunt' ? 'RYG' : 'BBB';
                 const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps) || defaultLamps;
                 const litStr = (typeof sigProps.lit === 'string' && sigProps.lit) || ((c.attrs && c.attrs.lit) || '');
@@ -1487,6 +1500,12 @@
                 c.attrs.signal = c.attrs.signal || {};
                 return c.attrs.signal;
             };
+            /* Linked signal / shunt asset pickers -> attrs.signal.assetName/assetId,
+               attrs.signal.shuntAssetName/shuntAssetId */
+            if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
+                bindAssetLinkField('insp-sig-asset', ensureSig, 'assetName', 'assetId');
+                if (c.type === 'examples.SignalShunt') bindAssetLinkField('insp-shunt-asset', ensureSig, 'shuntAssetName', 'shuntAssetId');
+            }
             /* Lamp/lit controls exist for main signal and combined signal+shunt */
             if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
                 function cleanLampCode(v) {
@@ -1718,6 +1737,9 @@
                     c.attrs.route = c.attrs.route || {};
                     return c.attrs.route;
                 };
+                if (c.type === 'examples.RouteCallingSignal') {
+                    bindAssetLinkField('insp-route-asset', ensureRoute, 'assetName', 'assetId');
+                }
                 const ROUTE_POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG', 'KUG', 'LUG'];
                 function getRouteLabels() {
                     const rp = ensureRoute();
@@ -1901,6 +1923,53 @@
     }
 
     function refreshAssetRegistry() { assetRegistryCache = {}; }
+
+    /* Linked-asset field: a free-text box (type the exact asset name, e.g. S9 /
+       SH-9) plus a registry dropdown that fills the box. Stored as obj[nameKey]
+       / obj[idKey]; a typed name not in the registry keeps an empty id and the
+       live SIP resolves it by name. */
+    function assetLinkFieldHtml(id, label, cur, required) {
+        return `<div class="field"><label>${label}${required ? ' <span style="color:#f87171">*</span>' : ''}</label>` +
+            `<input type="text" id="${id}-text" value="${escAttr(cur || '')}" placeholder="Type asset name, e.g. S9 / SH-9"/>` +
+            `<select id="${id}" style="margin-top:4px;"><option value="">— loading —</option></select></div>`;
+    }
+    function bindAssetLinkField(id, getObj, nameKey, idKey) {
+        const txt = $('#' + id + '-text');
+        let options = [];
+        const idFor = name => { const hit = options.find(a => a.name === name); return hit ? String(hit.id || '') : ''; };
+        const apply = (name, assetId) => {
+            const o = getObj();
+            o[nameKey] = name;
+            o[idKey] = name ? (assetId || '') : '';
+            render();
+            pushHistory();
+        };
+        if (txt) {
+            txt.addEventListener('change', () => {
+                const name = txt.value.trim();
+                txt.value = name;
+                const sel = $('#' + id);
+                if (sel) sel.value = options.some(a => a.name === name) ? name : '';
+                apply(name, idFor(name));
+            });
+        }
+        loadAssetsForType('examples.Signal', function (list) {
+            options = list || [];
+            const sel = $('#' + id);
+            if (!sel) return;
+            const cur = (getObj()[nameKey]) || '';
+            let opts = '<option value="">— pick from registry —</option>';
+            for (const a of options) {
+                opts += `<option value="${escAttr(a.name)}" ${a.name === cur ? 'selected' : ''}>${escapeXml(a.name)}</option>`;
+            }
+            sel.innerHTML = opts;
+            sel.addEventListener('change', () => {
+                if (!sel.value) return;
+                if (txt) txt.value = sel.value;
+                apply(sel.value, idFor(sel.value));
+            });
+        });
+    }
 
     function loadAssetsForType(type, cb) {
         if (assetRegistryCache[type]) { cb(assetRegistryCache[type]); return; }
@@ -2428,6 +2497,106 @@
     /* ------------------------------------------------------------------------ *
      *  FIT ALL — auto-zoom to show every element
      * ------------------------------------------------------------------------ */
+    /* Bulk link: every unlinked Route/Calling shape gets the asset of the signal it
+       sits on (largest overlap, else nearest within 200px). The signal's name is its
+       own link, its label, or the nearest non-shunt Signal Post. All proposals are
+       shown for confirmation first; the result is written as attrs.route.assetName
+       (explicit, saved with the layout) and is undoable. */
+    const RC_SIGNAL_TYPES = {
+        'examples.Signal': 1, 'examples.SignalShunt': 1,
+        'examples.Signald90': 1, 'examples.Signal90': 1, 'examples.Signal45': 1, 'examples.Signald45': 1
+    };
+    function cellBox(c) {
+        const x = (c.position && c.position.x) || 0, y = (c.position && c.position.y) || 0;
+        const w = (c.size && c.size.width) || 0, h = (c.size && c.size.height) || 0;
+        return { x: x, y: y, w: w, h: h, cx: x + w / 2, cy: y + h / 2 };
+    }
+    function signalNameOf(s) {
+        const link = s.attrs && s.attrs.signal && s.attrs.signal.assetName;
+        if (link) return { name: String(link).trim(), src: 'linked' };
+        const lbl = String((s.attrs && s.attrs.label && s.attrs.label.text) || '').trim();
+        if (lbl) return { name: s.type === 'examples.Signal' || s.type === 'examples.SignalShunt' ? lbl : lbl.split(/\s+/)[0], src: 'label' };
+        const b = cellBox(s);
+        let best = null, bestD = 250;
+        for (const p of state.cells) {
+            if (p.type !== 'examples.Post' && p.type !== 'examples.Post1') continue;
+            const nm = String((p.attrs && p.attrs.label && p.attrs.label.text) || '').trim();
+            if (!nm || /^SH/i.test(nm.replace(/[^A-Za-z0-9]/g, ''))) continue;
+            const pb = cellBox(p);
+            const d = Math.hypot(pb.cx - b.cx, pb.cy - b.cy);
+            if (d < bestD) { bestD = d; best = nm; }
+        }
+        return best ? { name: best, src: 'post' } : null;
+    }
+    function autoLinkRouteCalling() {
+        const routes = state.cells.filter(c => c.type === 'examples.RouteCallingSignal' &&
+            !(c.attrs && c.attrs.route && c.attrs.route.assetName) &&
+            !(c.attrs && c.attrs.label && c.attrs.label.text));
+        if (!routes.length) { toast('All Route/Calling shapes are already linked.'); return; }
+        const signals = state.cells.filter(c => RC_SIGNAL_TYPES[c.type]);
+        const plan = [], missing = [];
+        for (const r of routes) {
+            const rb = cellBox(r);
+            let best = null, bestOv = 0, bestD = 200;
+            for (const s of signals) {
+                const sb = cellBox(s);
+                const ov = Math.max(0, Math.min(rb.x + rb.w, sb.x + sb.w) - Math.max(rb.x, sb.x)) *
+                    Math.max(0, Math.min(rb.y + rb.h, sb.y + sb.h) - Math.max(rb.y, sb.y));
+                const d = Math.hypot(sb.cx - rb.cx, sb.cy - rb.cy);
+                if (ov > bestOv || (!bestOv && d < bestD)) { best = s; bestOv = ov; if (!ov) bestD = d; }
+            }
+            const nm = best ? signalNameOf(best) : null;
+            if (nm) plan.push({ cell: r, name: nm.name, src: nm.src });
+            else missing.push(r);
+        }
+        if (!plan.length) {
+            toast('No signal found for the unlinked Route/Calling shapes. Link them one by one in the Inspector.');
+            if (missing.length) focusCell(missing[0].id);
+            return;
+        }
+        const routesOf = c => String((c.attrs && c.attrs.route && c.attrs.route.labels) || 'AUG,BUG,CUG,DUG');
+        let msg = 'Link ' + plan.length + ' Route/Calling shape(s) to these signals?\n\n';
+        msg += plan.slice(0, 25).map(p => '• ' + routesOf(p.cell) + '  @ ' + Math.round(p.cell.position.x) + ',' +
+            Math.round(p.cell.position.y) + '  →  ' + p.name + (p.src === 'post' ? '  (from nearest post)' : '')).join('\n');
+        if (plan.length > 25) msg += '\n… and ' + (plan.length - 25) + ' more';
+        if (missing.length) msg += '\n\n' + missing.length + ' shape(s) have no signal nearby and stay unlinked.';
+        msg += '\n\nCheck each name. You can still change any of them in the Inspector, and Undo reverts this.';
+        if (!confirm(msg)) return;
+        for (const p of plan) {
+            p.cell.attrs = p.cell.attrs || {};
+            p.cell.attrs.route = p.cell.attrs.route || {};
+            p.cell.attrs.route.assetName = p.name;
+            p.cell.attrs.route.assetId = '';
+        }
+        pushHistory();
+        render();
+        toast('Linked ' + plan.length + ' Route/Calling shape(s).' + (missing.length ? ' ' + missing.length + ' still need a manual link.' : ' Click Save to keep them.'));
+        if (missing.length) focusCell(missing[0].id);
+    }
+
+    /* Select one cell, centre the view on it (current zoom kept) and open it in the Inspector. */
+    function focusCell(id) {
+        const c = cellById(id);
+        if (!c) return false;
+        clearSelection();
+        state.selectedIds = [c.id];
+        state.selectedId = c.id;
+        const vb = parseViewBox(state.viewBox);
+        const cx = ((c.position && c.position.x) || 0) + ((c.size && c.size.width) || 0) / 2;
+        const cy = ((c.position && c.position.y) || 0) + ((c.size && c.size.height) || 0) / 2;
+        state.viewBox = Math.round(cx - vb.w / 2) + ' ' + Math.round(cy - vb.h / 2) + ' ' + Math.round(vb.w) + ' ' + Math.round(vb.h);
+        const vbInput = $('#viewbox-input');
+        if (vbInput) vbInput.value = state.viewBox;
+        render();
+        /* put the cursor straight into the link box when there is one */
+        const linkBox = $('#insp-route-asset-text');
+        if (linkBox) {
+            if (linkBox.scrollIntoView) linkBox.scrollIntoView({ block: 'center' });
+            linkBox.focus();
+        }
+        return true;
+    }
+
     function fitAll() {
         if (!state.cells.length) {
             toast('No elements to fit.');
@@ -2969,6 +3138,6 @@
         duplicateSelected, deleteSelected,
         toggleFullscreen, fitAll, selectAll, zoomBy,
         getLayout, setLayout,
-        refreshAssetRegistry, loadAssetsForType
+        refreshAssetRegistry, loadAssetsForType, focusCell, autoLinkRouteCalling
     };
 })();

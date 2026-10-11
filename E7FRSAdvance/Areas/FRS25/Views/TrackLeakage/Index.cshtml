@@ -3,14 +3,177 @@
     Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
 }
 
+<script>
+    /* FRS Advance: show the shared layout loader before the parser-blocking CDN libraries below
+       start downloading (they used to leave a blank page for several seconds). Hidden by
+       tlkPageReady() once the initial sites fetch settles (success or failure), or after 20 s. */
+    (function () {
+        var done = false;
+        window.tlkPageReady = function () {
+            if (done) return;
+            done = true;
+            if (window.E7Loader) window.E7Loader.hide();
+        };
+        if (window.E7Loader) window.E7Loader.show('Loading analysis' + String.fromCharCode(8230));
+        setTimeout(window.tlkPageReady, 20000);
+    })();
+</script>
+<style>
+    /* Keep the page root a well-behaved child of the layout's .e7-body flex column. */
+    #tlkApp { width: 100%; min-width: 0; }
+</style>
 <meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css?family=Rubik:400,400i,500,500i,700,700i&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script>
+    /* FRS Advance: theme this page's Plotly charts from the app tokens (html[data-aurora]).
+       The figures come from the analysis service with a light template (white paper, slate
+       text, light grid), which vanishes on the dark surface. Wrapping newPlot/react recolours
+       text / grid / axis lines / paper + plot backgrounds; trace colours are left alone.
+       On the header's e7ThemeChange every chart under #tlkApp is re-themed from its original
+       layout (current zoom kept). Plotly.toImage (PDF export) does not go through the
+       wrapper, so the report stays light. */
+    (function () {
+        if (!window.Plotly) return;
+        var LIGHT_GRIDS = { '#eef2f6': 1, '#eef2f7': 1, '#e2e8f0': 1, '#f1f5f9': 1, '#e5e7eb': 1, '#e5ecf6': 1, '#fff': 1, '#ffffff': 1, 'white': 1 };
+        var DARK_INKS = /^#(1e293b|0f172a|334155|475569|64748b|2a3f5f|444|444444|000|000000)$|^black$/i;
+        function tok(name, fb) {
+            var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return v || fb;
+        }
+        function palette(forceLight) {
+            var dark = !forceLight && document.documentElement.getAttribute('data-aurora') === 'dark';
+            if (forceLight) return { dark: false, text: '#55657a', grid: '#eef2f7', line: '#dde3ec', pop: '#ffffff' };
+            return {
+                dark: dark,
+                text: tok('--e7-text-2', dark ? '#aab6c6' : '#55657a'),
+                grid: dark ? 'rgba(140,175,235,0.12)' : tok('--e7-grid-line', '#eef2f7'),
+                line: tok('--e7-border-2', dark ? '#36424f' : '#dde3ec'),
+                pop: tok('--e7-surface', dark ? '#212934' : '#ffffff')
+            };
+        }
+        /* rough luminance 0..1 of a CSS colour; -1 = unknown / mostly transparent */
+        function lum(c) {
+            if (!c) return -1;
+            c = String(c).trim().toLowerCase();
+            if (c === 'white') return 1;
+            var m, r, g, b;
+            if ((m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(c))) { r = parseInt(m[1] + m[1], 16); g = parseInt(m[2] + m[2], 16); b = parseInt(m[3] + m[3], 16); }
+            else if ((m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/.exec(c))) { r = parseInt(m[1], 16); g = parseInt(m[2], 16); b = parseInt(m[3], 16); }
+            else if ((m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?/.exec(c))) {
+                if (m[4] !== undefined && parseFloat(m[4]) < 0.35) return -1;
+                r = +m[1]; g = +m[2]; b = +m[3];
+            } else return -1;
+            return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        }
+        function themeAxis(ax, p, tplAx) {
+            if (!ax || typeof ax !== 'object') return;
+            var grid = ax.gridcolor || (tplAx && tplAx.gridcolor);
+            if (!grid || LIGHT_GRIDS[String(grid).toLowerCase()] || p.dark) ax.gridcolor = p.grid;
+            if (!ax.linecolor || p.dark) ax.linecolor = p.line;
+            if (!ax.zerolinecolor || p.dark) ax.zerolinecolor = p.line;
+            ax.tickfont = ax.tickfont || {};
+            if (!ax.tickfont.color || p.dark) ax.tickfont.color = p.text;
+            if (ax.title && typeof ax.title === 'object') {
+                ax.title.font = ax.title.font || {};
+                if (!ax.title.font.color || p.dark) ax.title.font.color = p.text;
+            }
+        }
+        function themeLayout(layout, forceLight) {
+            if (!layout || typeof layout !== 'object') layout = {};
+            var p = palette(forceLight);
+            var tpl = (layout.template && layout.template.layout) || {};
+            layout.font = layout.font || {};
+            if (!layout.font.color || p.dark) layout.font.color = p.text;
+            if (layout.title && typeof layout.title === 'object') {
+                layout.title.font = layout.title.font || {};
+                if (!layout.title.font.color || p.dark) layout.title.font.color = p.text;
+            }
+            if (p.dark) {
+                /* light paper / plot area (own or from the template): let the dark surface show through */
+                var paper = layout.paper_bgcolor || tpl.paper_bgcolor || '#ffffff';
+                var plot = layout.plot_bgcolor || tpl.plot_bgcolor || '#ffffff';
+                if (lum(paper) > 0.6) layout.paper_bgcolor = 'rgba(0,0,0,0)';
+                if (lum(plot) > 0.6) layout.plot_bgcolor = 'rgba(0,0,0,0)';
+            }
+            if (layout.legend) {
+                layout.legend.font = layout.legend.font || {};
+                if (!layout.legend.font.color || p.dark) layout.legend.font.color = p.text;
+                if (p.dark && lum(layout.legend.bgcolor) > 0.6) layout.legend.bgcolor = 'rgba(0,0,0,0)';
+            }
+            Object.keys(layout).forEach(function (k) {
+                if (/^[xy]axis\d*$/.test(k)) themeAxis(layout[k], p, tpl[k.replace(/\d+$/, '')]);
+            });
+            if (!layout.xaxis) themeAxis(layout.xaxis = {}, p, tpl.xaxis);
+            if (!layout.yaxis) themeAxis(layout.yaxis = {}, p, tpl.yaxis);
+            (layout.annotations || []).forEach(function (a) {
+                if (!a) return;
+                if (!a.font || !a.font.color || (p.dark && DARK_INKS.test(a.font.color))) {
+                    a.font = a.font || {}; a.font.color = p.text;
+                }
+                if (p.dark && lum(a.bgcolor) > 0.6) a.bgcolor = p.pop;
+            });
+            if (p.dark && layout.hoverlabel && lum(layout.hoverlabel.bgcolor) > 0.6) {
+                layout.hoverlabel.bgcolor = p.pop;
+                layout.hoverlabel.font = layout.hoverlabel.font || {};
+                layout.hoverlabel.font.color = tok('--e7-text', '#dce4ee');
+            }
+            return layout;
+        }
+        function copy(o) { try { return JSON.parse(JSON.stringify(o || {})); } catch (e) { return {}; } }
+        function node(el) { return typeof el === 'string' ? document.getElementById(el) : el; }
+        var orig = {};
+        ['newPlot', 'react'].forEach(function (fn) {
+            orig[fn] = Plotly[fn];
+            if (typeof orig[fn] !== 'function') return;
+            Plotly[fn] = function (el, data, layout, config) {
+                var gd = node(el);
+                if (data && !Array.isArray(data) && typeof data === 'object' && data.data) {
+                    if (gd) { gd.__e7Layout = copy(data.layout); gd.__e7Config = data.config; }
+                    data.layout = themeLayout(data.layout);   // react(el, {data, layout, config})
+                    return orig[fn].call(this, el, data);
+                }
+                if (gd) { gd.__e7Layout = copy(layout); gd.__e7Config = config; }
+                return orig[fn].call(this, el, data, themeLayout(layout), config);
+            };
+        });
+        /* The chart's untouched original layout plus its live state (zoom, relayout shapes), so a
+           re-theme (light -> dark -> light) restores the figure's own backgrounds. */
+        function rebase(el) {
+            var base = copy(el.__e7Layout || el.layout);
+            Object.keys(el.layout).forEach(function (k) {
+                if (/^[xy]axis\d*$/.test(k) && el.layout[k]) {
+                    base[k] = base[k] || {};
+                    if (el.layout[k].range) base[k].range = el.layout[k].range.slice();
+                    base[k].autorange = el.layout[k].autorange;
+                }
+            });
+            if (el.layout.shapes) base.shapes = copy(el.layout.shapes);
+            return base;
+        }
+        window.addEventListener('e7ThemeChange', function () {
+            document.querySelectorAll('#tlkApp .js-plotly-plot').forEach(function (el) {
+                try {
+                    if (!el.layout || !el.data || typeof orig.react !== 'function') return;
+                    orig.react.call(Plotly, el, el.data, themeLayout(rebase(el)), el.__e7Config);
+                } catch (e) { }
+            });
+        });
+        /* PDF export: a light-themed copy of a rendered chart (the PDF page is white whatever the
+           app theme is). Usage: Plotly.toImage(e7PlotlyPrintFigure(el), {...}). */
+        window.e7PlotlyPrintFigure = function (el) {
+            try {
+                if (!el || !el.layout || !el.data) return el;
+                return { data: el.data, layout: themeLayout(rebase(el), true) };
+            } catch (e) { return el; }
+        };
+    })();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   <style>
-    * {
+    :where(#tlkApp, #tlkApp *) {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
@@ -54,13 +217,13 @@
       z-index: 100;
     }
 
-    .logo {
+    :where(#tlkApp) .logo {
       display: flex;
       align-items: center;
       gap: 12px;
     }
 
-    .logo-icon {
+    :where(#tlkApp) .logo-icon {
       width: 40px;
       height: 40px;
       background: linear-gradient(135deg, var(--accent), var(--red));
@@ -73,13 +236,13 @@
       color: #fff;
     }
 
-    .logo-text {
+    :where(#tlkApp) .logo-text {
       font-size: 20px;
       font-weight: 700;
       letter-spacing: -0.5px;
     }
 
-    .logo-text span {
+    :where(#tlkApp) .logo-text span {
       color: var(--accent);
     }
 
@@ -155,7 +318,7 @@
       border-color: var(--accent);
     }
 
-    .sidebar {
+    :where(#tlkApp) .sidebar {
       width: 340px;
       background: var(--surface);
       border-right: 1px solid var(--border);
@@ -165,7 +328,7 @@
       transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease, opacity 0.25s ease;
     }
 
-    .sidebar.collapsed {
+    :where(#tlkApp) .sidebar.collapsed {
       width: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
@@ -210,11 +373,11 @@
       text-align: left;
     }
 
-    .form-group {
+    :where(#tlkApp) .form-group {
       margin-bottom: 12px;
     }
 
-    .form-group label {
+    :where(#tlkApp) .form-group label {
       display: block;
       font-size: 14px;
       font-weight: 600;
@@ -222,7 +385,7 @@
       margin-bottom: 8px;
     }
 
-    .form-control {
+    :where(#tlkApp) .form-control {
       width: 100%;
       background: var(--surface);
       border: 1px solid var(--border);
@@ -235,7 +398,7 @@
       transition: 0.2s;
     }
 
-    .form-control:focus {
+    :where(#tlkApp) .form-control:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
     }
@@ -936,6 +1099,91 @@
     body #tlkApp .card-header, body #tlkApp .card-body { color: inherit !important; }
 </style>
 
+<style>
+    /* FRS Advance theme bridge for Track Shorting (#tlkApp).
+       1. The page palette is mapped to the app's --e7-* tokens, so the page follows the header's
+          Light/Dark toggle (html[data-aurora]); status colours are lifted for dark surfaces.
+       2. Components the global sheets repaint with !important (labels, form controls, headings)
+          are re-asserted with #e7Body #tlkApp (2,0,x), which out-ranks both aurora-bridge
+          (body[data-aurora] .x) and e7-energy7-theme (#e7Body .e7-body .x). This supersedes the
+          older "body #tlkApp" block above, which loses to #e7Body .e7-body .x. */
+    #e7Body #tlkApp {
+        --bg: var(--e7-surface-2);
+        --surface: var(--e7-surface);
+        --surface2: var(--e7-surface-3);
+        --border: var(--e7-border);
+        --accent: var(--e7-accent);
+        --accent-hover: var(--e7-accent-ink);
+        --text: var(--e7-text);
+        --muted: var(--e7-text-3);
+        /* colours that used to be hard-coded in the JS-built result markup */
+        --tlk-hover: var(--e7-border-2);
+        --tlk-inset: var(--e7-surface-2);
+        --tlk-danger: #dc2626;
+        --tlk-rose: #e11d48;
+        --tlk-purple: #7c3aed;
+    }
+
+    html[data-aurora="dark"] #e7Body #tlkApp {
+        --green: #3fb950;
+        --red: #f85149;
+        --orange: #f0883e;
+        --blue: #58a6ff;
+        --tlk-danger: #f85149;
+        --tlk-rose: #fb7185;
+        --tlk-purple: #b392f0;
+    }
+
+    /* labels: the bridge forces one colour on every label (even over inline styles) */
+    #e7Body #tlkApp label { color: var(--text) !important; }
+    #e7Body #tlkApp label[style*="color:var(--muted)"] { color: var(--muted) !important; }
+
+    /* form controls */
+    #e7Body #tlkApp select, #e7Body #tlkApp textarea, #e7Body #tlkApp .form-control,
+    #e7Body #tlkApp input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=button]):not([type=submit]) {
+        background-color: var(--surface) !important;
+        color: var(--text) !important;
+        border-color: var(--border) !important;
+    }
+
+    #e7Body #tlkApp select:focus, #e7Body #tlkApp textarea:focus, #e7Body #tlkApp .form-control:focus,
+    #e7Body #tlkApp input:not([type=checkbox]):not([type=radio]):focus {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 0 3px var(--e7-accent-soft) !important;
+    }
+
+    #e7Body #tlkApp select option { background: var(--surface) !important; color: var(--text) !important; }
+    #e7Body #tlkApp input::placeholder, #e7Body #tlkApp textarea::placeholder { color: var(--muted) !important; }
+    /* native date/time pickers draw their icon + popup in the right scheme */
+    html[data-aurora="dark"] #e7Body #tlkApp input, html[data-aurora="dark"] #e7Body #tlkApp select { color-scheme: dark; }
+
+    /* headings keep the page colours (Energy7 forces --e7-heading on h1-h6) */
+    #e7Body #tlkApp h1, #e7Body #tlkApp h2, #e7Body #tlkApp h3,
+    #e7Body #tlkApp h4, #e7Body #tlkApp h5, #e7Body #tlkApp h6 { color: var(--text) !important; }
+    #e7Body #tlkApp .error-card h4 { color: var(--red) !important; }
+
+    /* primary button: the app's primary gradient (white text on the light dark-mode accent was unreadable) */
+    #e7Body #tlkApp .analyze-btn:not(.secondary) {
+        background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));
+        color: #fff;
+    }
+    #e7Body #tlkApp .analyze-btn:not(.secondary):hover { filter: brightness(1.06); }
+    #e7Body #tlkApp .analyze-btn.secondary:hover { background: var(--e7-accent-soft); }
+    html[data-aurora="dark"] #e7Body #tlkApp .sidebar-toggle-btn:hover,
+    html[data-aurora="dark"] #e7Body #tlkApp .sidebar-toggle-btn.collapsed-active { color: var(--e7-surface-2); }
+
+    /* hard-coded light surfaces in the page CSS */
+    #e7Body #tlkApp .sum-card {
+        background: linear-gradient(145deg, var(--e7-surface), var(--e7-surface-2));
+        border-color: var(--border);
+    }
+    html[data-aurora="dark"] #e7Body #tlkApp .sum-card { box-shadow: var(--e7-shadow-card); }
+    html[data-aurora="dark"] #e7Body #tlkApp .sum-card:hover { box-shadow: var(--e7-shadow-pop); }
+    #e7Body #tlkApp .sum-card.total .val { color: var(--text); }
+    #e7Body #tlkApp .condition-header:hover { background: var(--tlk-hover); }
+    html[data-aurora="dark"] #e7Body #tlkApp .mode-tab-btn.active { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+</style>
+
 @* FRS Advance page header (617 theme): breadcrumb card like EquipmentRoom/Index. *@
 <section class="section e7-page-head">
     <div class="row">
@@ -964,19 +1212,6 @@
 <div id="tlkApp">
   <nav>
     <div style="display:flex; align-items:center; gap: 14px;">
-      <div class="logo"
-        style="display:flex; align-items:center; border: 4px solid black; padding: 4px 8px 4px 4px; background: white; margin: 5px;">
-        <div style="margin-right: 12px; display: flex;">
-          <svg width="36" height="46" viewBox="0 0 40 50">
-            <rect width="40" height="50" fill="black" />
-            <path d="M 10 10 L 30 10 L 30 16 L 16 16 L 16 21 L 26 21 L 26 27 L 16 27 L 16 34 L 30 34 L 30 40 L 10 40 Z"
-              fill="none" stroke="white" stroke-width="1.5" />
-          </svg>
-        </div>
-        <span
-          style="font-family: 'Courier New', Courier, monospace; font-size: 32px; font-weight: normal; color: black; letter-spacing: 1px;">Energy<sup
-            style="font-size: 20px;">7</sup></span>
-      </div>
 
       <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Collapse Sidebar (&lt;&lt;)">
         <svg id="toggle-icon-left" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1325,7 +1560,7 @@
         document.getElementById('site-select').innerHTML = '<option value="">Error loading sites</option>';
       }
     }
-    loadSites();
+    loadSites().then(window.tlkPageReady, window.tlkPageReady);
 
     // Load Tracks
     async function loadTracks() {
@@ -1364,7 +1599,7 @@
         if (selectAllLink) selectAllLink.style.display = 'inline';
       } catch (e) {
         console.error(e);
-        list.innerHTML = '<div style="color:red; font-size:13px; grid-column: span 2;">Error loading tracks.</div>';
+        list.innerHTML = '<div style="color:var(--tlk-danger, #dc2626); font-size:13px; grid-column: span 2;">Error loading tracks.</div>';
       }
     }
 
@@ -1909,7 +2144,7 @@
         const info = data.leakage_info || {};
         if (reasoningEl) {
           reasoningEl.innerHTML =
-            '<div style="margin-bottom:10px; font-size:11px; font-weight:700; color:#7c3aed; text-transform:uppercase;">AI Diagnosis</div>'
+            '<div style="margin-bottom:10px; font-size:11px; font-weight:700; color:var(--tlk-purple, #7c3aed); text-transform:uppercase;">AI Diagnosis</div>'
             + '<div style="font-size:16px; font-weight:700; color:var(--text); margin-bottom:10px;">' + (info.simple_summary || '') + '</div>'
             + '<div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:4px;">Why (detailed explanation)</div>'
             + '<div style="font-size:13px; color:var(--muted); line-height:1.5;">' + (info.reason || 'No reasoning returned.') + '</div>';
@@ -1917,7 +2152,7 @@
         btn.innerHTML = 'AI Analyzed';
         btn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
       } catch (err) {
-        if (reasoningEl) reasoningEl.innerHTML = '<span style="color:#dc2626;">AI analysis failed: ' + err.message + '</span>';
+        if (reasoningEl) reasoningEl.innerHTML = '<span style="color:var(--tlk-danger, #dc2626);">AI analysis failed: ' + err.message + '</span>';
         btn.innerHTML = 'Retry AI';
       } finally {
         btn.disabled = false;
@@ -1964,7 +2199,7 @@
         el.dataset.rendered = '1';
         _keepPlotSized(el);
       } catch (e) {
-        el.innerHTML = '<div style="padding:20px; color:#dc2626;">Plot render error</div>';
+        el.innerHTML = '<div style="padding:20px; color:var(--tlk-danger, #dc2626);">Plot render error</div>';
       }
     }
 
@@ -2026,7 +2261,7 @@
       if (el.style.display === 'none' || el.style.display === '') {
         el.style.display = 'block';
         btn.innerHTML = 'Detailed Plots (Detected Events & Zoom \u00b7 zoomable) <span style="font-size: 12px; color: var(--muted);">\u25b2</span>';
-        btn.style.background = '#e2e8f0';
+        btn.style.background = 'var(--tlk-hover, #e2e8f0)';
         const p = await ensureTrackPlotsLoaded(assetId);
         renderTrackPlot('eventsplot-' + assetId, p.events);
         (p.zooms || []).forEach((zj, idx) => renderTrackPlot('zoomplot-' + assetId + '-' + idx, zj));
@@ -2160,9 +2395,9 @@
           : "";
 
         const severityVal = r.leakage_info?.severity;
-        let sevColor = "#dc2626"; // Default red for Critical/High
+        let sevColor = "var(--tlk-danger, #dc2626)"; // Default red for Critical/High
         if (severityVal === "Moderate" || severityVal === "Low") {
-          sevColor = "#f97316"; // Orange
+          sevColor = "var(--orange)"; // Orange
         }
         const severityText = severityVal && severityVal !== "Normal"
           ? ` <span style="font-size: 0.85em; font-weight: 600; color: ${sevColor}; margin-left: 5px;">[${severityVal}]</span>`
@@ -2275,7 +2510,7 @@
               html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; font-size: 11px;">Cause</th>';
               html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--blue); text-transform: uppercase; font-size: 11px;">IF AUC</th>';
               html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--green); text-transform: uppercase; font-size: 11px;">IR AUC</th>';
-              html += '<th style="padding: 10px 12px; font-weight: 700; color: #e11d48; text-transform: uppercase; font-size: 11px;">Total AUC</th>';
+              html += '<th style="padding: 10px 12px; font-weight: 700; color: var(--tlk-rose, #e11d48); text-transform: uppercase; font-size: 11px;">Total AUC</th>';
               html += '</tr></thead><tbody>';
 
               const causeColors = {
@@ -2295,7 +2530,7 @@
                 html += '<td style="padding: 10px 12px;"><span style="display:inline-block; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; color:white; background:' + causeColor + ';">' + causeBadge + '</span></td>';
                 html += '<td style="padding: 10px 12px; font-weight: 600; color: var(--text);">' + ev.IF_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
                 html += '<td style="padding: 10px 12px; font-weight: 600; color: var(--text);">' + ev.IR_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
-                html += '<td style="padding: 10px 12px; font-weight: 700; color: #e11d48;">' + ev.Total_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
+                html += '<td style="padding: 10px 12px; font-weight: 700; color: var(--tlk-rose, #e11d48);">' + ev.Total_AUC.toFixed(2) + ' <span style="font-size:10px;color:var(--muted);">mA-d</span></td>';
                 html += '</tr>';
               });
               html += '</tbody></table></div>';
@@ -2317,7 +2552,7 @@
                       <button onclick="toggleDetailedPlots(this, 'detailed-${r.asset_id}', '${r.asset_id}')" style="width: 100%; padding: 12px; border-radius: 8px; background: var(--surface2); border: 1px solid var(--border); cursor: pointer; font-weight: 700; font-size: 14px; color: var(--text); transition: 0.2s; text-align: left; display: flex; justify-content: space-between; align-items: center;">
                           Detailed Plots (Detected Events & Zoom \u00b7 zoomable) <span style="font-size: 12px; color: var(--muted);">\u25bc</span>
                       </button>
-                      <div id="detailed-${r.asset_id}" style="display: none; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: #fafafa;">
+                      <div id="detailed-${r.asset_id}" style="display: none; margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--tlk-inset, #fafafa);">
                           <div style="font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Detected Leakage Events (Cleaned \u00b7 Non-Train)</div>
                           <div id="eventsplot-${r.asset_id}" style="width: 100%; min-height: 520px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;"></div>
                           ${(r.zoom_plots_json && r.zoom_plots_json.length > 0) ? `
