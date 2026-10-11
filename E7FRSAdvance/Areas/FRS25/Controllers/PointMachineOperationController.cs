@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.Web.Mvc;
 using E7FRSAdvance.Utility;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using E7MRIWeb.Areas.FRS25.Controllers;   // DeepSeekClient (Domain project keeps the 616 namespace)
 
 // FRS advance port of E7MRIWeb PointMachineOperationController ("AI/ML Analysis > Point Machine Operation"):
 // thin proxy over the Historian point-machine API (models 1-4). Same upstream routes as E7MRIWeb.
@@ -45,6 +47,63 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Content(json, "application/json");
         }
 
+        // Models 1 & 3 AI summary: generated here with DeepSeek (DeepSeekApiKey/DeepSeekModel, same
+        // keys Alert Analysis uses) instead of proxying the Historian service's Anthropic-backed
+        // api/pm-ai-summary(3). The page posts {assetName, siteName, windowStart, windowEnd, machines[]}
+        // and renders {verdict, points[], recommendation}.
+        private static readonly Lazy<DeepSeekClient> _deepseek = new Lazy<DeepSeekClient>(() => new DeepSeekClient(
+            ConfigurationManager.AppSettings["DeepSeekApiKey"],
+            ConfigurationManager.AppSettings["DeepSeekModel"] ?? "deepseek-v4-pro",
+            1500,
+            ConfigurationManager.AppSettings["DeepSeekBaseUrl"] ?? "https://api.deepseek.com/v1",
+            false));
+
+        private const string AiSummarySystemPrompt =
+            "You are a railway signalling maintenance engineer analysing point machine health for Indian Railways. " +
+            "You receive operation statistics for the two machines (Machine A and Machine B) of one point/asset over a time window: " +
+            "total operations, good/bad/no-data/incomplete-evidence percentages, the top fault families with counts, and a weekly bad% trend. " +
+            "Write a short diagnostic summary for a maintenance supervisor. Base every statement only on the numbers given; do not invent data. " +
+            "Reply with ONLY a JSON object, no markdown, in exactly this shape: " +
+            "{\"verdict\":\"one short line overall health verdict\",\"points\":[\"3 to 6 concise observations, each citing the numbers\"],\"recommendation\":\"one or two sentences of concrete maintenance action\"}";
+
+        private async Task<ActionResult> DeepSeekAiSummary()
+        {
+            Response.TrySkipIisCustomErrors = true;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ConfigurationManager.AppSettings["DeepSeekApiKey"]))
+                    return AiSummaryError(500, "DeepSeekApiKey is not configured.");
+
+                Request.InputStream.Position = 0;
+                string body;
+                using (var rd = new System.IO.StreamReader(Request.InputStream, Encoding.UTF8)) { body = await rd.ReadToEndAsync(); }
+
+                var messages = new object[] { new { role = "user", content = "Point machine data:\n" + body } };
+                string reply = await _deepseek.Value.SendMessageAsync(messages, null, AiSummarySystemPrompt);
+
+                string text = string.Concat(((JArray)JObject.Parse(reply)["content"] ?? new JArray())
+                    .Where(b => (string)b["type"] == "text").Select(b => (string)b["text"]));
+                int s = text.IndexOf('{'), e = text.LastIndexOf('}');
+                if (s < 0 || e <= s) return AiSummaryError(502, "AI returned no summary.");
+                var parsed = JObject.Parse(text.Substring(s, e - s + 1));
+
+                var result = new JObject
+                {
+                    ["verdict"] = (string)parsed["verdict"] ?? "",
+                    ["points"] = parsed["points"] as JArray ?? new JArray(),
+                    ["recommendation"] = (string)parsed["recommendation"] ?? ""
+                };
+                return Content(result.ToString(Formatting.None), "application/json");
+            }
+            catch (Exception ex) { return AiSummaryError(502, ex.Message); }
+        }
+
+        private ActionResult AiSummaryError(int status, string message)
+        {
+            Response.StatusCode = status;
+            return Content(JsonConvert.SerializeObject(new { error = message }), "application/json");
+        }
+
         // Model 1
         [HttpGet] public async Task<ActionResult> GetSites() { try { var r = await client.GetAsync("api/historian/sites"); var j = await r.Content.ReadAsStringAsync(); if (!r.IsSuccessStatusCode) return new HttpStatusCodeResult((int)r.StatusCode, j); return FilterSites(j); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
         [HttpGet] public async Task<ActionResult> GetLiveValue(string siteId, string assetId) { try { string q = !string.IsNullOrEmpty(siteId) ? $"SiteId={Uri.EscapeDataString(siteId)}" : $"AssetId={Uri.EscapeDataString(assetId ?? "")}"; return await ProxyGet($"api/historian/livevalue?{q}"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
@@ -53,7 +112,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpGet] public async Task<ActionResult> GetModelJson(string waveType) { if (string.IsNullOrWhiteSpace(waveType) || (!waveType.Equals("TWS", StringComparison.OrdinalIgnoreCase) && !waveType.Equals("IRS", StringComparison.OrdinalIgnoreCase))) return new HttpStatusCodeResult(400); try { return await ProxyGet($"api/model/{waveType}"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
         [HttpGet] public async Task<ActionResult> GetMonthlyCache(string siteId, string assetId) { try { return await ProxyGet($"api/monthly-health-cache?SiteId={Uri.EscapeDataString(siteId ?? "")}&AssetId={Uri.EscapeDataString(assetId ?? "")}"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
         [HttpPost, ValidateInput(false)] public async Task<ActionResult> PostMonthlyCache() { try { return await ProxyPost("api/monthly-health-cache"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
-        [HttpPost, ValidateInput(false)] public async Task<ActionResult> PostAiSummary() { try { return await ProxyPost("api/pm-ai-summary"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
+        [HttpPost, ValidateInput(false)] public Task<ActionResult> PostAiSummary() { return DeepSeekAiSummary(); }
 
         // Model 2
         [HttpGet] public async Task<ActionResult> GetPm2Sites() { try { var r = await client.GetAsync("api/pm2/sites"); var j = await r.Content.ReadAsStringAsync(); if (!r.IsSuccessStatusCode) return new HttpStatusCodeResult((int)r.StatusCode, j); return FilterSites(j); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
@@ -69,7 +128,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpPost, ValidateInput(false)] public async Task<ActionResult> PostPm3PredictFeedback() { try { return await ProxyPost("api/predict3/feedback"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
         [HttpGet] public async Task<ActionResult> GetPm3MonthlyCache(string siteId, string assetId) { try { return await ProxyGet($"api/monthly-health-cache3?SiteId={Uri.EscapeDataString(siteId ?? "")}&AssetId={Uri.EscapeDataString(assetId ?? "")}"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
         [HttpPost, ValidateInput(false)] public async Task<ActionResult> PostPm3MonthlyCache() { try { return await ProxyPost("api/monthly-health-cache3"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
-        [HttpPost, ValidateInput(false)] public async Task<ActionResult> PostPm3AiSummary() { try { return await ProxyPost("api/pm-ai-summary3"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
+        [HttpPost, ValidateInput(false)] public Task<ActionResult> PostPm3AiSummary() { return DeepSeekAiSummary(); }
         [HttpGet] public async Task<ActionResult> GetPm3PdfReport(string siteId, string assetId, string assetName) { try { var q = $"SiteId={Uri.EscapeDataString(siteId ?? "")}&AssetId={Uri.EscapeDataString(assetId ?? "")}&AssetName={Uri.EscapeDataString(assetName ?? "")}"; return await ProxyGet($"pm_operation_combined/pdf?{q}"); } catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); } }
 
         // Model 4

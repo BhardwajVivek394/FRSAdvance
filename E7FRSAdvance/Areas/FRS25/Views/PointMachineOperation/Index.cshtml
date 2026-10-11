@@ -6535,10 +6535,17 @@
                             // instead of the live page's horizontal scroll (mirrors the
                             // print CSS rule that already flex-wraps .class-strip for
                             // print, since a static PDF page can't scroll either) \u2500\u2500
-                            for (const [dirLabel, stripId] of [['Normal (Forward)', `classStrip${SIDE}_fwd3`], ['Reverse', `classStrip${SIDE}_rev3`]]) {
-                                const stripEl = document.getElementById(stripId);
-                                if (!stripEl) continue;
-                                const tiles = Array.from(stripEl.querySelectorAll('.class-tile'));
+                            const curKey3 = SIDE === 'A' ? 'aCur' : 'bCur';
+                            const tileTimePdf3 = t => t.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' ' + t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                            const toRgb3 = c => {
+                                const s = String(c || '').trim();
+                                let m = /^#?([0-9a-f]{6})$/i.exec(s);
+                                if (m) { const n = parseInt(m[1], 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+                                m = /rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/i.exec(s);
+                                return m ? [+m[1], +m[2], +m[3]] : [139, 144, 172];
+                            };
+                            for (const [dirLabel, groupKey] of [['Normal (Forward)', `${SIDE.toLowerCase()}_fwd`], ['Reverse', `${SIDE.toLowerCase()}_rev`]]) {
+                                const tiles = (OP_GROUPS[groupKey] && OP_GROUPS[groupKey].items) || [];
                                 if (!tiles.length) continue;
 
                                 ensure(20);
@@ -6556,22 +6563,33 @@
                                     const col = i % perRow;
                                     if (col === 0) ensure(rowH);
                                     const xPos = M + col * (tileW + gap);
-                                    const tile = tiles[i];
-                                    const plotDiv = tile.querySelector('.class-tile-plot');
-                                    const labelDiv = tile.querySelector('.class-tile-label');
-                                    const timeDiv = tile.querySelector('.class-tile-time');
-                                    const png = plotDiv ? await capturePlot(plotDiv.id, 140, 50) : null;
+                                    const it = tiles[i];
+                                    const rgb = toRgb3(it.color);
 
-                                    if (labelDiv) {
-                                        doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(60, 60, 60);
-                                        const lbl = doc.splitTextToSize(cleanTxt3(labelDiv.textContent), tileW)[0] || '';
-                                        doc.text(lbl, xPos, y + labelH - 1);
+                                    doc.setFontSize(6.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(60, 60, 60);
+                                    const lbl = doc.splitTextToSize(cleanTxt3(it.label), tileW)[0] || '';
+                                    doc.text(lbl, xPos, y + labelH - 1);
+
+                                    // Sparkline as vector segments (downsampled to <=80 points) -
+                                    // same autoscaled y-range the live tile's hidden-axis plot uses.
+                                    const raw = (it.op[curKey3] || []).filter(v => typeof v === 'number' && isFinite(v));
+                                    if (raw.length > 1) {
+                                        const step = Math.max(1, Math.ceil(raw.length / 80));
+                                        const pts = [];
+                                        for (let k = 0; k < raw.length; k += step) pts.push(raw[k]);
+                                        if (pts[pts.length - 1] !== raw[raw.length - 1]) pts.push(raw[raw.length - 1]);
+                                        let lo = Math.min(...pts), hi = Math.max(...pts);
+                                        if (hi === lo) { hi += 1; lo -= 1; }
+                                        const px = k => xPos + k / (pts.length - 1) * tileW;
+                                        const py = v => y + labelH + 1 + (1 - (v - lo) / (hi - lo)) * (tileImgH - 2);
+                                        const segs = [];
+                                        for (let k = 1; k < pts.length; k++) segs.push([px(k) - px(k - 1), py(pts[k]) - py(pts[k - 1])]);
+                                        doc.setDrawColor(rgb[0], rgb[1], rgb[2]); doc.setLineWidth(0.6);
+                                        doc.lines(segs, px(0), py(pts[0]), [1, 1], 'S', false);
                                     }
-                                    if (png) doc.addImage(png, 'PNG', xPos, y + labelH, tileW, tileImgH);
-                                    if (timeDiv) {
-                                        doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(120, 120, 120);
-                                        doc.text(cleanTxt3(timeDiv.textContent), xPos, y + labelH + tileImgH + timeH);
-                                    }
+
+                                    doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(120, 120, 120);
+                                    doc.text(cleanTxt3(tileTimePdf3(it.x)), xPos, y + labelH + tileImgH + timeH);
                                     if (col === perRow - 1 || i === tiles.length - 1) y += rowH;
                                 }
                                 y += 8;
@@ -7230,6 +7248,10 @@
                         items.push({ op: o, x: o.time, color: c.color, label: c.label });
                     });
                     OP_GROUPS[groupKey] = { side, elId, items };
+                    // PDF export draws these sparklines itself as vector lines straight
+                    // from OP_GROUPS - building one Plotly plot per op (thousands over a
+                    // 30-day window) only to rasterise each again was what made export slow.
+                    if (window.__forcePdfPrint3 === true) return;
 
                     if (!items.length) {
                         container.innerHTML = '<div style="font-size:12px; color:var(--text-muted); padding:10px;">No data.</div>';
