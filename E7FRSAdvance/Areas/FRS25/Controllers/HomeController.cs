@@ -461,6 +461,30 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         {
                             string jsonString = response.Content.ReadAsStringAsync().Result;
                             mRDPMSHealthLiveLister = JsonConvert.DeserializeObject<RDPMSHealthLiveLister>(jsonString);
+
+                            // Ported from 616: drop ELD / Equipment Room, apply attribute aliases, and
+                            // narrow IPS assets so the dashboard's sensor/asset data matches the RDPMS page.
+                            RemoveExcludedAssetTypes(mRDPMSHealthLiveLister);
+
+                            if (mRDPMSHealthLiveLister != null && mRDPMSHealthLiveLister.mAssetInfos != null && mRDPMSHealthLiveLister.mAssetInfos.Count > 0)
+                            {
+                                foreach (var assetInfo in mRDPMSHealthLiveLister.mAssetInfos)
+                                {
+                                    if (assetInfo.AttributeAliasName.IsNotNullOrEmpty())
+                                    {
+                                        assetInfo.AttributeName = assetInfo.AttributeAliasName;
+                                    }
+                                }
+                                if (mRDPMSHealthLiveLister.mAssets != null)
+                                {
+                                    // Execute only for IPS Asset Type
+                                    if (mRDPMSHealthLiveLister.SearchCriteria.AssetTypeIds != null && mRDPMSHealthLiveLister.SearchCriteria.AssetTypeIds.Contains(E7FRSAdvance.Utility.Utility.FRSAssetType.IPS.GetHashCode()))
+                                    {
+                                        var assetIds = mRDPMSHealthLiveLister.mAssetInfos.Select(x => x.AssetId).Distinct().ToList();
+                                        mRDPMSHealthLiveLister.mAssets = mRDPMSHealthLiveLister.mAssets.Where(x => assetIds.Contains(x.AssetId)).ToList();
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -474,6 +498,67 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
 
             return mRDPMSHealthLiveLister;
+        }
+
+        // Ported from 616 (E7MRIV2Web): asset types that must never appear in dashboard health data.
+        private static readonly string[] ExcludedAssetTypeNames =
+        {
+            "ELD",
+            "Equipment Room"
+        };
+        private static void RemoveExcludedAssetTypes(RDPMSHealthLiveLister lister)
+        {
+            if (lister == null)
+            {
+                return;
+            }
+
+            if (lister.mAssets == null || lister.mAssets.Count == 0)
+            {
+                return;
+            }
+
+            int removedCount = lister.mAssets
+                .RemoveAll(x => x != null && IsExcludedAssetType(x.AssetTypeName));
+
+            if (removedCount == 0)
+            {
+                return;
+            }
+
+            if (lister.mAssetInfos != null && lister.mAssetInfos.Count > 0)
+            {
+                var allowedAssetIds = lister.mAssets
+                    .Where(x => x != null)
+                    .Select(x => x.AssetId)
+                    .Distinct()
+                    .ToList();
+
+                lister.mAssetInfos
+                    .RemoveAll(x => x == null || !allowedAssetIds.Contains(x.AssetId));
+            }
+        }
+        private static bool IsExcludedAssetType(string assetTypeName)
+        {
+            if (string.IsNullOrWhiteSpace(assetTypeName))
+            {
+                return false;
+            }
+
+            string trimmedName = assetTypeName.Trim();
+
+            for (int i = 0; i < ExcludedAssetTypeNames.Length; i++)
+            {
+                if (string.Equals(
+                        trimmedName,
+                        ExcludedAssetTypeNames[i],
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // Create a model class

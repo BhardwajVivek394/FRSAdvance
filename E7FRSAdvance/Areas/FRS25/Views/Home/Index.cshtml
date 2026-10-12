@@ -3291,6 +3291,26 @@
         gap: 8px;
     }
 
+    .shm-site-pick-item {
+        padding: 10px 14px;
+        border: 1px solid #eef0f0;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #05004E;
+        cursor: pointer;
+        margin-bottom: 8px;
+    }
+
+        .shm-site-pick-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .shm-site-pick-item:hover {
+            background: #f8f9ff;
+            border-color: #dee2e6;
+        }
+
     .shm-sensor-item {
         display: flex;
         align-items: center;
@@ -3747,13 +3767,13 @@
                     <button type="button" class="shm-seg-btn active" data-value="any">Any issue</button>
                     <button type="button" class="shm-seg-btn" data-value="4g">4G down</button>
                     <button type="button" class="shm-seg-btn" data-value="ofc">OFC down</button>
-                    <button type="button" class="shm-seg-btn" data-value="a10">A10s missing</button>
+                    <button type="button" class="shm-seg-btn" data-value="a10">IoT missing</button>
                 </div>
                 <div class="shm-seg" id="shmFilterSort" data-value="issues">
                     <button type="button" class="shm-seg-btn active" data-value="issues">Issues first</button>
                     <button type="button" class="shm-seg-btn" data-value="name">By name</button>
                 </div>
-                <div class="shm-search"><input type="text" id="shmSearch" placeholder="Cluster / modem / A10&hellip;"></div>
+                <div class="shm-search"><input type="text" id="shmSearch" placeholder="Cluster / Network / IoT&hellip;"></div>
                 <button type="button" class="shm-btn-refresh" id="shmBtnRefresh">&#8635; Refresh</button>
             </section>
             <div class="shm-grid" id="shmGrid"></div>
@@ -3789,6 +3809,20 @@
                 <button type="button" class="shm-seg-btn" data-value="cluster">Cluster wise</button>
             </div>
             <div class="shm-sensor-list" id="shmSensorList"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== STATION PICKER (shown when a card is opened from "All Stations") ==================== -->
+<div class="shm-overlay" id="shmSitePickerOverlay">
+    <div class="shm-modal shm-modal-sm">
+        <div class="shm-modal-head">
+            <h3>Select a Station</h3>
+            <button type="button" class="shm-close" onclick="closeSitePickerModal()">&times;</button>
+        </div>
+        <div class="shm-modal-body">
+            <div class="shm-search" style="margin-bottom:12px;"><input type="text" id="shmSitePickerSearch" placeholder="Search station&hellip;"></div>
+            <div class="shm-sensor-list" id="shmSitePickerList" style="max-height:340px;overflow-y:auto;"></div>
         </div>
     </div>
 </div>
@@ -3928,9 +3962,9 @@ function formatApiEndDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'
 (function clk(){var e=document.getElementById('liveClock');if(e){var n=new Date();e.textContent=n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});}setTimeout(clk,1000);})();
 // Search debounce
 var _sBusy=false;
-function onSearchClick(b){if(_sBusy)return;_sBusy=true;if(b)b.disabled=true;buildSiteCache();renderSiteTabs();fnBindAssetAndAlertCount();setTimeout(function(){_sBusy=false;if(b)b.disabled=false;},3000);}
+function onSearchClick(b){if(_sBusy)return;_sBusy=true;if(b)b.disabled=true;buildSiteCache();renderSiteTabs();fnBindAssetAndAlertCount(true);setTimeout(function(){_sBusy=false;if(b)b.disabled=false;},3000);}
     $(document).ready(function () {
-  fnBindAssetAndAlertCount();
+  fnBindAssetAndAlertCount(true);
   setTimeout(initDatePicker, 100);
   buildSiteCache();
   renderSiteTabs();
@@ -4266,22 +4300,22 @@ function getAllSiteValues(){
 }
 
 // ==================== DATA LOAD ====================
-function fnBindAssetAndAlertCount() {
+function fnBindAssetAndAlertCount(includeIOT) {
   $.ajax({
     url:'/FRS25/Home/GetAssetList', type:'POST', contentType:'application/json',
     data:JSON.stringify({ZoneIds:getValues('zone'),DivisionIds:getValues('division'),SiteIds:getEffectiveSiteIds()}),
     success: function(r){
       fnGetSystemData();
-      if(r){globalAssetData=JSON.parse(r.Record);filterAssetTypeCards(globalAssetData);fnBindWithOutAcknowledgementAlert(globalAssetData);}
+      if(r){globalAssetData=JSON.parse(r.Record);filterAssetTypeCards(globalAssetData);if(includeIOT)fnBindWithOutAcknowledgementAlert(globalAssetData);}
       else filterAssetTypeCards([]);
-      fnGetIOTCount();
+      fnGetIOTCount();                  // always: refreshes the live IOT/Network/Gateway cards (AlertLiveSnapshot reconnect → fresh snapshot). The loud bits (loader + alert/asset-chart reload above) run only on user actions.
       fnGetSensorLiveData();
     }
   });
 }
 
-// Auto-refresh asset/alert counts every 60 seconds
-setInterval(fnBindAssetAndAlertCount, 60000);
+// Auto-refresh every 60 seconds — lightweight (no socket reconnect, no alert-loader flash); live IOT/Network/Gateway come from the persistent WS.
+setInterval(function () { fnBindAssetAndAlertCount(false); }, 60000);
 
 // ── SENSOR (polled REST — decoupled from WebSocket asset stream) ──────
 function fnGetSensorLiveData() {
@@ -4317,8 +4351,7 @@ function recomputeSensorHealth(list) {
     }
 }
 
-// Poll sensor live data every 60 seconds — matches backend cache/refresh cadence
-setInterval(fnGetSensorLiveData, 60000);
+// Sensor live data is polled via fnBindAssetAndAlertCount's 60s heartbeat (and on user actions); a separate timer here would double-poll.
 
 function filterAssetTypeCards(assetData) {
   var siteIds=getValues('site');
@@ -4710,7 +4743,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 html += '<div class="alert-item" id="' + uid + '">';
                 html += '<div class="alert-item-header" onclick="toggleAlertItem(\'' + uid + '\')">';
                 html += '<div><div class="alert-item-name"><i class="fas fa-microchip" style="color:var(--blue);font-size:11px;margin-right:6px;"></i>' + (it.AssetName || 'Asset ' + it.AssetId) + '</div>';
-                if (it.AssetName && it.AssetId) html += '<div class="alert-item-sub">ID: ' + it.AssetId + '</div>';
+                // Sensor/Asset ID line removed from the dashboard popup (matches 616).
                 html += '</div>';
                 html += '<span class="alert-item-right"><span class="alert-type-badge ' + typeCls + '">' + typeText + '</span><i class="fas fa-chevron-down alert-chevron"></i></span></div>';
                 html += '<div class="alert-item-detail"><div class="alert-detail-grid">';
@@ -4765,7 +4798,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             $tab.find('.nav-link').removeClass('active'); $(this).addClass('active');
             var sid = $(this).data('site-id');
             activeTabSiteId = sid ? sid.toString() : null;
-            fnBindAssetAndAlertCount();
+            fnBindAssetAndAlertCount(true);
         });
     }
     function escapeHtml(str) { return $('<div>').text(str).html(); }
@@ -4775,6 +4808,19 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
     var iotFirst = true, sensorFirst = true, networkFirst = true, gatwayFirst = true;
     var wsConnections = {}, wsReconnectTimers = {}, wsReconnectAttempts = {}, wsIsConnected = {}, wsHeartbeatIntervals = {}, wsLastMessageTimes = {};
     var MAX_RECONNECT_ATTEMPTS = 15, RECONNECT_DELAY = 3000, WS_HEARTBEAT_TIMEOUT = 30000;
+
+    // Redraw a chart only when the numbers that matter — Total and Failure — actually
+    // changed since its last render (Healthy = Total - Failure, so it's covered). This
+    // stops echarts dispose+init churn on every snapshot while guaranteeing the bar can
+    // never go stale vs the card: the old gate compared Failure only, so a change in
+    // Total alone updated the card text but left the bar showing the previous value.
+    var lastChartKeys = {};
+    function shouldRedrawChart(chartId, total, failure) {
+        var key = total + '|' + failure;
+        if (lastChartKeys[chartId] === key) return false;
+        lastChartKeys[chartId] = key;
+        return true;
+    }
 
     function connectWebSocket(json) {
         disconnectWebSocket();
@@ -4817,34 +4863,44 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
 
     function handleWsMessage(siteId, batch, json) {
         if (batch.MessageType !== 'InitialSnapshot') return;
-        if (!Array.isArray(batch.Alerts) || batch.Alerts.length === 0) return;
+        // Empty snapshot = this station is all-healthy. Still bind so faulty counts reset to 0
+        // (the old early-return left the cards showing the previous, stale faulty numbers).
+        var alerts = Array.isArray(batch.Alerts) ? batch.Alerts : [];
         var totalFaltyIot = 0, totalFaultyNetwork = 0, totalFaultyGWNetwork = 0, totalFaultySensor = 0;
-        batch.Alerts.filter(function (a) { return a.sourceType === 'Modem_MQTT' && a.alertState === 'Active'; }).forEach(function (a) {
+        alerts.filter(function (a) { return a.sourceType === 'Modem_MQTT' && a.alertState === 'Active'; }).forEach(function (a) {
             if (!a.alertIdentifier) return;
             var modemId = extractIdentifier(a.alertIdentifier, 'deviceId');
             if (json.mClusters && modemId && json.mClusters.filter(function (c) { return c.SiteId == a.siteId && c.ModemId == modemId; })[0]) totalFaultyNetwork++;
         });
-        batch.Alerts.filter(function (a) { return a.sourceType === 'A10_MQTT' && a.alertState === 'Active'; }).forEach(function (a) {
+        alerts.filter(function (a) { return a.sourceType === 'A10_MQTT' && a.alertState === 'Active'; }).forEach(function (a) {
             if (!a.alertIdentifier) return;
             var a10Id = extractIdentifier(a.alertIdentifier, 'deviceId'), clusterId = extractIdentifier(a.alertIdentifier, 'clusterId');
             if (json.mADCs && a10Id && json.mADCs.filter(function (adc) { return adc.SiteId == a.siteId && adc.ADCNumber == a10Id && (!clusterId || adc.ClusterId == clusterId); })[0]) { totalFaltyIot++; $('#spnA10' + a10Id).text('Faulty'); }
         });
-        batch.Alerts.filter(function (a) { return a.sourceType === 'GatewayHealth' && a.alertState === 'Active'; }).forEach(function (a) {
+        alerts.filter(function (a) { return a.sourceType === 'GatewayHealth' && a.alertState === 'Active'; }).forEach(function (a) {
             if (json.GatewaySiteId && json.GatewaySiteId.filter(function (sid) { return sid == a.siteId; })[0]) totalFaultyGWNetwork++;
         });
-        batch.Alerts.filter(function (a) { return a.sourceType === 'Tag' && a.alertState === 'Active'; }).forEach(function (a) {
+        alerts.filter(function (a) { return a.sourceType === 'Tag' && a.alertState === 'Active'; }).forEach(function (a) {
             if (!a.alertDescription) return;
             var aM = a.alertDescription.match(/AssetId:(\d+)/), atM = a.alertDescription.match(/AttributeId:(\d+)/);
             if (!aM || !atM) return;
             if (json.mAssetInfos && json.mAssetInfos.filter(function (info) { return info.SiteId == a.siteId && info.AssetId == aM[1] && info.AssetAttributeId == atM[1]; })[0]) totalFaultySensor++;
         });
-        if (fnBindIOTCard({ TotalADC: json.mADCs.length, HelthyCount: json.mADCs.length - totalFaltyIot, FailurCount: totalFaltyIot }) || iotFirst) { iotFirst = false; fnBindIOTChart({ TotalADC: json.mADCs.length, HelthyCount: json.mADCs.length - totalFaltyIot, FailurCount: totalFaltyIot }); }
-        if (fnBindNetworkCard({ TotalCluster: json.mClusters.length, HelthyCount: json.mClusters.length - totalFaultyNetwork, FailurCount: totalFaultyNetwork }) || networkFirst) { networkFirst = false; fnBindNetworkChart({ TotalCluster: json.mClusters.length, HelthyCount: json.mClusters.length - totalFaultyNetwork, FailurCount: totalFaultyNetwork }); }
-        if (fnBindGatwayCard({ TotalGatway: json.GatewaySiteId.length, HelthyCount: json.GatewaySiteId.length - totalFaultyGWNetwork, FailurCount: totalFaultyGWNetwork }) || gatwayFirst) { gatwayFirst = false; fnBindGatwayChart({ TotalGatway: json.GatewaySiteId.length, HelthyCount: json.GatewaySiteId.length - totalFaultyGWNetwork, FailurCount: totalFaultyGWNetwork }); }
-        // Sensor card is now driven by fnGetSensorLiveData() (REST poll every 60s) using ResetTime rule.
-        // Previously computed here from mAssetInfos.length + Tag alerts, but that treated ALL asset infos
-        // as sensors and produced misleading totals. Kept disabled to avoid overwriting the REST value.
-        // if (fnBindSensorCard({ TotalSensor: json.mAssetInfos.length, HelthyCount: json.mAssetInfos.length - totalFaultySensor, FailurCount: totalFaultySensor }) || sensorFirst) { sensorFirst = false; fnBindSensorChart({ TotalSensor: json.mAssetInfos.length, HelthyCount: json.mAssetInfos.length - totalFaultySensor, FailurCount: totalFaultySensor }); }
+        // Card text always reflects the latest snapshot (including all-healthy = 0 faulty); the
+        // bar redraws only when Total or Failure actually changed, so it can never drift from
+        // the card value (fixes "card vs bar value different").
+        var iotTotal = (json.mADCs || []).length;
+        fnBindIOTCard({ TotalADC: iotTotal, HelthyCount: iotTotal - totalFaltyIot, FailurCount: totalFaltyIot });
+        if (shouldRedrawChart('iot', iotTotal, totalFaltyIot)) fnBindIOTChart({ TotalADC: iotTotal, HelthyCount: iotTotal - totalFaltyIot, FailurCount: totalFaltyIot });
+
+        var nwTotal = (json.mClusters || []).length;
+        fnBindNetworkCard({ TotalCluster: nwTotal, HelthyCount: nwTotal - totalFaultyNetwork, FailurCount: totalFaultyNetwork });
+        if (shouldRedrawChart('network', nwTotal, totalFaultyNetwork)) fnBindNetworkChart({ TotalCluster: nwTotal, HelthyCount: nwTotal - totalFaultyNetwork, FailurCount: totalFaultyNetwork });
+
+        var gwTotal = (json.GatewaySiteId || []).length;
+        fnBindGatwayCard({ TotalGatway: gwTotal, HelthyCount: gwTotal - totalFaultyGWNetwork, FailurCount: totalFaultyGWNetwork });
+        if (shouldRedrawChart('gateway', gwTotal, totalFaultyGWNetwork)) fnBindGatwayChart({ TotalGatway: gwTotal, HelthyCount: gwTotal - totalFaultyGWNetwork, FailurCount: totalFaultyGWNetwork });
+        // Sensor card is driven by fnGetSensorLiveData() (REST poll) using the ResetTime rule.
         resizeDashboardCharts();
     }
 
@@ -4969,8 +5025,10 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
     // socket — three times the connections — which is what exhausted the browser
     // (ERR_INSUFFICIENT_RESOURCES) and stalled the load. The web dashboard can fan out
     // because these two topics REPLACE its alert socket; here they are additional.
-    function shmConnectHealthSockets() {
-        var siteId = shmFocusedSiteId();
+    function shmConnectHealthSockets(explicitSiteId) {
+        // explicitSiteId is set when the user picks a station from the site-picker (dashboard is
+        // on "All Stations"); otherwise fall back to the focused tab / single site in scope.
+        var siteId = (explicitSiteId != null) ? String(explicitSiteId) : shmFocusedSiteId();
 
         if (!siteId) {
             if (shmLastDeviceSiteIds !== null) {
@@ -5088,26 +5146,70 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
     }
 
     // ── STATION HEALTH POPUP — open / close ──────────────────────────────
-    function openSiteHealthModal() {
-        var siteId = shmFocusedSiteId();
-        if (!siteId) {
-            alert('Select a single station tab above to view its live health details.');
-            return;
-        }
-        shmConnectHealthSockets();   // no-op if already subscribed to this station
+    // ── SITE PICKER — "All Stations" scope defaults to a station chooser ─────
+    // Resolves which single station the popup should show. If a station tab is active, or the
+    // current filter already narrows to one site, resolves immediately; otherwise opens a picker
+    // listing every station in scope (so the Device/Sensor cards open from "All Stations" instead
+    // of refusing with an alert).
+    function resolveOrPickSite(onResolved) {
+        var sid = shmFocusedSiteId();
+        if (sid) { onResolved(sid); return; }
+        openSitePickerModal(getEffectiveSiteIds(), onResolved);
+    }
 
-        shmCurrentSiteId = String(siteId);
-        $('#shmModalOverlay').addClass('open');
+    var _sitePickerCallback = null;
+    function openSitePickerModal(candidateIds, onResolved) {
+        _sitePickerCallback = onResolved;
+        var idSet = null;
+        if (candidateIds && candidateIds.length) {
+            idSet = {};
+            candidateIds.forEach(function (id) { idSet[String(id)] = true; });
+        }
+        var items = (allSiteItems || []).filter(function (s) { return !idSet || idSet[s.value]; });
+        if (!items.length) items = allSiteItems || [];
+        var html = items.map(function (s) {
+            return '<div class="shm-site-pick-item" data-site-id="' + s.value + '">' + escapeHtml(s.text) + '</div>';
+        }).join('');
+        $('#shmSitePickerList').html(html || '<div class="shm-empty">No stations available.</div>');
+        $('#shmSitePickerSearch').val('');
+        $('#shmSitePickerOverlay').addClass('open');
         $('body').css('overflow', 'hidden');
+    }
+    function closeSitePickerModal() {
+        $('#shmSitePickerOverlay').removeClass('open');
+        $('body').css('overflow', '');
+        _sitePickerCallback = null;
+    }
+    $(document).on('click', '#shmSitePickerList .shm-site-pick-item', function () {
+        var siteId = $(this).data('site-id').toString();
+        var cb = _sitePickerCallback;
+        closeSitePickerModal();
+        if (cb) cb(siteId);
+    });
+    $(document).on('input', '#shmSitePickerSearch', function () {
+        var q = $(this).val().toLowerCase();
+        $('#shmSitePickerList .shm-site-pick-item').each(function () {
+            $(this).toggle($(this).text().toLowerCase().indexOf(q) > -1);
+        });
+    });
+    $(document).on('click', '#shmSitePickerOverlay', function (e) { if (e.target === this) closeSitePickerModal(); });
 
-        var msg = groupHealthState[shmCurrentSiteId];
-        if (msg) {
-            shmRenderAll(msg);
-        } else {
-            $('#shmStatRow,#shmBanner,#shmFleetCard,#shmMeters').html('');
-            $('#shmGrid').html('<div class="shm-empty">Waiting for live data from this station&hellip;</div>');
-            $('#shmModalTitle').text('Live Station Health');
-        }
+    function openSiteHealthModal() {
+        resolveOrPickSite(function (siteId) {
+            shmConnectHealthSockets(siteId);   // connect this station's sockets (no-op if already subscribed)
+            shmCurrentSiteId = String(siteId);
+            $('#shmModalOverlay').addClass('open');
+            $('body').css('overflow', 'hidden');
+
+            var msg = groupHealthState[shmCurrentSiteId];
+            if (msg) {
+                shmRenderAll(msg);
+            } else {
+                $('#shmStatRow,#shmBanner,#shmFleetCard,#shmMeters').html('');
+                $('#shmGrid').html('<div class="shm-empty">Waiting for live data from this station&hellip;</div>');
+                $('#shmModalTitle').text('Live Station Health');
+            }
+        });
     }
 
     function closeSiteHealthModal() {
@@ -5120,7 +5222,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
     function shmFriendlyChannel(channel) {
         var map = {
             '4G_TCP': '4G TCP', '4G_MQTT': '4G MQTT', 'OFC_TCP': 'OFC TCP', 'OFC_MQTT': 'OFC MQTT',
-            'A10_TCP': 'A10 TCP', 'A10_MQTT': 'A10 MQTT', 'A10_OFC': 'A10 OFC'
+            'A10_TCP': 'IoT TCP', 'A10_MQTT': 'IoT MQTT', 'A10_OFC': 'IoT OFC'
         };
         return map[channel] || String(channel).replace(/_/g, ' ');
     }
@@ -5180,7 +5282,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         $('#shmStatRow').html(
             '<div class="shm-stat-card"><div class="shm-stat-label">Clusters</div><div class="shm-stat-value">' + (s.clustersTotal || 0) + '</div></div>' +
             '<div class="shm-stat-card ' + (down > 0 ? 'warn' : '') + '"><div class="shm-stat-label">Channels down</div><div class="shm-stat-value">' + down + '</div></div>' +
-            (maskedCount > 0 ? '<div class="shm-stat-card muted"><div class="shm-stat-label">A10 masked</div><div class="shm-stat-value">' + maskedCount + '</div></div>' : '') +
+            (maskedCount > 0 ? '<div class="shm-stat-card muted"><div class="shm-stat-label">IoT masked</div><div class="shm-stat-value">' + maskedCount + '</div></div>' : '') +
             '<div class="shm-stat-card"><div class="shm-stat-label">Station</div><div class="shm-stat-value">' + (msg.siteName || ('Site ' + msg.siteId)) + '</div></div>'
         );
     }
@@ -5207,54 +5309,99 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 '<div class="shm-m-track"><div class="shm-m-fill" style="width:' + pct + '%"></div></div></div>';
         }
         function hasAny(channels) { return channels.some(function (ch) { return meterCounters[ch] && meterCounters[ch].total > 0; }); }
-        var cells = [{ label: 'Modem &middot; 4G', rows: ['4G_TCP', '4G_MQTT'] }];
-        if (hasAny(['OFC_MQTT', 'OFC_TCP'])) cells.push({ label: 'Modem &middot; OFC', rows: ['OFC_MQTT', 'OFC_TCP'] });
-        cells.push({ label: 'A10 &middot; 4G', rows: ['A10_TCP', 'A10_MQTT'] });
-        if (hasAny(['A10_OFC'])) cells.push({ label: 'A10 &middot; OFC', rows: ['A10_OFC'] });
+        var cells = [{ label: 'Network &middot; 4G', rows: ['4G_TCP', '4G_MQTT'] }];
+        if (hasAny(['OFC_MQTT', 'OFC_TCP'])) cells.push({ label: 'Network &middot; OFC', rows: ['OFC_MQTT', 'OFC_TCP'] });
+        cells.push({ label: 'IoT &middot; 4G', rows: ['A10_TCP', 'A10_MQTT'] });
+        if (hasAny(['A10_OFC'])) cells.push({ label: 'IoT &middot; OFC', rows: ['A10_OFC'] });
         $('#shmMeters').html(cells.map(function (cell) {
             return '<div class="shm-mcell"><div class="shm-mcell-label">' + cell.label + '</div>' + cell.rows.map(row).join('') + '</div>';
         }).join(''));
     }
 
-    function shmClusterHasIssue(cl, kind) {
+    // ── Dashboard-computed masking (added ON TOP of backend masked[]/status — union, never override):
+    //   1. Gateway down              -> mask A10_OFC + Network OFC (Wired lane)
+    //   2. External Gateway down     -> mask A10_TCP
+    //   3. Network OFC (Wired) down  -> mask A10_OFC AND A10_TCP
+    //   4. Network 4G (Wireless) down -> mask A10_MQTT
+    // A transport counts as down for masking only while its rolled-up .status says down AND none
+    // of its raw channel flags has recovered yet — so IoT (A10) masking clears the moment the
+    // Network lane flips up, instead of waiting for the backend rollup (fixes the slow A10-MQTT
+    // reset after a 4G reset). Fields absent from the summary simply make a rule a no-op.
+    function shmAnyTransportChannelUp(cl, chans) {
+        if (!cl.modem) return false;
+        var anyUp = false;
+        (cl.modem.channels || []).forEach(function (ch, i) {
+            if (chans.indexOf(ch) > -1 && Number(cl.modem.flag[i]) === 1) anyUp = true;
+        });
+        return anyUp;
+    }
+
+    function shmDerivedMasks(msg, cl) {
+        var s = (msg && msg.summary) || {};
+        var gatewayDown = (s.gatewayDown || 0) > 0;
+        var exGatewayDown = (s.exGatewayDown || 0) > 0;
+        var networkOfcDown = !!(cl.modem && cl.modem.wired && cl.modem.wired.status === 'down')
+            && !shmAnyTransportChannelUp(cl, ['OFC_TCP', 'OFC_MQTT']);
+        var network4gDown = !!(cl.modem && cl.modem.wireless && cl.modem.wireless.status === 'down')
+            && !shmAnyTransportChannelUp(cl, ['4G_TCP', '4G_MQTT']);
+        return {
+            a10: {
+                A10_OFC: gatewayDown || networkOfcDown,   // rules 1 + 3
+                A10_TCP: exGatewayDown || networkOfcDown,  // rules 2 + 3
+                A10_MQTT: network4gDown                    // rule 4
+            },
+            networkOfc: gatewayDown                        // rule 1
+        };
+    }
+
+    function shmClusterHasIssue(cl, kind, masks) {
         var modemUp = {};
         if (cl.modem) (cl.modem.channels || []).forEach(function (ch, i) { modemUp[ch] = Number(cl.modem.flag[i]) === 1; });
         var a10AnyRealDown = (cl.a10Devices || []).some(function (a) {
             if (a.status === 'unknown') return false; // fully masked — nothing to flag
             return (a.channels || []).some(function (ch, i) {
-                var masked = a.masked && a.masked[i];
+                var masked = (a.masked && a.masked[i]) || (masks && masks.a10[ch]);
                 return !masked && Number(a.flag[i]) !== 1;
             });
         });
         if (kind === '4g') return (('4G_TCP' in modemUp) || ('4G_MQTT' in modemUp)) && (modemUp['4G_TCP'] === false || modemUp['4G_MQTT'] === false);
-        if (kind === 'ofc') return modemUp['OFC_TCP'] === false || modemUp['OFC_MQTT'] === false;
+        if (kind === 'ofc') {
+            var wiredUnknown = (cl.modem && cl.modem.wired && cl.modem.wired.status === 'unknown') || (masks && masks.networkOfc);
+            if (wiredUnknown) return false; // masked — not a real "down"
+            return modemUp['OFC_TCP'] === false || modemUp['OFC_MQTT'] === false;
+        }
         if (kind === 'a10') return a10AnyRealDown;
         return cl.status !== 'ok';
     }
 
-    function shmModemDownItems(cl) {
+    function shmModemDownItems(cl, masks) {
         if (!cl.modem) return [];
         var items = [];
-        (cl.modem.channels || []).forEach(function (ch, i) { if (Number(cl.modem.flag[i]) !== 1) items.push(shmFriendlyChannel(ch)); });
+        var wiredUnknown = (cl.modem.wired && cl.modem.wired.status === 'unknown') || (masks && masks.networkOfc);
+        (cl.modem.channels || []).forEach(function (ch, i) {
+            var isWiredChannel = (ch === 'OFC_TCP' || ch === 'OFC_MQTT');
+            if (isWiredChannel && wiredUnknown) return; // masked — not a real down condition
+            if (Number(cl.modem.flag[i]) !== 1) items.push(shmFriendlyChannel(ch));
+        });
         return items;
     }
 
-    function shmA10DownItems(cl) {
+    function shmA10DownItems(cl, masks) {
         var items = [];
         (cl.a10Devices || []).forEach(function (a) {
             // A device with status "unknown" has every channel masked — the service doesn't
             // alert on it at all, so it has no place in a "what's actually down" list.
             if (a.status === 'unknown') return;
             (a.channels || []).forEach(function (ch, i) {
-                if (a.masked && a.masked[i]) return; // suppressed — not a real down condition
-                if (Number(a.flag[i]) !== 1) items.push('A10 ' + a.deviceId + ' &middot; ' + shmFriendlyChannel(ch).replace(/^A10 /, ''));
+                if ((a.masked && a.masked[i]) || (masks && masks.a10[ch])) return; // suppressed — not a real down condition
+                if (Number(a.flag[i]) !== 1) items.push('IoT ' + a.deviceId + ' &middot; ' + shmFriendlyChannel(ch).replace(/^IoT /, ''));
             });
         });
         return items;
     }
 
     function shmModemBlock(cl) {
-        if (!cl.modem) return '<div class="shm-c-mac shm-c-muted">No modem on this cluster</div>';
+        if (!cl.modem) return '<div class="shm-c-mac shm-c-muted">No network on this cluster</div>';
         var byChannel = {};
         (cl.modem.channels || []).forEach(function (ch, i) { byChannel[ch] = Number(cl.modem.flag[i]) === 1; });
         function lane(label, chans) {
@@ -5268,31 +5415,34 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             return '<div class="shm-lane"><span class="shm-lane-label">' + label + '</span><span class="shm-lane-chips">' + chips + '</span></div>';
         }
         var lanes = lane('4G', ['4G_TCP', '4G_MQTT']) + lane('OFC', ['OFC_TCP', 'OFC_MQTT']);
-        return '<div class="shm-c-mac"><span class="shm-c-mac-id">Modem ' + cl.modem.deviceId + '</span></div>' + lanes;
+        return '<div class="shm-c-mac"><span class="shm-c-mac-id">Network ' + cl.modem.deviceId + '</span></div>' + lanes;
     }
 
-    function shmA10Block(cl) {
+    function shmA10Block(cl, masks) {
         var a10s = cl.a10Devices || [];
         if (!a10s.length) return '';
         var dotOrder = (a10s[0] && a10s[0].channels) || [];
+        // A channel is masked if the backend already flags it OR a dashboard-derived rule
+        // (shmDerivedMasks) applies to this channel name — union, never subtractive.
+        function channelMasked(a, ch, i) { return (a.masked && a.masked[i]) || (masks && masks.a10[ch]); }
         var tiles = a10s.map(function (a) {
             var isUnknown = a.status === 'unknown';
             var dots = (a.channels || []).map(function (ch, i) {
-                return '<span class="shm-ad ' + shmColorFor(a.flag[i], a.masked && a.masked[i]) + '"></span>';
+                return '<span class="shm-ad ' + shmColorFor(a.flag[i], channelMasked(a, ch, i)) + '"></span>';
             }).join('');
             var tipRows = (a.channels || []).map(function (ch, i) {
-                var masked = a.masked && a.masked[i];
+                var masked = channelMasked(a, ch, i);
                 var cls = shmColorFor(a.flag[i], masked);
                 var detail = masked ? 'Unknown · parent Modem channel is down' : (Number(a.flag[i]) === 1 ? 'Up' : 'Down');
                 return '<div class="shm-tip-row"><span class="shm-tip-dot ' + cls + '"></span><span class="shm-tip-ch">' + shmFriendlyChannel(ch) + '</span><span class="shm-tip-detail">' + detail + '</span></div>';
             }).join('');
             var unknownBadge = isUnknown ? '<span class="shm-a10-unknown-badge" title="Every channel on this device is currently masked — nothing to judge it by">?</span>' : '';
             return '<div class="shm-a10chip' + (isUnknown ? ' shm-a10-unknown' : '') + '">' +
-                '<div class="shm-a10id">A10 ' + a.deviceId + unknownBadge + '</div>' +
+                '<div class="shm-a10id">IoT ' + a.deviceId + unknownBadge + '</div>' +
                 '<div class="shm-a10dots">' + dots + '</div>' +
-                '<div class="shm-tooltip shm-tooltip-a10"><div class="shm-tooltip-title">A10 ' + a.deviceId + (isUnknown ? ' &middot; all masked' : '') + '</div>' + tipRows + '</div></div>';
+                '<div class="shm-tooltip shm-tooltip-a10"><div class="shm-tooltip-title">IoT ' + a.deviceId + (isUnknown ? ' &middot; all masked' : '') + '</div>' + tipRows + '</div></div>';
         }).join('');
-        return '<div class="shm-a10hd"><span>A10 devices</span>' +
+        return '<div class="shm-a10hd"><span>IoT devices</span>' +
             '<span class="shm-info-icon">?<div class="shm-tooltip shm-tooltip-legend"><div class="shm-tooltip-title">Dot order (left to right)</div>' +
             dotOrder.map(function (ch, i) { return '<div class="shm-tip-row"><span class="shm-tip-num">' + (i + 1) + '.</span><span class="shm-tip-ch">' + shmFriendlyChannel(ch) + '</span></div>'; }).join('') +
             '</div></span>' +
@@ -5300,14 +5450,15 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             '<div class="shm-a10grid">' + tiles + '</div>';
     }
 
-    function shmRenderClusterCard(cl) {
+    function shmRenderClusterCard(cl, msg) {
+        var masks = shmDerivedMasks(msg, cl);
         var stateCls = cl.status === 'ok' ? '' : (cl.status === 'down' ? 'shm-off' : 'shm-deg');
         var dotCls = cl.status === 'ok' ? 'grn' : (cl.status === 'down' ? 'red' : 'amb');
-        var issueCount = shmModemDownItems(cl).length + shmA10DownItems(cl).length;
+        var issueCount = shmModemDownItems(cl, masks).length + shmA10DownItems(cl, masks).length;
         return '<div class="shm-card ' + stateCls + '">' +
             '<div class="shm-c-top"><span class="shm-c-dot ' + dotCls + '"></span><span class="shm-c-name">' + (cl.clusterName || ('Cluster ' + cl.clusterId)) + '</span>' +
             (issueCount ? '<button type="button" class="shm-c-offline" data-cluster-id="' + cl.clusterId + '">See all Down</button>' : '<span class="shm-c-ok-badge">OK</span>') +
-            '</div>' + shmModemBlock(cl) + shmA10Block(cl) + '</div>';
+            '</div>' + shmModemBlock(cl) + shmA10Block(cl, masks) + '</div>';
     }
 
     function shmRenderGrid() {
@@ -5317,7 +5468,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         var f = shmFilters;
         if (f.status === 'online') clusters = clusters.filter(function (c) { return c.status === 'ok'; });
         if (f.status === 'offline') clusters = clusters.filter(function (c) { return c.status !== 'ok'; });
-        if (f.issue !== 'any') clusters = clusters.filter(function (c) { return shmClusterHasIssue(c, f.issue); });
+        if (f.issue !== 'any') clusters = clusters.filter(function (c) { return shmClusterHasIssue(c, f.issue, shmDerivedMasks(msg, c)); });
         if (f.search) {
             var q = f.search.toLowerCase();
             clusters = clusters.filter(function (c) {
@@ -5332,7 +5483,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             clusters.sort(function (a, b) { return (a.clusterName || '').localeCompare(b.clusterName || ''); });
         }
         if (!clusters.length) { $('#shmGrid').html('<div class="shm-empty">No clusters match these filters.</div>'); return; }
-        $('#shmGrid').html(clusters.map(shmRenderClusterCard).join(''));
+        $('#shmGrid').html(clusters.map(function (cl) { return shmRenderClusterCard(cl, msg); }).join(''));
     }
 
     function shmOpenClusterModal(clusterId) {
@@ -5346,7 +5497,8 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 return '<div class="shm-modal-item"><span class="shm-modal-item-label">' + label + '</span><span class="shm-modal-item-dur">down</span></div>';
             }).join('') + '</div>';
         }
-        $('#shmClusterModalBody').html(section('Modem', shmModemDownItems(cl)) + section('A10 Devices', shmA10DownItems(cl)));
+        var masks = shmDerivedMasks(msg, cl);
+        $('#shmClusterModalBody').html(section('Network', shmModemDownItems(cl, masks)) + section('IOT Devices', shmA10DownItems(cl, masks)));
         $('#shmClusterModalOverlay').addClass('open');
     }
 
@@ -5408,16 +5560,13 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
     }
 
     function openSensorHealthModal() {
-        var siteId = shmFocusedSiteId();
-        if (!siteId) {
-            alert('Select a single station tab above to view its faulty sensors.');
-            return;
-        }
-        shmConnectHealthSockets();   // no-op if already subscribed to this station
-        shmSensorCurrentSiteId = String(siteId);
-        $('#shmSensorModalOverlay').addClass('open');
-        $('body').css('overflow', 'hidden');
-        shmRenderSensorList();
+        resolveOrPickSite(function (siteId) {
+            shmConnectHealthSockets(siteId);   // connect this station's sockets (no-op if already subscribed)
+            shmSensorCurrentSiteId = String(siteId);
+            $('#shmSensorModalOverlay').addClass('open');
+            $('body').css('overflow', 'hidden');
+            shmRenderSensorList();
+        });
     }
 
     function closeSensorHealthModal() {

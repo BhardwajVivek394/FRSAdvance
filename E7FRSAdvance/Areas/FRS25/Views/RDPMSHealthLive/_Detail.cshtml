@@ -1031,9 +1031,10 @@
                     <tr>
                         <th id="rdpmsDownModalColAsset">Asset</th>
                         <th id="rdpmsDownModalColDevice">Device</th>
+                        <th id="rdpmsDownModalColDeviceType" style="display:none;">Network Type</th>
                         <th>From</th>
                         <th>To</th>
-                        <th>Down (min)</th>
+                        <th>Down Time</th>
                     </tr>
                 </thead>
                 <tbody id="rdpmsDownModalBody"></tbody>
@@ -3103,7 +3104,16 @@
             var d = new Date(v);
             if (isNaN(d.getTime())) return v;
             function p(n) { return n < 10 ? '0' + n : n; }
-            return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+            return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());   // CHANGED — added seconds
+        }
+
+        function fmtDuration(totalMinutes) {
+            var totalSeconds = Math.round(totalMinutes * 60);
+            var h = Math.floor(totalSeconds / 3600);
+            var m = Math.floor((totalSeconds % 3600) / 60);
+            var s = totalSeconds % 60;
+            function p(n) { return n < 10 ? '0' + n : n; }
+            return p(h) + ':' + p(m) + ':' + p(s);
         }
 
         var COLUMN_LABELS = {
@@ -3124,8 +3134,13 @@
             $('#rdpmsDownModalColAsset').text(cols.asset);
             $('#rdpmsDownModalColDevice').text(cols.device);
             $('#rdpmsDownModalSub').text(row ? (row.siteName + ' · ' + row.assetType) : '');
+            var showDeviceType = (category === 'Network');
+            $('#rdpmsDownModalColDeviceType').toggle(showDeviceType);
 
             var periods = (row && row.downPeriods) ? row.downPeriods.filter(function (p) { return p.category === category; }) : [];
+            periods.sort(function (a, b) {
+                return new Date(b.fromTime) - new Date(a.fromTime);
+            });
 
             if (!periods.length) {
                 $body.empty();
@@ -3137,9 +3152,12 @@
                     var $tr = $('<tr></tr>');
                     $tr.append($('<td></td>').text(p.assetName || '—'));
                     $tr.append($('<td></td>').text(p.deviceId || '—'));
+                    if (showDeviceType) {
+                        $tr.append($('<td></td>').text(p.deviceType || '—'));   // NEW
+                    }
                     $tr.append($('<td></td>').text(fmtDate(p.fromTime)));
                     $tr.append($('<td></td>').addClass(ongoing ? 'rdpms-modal-ongoing' : '').text(ongoing ? 'Ongoing' : fmtDate(p.toTime)));
-                    $tr.append($('<td></td>').text(Math.round(p.downMinutes)));
+                    $tr.append($('<td></td>').text(fmtDuration(p.downMinutes)));
                     $body.append($tr);
                 });
             }

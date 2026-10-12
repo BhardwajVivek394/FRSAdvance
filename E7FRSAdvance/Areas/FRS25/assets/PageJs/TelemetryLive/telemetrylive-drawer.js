@@ -79,6 +79,86 @@
         }
         return null;
     }
+    /* v618.39 ALIAS NAMES from the API (GetUserAssetInfo, every asset type of the
+       site), not the raw attribute names the WebSocket / history columns carry.
+       byId[aid_attrId] and byName[aid|ATTRNAME] -> { alias, attr } */
+    var UAI_URL = '/FRS25/Telemetry/GetUserAssetInfo?siteId=';
+    var AL = { site: null, byId: {}, byName: {} };
+    function aliasSite(aid) {
+        var s = siteId();
+        if (s && s !== '0') return s;
+        var a = live()[aid] || {}, sm = W.sipMetaAll && W.sipMetaAll.assets && W.sipMetaAll.assets[aid], bm = W.bulkAssetMap && W.bulkAssetMap[aid];
+        return String((sm && sm.SiteId) || (bm && bm.SiteId) || a.SiteId || '');
+    }
+    function loadAliases(aid) {
+        var sid = aliasSite(aid);
+        if (!sid || sid === '0' || AL.site === sid) return;
+        AL.site = sid; AL.byId = {}; AL.byName = {};
+        $.ajax({
+            url: UAI_URL + encodeURIComponent(sid), type: 'GET', dataType: 'json', timeout: 30000,
+            success: function (rows) {
+                if (AL.site !== sid) return;
+                if (rows && !Array.isArray(rows)) rows = rows.Data || rows.data || rows.mUserAssetInfo || rows.Result || rows.result || [];
+                if (!Array.isArray(rows)) return;
+                rows.forEach(function (r) {
+                    if (!r || r.AssetId === null || r.AssetId === undefined) return;
+                    var al = String(r.AliasName || '').trim(), an = String(r.AttributeName || '').trim();
+                    if (!al) return;
+                    var e = { alias: al, attr: an }, aid2 = String(r.AssetId);
+                    var id = r.AssetAttributeId !== null && r.AssetAttributeId !== undefined ? r.AssetAttributeId : r.AttributeId;
+                    if (id !== null && id !== undefined) AL.byId[aid2 + '_' + id] = e;
+                    var role = String(r.Role == null ? '' : r.Role).trim();
+                    if (/^\d+$/.test(role) && !AL.byId[aid2 + '_' + role]) AL.byId[aid2 + '_' + role] = e;
+                    if (an) AL.byName[aid2 + '|' + norm(an)] = e;
+                });
+                if (!D.aid) return;
+                D.liveSig = '';
+                liveRefresh();
+                paintGraph();
+                paintTrend();
+            },
+            error: function () { AL.site = null; }
+        });
+    }
+    function aliasEntry(aid, attrId, name) {
+        aid = String(aid);
+        return (attrId !== null && attrId !== undefined && attrId !== '' && AL.byId[aid + '_' + attrId]) || (name ? AL.byName[aid + '|' + norm(name)] : null) || null;
+    }
+    W.tlAliasOf = function (aid, attrId, name) { var e = aliasEntry(aid, attrId, name); return e ? e.alias : ''; };
+    /* history column label: AliasName, keeping a column suffix the alias lacks
+       (e.g. "09733-PM-01002-Avg" -> "<alias> Avg") so Max / Avg lanes stay apart */
+    var COL_SUFFIX_RX = /[\s\-_]+(Avg|Average|Max|Min|Peak|OperationTime|Operation Time|Count|Duration)$/i;
+    /* v618.40 POINT MACHINE operation columns ("09733-PM-01002-Avg"): decoded the
+       e7mriv2web Telemetry Live way (decodePmAttribute / PM_BASE_CODES) --
+       id = base + offset, base 1000 N A-current, 2000 N A-voltage, 3000 N B-current,
+       4000 N B-voltage, 6000..9000 the same for Reverse; offset 1 Array, 2 Avg,
+       3 Min, 4 Max, 5 OperationTime, 6 Count. Labels as its PM live values list:
+       "A IPT N - Avg", "A VPT 110 DC LOC N - Avg", "A TPT N" (ms). */
+    var PM_METRICS = ['Array', 'Avg', 'Min', 'Max', 'OperationTime', 'Count'];
+    var PM_IND_NAMES = { 25: 'A VPT NWKR', 26: 'A VPT RWKR', 27: 'B VPT NWKR', 28: 'B VPT RWKR',
+        576: 'A VPT 24 DC LOC N', 577: 'A VPT 24 DC LOC R', 578: 'B VPT 24 DC LOC N', 579: 'B VPT 24 DC LOC R' };
+    function pmColLabel(c) {
+        var m = /^0?\d+-PM-0?(\d+)-(\w+)$/i.exec(c.name || '');
+        var id = parseInt(m ? m[1] : c.attrId, 10);
+        if (isNaN(id)) return '';
+        if (PM_IND_NAMES[id]) return PM_IND_NAMES[id] + ' (V)';
+        var blk = Math.floor(id / 1000), off = id % 1000;
+        if (blk < 1 || blk > 9 || blk === 5 || off < 1 || off > 6) return '';
+        var d = blk < 5 ? 'N' : 'R', g = (blk - 1) % 5;   /* 0 A-current, 1 A-voltage, 2 B-current, 3 B-voltage */
+        var E = g < 2 ? 'A' : 'B', cur = g % 2 === 0, met = PM_METRICS[off - 1];
+        if (cur && met === 'OperationTime') return E + ' TPT ' + d + ' (ms)';
+        return E + (cur ? ' IPT ' + d + ' (A)' : ' VPT 110 DC LOC ' + d + ' (V)') + ' - ' + (met === 'OperationTime' ? 'Operation time (ms)' : met);
+    }
+    function colLabel(c) {
+        if (!c.dl && kind() === 'pm') { var pl = pmColLabel(c); if (pl) return pl; }
+        var e = aliasEntry(D.aid, c.attrId, c.name);
+        if (!e) return c.name;
+        var al = e.alias, raw = c.name, suf = '';
+        if (e.attr && raw.length > e.attr.length && raw.toUpperCase().indexOf(e.attr.toUpperCase()) === 0) suf = raw.slice(e.attr.length).replace(/^[\s\-_:.]+/, '');
+        else { var m = COL_SUFFIX_RX.exec(raw); if (m && !COL_SUFFIX_RX.test(e.attr || '')) suf = m[1]; }
+        if (suf && norm(al).slice(-norm(suf).length) !== norm(suf)) al += ' ' + suf;
+        return al;
+    }
     function findRow(A, key) {
         if (!A) return null;
         var i;
@@ -310,8 +390,10 @@
         var want = [norm(r.alias), norm(r.label), r.key, norm(baseLabel(r.alias)), norm(baseLabel(r.label))];
         for (var i = 0; i < G.cols.length; i++) {
             if (G.cols[i].skip) continue;
-            var n = norm(G.cols[i].name), nb = norm(baseLabel(G.cols[i].name));
-            if (want.indexOf(n) !== -1 || want.indexOf(nb) !== -1) return i;
+            if (r.attrId && String(G.cols[i].attrId) === String(r.attrId)) return i;
+            var cl = colLabel(G.cols[i]);
+            var n = norm(G.cols[i].name), nb = norm(baseLabel(G.cols[i].name)), na = norm(cl), nab = norm(baseLabel(cl));
+            if (want.indexOf(n) !== -1 || want.indexOf(nb) !== -1 || want.indexOf(na) !== -1 || want.indexOf(nab) !== -1) return i;
         }
         return -1;
     }
@@ -1024,10 +1106,88 @@
         out.sort(function (p, q) { var a = ASPECT_ORDER.indexOf(p), b = ASPECT_ORDER.indexOf(q); return (a < 0 ? 9 : a) - (b < 0 ? 9 : b); });
         return out;
     }
-    function aspectLit(A, x) {
-        var i = sval(A, 'ISIG ' + x), v = sval(A, 'VSIG ' + x);
-        return (i !== null && i >= 30) || (v !== null && v >= 50);
+    /* v618.41 lamp-lit rule = 616 (_Circuit.cshtml / _AssetTypeCircuitDiagram): a lamp is lit
+       when its current (ISIG x / ISHSIG x / IROSIG (xUG) / ICOSIG, mA) is ABOVE the asset's
+       ZeroOffsetValue -- the same threshold the SIP uses (thresholdFor). Source order as the
+       host getSignalThreshold: zeroOffsetCache (API) -> wsLiveData -> asset metadata ->
+       RDPMS_DEFAULT_THRESHOLD (5). A missing / zero offset falls back to the default so
+       leakage (e.g. 0.66 mA) never lights a lamp. Replaces the fixed 30 / 10 mA rules. */
+    function litThr() {
+        var aid = D.aid, zc = W.zeroOffsetCache && W.zeroOffsetCache[aid];
+        /* v618.43: use the asset's REAL configured ZeroOffsetValue, fetched on demand --
+           same path as the host thresholdFor / getSignalThreshold, and the same value the
+           reference telemetry-live uses (_Circuit.cshtml: mA > item.ZeroOffsetValue). The
+           old code only READ a warm cache and never triggered the fetch, so it fell back to
+           the 5 mA default; a lamp drawing leakage (e.g. IROSIG BUG 7.95 mA on a signal at
+           RED, real offset > 7.95) then lit wrongly. Fetching corrects it and re-renders. */
+        if ((!zc || !zc.fetched) && typeof W.fetchZeroOffsetForAsset === 'function' && D._offReq !== aid) {
+            D._offReq = aid;
+            W.fetchZeroOffsetForAsset(aid, function () { D._offReq = null; D.liveSig = ''; liveRefresh(); });
+        }
+        if (typeof W.getSignalThreshold === 'function') {
+            var t = W.getSignalThreshold(aid);
+            if (t && t.source !== 'default' && t.value > 0) return t.value;
+        }
+        var v = parseFloat((live()[aid] || {}).ZeroOffsetValue);
+        if (!(v > 0)) {
+            /* real offset the SIP bulk-metadata load stores in sipMetaAll.zeroOffset[aid]
+               (NOT sipMetaAll.assets[aid], which carries no ZeroOffsetValue). */
+            var sz = W.sipMetaAll && W.sipMetaAll.zeroOffset && W.sipMetaAll.zeroOffset[aid];
+            var bm = W.bulkAssetMap && W.bulkAssetMap[aid];
+            v = parseFloat(sz != null ? sz : (bm && bm.ZeroOffsetValue));
+        }
+        if (!(v > 0)) v = typeof W.RDPMS_DEFAULT_THRESHOLD === 'number' ? W.RDPMS_DEFAULT_THRESHOLD : 5;
+        return v;
     }
+    function lampLit(A, name) { var i = sval(A, name); return i !== null && i > litThr(); }
+    /* v618.42: a signal shows exactly ONE main aspect, resolved like 616 telemetry live
+       (computeSignalState, the same resolver the SIP uses): most-restrictive active current
+       wins (RED > DOUBLE_YELLOW > SINGLE_YELLOW > GREEN); a DataLogger ECR relay is used only
+       when that aspect's current is stale / missing. The old per-aspect rule lit every aspect
+       whose ISIG was above threshold, so S9 (ISIG RG 128 + HG 13.88) showed RED and YELLOW
+       at once even though RECR was up and HECR down. */
+    var ASPECT_RANK = { RG: 0, YG: 1, HHG: 1, HG: 2, GG: 3, DG: 3 };   /* lower = more restrictive, wins */
+    var HOST_ASPECT_TAG = { RED: 'RG', DOUBLE_YELLOW: 'HHG', SINGLE_YELLOW: 'HG', GREEN: 'DG' };
+    function currentActive(A, x) {
+        var i = sval(A, 'ISIG ' + x), v = sval(A, 'VSIG ' + x);
+        if (i !== null) return i > litThr();
+        return v !== null && v >= 50;   /* no current reading for this aspect: voltage only */
+    }
+    function computeWinAspect(A) {
+        var asp = aspectsOf(A);
+        if (!asp.length) return null;
+        /* 616 host resolver (same path as sip-telemetry resolveSignalState) */
+        try {
+            var fn = W.getSignalState || W.computeSignalState;
+            if (typeof fn === 'function') {
+                var ss = fn(D.aid);
+                if (ss && ss.aspect === 'INACTIVE') return null;
+                if (ss && ss.aspect) {
+                    var tag = ss.activeLamp || HOST_ASPECT_TAG[ss.aspect];
+                    if (tag && asp.indexOf(tag) !== -1) return tag;
+                    /* host gave GREEN/SINGLE_YELLOW but this layout labels it GG / YG */
+                    var want = ASPECT_RANK[tag];
+                    for (var i = 0; i < asp.length; i++) if (ASPECT_RANK[asp[i]] === want) return asp[i];
+                }
+            }
+        } catch (e) { /* fall back to current rule */ }
+        /* fallback: most-restrictive active current among the aspects present */
+        var best = null, bestRank = 99;
+        asp.forEach(function (x) {
+            if (!currentActive(A, x)) return;
+            var r = ASPECT_RANK[x] == null ? 2 : ASPECT_RANK[x];
+            if (r < bestRank) { bestRank = r; best = x; }
+        });
+        return best;
+    }
+    function winAspect(A) {
+        if (!A) return null;
+        var sig = D.aid + '|' + litThr() + '|' + aspectsOf(A).map(function (x) { return x + ':' + sval(A, 'ISIG ' + x) + '/' + sval(A, 'VSIG ' + x); }).join(',');
+        if (D._winSig === sig) return D._winAsp;
+        D._winSig = sig; D._winAsp = computeWinAspect(A);
+        return D._winAsp;
+    }
+    function aspectLit(A, x) { return winAspect(A) === x; }
     function routesOf(A) {
         var out = [];
         (A ? A.rows : []).forEach(function (r) {
@@ -1091,7 +1251,7 @@
     }
     function sigCallingSvg(A) {
         var P = pal(), s = [svgDefs()], a = function (t) { s.push(t); };
-        var lit = (sval(A, 'ICOSIG') || 0) >= 30;
+        var lit = lampLit(A, 'ICOSIG');
         a('<rect width="1440" height="420" fill="' + P.bg + '"></rect>');
         a('<rect x="20" y="60" width="700" height="300" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '"></rect><text x="370" y="48" text-anchor="middle" font-size="17" font-weight="800" fill="' + P.ink + '">RELAY ROOM &#183; CALLING-ON</text>');
         a('<rect x="760" y="60" width="240" height="300" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '" stroke-dasharray="6 4"></rect><text x="880" y="48" text-anchor="middle" font-size="15" font-weight="800" fill="' + P.ink + '">LOCATION BOX</text>');
@@ -1111,7 +1271,7 @@
         var H = top + rs.length * bh + 20;
         a('<rect width="1440" height="' + H + '" fill="' + P.bg + '"></rect>');
         rs.forEach(function (x, i) {
-            var y = top + i * bh, lit = (sval(A, 'IROSIG (' + x + 'UG)') || 0) >= 10;
+            var y = top + i * bh, lit = lampLit(A, 'IROSIG (' + x + 'UG)');
             a('<rect x="20" y="' + (y - 20) + '" width="560" height="' + (bh - 30) + '" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '"></rect>');
             a('<rect x="600" y="' + (y - 20) + '" width="220" height="' + (bh - 30) + '" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '" stroke-dasharray="6 4"></rect>');
             a('<rect x="840" y="' + (y - 20) + '" width="580" height="' + (bh - 30) + '" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '" stroke-dasharray="6 4"></rect>');
@@ -1137,7 +1297,7 @@
         a('<rect x="720" y="40" width="200" height="700" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '" stroke-dasharray="6 4"></rect><text x="820" y="30" text-anchor="middle" font-size="15" font-weight="800" fill="' + P.ink + '">LOCATION BOX</text>');
         a('<rect x="960" y="40" width="460" height="520" rx="6" fill="' + P.panel + '" stroke="' + P.pedge + '" stroke-dasharray="6 4"></rect><text x="1190" y="30" text-anchor="middle" font-size="15" font-weight="800" fill="' + P.ink + '">SIGNAL UNIT</text>');
         L.forEach(function (l, i) {
-            var y = 90 + i * 160, lit = (sval(A, 'ISHSIG ' + l[0]) || 0) >= 30;
+            var y = 90 + i * 160, lit = lampLit(A, 'ISHSIG ' + l[0]);
             a(bnLabel(P, 30, y - 8, i === 0 ? 'BX110(SIG-W)' : '') + '<path d="M28 ' + y + 'H1080V' + (y + 20) + 'H1100" fill="none" stroke="' + P.red + '" stroke-width="2.6"></path>');
             a(bnLabel(P, 30, y + 62, i === 0 ? 'Nx110(SIG-W)' : '') + '<path d="M28 ' + (y + 70) + 'H1080V' + (y + 50) + 'H1100" fill="none" stroke="' + P.navy + '" stroke-width="2.6"></path>');
             if (lit) { a(flow('M28 ' + y + 'H1080V' + (y + 20) + 'H1100', 1.2, P.flow)); a(flow('M1100 ' + (y + 50) + 'H1080V' + (y + 70) + 'H28', 1.2, P.n24, 2.4)); }
@@ -1170,7 +1330,7 @@
     function sigHeadChips(A) {
         if (!A) return '';
         if (isShunt(A)) {
-            var on = ['OFF', 'ON', 'PILOT'].filter(function (l) { return (sval(A, 'ISHSIG ' + l) || 0) >= 30; });
+            var on = ['OFF', 'ON', 'PILOT'].filter(function (l) { return lampLit(A, 'ISHSIG ' + l); });
             return '<span class="tld-chip">' + (on.length ? 'Lit: ' + on.join(', ') : 'No lamp lit') + '</span>';
         }
         var lit = aspectsOf(A).filter(function (x) { return aspectLit(A, x); });
@@ -1181,13 +1341,15 @@
         if (isShunt(A)) {
             ['OFF', 'ON', 'PILOT'].forEach(function (l) {
                 var i = sval(A, 'ISHSIG ' + l);
-                if (i !== null) finds.push([i >= 30 ? '#1F9D55' : '#94A3B8', l + ' lamp ' + (i >= 30 ? 'lit (' + fmt(i) + ' mA)' : 'off') + '.']);
+                if (i !== null) finds.push([i > litThr() ? '#1F9D55' : '#94A3B8', l + ' lamp ' + (i > litThr() ? 'lit (' + fmt(i) + ' mA)' : 'off') + '.']);
             });
             return;
         }
         var asp = aspectsOf(A), lit = asp.filter(function (x) { return aspectLit(A, x); });
-        if (!lit.length && asp.length) finds.push(['#E5484D', 'No main aspect lit (all ISIG below 30 mA): check the lamps / feed.']);
-        else if (lit.length > 1) finds.push(['#E5484D', 'More than one main aspect lit: ' + lit.join(', ') + '.']);
+        /* a signal shows one resolved aspect; a second aspect still drawing current is a fault */
+        var alsoDrawing = asp.filter(function (x) { return lit.indexOf(x) === -1 && currentActive(A, x); });
+        if (!lit.length && asp.length) finds.push(['#E5484D', 'No main aspect lit (all ISIG at or below the ' + fmt(litThr()) + ' mA zero offset): check the lamps / feed.']);
+        else if (alsoDrawing.length) finds.push(['#E0A100', 'Showing ' + lit.join(', ') + ' (most restrictive); ' + alsoDrawing.join(', ') + ' also drawing current above the zero offset.']);
         lit.forEach(function (x) {
             var e = ASPECT_ECR[x], up = e ? relayUp(A, e) : undefined;
             finds.push(['#1F9D55', x + ' lit (ISIG ' + fmt(sval(A, 'ISIG ' + x)) + ' mA, VSIG ' + fmt(sval(A, 'VSIG ' + x)) + ' V).']);
@@ -1196,9 +1358,9 @@
         });
         if (hasCalling(A)) {
             var c = sval(A, 'ICOSIG');
-            finds.push([c !== null && c >= 30 ? '#F5B70A' : '#94A3B8', 'Calling-on ' + (c !== null && c >= 30 ? 'lit (' + fmt(c) + ' mA).' : 'off.')]);
+            finds.push([lampLit(A, 'ICOSIG') ? '#F5B70A' : '#94A3B8', 'Calling-on ' + (lampLit(A, 'ICOSIG') ? 'lit (' + fmt(c) + ' mA).' : 'off.')]);
         }
-        var rs = routesOf(A).filter(function (x) { return (sval(A, 'IROSIG (' + x + 'UG)') || 0) >= 10; });
+        var rs = routesOf(A).filter(function (x) { return lampLit(A, 'IROSIG (' + x + 'UG)'); });
         if (routesOf(A).length) finds.push(['#94A3B8', 'Route indicator: ' + (rs.length ? 'route ' + rs.join(', ') + ' lit.' : 'all off.')]);
     }
     function circuitSvg(A) { var k = kind(); return k === 'pm' ? pmCircuitSvg(A) : k === 'signal' ? sigCircuitSvg(A) : trackCircuitSvg(A); }
@@ -1297,8 +1459,9 @@
                 var pl = resp || {}, inner = pl.Data || pl.data;
                 if (inner && (inner.columns || inner.Columns)) pl = inner;
                 var cols = (pl.columns || pl.Columns || []).map(function (c) {
-                    return { name: String(c.name || c.Name || ''), dl: String(c.dataType || c.DataType || '').toLowerCase() === 'datalogger',
-                        skip: (c.attrId === null || c.attrId === undefined) && (c.AttrId === null || c.AttrId === undefined) };
+                    var id = c.attrId !== null && c.attrId !== undefined ? c.attrId : c.AttrId;
+                    return { name: String(c.name || c.Name || ''), attrId: id === null || id === undefined ? '' : String(id),
+                        dl: String(c.dataType || c.DataType || '').toLowerCase() === 'datalogger', skip: id === null || id === undefined };
                 });
                 var rows = (pl.rows || pl.Rows || []).map(function (r) { return { t: new Date(r.ts || r.Ts).getTime(), v: r.v || r.V || [] }; })
                     .filter(function (r) { return !isNaN(r.t); }).sort(function (p, q) { return p.t - q.t; });
@@ -1321,16 +1484,21 @@
         var gw = w - lab - 14, span = (G.t1 - G.t0) || 1;
         var X = function (t) { return lab + Math.max(0, Math.min(1, (t - G.t0) / span)) * gw; };
         var cls = W.TlHealthView && W.TlHealthView.classify;
-        var out = '<svg viewBox="0 0 ' + w + ' ' + H + '" width="100%" role="img" aria-label="Every reading of this asset over the selected period" style="display:block">';
+        var lanes = [];
+        D.graphGeo = { lab: lab, gw: gw, w: w, H: H, t0: G.t0, span: span, lanes: lanes };
+        var out = '<svg id="tldGraphSvg" viewBox="0 0 ' + w + ' ' + H + '" width="100%" role="img" aria-label="Every reading of this asset over the selected period" style="display:block;cursor:crosshair">';
         idx.forEach(function (ci, k) {
-            var c = G.cols[ci], y0 = top + k * (LH + GAP), pts = [];
+            var c = G.cols[ci], y0 = top + k * (LH + GAP), pts = [], name = colLabel(c);
             G.rows.forEach(function (r) { var v = parseFloat(r.v[ci]); if (!isNaN(v)) pts.push([r.t, v]); });
+            lanes.push({ pts: pts, y0: y0, LH: LH, dl: c.dl, Y: null, name: name });
             out += '<rect x="' + lab + '" y="' + y0 + '" width="' + gw + '" height="' + LH + '" fill="' + (k % 2 ? 'rgba(127,140,160,.07)' : 'rgba(127,140,160,.02)') + '"></rect>';
             var last = pts.length ? pts[pts.length - 1][1] : null;
-            var rg = (cls && last !== null && !c.dl) ? (cls(D.aid, c.name, last) || {}).range : null;
-            var st = (cls && last !== null && !c.dl) ? (cls(D.aid, c.name, last) || {}).st : 'ok';
+            var cr = {};
+            if (cls && last !== null && !c.dl) { cr = cls(D.aid, c.name, last) || {}; if (!cr.range && name !== c.name) cr = cls(D.aid, name, last) || cr; }
+            var rg = cr.range || null;
+            var st = cr.st || 'ok';
             var vcol = st === 'high' ? '#C8323A' : st === 'low' ? '#B47B00' : 'currentColor';
-            out += '<text x="0" y="' + (y0 + 15) + '" font-size="11" fill="var(--e7-text-2,#4A5868)">' + esc(c.name) + '</text>' +
+            out += '<text x="0" y="' + (y0 + 15) + '" font-size="11" fill="var(--e7-text-2,#4A5868)"><title>' + esc(name + (name !== c.name ? ' (' + c.name + ')' : '')) + '</title>' + esc(name.length > 30 ? name.slice(0, 29) + '…' : name) + '</text>' +
                 '<text x="0" y="' + (y0 + 32) + '" font-size="13" font-weight="800" fill="' + vcol + '" font-family="JetBrains Mono, monospace">' +
                 (c.dl ? (last === null ? '--' : last >= 0.5 ? 'Pickup' : 'Drop') : fmt(last)) + '</text>';
             if (pts.length < 1) return;
@@ -1340,6 +1508,7 @@
             if (hi === lo) { hi += 1; lo -= 1; }
             var pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
             var Y = function (v) { return y0 + LH - ((v - lo) / (hi - lo)) * LH; };
+            lanes[k].Y = Y;
             if (rg && rg.min !== null && rg.max !== null) out += '<rect x="' + lab + '" y="' + Y(rg.max).toFixed(1) + '" width="' + gw + '" height="' + (Y(rg.min) - Y(rg.max)).toFixed(1) + '" fill="rgba(31,157,85,.12)"></rect>';
             var d = 'M' + X(pts[0][0]).toFixed(1) + ' ' + Y(pts[0][1]).toFixed(1);
             for (var i = 1; i < pts.length; i++) d += 'L' + X(pts[i][0]).toFixed(1) + ' ' + Y(pts[i - 1][1]).toFixed(1) + 'L' + X(pts[i][0]).toFixed(1) + ' ' + Y(pts[i][1]).toFixed(1);
@@ -1354,9 +1523,81 @@
             out += '<line x1="' + tx.toFixed(1) + '" x2="' + tx.toFixed(1) + '" y1="' + top + '" y2="' + (H - 20) + '" stroke="rgba(127,140,160,.25)"></line>' +
                 '<text x="' + tx.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="9.5" fill="var(--e7-text-3,#8492A6)">' + lb + '</text>';
         }
-        return out + '</svg><div class="tld-note">Own scale per reading, green band = safe range, purple = relay (P = Pickup, D = Drop), time axis shared by all lanes.</div>';
+        /* hover layer: cursor line, time pill, one value tag per lane */
+        out += '<g id="tldGraphHov" style="display:none;pointer-events:none">' +
+            '<rect id="tldGraphHl" x="' + lab + '" y="0" width="' + gw + '" height="' + LH + '" fill="rgba(245,158,11,.10)" stroke="rgba(245,158,11,.55)" stroke-width=".8" style="display:none"></rect>' +
+            '<line id="tldGraphCur" x1="0" x2="0" y1="' + top + '" y2="' + (H - 20) + '" stroke="#F59E0B" stroke-width="1.2" stroke-dasharray="3 3"></line>' +
+            '<rect id="tldGraphTb" x="0" y="' + (H - 19) + '" width="96" height="16" rx="4" fill="#F59E0B"></rect>' +
+            '<text id="tldGraphTt" x="0" y="' + (H - 7) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#fff"></text>';
+        lanes.forEach(function (ln, k) {
+            out += '<g id="tldGV' + k + '"><circle r="2.6" fill="#F59E0B"></circle><rect height="15" rx="3" fill="var(--e7-surface,#fff)" stroke="#F59E0B" stroke-width=".8"></rect>' +
+                '<text font-size="10" font-weight="700" fill="var(--e7-text,#1d2733)" font-family="JetBrains Mono, monospace"></text></g>';
+        });
+        out += '</g>';
+        return out + '</svg><div class="tld-note">Hover the graph to read every value at that time and when it last changed. Own scale per reading, green band = safe range, purple = relay (P = Pickup, D = Drop), time axis shared by all lanes.</div>';
     }
     function paintGraph() { var el = document.getElementById('tldGraph'); if (el) el.innerHTML = graphHtml(); }
+    function hhmmss(ms) { var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+    function lastAt(pts, t) {   /* index of the last sample at or before t (binary search) */
+        var lo = 0, hi = pts.length - 1, r = -1;
+        while (lo <= hi) { var m = (lo + hi) >> 1; if (pts[m][0] <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+        return r;
+    }
+    /* hover readout: 'all' = every lane at the mouse time, 'one' = only the lane under the mouse */
+    function hoverMode() {
+        if (!D.hoverMode) { var s = null; try { s = W.localStorage.getItem('tldHoverMode'); } catch (x) { } D.hoverMode = s === 'one' ? 'one' : 'all'; }
+        return D.hoverMode;
+    }
+    function graphHoverOff() {
+        var g = document.getElementById('tldGraphHov');
+        if (g) g.style.display = 'none';
+        D.gHover = false;
+    }
+    function graphHover(e) {
+        var svg = e.target && e.target.closest ? e.target.closest('#tldGraphSvg') : null;
+        var G = D.graphGeo;
+        if (!svg || !G) { if (D.gHover) graphHoverOff(); return; }
+        var rc = svg.getBoundingClientRect();
+        var x = (e.clientX - rc.left) / rc.width * G.w;
+        if (x < G.lab || x > G.lab + G.gw) { if (D.gHover) graphHoverOff(); return; }
+        var hov = document.getElementById('tldGraphHov');
+        if (!hov) return;
+        D.gHover = true;
+        hov.style.display = '';
+        var t = G.t0 + (x - G.lab) / G.gw * G.span, xs = x.toFixed(1), right = x > G.lab + G.gw * 0.72;
+        /* lane under the mouse (rows are LH tall with an 8 px gap; the gap belongs to the lane above) */
+        var y = (e.clientY - rc.top) / rc.height * G.H, one = hoverMode() === 'one', on = -1;
+        for (var q = 0; q < G.lanes.length; q++) if (y >= G.lanes[q].y0 && y < G.lanes[q].y0 + G.lanes[q].LH + 8) { on = q; break; }
+        var hl = document.getElementById('tldGraphHl');
+        if (hl) { if (one && on >= 0) { hl.setAttribute('y', G.lanes[on].y0); hl.style.display = ''; } else hl.style.display = 'none'; }
+        var cur = document.getElementById('tldGraphCur');
+        cur.setAttribute('x1', xs); cur.setAttribute('x2', xs);
+        var tb = document.getElementById('tldGraphTb'), tt = document.getElementById('tldGraphTt');
+        var tl = G.span > 48 * 3600000 ? new Date(t).getDate() + '/' + (new Date(t).getMonth() + 1) + ' ' + hhmmss(t) : hhmmss(t);
+        tt.textContent = tl;
+        var tw = tl.length * 6 + 12, tx = Math.max(G.lab + tw / 2, Math.min(G.lab + G.gw - tw / 2, x));
+        tt.setAttribute('x', tx.toFixed(1)); tb.setAttribute('x', (tx - tw / 2).toFixed(1)); tb.setAttribute('width', tw);
+        G.lanes.forEach(function (ln, k) {
+            var g = document.getElementById('tldGV' + k);
+            if (!g) return;
+            var i = ln.Y ? lastAt(ln.pts, t) : -1;
+            if (i < 0 || (one && k !== on)) { g.style.display = 'none'; return; }
+            g.style.display = '';
+            var v = ln.pts[i][1], a = i;
+            while (a > 0 && ln.pts[a - 1][1] === v) a--;
+            var prev = a > 0 ? ln.pts[a - 1][1] : null;
+            var vt = ln.dl ? (v >= 0.5 ? 'Pickup' : 'Drop') : fmt(v);
+            var txt = (prev === null ? vt : (ln.dl ? (prev >= 0.5 ? 'Pickup' : 'Drop') : fmt(prev)) + ' → ' + vt) + ' @ ' + hhmmss(ln.pts[a][0]);
+            if (one) txt = ln.name + ': ' + txt + (a > 0 ? '' : ' (no change in period)');
+            var cy = ln.Y(v), tw2 = txt.length * 6.1 + 8;
+            var bx = right ? x - 6 - tw2 : x + 6, by = Math.max(ln.y0, Math.min(ln.y0 + ln.LH - 15, cy - 7.5));
+            var c = g.firstChild, r = c.nextSibling, s = r.nextSibling;
+            c.setAttribute('cx', xs); c.setAttribute('cy', cy.toFixed(1));
+            r.setAttribute('x', bx.toFixed(1)); r.setAttribute('y', by.toFixed(1)); r.setAttribute('width', tw2.toFixed(1));
+            s.setAttribute('x', (bx + 4).toFixed(1)); s.setAttribute('y', (by + 11).toFixed(1));
+            s.textContent = txt;
+        });
+    }
 
     /* ------------------------------------------------------------------
        ASK AI  (POST /FRS25/ChatBot/Chat, SSE frames {type:"text"|"tool_use"|"error"})
@@ -1717,26 +1958,64 @@
                 'overall verdict (normal / watch / fault, confidence), each pattern checked (e.g. obstruction, friction / slagging, creeping, A / B end mismatch, slow throw, detection or indication low) with its status and the evidence (operations, current curve, values), and the operations that matched.</div>', '', null, false, 'tldSecPattern') :
             sec('Track shorting (leakage) report', '<div id="tldShort" style="display:flex;flex-direction:column;gap:8px">' + shortHtml() + '</div><div id="tldShortPlots" style="margin-top:8px">' + shortPlotsHtml() + '</div>',
                 '<div style="display:flex;gap:4px">' + shortDaysHtml() + '</div>', null, false, 'tldSecShort')) +
-            sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px">' + periods + '</div>', 'tldGraph', false, 'tldSecGraph') +
+            sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">' +
+                '<span class="tld-note" style="margin:0 2px 0 0">Hover</span>' +
+                [['one', 'Single', 'Show the value of the reading under the mouse only'], ['all', 'All', 'Show the value of every reading at the mouse time']].map(function (m) {
+                    return '<button type="button" class="tld-btn sm" data-tld-hm="' + m[0] + '" aria-pressed="' + (hoverMode() === m[0]) + '" title="' + m[2] + '">' + m[1] + '</button>';
+                }).join(' ') +
+                '<span style="width:1px;height:18px;background:var(--e7-border,#e7ebf1);margin:0 4px"></span>' + periods + '</div>', 'tldGraph', false, 'tldSecGraph') +
             '</div>';
     }
     function setActiveNav(active) {
         var btns = document.querySelectorAll('[data-tld-nav]');
         for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(btns[i] === active));
     }
-    /* v618.38 scroll-spy: highlight the nav item for the section nearest the top of the body */
-    function navSpy() {
+    /* v618.38 scroll-spy: highlight the nav item for the section nearest the top of the body.
+       v618.39: rAF-throttled; paused while a nav click is scrolling (it used to flip the
+       highlight through every section passed on the way), resumed by the user's own scroll;
+       at the very bottom the last section wins (short sections never reach the top). */
+    function navSpyNow() {
+        D.spyRaf = 0;
+        if (D.navLock) return;
         var body = document.querySelector('#tldDrawer .tld-body');
         var btns = document.querySelectorAll('[data-tld-nav]');
         if (!body || !btns.length) return;
-        var ref = body.getBoundingClientRect().top + 24, active = btns[0], activeTop = -Infinity;
-        for (var i = 0; i < btns.length; i++) {
-            var el = document.getElementById(btns[i].getAttribute('data-tld-nav'));
-            if (!el) continue;
-            var top = el.getBoundingClientRect().top;
-            if (top <= ref && top > activeTop) { activeTop = top; active = btns[i]; }
+        var active = btns[0];
+        if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) active = btns[btns.length - 1];
+        else {
+            var ref = body.getBoundingClientRect().top + 24, activeTop = -Infinity;
+            for (var i = 0; i < btns.length; i++) {
+                var el = document.getElementById(btns[i].getAttribute('data-tld-nav'));
+                if (!el) continue;
+                var top = el.getBoundingClientRect().top;
+                if (top <= ref && top > activeTop) { activeTop = top; active = btns[i]; }
+            }
         }
-        setActiveNav(active);
+        if (active.getAttribute('aria-pressed') !== 'true') setActiveNav(active);
+    }
+    function navSpy() { if (!D.spyRaf) D.spyRaf = requestAnimationFrame(navSpyNow); }
+    function navUnlock() { D.navLock = false; }
+    function navTo(btn) {
+        var body = document.querySelector('#tldDrawer .tld-body');
+        var sect = document.getElementById(btn.getAttribute('data-tld-nav'));
+        setActiveNav(btn);
+        if (btn.scrollIntoView) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        if (!body || !sect) return;
+        D.navLock = true;
+        var y = sect.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 4;
+        y = Math.max(0, Math.min(y, body.scrollHeight - body.clientHeight));
+        if (Math.abs(body.scrollTop - y) < 2) return;
+        try { body.scrollTo({ top: y, behavior: 'smooth' }); } catch (x) { body.scrollTop = y; }
+    }
+    function onMove(e) {
+        D.lastMove = e;
+        if (D.moveRaf) return;
+        D.moveRaf = requestAnimationFrame(function () {
+            D.moveRaf = 0;
+            var ev = D.lastMove;
+            trendHover(ev);
+            graphHover(ev);
+        });
     }
     function liveRefresh() {
         if (!D.aid || !document.getElementById('tldDrawer')) return;
@@ -1744,7 +2023,7 @@
         var sig = A ? (A.rows.map(function (r) { return r.v; }).join(',') + '|' + (A.derived || []).map(function (r) { return r.v; }).join(',') + '|' + A.occ + A.status + A.score + (A.pmDir || '') + (A.pmWhen || '') +
             (A.relays || []).map(function (r) { return r.up ? 1 : 0; }).join('') + '|' + isLight()) : 'none';
         var head = document.getElementById('tldHead');
-        if (head) head.innerHTML = headHtml(A);
+        if (head) { var hh = headHtml(A); if (hh !== D.headHtml) { D.headHtml = hh; head.innerHTML = hh; } }
         if (sig === D.liveSig) return;
         D.liveSig = sig;
         var v = document.getElementById('tldValues'); if (v) v.innerHTML = valuesHtml(A);
@@ -1790,12 +2069,7 @@
         if (t.closest('[data-tld-close]')) { close(); return; }
         var go = t.closest('[data-tld-go]'); if (go) { open(go.getAttribute('data-tld-go')); return; }
         var nav = t.closest('[data-tld-nav]');
-        if (nav) {
-            var sect = document.getElementById(nav.getAttribute('data-tld-nav'));
-            if (sect && sect.scrollIntoView) sect.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setActiveNav(nav);
-            return;
-        }
+        if (nav) { navTo(nav); return; }
         var act = t.closest('[data-tld-act]');
         if (act) {
             var k = act.getAttribute('data-tld-act');
@@ -1843,6 +2117,14 @@
         }
         var af = t.closest('[data-tld-af]'); if (af) { D.alertFilter = af.getAttribute('data-tld-af'); paintAlerts(); return; }
         var rp = t.closest('[data-tld-replay]'); if (rp) { var p = rp.getAttribute('data-tld-replay').split('|'); replay(p[0], p[1]); return; }
+        var hm = t.closest('[data-tld-hm]'); if (hm) {
+            D.hoverMode = hm.getAttribute('data-tld-hm') === 'one' ? 'one' : 'all';
+            try { W.localStorage.setItem('tldHoverMode', D.hoverMode); } catch (x) { }
+            var hms = document.querySelectorAll('[data-tld-hm]');
+            for (var h2 = 0; h2 < hms.length; h2++) hms[h2].setAttribute('aria-pressed', String(hms[h2] === hm));
+            graphHoverOff();
+            return;
+        }
         var hb = t.closest('[data-tld-h]'); if (hb) {
             D.graphHours = +hb.getAttribute('data-tld-h') || 24;
             var bs = document.querySelectorAll('[data-tld-h]');
@@ -1890,13 +2172,25 @@
             dr = document.createElement('aside'); dr.id = 'tldDrawer'; dr.className = 'tld';
             dr.setAttribute('role', 'dialog'); dr.setAttribute('aria-modal', 'true'); dr.setAttribute('aria-label', 'Asset dashboard');
             dr.addEventListener('click', onClick);
-            dr.addEventListener('mousemove', trendHover);
+            dr.addEventListener('mousemove', onMove);
+            dr.addEventListener('mouseleave', graphHoverOff);
             document.body.appendChild(dr);
-            document.addEventListener('keydown', onKey);
         }
+        document.removeEventListener('keydown', onKey);
+        document.addEventListener('keydown', onKey);
+        D.navLock = false;
+        D.headHtml = '';
+        D.graphGeo = null;
+        D.gHover = false;
+        loadAliases(D.aid);
         dr.innerHTML = shell();
         var bodyEl = dr.querySelector('.tld-body');
-        if (bodyEl) bodyEl.addEventListener('scroll', navSpy, { passive: true });
+        if (bodyEl) {
+            bodyEl.addEventListener('scroll', navSpy, { passive: true });
+            /* the user's own scrolling hands the highlight back to the scroll-spy */
+            ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function (ev) { bodyEl.addEventListener(ev, navUnlock, { passive: true }); });
+            if ('onscrollend' in bodyEl) bodyEl.addEventListener('scrollend', function () { if (D.navLock) setTimeout(navUnlock, 120); });
+        }
         D.liveSig = '';
         liveRefresh();
         loadAlerts();

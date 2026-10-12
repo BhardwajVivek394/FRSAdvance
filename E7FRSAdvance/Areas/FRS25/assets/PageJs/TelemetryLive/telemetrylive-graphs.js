@@ -800,10 +800,11 @@ function _ipsBuildSeries() {
 
             var sourcePoints = [];
 
-            // IPS attributes are measurements.
-            // Even when all samples happen to be 0 or 1, they must remain numeric values.
-            // Do not convert IPS data into On/Off or Pickup/Drop states.
-            var isBinary = false;
+            // Analog IPS measurements stay numeric even when every sample is 0/1.
+            // Only a genuine DataLogger / digital attribute (decided by DataType via
+            // ipsIsBinaryAttribute) is a relay, shown as Pickup / Drop. Analog currents
+            // that merely happen to read 0/1 are never misread as binary.
+            var isBinary = ipsIsBinaryAttribute(assetId, attributeRow.AttributeId, firstValue, attributeRow);
 
             var sequence = 0;
 
@@ -1611,13 +1612,14 @@ function _ipsRender() {
             }
 
             /*
-             * IPS values are always numeric measurements.
-             * No On/Off or Pickup/Drop conversion is performed.
+             * Analog IPS values are numeric; a DataLogger relay reads as Pickup / Drop.
              */
             var displayValue =
                 value === null
                     ? '\u2014'
-                    : tlZeroFloor(Number(value)).toFixed(2);
+                    : (series.isBin
+                        ? (Number(value) >= 0.5 ? 'Pickup' : 'Drop')
+                        : tlZeroFloor(Number(value)).toFixed(2));
 
             var seriesName =
                 ipsSeriesLabel(series);
@@ -1891,7 +1893,8 @@ function _ipsRender() {
     // Multiple assets can also be manually switched here.
     // =====================================================
     if (!stacked) {
-        // IPS attributes always use their real numeric measurement scale.
+        // Analog IPS attributes use their numeric scale; DataLogger relays use the
+        // right-hand Pickup / Drop (State) axis.
         var hasBinary = false;
 
         var usedNames = {};
@@ -1914,6 +1917,8 @@ function _ipsRender() {
             usedNames[label] = true;
             legends.push(label);
 
+            if (series.isBin) hasBinary = true;
+
             chartSeries.push({
                 id: key,
                 name: label,
@@ -1931,11 +1936,12 @@ function _ipsRender() {
                 symbol: 'circle',
                 symbolSize: 4,
 
-                yAxisIndex: 0,
+                yAxisIndex: series.isBin ? 1 : 0,
 
                 lineStyle: {
                     width: 1.8,
-                    color: series.color
+                    color: series.color,
+                    opacity: series.isBin ? 0.75 : 1
                 },
 
                 itemStyle: {
@@ -2024,7 +2030,7 @@ function _ipsRender() {
 
             {
                 type: 'value',
-                name: 'State',
+                name: 'Relay',
                 position: 'right',
 
                 min: 0,
@@ -2037,10 +2043,10 @@ function _ipsRender() {
                     formatter:
                         function (value) {
                             return value === 1
-                                ? 'On'
+                                ? 'Pickup'
                                 : (
                                     value === 0
-                                        ? 'Off'
+                                        ? 'Drop'
                                         : ''
                                 );
                         }
@@ -2181,15 +2187,17 @@ function _ipsRender() {
                             show: true,
                             fontSize: 9,
                             backgroundColor: 'rgba(34,211,238,0.80)',
-                            formatter: function (p) {
-                                return tlZeroFloor(Number(p.value)).toFixed(2);
-                            }
+                            formatter: (function (isBin) {
+                                return function (p) {
+                                    if (isBin) return Number(p.value) >= 0.5 ? 'Pickup' : 'Drop';
+                                    return tlZeroFloor(Number(p.value)).toFixed(2);
+                                };
+                            })(series.isBin)
                         }
                     },
 
-                    // Each analog IPS series receives
-                    // its own actual value scale.
-                    // Every IPS lane is a numeric measurement lane.
+                    // Analog lanes keep their numeric scale; a DataLogger lane is a
+                    // Pickup / Drop relay lane (handled just below).
                     scale: true,
 
                     name:
@@ -2229,22 +2237,24 @@ function _ipsRender() {
                     }
                 };
 
-                //if (series.isBin) {
-                //    yAxis.min = 0;
-                //    yAxis.max = 1;
-                //    yAxis.interval = 1;
+                // DataLogger lane: fixed 0/1 scale, ticks shown as Pickup / Drop.
+                if (series.isBin) {
+                    yAxis.scale = false;
+                    yAxis.min = 0;
+                    yAxis.max = 1;
+                    yAxis.interval = 1;
 
-                //    yAxis.axisLabel.formatter =
-                //        function (value) {
-                //            return value === 1
-                //                ? 'On'
-                //                : (
-                //                    value === 0
-                //                        ? 'Off'
-                //                        : ''
-                //                );
-                //        };
-                //}
+                    yAxis.axisLabel.formatter =
+                        function (value) {
+                            return value === 1
+                                ? 'Pickup'
+                                : (
+                                    value === 0
+                                        ? 'Drop'
+                                        : ''
+                                );
+                        };
+                }
 
                 yAxes.push(yAxis);
 
@@ -2797,7 +2807,10 @@ function _pmgBuildSeries() {
 
         // Show only real attributes of the selected asset: an id that still resolves to
         // "Attr <id>" and is not a known PM operation code isn't a configured attribute — skip it.
-        if (pmG.hideUnknown !== false && /^Attr\s*\d+$/i.test(nm) &&
+        // DataLogger relays are always kept (v616 whitelisted the relay attr ids), even when
+        // the name falls back to "Attr <id>" because the alias map hasn't resolved it yet.
+        var _isDlAttr = String(dt || '').toLowerCase() === 'datalogger';
+        if (pmG.hideUnknown !== false && !_isDlAttr && /^Attr\s*\d+$/i.test(nm) &&
             !(typeof isPmOperationId === 'function' && isPmOperationId(at.AttributeId))) {
             return;
         }
@@ -2932,7 +2945,7 @@ function _pmgRender() {
     var el = document.getElementById('pmgChart');
     if (!el || typeof echarts === 'undefined') return;
 
-    var sr = [], legends = [], used = {}, hasBin = false;
+    var sr = [], legends = [], used = {}, hasBin = false, binByName = {};
     pmG.order.forEach(function (k) {
         if (pmG.checked[k] === false || !_pmgVisible(k)) return;
         var sv = pmG.series[k];
@@ -2943,7 +2956,7 @@ function _pmgRender() {
         }
         used[nm] = 1;
         var dense = sv.points.length > 30;
-        if (sv.isBin) hasBin = true;
+        if (sv.isBin) { hasBin = true; binByName[nm] = true; }
         legends.push(nm);
         sr.push({
             name: nm, type: 'line', smooth: false,
@@ -2973,12 +2986,12 @@ function _pmgRender() {
     ];
     if (hasBin) {
         yAxes.push({
-            type: 'value', name: '0 / 1', position: 'right', min: 0, max: 1, interval: 1,
+            type: 'value', name: 'Relay', position: 'right', min: 0, max: 1, interval: 1,
             nameTextStyle: { color: 'rgba(255,255,255,0.50)' },
             axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
             axisLabel: {
                 color: 'rgba(255,255,255,0.50)',
-                formatter: function (v) { return v === 1 ? 'On' : (v === 0 ? 'Off' : ''); }
+                formatter: function (v) { return v === 1 ? 'Pickup' : (v === 0 ? 'Drop' : ''); }
             },
             splitLine: { show: false }
         });
@@ -3005,7 +3018,9 @@ function _pmgRender() {
                 var rows = ps.slice().sort(function (a, b) { return (b.value[1] || 0) - (a.value[1] || 0); });
                 var html = '<div style="font-weight:700;color:#22d3ee;margin-bottom:4px;">' + t + '</div>';
                 rows.forEach(function (p) {
-                    var v = (p.value && p.value[1] != null) ? Number(p.value[1]).toFixed(2) : '—';
+                    var raw = (p.value && p.value[1] != null) ? Number(p.value[1]) : null;
+                    var v = raw === null ? '—'
+                        : (binByName[p.seriesName] ? (raw >= 0.5 ? 'Pickup' : 'Drop') : raw.toFixed(2));
                     html += '<div style="display:flex;align-items:center;gap:6px;">' +
                         '<span style="width:9px;height:9px;border-radius:50%;background:' + p.color + ';flex-shrink:0;"></span>' +
                         '<span style="flex:1;white-space:nowrap;">' + p.seriesName + '</span>' +

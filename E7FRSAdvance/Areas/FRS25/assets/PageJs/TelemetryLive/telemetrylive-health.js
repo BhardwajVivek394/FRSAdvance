@@ -52,7 +52,7 @@
     var DEFAULT_RANGES = {
         IFMA: { min: 250, max: 500 },
         IRMA: { min: 210, max: 400 },
-        VR: { min: 2.1, max: 5.2 },
+        VR: { min: 2.5, max: 4.2 },   /* VTC RELAY END(V): e7mriv2web danger rule (Vr in 0.1-2.5 or >4.2); near-zero handled by OCC_SUPPRESS */
         CHOKEV: { min: 0.6, max: 1.4 },
         TPRV: { min: 21, max: 32 },
         TPRVLOC: { min: 23, max: 40 },
@@ -263,7 +263,9 @@
             var m = meta[aid + '_' + attrId] ||
                 (window.sipMetaAll && window.sipMetaAll.simple && window.sipMetaAll.simple[aid + '_' + attrId]) || {};
             var title = strip(m.attributeName || m.AttributeName || k);
-            var alias = strip(m.name || m.AliasName || byName[k] || k);
+            /* v618.39: API AliasName (GetUserAssetInfo, any asset type) before the raw WebSocket key */
+            var apiAlias = typeof window.tlAliasOf === 'function' ? window.tlAliasOf(aid, attrId, title) || window.tlAliasOf(aid, '', k) : '';
+            var alias = strip(m.aliasName || m.AliasName || apiAlias || m.name || byName[k] || k);
             var v = num(a.Value);
             rows.push({
                 k: k, key: norm(title), attrId: attrId, title: title, alias: alias,

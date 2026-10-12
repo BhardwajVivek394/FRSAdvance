@@ -3543,6 +3543,25 @@
     html[data-aurora="dark"] #e7Body #eldApp .cir-ops-t th { background: var(--e7-surface-3); color: var(--e7-text-2); }
     html[data-aurora="dark"] #e7Body #eldApp .cir-ops-t tr.near td { background: rgba(240,165,62,.12); }
     html[data-aurora="dark"] #e7Body #eldApp .cir-ops-t tr.near:hover td { background: rgba(240,165,62,.18); }
+
+    /* ---- common filter bar + tab row (sit under the header, above every tab) ---- */
+    #eldApp #commonFilterBar {
+        display: flex;
+        gap: 16px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        padding: 12px 22px;
+        background: var(--panel2);
+        border-bottom: 1px solid var(--line);
+    }
+        #eldApp #commonFilterBar select { min-width: 180px; }
+    #eldApp .nav-tabs.eld-tabbar {
+        margin-left: 0 !important;
+        padding: 10px 22px !important;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line) !important;
+        flex-wrap: wrap !important;
+    }
 </style>
 <section class="section">
     <div class="row">
@@ -3570,18 +3589,45 @@
 <div id="eldApp">
 <header>
   <h1>ELD Monitor</h1>
-  <div class="nav-tabs">
-    <button class="nav-btn" id="tabMonitorBtn" onclick="switchTab('monitor')">Monitor</button>
-    <button class="nav-btn" id="tabLogsBtn" onclick="switchTab('logs')">Transition Logs</button>
-    <button class="nav-btn active" id="tabAnalysisBtn" onclick="switchTab('analysis')">Analysis</button>
-    <button class="nav-btn" id="tabMappingBtn" onclick="switchTab('mapping')">Mapped Attributes</button>
-    <button class="nav-btn" id="tabSipBtn" onclick="switchTab('sip')">SIP View</button>
-  </div>
   <span class="spacer"></span>
-  <span class="live"><span class="pulse"></span>Live &#183; all sites</span>
+  <span class="live"><span class="pulse"></span>Live</span>
   <span class="muted" id="clock" style="font-size:12px"></span>
   <button id="refreshBtn">&#8635; Refresh now</button>
 </header>
+
+<!-- ONE common filter bar for every tab (Monitor, Transition Logs, Analysis,
+     Mapped Attributes, SIP View) - Site/ELD Asset/Date Range used to be a
+     separate control inside each tab; now there's exactly one of each here,
+     and onGlobal*Change() below pushes the value into whichever per-tab
+     (hidden) controls still drive that tab's own logic. Sits ABOVE the tab
+     buttons on purpose: set what you want to look at first, then pick which
+     view to see it in. -->
+<div id="commonFilterBar">
+  <label class="f" style="margin:0">Site
+    <select id="globalSiteSelect" onchange="onGlobalSiteChange()">
+      <option value="">All Sites</option>
+    </select>
+  </label>
+  <label class="f" style="margin:0">ELD Asset
+    <select id="globalEldSelect" onchange="onGlobalEldChange()">
+      <option value="">All ELDs</option>
+    </select>
+  </label>
+  <label class="f" style="margin:0">From
+    <input type="datetime-local" id="globalFromDate" onchange="onGlobalDateChange()"/>
+  </label>
+  <label class="f" style="margin:0">To
+    <input type="datetime-local" id="globalToDate" onchange="onGlobalDateChange()"/>
+  </label>
+</div>
+
+<div class="nav-tabs eld-tabbar">
+  <button class="nav-btn" id="tabMonitorBtn" onclick="switchTab('monitor')">Monitor</button>
+  <button class="nav-btn" id="tabLogsBtn" onclick="switchTab('logs')">Transition Logs</button>
+  <button class="nav-btn active" id="tabAnalysisBtn" onclick="switchTab('analysis')">Analysis</button>
+  <button class="nav-btn" id="tabMappingBtn" onclick="switchTab('mapping')">Mapped Attributes</button>
+  <button class="nav-btn" id="tabSipBtn" onclick="switchTab('sip')">SIP View</button>
+</div>
 
 <div id="monitorView" class="layout" style="display:none">
   <!-- MAIN -->
@@ -3615,12 +3661,12 @@
 <!-- LOGS VIEW TAB -->
 <div id="logsView" style="display:none; max-width:1500px; margin:0 auto; padding:18px 22px;">
   <div class="controls" style="margin-top:0">
-    <label class="f">Site Filter
+    <label class="f" style="display:none">Site Filter
       <select id="logSiteSelect" onchange="onLogSiteChange()">
         <option value="">All Sites</option>
       </select>
     </label>
-    <label class="f">ELD Asset Filter
+    <label class="f" style="display:none">ELD Asset Filter
       <select id="logEldSelect" onchange="loadLogs()">
         <option value="">All ELDs</option>
       </select>
@@ -3632,9 +3678,9 @@
         <option value="UP">UP only</option>
       </select>
     </label>
-    <label class="f">From
+    <label class="f" style="display:none">From
       <input type="datetime-local" id="logFromDate" onchange="loadLogs()"/></label>
-    <label class="f">To
+    <label class="f" style="display:none">To
       <input type="datetime-local" id="logToDate" onchange="loadLogs()"/></label>
     <label class="f">&nbsp;
       <button class="primary" onclick="loadLogs()">&#8635; Refresh Logs</button>
@@ -3650,12 +3696,12 @@
 <!-- ANALYSIS VIEW TAB -->
 <div id="analysisView" style="display:block; max-width:1500px; margin:0 auto; padding:18px 22px;">
   <div class="controls" style="margin-top:0">
-    <label class="f">Site Filter
+    <label class="f" style="display:none">Site Filter
       <select id="anSiteSelect" onchange="onAnSiteChange()">
         <option value="">All Sites</option>
       </select>
     </label>
-    <label class="f">ELD Asset Filter
+    <label class="f" style="display:none">ELD Asset Filter
       <select id="anEldSelect" onchange="onAnEldChange()">
         <option value="">All ELDs</option>
       </select>
@@ -3667,10 +3713,10 @@
         <option value="unlinked">Unlinked / Isolated Trips Only</option>
       </select>
     </label>
-    <label class="f">From Date/Time
+    <label class="f" style="display:none">From Date/Time
       <input type="datetime-local" id="anFromDate"/>
     </label>
-    <label class="f">To Date/Time
+    <label class="f" style="display:none">To Date/Time
       <input type="datetime-local" id="anToDate"/>
     </label>
     <label class="f">Pre-Sec (s)
@@ -3737,7 +3783,7 @@
       <input type="text" id="mapSearchInput" placeholder="Search by ELD Name, Station Site, or Mapped Asset (e.g. TRACK, POINT, Sakhun)..."
              style="width:100%; padding:9px 14px; border:1px solid var(--line); border-radius:8px; background:var(--panel2); color:var(--txt); font-size:13.5px; box-sizing:border-box" />
     </div>
-    <label style="display:flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:var(--mut)">
+    <label style="display:none; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:var(--mut)">
       Station:
       <select id="mapSiteSelect" onchange="renderMappingCardsOnly()"
               title="Filter by station / site &#8212; pick Sakhun or Gahlota"
@@ -3827,6 +3873,8 @@ async function loadSites(){
   try{
     const r = await fetch(ELD_ENDPOINTS.sites); const d = await r.json();
     ALL_SITES = d.sites || [];
+    populateGlobalSiteFilter();
+    populateGlobalEldFilter();
     populateLogFilters();
     populateAnalysisFilters();
     // Red/green summary from the live ELD list (new taxonomy): changed vs ok
@@ -3855,7 +3903,141 @@ async function loadEvents(){
   }catch(err){}
 }
 
-function setSite(id){ SITE_FILTER = id; loadSites(); render(); }
+function setSite(id){ SITE_FILTER = id; loadSites(); render(); syncGlobalSiteSelect(); }
+
+// ── ONE site filter for the whole page (common bar), driving every tab instead of
+// each tab keeping its own separate "Site Filter"/"Station" dropdown. The
+// per-tab <select>s (#logSiteSelect/#anSiteSelect/#mapSiteSelect) still exist
+// in the DOM (hidden) - their own onchange handlers already know how to
+// refilter their tab, so this just moves them and fires the same handlers. ──
+function populateGlobalSiteFilter(){
+  const sel = _$('#globalSiteSelect');
+  if(!sel || !ALL_SITES.length) return;
+  const curr = sel.value;
+  const opts = '<option value="">All Sites</option>' + ALL_SITES.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+  if(sel.innerHTML !== opts){
+    sel.innerHTML = opts;
+    if(curr && Array.from(sel.options).some(o => o.value === String(curr))) sel.value = curr;
+  }
+}
+
+function syncGlobalSiteSelect(){
+  const sel = _$('#globalSiteSelect');
+  if(sel) sel.value = SITE_FILTER != null ? String(SITE_FILTER) : '';
+}
+
+function onGlobalSiteChange(){
+  const raw = _$('#globalSiteSelect').value;
+  const id = raw ? Number(raw) : null;
+  const siteName = id != null ? ((ALL_SITES.find(s => String(s.id) === raw) || {}).name || '') : '';
+
+  SITE_FILTER = id;
+  render();
+
+  const logSel = _$('#logSiteSelect');
+  if(logSel){ logSel.value = raw; onLogSiteChange(); }
+
+  const anSel = _$('#anSiteSelect');
+  if(anSel){ anSel.value = raw; onAnSiteChange(); }
+
+  PENDING_MAP_SITE = siteName;
+  const mapSel = _$('#mapSiteSelect');
+  if(mapSel){ mapSel.value = siteName; renderMappingCardsOnly(); }
+
+  const sipSel = document.getElementById('sipSite');
+  if(sipSel && raw && Array.from(sipSel.options).some(o => o.value === raw)){ sipSel.value = raw; fireChange(sipSel); }
+
+  // the site narrowed - re-filter the global ELD list and drop any
+  // previously-picked ELD that no longer belongs to this site
+  populateGlobalEldFilter(true);
+}
+
+// ── ONE ELD-asset filter for the whole page, same idea as the site filter
+// above - drives the (hidden) per-tab ELD selects plus SIP View's own. ──
+function populateGlobalEldFilter(resetIfInvalid){
+  const sel = _$('#globalEldSelect');
+  if(!sel) return;
+  const curr = sel.value;
+  let list = ELDS;
+  if(SITE_FILTER !== null) list = list.filter(e => e.site_id === SITE_FILTER);
+  const opts = '<option value="">All ELDs</option>' + list.map(e =>
+    `<option value="${e.eld_id}">${e.eld_name || ('ELD '+e.eld_id)}${e.supply_name ? ' — '+e.supply_name : ''} (${e.site_name||''})</option>`
+  ).join('');
+  if(sel.innerHTML !== opts){
+    sel.innerHTML = opts;
+    if(curr && Array.from(sel.options).some(o => o.value === curr)) sel.value = curr;
+    else if(resetIfInvalid) sel.value = '';
+  }
+}
+
+function fireChange(el){ if(el) el.dispatchEvent(new Event('change')); }
+
+// SIP View builds its own #sipSite/#sipFrom/#sipTo/#sipEld (sip.js, a separate
+// self-contained module) and has its own localStorage-remembered site. Called
+// every time the SIP tab opens (after SIP.init() resolves) so the common bar
+// stays authoritative instead of SIP silently reverting to whatever site it
+// last remembered.
+function syncGlobalFiltersIntoSip(){
+  const siteRaw = _$('#globalSiteSelect') ? _$('#globalSiteSelect').value : '';
+  const eldRaw = _$('#globalEldSelect') ? _$('#globalEldSelect').value : '';
+  const from = _$('#globalFromDate') ? _$('#globalFromDate').value : '';
+  const to = _$('#globalToDate') ? _$('#globalToDate').value : '';
+
+  const sipSite = document.getElementById('sipSite');
+  if(sipSite && siteRaw && Array.from(sipSite.options).some(o => o.value === siteRaw)){
+    sipSite.value = siteRaw; fireChange(sipSite);
+  }
+  const sipFrom = document.getElementById('sipFrom'), sipTo = document.getElementById('sipTo');
+  if(sipFrom && from) sipFrom.value = from;
+  if(sipTo && to) sipTo.value = to;
+  const sipEld = document.getElementById('sipEld');
+  if(sipEld && eldRaw){ sipEld.value = eldRaw; fireChange(sipEld); }
+}
+
+function onGlobalEldChange(){
+  const val = _$('#globalEldSelect').value;
+
+  const logSel = _$('#logEldSelect');
+  if(logSel){ logSel.value = val; loadLogs(); }
+
+  const anSel = _$('#anEldSelect');
+  if(anSel){ anSel.value = val; onAnEldChange(); }
+
+  const sipSel = document.getElementById('sipEld');
+  if(sipSel){ sipSel.value = val; fireChange(sipSel); }
+}
+
+// ── ONE date range for the whole page. Transition Logs auto-refreshes on
+// change (it always did); Analysis just stores the value - it already only
+// (re)fetches when its own "Show Analysis" button is clicked. ──
+function setGlobalDateDefaultsOnce(){
+  const fromEl = _$('#globalFromDate'), toEl = _$('#globalToDate');
+  if(!fromEl || !toEl || fromEl.value) return;
+  const toLocalISO = dt => new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  const now = new Date();
+  const past = new Date(now.getTime() - 150*24*60*60*1000); // ~5 months back
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ELD_AI_WINDOW') || 'null'); } catch(e) {}
+  fromEl.value = saved && saved.start ? saved.start : toLocalISO(past);
+  toEl.value = saved && saved.end ? saved.end : toLocalISO(now);
+}
+
+function onGlobalDateChange(){
+  const from = _$('#globalFromDate').value, to = _$('#globalToDate').value;
+
+  const lf = _$('#logFromDate'), lt = _$('#logToDate');
+  if(lf) lf.value = from;
+  if(lt) lt.value = to;
+  if(lf || lt) loadLogs();
+
+  const af = _$('#anFromDate'), at = _$('#anToDate');
+  if(af) af.value = from;
+  if(at) at.value = to;
+
+  const sf = document.getElementById('sipFrom'), st = document.getElementById('sipTo');
+  if(sf){ sf.value = from; fireChange(sf); }
+  if(st){ st.value = to; fireChange(st); }
+}
 function setStatus(f){ STATUS_FILTER = f;
   document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', c.dataset.f===f));
   render(); }
@@ -4197,7 +4379,7 @@ async function loadLatestInsightHero(){
 let ALL_SITES = [];
 let CURRENT_TAB = 'analysis';
 
-function switchTab(tab){
+async function switchTab(tab){
   CURRENT_TAB = tab;
   _$('#tabMonitorBtn').classList.toggle('active', tab==='monitor');
   _$('#tabLogsBtn').classList.toggle('active', tab==='logs');
@@ -4212,12 +4394,18 @@ function switchTab(tab){
   _$('#sipView').style.display = tab==='sip' ? 'block' : 'none';
 
   if(tab==='sip'){
-    if(window.SIP) SIP.init();
+    // SIP.init() is async (it fetches the SIP sites and sets #sipSite
+    // from localStorage) - MUST await it before pushing the common bar's
+    // values in, otherwise SIP's own init finishes later and silently
+    // overwrites them back to whatever site was last used.
+    if(window.SIP) await SIP.init();
+    syncGlobalFiltersIntoSip();
   } else if(tab==='logs'){
     populateLogFilters();
-    loadLogs();
+    onLogSiteChange();   // also (re)populates #logEldSelect - was only ever done via the now-hidden per-tab site select
   } else if(tab==='analysis'){
     populateAnalysisFilters();
+    onAnSiteChange(true);   // also (re)populates #anEldSelect - was only ever done via the now-hidden per-tab site select
     if(!CURRENT_ANALYSIS_EVENTS.length){
       loadHistoryAnalysis();
     }
@@ -4227,7 +4415,11 @@ function switchTab(tab){
 }
 
 function populateLogFilters(){
-  setLogDateDefaults();
+  setGlobalDateDefaultsOnce();
+  const gf = _$('#globalFromDate'), gt = _$('#globalToDate');
+  const fromEl = _$('#logFromDate'), toEl = _$('#logToDate');
+  if(fromEl && gf) fromEl.value = gf.value;
+  if(toEl && gt) toEl.value = gt.value;
   const siteSel = _$('#logSiteSelect');
   if(siteSel && ALL_SITES.length){
     const curr = siteSel.value;
@@ -4269,17 +4461,11 @@ function populateAnalysisFilters(){
       }
     }
   }
-  const fromEl = _$('#anFromDate');
-  const toEl = _$('#anToDate');
-  if(!fromEl.value){
-    const now = new Date();
-    const past = new Date(now.getTime() - 150*24*60*60*1000); // Default 5 months lookback
-    const toLocalISO = dt => new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString().slice(0, 16);
-    let savedWindow = null;
-    try { savedWindow = JSON.parse(localStorage.getItem('ELD_AI_WINDOW') || 'null'); } catch(e) {}
-    fromEl.value = savedWindow && savedWindow.start ? savedWindow.start : toLocalISO(past);
-    toEl.value = savedWindow && savedWindow.end ? savedWindow.end : toLocalISO(now);
-  }
+  setGlobalDateDefaultsOnce();
+  const gf = _$('#globalFromDate'), gt = _$('#globalToDate');
+  const fromEl = _$('#anFromDate'), toEl = _$('#anToDate');
+  if(fromEl && gf) fromEl.value = gf.value;
+  if(toEl && gt) toEl.value = gt.value;
 }
 
 function onAnSiteChange(preserveEld = false){
@@ -5825,13 +6011,6 @@ function renderAiSummary(d, eldId){
     </div>`;
 }
 
-function setLogDateDefaults(){
-  const fromEl = _$('#logFromDate'), toEl = _$('#logToDate');
-  const toLocalISO = dt => new Date(dt.getTime() - dt.getTimezoneOffset()*60000).toISOString().slice(0,16);
-  if(fromEl && !fromEl.value) fromEl.value = '2026-03-01T00:00';   // rebuild baseline
-  if(toEl && !toEl.value) toEl.value = toLocalISO(new Date());
-}
-
 async function loadLogs(){
   const container = _$('#logsContainer');
   const siteId = _$('#logSiteSelect').value;
@@ -5932,6 +6111,7 @@ function renderLogs(logs){
 
 let CURRENT_MAPPING_CATEGORY = 'all';
 let MAPPING_OVERVIEW_DATA = null;
+let PENDING_MAP_SITE = null;  // see onGlobalSiteChange() - applied once #mapSiteSelect's options exist
 
 async function loadMappingOverviewTab(force = false){
   const container = _$('#mappingCardsContainer');
@@ -5982,7 +6162,8 @@ function renderMappingCardsOnly(){
     const siteNames = Array.from(new Set(elds.map(e => e.site_name).filter(Boolean))).sort();
     const opts = '<option value="">All Sites</option>' + siteNames.map(s => `<option value="${s}">${s}</option>`).join('');
     if(siteSel.innerHTML !== opts){
-      const curr = siteSel.value;
+      const curr = PENDING_MAP_SITE != null ? PENDING_MAP_SITE : siteSel.value;
+      PENDING_MAP_SITE = null;
       siteSel.innerHTML = opts;
       if(curr && siteNames.includes(curr)) siteSel.value = curr;
     }
@@ -6132,6 +6313,7 @@ populateAnalysisFilters();
 
 Promise.all([loadList(), loadSites()]).then(() => {
   populateAnalysisFilters();
+  onAnSiteChange(true);   // populates #anEldSelect for the default-active Analysis tab
   loadHistoryAnalysis();
 }).catch(() => {
   loadHistoryAnalysis();

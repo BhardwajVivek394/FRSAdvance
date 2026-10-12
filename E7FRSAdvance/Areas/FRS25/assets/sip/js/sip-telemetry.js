@@ -2220,6 +2220,7 @@
             sh[sp.si].cell._sipShuntAsset = posts[sp.pi].name;
             slog('Shunt-bind: ' + sh[sp.si].cell.id + ' shunt -> "' + posts[sp.pi].name + '"');
         }
+        if (spairs.length) state.findMemo = {};   /* rebuilds shuntLinkedCells too */
     }
 
     /* ── SIP all-asset-types metadata cache ──────────────────────────────
@@ -2940,11 +2941,18 @@
     function thresholdFor(rec) {
         if (rec && rec.id) {
             var zc = window.zeroOffsetCache && window.zeroOffsetCache[rec.id];
-            if (zc && zc.fetched) { var cz = parseFloat(zc.value); if (!isNaN(cz)) return cz; }
+            /* > 0 only: a zero offset would light any lamp on leakage current (SH-3 at 0.66 mA) */
+            if (zc && zc.fetched) { var cz = parseFloat(zc.value); if (cz > 0) return cz; }
             var e = window.wsLiveData && window.wsLiveData[rec.id];
             if (e) { var z = parseFloat(e.ZeroOffsetValue); if (!isNaN(z) && z > 0) return z; }
+            /* real configured offset the bulk-metadata load stored (sipMetaMergeBulk ->
+               sipMetaAll.zeroOffset) -- matches the reference telemetry-live
+               item.ZeroOffsetValue. Without it a route lamp drawing leakage (IROSIG BUG
+               7.95 mA on a signal at RED, real offset > 7.95) lit on the 5 mA default. */
+            var sz = window.sipMetaAll && window.sipMetaAll.zeroOffset && window.sipMetaAll.zeroOffset[rec.id];
+            if (sz != null) { var cs = parseFloat(sz); if (cs > 0) return cs; }
         }
-        if (rec && rec.zeroOffset != null) return rec.zeroOffset;
+        if (rec && rec.zeroOffset > 0) return rec.zeroOffset;
         return (typeof window.RDPMS_DEFAULT_THRESHOLD === 'number') ? window.RDPMS_DEFAULT_THRESHOLD : ZERO_OFFSET_DEFAULT;
     }
 
@@ -3155,13 +3163,17 @@
     function computeRouteCallingActive(rec, thr, cell) {
         var labels = routeLabelsForCell(cell);
         var active = [];
+        /* 616 rule (_Circuit.cshtml): route lamp lit when "xUG mA" (alias IROSIG (xUG)) >
+           ZeroOffsetValue; calling-on when "Co_Hg mA" (alias ICOSIG) > ZeroOffsetValue.
+           A relay is used only when the asset has no current reading for that lamp. */
         for (var i = 0; i < labels.length; i++) {
-            var rn = labels[i];
-            if (usable(maFor(rec, rn), thr) || relayPickup(rec, rn)) active.push(rn);
+            var rn = labels[i], nrn = _normKey(rn);
+            var ma = rec.attrsNorm['IROSIG' + nrn] || maFor(rec, rn);
+            if (ma ? usable(ma, thr) : relayPickup(rec, rn)) active.push(rn);
         }
-        var co = rec.attrsNorm['COHGMA'] || rec.attrsNorm['CALLINGMA'] || rec.attrsNorm['CMA'] || maFor(rec, 'COHG');
+        var co = rec.attrsNorm['COHGMA'] || rec.attrsNorm['ICOSIG'] || rec.attrsNorm['CALLINGMA'] || rec.attrsNorm['CMA'] || maFor(rec, 'COHG');
         var coRelay = rec.dlNorm['COHG'] || rec.dlNorm['CALLING'] || rec.dlNorm['CALL'];
-        if (usable(co, thr) || (coRelay && coRelay.isPickup)) active.push('C');
+        if (co ? usable(co, thr) : (coRelay && coRelay.isPickup)) active.push('C');
         return active.join(',');
     }
 
@@ -3269,7 +3281,10 @@
     }
 
     /* ── Shunt — On/Off Aspect mA > threshold (ON wins), relay fallback ──── */
+    /* 616 rule (_Circuit.cshtml): ISHSIG ON / OFF mA > the asset's ZeroOffsetValue
+       (thresholdFor; a zero / missing offset falls back to the 5 mA default). */
     function computeShuntAspect(rec, thr) {
+        if (!rec) return 'NONE';
         var on = rec.attrsNorm['ONASPECTMA'] || rec.attrsNorm['ISHSIGON'] || rec.attrsNorm['SHSIGONMA'] || maFor(rec, 'ONASPECT');
         var off = rec.attrsNorm['OFFASPECTMA'] || rec.attrsNorm['ISHSIGOFF'] || rec.attrsNorm['SHSIGOFFMA'] || maFor(rec, 'OFFASPECT');
         if (usable(on, thr)) return 'ON';
@@ -3318,7 +3333,52 @@
         for (var i = 0; i < cells.length; i++) {
             if (reeval(cells[i], rec)) { markDirty(cells[i]); any = true; }
         }
+        /* this asset may be the SHUNT half of a Signal+Shunt shape (e.g. SH-3 on the S3 shape) */
+        var links = shuntLinkedCells(name);
+        for (var j = 0; j < links.length; j++) {
+            if (cells.indexOf(links[j]) !== -1) continue;
+            if (reevalCompositeShunt(links[j], rec)) { markDirty(links[j]); any = true; }
+        }
         return any;
+    }
+
+    /* Signal+Shunt shapes whose shunt part is bound to asset `name` (cell._sipShuntAsset).
+       Rebuilt whenever the cell index is rebuilt (state.findMemo is replaced then). */
+    function shuntLinkedCells(name) {
+        if (state._shuntLinksFor !== state.findMemo) {
+            state._shuntLinksFor = state.findMemo;
+            state._shuntLinks = {};
+            for (var i = 0; i < state.cells.length; i++) {
+                var c = state.cells[i];
+                if (!c || c.type !== 'examples.SignalShunt' || !c._sipShuntAsset) continue;
+                var k = _normLabel(c._sipShuntAsset);
+                if (k) (state._shuntLinks[k] = state._shuntLinks[k] || []).push(c);
+            }
+        }
+        return state._shuntLinks[_normLabel(name)] || [];
+    }
+    function shuntRecFor(cell) {
+        var nm = cell._sipShuntAsset;
+        if (!nm) return null;
+        if (state.assets[nm]) return state.assets[nm];
+        var k = _normLabel(nm);
+        for (var n in state.assets) if (state.assets.hasOwnProperty(n) && _normLabel(n) === k) return state.assets[n];
+        return null;
+    }
+    /* Shunt half of a Signal+Shunt shape. Driven by the shunt's OWN asset (SH-x) when one
+       is bound -- never by the main signal's record: the S3 record has no ISHSIG readings,
+       so its HR relay fallback used to light SH-3. No SH-x data yet = dark. */
+    function reevalCompositeShunt(cell, rec) {
+        var shRec = cell._sipShuntAsset ? shuntRecFor(cell) : rec;
+        var sh = shRec ? computeShuntAspect(shRec, thresholdFor(shRec)) : 'NONE';
+        var shLive = (sh === 'ON' || sh === 'OFF') ? sh : '';
+        var shState = sh === 'ON' ? 'PROCEED' : sh === 'OFF' ? 'DIVERGE_RIGHT' : 'OFF';
+        cell.attrs = cell.attrs || {};
+        var sigA = cell.attrs.signal || (cell.attrs.signal = {});
+        if (String(cell.attrs.shuntLive || '') === shLive && sigA.shuntState === shState) return false;
+        cell.attrs.shuntLive = shLive; sigA.shuntState = shState;
+        slog('Shunt ' + (cell._sipShuntAsset || rec.name) + ' -> ' + sh);
+        return true;
     }
 
     function reeval(cell, rec) {
@@ -3343,14 +3403,7 @@
                 changed = true;
                 slog('Signal ' + name + ' → ' + ss.aspect + ' (lit "' + newLit + '", thr=' + thr + ')');
             }
-            if (cell.type === 'examples.SignalShunt') {
-                var sh = computeShuntAspect(rec, thr);
-                var shLive = (sh === 'ON' || sh === 'OFF') ? sh : '';
-                var shState = sh === 'ON' ? 'PROCEED' : sh === 'OFF' ? 'DIVERGE_RIGHT' : 'OFF';
-                if (String(cell.attrs.shuntLive || '') !== shLive || sigA.shuntState !== shState) {
-                    cell.attrs.shuntLive = shLive; sigA.shuntState = shState; changed = true;
-                }
-            }
+            if (cell.type === 'examples.SignalShunt' && reevalCompositeShunt(cell, rec)) changed = true;
             if (cell.attrs.route && (cell.attrs.route.enabled === true || String(cell.attrs.route.enabled).toLowerCase() === 'true')) {
                 var newActive = computeRouteCallingActive(rec, thr, cell);
                 var curActive = String(cell.attrs.route.active || cell.attrs.route.activeRoutes || '');
