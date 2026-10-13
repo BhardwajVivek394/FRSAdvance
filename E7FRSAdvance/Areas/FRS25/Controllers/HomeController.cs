@@ -779,12 +779,39 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //  CPU
         // ─────────────────────────────────────────────────────────────
 
+        // Same as 616: one shared GetSystemTimes sampler, so each poll reports the average
+        // whole-system CPU since the previous poll (what Task Manager shows). The old
+        // PerformanceCounter path dropped to WMI LoadPercentage whenever it read 0, which
+        // is a different, instantaneous metric. That is why 617 and 616 disagreed.
+        private static SystemCpuUsage _systemCpuUsage;
+        private static readonly object _systemCpuInitLock = new object();
+
         private static double GetCpuPercent()
         {
-            if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-                return GetCpuWindows();
+            if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+                return GetCpuLinux();
 
-            return GetCpuLinux();
+            try
+            {
+                if (_systemCpuUsage == null)
+                {
+                    lock (_systemCpuInitLock)
+                    {
+                        if (_systemCpuUsage == null)
+                        {
+                            var sampler = new SystemCpuUsage();
+                            sampler.GetUsagePercent();   // first sample is the baseline (always 0)
+                            Thread.Sleep(500);
+                            _systemCpuUsage = sampler;
+                        }
+                    }
+                }
+                return Math.Round(_systemCpuUsage.GetUsagePercent(), 1);
+            }
+            catch
+            {
+                return GetCpuWindows();
+            }
         }
 
         private static double GetCpuWindows()

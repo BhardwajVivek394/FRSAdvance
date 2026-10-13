@@ -174,11 +174,30 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                             if (mAssetLister != null && mAssetLister.mAssets != null && mAssetLister.mAssetInfos != null && mAssetLister.mAssetInfos.Count > 0)
                             {
                                 // Execute only for IPS Asset Type
-                                if (mAssetLister.SearchCriteria.AssetTypeIds != null && mAssetLister.SearchCriteria.AssetTypeIds.Contains(E7FRSAdvance.Utility.Utility.FRSAssetType.IPS.GetHashCode()))
+                                int ipsTypeId = E7FRSAdvance.Utility.Utility.FRSAssetType.IPS.GetHashCode();
+                                if (mAssetLister.SearchCriteria.AssetTypeIds != null && mAssetLister.SearchCriteria.AssetTypeIds.Contains(ipsTypeId))
                                 {
-                                    var assetIds = mAssetLister.mAssetInfos.Select(x => x.AssetId).Distinct().ToHashSet();
+                                    /*
+                                     * Only IPS rows are pruned here - other asset types in the
+                                     * same search are kept as they are (previously every type
+                                     * lost its sensor-less assets whenever IPS was ticked).
+                                     *
+                                     * An IPS asset is shown only when it is wired in Yard Config
+                                     * (CardLines), the same source the pictorial cards use. A
+                                     * station whose IPS has just a DL with sensor metadata but
+                                     * no wiring (GCBS) no longer shows a table row that the
+                                     * pictorial cannot show. Older responses without CardLines
+                                     * fall back to the sensor-metadata check.
+                                     */
+                                    HashSet<int> ipsAssetIds = (mAssetLister.mCardLines != null && mAssetLister.mCardLines.Count > 0)
+                                        ? mAssetLister.mCardLines
+                                            .Where(x => x != null && x.AssetId != null && x.AssetTypeId == ipsTypeId)
+                                            .Select(x => x.AssetId.Value).ToHashSet()
+                                        : mAssetLister.mAssetInfos.Select(x => x.AssetId).ToHashSet();
 
-                                    mAssetLister.mAssets = mAssetLister.mAssets.Where(x => assetIds.Contains(x.AssetId)).ToList();
+                                    mAssetLister.mAssets = mAssetLister.mAssets
+                                        .Where(x => x.AssetTypeId != ipsTypeId || ipsAssetIds.Contains(x.AssetId))
+                                        .ToList();
                                 }
                             }
                         }

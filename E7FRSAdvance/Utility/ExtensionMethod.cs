@@ -12,6 +12,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -875,6 +876,81 @@ namespace E7FRSAdvance.Utility
             }
 
             return disks;
+        }
+    }
+
+    // Ported from 616 (E7MRIV2Web.Utility.SystemCpuUsage): whole-system CPU % from
+    // GetSystemTimes deltas between successive calls. Matches Task Manager and does not
+    // need Performance Monitor Users membership the way PerformanceCounter does.
+    public class SystemCpuUsage
+    {
+        private ulong _previousIdle;
+        private ulong _previousKernel;
+        private ulong _previousUser;
+        private bool _initialized;
+        private readonly object _lock = new object();
+
+        public double GetUsagePercent()
+        {
+            if (!GetSystemTimes(out FILETIME idleTime,
+                                out FILETIME kernelTime,
+                                out FILETIME userTime))
+            {
+                throw new InvalidOperationException(
+                    $"GetSystemTimes failed. Error: {Marshal.GetLastWin32Error()}");
+            }
+
+            ulong idle = ToUInt64(idleTime);
+            ulong kernel = ToUInt64(kernelTime);
+            ulong user = ToUInt64(userTime);
+
+            lock (_lock)
+            {
+                if (!_initialized)
+                {
+                    _previousIdle = idle;
+                    _previousKernel = kernel;
+                    _previousUser = user;
+                    _initialized = true;
+
+                    return 0; // A second sample is required.
+                }
+
+                ulong idleDelta = idle - _previousIdle;
+                ulong kernelDelta = kernel - _previousKernel;
+                ulong userDelta = user - _previousUser;
+
+                _previousIdle = idle;
+                _previousKernel = kernel;
+                _previousUser = user;
+
+                // Kernel time includes idle time.
+                ulong totalDelta = kernelDelta + userDelta;
+
+                if (totalDelta == 0)
+                    return 0;
+
+                double usage = (totalDelta - idleDelta) * 100.0 / totalDelta;
+                return Math.Min(100, Math.Max(0, usage));
+            }
+        }
+
+        private static ulong ToUInt64(FILETIME time)
+        {
+            return ((ulong)time.dwHighDateTime << 32) | time.dwLowDateTime;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool GetSystemTimes(
+            out FILETIME idleTime,
+            out FILETIME kernelTime,
+            out FILETIME userTime);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FILETIME
+        {
+            public uint dwLowDateTime;
+            public uint dwHighDateTime;
         }
     }
 }

@@ -154,6 +154,56 @@
    SLIDE PANEL JAVASCRIPT
    ═══════════════════════════════════════════════════════════════ *@
 <script>
+/* ── Rectification Date & Time rule (every Alerts feedback / remark form):
+      must be AFTER the Incidence Date & Time and can not be in the future.
+      Shared by this panel, the _List slide panel and the remark modal. ── */
+(function () {
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function toInputValue(d) {
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
+    function toDisplay(d) {
+        return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    }
+    /* Incidence time as rendered ("dd/MM/yyyy HH:mm:ss"), MVC JSON ("/Date(ms)/"), epoch ms or ISO */
+    window.e7ParseIncidence = function (v) {
+        if (v === null || v === undefined || v === '') return null;
+        if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+        var s = String(v).trim(), m;
+        if (/^\d+$/.test(s)) return new Date(+s);
+        if ((m = /\/Date\((-?\d+)/.exec(s))) return new Date(+m[1]);
+        if ((m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(s)))
+            return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0));
+        var d = new Date(s);
+        return isNaN(d.getTime()) ? null : d;
+    };
+    /* Remember the incidence on the input and bound its picker: min = first whole minute after it, max = now */
+    window.e7SetRectLimits = function (input, incTime) {
+        if (!input) return;
+        var inc = window.e7ParseIncidence(incTime);
+        input.setAttribute('data-inc', inc ? String(inc.getTime()) : '');
+        if (inc) {
+            var min = new Date(inc.getTime());
+            min.setSeconds(0, 0);
+            min.setMinutes(min.getMinutes() + 1);
+            input.min = toInputValue(min);
+        } else {
+            input.removeAttribute('min');
+        }
+        input.max = toInputValue(new Date());
+    };
+    /* '' when valid (or left empty), otherwise the message to show */
+    window.e7RectificationError = function (rectVal, incTime) {
+        if (!rectVal) return '';
+        var rd = new Date(rectVal);
+        if (isNaN(rd.getTime())) return 'Please enter a valid Rectification Date & Time.';
+        if (rd > new Date()) return 'Rectification Date & Time can not be a future date & time.';
+        var inc = window.e7ParseIncidence(incTime);
+        if (inc && rd <= inc) return 'Rectification Date & Time must be greater than the Incidence Date & Time (' + toDisplay(inc) + ').';
+        return '';
+    };
+})();
+
 (function () {
     var _fbMode = ''; // 'full' or 'remarkOnly'
 
@@ -190,6 +240,7 @@
             for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
             document.getElementById('fbTxtAlertRemark').value = '';
             document.getElementById('fbTxtRectificationDateTime').value = '';
+            window.e7SetRectLimits(document.getElementById('fbTxtRectificationDateTime'), incTime);
             document.getElementById('fbDivRemarkAlertInfo').style.display = 'none';
             document.getElementById('fbHdnAlertAlertStatusId').value = '';
 
@@ -309,11 +360,12 @@
                 AcknowledgemenStatusId: statusId
             };
 
-            var rectVal = document.getElementById('fbTxtRectificationDateTime').value;
+            var rectInput = document.getElementById('fbTxtRectificationDateTime');
+            var rectVal = rectInput.value;
             if (rectVal) {
-                var rectDate = new Date(rectVal);
-                if (rectDate > new Date()) { alert("Future date & time is not allowed."); return; }
-                mFRSAlert.RectificationDateTime = rectDate.toISOString();
+                var rectErr = window.e7RectificationError(rectVal, rectInput.getAttribute('data-inc'));
+                if (rectErr) { alert(rectErr); rectInput.focus(); return; }
+                mFRSAlert.RectificationDateTime = new Date(rectVal).toISOString();
             }
 
             var ptId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()';

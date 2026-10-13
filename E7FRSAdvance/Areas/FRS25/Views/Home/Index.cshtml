@@ -3040,6 +3040,18 @@
             color: var(--e7-surface, #0b1220);
         }
 
+    /* Mixed cluster (some down, some up / masked) — amber instead of red, as in 616. */
+    .shm-c-offline.shm-c-mixed {
+        color: var(--amber);
+        background: var(--amber-dim);
+        border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+    }
+
+        .shm-c-offline.shm-c-mixed:hover {
+            background: var(--amber);
+            color: var(--e7-surface, #0b1220);
+        }
+
     .shm-c-ok-badge {
         margin-left: auto;
         font-size: 10.5px;
@@ -3107,6 +3119,20 @@
             background: var(--red-dim);
             color: var(--red);
         }
+
+        /* Masked (Indeterminable) — parent Gateway link is down, so this transport can't be judged. */
+        .shm-ch.ch-unknown {
+            background: var(--glass-3);
+            color: var(--text-muted);
+        }
+
+    .shm-lane-unknown-tag {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 600;
+        color: var(--text-muted);
+        margin: -2px 0 8px 36px;
+    }
 
     .shm-a10hd {
         display: flex;
@@ -3665,30 +3691,6 @@
         <div class="panel chartbox bg-Up TopBottom-padding">
             <div class="phead bg-down">
                 Total Assets
-                <div class="date-picker-wrap ml-auto">
-                    <div class="dp-backdrop" id="dpBackdrop"></div>
-                    <button type="button" class="date-picker-btn badge badge-light bg-Up HoverB" id="dpBtn">
-                        <i class="fa fa-calendar" aria-hidden="true"></i>
-                        <span id="dpText">Today</span>
-                        <i class="fas fa-chevron-down chevron"></i>
-                    </button>
-                    <div class="date-picker-dropdown" id="dpDropdown">
-                        <div class="dp-options">
-                            <button type="button" class="dp-option active" data-preset="today"><i class="fas fa-calendar-day"></i> Today</button>
-                            <button type="button" class="dp-option" data-preset="yesterday"><i class="fas fa-calendar-minus"></i> Yesterday</button>
-                            <button type="button" class="dp-option" data-preset="last7days"><i class="fas fa-calendar-week"></i> Last 7 Days</button>
-                            <div class="dp-divider"></div>
-                            <button type="button" class="dp-option" data-preset="custom"><i class="fas fa-calendar-alt"></i> Custom Range</button>
-                        </div>
-                        <div class="dp-custom-panel" id="dpCustomPanel">
-                            <div class="dp-custom-row">
-                                <div class="dp-custom-field"><label>FROM</label><input type="text" id="dpFromDate" placeholder="DD/MM/YYYY" readonly></div>
-                                <div class="dp-custom-field"><label>TO</label><input type="text" id="dpToDate" placeholder="DD/MM/YYYY" readonly></div>
-                            </div>
-                            <button type="button" class="dp-apply-btn" id="dpApplyBtn">Apply Range</button>
-                        </div>
-                    </div>
-                </div>
             </div>
             <span id="yAxisColor" class="axis-label-color hidden-color">.</span>
             <span id="legendHealthy" class="legend-healthy hidden-color">.</span>
@@ -4006,12 +4008,6 @@ function toggleTheme() {
   if (icon) { var _ti = document.documentElement.getAttribute('data-aurora') || document.documentElement.getAttribute('data-theme') || 'dark'; icon.className = (_ti === 'light') ? 'fas fa-moon' : 'fas fa-sun'; }
 })();
 
-var datePickerState = { preset: 'today', fromDate: null, toDate: null };
-(function () {
-  var t = new Date(); t.setHours(0,0,0,0);
-  datePickerState.fromDate = new Date(t); datePickerState.toDate = new Date(t);
-})();
-
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 function formatDDMMYYYY(d) { return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + '/' + d.getFullYear(); }
 function formatApiDate(d)   { return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T00:00:00'; }
@@ -4024,7 +4020,6 @@ var _sBusy=false;
 function onSearchClick(b){if(_sBusy)return;_sBusy=true;if(b)b.disabled=true;buildSiteCache();renderSiteTabs();fnBindAssetAndAlertCount(true);setTimeout(function(){_sBusy=false;if(b)b.disabled=false;},3000);}
     $(document).ready(function () {
   fnBindAssetAndAlertCount(true);
-  setTimeout(initDatePicker, 100);
   buildSiteCache();
   renderSiteTabs();
 
@@ -4116,105 +4111,6 @@ function initOwlCarousel() {
       $c[0].__e7OwlRO.observe(document.querySelector('.carousel-section'));
     }
   } catch (err) { if (_owlRetryCount < 5) { _owlRetryCount++; setTimeout(initOwlCarousel, 500); } }
-}
-
-// ==================== DATEPICKER ====================
-function initDatePicker() {
-  if (typeof $.fn.datepicker === 'undefined') { setTimeout(initDatePicker, 200); return; }
-  var $from = $('#dpFromDate'), $to = $('#dpToDate');
-  if (!$from.length || !$to.length) return;
-  try { $from.datepicker('destroy'); $to.datepicker('destroy'); } catch (e) {}
-  var today = new Date(); today.setHours(0,0,0,0);
-  var dpFmt = {
-    toDisplay: function (d) { if (!d) return ''; var x = new Date(d); return isNaN(x.getTime()) ? '' : pad(x.getDate())+'/'+pad(x.getMonth()+1)+'/'+x.getFullYear(); },
-    toValue:   function (d) { if (!d) return null; if (d instanceof Date) return d; var p = d.split('/'); return p.length===3 ? new Date(+p[2],+p[1]-1,+p[0]) : null; }
-  };
-  $from.datepicker({ format: dpFmt, autoclose: true, todayHighlight: true, endDate: today, container: 'body', zIndexOffset: 10002 })
-       .on('changeDate', function (e) { if (e.date) { $to.datepicker('setStartDate', e.date); var td = $to.datepicker('getDate'); if (td && td < e.date) $to.datepicker('setDate', e.date); } });
-  $to.datepicker({ format: dpFmt, autoclose: true, todayHighlight: true, endDate: today, container: 'body', zIndexOffset: 10002 });
-  $from.datepicker('setDate', today); $to.datepicker('setDate', today);
-
-  $('#dpBtn').off('click').on('click', function (e) {
-    e.stopPropagation();
-    var $dd = $('#dpDropdown');
-    if ($dd.hasClass('open')) closeDatePicker(); else { $dd.addClass('open'); $(this).addClass('active'); $('#dpBackdrop').addClass('show'); }
-  });
-  $('#dpBackdrop').off('click').on('click', closeDatePicker);
-  $('.dp-option').off('click').on('click', function (e) {
-    e.stopPropagation();
-    var preset = $(this).data('preset');
-    if (preset === 'custom') { $('#dpCustomPanel').addClass('show'); $('.dp-option').removeClass('active'); $(this).addClass('active'); }
-    else applyPreset(preset);
-  });
-  $('#dpApplyBtn').off('click').on('click', function (e) { e.stopPropagation(); applyCustom(); });
-  $('#dpDropdown').off('click').on('click', function (e) { e.stopPropagation(); });
-  $(document).off('click.dpcal').on('click.dpcal', '.datepicker,.datepicker-dropdown', function (e) { e.stopPropagation(); });
-}
-
-function closeDatePicker() { $('#dpDropdown').removeClass('open'); $('#dpBtn').removeClass('active'); $('#dpBackdrop').removeClass('show'); $('#dpCustomPanel').removeClass('show'); }
-
-function applyPreset(preset) {
-  var today = new Date(); today.setHours(0,0,0,0);
-  var from, to, text;
-  if      (preset==='today')     { from=new Date(today); to=new Date(today); text='Today'; }
-  else if (preset==='yesterday') { from=new Date(today); from.setDate(from.getDate()-1); to=new Date(from); text='Yesterday'; }
-  else if (preset==='last7days') { from=new Date(today); from.setDate(from.getDate()-6); to=new Date(today); text='Last 7 Days'; }
-  else                           { from=new Date(today); to=new Date(today); text='Today'; }
-  datePickerState.preset=preset; datePickerState.fromDate=from; datePickerState.toDate=to;
-  $('.dp-option').removeClass('active'); $('.dp-option[data-preset="'+preset+'"]').addClass('active');
-  $('#dpCustomPanel').removeClass('show'); $('#dpText').text(text);
-  $('#dpFromDate').datepicker('setDate', from); $('#dpToDate').datepicker('setDate', to);
-  closeDatePicker(); loadFilteredData();
-}
-
-function parseInputDate(s) {
-  if (!s) return null; s=s.trim();
-  var p=s.indexOf('-')>-1?s.split('-'):s.split('/');
-  if (p.length!==3) return null;
-  var p0=+p[0],p1=+p[1],p2=+p[2]; if (isNaN(p0)||isNaN(p1)||isNaN(p2)) return null;
-  var day,month,year;
-  if (p2>100) { year=p2;day=p0;month=p1; } else if (p0>100) { year=p0;month=p1;day=p2; } else return null;
-  if (month<1||month>12||day<1||day>31) return null;
-  var d=new Date(year,month-1,day); return (d.getFullYear()===year&&d.getMonth()===month-1&&d.getDate()===day)?d:null;
-}
-
-function applyCustom() {
-  var fromStr=$('#dpFromDate').val(), toStr=$('#dpToDate').val();
-  if (!fromStr) { alert('Please select From date'); return; }
-  if (!toStr)   { alert('Please select To date');   return; }
-  var from=parseInputDate(fromStr), to=parseInputDate(toStr);
-  if (!from) { alert('Invalid From date'); return; }
-  if (!to)   { alert('Invalid To date');   return; }
-  from.setHours(0,0,0,0); to.setHours(0,0,0,0);
-  var now=new Date(); now.setHours(23,59,59,999);
-  if (from>now) { alert('From date cannot be in the future'); return; }
-  if (to>now)   { alert('To date cannot be in the future');   return; }
-  if (from>to)  { alert('From date cannot be after To date'); return; }
-  datePickerState.preset='custom'; datePickerState.fromDate=new Date(from); datePickerState.toDate=new Date(to);
-  var text=from.toDateString()===to.toDateString()?formatDDMMYYYY(from):formatDDMMYYYY(from)+' – '+formatDDMMYYYY(to);
-  $('#dpText').text(text); closeDatePicker(); loadFilteredData();
-}
-
-function loadFilteredData() {
-  var params = { SearchCriteria: { ZoneIds: getValues('zone'), DivisionIds: getValues('division'), SiteIds: getValues('site') } };
-  $("#loader").show();
-  $.ajax({
-    url: '/FRS25/Home/GetWithOutAcknowledgementAlert', type: 'POST', contentType: 'application/json',
-    data: JSON.stringify(params),
-    success: function (data) {
-      $("#loader").hide();
-      var totalP=0,totalF=0,totalA=0;
-      $(assetTypes).each(function (i,at) {
-        if (globalAssetData) { var f=globalAssetData.find(function(a){return a.AssetTypeId==at.Id;}); totalA+=f?f.Count:0; }
-        var pM={},fM={};
-        data.forEach(function(d){ if(d.AssetTypeId==at.Id){ if(d.AlertTypeId==alertPredictive)pM[d.AssetId]=1; if(d.AlertTypeId==alertFail)fM[d.AssetId]=1; } });
-        totalP+=Object.keys(pM).length; totalF+=Object.keys(fM).length;
-      });
-      updateTotalAssetsCard({ TotalAsset:totalA, Predictive:totalP, Fail:totalF });
-      updateTotalAssetsChart({ TotalAsset:totalA, Predictive:totalP, Fail:totalF });
-    },
-    error: function () { $("#loader").hide(); }
-  });
 }
 
 function updateTotalAssetsChart(d) {
@@ -4482,13 +4378,10 @@ function fnGetSystemData() {
 }
 setInterval(fnGetSystemData, 30000);
 
-// quiet = a live background refresh (alertEvents): no loader flash and the user's date
-// picker selection is left alone.
+// quiet = a live background refresh (alertEvents): no loader flash.
 function fnBindWithOutAcknowledgementAlert(assetData, quiet) {
   globalAssetData=assetData;
   if(!quiet){
-    var today=new Date(); today.setHours(0,0,0,0);
-    datePickerState={preset:'today',fromDate:new Date(today),toDate:new Date(today)};
     $("#loader").show();
   }
   $.ajax({
@@ -5548,22 +5441,43 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         return items;
     }
 
-    function shmModemBlock(cl) {
+    function shmModemBlock(cl, masks) {
         if (!cl.modem) return '<div class="shm-c-mac shm-c-muted">No network on this cluster</div>';
         var byChannel = {};
         (cl.modem.channels || []).forEach(function (ch, i) { byChannel[ch] = Number(cl.modem.flag[i]) === 1; });
-        function lane(label, chans) {
+
+        // Modem has NO per-channel masked array — Wired signals masking via wired.status ===
+        // "unknown" only (flag is forced up while masked, so it can't be used). Wireless is
+        // never masked. Also masked whenever the dashboard-derived rule applies (Gateway down,
+        // see shmDerivedMasks) — union with the backend signal. Same as 616.
+        var wiredUnknown = !!(cl.modem.wired && cl.modem.wired.status === 'unknown') || !!(masks && masks.networkOfc);
+
+        function lane(label, chans, isUnknown) {
             var present = chans.filter(function (ch) { return ch in byChannel; });
             if (!present.length) return '';
             var chips = present.map(function (ch) {
                 var up = byChannel[ch];
                 var short = ch.replace(/^(A10_|4G_|OFC_)/, '');
-                return '<span class="shm-ch ' + (up ? 'ch-up' : 'ch-down') + '" title="' + shmFriendlyChannel(ch) + ': ' + (up ? 'up' : 'down') + '">' + short + '</span>';
+                var cls = isUnknown ? 'ch-unknown' : (up ? 'ch-up' : 'ch-down');
+                var title = isUnknown
+                    ? shmFriendlyChannel(ch) + ': Indeterminable — parent Gateway link is down, cannot verify this transport independently'
+                    : shmFriendlyChannel(ch) + ': ' + (up ? 'up' : 'down');
+                return '<span class="shm-ch ' + cls + '" title="' + title + '">' + short + '</span>';
             }).join('');
-            return '<div class="shm-lane"><span class="shm-lane-label">' + label + '</span><span class="shm-lane-chips">' + chips + '</span></div>';
+            var row = '<div class="shm-lane"><span class="shm-lane-label">' + label + '</span><span class="shm-lane-chips">' + chips + '</span></div>';
+            if (isUnknown) row += '<div class="shm-lane-unknown-tag">Indeterminable — parent Gateway link is down</div>';
+            return row;
         }
-        var lanes = lane('4G', ['4G_TCP', '4G_MQTT']) + lane('OFC', ['OFC_TCP', 'OFC_MQTT']);
+        var lanes = lane('4G', ['4G_TCP', '4G_MQTT'], false) + lane('OFC', ['OFC_TCP', 'OFC_MQTT'], wiredUnknown);
         return '<div class="shm-c-mac"><span class="shm-c-mac-id">Network ' + cl.modem.deviceId + '</span></div>' + lanes;
+    }
+
+    // A device is fully masked/Indeterminable when every channel it has is masked, whether
+    // by the backend's own masked[] flag or by a dashboard-derived rule (shmDerivedMasks).
+    function shmA10DeviceIsUnknown(a, masks) {
+        var channels = a.channels || [];
+        if (!channels.length) return false;
+        return channels.every(function (ch, i) { return !!(a.masked && a.masked[i]) || !!(masks && masks.a10[ch]); });
     }
 
     function shmA10Block(cl, masks) {
@@ -5572,23 +5486,23 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         var dotOrder = (a10s[0] && a10s[0].channels) || [];
         // A channel is masked if the backend already flags it OR a dashboard-derived rule
         // (shmDerivedMasks) applies to this channel name — union, never subtractive.
-        function channelMasked(a, ch, i) { return (a.masked && a.masked[i]) || (masks && masks.a10[ch]); }
+        function channelMasked(a, ch, i) { return !!(a.masked && a.masked[i]) || !!(masks && masks.a10[ch]); }
         var tiles = a10s.map(function (a) {
-            var isUnknown = a.status === 'unknown';
+            var isUnknown = shmA10DeviceIsUnknown(a, masks);
             var dots = (a.channels || []).map(function (ch, i) {
                 return '<span class="shm-ad ' + shmColorFor(a.flag[i], channelMasked(a, ch, i)) + '"></span>';
             }).join('');
             var tipRows = (a.channels || []).map(function (ch, i) {
                 var masked = channelMasked(a, ch, i);
                 var cls = shmColorFor(a.flag[i], masked);
-                var detail = masked ? 'Unknown · parent Modem channel is down' : (Number(a.flag[i]) === 1 ? 'Up' : 'Down');
+                var detail = masked ? 'Indeterminable by parent link outage' : (Number(a.flag[i]) === 1 ? 'Up' : 'Down');
                 return '<div class="shm-tip-row"><span class="shm-tip-dot ' + cls + '"></span><span class="shm-tip-ch">' + shmFriendlyChannel(ch) + '</span><span class="shm-tip-detail">' + detail + '</span></div>';
             }).join('');
-            var unknownBadge = isUnknown ? '<span class="shm-a10-unknown-badge" title="Every channel on this device is currently masked — nothing to judge it by">?</span>' : '';
+            var unknownBadge = isUnknown ? '<span class="shm-a10-unknown-badge" title="Cannot be verified — the parent Network/Gateway link is down. This device may or may not be faulty.">?</span>' : '';
             return '<div class="shm-a10chip' + (isUnknown ? ' shm-a10-unknown' : '') + '">' +
                 '<div class="shm-a10id">IoT ' + a.deviceId + unknownBadge + '</div>' +
                 '<div class="shm-a10dots">' + dots + '</div>' +
-                '<div class="shm-tooltip shm-tooltip-a10"><div class="shm-tooltip-title">IoT ' + a.deviceId + (isUnknown ? ' &middot; all masked' : '') + '</div>' + tipRows + '</div></div>';
+                '<div class="shm-tooltip shm-tooltip-a10"><div class="shm-tooltip-title">IoT ' + a.deviceId + (isUnknown ? ' &middot; Indeterminable' : '') + '</div>' + tipRows + '</div></div>';
         }).join('');
         return '<div class="shm-a10hd"><span>IoT devices</span>' +
             '<span class="shm-info-icon">?<div class="shm-tooltip shm-tooltip-legend"><div class="shm-tooltip-title">Dot order (left to right)</div>' +
@@ -5598,15 +5512,52 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             '<div class="shm-a10grid">' + tiles + '</div>';
     }
 
+    // Network (Modem) only — masking-aware, same rule as the lane chips themselves use.
+    function shmNetworkUpDownCounts(cl, masks) {
+        var total = 0, down = 0;
+        if (cl.modem) {
+            var wiredUnknown = (cl.modem.wired && cl.modem.wired.status === 'unknown') || (masks && masks.networkOfc);
+            (cl.modem.channels || []).forEach(function (ch, i) {
+                var isWiredChannel = (ch === 'OFC_TCP' || ch === 'OFC_MQTT');
+                if (isWiredChannel && wiredUnknown) return; // masked — excluded
+                total++;
+                if (Number(cl.modem.flag[i]) !== 1) down++;
+            });
+        }
+        return { total: total, down: down };
+    }
+
+    // Card colour/badge follows 616: masked Network lanes are left out, so a Gateway outage
+    // shows the OFC lane as Indeterminable instead of turning the whole cluster red.
     function shmRenderClusterCard(cl, msg) {
         var masks = shmDerivedMasks(msg, cl);
-        var stateCls = cl.status === 'ok' ? '' : (cl.status === 'down' ? 'shm-off' : 'shm-deg');
-        var dotCls = cl.status === 'ok' ? 'grn' : (cl.status === 'down' ? 'red' : 'amb');
-        var issueCount = shmModemDownItems(cl, masks).length + shmA10DownItems(cl, masks).length;
-        return '<div class="shm-card ' + stateCls + '">' +
-            '<div class="shm-c-top"><span class="shm-c-dot ' + dotCls + '"></span><span class="shm-c-name">' + (cl.clusterName || ('Cluster ' + cl.clusterId)) + '</span>' +
-            (issueCount ? '<button type="button" class="shm-c-offline" data-cluster-id="' + cl.clusterId + '">See all Down</button>' : '<span class="shm-c-ok-badge">OK</span>') +
-            '</div>' + shmModemBlock(cl) + shmA10Block(cl, masks) + '</div>';
+        var allDown = { s: 'shm-off', d: 'red', b: '<button type="button" class="shm-c-offline" data-cluster-id="' + cl.clusterId + '">See all Downs</button>' };
+        var mixed = { s: 'shm-deg', d: 'amb', b: '<button type="button" class="shm-c-offline shm-c-mixed" data-cluster-id="' + cl.clusterId + '">Down</button>' };
+        var ok = { s: '', d: 'grn', b: '<span class="shm-c-ok-badge">OK</span>' };
+
+        // IoT side uses the same a10OnlineCount/a10Total printed as "X/Y fully online", so the
+        // badge always agrees with the card text.
+        var a10Total = cl.a10Total || 0;
+        var a10Online = cl.a10OnlineCount || 0;
+        var a10AllOnline = a10Total === 0 || a10Online === a10Total;
+        var a10AllDown = a10Total > 0 && a10Online === 0;
+        var st;
+
+        if (!cl.modem && a10Total === 0) {
+            st = allDown;                                  // nothing configured — nothing verified healthy
+        } else if (!cl.modem) {
+            st = a10AllOnline ? ok : (a10AllDown ? allDown : mixed);
+        } else {
+            var net = shmNetworkUpDownCounts(cl, masks);
+            var netAllUp = net.total === 0 || net.down === 0;
+            var netAllDown = net.total > 0 && net.down === net.total;
+            st = netAllDown ? allDown : ((netAllUp && a10AllOnline) ? ok : mixed);
+        }
+
+        return '<div class="shm-card ' + st.s + '">' +
+            '<div class="shm-c-top"><span class="shm-c-dot ' + st.d + '"></span><span class="shm-c-name">' + (cl.clusterName || ('Cluster ' + cl.clusterId)) + '</span>' +
+            st.b +
+            '</div>' + shmModemBlock(cl, masks) + shmA10Block(cl, masks) + '</div>';
     }
 
     function shmRenderGrid() {

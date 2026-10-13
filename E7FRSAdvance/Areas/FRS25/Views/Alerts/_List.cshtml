@@ -618,6 +618,8 @@ function AddRemark(id, statusId) {
             if (data != null && data.Id > 0) {
                 $('#hdnAlertRemarkId').val(id);
                 $('#txtAlertRemark').val(data.Remark);
+                $('#txtRectificationDateTime').val('');
+                window.e7SetRectLimits && window.e7SetRectLimits(document.getElementById('txtRectificationDateTime'), data.SetTimeStamp);
                 $('#hdnAlertAlertStatusId').val(statusId);
             }
             if (data.mAlertInfos != null && data.mAlertInfos.length > 0
@@ -646,9 +648,9 @@ function fnUpdateRemark() {
     mFRSAlert.AcknowledgemenStatusId = $('#hdnAlertAlertStatusId').val();
     var rectificationValue = $('#txtRectificationDateTime').val();
     if (rectificationValue) {
-        var rectDate = new Date(rectificationValue);
-        if (rectDate > new Date()) { alert("Future date & time is not allowed."); return; }
-        mFRSAlert.RectificationDateTime = rectDate.toISOString();
+        var rectErr = window.e7RectificationError(rectificationValue, $('#txtRectificationDateTime').attr('data-inc'));
+        if (rectErr) { alert(rectErr); $('#txtRectificationDateTime').focus(); return; }
+        mFRSAlert.RectificationDateTime = new Date(rectificationValue).toISOString();
     }
     if (mFRSAlert.AcknowledgemenStatusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
         mFRSAlert.PTAlertInfoId = $('#drpRemarkAlertInfo').val();
@@ -1424,6 +1426,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             resetOpts();
             document.getElementById('fbRemark').value    = '';
             document.getElementById('fbRectDate').value  = '';
+            window.e7SetRectLimits(document.getElementById('fbRectDate'), incTime);
             document.getElementById('fbCauseRow').style.display = 'none';
             document.getElementById('fbHdnAlertId').value  = alertId;
             document.getElementById('fbHdnStatusId').value = statusId || '';
@@ -1689,11 +1692,12 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 PhotoEvidenceBase64: null
             };
 
-            const rectVal = document.getElementById('fbRectDate').value;
+            const rectInput = document.getElementById('fbRectDate');
+            const rectVal = rectInput.value;
             if (rectVal) {
-                const rd = new Date(rectVal);
-                if (rd > new Date()) { alert('Future date & time is not allowed.'); return; }
-                payload.RectificationDateTime = rd.toISOString();
+                const rectErr = window.e7RectificationError(rectVal, rectInput.getAttribute('data-inc'));
+                if (rectErr) { alert(rectErr); rectInput.focus(); return; }
+                payload.RectificationDateTime = new Date(rectVal).toISOString();
             }
 
             if (statusId === ptId) {

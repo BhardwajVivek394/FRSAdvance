@@ -47,6 +47,25 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             _alertService = alertService;
         }
 
+        /// <summary>
+        /// The service-health monitor (Data Receiver / Datalogger / Debouncer /
+        /// EdgeX ...) is for Energy7 users only. The menu entry is already hidden
+        /// for everyone else; this blocks direct URL / AJAX access too.
+        /// </summary>
+        protected override void OnActionExecuting(ActionExecutingContext filterContext)
+        {
+            var loginUser = ClsHttpContent.LoginUser;
+            if (loginUser != null && loginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode())
+            {
+                if (filterContext.HttpContext.Request.IsAjaxRequest())
+                    filterContext.Result = new HttpStatusCodeResult(HttpStatusCode.Forbidden);
+                else
+                    filterContext.Result = RedirectToAction("Index", "Home", new { area = "FRS25" });
+                return;
+            }
+            base.OnActionExecuting(filterContext);
+        }
+
         public ActionResult Index()
         {
             ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");

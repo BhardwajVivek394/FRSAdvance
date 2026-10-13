@@ -183,6 +183,7 @@
         assetValues: {},        // assetName → { alias: number }   (public / popup)
         assets: {},             // assetName → rich record (attrs / relays / freshness)
         nameById: {},           // AssetId → assetName
+        mirrors: {},            // AssetId → our wsLiveData mirror entry (survives host pruning)
         zeroOffset: {},         // assetName → threshold (from WS ZeroOffsetValue)
         highlight: '',
         renderPending: false,
@@ -1776,6 +1777,7 @@
         if (typeof window.tlOpenAssetDrawer === 'function') {
             var drawerId = sipResolveAssetId(assetName, assetId);
             if (drawerId) {
+                restoreMirror(drawerId);
                 try { openSipAssetDrawer(drawerId, sipTypeOfCell(cell)); return; }
                 catch (exD) { swarn('Asset drawer failed, falling back to popup:', exD && exD.message); }
             } else {
@@ -1868,6 +1870,7 @@
         state.assetValues = {};
         state.assets = {};
         state.nameById = {};
+        state.mirrors = {};
         state.zeroOffset = {};
         state.simNoEnrich = {};
         state.pmLast = {};
@@ -2745,20 +2748,32 @@
         }
         return null;
     }
+    /* The host prunes wsLiveData ids outside the SELECTED asset type's whitelist
+       (telemetrylive.js isAssetInBulkWhitelist), which drops our signal / shunt
+       mirrors while e.g. Track is selected. The drawer then opened on a bare id
+       ("SIGNAL : 9725", Waiting for live values) and a mirror rebuilt by the next
+       message held only that one attribute. We keep the entry in state.mirrors
+       and re-attach the same object, so every attribute survives the prune. */
     function mirrorToShared(d, assetName, assetId, attrName, rawAttr, attrId, num, isDL, tsDev, hasFresh, fresh, rawFresh, kind) {
         if (assetId == null || assetId === '') return;
         try {
             var ld = window.wsLiveData || (window.wsLiveData = {});
             var wid = String(assetId);
             var we = ld[wid];
+            if (we && !we.__sipMirror) { delete state.mirrors[wid]; return; }   // host owns it
             if (!we) {
-                we = ld[wid] = {
+                we = state.mirrors[wid];
+                if (we && !we.__sipMirror) we = null;                           // adopted by the host earlier
+            }
+            if (!we) {
+                we = {
                     __sipMirror: true, AssetId: assetId, AssetName: assetName,
                     AssetTypeId: (d.AssetTypeId != null ? d.AssetTypeId : (sipTypeFromCells(assetName) || 2)),
                     SiteId: d.SiteId, attrs: {}, dlRelays: {}, lastUpdated: new Date()
                 };
             }
-            if (!we.__sipMirror) return;
+            ld[wid] = we;
+            state.mirrors[wid] = we;
             we.AssetName = assetName;
             if (d.AssetTypeId != null) we.AssetTypeId = d.AssetTypeId;
             if (isDL) {
@@ -2781,6 +2796,15 @@
             if (d.ZeroOffsetValue != null && !isNaN(parseFloat(d.ZeroOffsetValue))) we.ZeroOffsetValue = parseFloat(d.ZeroOffsetValue);
             we.lastUpdated = new Date();
         } catch (e) { /* best effort */ }
+    }
+    /* Re-attach our mirror for `aid` if the host pruned it (asset drawer open / refresh). */
+    function restoreMirror(aid) {
+        var wid = String(aid == null ? '' : aid), we = state.mirrors[wid];
+        if (!wid || !we || !we.__sipMirror) return false;
+        var ld = window.wsLiveData || (window.wsLiveData = {});
+        if (ld[wid]) return false;
+        ld[wid] = we;
+        return true;
     }
 
     /* ── Attribute name resolution (memoised, TTL + map identity) ────────── */
@@ -4424,6 +4448,7 @@
         startAlertFlash: startAlertFlash,
         stopAlertFlash: stopAlertFlash,
         resync: resyncFromShared,
+        restoreMirror: restoreMirror,
         replay: replayApi,
         syncTheme: syncAppTheme,
         setThemePref: setThemePref,

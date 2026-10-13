@@ -1,4 +1,63 @@
 ﻿@model Domain.RDPMSHealthLiveLister
+@functions {
+    /* Exact token match of a modem against the comma separated ModemIdStr.
+       string.Contains matched "M1" inside "M12" and pulled another modem's
+       assets (e.g. an outdoor AXL) into the wrong card. */
+    static bool PicHasModem(string modemIdStr, string modemId)
+    {
+        if (string.IsNullOrWhiteSpace(modemIdStr) || string.IsNullOrWhiteSpace(modemId)) { return false; }
+        var want = modemId.Trim();
+        return modemIdStr.Split(new[] { ',', ';', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Any(t => string.Equals(t.Trim(), want, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /* Assets of a cluster card: on this modem AND wired to this cluster in
+       Yard Config (CardLines). One modem can serve an indoor and an outdoor
+       cluster, so modem membership alone put outdoor assets (AXL "loc")
+       under Indoor. A cluster with no CardLines keeps modem-only membership. */
+    static List<Domain.RDPMSHealthLive> PicClusterAssets(Domain.RDPMSHealthLiveLister m, Domain.Cluster cluster)
+    {
+        var assets = m.mAssets ?? new List<Domain.RDPMSHealthLive>();
+        var wired = (m.mCardLines ?? new List<Domain.CardLine>())
+            .Where(x => x != null && x.ClusterId == cluster.Id && x.AssetId != null)
+            .Select(x => x.AssetId.Value).Distinct().ToList();
+        return assets.Where(a => a.SiteId == cluster.SiteId
+                              && PicHasModem(a.ModemIdStr, cluster.ModemId)
+                              && (wired.Count == 0 || wired.Contains(a.AssetId))).ToList();
+    }
+
+    /* Modem-less clusters (absent from mClusters) carry no Indoor/Outdoor
+       TypeId, so they were always drawn under Indoor. Classify them from the
+       Yard Config cluster / location name: a location box ("loc"), yard or
+       field cluster is Outdoor. */
+    static readonly string[] PicOutdoorTokens = { "loc", "location", "outdoor", "out", "yard", "field", "trackside", "lc" };
+
+    static bool PicIsOutdoorModemless(List<Domain.CardLine> rows)
+    {
+        foreach (var r in rows)
+        {
+            foreach (var name in new[] { r.ClusterName, r.LocationName })
+            {
+                if (string.IsNullOrWhiteSpace(name)) { continue; }
+                var tokens = System.Text.RegularExpressions.Regex.Split(name.ToLowerInvariant(), "[^a-z0-9]+");
+                if (tokens.Any(t => PicOutdoorTokens.Contains(t))) { return true; }
+            }
+        }
+        return false;
+    }
+
+    /* Modem-less CardLine groups (one per site + cluster) for one zone. */
+    static List<List<Domain.CardLine>> PicModemlessGroups(Domain.RDPMSHealthLiveLister m, bool outdoor)
+    {
+        var rendered = (m.mClusters ?? new List<Domain.Cluster>()).Select(c => c.Id).ToList();
+        return (m.mCardLines ?? new List<Domain.CardLine>())
+            .Where(x => x != null && x.ClusterId != null && x.ModemId == null && !rendered.Contains(x.ClusterId.Value))
+            .GroupBy(x => new { x.SiteId, x.ClusterId })
+            .Select(g => g.ToList())
+            .Where(g => PicIsOutdoorModemless(g) == outdoor)
+            .ToList();
+    }
+}
 
 <div class="col px-0">
 
@@ -605,7 +664,7 @@
                     foreach (var cluster in Model.mClusters.Where(x => x.TypeId == (int)E7FRSAdvance.Utility.Utility.ClusterType.Indoor.GetHashCode()))
                     {
                         /* Assets that belong to this modem */
-                        var clusterAssets = Model.mAssets.Where(a => a.SiteId == cluster.SiteId && a.ModemIdStr != null && a.ModemIdStr.Contains(cluster.ModemId)).ToList();
+                        var clusterAssets = PicClusterAssets(Model, cluster);
 
                         /* ADCs for this cluster — used to resolve A10 ids for IoT */
 
@@ -744,21 +803,15 @@
                        unique when a site has more than one modem-less cluster.
                        data-nomodem tells the painter to render Network as N/A
                        instead of letting an empty fault lookup read as Healthy. */
-                    var picRenderedClusterIds = Model.mClusters.Select(c => c.Id).ToList();
-
-                    var picModemlessGroups = (Model.mCardLines ?? new List<Domain.CardLine>())
-                        .Where(x => x != null
-                                 && x.ClusterId != null
-                                 && x.ModemId == null
-                                 && !picRenderedClusterIds.Contains(x.ClusterId.Value))
-                        .GroupBy(x => new { x.SiteId, x.ClusterId })
-                        .ToList();
+                    /* Outdoor modem-less clusters (location boxes, e.g. AXL "loc")
+                       are drawn in the Outdoor grid - see PicModemlessGroups. */
+                    var picModemlessGroups = PicModemlessGroups(Model, false);
 
                     foreach (var grp in picModemlessGroups)
                     {
-                        var gRows = grp.ToList();
-                        var gSite = grp.Key.SiteId;
-                        var gCluster = grp.Key.ClusterId.Value;
+                        var gRows = grp;
+                        var gSite = gRows[0].SiteId;
+                        var gCluster = gRows[0].ClusterId.Value;
                         var gName = gRows.Select(x => x.ClusterName)
                                             .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
                                        ?? ("Cluster " + gCluster);
@@ -877,7 +930,7 @@
                 {
                     foreach (var cluster in Model.mClusters.Where(x => x.TypeId == E7FRSAdvance.Utility.Utility.ClusterType.OutDoor.GetHashCode()))
                     {
-                        var clusterAssets = Model.mAssets.Where(a => a.SiteId == cluster.SiteId && a.ModemIdStr != null && a.ModemIdStr.Contains(cluster.ModemId)).ToList();
+                        var clusterAssets = PicClusterAssets(Model, cluster);
 
 
                         var assetIdList = string.Join(",", clusterAssets.Select(a => a.AssetId.ToString()));
@@ -1131,6 +1184,111 @@
                                     <span class="pic-sensor-badge" id="picOutModemSensorBadge_@(cluster.SiteId)_@(cluster.ModemId)"></span>
                                 </div>
                                 <div class="pic-sensor-list" id="picOutModemSensorList_@(cluster.SiteId)_@(cluster.ModemId)"></div>
+                            </div>
+
+                        </div><!-- /.pic-modem-card -->
+                    }
+
+                    /* Outdoor modem-less clusters (location boxes, e.g. AXL "loc"). */
+                    foreach (var grp in PicModemlessGroups(Model, true))
+                    {
+                        var gRows = grp;
+                        var gSite = gRows[0].SiteId;
+                        var gCluster = gRows[0].ClusterId.Value;
+                        var gName = gRows.Select(x => x.ClusterName)
+                                            .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n))
+                                       ?? ("Cluster " + gCluster);
+
+                        /* Synthetic token - never equal to a real ModemId, so the
+                           network-fault lookup correctly matches nothing. */
+                        var gToken = "CL" + gCluster;
+
+                        var gAssetIds = string.Join(",", gRows
+                            .Where(x => x.AssetId != null)
+                            .Select(x => x.AssetId.ToString()).Distinct());
+
+                        var gA10Ids = string.Join(",", gRows
+                            .Where(x => x.ADCNumber != null)
+                            .Select(x => x.ADCNumber.ToString()).Distinct());
+
+                        var gSensorIds = string.Join(",", gRows
+                            .Where(x => x.AttributeId != null && x.AssetId != null)
+                            .Select(x => x.AssetId.ToString() + "-" + x.AttributeId.ToString())
+                            .Distinct());
+
+                        var gSiteName = Model.mAssets
+                            .Where(a => a.SiteId == gSite && !string.IsNullOrWhiteSpace(a.SiteName))
+                            .Select(a => a.SiteName).FirstOrDefault() ?? gSite.ToString();
+
+                        <div class="pic-modem-card"
+                             id="picOutModem_@(gSite)_@(gToken)"
+                             data-siteid="@gSite"
+                             data-modemid="@gToken"
+                             data-clusterid="@gCluster"
+                             data-assetids="@gAssetIds"
+                             data-a10ids="@gA10Ids"
+                             data-sensor="@gSensorIds"
+                             data-nomodem="1"
+                             style="display:none;">
+
+                            <div class="pic-modem-header">
+                                <div class="pic-modem-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></svg>
+                                    @gSiteName — @gName
+                                </div>
+                                <span class="pic-status-dot pic-dot--healthy"
+                                      id="picOutModemDot_@(gSite)_@(gToken)"></span>
+                            </div>
+
+                            <div class="pic-modem-health">
+                                <div class="pic-asset-thumb">
+                                    <svg width="56" height="62" viewBox="0 0 56 62" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M0 62V20.6667L28 0L56 20.6667V62H45.5V27.5556H10.5V62H0ZM17.5 55.1111H38.5V48.2222H17.5V55.1111ZM17.5 41.3333H38.5V34.4444H17.5V41.3333Z" fill="#BABFCA" />
+                                    </svg>
+                                </div>
+                                <div class="pic-health-rows-wrap">
+                                    <div class="pic-health-row">
+                                        <span class="pic-hi pic-hi-iot">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+                                        </span>
+                                        <span class="pic-hl">IoT :</span>
+                                        <span id="picOutModemIoTVal_@(gSite)_@(gToken)"
+                                              class="pic-val pic-val--healthy">Healthy</span>
+                                        <span id="picOutModemIoTTime_@(gSite)_@(gToken)"
+                                              class="pic-time"></span>
+                                    </div>
+                                    <div class="pic-health-row">
+                                        <span class="pic-hi pic-hi-net">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></svg>
+                                        </span>
+                                        <span class="pic-hl">Network :</span>
+                                        <span id="picOutModemNetVal_@(gSite)_@(gToken)"
+                                              class="pic-val">N/A</span>
+                                        <span id="picOutModemNetTime_@(gSite)_@(gToken)"
+                                              class="pic-time"></span>
+                                    </div>
+                                    <div class="pic-health-row">
+                                        <span class="pic-hi pic-hi-sensor">
+                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3" /><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" /></svg>
+                                        </span>
+                                        <span class="pic-hl">Sensor :</span>
+                                        <span id="picOutModemSensorSumVal_@(gSite)_@(gToken)"
+                                              class="pic-val pic-val--healthy">Healthy</span>
+                                        <span id="picOutModemSensorSumInfo_@(gSite)_@(gToken)"
+                                              class="pic-time"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="pic-sensor-section" id="picOutModemSensorSection_@(gSite)_@(gToken)" style="display:none;">
+                                <div class="pic-sensor-header">
+                                    <span class="pic-hi pic-hi-sensor">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3" /><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4" /></svg>
+                                    </span>
+                                    <span class="pic-hl">Sensor</span>
+                                    <span class="pic-sensor-badge" id="picOutModemSensorBadge_@(gSite)_@(gToken)"></span>
+                                </div>
+                                <div class="pic-sensor-list" id="picOutModemSensorList_@(gSite)_@(gToken)"></div>
                             </div>
 
                         </div><!-- /.pic-modem-card -->
@@ -6103,13 +6261,15 @@ if (!iotWsConnected && !iotWsFresh) {
                 timeText = '';
             }
             var sig = state + '|' + (timeText || '');
-            if ($cell.data('nm-state') === sig) return;
-            $cell.data('nm-state', sig);
+            /* A Faulty cell also shows "X / Y" A10s, which can change while
+               state|time stay the same - its guard runs once the count is known. */
+            if (state !== 'faulty') {
+                if ($cell.data('nm-state') === sig) return;
+                $cell.data('nm-state', sig);
+            }
 
             var $span = $cell.find('span').first();
             if (!$span.length) return;
-
-
 
             if (state === 'none') { $span.html('<span class="badge" style="background:var(--e7-surface-3, #9ca3af);color:var(--e7-text-3, #fff);">N/A</span>'); return; }
             if (state === 'unknown') { $span.html('<span class="badge badge-secondary">—</span>'); return; }
@@ -6294,6 +6454,14 @@ if (!iotWsConnected && !iotWsFresh) {
                Fall back to listing every ADC on the row so the drawer always
                reflects the cell. */
                         if (!_faultyA10s.length) { _faultyA10s = _a10ids.slice(); }
+
+            /* "Faulty  X / Y": faulty A10s out of all A10s on this row. */
+            var _iotOutOf = _a10ids.length
+                ? (_faultyA10s.length + ' / ' + _a10ids.length) : '';
+            var _faultySig = sig + '|' + _iotOutOf;
+            if ($cell.data('nm-state') === _faultySig) return;
+            $cell.data('nm-state', _faultySig);
+
             _iotPayload = JSON.stringify({
                 zone: _zone, station: _station, asset: _asset,
                 status: 'faulty',
@@ -6306,6 +6474,9 @@ if (!iotWsConnected && !iotWsFresh) {
             }).replace(/'/g, '&#39;');
 
             var html = '<span class="badge badge-danger">Faulty</span>';
+            if (_iotOutOf) {
+                html += '<span class="tbl-out-of" title="Faulty A10 / total A10">' + _iotOutOf + '</span>';
+            }
             if (timeText) {
                 html += '<div class="tbl-net-time">' + timeText + '</div>';
             }
@@ -7113,6 +7284,19 @@ function isPointMachineHealthAttribute(attributeId) {
        'unknown' means the feed carries no row for that medium at all, so
        the card shows a dash rather than a misleading Healthy.
     ══════════════════════════════════════════════════════════════════ */
+    /* A modem channel row is down while its Set is open: active = 1 AND no
+       Reset at/after the Set. The Reset (e.g. 4G back up) used to be ignored
+       until the active flag flipped in a later delta, so the Wireless leg
+       stayed Faulty after recovery in both table and pictorial. Times are
+       'YYYY-MM-DD HH:mm:ss' and compare as strings (see rdpmsOpenFaultAt). */
+    function nfLegRowDown(r) {
+        if (!r || Number(r.active) !== 1) { return false; }
+        var s = $.trim(r.setTime || '');
+        var x = $.trim(r.resetTime || '');
+        return !(s && x && x >= s);
+    }
+    window.nfLegRowDown = nfLegRowDown;
+
     function nfModemBothMediaDown(siteId, modemId) {
         var rows = window.__rdpmsChannelRows || {};
         var sid = String(siteId == null ? '' : siteId);
@@ -7132,13 +7316,16 @@ function isPointMachineHealthAttribute(attributeId) {
             var isWireless = ch.indexOf('4G') === 0;
             if (!isWired && !isWireless) { return; }
 
-            var isDown = (r.active === 1 || r.active === '1');
+            var isDown = nfLegRowDown(r);
 
+            /* Leg time = EARLIEST open Set, the same onset nfMediumState gives
+               the table and fnApplyChannelRowsToPictorial, so the two
+               pictorial painters and the table show one time per leg. */
             if (isWired) {
                 seenWired = true;
                 if (isDown) {
                     downWired = true;
-                    if (r.setTime && (!wiredTime || r.setTime > wiredTime)) {
+                    if (r.setTime && (!wiredTime || r.setTime < wiredTime)) {
                         wiredTime = r.setTime;
                     }
                 }
@@ -7146,7 +7333,7 @@ function isPointMachineHealthAttribute(attributeId) {
                 seenWireless = true;
                 if (isDown) {
                     downWireless = true;
-                    if (r.setTime && (!wirelessTime || r.setTime > wirelessTime)) {
+                    if (r.setTime && (!wirelessTime || r.setTime < wirelessTime)) {
                         wirelessTime = r.setTime;
                     }
                 }
@@ -7160,7 +7347,9 @@ function isPointMachineHealthAttribute(attributeId) {
         function leg(seen, down, t) {
             if (!seen) { return { state: 'unknown', time: '' }; }
             if (!down) { return { state: 'healthy', time: '' }; }
-            return { state: 'faulty', time: t || '' };
+            /* "dd-MM-yyyy / HH:mm", as nfMediumState formats it for the table. */
+            var ft = t ? fnFormatOutdoorDeviceTime(String(t).replace(' ', 'T')) : '';
+            return { state: 'faulty', time: ft || t || '' };
         }
 
         var bothDown = seenWired && seenWireless && downWired && downWireless;
@@ -7520,7 +7709,10 @@ sensorFaults = _picSensorFaults;
                 var totalSensorsForModem = json.mCardLines
                     ? json.mCardLines.filter(function (n) {
                         if (!n || n.SiteId !== parseInt(siteId)) { return false; }
-                        return noModem
+                        /* Count by cluster: an Indoor and an Outdoor cluster on
+                           one modem each read the other's sensors when this
+                           counted by ModemId. */
+                        return (noModem || (_picClusterId != null && _picClusterId !== ''))
                             ? String(n.ClusterId) === String(_picClusterId)
                             : n.ModemId === modemId;
                     }).length
@@ -7630,16 +7822,19 @@ sensorFaults = _picSensorFaults;
                 if (!g.useLiveDeviceHealth) {
 
                     /* ── IoT row ── */
+                    /* Same "Faulty (X/Y)" layout fnApplyChannelRowsToPictorial
+                       writes; its nm-* caches are cleared so the next
+                       channel-row paint (which also carries the fault time)
+                       is never skipped as "unchanged". */
                     if (iotFaulty) {
                         $(g.iotValPfx + ck)
                             .removeClass(
                                 'pic-val--healthy pic-val--faulty'
                             )
                             .addClass('pic-val--faulty')
-                            .text(iotFaults.length + ' Faulty');
-
-                        $(g.iotTimePfx + ck)
-                            .text('Out of ' + totalIotForModem);
+                            .text('Faulty' + (totalIotForModem
+                                ? ' (' + iotFaults.length + '/' + totalIotForModem + ')' : ''))
+                            .removeData('nm-state');
                     }
                     else {
                         $(g.iotValPfx + ck)
@@ -7647,9 +7842,10 @@ sensorFaults = _picSensorFaults;
                                 'pic-val--healthy pic-val--faulty'
                             )
                             .addClass('pic-val--healthy')
-                            .text('Healthy');
+                            .text('Healthy')
+                            .removeData('nm-state');
 
-                        $(g.iotTimePfx + ck).text('');
+                        $(g.iotTimePfx + ck).text('').removeData('nm-time');
                     }
 
                     /* ── Network row ──
@@ -7743,8 +7939,9 @@ sensorFaults = _picSensorFaults;
                     $(g.sensorSumValPfx + ck)
                         .removeClass('pic-val--healthy pic-val--faulty')
                         .addClass('pic-val--faulty')
-                        .text(fc + ' Faulty');
-                    $(g.sensorSumInfoPfx + ck).text('Out of ' + totalSensorsForModem);
+                        .text('Faulty' + (totalSensorsForModem
+                            ? ' (' + fc + '/' + Math.max(totalSensorsForModem, fc) + ')' : ' (' + fc + ')'));
+                    $(g.sensorSumInfoPfx + ck).text('');
                 } else {
                     $(g.sensorSumValPfx + ck)
                         .removeClass('pic-val--healthy pic-val--faulty')
@@ -7813,7 +8010,7 @@ sensorFaults = _picSensorFaults;
         return p(d.getDate())+'-'+p(d.getMonth()+1)+'-'+d.getFullYear()+' / '+p(d.getHours())+':'+p(d.getMinutes());
     }
 
-    function buildSensorItemHtml(sf, now) {
+    function buildSensorItemHtml(sf, now, totalSensors) {
         /* Accepts a single fault object OR an array of them. All faulty
            attributes of one asset are stacked inside ONE .tbl-sensor-wrap so
            the asset keeps exactly one table row (no more clone rows). */
@@ -7836,10 +8033,17 @@ sensorFaults = _picSensorFaults;
    for every faulty sensor of this asset are rendered inside the (i)
    detail popup -- see rdpmsOpenDrawer("sensor", ...), which already
    receives them via payload.faults / payload.attributes. */
+        /* "Faulty  X / Y": faulty sensors out of the asset's configured
+           sensors (same collapsed list the drawer chips use). Without a
+           known total, fall back to the old "(X)" when more than one. */
+        var total = (typeof totalSensors === 'number' && totalSensors > 0)
+            ? Math.max(totalSensors, list.length) : 0;
         return '<span class="badge badge-danger">Faulty</span>' +
-            (list.length > 1
-                ? '<span class="tbl-sensor-time"> (' + list.length + ')</span>'
-                : '');
+            (total
+                ? '<span class="tbl-out-of" title="Faulty sensors / total sensors">' + list.length + ' / ' + total + '</span>'
+                : (list.length > 1
+                    ? '<span class="tbl-sensor-time"> (' + list.length + ')</span>'
+                    : ''));
         /* Note: the icon is added at the cell level in fnUpdateTableData below */
     }
 
@@ -8304,7 +8508,9 @@ sensorFaults = _picSensorFaults;
             // was pushed onto a cloned <tr>, which made one asset show up as
             // two (or more) rows.
             $sensorCell.html(
-                buildSensorItemHtml(_sFaultCards, now) +
+                buildSensorItemHtml(_sFaultCards, now,
+                    (typeof rdpmsAssetAttributes === 'function')
+                        ? rdpmsAssetAttributes(String(rSite || ''), String(rAsset || '')).length : 0) +
                 '<button class="rdpms-detail-btn" title="Sensor detail" ' +
                 'onclick=\'rdpmsOpenDrawer("sensor",' + _sFaultyPayload + ')\'>' +
                 '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="8"/><line x1="12" y1="12" x2="12" y2="16"/></svg>' +
@@ -9780,7 +9986,11 @@ if (_nwHealthyModems.length) {
             var rows = e[medium] || [];
             for (var r = 0; r < rows.length; r++) {
                 seen = true;
-                if (Number(rows[r].active) !== 1) { continue; }
+                /* nfLegRowDown (block 1, exported): a Reset newer than the
+                   Set clears the leg at once. */
+                if (window.nfLegRowDown
+                    ? !window.nfLegRowDown(rows[r])
+                    : Number(rows[r].active) !== 1) { continue; }
 
                 down = true;
                 var t = nfParseWsTime(rows[r].setTime);
@@ -10034,14 +10244,16 @@ if (_nwHealthyModems.length) {
             });
         }
 
-        var writePair = function ($val, $time, state, timeText, maskTip) {
+        /* outOf ("X/Y") is appended to a Faulty verdict: "Faulty (2/5)". */
+        var writePair = function ($val, $time, state, timeText, maskTip, outOf) {
             if (!$val.length) { return; }
-            if ($val.data('nm-state') !== state) {
-                $val.data('nm-state', state)
+            var _vKey = state + (state === 'faulty' && outOf ? '|' + outOf : '');
+            if ($val.data('nm-state') !== _vKey) {
+                $val.data('nm-state', _vKey)
                     .removeClass('pic-val--healthy pic-val--faulty pic-val--unknown pic-val--masked')
                     .addClass(state === 'faulty' ? 'pic-val--faulty'
                         : (state === 'masked' ? 'pic-val--masked' : 'pic-val--healthy'))
-                    .text(state === 'faulty' ? 'Faulty'
+                    .text(state === 'faulty' ? ('Faulty' + (outOf ? ' (' + outOf + ')' : ''))
                         : (state === 'masked' ? 'Undetermined' : 'Healthy'));
                 if (state === 'masked') {
                     $val.attr('title', maskTip || window.RDPMS_MASK_TIP.iot).css('cursor', 'help');
@@ -10173,11 +10385,12 @@ if (_nwHealthyModems.length) {
             if (iotState) {
                 /* Count text mirrors the Sensor row: "N Faulty" beside the
                    verdict when faulty, cleared when healthy. */
-                var iotInfo = (iotState === 'faulty')
-                    ? (iotFaultCount + ' Faulty' + (iotTotal ? ' Out of ' + iotTotal : ''))
-                    : '';
+                /* Same layout as the Sensor row and the table:
+                   "Faulty (X/Y)" + the earliest fault time. */
+                var iotOutOf = (iotState === 'faulty' && iotTotal)
+                    ? (iotFaultCount + '/' + iotTotal) : '';
                 writePair($(vPfx + 'IoTVal_' + ck), $(vPfx + 'IoTTime_' + ck),
-                    iotState, iotInfo);
+                    iotState, iotState === 'faulty' ? iotEarliest : '', undefined, iotOutOf);
             }
         });
     };
@@ -10292,7 +10505,11 @@ if (_nwHealthyModems.length) {
             var rows = e[medium] || [];
             for (var r = 0; r < rows.length; r++) {
                 seen = true;
-                if (Number(rows[r].active) !== 1) { continue; }
+                /* nfLegRowDown (block 1, exported): a Reset newer than the
+                   Set clears the leg at once. */
+                if (window.nfLegRowDown
+                    ? !window.nfLegRowDown(rows[r])
+                    : Number(rows[r].active) !== 1) { continue; }
 
                 down = true;
                 var t = nfParseWsTime(rows[r].setTime);
@@ -12273,9 +12490,7 @@ if (_nwHealthyModems.length) {
             for (var ii = 0; ii < _vinfos.length; ii++) {
                 var ai = _vinfos[ii];
                 if (!ai) { continue; }
-
-                if (sel && ai.AssetTypeId != null &&
-                    sel.indexOf(String(ai.AssetTypeId).trim()) === -1) { continue; }
+                if (sel && sel.indexOf(window.rdpmsInfoAssetTypeId(ai)) === -1) { continue; }
                 if (ai.SiteId != null && !_siteOk(String(ai.SiteId))) { continue; }
 
                 var _sid = String(ai.SiteId != null ? ai.SiteId : '');
@@ -12839,6 +13054,30 @@ console.log(
    had no source when every asset type was selected: the filtered counter
    bails under that condition and the only other source is the silent
    sensor WebSocket, so the tile sat on the markup's literal 0. */
+    /* Asset type of an mAssetInfos row as a string id. Rows with no
+       AssetTypeId took it from nowhere and passed EVERY single-type filter,
+       so they were counted once per type searched (GCBC: sum of per-type
+       totals 479 vs 475 for all types). Resolve it from the asset row. */
+    function rdpmsInfoAssetTypeId(ai) {
+        if (ai.AssetTypeId != null && String(ai.AssetTypeId).trim() !== '') {
+            return String(ai.AssetTypeId).trim();
+        }
+        var map = window.__rdpmsAssetTypeByAsset;
+        if (!map || map.__src !== window.json) {
+            map = { __src: window.json };
+            var assets = (window.json && $.isArray(window.json.mAssets)) ? window.json.mAssets : [];
+            for (var i = 0; i < assets.length; i++) {
+                var a = assets[i];
+                if (a && a.AssetId != null && a.AssetTypeId != null) {
+                    map[String(a.AssetId)] = String(a.AssetTypeId).trim();
+                }
+            }
+            window.__rdpmsAssetTypeByAsset = map;
+        }
+        return map[String(ai.AssetId)] || '';
+    }
+    window.rdpmsInfoAssetTypeId = rdpmsInfoAssetTypeId;
+
     function rdpmsCountSensorsFromInventory(assetTypeIds, siteFilter) {
         var _siteOk = (siteFilter && siteFilter.restrict)
             ? function (s) { return siteFilter.ids.indexOf(String(s)) !== -1; }
@@ -12864,8 +13103,7 @@ console.log(
             for (var ii = 0; ii < vinfos.length; ii++) {
                 var ai = vinfos[ii];
                 if (!ai) { continue; }
-                if (sel && ai.AssetTypeId != null &&
-                    sel.indexOf(String(ai.AssetTypeId).trim()) === -1) { continue; }
+                if (sel && sel.indexOf(rdpmsInfoAssetTypeId(ai)) === -1) { continue; }
                 if (ai.SiteId != null && !_siteOk(ai.SiteId)) { continue; }
 
                 var _sid = String(ai.SiteId != null ? ai.SiteId : '');
@@ -13065,6 +13303,15 @@ console.log(
      *   Partial selection -> filtered row/inventory calculation owns it.
      */
     if (rdpmsTileOwner() === 'summary') {
+        /* Total uses the SAME inventory counter as a single-type search
+           (point machine A/B collapse, vibration merge, de-dup), so the
+           per-type totals add up to the all-types total. The server's
+           station-wide sensorTotal counts raw channels and read 475 where
+           the per-type tiles summed to 479 (GCBC). It stays the fallback
+           when the page has no inventory. */
+        var _invAll = rdpmsCountSensorsFromInventory(null, sel);
+        if (_invAll > 0) { senTotal = Math.max(_invAll, senFaulty); }
+
         $('#spnTotalSensor')
             .removeData('nm-text')
             .text(senTotal)

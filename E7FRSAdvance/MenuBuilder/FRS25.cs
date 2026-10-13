@@ -89,9 +89,13 @@ namespace E7FRSAdvance.MenuBuilder
             alerts.Main = alerts.SetMenuAttribute("Alerts", ControllerName.Alerts, ActionName.Index, FRSIconName.Alerts, "FRS25");
             menus.Add(alerts);
 
-            Menu health = new Menu();
-            health.Main = health.SetMenuAttribute("Health", ControllerName.Health, ActionName.Index, FRSIconName.Health);
-            menus.Add(health);
+            // Health (Data Receiver / Datalogger / Debouncer / EdgeX service monitor): Energy7 users only
+            if (isVendor)
+            {
+                Menu health = new Menu();
+                health.Main = health.SetMenuAttribute("Health", ControllerName.Health, ActionName.Index, FRSIconName.Health);
+                menus.Add(health);
+            }
 
             Menu usersite = new Menu();
             usersite.Main = usersite.SetMenuAttribute("Command Control", ControllerName.Usersite, ActionName.Index, IconName.Usersite);

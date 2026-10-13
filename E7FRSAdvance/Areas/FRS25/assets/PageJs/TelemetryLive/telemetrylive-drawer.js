@@ -2019,6 +2019,8 @@
     }
     function liveRefresh() {
         if (!D.aid || !document.getElementById('tldDrawer')) return;
+        /* SIP signal/shunt mirrors are pruned by the host when their type is not the selected one */
+        if (W.SipTelemetry && typeof W.SipTelemetry.restoreMirror === 'function') W.SipTelemetry.restoreMirror(D.aid);
         var A = describe(D.aid);
         var sig = A ? (A.rows.map(function (r) { return r.v; }).join(',') + '|' + (A.derived || []).map(function (r) { return r.v; }).join(',') + '|' + A.occ + A.status + A.score + (A.pmDir || '') + (A.pmWhen || '') +
             (A.relays || []).map(function (r) { return r.up ? 1 : 0; }).join('') + '|' + isLight()) : 'none';

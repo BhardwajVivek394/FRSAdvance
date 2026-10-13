@@ -1414,15 +1414,17 @@ function calculateDerivedValues(attrs, assetIdHint) {
     }
 
     // Resolve each sensor -- short name first, then all known alias variants, then AttrId
-    // AttrId: 1=If mA, 2=Ir mA, 4=Choke V, 5=Charger mA
-    var ifMa = gv(['If mA', 'ITC FEED END(mA)', 'ITC FEED END'], 1);
-    var irMa = gv(['Ir mA', 'ITC RELAY END(mA)', 'ITC RELAY END'], 2);
-    var chargerMa = gv(['Charger mA', 'ITC TFC O/P(mA)', 'ITC TFC O/P'], 5);
-    var chokeV = gv(['Choke V', 'VTC CH FEED END(V)', 'VTC CH FEED END'], 4);
-    var chargerOpV = gv(['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)'], null);   // e7mriv2web: O/P only (I/P is the charger INPUT)
+    // (asset metadata match runs before this via the telemetrylive-ext.js wrapper).
+    // Track AttrIds as 616 (_trackColSeq / _trackIdSeq): If mA=344, Ir mA=569,
+    // Charger mA=1, Choke V=249, Charger OP V=570, Vf=3, TR V (Relay)=571
+    var ifMa = gv(['If mA', 'ITC FEED END(mA)', 'ITC FEED END'], 344);
+    var irMa = gv(['Ir mA', 'ITC RELAY END(mA)', 'ITC RELAY END'], 569);
+    var chargerMa = gv(['Charger mA', 'ITC TFC O/P(mA)', 'ITC TFC O/P'], 1);
+    var chokeV = gv(['Choke V', 'VTC CH FEED END(V)', 'VTC CH FEED END'], 249);
+    var chargerOpV = gv(['Charger OP V', 'VTC TFC O/P', 'VTC TFC O/P(V)'], 570);   // e7mriv2web: O/P only (I/P is the charger INPUT)
     var vf = gv(['Vf', 'Vf V', 'VTC FEED END',
-        'VTC FEED END(V)'], null);
-    var trVRelay = gv(['Vr', 'VTC TR', 'VTC RELAY END', 'VTC RELAY END(V)'], null);
+        'VTC FEED END(V)'], 3);
+    var trVRelay = gv(['Vr', 'VTC TR', 'VTC RELAY END', 'VTC RELAY END(V)'], 571);
 
     // Helper: if any required operand is null, the derived result is null (show '-')
     function safeCalc(fn, requiredVars) {
