@@ -442,7 +442,7 @@
 .e7-welcome-icon {
   width: 50px; height: 50px;
   border-radius: 14px;
-  background: linear-gradient(135deg, rgba(34,211,238,.14), rgba(167,139,250,.14));
+  background: var(--e7c-accent-soft, rgba(34,211,238,.14));
   border: 1px solid var(--e7c-accent-edge);
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 4px;
@@ -637,7 +637,7 @@
         const askText = prompt.ask === 'site' ? 'Enter site name' : 'Enter asset name (e.g. 2T, SH04, PM07)';
         label.style.display = 'flex';
         label.innerHTML = `
-          <span>→ ${esc(prompt.label)}&nbsp;·&nbsp;<em style="color:rgba(255,255,255,0.4);font-style:normal">${askText}</em></span>
+          <span>→ ${esc(prompt.label)}&nbsp;·&nbsp;<em style="color:var(--e7c-t3, rgba(255,255,255,0.4));font-style:normal">${askText}</em></span>
           <button class="e7-label-cancel" id="e7CancelBtn">✕ Cancel</button>`;
         document.getElementById('e7CancelBtn').addEventListener('click', cancelPrompt);
 

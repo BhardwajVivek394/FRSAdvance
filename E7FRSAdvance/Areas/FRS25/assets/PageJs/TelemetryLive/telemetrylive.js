@@ -21,6 +21,45 @@ function tlThemeVar(name, fallback) {
     try { v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); } catch (e) { }
     return v || fallback;
 }
+/* Energy7 chart palette from the computed theme tokens (canvas charts cannot read var()).
+   Shared by telemetrylive-*.js (loaded after this file). */
+function tlThemePalette() {
+    var L = tlIsLight();
+    return {
+        light: L,
+        surface: tlThemeVar('--e7-surface', L ? '#ffffff' : '#212934'),
+        surface2: tlThemeVar('--e7-surface-2', L ? '#f6f8fa' : '#1d242e'),
+        surface3: tlThemeVar('--e7-surface-3', L ? '#eef2f6' : '#262f3b'),
+        border: tlThemeVar('--e7-border', L ? '#e7ebf1' : '#2c3644'),
+        axis: tlThemeVar('--e7-border-2', L ? '#dde3ec' : '#36424f'),
+        grid: tlThemeVar('--e7-grid-line', L ? '#eef2f7' : 'rgba(140,175,235,.12)'),
+        heading: tlThemeVar('--e7-heading', L ? '#1b3c55' : '#eaf1f8'),
+        text: tlThemeVar('--e7-text', L ? '#22303f' : '#dce4ee'),
+        text2: tlThemeVar('--e7-text-2', L ? '#55657a' : '#aab6c6'),
+        text3: tlThemeVar('--e7-text-3', L ? '#627186' : '#8391a3'),
+        text4: tlThemeVar('--e7-text-4', L ? '#b3bdc9' : '#5d6a7b'),
+        accent: tlThemeVar('--e7-accent', L ? '#2f9ec4' : '#5cc0e2'),
+        accent2: tlThemeVar('--e7-accent-2', L ? '#4fc4c1' : '#4fd0cb'),
+        accentSoft: tlThemeVar('--e7-accent-soft', L ? 'rgba(47,158,196,.12)' : 'rgba(92,192,226,.14)'),
+        c2: tlThemeVar('--e7-c2', L ? '#6f4fd0' : '#a58cff'),
+        green: tlThemeVar('--e7-green', L ? '#0f9c74' : '#2fd6a3'),
+        amber: tlThemeVar('--e7-amber', L ? '#9d700a' : '#f0b429'),
+        red: tlThemeVar('--e7-red', L ? '#d1394f' : '#ff7a90')
+    };
+}
+/* Run cb whenever the page light/dark scheme toggles (html or body data-aurora). */
+function tlOnThemeChange(cb) {
+    if (typeof cb !== 'function' || typeof MutationObserver === 'undefined') return;
+    var t = null;
+    var fire = function () { clearTimeout(t); t = setTimeout(function () { try { cb(); } catch (e) { } }, 60); };
+    try {
+        var mo = new MutationObserver(fire);
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-aurora'] });
+        if (document.body) mo.observe(document.body, { attributes: true, attributeFilter: ['data-aurora'] });
+    } catch (e) { }
+}
+window.tlThemePalette = tlThemePalette;
+window.tlOnThemeChange = tlOnThemeChange;
 window.tlZeroFloor = tlZeroFloor;
 
 var chart;
@@ -142,7 +181,7 @@ function _eldCardStyles() {
         '.at-eld-list{display:flex;flex-direction:column;gap:1px;background:var(--glass-edge,rgba(255,255,255,.08));padding:1px;}' +
         '.at-eld-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 11px;background:var(--glass-1,rgba(255,255,255,.04));}' +
         '.at-eld-row .rdpms-dl-badge{flex-shrink:0;}' +
-        '.at-eld-sec{padding:5px 11px;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--text-3,rgba(255,255,255,.5));background:rgba(0,0,0,.18);}' +
+        '.at-eld-sec{padding:5px 11px;font-size:9px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--text-3,rgba(255,255,255,.5));background:var(--e7-surface-2, rgba(0,0,0,.18));}' +
         '.at-eld-empty{padding:14px 11px;font-size:11px;color:var(--text-3,rgba(255,255,255,.5));}' +
         '</style>');
 }
@@ -2893,7 +2932,7 @@ function updateTrackComputedCols(assetId, $row) {
                 dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
             }
         } else {
-            dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+            dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
         }
         $dlCell.html(dlHtml);
     }
@@ -2992,20 +3031,20 @@ function renderPmTableView() {
     h += '<table id="wsLiveTable" style="width:100%;border-collapse:collapse;font-size:12px;">';
     h += '<thead>';
     h += '<tr>';
-    h += '<th style="background:rgba(34,211,238,0.15);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:120px;">POINT MACHINE</th>';
-    h += '<th style="background:rgba(34,211,238,0.15);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:90px;">DIRECTION</th>';
-    h += '<th style="background:rgba(34,211,238,0.10);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:140px;">A CURRENT<br><span style="font-size:9.5px;opacity:.7;">(MAX/AVG)</span></th>';
-    h += '<th style="background:rgba(34,211,238,0.10);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">A VOLTAGE<br><span style="font-size:9.5px;opacity:.7;">(AVG)</span></th>';
-    h += '<th style="background:rgba(34,211,238,0.10);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">A OP TIME<br><span style="font-size:9.5px;opacity:.7;">(MS)</span></th>';
-    h += '<th style="background:rgba(34,211,238,0.10);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:80px;">A COUNT</th>';
-    h += '<th style="background:rgba(34,211,238,0.10);color:#22d3ee;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">A OP DATE</th>';
-    h += '<th style="background:rgba(167,139,250,0.10);color:#a78bfa;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:140px;">B CURRENT<br><span style="font-size:9.5px;opacity:.7;">(MAX/AVG)</span></th>';
-    h += '<th style="background:rgba(167,139,250,0.10);color:#a78bfa;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">B VOLTAGE<br><span style="font-size:9.5px;opacity:.7;">(AVG)</span></th>';
-    h += '<th style="background:rgba(167,139,250,0.10);color:#a78bfa;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">B OP TIME<br><span style="font-size:9.5px;opacity:.7;">(MS)</span></th>';
-    h += '<th style="background:rgba(167,139,250,0.10);color:#a78bfa;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:80px;">B COUNT</th>';
-    h += '<th style="background:rgba(167,139,250,0.10);color:#a78bfa;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">B OP DATE</th>';
-    h += '<th style="background:rgba(251,191,36,0.10);color:#fbbf24;padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:160px;">DATALOGGER</th>';
-    h += '<th style="background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.55);padding:10px 12px;border:1px solid rgba(255,255,255,0.08);white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:90px;">LAST UPDATE</th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.15));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:120px;">POINT MACHINE</th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.15));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:90px;">DIRECTION</th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.10));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:140px;">A CURRENT<br><span style="font-size:9.5px;opacity:.7;">(MAX/AVG)</span></th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.10));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">A VOLTAGE<br><span style="font-size:9.5px;opacity:.7;">(AVG)</span></th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.10));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">A OP TIME<br><span style="font-size:9.5px;opacity:.7;">(MS)</span></th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.10));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:80px;">A COUNT</th>';
+    h += '<th style="background:var(--e7-accent-soft, rgba(34,211,238,0.10));color:var(--e7-accent, #22d3ee);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">A OP DATE</th>';
+    h += '<th style="background:var(--e7-violet-soft, rgba(167,139,250,0.10));color:var(--e7-violet, #a78bfa);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:140px;">B CURRENT<br><span style="font-size:9.5px;opacity:.7;">(MAX/AVG)</span></th>';
+    h += '<th style="background:var(--e7-violet-soft, rgba(167,139,250,0.10));color:var(--e7-violet, #a78bfa);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">B VOLTAGE<br><span style="font-size:9.5px;opacity:.7;">(AVG)</span></th>';
+    h += '<th style="background:var(--e7-violet-soft, rgba(167,139,250,0.10));color:var(--e7-violet, #a78bfa);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">B OP TIME<br><span style="font-size:9.5px;opacity:.7;">(MS)</span></th>';
+    h += '<th style="background:var(--e7-violet-soft, rgba(167,139,250,0.10));color:var(--e7-violet, #a78bfa);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:80px;">B COUNT</th>';
+    h += '<th style="background:var(--e7-violet-soft, rgba(167,139,250,0.10));color:var(--e7-violet, #a78bfa);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:100px;">B OP DATE</th>';
+    h += '<th style="background:var(--e7-amber-soft, rgba(251,191,36,0.10));color:var(--e7-amber, #fbbf24);padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:160px;">DATALOGGER</th>';
+    h += '<th style="background:var(--e7-surface-2, rgba(255,255,255,0.04));color:var(--e7-text-2, rgba(255,255,255,0.55));padding:10px 12px;border:1px solid var(--e7-border, rgba(255,255,255,0.08));white-space:nowrap;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;min-width:90px;">LAST UPDATE</th>';
     h += '</tr></thead><tbody>';
 
     for (var ri = 0; ri < assetIds.length; ri++) {
@@ -3090,7 +3129,7 @@ function buildPmTableRow(assetId) {
     var dlRelays = asset.dlRelays || {};
     var dlKeys = Object.keys(dlRelays);
     if (dlKeys.length === 0) {
-        dlHtml = '<span style="color:rgba(255,255,255,0.25);font-size:10px;">--</span>';
+        dlHtml = '<span style="color:var(--e7-text-4, rgba(255,255,255,0.25));font-size:10px;">--</span>';
     } else {
         for (var di = 0; di < Math.min(dlKeys.length, 3); di++) {
             var rl = dlRelays[dlKeys[di]];
@@ -3100,32 +3139,32 @@ function buildPmTableRow(assetId) {
             // Shared rdpms-dl-badge class → green/amber + up/down arrow from CSS.
             dlHtml += '<span class="rdpms-dl-badge ' + bc + '" style="display:inline-block;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:700;margin:1px;">' + dn.substring(0, 18) + ' ' + bs + '</span> ';
         }
-        if (dlKeys.length > 3) dlHtml += '<span style="color:rgba(255,255,255,0.35);font-size:10px;">+' + (dlKeys.length - 3) + '</span>';
+        if (dlKeys.length > 3) dlHtml += '<span style="color:var(--e7-text-3, rgba(255,255,255,0.35));font-size:10px;">+' + (dlKeys.length - 3) + '</span>';
     }
 
     // Last update
     var lastUpd = asset.lastUpdated ? (typeof fmtTime === 'function' ? fmtTime(asset.lastUpdated) : '--') : '--';
 
-    var tdBase = 'padding:9px 10px;border:1px solid rgba(255,255,255,0.05);vertical-align:middle;font-family:\'JetBrains Mono\',monospace;font-size:11.5px;';
-    var tdA = tdBase + 'background:rgba(34,211,238,0.04);color:rgba(255,255,255,0.75);';
-    var tdB = tdBase + 'background:rgba(167,139,250,0.04);color:rgba(255,255,255,0.75);';
-    var tdN = tdBase + 'color:rgba(255,255,255,0.72);background:rgba(255,255,255,0.02);';
+    var tdBase = 'padding:9px 10px;border:1px solid var(--e7-border, rgba(255,255,255,0.05));vertical-align:middle;font-family:\'JetBrains Mono\',monospace;font-size:11.5px;';
+    var tdA = tdBase + 'background:var(--e7-accent-soft, rgba(34,211,238,0.04));color:var(--e7-text, rgba(255,255,255,0.75));';
+    var tdB = tdBase + 'background:var(--e7-violet-soft, rgba(167,139,250,0.04));color:var(--e7-text, rgba(255,255,255,0.75));';
+    var tdN = tdBase + 'color:var(--e7-text, rgba(255,255,255,0.72));background:var(--e7-surface-2, rgba(255,255,255,0.02));';
 
-    var h = '<tr data-id="' + assetId + '" style="border-bottom:1px solid rgba(255,255,255,0.04);transition:background .12s;">';
-    h += '<td style="' + tdN + 'font-weight:700;color:rgba(255,255,255,0.95);font-family:\'Manrope\',sans-serif;white-space:nowrap;">' + name + '</td>';
+    var h = '<tr data-id="' + assetId + '" style="border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.04));transition:background .12s;">';
+    h += '<td style="' + tdN + 'font-weight:700;color:var(--e7-heading, rgba(255,255,255,0.95));font-family:\'Manrope\',sans-serif;white-space:nowrap;">' + name + '</td>';
     h += '<td style="' + tdN + 'text-align:center;">' + dirBadge + '</td>';
-    h += '<td style="' + tdA + 'text-align:center;"><span style="color:#22d3ee;font-weight:700;">' + aMaxC + ' / ' + aAvgC + '</span></td>';
+    h += '<td style="' + tdA + 'text-align:center;"><span style="color:var(--e7-accent, #22d3ee);font-weight:700;">' + aMaxC + ' / ' + aAvgC + '</span></td>';
     h += '<td style="' + tdA + 'text-align:center;">' + aVoltAvg + '</td>';
     h += '<td style="' + tdA + 'text-align:center;">' + aTime + '</td>';
     h += '<td style="' + tdA + 'text-align:center;">' + aCount + '</td>';
-    h += '<td style="' + tdA + 'text-align:center;font-size:10px;color:rgba(255,255,255,0.45);">' + aDate + '</td>';
-    h += '<td style="' + tdB + 'text-align:center;"><span style="color:#a78bfa;font-weight:700;">' + bMaxC + ' / ' + bAvgC + '</span></td>';
+    h += '<td style="' + tdA + 'text-align:center;font-size:10px;color:var(--e7-text-3, rgba(255,255,255,0.45));">' + aDate + '</td>';
+    h += '<td style="' + tdB + 'text-align:center;"><span style="color:var(--e7-violet, #a78bfa);font-weight:700;">' + bMaxC + ' / ' + bAvgC + '</span></td>';
     h += '<td style="' + tdB + 'text-align:center;">' + bVoltAvg + '</td>';
     h += '<td style="' + tdB + 'text-align:center;">' + bTime + '</td>';
     h += '<td style="' + tdB + 'text-align:center;">' + bCount + '</td>';
-    h += '<td style="' + tdB + 'text-align:center;font-size:10px;color:rgba(255,255,255,0.45);">' + bDate + '</td>';
+    h += '<td style="' + tdB + 'text-align:center;font-size:10px;color:var(--e7-text-3, rgba(255,255,255,0.45));">' + bDate + '</td>';
     h += '<td style="' + tdN + '">' + dlHtml + '</td>';
-    h += '<td style="' + tdN + 'text-align:center;color:rgba(255,255,255,0.40);font-size:10.5px;">' + lastUpd + '</td>';
+    h += '<td style="' + tdN + 'text-align:center;color:var(--e7-text-3, rgba(255,255,255,0.40));font-size:10.5px;">' + lastUpd + '</td>';
     h += '</tr>';
     return h;
 }
@@ -3311,7 +3350,7 @@ function _buildSigTableRow(assetId, cols) {
             + (r.displayName || dlKeys[d]) + '</span>';
     }
     if (dlKeys.length > 3) dlHtml += '<span class="rdpms-dl-badge" style="margin:1px;">+' + (dlKeys.length - 3) + '</span>';
-    h += '<td class="dl-cell">' + (dlHtml || '<span style="color:#94a3b8;font-size:10px;">--</span>') + '</td>';
+    h += '<td class="dl-cell">' + (dlHtml || '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>') + '</td>';
     h += '<td data-attr="LastUpdate" style="white-space:nowrap;font-size:11px;">' + ts + '</td>';
     h += '<td><button type="button" class="tl-asset-action" title="Graph" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + assetId + '\')"><i class="fa-solid fa-chart-line"></i></button> '
         + '<button type="button" class="tl-asset-action" title="Circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')"><i class="fa-solid fa-project-diagram"></i></button> '
@@ -3461,8 +3500,8 @@ function _renderSignalGroupedTablesCore() {
 
         if (needFetch.length > 0 || pending > 0) {
             if ($c.find('.sig-group-wrap').length === 0) {
-                $c.html('<div class="text-center p-4" style="color:#64748b;">'
-                    + '<i class="fas fa-layer-group fa-lg" style="display:block;margin-bottom:8px;color:#10b981;"></i>'
+                $c.html('<div class="text-center p-4" style="color:var(--e7-text-3, #64748b);">'
+                    + '<i class="fas fa-layer-group fa-lg" style="display:block;margin-bottom:8px;color:var(--e7-green, #10b981);"></i>'
                     + 'Loading signal attribute groups…</div>');
             }
             if (needFetch.length > 0) {
@@ -3579,7 +3618,7 @@ function _renderSignalGroupedTablesCore() {
 
             html += '<div class="table-responsive">'
                 + '<table class="table mb-0" style="font-size:12px;">'
-                + '<thead><tr style="background:#1e3a5f;color:#fff;">'
+                + '<thead><tr style="background:var(--e7-surface-2, #1e3a5f);color:var(--e7-heading, #fff);">'
                 + '<th style="min-width:100px;">Asset</th>';
             for (var ci = 0; ci < cols.length; ci++) {
                 var cn = cols[ci];
@@ -3670,7 +3709,7 @@ window.updateSignalGroupedTables = function (updatedIds) {
                     + (relay.displayName || dlKeys[d]) + '</span>';
             }
             if (dlKeys.length > 3) dlHtml += '<span class="rdpms-dl-badge" style="margin:1px;">+' + (dlKeys.length - 3) + '</span>';
-            $dl.html(dlHtml || '<span style="color:#94a3b8;font-size:10px;">--</span>');
+            $dl.html(dlHtml || '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>');
         }
     }
 };
@@ -3894,7 +3933,7 @@ function buildTableRow(assetId, isTrack, isNew) {
                 dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
             }
         } else {
-            dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+            dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
         }
         h += '<td class="dl-cell">' + dlHtml + '</td>';
     }
@@ -4020,7 +4059,7 @@ function updateRowCells($row, asset, isTrack) {
                     dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (_urcIsEld ? badgeText : (relay.displayName || dlKeys[di]) + ': ' + badgeText) + '</span> ';
                 }
             } else {
-                dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+                dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
             }
             $dlCell.html(dlHtml);
         }
@@ -5347,8 +5386,8 @@ function connectWebSocket(siteId, assetTypeId, assetIds) {
             if (!_isSipOnly && currentViewType !== 'Circuit' && currentViewType !== 'Graph' && currentViewType !== 'Yard') {
                 $('#divTelemetryLive').html(
                     '<div class="text-center p-5" id="wsWaiting">' +
-                    '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:#10b981;"></i>' +
-                    '<div style="color:#64748b;">Connected! Waiting for live data...</div>' +
+                    '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:var(--e7-green, #10b981);"></i>' +
+                    '<div style="color:var(--e7-text-3, #64748b);">Connected! Waiting for live data...</div>' +
                     '</div>'
                 );
             } else {
@@ -5762,8 +5801,8 @@ function renderRDPMSView() {
         var containerHtml = '<div class="rdpms-container">' +
             '<div class="row" id="rdpmsMainContainer"></div>' +
             (shuntSignals.length > 0 ?
-                '<hr style="margin:20px 0;border-color:#e2e8f0;">' +
-                '<h6 style="padding:0 10px;color:#64748b;margin-bottom:15px;"><i class="fas fa-random"></i> Shunt Signals</h6>' +
+                '<hr style="margin:20px 0;border-color:var(--e7-border, #e2e8f0);">' +
+                '<h6 style="padding:0 10px;color:var(--e7-text-3, #64748b);margin-bottom:15px;"><i class="fas fa-random"></i> Shunt Signals</h6>' +
                 '<div class="row" id="rdpmsShuntContainer"></div>'
                 : '<div class="row" id="rdpmsShuntContainer"></div>') +
             '</div>';
@@ -5777,8 +5816,8 @@ function renderRDPMSView() {
         if ($rdpmsWrap.length === 0) $rdpmsWrap = $c.find('#rdpmsMainContainer').parent();
         if (shuntSignals.length > 0) {
             $rdpmsWrap.append(
-                '<hr style="margin:20px 0;border-color:#e2e8f0;">' +
-                '<h6 style="padding:0 10px;color:#64748b;margin-bottom:15px;"><i class="fas fa-random"></i> Shunt Signals</h6>' +
+                '<hr style="margin:20px 0;border-color:var(--e7-border, #e2e8f0);">' +
+                '<h6 style="padding:0 10px;color:var(--e7-text-3, #64748b);margin-bottom:15px;"><i class="fas fa-random"></i> Shunt Signals</h6>' +
                 '<div class="row" id="rdpmsShuntContainer"></div>'
             );
         } else {
@@ -5838,8 +5877,8 @@ function renderRDPMSView() {
         if ($shuntWrap.length === 0) $shuntWrap = $('#rdpmsMainContainer').parent();
         if ($shuntWrap.length) {
             $shuntWrap.append(
-                '<hr style="margin:20px 0;border-color:#e2e8f0;">' +
-                '<h6 style="padding:0 10px;color:#64748b;margin-bottom:15px;">' +
+                '<hr style="margin:20px 0;border-color:var(--e7-border, #e2e8f0);">' +
+                '<h6 style="padding:0 10px;color:var(--e7-text-3, #64748b);margin-bottom:15px;">' +
                 '<i class="fas fa-random"></i> Shunt Signals</h6>' +
                 '<div class="row" id="rdpmsShuntContainer"></div>'
             );
@@ -5893,8 +5932,8 @@ function renderRDPMSView() {
         $c.find('#rdpmsShuntContainer').prev('h6').length === 0 &&
         $c.find('#rdpmsShuntContainer').children().length > 0) {
         $('#rdpmsShuntContainer').before(
-            '<hr style="margin:20px 0;border-color:#e2e8f0;">' +
-            '<h6 style="padding:0 10px;color:#64748b;margin-bottom:15px;">' +
+            '<hr style="margin:20px 0;border-color:var(--e7-border, #e2e8f0);">' +
+            '<h6 style="padding:0 10px;color:var(--e7-text-3, #64748b);margin-bottom:15px;">' +
             '<i class="fas fa-random"></i> Shunt Signals</h6>'
         );
     }
@@ -6613,7 +6652,7 @@ function fnBindTableFromAPI() {
     if (!siteId || siteId === '0' || siteId === '') { showWarning('Please select a site', 'Validation'); return; }
     $("#loader").show();
     // Show API status bar
-    $('#wsStatusBar').html('<div class="ws-status-bar ws-live" style="background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border-color:#3b82f6;"><span class="ws-dot live" style="background:#3b82f6;"></span><strong>API</strong> -- REST data</div>').show();
+    $('#wsStatusBar').html('<div class="ws-status-bar ws-live" style="background:var(--e7-p-blue, linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%));border-color:var(--e7-accent, #3b82f6);"><span class="ws-dot live" style="background:#3b82f6;"></span><strong>API</strong> -- REST data</div>').show();
     var apiUrl = (assetIds.length === 1) ? API_BASE_URL + '/' + assetIds[0] : API_BASE_URL + '?siteId=' + siteId;
     $.ajax({
         url: apiUrl, type: 'GET', dataType: 'json',
@@ -6690,7 +6729,7 @@ function renderApiTable(data, assetTypeId) {
         if (isTrack || parseInt(assetTypeId) === 2) {
             var dlRelays = asset.dlRelays || {}; var dlHtml = ''; var dlKeys = Object.keys(dlRelays);
             dlKeys.sort(function (a, b) { var ra = dlRelays[a], rb = dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return 0; });
-            if (dlKeys.length > 0) { for (var di = 0; di < dlKeys.length; di++) { var relay = dlRelays[dlKeys[di]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> '; } } else { dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>'; }
+            if (dlKeys.length > 0) { for (var di = 0; di < dlKeys.length; di++) { var relay = dlRelays[dlKeys[di]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> '; } } else { dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>'; }
             h += '<td class="dl-cell">' + dlHtml + '</td>';
         }
         h += '</tr>';
@@ -6702,7 +6741,7 @@ function fnBindTable() {
     if (assetIds.length > 1) { mSearchCriteria.AssetIds = assetIds; mSearchCriteria.Id = ''; } else if (assetIds.length === 1) { mSearchCriteria.Id = assetIds[0]; mSearchCriteria.AssetIds = []; } else { mSearchCriteria.Id = ''; mSearchCriteria.AssetIds = []; }
     var isValid = true; if (!mSearchCriteria.SiteId || mSearchCriteria.SiteId === '0') { isValid = false; showWarning('Please select a site', 'Validation'); }
     else if (!mSearchCriteria.AssetTypeId || mSearchCriteria.AssetTypeId === '0') { isValid = false; showWarning('Please select an asset type', 'Validation'); }
-    if (isValid) { $("#loader").show(); $('#wsStatusBar').html('<div class="ws-status-bar ws-live" style="background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border-color:#3b82f6;"><span class="ws-dot live" style="background:#3b82f6;"></span><strong>API</strong> -- Server data</div>').show(); $.ajax({ url: '/FRS25/Telemetry/_Table', type: 'POST', contentType: 'application/json', data: JSON.stringify({ SearchCriteria: mSearchCriteria }), success: function (data) { $("#loader").hide(); $('#divTelemetryLive').empty().append(data); $('#downloadContainer').show(); }, error: function () { $("#loader").hide(); showError('Failed to load table data', 'Error'); } }); }
+    if (isValid) { $("#loader").show(); $('#wsStatusBar').html('<div class="ws-status-bar ws-live" style="background:var(--e7-p-blue, linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%));border-color:var(--e7-accent, #3b82f6);"><span class="ws-dot live" style="background:#3b82f6;"></span><strong>API</strong> -- Server data</div>').show(); $.ajax({ url: '/FRS25/Telemetry/_Table', type: 'POST', contentType: 'application/json', data: JSON.stringify({ SearchCriteria: mSearchCriteria }), success: function (data) { $("#loader").hide(); $('#divTelemetryLive').empty().append(data); $('#downloadContainer').show(); }, error: function () { $("#loader").hide(); showError('Failed to load table data', 'Error'); } }); }
 }
 
 function fnSearchView() {
@@ -6956,7 +6995,7 @@ function fnBindIpsGrid() {
     $('#divTelemetryLive').html(
         '<div class="ips-grid-container">' +
         '<div class="ips-card-grid">' +
-        '<div class="ips-waiting-card"><i class="fas fa-satellite-dish fa-2x mb-3" style="color:#259dab;display:block;"></i>' +
+        '<div class="ips-waiting-card"><i class="fas fa-satellite-dish fa-2x mb-3" style="color:var(--e7-accent, #259dab);display:block;"></i>' +
         'Connecting to live data stream…</div>' +
         '</div></div>'
     );
@@ -7001,7 +7040,7 @@ window.renderIpsGridView = function renderIpsGridView() {
     var totalCount = assetIds.length;
     var h = '<div class="ips-grid-container">';
     h += '<div class="ips-grid-header">';
-    h += '<h6><i class="fas fa-th" style="color:#259dab;"></i> IPS Live Grid</h6>';
+    h += '<h6><i class="fas fa-th" style="color:var(--e7-accent, #259dab);"></i> IPS Live Grid</h6>';
     h += '<span class="ips-grid-badge">' + totalCount + ' Asset' + (totalCount !== 1 ? 's' : '') + '</span>';
     h += '</div>';
     h += '<div class="ips-card-grid" id="ipsCardGrid">';
@@ -7057,7 +7096,7 @@ function buildIpsCard(assetId) {
     // Attribute rows
     h += '<div class="ips-attr-list">';
     if (attrKeys.length === 0) {
-        h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--at-t4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
+        h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--e7-text-4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
     } else {
         for (var k = 0; k < attrKeys.length; k++) {
             var an = attrKeys[k];
@@ -7214,11 +7253,11 @@ function fnBindGrph() {
     var isEldView = (typeof isEldAssetType === 'function') && isEldAssetType();
     _gChecked = {}; _gColorMap = {};
 
-    var g = '<div id="gWrap" style="background:rgba(255,255,255,0.04);backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border:1px solid rgba(255,255,255,0.10);border-radius:16px;overflow:hidden;width:100%;box-shadow:0 8px 32px rgba(0,0,0,0.36);">';
+    var g = '<div id="gWrap" style="background:var(--e7-surface-2, rgba(255,255,255,0.04));backdrop-filter:blur(28px) saturate(160%);-webkit-backdrop-filter:blur(28px) saturate(160%);border:1px solid var(--e7-border, rgba(255,255,255,0.10));border-radius:16px;overflow:hidden;width:100%;box-shadow:var(--e7-shadow-hover, 0 8px 32px rgba(0,0,0,0.36));">';
 
     // ── Header ──
-    g += '<div style="background:linear-gradient(135deg,rgba(34,211,238,0.18) 0%,rgba(167,139,250,0.14) 100%);border-bottom:1px solid rgba(255,255,255,0.10);padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">';
-    g += '<div style="color:rgba(255,255,255,0.96);display:flex;align-items:center;gap:10px;"><i class="fas fa-chart-line" style="font-size:16px;color:#22d3ee;opacity:.9;"></i>'
+    g += '<div style="background:var(--e7-surface-2, linear-gradient(135deg,rgba(34,211,238,0.18) 0%,rgba(167,139,250,0.14) 100%));border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">';
+    g += '<div style="color:var(--e7-heading, rgba(255,255,255,0.96));display:flex;align-items:center;gap:10px;"><i class="fas fa-chart-line" style="font-size:16px;color:var(--e7-accent, #22d3ee);opacity:.9;"></i>'
         + '<div><b style="font-size:15px;letter-spacing:.01em;font-family:\'Bricolage Grotesque\',sans-serif;">' + assetName + '</b>'
         + '<div style="opacity:.6;font-size:11px;margin-top:1px;font-family:\'JetBrains Mono\',monospace;">' + siteName + ' &nbsp;·&nbsp; Live Telemetry Graph</div></div></div>';
     g += '<div style="display:flex;gap:5px;" id="gTB">';
@@ -7226,49 +7265,49 @@ function fnBindGrph() {
     g += '</div></div>';
 
     // ── Select / Unselect All bar ──
-    g += '<div style="background:rgba(52,211,153,0.06);border-bottom:1px solid rgba(255,255,255,0.07);padding:4px 12px;display:flex;align-items:center;gap:6px;">'
-        + '<span style="font-size:10px;color:rgba(255,255,255,0.5);font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Attributes:</span>'
+    g += '<div style="background:var(--e7-green-soft, rgba(52,211,153,0.06));border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.07));padding:4px 12px;display:flex;align-items:center;gap:6px;">'
+        + '<span style="font-size:10px;color:var(--e7-text-3, rgba(255,255,255,0.5));font-weight:700;text-transform:uppercase;letter-spacing:.5px;">Attributes:</span>'
         + '<button class="gSelAll2" onclick="window._gSelectAll(true)"><i class="fas fa-check-square" style="font-size:10px;"></i> Select All</button>'
         + '<button class="gSelAll2" onclick="window._gSelectAll(false)"><i class="far fa-square" style="font-size:10px;"></i> Unselect All</button>'
-        + '<span style="margin-left:auto;font-size:10px;color:rgba(255,255,255,0.45);font-weight:600;" id="gSelCount"></span>'
+        + '<span style="margin-left:auto;font-size:10px;color:var(--e7-text-3, rgba(255,255,255,0.45));font-weight:600;" id="gSelCount"></span>'
         + '</div>';
 
     // ── Attribute panel ──
-    g += '<div style="background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.08);padding:0;">';
+    g += '<div style="background:var(--e7-surface-2, rgba(255,255,255,0.02));border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.08));padding:0;">';
     g += '<div style="display:flex;flex-wrap:wrap;">';
     // Feed End column
-    g += '<div id="gColF" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid rgba(255,255,255,0.07);">'
-        + '<div style="font-weight:700;color:#34d399;font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
+    g += '<div id="gColF" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid var(--e7-border, rgba(255,255,255,0.07));">'
+        + '<div style="font-weight:700;color:var(--e7-green, #34d399);font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
         + '<i class="fas fa-bolt" style="font-size:9px;"></i>' + (isSignal ? 'Signal Attributes' : (isEldView ? 'ELD Values' : 'Feed End')) + '</div>'
         + '<div id="gFL"></div></div>';
     // Relay End column
-    g += '<div id="gColR" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid rgba(255,255,255,0.07);">'
-        + '<div style="font-weight:700;color:#60a5fa;font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
+    g += '<div id="gColR" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid var(--e7-border, rgba(255,255,255,0.07));">'
+        + '<div style="font-weight:700;color:var(--e7-c6, #60a5fa);font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
         + '<i class="fas fa-wave-square" style="font-size:9px;"></i>' + (isSignal ? 'Relay Values' : 'Relay End') + '</div>'
         + '<div id="gRL"></div></div>';
     // DataLogger column
-    g += '<div id="gColD" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid rgba(255,255,255,0.07);">'
-        + '<div style="font-weight:700;color:#a78bfa;font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
+    g += '<div id="gColD" style="flex:1;min-width:160px;padding:7px 10px;border-right:1px solid var(--e7-border, rgba(255,255,255,0.07));">'
+        + '<div style="font-weight:700;color:var(--e7-violet, #a78bfa);font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
         + '<i class="fas fa-toggle-on" style="font-size:9px;"></i>DataLogger</div>'
         + '<div id="gDL"></div></div>';
     // Derived Values column (Track only)
     if (isTrack) {
         g += '<div id="gColDerived" style="flex:1;min-width:160px;padding:7px 10px;">'
-            + '<div style="font-weight:700;color:#fbbf24;font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
+            + '<div style="font-weight:700;color:var(--e7-amber, #fbbf24);font-size:10px;text-transform:uppercase;letter-spacing:.7px;margin-bottom:5px;display:flex;align-items:center;gap:4px;">'
             + '<i class="fas fa-calculator" style="font-size:9px;"></i>Derived Values</div>'
             + '<div id="gDerived"></div></div>';
     }
     g += '</div></div>';
 
     // ── Controls bar ──
-    g += '<div style="padding:8px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.18);">';
+    g += '<div style="padding:8px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.07));background:var(--e7-surface-2, rgba(0,0,0,0.18));">';
     g += '<div style="display:flex;align-items:center;gap:12px;">';
-    g += '<div style="display:flex;align-items:center;gap:6px;"><i class="fas fa-calendar-alt" style="font-size:10px;color:rgba(255,255,255,0.30);"></i><span style="font-size:11.5px;color:rgba(255,255,255,0.40);">Range:</span><b id="gTR" style="color:#22d3ee;font-family:\'JetBrains Mono\',monospace;font-size:12px;"></b></div>';
-    g += '<div style="width:1px;height:14px;background:rgba(255,255,255,0.12);"></div>';
-    g += '<div style="display:flex;align-items:center;gap:5px;"><i class="fas fa-database" style="font-size:10px;color:rgba(255,255,255,0.30);"></i><b id="gPT" style="color:#22d3ee;font-family:\'JetBrains Mono\',monospace;font-size:12px;">0</b><span style="font-size:11px;color:rgba(255,255,255,0.40);">pts</span></div>';
+    g += '<div style="display:flex;align-items:center;gap:6px;"><i class="fas fa-calendar-alt" style="font-size:10px;color:var(--e7-text-3, rgba(255,255,255,0.30));"></i><span style="font-size:11.5px;color:var(--e7-text-3, rgba(255,255,255,0.40));">Range:</span><b id="gTR" style="color:var(--e7-accent, #22d3ee);font-family:\'JetBrains Mono\',monospace;font-size:12px;"></b></div>';
+    g += '<div style="width:1px;height:14px;background:var(--e7-surface-3, rgba(255,255,255,0.12));"></div>';
+    g += '<div style="display:flex;align-items:center;gap:5px;"><i class="fas fa-database" style="font-size:10px;color:var(--e7-text-3, rgba(255,255,255,0.30));"></i><b id="gPT" style="color:var(--e7-accent, #22d3ee);font-family:\'JetBrains Mono\',monospace;font-size:12px;">0</b><span style="font-size:11px;color:var(--e7-text-3, rgba(255,255,255,0.40));">pts</span></div>';
     g += '</div>';
     g += '<div style="display:flex;align-items:center;gap:5px;">';
-    g += '<span style="font-size:10.5px;color:rgba(255,255,255,0.32);font-weight:700;letter-spacing:.5px;font-family:Manrope,sans-serif;margin-right:2px;">FILTER:</span>';
+    g += '<span style="font-size:10.5px;color:var(--e7-text-3, rgba(255,255,255,0.32));font-weight:700;letter-spacing:.5px;font-family:Manrope,sans-serif;margin-right:2px;">FILTER:</span>';
     g += '<button class="gfb2 active2" data-f="all">All</button>';
     g += '<button class="gfb2" data-f="ma">mA</button>';
     g += '<button class="gfb2" data-f="v">V</button>';
@@ -7277,42 +7316,42 @@ function fnBindGrph() {
     g += '</div></div>';
 
     // ── Toolbar ──
-    g += '<div id="gToolbar" style="display:none;padding:4px 12px;text-align:right;background:rgba(0,0,0,0.14);border-bottom:1px solid rgba(255,255,255,0.07);">';
+    g += '<div id="gToolbar" style="display:none;padding:4px 12px;text-align:right;background:var(--e7-surface-2, rgba(0,0,0,0.14));border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.07));">';
     g += '<button class="gtool2" onclick="if(mainGraphChart)mainGraphChart.dispatchAction({type:\'restore\'})"><i class="fas fa-undo"></i> Reset Zoom</button>';
     g += '<button class="gtool2" onclick="if(mainGraphChart){var u=mainGraphChart.getDataURL({type:\'png\',pixelRatio:2});var a=document.createElement(\'a\');a.href=u;a.download=\'telemetry_graph.png\';a.click();}"><i class="fas fa-download"></i> Save PNG</button>';
     g += '</div>';
 
     // ── Chart ──
-    g += '<div id="gLD" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:240px;color:rgba(255,255,255,0.45);gap:12px;background:transparent;">'
+    g += '<div id="gLD" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:240px;color:var(--e7-text-3, rgba(255,255,255,0.45));gap:12px;background:transparent;">'
         + '<div class="gsp2"></div>'
         + '<span style="font-size:13px;font-weight:600;font-family:Manrope,sans-serif;letter-spacing:.01em;">Loading telemetry data…</span>'
-        + '<span style="font-size:11px;color:rgba(255,255,255,0.30);font-family:JetBrains Mono,monospace;">Fetching history from API</span>'
+        + '<span style="font-size:11px;color:var(--e7-text-3, rgba(255,255,255,0.30));font-family:JetBrains Mono,monospace;">Fetching history from API</span>'
         + '</div>';
     g += '<div id="gCH" style="width:100%;max-width:100%;height:540px;display:none;background:transparent;box-sizing:border-box;"></div>';
-    g += '<div id="gEM" style="display:none;text-align:center;padding:60px 20px;color:rgba(255,255,255,0.32);font-size:13px;">'
-        + '<i class="fas fa-chart-line" style="font-size:40px;margin-bottom:14px;display:block;opacity:.20;color:#22d3ee;"></i>'
-        + '<div style="font-weight:700;font-family:Manrope,sans-serif;color:rgba(255,255,255,0.45);margin-bottom:6px;">No data available</div>'
-        + '<div style="font-size:11px;color:rgba(255,255,255,0.22);font-family:JetBrains Mono,monospace;">Try a different time range or check asset connectivity</div>'
+    g += '<div id="gEM" style="display:none;text-align:center;padding:60px 20px;color:var(--e7-text-3, rgba(255,255,255,0.32));font-size:13px;">'
+        + '<i class="fas fa-chart-line" style="font-size:40px;margin-bottom:14px;display:block;opacity:.20;color:var(--e7-accent, #22d3ee);"></i>'
+        + '<div style="font-weight:700;font-family:Manrope,sans-serif;color:var(--e7-text-3, rgba(255,255,255,0.45));margin-bottom:6px;">No data available</div>'
+        + '<div style="font-size:11px;color:var(--e7-text-4, rgba(255,255,255,0.22));font-family:JetBrains Mono,monospace;">Try a different time range or check asset connectivity</div>'
         + '</div>';
     g += '</div>';
 
     // ── Styles ──
     g += '<style id="gStyles2">';
-    g += '.gtb2{background:rgba(255,255,255,0.10);color:rgba(255,255,255,0.85);border:1px solid rgba(255,255,255,0.20);border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.02em;}';
-    g += '.gtb2:hover{background:rgba(255,255,255,0.18);color:#fff;}';
-    g += '.gtb2.active2{background:#22d3ee;color:#0b1530;border-color:#22d3ee;box-shadow:0 0 12px rgba(34,211,238,0.45);}';
-    g += '.gfb2{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:3px 9px;font-size:10px;font-weight:600;cursor:pointer;transition:all .18s;}';
-    g += '.gfb2:hover{background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.9);}';
-    g += '.gfb2.active2{background:rgba(34,211,238,0.18);color:#22d3ee;border-color:rgba(34,211,238,0.4);box-shadow:0 0 8px rgba(34,211,238,0.2);}';
-    g += '.gsp2{width:24px;height:24px;border:3px solid rgba(255,255,255,0.12);border-top-color:#22d3ee;border-radius:50%;animation:gs2 .7s linear infinite;}';
+    g += '.gtb2{background:var(--e7-surface-3, rgba(255,255,255,0.10));color:var(--e7-heading, rgba(255,255,255,0.85));border:1px solid var(--e7-border-2, rgba(255,255,255,0.20));border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.02em;}';
+    g += '.gtb2:hover{background:var(--e7-surface-3, rgba(255,255,255,0.18));color:var(--e7-heading, #fff);}';
+    g += '.gtb2.active2{background:linear-gradient(120deg,var(--e7-ask-from, #22d3ee),var(--e7-ask-to, #0891b2));color:#fff;border-color:var(--e7-accent, #22d3ee);box-shadow:0 0 12px rgba(34,211,238,0.45);}';
+    g += '.gfb2{background:var(--e7-surface-2, rgba(255,255,255,0.06));color:var(--e7-text-2, rgba(255,255,255,0.55));border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:6px;padding:3px 9px;font-size:10px;font-weight:600;cursor:pointer;transition:all .18s;}';
+    g += '.gfb2:hover{background:var(--e7-surface-3, rgba(255,255,255,0.12));color:var(--e7-heading, rgba(255,255,255,0.9));}';
+    g += '.gfb2.active2{background:var(--e7-accent-soft, rgba(34,211,238,0.18));color:var(--e7-accent, #22d3ee);border-color:var(--e7-accent, rgba(34,211,238,0.4));box-shadow:0 0 8px rgba(34,211,238,0.2);}';
+    g += '.gsp2{width:24px;height:24px;border:3px solid var(--e7-border, rgba(255,255,255,0.12));border-top-color:var(--e7-accent, #22d3ee);border-radius:50%;animation:gs2 .7s linear infinite;}';
     g += '@keyframes gs2{to{transform:rotate(360deg);}}';
-    g += '.gSelAll2{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:all .18s;}';
-    g += '.gSelAll2:hover{background:rgba(34,211,238,0.12);border-color:rgba(34,211,238,0.35);color:#22d3ee;}';
+    g += '.gSelAll2{background:var(--e7-surface-2, rgba(255,255,255,0.06));color:var(--e7-text, rgba(255,255,255,0.7));border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:6px;padding:2px 8px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:3px;transition:all .18s;}';
+    g += '.gSelAll2:hover{background:var(--e7-accent-soft, rgba(34,211,238,0.12));border-color:var(--e7-accent, rgba(34,211,238,0.35));color:var(--e7-accent, #22d3ee);}';
     g += '.gAttrRow2{display:flex;align-items:center;padding:2px 4px;border-radius:5px;cursor:pointer;gap:5px;transition:background .12s;user-select:none;margin-bottom:1px;}';
-    g += '.gAttrRow2:hover{background:rgba(34,211,238,0.08);}';
-    g += '.gAttrRow2 input[type=checkbox]{cursor:pointer;width:13px;height:13px;accent-color:#22d3ee;flex-shrink:0;margin:0;}';
+    g += '.gAttrRow2:hover{background:var(--e7-accent-soft, rgba(34,211,238,0.08));}';
+    g += '.gAttrRow2 input[type=checkbox]{cursor:pointer;width:13px;height:13px;accent-color:var(--e7-accent, #22d3ee);flex-shrink:0;margin:0;}';
     g += '.gAttrDot2{width:9px;height:9px;border-radius:50%;flex-shrink:0;display:inline-block;box-shadow:0 0 0 1px rgba(255,255,255,0.10);}';
-    g += '.gAttrName2{font-size:11.5px;color:rgba(255,255,255,0.72);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}';
+    g += '.gAttrName2{font-size:11.5px;color:var(--e7-text, rgba(255,255,255,0.72));flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}';
     g += '.gAttrVal2{font-size:11px;font-weight:700;flex-shrink:0;min-width:34px;text-align:right;font-family:\'JetBrains Mono\',monospace;}';
     g += '.gDlBadge2{display:inline-flex;align-items:center;justify-content:center;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;color:#fff;position:relative;overflow:hidden;flex-shrink:0;}';
     g += '.gDlBadge2.pickup{background:#10b981;}';
@@ -7322,10 +7361,10 @@ function fnBindGrph() {
     g += '.gDlBadge2::before{content:"";position:absolute;top:0;left:-75%;width:50%;height:100%;background:linear-gradient(120deg,rgba(255,255,255,.1) 0%,rgba(255,255,255,.45) 50%,rgba(255,255,255,.1) 100%);transform:skewX(-20deg);animation:gDlShine 2.5s infinite;}';
     g += '@keyframes gDlShine{0%{left:-75%;}100%{left:125%;}}';
     g += '.gDerivedRow{display:flex;align-items:center;padding:2px 4px;border-radius:5px;cursor:pointer;gap:5px;transition:background .12s;user-select:none;margin-bottom:1px;}';
-    g += '.gDerivedRow:hover{background:rgba(251,191,36,0.08);}';
-    g += '.gDerivedRow input[type=checkbox]{cursor:pointer;width:13px;height:13px;accent-color:#fbbf24;flex-shrink:0;margin:0;}';
-    g += '.gtool2{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:3px 10px;margin-left:5px;cursor:pointer;color:rgba(255,255,255,0.65);font-size:10px;font-weight:600;transition:all .18s;}';
-    g += '.gtool2:hover{background:rgba(34,211,238,0.12);color:#22d3ee;border-color:rgba(34,211,238,0.35);}';
+    g += '.gDerivedRow:hover{background:var(--e7-amber-soft, rgba(251,191,36,0.08));}';
+    g += '.gDerivedRow input[type=checkbox]{cursor:pointer;width:13px;height:13px;accent-color:var(--e7-amber, #fbbf24);flex-shrink:0;margin:0;}';
+    g += '.gtool2{background:var(--e7-surface-2, rgba(255,255,255,0.06));border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:6px;padding:3px 10px;margin-left:5px;cursor:pointer;color:var(--e7-text-2, rgba(255,255,255,0.65));font-size:10px;font-weight:600;transition:all .18s;}';
+    g += '.gtool2:hover{background:var(--e7-accent-soft, rgba(34,211,238,0.12));color:var(--e7-accent, #22d3ee);border-color:var(--e7-accent, rgba(34,211,238,0.35));}';
     g += '</style>';
 
     $('#divTelemetryLive').empty().append(g);
@@ -7420,7 +7459,7 @@ function _gPop(aid, gd) {
         return '<label class="gDerivedRow" for="' + chkId + '">'
             + '<input type="checkbox" id="' + chkId + '" data-key="' + lookupKey + '" ' + (isChk ? 'checked' : '') + '  onchange="window._gToggle(this)">'
             + '<span class="gAttrDot2" style="background:' + color + '"></span>'
-            + '<span class="gAttrName2" style="color:#92400e;" title="' + name + '">' + name + '</span>'
+            + '<span class="gAttrName2" style="color:var(--e7-amber, #92400e);" title="' + name + '">' + name + '</span>'
             + '<span class="gAttrVal2" style="color:' + color + '">' + val + '</span>'
             + '</label>';
     }
@@ -7468,7 +7507,7 @@ function _gPop(aid, gd) {
         }
         dlRendered = true;
     }
-    if (!dlRendered) { $d.append('<span style="color:#cbd5e1;font-size:12px;padding:4px 6px;display:block;">--</span>'); }
+    if (!dlRendered) { $d.append('<span style="color:var(--e7-text, #cbd5e1);font-size:12px;padding:4px 6px;display:block;">--</span>'); }
 
     // ── Derived Values panel (Track only) ──
     if (window._gIsTrack && $dv.length) {
@@ -7513,7 +7552,7 @@ function _gPop(aid, gd) {
     if ($d.children().length === 0) { $('#gColD').hide(); } else { $('#gColD').show(); }
     if ($dv && $dv.children().length === 0) { $('#gColDerived').hide(); } else if ($dv) { $('#gColDerived').show(); }
     // Remove right border from last visible column
-    $('#gColF,#gColR,#gColD,#gColDerived').css('border-right', '1px solid #e2e8f0');
+    $('#gColF,#gColR,#gColD,#gColDerived').css('border-right', '1px solid var(--e7-border, #e2e8f0)');
     $('#gColF,#gColR,#gColD,#gColDerived').filter(':visible:last').css('border-right', 'none');
     _gUpdateSelCount();
 }
@@ -7555,7 +7594,7 @@ function _gLoad(aid, hrs) {
         },
         error: function () {
             $('#gLD').hide();
-            $('#gEM').html('<i class="fas fa-exclamation-triangle" style="color:#f87171;font-size:28px;display:block;margin-bottom:10px;"></i><p style="color:#f87171;font-size:13px;">Failed to load data. Please try again.</p>').show();
+            $('#gEM').html('<i class="fas fa-exclamation-triangle" style="color:var(--e7-red, #f87171);font-size:28px;display:block;margin-bottom:10px;"></i><p style="color:var(--e7-red, #f87171);font-size:13px;">Failed to load data. Please try again.</p>').show();
         }
     });
 }
@@ -7877,13 +7916,13 @@ function _gRender(data, aid, filter) {
             confine: false,
             backgroundColor: 'rgba(5,9,24,0.97)',
             borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1, padding: [10, 14],
-            extraCssText: 'box-shadow:0 8px 32px rgba(0,0,0,.5);border-radius:10px;backdrop-filter:blur(20px);',
+            extraCssText: 'box-shadow:var(--e7-shadow-pop, 0 8px 32px rgba(0,0,0,.5));border-radius:10px;backdrop-filter:blur(20px);',
             formatter: function (params) {
                 if (!params || !params.length) return '';
                 var hoverMs = params[0].value[0];
                 var d = new Date(hoverMs);
                 var tm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-                var hdr = '<div style="font-weight:700;font-size:12px;color:#22d3ee;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.10);white-space:nowrap;font-family:JetBrains Mono,monospace;display:flex;align-items:center;gap:6px;">'
+                var hdr = '<div style="font-weight:700;font-size:12px;color:var(--e7-accent, #22d3ee);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));white-space:nowrap;font-family:JetBrains Mono,monospace;display:flex;align-items:center;gap:6px;">'
                     + '<i class="fas fa-clock" style="font-size:10px;opacity:.75;"></i>' + tm + '</div>';
 
                 function lkTooltip(sName) {
@@ -7909,12 +7948,12 @@ function _gRender(data, aid, filter) {
                     if (isBinS) {
                         valHtml = '<span style="background:' + (displayVal === 1 ? 'linear-gradient(135deg,#10b981,#059669)' : 'linear-gradient(135deg,#f59e0b,#d97706)') + ';color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;flex-shrink:0;">' + (displayVal === 1 ? 'Pickup' : 'Drop') + '</span>';
                     } else {
-                        valHtml = '<b style="color:' + (hasData ? (isDrvS ? '#fbbf24' : co2) : 'rgba(255,255,255,0.25)') + ';font-size:11px;font-family:JetBrains Mono,monospace;flex-shrink:0;min-width:42px;text-align:right;">' + displayVal.toFixed(2) + '</b>';
+                        valHtml = '<b style="color:' + (hasData ? (isDrvS ? '#fbbf24' : co2) : 'var(--e7-text-4, rgba(255,255,255,0.25))') + ';font-size:11px;font-family:JetBrains Mono,monospace;flex-shrink:0;min-width:42px;text-align:right;">' + displayVal.toFixed(2) + '</b>';
                     }
                     rowItems.push(
                         '<div style="display:flex;align-items:center;gap:6px;margin:2px 0;min-width:150px;">' +
                         '<span style="width:9px;height:9px;border-radius:50%;background:' + co2 + ';flex-shrink:0;opacity:' + (hasData ? '1' : '0.25') + ';box-shadow:0 0 4px ' + co2 + ';"></span>' +
-                        '<span style="font-size:11px;color:' + (hasData ? 'rgba(255,255,255,0.82)' : 'rgba(255,255,255,0.28)') + ';flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Manrope,sans-serif;" title="' + dispName + '">' + dispName + '</span>' +
+                        '<span style="font-size:11px;color:' + (hasData ? 'var(--e7-text, rgba(255,255,255,0.82))' : 'var(--e7-text-4, rgba(255,255,255,0.28))') + ';flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Manrope,sans-serif;" title="' + dispName + '">' + dispName + '</span>' +
                         valHtml + '</div>'
                     );
                 }
@@ -7929,7 +7968,7 @@ function _gRender(data, aid, filter) {
                 var colsHtml = '';
                 for (var c = 0; c < cols; c++) {
                     var slice = rowItems.slice(c * perCol, (c + 1) * perCol);
-                    colsHtml += '<div style="display:flex;flex-direction:column;min-width:' + colWidth + ';' + (c < cols - 1 ? 'border-right:1px solid rgba(255,255,255,0.08);padding-right:12px;margin-right:12px;' : '') + '">'
+                    colsHtml += '<div style="display:flex;flex-direction:column;min-width:' + colWidth + ';' + (c < cols - 1 ? 'border-right:1px solid var(--e7-border, rgba(255,255,255,0.08));padding-right:12px;margin-right:12px;' : '') + '">'
                         + slice.join('') + '</div>';
                 }
 
@@ -8957,7 +8996,7 @@ if ($('#circuit-ws-styles').length === 0) {
     var circuitStyles = '<style id="circuit-ws-styles">' +
         '.circuit-value-flash { animation: circuitFlash 1.2s ease-out; }' +
         '@keyframes circuitFlash { 0% { background-color: #bbf7d0 !important; } 100% { background-color: transparent; } }' +
-        '.circuit-timestamp { font-size: 11px; color: #64748b; margin-top: 8px; }' +
+        '.circuit-timestamp { font-size: 11px; color: var(--e7-text-3, #64748b); margin-top: 8px; }' +
         '</style>';
     $('head').append(circuitStyles);
 }
@@ -9360,11 +9399,11 @@ function fnGetAssetGraph(siteId, assetId) {
         '</div>' +
         '<div class="tl-modal-toolbar" style="flex-wrap:wrap;gap:10px;">' +
         '<div class="tl-date-filter" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
-        '<label style="font-size:12px;color:#94a3b8;margin:0;">From</label>' +
-        '<input type="datetime-local" id="graphFromDate" step="1" onkeydown="if(event.key===\'Enter\'){rdpmsApplyGraphRange();}" style="background:rgba(15,23,42,0.70);border:1px solid rgba(255,255,255,0.18);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;color-scheme:dark;" />' +
-        '<label style="font-size:12px;color:#94a3b8;margin:0;">To</label>' +
-        '<input type="datetime-local" id="graphToDate" step="1" onkeydown="if(event.key===\'Enter\'){rdpmsApplyGraphRange();}" style="background:rgba(15,23,42,0.70);border:1px solid rgba(255,255,255,0.18);color:#e2e8f0;border-radius:6px;padding:5px 8px;font-size:12px;color-scheme:dark;" />' +
-        '<button type="button" id="graphApplyRange" onclick="rdpmsApplyGraphRange()" style="background:#259dab;border:none;color:#fff;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-filter"></i> Apply</button>' +
+        '<label style="font-size:12px;color:var(--e7-text-3, #94a3b8);margin:0;">From</label>' +
+        '<input type="datetime-local" id="graphFromDate" step="1" onkeydown="if(event.key===\'Enter\'){rdpmsApplyGraphRange();}" style="background:var(--e7-surface, rgba(15,23,42,0.70));border:1px solid var(--e7-border-2, rgba(255,255,255,0.18));color:var(--e7-text, #e2e8f0);border-radius:6px;padding:5px 8px;font-size:12px;color-scheme:' + (tlIsLight() ? 'light' : 'dark') + ';" />' +
+        '<label style="font-size:12px;color:var(--e7-text-3, #94a3b8);margin:0;">To</label>' +
+        '<input type="datetime-local" id="graphToDate" step="1" onkeydown="if(event.key===\'Enter\'){rdpmsApplyGraphRange();}" style="background:var(--e7-surface, rgba(15,23,42,0.70));border:1px solid var(--e7-border-2, rgba(255,255,255,0.18));color:var(--e7-text, #e2e8f0);border-radius:6px;padding:5px 8px;font-size:12px;color-scheme:' + (tlIsLight() ? 'light' : 'dark') + ';" />' +
+        '<button type="button" id="graphApplyRange" onclick="rdpmsApplyGraphRange()" style="background:linear-gradient(120deg,var(--e7-ask-from, #259dab),var(--e7-ask-to, #259dab));border:none;color:#fff;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;"><i class="fas fa-filter"></i> Apply</button>' +
         '</div>' +
         '<span class="tl-time-range" id="graphTimeRange"></span>' +
         '</div>' +
@@ -9454,47 +9493,47 @@ var PM_INDICATION_COLORS = {
            The modal uses stopPropagation so clicks inside stay inside. ── */
         '#vibModalOverlay{position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;display:flex;align-items:center;justify-content:center;pointer-events:auto;user-select:none;-webkit-user-select:none;-moz-user-select:none;}' +
         /* ── Modal shell ── */
-        '.vib-modal{background:#fff;border-radius:12px;width:94%;max-width:1120px;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 72px rgba(4,44,67,0.40);overflow:hidden;pointer-events:auto;user-select:text;-webkit-user-select:text;}' +
+        '.vib-modal{background:var(--e7-surface, #fff);border-radius:12px;width:94%;max-width:1120px;max-height:92vh;display:flex;flex-direction:column;box-shadow:var(--e7-shadow-pop, 0 24px 72px rgba(4,44,67,0.40));overflow:hidden;pointer-events:auto;user-select:text;-webkit-user-select:text;}' +
         /* ── Header -- site navy gradient ── */
-        '.vib-modal-header{background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}' +
+        '.vib-modal-header{background:linear-gradient(135deg,var(--e7-rail-from, #042c43) 0%,var(--e7-rail-to, #0a4a6e) 100%);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}' +
         '.vib-modal-header h6{color:#fff;margin:0;font-size:16px;font-weight:700;display:flex;align-items:center;gap:9px;}' +
-        '.vib-modal-header h6 i{color:#259dab;}' +
+        '.vib-modal-header h6 i{color:var(--e7-accent, #259dab);}' +
         '.vib-close{background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer;opacity:.75;padding:3px 7px;border-radius:4px;transition:opacity .15s,background .15s;}' +
-        '.vib-close:hover{opacity:1;background:rgba(255,255,255,.14);}' +
+        '.vib-close:hover{opacity:1;background:var(--e7-surface-3, rgba(255,255,255,.14));}' +
         /* ── Sub-bar ── */
-        '.vib-modal-subbar{background:#f8fafc;border-bottom:1px solid rgba(255,255,255,0.10);padding:7px 20px;font-size:11.5px;color:#64748b;display:flex;align-items:center;gap:7px;flex-shrink:0;}' +
+        '.vib-modal-subbar{background:var(--e7-surface, #f8fafc);border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding:7px 20px;font-size:11.5px;color:var(--e7-text-3, #64748b);display:flex;align-items:center;gap:7px;flex-shrink:0;}' +
         '.vib-live-dot{width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;flex-shrink:0;animation:vibPulse 2s infinite;}' +
         '@keyframes vibPulse{0%,100%{opacity:1;}50%{opacity:.3;}}' +
-        '.vib-last-ts{margin-left:auto;font-size:11px;color:#94a3b8;}' +
+        '.vib-last-ts{margin-left:auto;font-size:11px;color:var(--e7-text-3, #94a3b8);}' +
         /* ── Body ── */
-        '.vib-modal-body{padding:18px;overflow-y:auto;flex:1;background:#f1f5f9;}' +
+        '.vib-modal-body{padding:18px;overflow-y:auto;flex:1;background:var(--e7-surface-2, #f1f5f9);}' +
         /* ── 4-col card grid ── */
         '.vib-card-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}' +
         '@media(max-width:900px){.vib-card-grid{grid-template-columns:repeat(3,1fr);}}' +
         '@media(max-width:620px){.vib-card-grid{grid-template-columns:repeat(2,1fr);}}' +
         /* ── Individual card ── */
-        '.vib-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07);transition:box-shadow .2s,transform .2s;display:flex;flex-direction:column;}' +
+        '.vib-card{background:var(--e7-surface, #fff);border:1px solid var(--e7-border, #e2e8f0);border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.07);transition:box-shadow .2s,transform .2s;display:flex;flex-direction:column;}' +
         '.vib-card:hover{box-shadow:0 6px 20px rgba(0,0,0,0.13);transform:translateY(-2px);}' +
         /* ── Card header strip -- site navy ── */
-        '.vib-card-head{background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);padding:10px 13px;min-height:48px;display:flex;align-items:center;}' +
+        '.vib-card-head{background:linear-gradient(135deg,var(--e7-rail-from, #042c43) 0%,var(--e7-rail-to, #0a4a6e) 100%);padding:10px 13px;min-height:48px;display:flex;align-items:center;}' +
         '.vib-attr-name{color:#fff;font-size:12px;font-weight:600;line-height:1.35;word-break:break-word;}' +
         /* ── Card body -- IPS-style label:value row ── */
         '.vib-card-body{padding:13px 13px 10px;flex:1;}' +
-        '.vib-val-row{display:flex;align-items:baseline;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #f1f5f9;}' +
+        '.vib-val-row{display:flex;align-items:baseline;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--e7-border, #f1f5f9);}' +
         '.vib-val-row:last-child{border-bottom:none;}' +
-        '.vib-val-label{font-size:11px;color:#64748b;font-weight:500;}' +
-        '.vib-val{font-size:22px;font-weight:800;color:#0d9488;text-align:right;line-height:1.2;}' +
-        '.vib-val.vib-null{color:#94a3b8;font-weight:400;font-style:italic;font-size:15px;}' +
+        '.vib-val-label{font-size:11px;color:var(--e7-text-3, #64748b);font-weight:500;}' +
+        '.vib-val{font-size:22px;font-weight:800;color:var(--e7-accent, #0d9488);text-align:right;line-height:1.2;}' +
+        '.vib-val.vib-null{color:var(--e7-text-3, #94a3b8);font-weight:400;font-style:italic;font-size:15px;}' +
         /* ── Card footer -- timestamp ── */
-        '.vib-card-footer{background:#f8fafc;border-top:1px solid #f1f5f9;padding:6px 13px;font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:5px;}' +
-        '.vib-card-footer i{color:#259dab;font-size:9px;}' +
+        '.vib-card-footer{background:var(--e7-surface, #f8fafc);border-top:1px solid var(--e7-border, #f1f5f9);padding:6px 13px;font-size:10px;color:var(--e7-text-3, #94a3b8);display:flex;align-items:center;gap:5px;}' +
+        '.vib-card-footer i{color:var(--e7-accent, #259dab);font-size:9px;}' +
         /* ── Flash animations ── */
         '.vib-card-flash{animation:vibCardFlash 1.2s ease-out;}' +
         '@keyframes vibCardFlash{0%{box-shadow:0 0 0 3px rgba(37,157,171,0.5);}100%{box-shadow:0 2px 8px rgba(0,0,0,0.07);}}' +
         '.vib-val-flash{animation:vibValFlash 1.2s ease-out;border-radius:3px;}' +
         '@keyframes vibValFlash{0%{background:#ccfbf1;}100%{background:transparent;}}' +
         /* ── No-data state ── */
-        '.vib-no-data{grid-column:1/-1;text-align:center;padding:60px 20px;color:#94a3b8;font-size:13px;}' +
+        '.vib-no-data{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--e7-text-3, #94a3b8);font-size:13px;}' +
         '</style>');
 })();
 
@@ -9608,9 +9647,9 @@ function fnUpdateVibrationModal(assetId) {
     if (!vd) {
         $grid.html(
             '<div class="vib-no-data">' +
-            '<i class="fas fa-wave-square" style="font-size:32px;color:#259dab;opacity:.3;display:block;margin-bottom:12px;"></i>' +
+            '<i class="fas fa-wave-square" style="font-size:32px;color:var(--e7-accent, #259dab);opacity:.3;display:block;margin-bottom:12px;"></i>' +
             'No vibration data received yet.<br>' +
-            '<small style="color:#b0bec5;">Waiting for WebSocket messages\u2026</small>' +
+            '<small style="color:var(--e7-text-3, #b0bec5);">Waiting for WebSocket messages\u2026</small>' +
             '</div>'
         );
         return;
@@ -9680,32 +9719,32 @@ function fnPmDirGraph(assetId, end) {
 
     var modalHtml = '<div class="rdpms-graph-overlay" id="rdpmsGraphOverlay" onclick="closeGraphModal(event)">' +
         '<div class="rdpms-graph-modal" onclick="event.stopPropagation()" style="max-width:1100px;width:96%;">' +
-        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);">' +
-        '<h6 style="color:#fff;margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
+        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,var(--e7-p-aqua-2, #042c43) 0%,var(--e7-p-blue-2, #0a4a6e) 100%);">' +
+        '<h6 style="color:var(--e7-heading, #fff);margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
         '<i class="fas fa-chart-line"></i> ' + name + ' -- ' + endLabel + ' Indication Voltages' +
         '</h6>' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.75);width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
-        '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
+        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:var(--e7-surface-2, rgba(255,255,255,0.06));border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:10px;color:var(--e7-text, rgba(255,255,255,0.75));width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
+        '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:var(--e7-text-2, #fff);">&times;</button>' +
         '</div>' +
         '</div>' +
         '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
-        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;">' +
+        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:var(--e7-surface-2, rgba(255,255,255,0.04));border:1px solid var(--e7-border, rgba(255,255,255,0.08));border-radius:10px;gap:12px;">' +
         // ── Single date filter (loads the full 24h of the chosen day) ──
         '<div class="d-flex align-items-center" style="gap:8px;flex-wrap:wrap;">' +
-        '<label style="font-size:12px;color:rgba(255,255,255,0.72);margin:0;font-weight:600;">Date</label>' +
-        '<input type="date" id="pmIndDate" style="font-size:12px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:5px 10px;color:#e6edf6;background:rgba(255,255,255,0.06);outline:none;color-scheme:dark;"/>' +
-        '<button type="button" id="pmIndLoadBtn" style="background:linear-gradient(135deg,#22d3ee,#0891b2);color:#04222b;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+        '<label style="font-size:12px;color:var(--e7-text, rgba(255,255,255,0.72));margin:0;font-weight:600;">Date</label>' +
+        '<input type="date" id="pmIndDate" style="font-size:12px;border:1px solid var(--e7-border, rgba(255,255,255,0.14));border-radius:6px;padding:5px 10px;color:var(--e7-text, #e6edf6);background:var(--e7-surface-2, rgba(255,255,255,0.06));outline:none;color-scheme:' + (tlIsLight() ? 'light' : 'dark') + ';"/>' +
+        '<button type="button" id="pmIndLoadBtn" style="background:linear-gradient(120deg,var(--e7-ask-from, #22d3ee),var(--e7-ask-to, #0891b2));color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
         '<i class="fas fa-search"></i> Load</button>' +
         '</div>' +
-        '<span style="font-size:13px;color:rgba(255,255,255,0.55);" id="pmIndTimeRange"></span>' +
+        '<span style="font-size:13px;color:var(--e7-text-2, rgba(255,255,255,0.55));" id="pmIndTimeRange"></span>' +
         '</div>' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:16px;">' +
-        '<div id="pmIndLoading" style="display:flex;align-items:center;justify-content:center;height:420px;color:rgba(255,255,255,0.6);gap:10px;">' +
+        '<div style="background:var(--e7-surface-2, rgba(255,255,255,0.03));border:1px solid var(--e7-border, rgba(255,255,255,0.07));border-radius:12px;padding:16px;">' +
+        '<div id="pmIndLoading" style="display:flex;align-items:center;justify-content:center;height:420px;color:var(--e7-text-2, rgba(255,255,255,0.6));gap:10px;">' +
         '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading indication data...</div>' +
         '<div id="pmIndChartDiv" style="width:100%;height:450px;display:none;"></div>' +
-        '<div id="pmIndError" style="display:none;text-align:center;padding:50px;color:rgba(255,255,255,0.6);">' +
-        '<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No data available</div>' +
+        '<div id="pmIndError" style="display:none;text-align:center;padding:50px;color:var(--e7-text-2, rgba(255,255,255,0.6));">' +
+        '<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, #94a3b8);"></i>No data available</div>' +
         '</div>' +
         '</div></div></div>';
 
@@ -9763,13 +9802,13 @@ function loadPmIndicationFromApi(assetId, hours, filterIds, end) {
                 $ch.show();
                 renderPmIndicationFromApi(response.Data, filterIds, end, startDate.getTime());
             } else {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>' +
+                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, #94a3b8);"></i>' +
                     'No indication data available for the last ' + hours + ' hour(s)').show();
             }
         },
         error: function (xhr, status, error) {
             $ld.hide();
-            $er.html('<i class="fas fa-exclamation-circle fa-2x" style="display:block;margin-bottom:12px;color:#ef4444;"></i>' +
+            $er.html('<i class="fas fa-exclamation-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-red, #ef4444);"></i>' +
                 'Failed to load data: ' + (error || 'Connection error')).show();
         }
     });
@@ -9803,13 +9842,13 @@ function loadPmIndicationByRange(assetId, startDate, endDate, filterIds, end) {
                 $ch.show();
                 renderPmIndicationFromApi(response.Data, filterIds, end, startDate.getTime());
             } else {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>' +
+                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, #94a3b8);"></i>' +
                     'No indication data available for the selected range.').show();
             }
         },
         error: function (xhr, status, error) {
             $ld.hide();
-            $er.html('<i class="fas fa-exclamation-circle fa-2x" style="display:block;margin-bottom:12px;color:#ef4444;"></i>' +
+            $er.html('<i class="fas fa-exclamation-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-red, #ef4444);"></i>' +
                 'Failed to load data: ' + (error || 'Connection error')).show();
         }
     });
@@ -9873,7 +9912,7 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
 
     if (sortedTimestamps.length === 0) {
         $('#pmIndChartDiv').hide();
-        $('#pmIndError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No indication data found for ' + (end === 'A' ? 'A End' : 'B End')).show();
+        $('#pmIndError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, #94a3b8);"></i>No indication data found for ' + (end === 'A' ? 'A End' : 'B End')).show();
         return;
     }
 
@@ -9969,7 +10008,7 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
 
     if (series.length === 0) {
         $('#pmIndChartDiv').hide();
-        $('#pmIndError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No indication data found').show();
+        $('#pmIndError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, #94a3b8);"></i>No indication data found').show();
         return;
     }
 
@@ -9996,15 +10035,15 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
                     String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
 
-                var html = '<div style="font-weight:700;margin-bottom:10px;color:#22d3ee;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);">' + dateStr + ' ' + timeStr + '</div>';
+                var html = '<div style="font-weight:700;margin-bottom:10px;color:var(--e7-accent, #22d3ee);padding-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));">' + dateStr + ' ' + timeStr + '</div>';
 
                 // Show all 4 attributes
                 params.forEach(function (p) {
                     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">' +
                         '<div style="display:flex;align-items:center;">' +
                         '<span style="display:inline-block;width:12px;height:3px;border-radius:1px;background:' + p.color + ';margin-right:10px;"></span>' +
-                        '<span style="color:rgba(255,255,255,0.72);">' + p.seriesName + '</span></div>' +
-                        '<span style="font-weight:700;color:rgba(255,255,255,0.94);margin-left:15px;">' + tlZeroFloor(p.value[1]).toFixed(2) + ' V</span></div>';
+                        '<span style="color:var(--e7-text, rgba(255,255,255,0.72));">' + p.seriesName + '</span></div>' +
+                        '<span style="font-weight:700;color:var(--e7-heading, rgba(255,255,255,0.94));margin-left:15px;">' + tlZeroFloor(p.value[1]).toFixed(2) + ' V</span></div>';
                 });
                 return html;
             }
@@ -10131,7 +10170,7 @@ function renderPmDirChart(data, assetId, filterIds) {
                 if (!params || !params.length) return '';
                 var d = new Date(params[0].value[0]);
                 var timeStr = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-                var html = '<div style="padding:4px 8px;"><b style="color:#22d3ee;">' + timeStr + '</b><br/>';
+                var html = '<div style="padding:4px 8px;"><b style="color:var(--e7-accent, #22d3ee);">' + timeStr + '</b><br/>';
                 params.forEach(function (p) {
                     html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + p.color + ';margin-right:6px;"></span>' + p.seriesName + ': <b>' + tlZeroFloor(p.value[1]).toFixed(2) + ' V</b><br/>';
                 });
@@ -12621,11 +12660,11 @@ function fnShowDataLoggerEvent(assetId) {
     html += '<h5 style="margin-bottom:4px;">All Values \u2014 ' + _mn + '</h5>';
 
     if (latestDir && latestOpTs) {
-        html += '<p style="font-size:12px;color:#64748b;margin-top:0;margin-bottom:12px;">'
+        html += '<p style="font-size:12px;color:var(--e7-text-3, #64748b);margin-top:0;margin-bottom:12px;">'
             + latestDir + ' Operation &nbsp;&bull;&nbsp; ' + _fmtDt24(latestOpTs) + '</p>';
     }
 
-    html += '<h6 style="color:#1a6e74;margin-top:12px;">' +
+    html += '<h6 style="color:var(--e7-accent-ink, #1a6e74);margin-top:12px;">' +
         (_isPm ? 'RDPMS Attributes' : 'Signal Attributes') + '</h6>';
     html += '<table class="table table-bordered table-sm">'
         + '<thead><tr><th>Attribute</th><th>Value</th><th>Last Updated</th></tr></thead><tbody>';
@@ -12719,14 +12758,14 @@ function fnShowDataLoggerEvent(assetId) {
     }
 
     if (rowCount === 0) {
-        html += '<tr><td colspan="3" style="text-align:center;color:#94a3b8;font-style:italic;">No data available</td></tr>';
+        html += '<tr><td colspan="3" style="text-align:center;color:var(--e7-text-3, #94a3b8);font-style:italic;">No data available</td></tr>';
     }
 
     html += '</tbody></table>';
 
     // DataLogger relays.
     if (asset.dlRelays && Object.keys(asset.dlRelays).length > 0) {
-        html += '<h6 style="color:#7c3aed;margin-top:12px;">DataLogger Relays</h6>';
+        html += '<h6 style="color:var(--e7-violet, #7c3aed);margin-top:12px;">DataLogger Relays</h6>';
         html += '<table class="table table-bordered table-sm">'
             + '<thead><tr><th>Relay</th><th>Value</th><th>Status</th><th>Last Updated</th></tr></thead><tbody>';
 
@@ -13172,11 +13211,11 @@ function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp,
     return true;
 }
 // Make renderDataloggerBadgesForAsset global so it can be called from processWsDataloggerAttr
-function renderDataloggerBadgesForAsset(assetId) { var asset = wsLiveData[assetId]; if (!asset || !asset.dlRelays) return; var relayKeys = Object.keys(asset.dlRelays); if (relayKeys.length === 0) return; relayKeys.sort(function (a, b) { var ra = asset.dlRelays[a], rb = asset.dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return (ra.displayName || a).localeCompare(rb.displayName || b); }); var $section = $('#rdpmsDL_' + assetId); if (!$section.length) { var $cardBody = $('#rdpmsCard_' + assetId + ' .card-body-signal'); if (!$cardBody.length) return; $cardBody.append(getDataloggerSectionHTML(assetId)); $section = $('#rdpmsDL_' + assetId); if (!$section.length) return; } var maxInline = 2; var html = ''; for (var i = 0; i < relayKeys.length && i < maxInline; i++) { var relay = asset.dlRelays[relayKeys[i]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[i]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } var moreCount = relayKeys.length - maxInline; if (moreCount > 0) { html += '<span id="rdpmsDLToggle_' + assetId + '" onclick="toggleDlMore(\'' + assetId + '\')" style="color:#38bdf8;font-size:10px;cursor:pointer;white-space:nowrap;">+ ' + moreCount + ' more</span>'; } html += '<span class="rdpms-dl-details-btn" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Details</span>'; if (moreCount > 0) { html += '<div id="rdpmsDLMore_' + assetId + '" style="display:none;width:100%;">'; for (var j = maxInline; j < relayKeys.length; j++) { var relay = asset.dlRelays[relayKeys[j]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[j]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } html += '</div>'; } $section.html(html); $section.closest('.rdpms-datalogger-section').show(); }
+function renderDataloggerBadgesForAsset(assetId) { var asset = wsLiveData[assetId]; if (!asset || !asset.dlRelays) return; var relayKeys = Object.keys(asset.dlRelays); if (relayKeys.length === 0) return; relayKeys.sort(function (a, b) { var ra = asset.dlRelays[a], rb = asset.dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return (ra.displayName || a).localeCompare(rb.displayName || b); }); var $section = $('#rdpmsDL_' + assetId); if (!$section.length) { var $cardBody = $('#rdpmsCard_' + assetId + ' .card-body-signal'); if (!$cardBody.length) return; $cardBody.append(getDataloggerSectionHTML(assetId)); $section = $('#rdpmsDL_' + assetId); if (!$section.length) return; } var maxInline = 2; var html = ''; for (var i = 0; i < relayKeys.length && i < maxInline; i++) { var relay = asset.dlRelays[relayKeys[i]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[i]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } var moreCount = relayKeys.length - maxInline; if (moreCount > 0) { html += '<span id="rdpmsDLToggle_' + assetId + '" onclick="toggleDlMore(\'' + assetId + '\')" style="color:var(--e7-accent, #38bdf8);font-size:10px;cursor:pointer;white-space:nowrap;">+ ' + moreCount + ' more</span>'; } html += '<span class="rdpms-dl-details-btn" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Details</span>'; if (moreCount > 0) { html += '<div id="rdpmsDLMore_' + assetId + '" style="display:none;width:100%;">'; for (var j = maxInline; j < relayKeys.length; j++) { var relay = asset.dlRelays[relayKeys[j]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[j]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } html += '</div>'; } $section.html(html); $section.closest('.rdpms-datalogger-section').show(); }
 // Expose globally for callers that use window.renderDataloggerBadgesForAsset(...)
 window.renderDataloggerBadgesForAsset = renderDataloggerBadgesForAsset;
 function toggleDlMore(assetId) { var $overflow = $('#rdpmsDLMore_' + assetId); var $toggle = $('#rdpmsDLToggle_' + assetId); if (!$overflow.length) return; if ($overflow.is(':visible')) { $overflow.slideUp(200); $toggle.text('+ ' + $overflow.find('.rdpms-dl-item').length + ' more'); } else { $overflow.slideDown(200); $toggle.text('- less'); } }
-function getDataloggerSectionHTML(assetId) { return '<div class="rdpms-datalogger-section" style="display:none;"><div class="rdpms-dl-row" id="rdpmsDL_' + assetId + '"><span style="color:#94a3b8;font-size:10px;">Waiting for relay data...</span></div></div>'; }
+function getDataloggerSectionHTML(assetId) { return '<div class="rdpms-datalogger-section" style="display:none;"><div class="rdpms-dl-row" id="rdpmsDL_' + assetId + '"><span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">Waiting for relay data...</span></div></div>'; }
 
 // ===== DOCUMENT READY =====
 // Store initial dropdown options on page load (for restoring when "All" is selected)
@@ -14629,16 +14668,16 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     h += '<div class="pm-badges-row" id="pmBadges_' + assetId + '">';
 
     h += '<span class="pm-irs-badge" style="display:inline-flex;align-items:center;' +
-        'gap:5px;margin-right:10px;padding:3px 8px;background:rgba(255,255,255,0.06);' +
-        'border:1px solid rgba(255,255,255,0.12);border-radius:14px;">' +
+        'gap:5px;margin-right:10px;padding:3px 8px;background:var(--e7-surface-2, rgba(255,255,255,0.06));' +
+        'border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:14px;">' +
         '<span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;display:inline-block;' +
         'background:' + _pmMetaA.dotColor + ';box-shadow:0 0 6px ' + _pmMetaA.dotColor + '80;"></span>' +
         '<span class="pm-irs-badge">' + pmEsc(_pmMetaA.label) + '</span></span>';
 
     if (!_pmIsHalf) {
         h += '<span class="pm-irs-badge" style="display:inline-flex;align-items:center;' +
-            'gap:5px;margin-right:10px;padding:3px 8px;background:rgba(255,255,255,0.06);' +
-            'border:1px solid rgba(255,255,255,0.12);border-radius:14px;">' +
+            'gap:5px;margin-right:10px;padding:3px 8px;background:var(--e7-surface-2, rgba(255,255,255,0.06));' +
+            'border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:14px;">' +
             '<span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;display:inline-block;' +
             'background:' + _pmMetaB.dotColor + ';box-shadow:0 0 6px ' + _pmMetaB.dotColor + '80;"></span>' +
             '<span class="pm-irs-badge">' + pmEsc(_pmMetaB.label) + '</span></span>';
@@ -14651,7 +14690,7 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     h += '</div>';
 
     // ── ACTIONS ROW (Download / See More) ──
-    h += '<div style="display:flex;justify-content:flex-end;padding:8px 16px;gap:8px;border-bottom:1px solid rgba(255,255,255,0.07);background:rgba(0,0,0,0.10);">';
+    h += '<div style="display:flex;justify-content:flex-end;padding:8px 16px;gap:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.07));background:var(--e7-surface-2, rgba(0,0,0,0.10));">';
     h += '<button class="pm-btn-download" onclick="pmDownloadCard(\'' + assetId + '\')">Download</button>';
     h += '<button class="pm-btn-seemore" onclick="pmToggleSeeMore(\'' + assetId + '\')">See More</button>';
     h += '</div>';
@@ -14679,7 +14718,7 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         h += '<span class="d-flex align-items-center">';
         h += 'Direction A : <span id="pmDirLabelA_' + assetId + '">' + pmEsc(name) + '</span> ';
         h += '<span class="pm-dir-badge normal" id="pmDirBadgeA_' + assetId + '">POINT IN NORMAL</span>';
-        h += ' <i class="fas fa-chart-line ms-auto" style="cursor:pointer;color:#259dab;font-size:14px;" onclick="fnPmDirGraph(\'' + assetId + '\',\'A\')" title="Historical Graph"></i>';
+        h += ' <i class="fas fa-chart-line ms-auto" style="cursor:pointer;color:var(--e7-accent, #259dab);font-size:14px;" onclick="fnPmDirGraph(\'' + assetId + '\',\'A\')" title="Historical Graph"></i>';
         h += '</span>';
         h += '</td>';
     }
@@ -14690,7 +14729,7 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         h += '<span class="d-flex align-items-center">';
         h += 'Direction B : <span id="pmDirLabelB_' + assetId + '">' + pmEsc(name) + '</span> ';
         h += '<span class="pm-dir-badge normal" id="pmDirBadgeB_' + assetId + '">POINT IN NORMAL</span>';
-        h += ' <i class="fas fa-chart-line ms-auto" style="cursor:pointer;color:#259dab;font-size:14px;" onclick="fnPmDirGraph(\'' + assetId + '\',\'B\')" title="Historical Graph"></i>';
+        h += ' <i class="fas fa-chart-line ms-auto" style="cursor:pointer;color:var(--e7-accent, #259dab);font-size:14px;" onclick="fnPmDirGraph(\'' + assetId + '\',\'B\')" title="Historical Graph"></i>';
         h += '</span>';
         h += '</td>';
     }
@@ -15528,29 +15567,29 @@ function pmShowSingleArrayGraph(assetId, direction, type) {
     // Show loading modal
     var modalHtml = '<div class="rdpms-graph-overlay" id="rdpmsGraphOverlay" onclick="closeGraphModal(event)">' +
         '<div class="rdpms-graph-modal" onclick="event.stopPropagation()" style="max-width:1200px;width:96%;">' +
-        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);">' +
-        '<h6 style="color:#fff;margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
+        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,var(--e7-p-aqua-2, #042c43) 0%,var(--e7-p-blue-2, #0a4a6e) 100%);">' +
+        '<h6 style="color:var(--e7-heading, #fff);margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
         '<i class="fas fa-chart-line"></i> ' + title + '</h6>' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.75);width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
-        '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
+        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:var(--e7-surface-2, rgba(255,255,255,0.06));border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:10px;color:var(--e7-text, rgba(255,255,255,0.75));width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
+        '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:var(--e7-text-2, #fff);">&times;</button>' +
         '</div>' +
         '</div>' +
         '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
-        '<div class="d-flex justify-content-between align-items-center flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;margin-bottom:12px;">' +
+        '<div class="d-flex justify-content-between align-items-center flex-wrap" style="padding:10px 16px;background:var(--e7-surface-2, rgba(255,255,255,0.04));border:1px solid var(--e7-border, rgba(255,255,255,0.08));border-radius:10px;gap:12px;margin-bottom:12px;">' +
         '<div class="d-flex align-items-center" style="gap:8px;flex-wrap:wrap;">' +
-        '<label style="font-size:12px;color:rgba(255,255,255,0.72);margin:0;font-weight:600;">Date</label>' +
-        '<input type="date" id="singleArrDate" style="font-size:12px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:5px 10px;color:#e6edf6;background:rgba(255,255,255,0.06);outline:none;color-scheme:dark;"/>' +
-        '<button type="button" id="singleArrLoadBtn" style="background:linear-gradient(135deg,#22d3ee,#0891b2);color:#04222b;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+        '<label style="font-size:12px;color:var(--e7-text, rgba(255,255,255,0.72));margin:0;font-weight:600;">Date</label>' +
+        '<input type="date" id="singleArrDate" style="font-size:12px;border:1px solid var(--e7-border, rgba(255,255,255,0.14));border-radius:6px;padding:5px 10px;color:var(--e7-text, #e6edf6);background:var(--e7-surface-2, rgba(255,255,255,0.06));outline:none;color-scheme:' + (tlIsLight() ? 'light' : 'dark') + ';"/>' +
+        '<button type="button" id="singleArrLoadBtn" style="background:linear-gradient(120deg,var(--e7-ask-from, #22d3ee),var(--e7-ask-to, #0891b2));color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
         '<i class="fas fa-search"></i> Load</button>' +
         '</div>' +
-        '<span style="font-size:13px;font-weight:600;color:rgba(255,255,255,0.78);display:inline-flex;align-items:center;gap:6px;">' +
-        '<i class="fas fa-clock" style="color:#22d3ee;font-size:13px;"></i><span id="singleArrTimeRange">Loading...</span></span>' +
+        '<span style="font-size:13px;font-weight:600;color:var(--e7-text, rgba(255,255,255,0.78));display:inline-flex;align-items:center;gap:6px;">' +
+        '<i class="fas fa-clock" style="color:var(--e7-accent, #22d3ee);font-size:13px;"></i><span id="singleArrTimeRange">Loading...</span></span>' +
         '</div>' +
-        '<div id="singleArrLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:rgba(255,255,255,0.6);gap:10px;">' +
+        '<div id="singleArrLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:var(--e7-text-2, rgba(255,255,255,0.6));gap:10px;">' +
         '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading array data...</div>' +
-        '<div id="singleArrChartDiv" style="width:100%;height:500px;display:none;background:#0a1228;border-radius:10px;"></div>' +
-        '<div id="singleArrError" style="display:none;text-align:center;padding:50px;color:#fb7185;"></div>' +
+        '<div id="singleArrChartDiv" style="width:100%;height:500px;display:none;background:var(--e7-surface, #0a1228);border-radius:10px;"></div>' +
+        '<div id="singleArrError" style="display:none;text-align:center;padding:50px;color:var(--e7-red, #fb7185);"></div>' +
         '</div></div></div>';
 
     $('#rdpmsGraphOverlay').remove();
@@ -15702,7 +15741,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
         el.style.display = 'flex';
         el.style.alignItems = 'center';
         el.style.justifyContent = 'center';
-        el.innerHTML = '<div style="color:#94a3b8;font-size:14px;padding:40px;">No waveform data available</div>';
+        el.innerHTML = '<div style="color:var(--e7-text-3, #94a3b8);font-size:14px;padding:40px;">No waveform data available</div>';
         return;
     }
 
@@ -15768,7 +15807,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
 
     // Guard: if all ops were skipped (all null/empty arrays)
     if (series.length === 0) {
-        el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:14px;">No valid waveform data</div>';
+        el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--e7-text-3, #94a3b8);font-size:14px;">No valid waveform data</div>';
         return;
     }
 
@@ -15797,14 +15836,14 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
                     String(t.getMilliseconds()).padStart(3, '0');
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
                     String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
-                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' +
+                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:6px;">' +
                     dateStr + ' ' + timeStr + '</div>';
                 params.forEach(function (p) {
                     if (p.value !== undefined && p.value[1] !== undefined) {
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
                             '<span style="display:inline-block;width:10px;height:3px;background:' + p.color + ';margin-right:8px;border-radius:2px;"></span>' +
-                            '<span style="flex:1;font-size:11px;color:rgba(255,255,255,0.62);">Value:</span>' +
-                            '<span style="font-weight:700;margin-left:10px;color:rgba(255,255,255,0.94);">' +
+                            '<span style="flex:1;font-size:11px;color:var(--e7-text-2, rgba(255,255,255,0.62));">Value:</span>' +
+                            '<span style="font-weight:700;margin-left:10px;color:var(--e7-heading, rgba(255,255,255,0.94));">' +
                             tlZeroFloor(p.value[1]).toFixed(2) + ' ' + unit + '</span></div>';
                     }
                 });
@@ -16119,21 +16158,21 @@ function updatePmWaveforms(assetId, pm) {
                                 String(t.getMinutes()).padStart(2, '0') + ':' +
                                 String(t.getSeconds()).padStart(2, '0') + '.' +
                                 String(t.getMilliseconds()).padStart(3, '0') +
-                                ' <span style="color:#94a3b8;">(+' + elapsedMs + ' ms)</span>';
+                                ' <span style="color:var(--e7-text-3, #94a3b8);">(+' + elapsedMs + ' ms)</span>';
                         } else {
                             // p.dataIndex gives us the exact sample index → convert to ms
                             var sampleIdx = p.dataIndex !== undefined ? p.dataIndex : 0;
                             var ms = sampleIdx * sampleIntervalMs;
-                            timeDisplay = (ms / 1000).toFixed(2) + ' s <span style="color:#94a3b8;">(' + ms + ' ms)</span>';
+                            timeDisplay = (ms / 1000).toFixed(2) + ' s <span style="color:var(--e7-text-3, #94a3b8);">(' + ms + ' ms)</span>';
                         }
                         var yVal = startTimestamp ? p.value[1] : (typeof p.value === 'object' ? p.value[1] : p.value);
                         return '<div style="min-width:180px;">' +
-                            '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.12);">' +
+                            '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.12));">' +
                             '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + chartColor + ';flex-shrink:0;"></span>' +
-                            '<span style="font-size:11px;color:#94a3b8;">' + timeDisplay + '</span></div>' +
+                            '<span style="font-size:11px;color:var(--e7-text-3, #94a3b8);">' + timeDisplay + '</span></div>' +
                             '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;">' +
-                            '<span style="color:#94a3b8;font-size:11px;">' + p.seriesName.split('--').pop().trim() + '</span>' +
-                            '<span style="font-weight:700;font-size:16px;color:' + chartColor + ';">' + tlZeroFloor(parseFloat(yVal)).toFixed(2) + ' <span style="font-size:11px;font-weight:500;color:#94a3b8;">' + chartUnit + '</span></span></div></div>';
+                            '<span style="color:var(--e7-text-3, #94a3b8);font-size:11px;">' + p.seriesName.split('--').pop().trim() + '</span>' +
+                            '<span style="font-weight:700;font-size:16px;color:' + chartColor + ';">' + tlZeroFloor(parseFloat(yVal)).toFixed(2) + ' <span style="font-size:11px;font-weight:500;color:var(--e7-text-3, #94a3b8);">' + chartUnit + '</span></span></div></div>';
                     }
                 },
                 grid: { left: 58, right: 20, top: 40, bottom: 68, containLabel: false },
@@ -16232,7 +16271,7 @@ function updatePmWaveforms(assetId, pm) {
                     // Do NOT use 'sampling' -- every 20 ms point must be rendered as-is
                     itemStyle: {
                         color: chartColor,
-                        borderColor: 'rgba(5,9,24,0.94)',
+                        borderColor: (typeof tlThemePalette === 'function') ? tlThemePalette().surface : 'rgba(5,9,24,0.94)',
                         borderWidth: 2.5,
                         shadowBlur: 5,
                         shadowColor: chartColor + 'aa'
@@ -16299,18 +16338,19 @@ function pmShowChart(assetId, chartType) {
     var lbls = []; for (var i = 0; i < vals.length; i++) lbls.push(i);
     var mh = '<div class="rdpms-graph-overlay" id="rdpmsGraphOverlay" onclick="closeGraphModal(event)">' +
         '<div class="rdpms-graph-modal" onclick="event.stopPropagation()" style="max-width:1100px;">' +
-        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);">' +
+        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,var(--e7-p-aqua-2, #042c43) 0%,var(--e7-p-blue-2, #0a4a6e) 100%);">' +
         '<h6><i class="fas fa-chart-line"></i> ' + title + '</h6>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()">&times;</button></div>' +
         '<div class="rdpms-graph-body" style="padding:24px;">' +
         '<div class="pm-modal-chart-card" style="border-radius:12px;padding:20px;">' +
         '<div class="pm-modal-chart-summary" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;">' +
-        '<span style="font-size:14px;color:rgba(255,255,255,0.62);"><strong>Samples:</strong> ' + vals.length + ' points</span>' +
-        '<span style="font-size:14px;color:rgba(255,255,255,0.62);"><strong>Min:</strong> ' + Math.min.apply(null, vals).toFixed(2) + ' | <strong>Max:</strong> ' + Math.max.apply(null, vals).toFixed(2) + ' | <strong>Avg:</strong> ' + (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(2) + '</span>' +
+        '<span style="font-size:14px;color:var(--e7-text-2, rgba(255,255,255,0.62));"><strong>Samples:</strong> ' + vals.length + ' points</span>' +
+        '<span style="font-size:14px;color:var(--e7-text-2, rgba(255,255,255,0.62));"><strong>Min:</strong> ' + Math.min.apply(null, vals).toFixed(2) + ' | <strong>Max:</strong> ' + Math.max.apply(null, vals).toFixed(2) + ' | <strong>Avg:</strong> ' + (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(2) + '</span>' +
         '</div>' +
         '<canvas id="pmModalChart" style="width:100%;height:480px;"></canvas>' +
         '</div></div></div></div>';
     $('#rdpmsGraphOverlay').remove(); $('body').append(mh);
+    var _cp = (typeof tlThemePalette === 'function') ? tlThemePalette() : null;
     new Chart(document.getElementById('pmModalChart').getContext('2d'), {
         type: 'line',
         data: {
@@ -16329,16 +16369,16 @@ function pmShowChart(assetId, chartType) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            legend: { display: true, labels: { fontSize: 14, fontStyle: 'bold', fontColor: 'rgba(255,255,255,0.72)' } },
+            legend: { display: true, labels: { fontSize: 14, fontStyle: 'bold', fontColor: _cp ? _cp.text : 'rgba(255,255,255,0.72)' } },
             scales: {
-                xAxes: [{ ticks: { maxTicksLimit: 20, fontSize: 12, fontColor: 'rgba(255,255,255,0.55)' }, gridLines: { color: 'rgba(255,255,255,0.06)', zeroLineColor: 'rgba(255,255,255,0.14)' }, scaleLabel: { display: true, labelString: 'Sample Index', fontSize: 13, fontColor: 'rgba(255,255,255,0.60)' } }],
-                yAxes: [{ ticks: { fontSize: 12, fontColor: 'rgba(255,255,255,0.55)' }, gridLines: { color: 'rgba(255,255,255,0.06)', zeroLineColor: 'rgba(255,255,255,0.14)' }, scaleLabel: { display: true, labelString: 'Value', fontSize: 13, fontColor: 'rgba(255,255,255,0.60)' } }]
+                xAxes: [{ ticks: { maxTicksLimit: 20, fontSize: 12, fontColor: _cp ? _cp.text3 : 'rgba(255,255,255,0.55)' }, gridLines: { color: _cp ? _cp.grid : 'rgba(255,255,255,0.06)', zeroLineColor: _cp ? _cp.axis : 'rgba(255,255,255,0.14)' }, scaleLabel: { display: true, labelString: 'Sample Index', fontSize: 13, fontColor: _cp ? _cp.text2 : 'rgba(255,255,255,0.60)' } }],
+                yAxes: [{ ticks: { fontSize: 12, fontColor: _cp ? _cp.text3 : 'rgba(255,255,255,0.55)' }, gridLines: { color: _cp ? _cp.grid : 'rgba(255,255,255,0.06)', zeroLineColor: _cp ? _cp.axis : 'rgba(255,255,255,0.14)' }, scaleLabel: { display: true, labelString: 'Value', fontSize: 13, fontColor: _cp ? _cp.text2 : 'rgba(255,255,255,0.60)' } }]
             },
             tooltips: {
-                backgroundColor: 'rgba(5,9,24,0.97)',
-                titleFontColor: '#22d3ee',
-                bodyFontColor: 'rgba(255,255,255,0.86)',
-                borderColor: '#259dab',
+                backgroundColor: _cp ? _cp.surface : 'rgba(5,9,24,0.97)',
+                titleFontColor: _cp ? _cp.accent : '#22d3ee',
+                bodyFontColor: _cp ? _cp.text : 'rgba(255,255,255,0.86)',
+                borderColor: _cp ? _cp.border : '#259dab',
                 borderWidth: 1,
                 callbacks: {
                     title: function (items) { return 'Sample: ' + items[0].index; },
@@ -16382,28 +16422,28 @@ function showCombinedArrayGraph(assetId, isReverse, isCurrent) {
     // Show loading modal
     var modalHtml = '<div class="rdpms-graph-overlay" id="rdpmsGraphOverlay" onclick="closeGraphModal(event)">' +
         '<div class="rdpms-graph-modal" onclick="event.stopPropagation()" style="max-width:1200px;width:96%;">' +
-        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,#042c43 0%,#0a4a6e 100%);">' +
-        '<h6 style="color:#fff;margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
+        '<div class="rdpms-graph-header" style="background:linear-gradient(135deg,var(--e7-p-aqua-2, #042c43) 0%,var(--e7-p-blue-2, #0a4a6e) 100%);">' +
+        '<h6 style="color:var(--e7-heading, #fff);margin:0;font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px;">' +
         '<i class="fas fa-chart-area"></i> ' + title + '</h6>' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
-        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:rgba(255,255,255,0.75);width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
-        '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:#fff;">&times;</button>' +
+        '<button class="rdpms-graph-fs" onclick="toggleGraphFullscreen(this)" title="Toggle Fullscreen" style="background:var(--e7-surface-2, rgba(255,255,255,0.06));border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:10px;color:var(--e7-text, rgba(255,255,255,0.75));width:34px;height:34px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;justify-content:center;"><i class="fas fa-expand"></i></button>' +
+        '<button class="rdpms-graph-close" onclick="closeGraphModal()" style="color:var(--e7-text-2, #fff);">&times;</button>' +
         '</div>' +
         '</div>' +
         '<div class="rdpms-graph-body" style="padding:20px;background:transparent;">' +
-        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;gap:12px;">' +
+        '<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap" style="padding:10px 16px;background:var(--e7-surface-2, rgba(255,255,255,0.04));border:1px solid var(--e7-border, rgba(255,255,255,0.08));border-radius:10px;gap:12px;">' +
         '<div class="d-flex align-items-center" style="gap:8px;flex-wrap:wrap;">' +
-        '<label style="font-size:12px;color:rgba(255,255,255,0.72);margin:0;font-weight:600;">Date</label>' +
-        '<input type="date" id="combineDate" style="font-size:12px;border:1px solid rgba(255,255,255,0.14);border-radius:6px;padding:5px 10px;color:#e6edf6;background:rgba(255,255,255,0.06);outline:none;color-scheme:dark;"/>' +
-        '<button type="button" id="combineLoadBtn" style="background:linear-gradient(135deg,#22d3ee,#0891b2);color:#04222b;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
+        '<label style="font-size:12px;color:var(--e7-text, rgba(255,255,255,0.72));margin:0;font-weight:600;">Date</label>' +
+        '<input type="date" id="combineDate" style="font-size:12px;border:1px solid var(--e7-border, rgba(255,255,255,0.14));border-radius:6px;padding:5px 10px;color:var(--e7-text, #e6edf6);background:var(--e7-surface-2, rgba(255,255,255,0.06));outline:none;color-scheme:' + (tlIsLight() ? 'light' : 'dark') + ';"/>' +
+        '<button type="button" id="combineLoadBtn" style="background:linear-gradient(120deg,var(--e7-ask-from, #22d3ee),var(--e7-ask-to, #0891b2));color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;">' +
         '<i class="fas fa-search"></i> Load</button>' +
         '</div>' +
-        '<span style="font-size:13px;color:rgba(255,255,255,0.55);" id="combineTimeRange"></span>' +
+        '<span style="font-size:13px;color:var(--e7-text-2, rgba(255,255,255,0.55));" id="combineTimeRange"></span>' +
         '</div>' +
-        '<div id="combineChartLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:rgba(255,255,255,0.6);gap:10px;">' +
+        '<div id="combineChartLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:var(--e7-text-2, rgba(255,255,255,0.6));gap:10px;">' +
         '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading combined array data...</div>' +
-        '<div id="combineChartDiv" style="width:100%;height:500px;display:none;background:#0a1228;border-radius:10px;"></div>' +
-        '<div id="combineChartError" style="display:none;text-align:center;padding:50px;color:#fb7185;"></div>' +
+        '<div id="combineChartDiv" style="width:100%;height:500px;display:none;background:var(--e7-surface, #0a1228);border-radius:10px;"></div>' +
+        '<div id="combineChartError" style="display:none;text-align:center;padding:50px;color:var(--e7-red, #fb7185);"></div>' +
         '</div></div></div>';
 
     $('#rdpmsGraphOverlay').remove();
@@ -16651,7 +16691,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
                     String(t.getMilliseconds()).padStart(3, '0');
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
 
-                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' + dateStr + ' ' + timeStr + '</div>';
+                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:6px;">' + dateStr + ' ' + timeStr + '</div>';
                 params.forEach(function (p) {
                     if (p.value !== undefined && p.value[1] !== undefined && !isNaN(p.value[1])) {
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
@@ -17001,7 +17041,7 @@ function buildPmTableViewHtml() {
                 dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 5px;font-size:9px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
             }
         } else {
-            dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+            dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
         }
         h += '<td class="dl-cell">' + dlHtml + '</td>';
 
@@ -17167,7 +17207,7 @@ function updatePointMachineTableCell(assetId, attrName, value, hasChanged) {
                 dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 5px;font-size:9px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
             }
         } else {
-            dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+            dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
         }
         $dlCell.html(dlHtml);
     }
@@ -17743,7 +17783,7 @@ function addNewTableRow(assetId) {
                 dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
             }
         } else {
-            dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+            dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
         }
         h += '<td class="dl-cell">' + dlHtml + '</td>';
     }
@@ -17833,7 +17873,7 @@ function updateDerivedValuesForRow(assetId, $row) {
                 dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
             }
         } else {
-            dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+            dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
         }
         $dlCell.html(dlHtml);
     }
@@ -18266,7 +18306,7 @@ function renderWsTableFixed() {
                     dlHtml += '<span class="rdpms-dl-badge ' + badgeClass + '" style="margin:1px;padding:2px 6px;font-size:10px;">' + (relay.displayName || dlKeys[di]) + ': ' + badgeText + '</span> ';
                 }
             } else {
-                dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+                dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
             }
             h += '<td class="dl-cell">' + dlHtml + '</td>';
         }
@@ -19123,8 +19163,8 @@ console.log('[PM] Point Machine view loaded (dynamic ends + table view support).
                 if (!_isSipOnly && currentView !== 'Circuit' && currentView !== 'Graph' && currentView !== 'Yard') {
                     $('#divTelemetryLive').html(
                         '<div class="text-center p-5" id="wsWaiting">' +
-                        '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:#10b981;"></i>' +
-                        '<div style="color:#64748b;">Connected! Waiting for live data...</div>' +
+                        '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:var(--e7-green, #10b981);"></i>' +
+                        '<div style="color:var(--e7-text-3, #64748b);">Connected! Waiting for live data...</div>' +
                         '</div>'
                     );
                 }
@@ -19584,7 +19624,7 @@ window.updateDataLoggerColumnInTable = function (assetId) {
     var dlKeys = Object.keys(dlRelays);
 
     if (dlKeys.length === 0) {
-        $dlCell.html('<span style="color:#94a3b8;font-size:10px;">--</span>');
+        $dlCell.html('<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>');
         return;
     }
 
@@ -19897,7 +19937,7 @@ if (typeof _originalBuildTableRow === 'function') {
                         displayName + ': ' + badgeText + '</span> ';
                 }
             } else {
-                dlHtml = '<span style="color:#94a3b8;font-size:10px;">--</span>';
+                dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">--</span>';
             }
             h += '<td class="dl-cell">' + dlHtml + '</td>';
         }
@@ -20508,7 +20548,7 @@ window.tlBuildAssetActions = tlBuildAssetActions;
 
     function _emptyState(target, html) {
         $(target).html(
-            '<div style="padding:40px;text-align:center;color:#94a3b8;font-family:Manrope,sans-serif;">' +
+            '<div style="padding:40px;text-align:center;color:var(--e7-text-3, #94a3b8);font-family:Manrope,sans-serif;">' +
             html + '</div>'
         );
     }
@@ -20619,7 +20659,7 @@ window.tlBuildAssetActions = tlBuildAssetActions;
             if (!hasLive) {
                 $('#divTelemetryLive').html(
                     '<div class="text-center p-5" id="wsWaiting" style="color:var(--text-3);">' +
-                    '<i class="fas fa-satellite-dish fa-2x" style="display:block;margin-bottom:10px;color:#10b981;"></i>' +
+                    '<i class="fas fa-satellite-dish fa-2x" style="display:block;margin-bottom:10px;color:var(--e7-green, #10b981);"></i>' +
                     '<div>Waiting for live data...</div>' +
                     '</div>'
                 );
@@ -20843,7 +20883,7 @@ function showAssetGraph(assetId) {
     $('#modalIcon').removeClass('fa-project-diagram').addClass('fa-chart-line');
 
     var $modalBody = $('#assetDetailModalBody');
-    $modalBody.html('<div class="text-center py-5" style="color: #94a3b8;"><i class="fas fa-spinner fa-spin fa-2x mb-3" style="color: #22d3ee;"></i><p>Loading graph data...</p></div>');
+    $modalBody.html('<div class="text-center py-5" style="color: var(--e7-text-3, #94a3b8);"><i class="fas fa-spinner fa-spin fa-2x mb-3" style="color: var(--e7-accent, #22d3ee);"></i><p>Loading graph data...</p></div>');
 
     // Create a temporary container inside the modal
     $modalBody.html('<div id="modalGraphContainer" style="width:100%; height:70vh;"></div>');
@@ -20917,12 +20957,12 @@ function renderAssetGraphInContainer(assetId, containerEl, callback) {
                 // Optionally keep color map for this session
                 if (callback) callback();
             } else {
-                $(containerEl).html('<div class="text-center py-5" style="color: #94a3b8;">No historical data available for this asset.</div>');
+                $(containerEl).html('<div class="text-center py-5" style="color: var(--e7-text-3, #94a3b8);">No historical data available for this asset.</div>');
                 if (callback) callback();
             }
         },
         error: function () {
-            $(containerEl).html('<div class="text-center py-5" style="color: #ef4444;">Failed to load graph data.</div>');
+            $(containerEl).html('<div class="text-center py-5" style="color: var(--e7-red, #ef4444);">Failed to load graph data.</div>');
             if (callback) callback();
         }
     });
@@ -20964,7 +21004,7 @@ function showAssetCircuit(assetId) {
     $('#modalIcon').removeClass('fa-chart-line').addClass('fa-project-diagram');
 
     var $modalBody = $('#assetDetailModalBody');
-    $modalBody.html('<div class="text-center py-5" style="color: #94a3b8;"><i class="fas fa-spinner fa-spin fa-2x mb-3" style="color: #22d3ee;"></i><p>Loading circuit diagram...</p></div>');
+    $modalBody.html('<div class="text-center py-5" style="color: var(--e7-text-3, #94a3b8);"><i class="fas fa-spinner fa-spin fa-2x mb-3" style="color: var(--e7-accent, #22d3ee);"></i><p>Loading circuit diagram...</p></div>');
 
     // Load circuit via AJAX and inject into modal body
     var assetTypeId = asset.AssetTypeId || $('#drpAssetType').val();
@@ -21003,7 +21043,7 @@ function showAssetCircuit(assetId) {
             });
         },
         error: function () {
-            $modalBody.html('<div class="text-center py-5" style="color: #ef4444;">Failed to load circuit diagram.</div>');
+            $modalBody.html('<div class="text-center py-5" style="color: var(--e7-red, #ef4444);">Failed to load circuit diagram.</div>');
         }
     });
 
@@ -21103,7 +21143,7 @@ function fnGetAssetCircuit(assetId) {
             $content.show();
 
             // Hide the redundant _Circuit.cshtml header row (our modal head is enough)
-            $content.find('.col-lg-12[style*="border-bottom"]').css('border-bottom', '3px solid #259dab');
+            $content.find('.col-lg-12[style*="border-bottom"]').css('border-bottom', '3px solid var(--e7-accent, #259dab)');
             $content.find('.col-lg-12 > .row').first().hide();
 
             function runInlineScripts() {
@@ -23679,13 +23719,13 @@ function _buildSignalTablesHtml(assetIds, forExport) {
         }
 
         // ── Card container ──
-        html += '<div class="signal-group-card" data-group-label="' + _sigEscAttr(groupLabel) + '" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+        html += '<div class="signal-group-card" data-group-label="' + _sigEscAttr(groupLabel) + '" style="border:1px solid var(--e7-border, #e2e8f0);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
 
         // Colored group label bar
         var gs = getSignalGroupColorStyle(groupLabel);
 
         html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:' + gs.bar +
-            ';border-bottom:1px solid rgba(255,255,255,0.12);box-shadow:0 2px 8px rgba(0,0,0,0.12);">';
+            ';border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.12));box-shadow:0 2px 8px rgba(0,0,0,0.12);">';
         html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.20);color:#fff;">' +
             '<i class="fas ' + gs.icon + '" style="font-size:13px;"></i></span>';
         html += '<span style="font-size:13px;font-weight:700;color:#fff;letter-spacing:0.3px;">' + groupLabel + '</span>';
@@ -23697,16 +23737,16 @@ function _buildSignalTablesHtml(assetIds, forExport) {
         var tableId = 'wsSignalTable_' + tableIndex;
         html += '<div class="table-responsive" style="overflow-x:auto;">';
         html += '<table class="table table-sm table-hover mb-0" id="' + tableId + '">';
-        html += '<thead><tr style="background:#f1f5f9;">';
-        html += '<th style="min-width:90px;font-size:12px;padding:8px 12px;border-bottom:2px solid #cbd5e1;">Signal</th>';
+        html += '<thead><tr style="background:var(--e7-surface-2, #f1f5f9);">';
+        html += '<th style="min-width:90px;font-size:12px;padding:8px 12px;border-bottom:2px solid var(--e7-border, #cbd5e1);">Signal</th>';
 
         for (var hi = 0; hi < columns.length; hi++) {
             var dispName = getSignalHeaderLabel(signals[0].id, columns[hi]);
             var fmtName = formatAliasName(dispName);
-            html += '<th data-col="' + columns[hi] + '" title="' + columns[hi] + '" style="white-space:nowrap;font-size:11px;padding:8px 10px;border-bottom:2px solid #cbd5e1;">' + fmtName + '</th>';
+            html += '<th data-col="' + columns[hi] + '" title="' + columns[hi] + '" style="white-space:nowrap;font-size:11px;padding:8px 10px;border-bottom:2px solid var(--e7-border, #cbd5e1);">' + fmtName + '</th>';
         }
-        html += '<th style="min-width:100px;font-size:12px;padding:8px 10px;border-bottom:2px solid #cbd5e1;">DataLogger</th>';
-        html += '<th style="min-width:80px;font-size:12px;padding:8px 10px;border-bottom:2px solid #cbd5e1;">Last Update</th>';
+        html += '<th style="min-width:100px;font-size:12px;padding:8px 10px;border-bottom:2px solid var(--e7-border, #cbd5e1);">DataLogger</th>';
+        html += '<th style="min-width:80px;font-size:12px;padding:8px 10px;border-bottom:2px solid var(--e7-border, #cbd5e1);">Last Update</th>';
         html += '</tr></thead><tbody>';
 
         for (var si = 0; si < signals.length; si++) {
@@ -23783,13 +23823,13 @@ function _buildSignalGroupRow(assetId, columns, aspectInfo) {
             dlHtml += '<span class="rdpms-dl-badge ' + bc + '" data-attr="' + dlKeys[di] + '" style="margin:1px;padding:2px 5px;font-size:9px;">' + (relay.displayName || dlKeys[di]) + ': ' + bt + '</span> ';
         }
     } else {
-        dlHtml = '<span style="color:#94a3b8;font-size:10px;">—</span>';
+        dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">—</span>';
     }
     h += '<td class="dl-cell" style="padding:6px 10px;">' + dlHtml + '</td>';
 
     var operationTs = getOperationTimestampDevice(asset);
     var ts = operationTs ? fmtTimestampDevice(operationTs) : (asset.lastUpdated ? fmtTime(asset.lastUpdated) : '—');
-    h += '<td class="time-cell" data-attr="LastUpdate" style="font-size:11px;padding:6px 10px;color:#64748b;">' + ts + '</td>';
+    h += '<td class="time-cell" data-attr="LastUpdate" style="font-size:11px;padding:6px 10px;color:var(--e7-text-3, #64748b);">' + ts + '</td>';
     h += '</tr>';
     return h;
 }
@@ -23883,7 +23923,7 @@ function updateSignalAspectTablesIncremental(assetIds) {
                     var bt = relay.isPickup ? 'Pickup' : 'Drop';
                     dlHtml += '<span class="rdpms-dl-badge ' + bc + '" data-attr="' + dlKeys[di] + '" style="margin:1px;padding:2px 5px;font-size:9px;">' + (relay.displayName || dlKeys[di]) + ': ' + bt + '</span> ';
                 }
-            } else { dlHtml = '<span style="color:#94a3b8;font-size:10px;">\u2014</span>'; }
+            } else { dlHtml = '<span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">\u2014</span>'; }
             dlCell.innerHTML = dlHtml;
         }
     }
@@ -23918,25 +23958,25 @@ window.renderSignalGroupedTables = function () {
         var st = document.createElement('style');
         st.id = 'pmHistInlineStyles';
         st.textContent = [
-            '.pm-hist-toggle{cursor:pointer;margin-left:7px;font-size:11px;color:#38bdf8;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;transition:transform .15s,background .15s;vertical-align:middle;}',
-            '.pm-hist-toggle:hover{background:rgba(56,189,248,.18);}',
-            '.pm-hist-toggle.open{transform:rotate(45deg);color:#f472b6;}',
-            '.pm-hist-inline{margin:6px 0 4px 0;border:1px solid rgba(56,189,248,.35);border-radius:8px;overflow:hidden;background:#0b1220;box-shadow:0 2px 10px rgba(0,0,0,.25);}',
-            '.pm-hist-inline-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:linear-gradient(90deg,#0f2233,#0b1220);border-bottom:1px solid rgba(56,189,248,.25);}',
-            '.pm-hist-inline-title{font-size:12.5px;font-weight:600;color:#e2e8f0;}',
-            '.pm-hist-inline-close{cursor:pointer;color:#94a3b8;font-size:14px;padding:2px 6px;border-radius:4px;}',
-            '.pm-hist-inline-close:hover{color:#f472b6;background:rgba(244,114,182,.12);}',
+            '.pm-hist-toggle{cursor:pointer;margin-left:7px;font-size:11px;color:var(--e7-accent, #38bdf8);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:3px;transition:transform .15s,background .15s;vertical-align:middle;}',
+            '.pm-hist-toggle:hover{background:var(--e7-accent-soft, rgba(56,189,248,.18));}',
+            '.pm-hist-toggle.open{transform:rotate(45deg);color:var(--e7-accent, #f472b6);}',
+            '.pm-hist-inline{margin:6px 0 4px 0;border:1px solid var(--e7-accent, rgba(56,189,248,.35));border-radius:8px;overflow:hidden;background:var(--e7-surface, #0b1220);box-shadow:var(--e7-shadow-card, 0 2px 10px rgba(0,0,0,.25));}',
+            '.pm-hist-inline-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--e7-surface-2, linear-gradient(90deg,#0f2233,#0b1220));border-bottom:1px solid var(--e7-border-2, rgba(56,189,248,.25));}',
+            '.pm-hist-inline-title{font-size:12.5px;font-weight:600;color:var(--e7-text, #e2e8f0);}',
+            '.pm-hist-inline-close{cursor:pointer;color:var(--e7-text-3, #94a3b8);font-size:14px;padding:2px 6px;border-radius:4px;}',
+            '.pm-hist-inline-close:hover{color:var(--e7-red, #f472b6);background:var(--e7-red-soft, rgba(244,114,182,.12));}',
             '.pm-hist-inline-body{max-height:340px;overflow:auto;}',
-            '.pm-hist-loader{padding:26px;text-align:center;color:#94a3b8;font-size:13px;}',
-            '.pm-hist-spinner{width:22px;height:22px;border:3px solid rgba(56,189,248,.25);border-top-color:#38bdf8;border-radius:50%;margin:0 auto 10px;animation:pmHistSpin .8s linear infinite;}',
+            '.pm-hist-loader{padding:26px;text-align:center;color:var(--e7-text-3, #94a3b8);font-size:13px;}',
+            '.pm-hist-spinner{width:22px;height:22px;border:3px solid var(--e7-border-2, rgba(56,189,248,.25));border-top-color:var(--e7-accent, #38bdf8);border-radius:50%;margin:0 auto 10px;animation:pmHistSpin .8s linear infinite;}',
             '@keyframes pmHistSpin{to{transform:rotate(360deg);}}',
             '.pm-hist-tbl{width:100%;border-collapse:collapse;font-size:12px;}',
-            '.pm-hist-tbl th{position:sticky;top:0;background:#0f2233;color:#7dd3fc;font-weight:600;padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid rgba(56,189,248,.3);}',
-            '.pm-hist-tbl td{padding:7px 10px;border-bottom:1px solid rgba(148,163,184,.12);color:#e2e8f0;white-space:nowrap;}',
-            '.pm-hist-tbl tr:hover td{background:rgba(56,189,248,.06);}',
-            '.pm-hist-sum{padding:8px 12px;font-size:11.5px;color:#94a3b8;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid rgba(148,163,184,.12);}',
-            '.pm-hist-dir-N{color:#34d399;font-weight:600;}',
-            '.pm-hist-dir-R{color:#fb923c;font-weight:600;}'
+            '.pm-hist-tbl th{position:sticky;top:0;background:var(--e7-surface, #0f2233);color:var(--e7-accent, #7dd3fc);font-weight:600;padding:8px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--e7-accent, rgba(56,189,248,.3));}',
+            '.pm-hist-tbl td{padding:7px 10px;border-bottom:1px solid var(--e7-border, rgba(148,163,184,.12));color:var(--e7-text, #e2e8f0);white-space:nowrap;}',
+            '.pm-hist-tbl tr:hover td{background:var(--e7-accent-soft, rgba(56,189,248,.06));}',
+            '.pm-hist-sum{padding:8px 12px;font-size:11.5px;color:var(--e7-text-3, #94a3b8);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--e7-border, rgba(148,163,184,.12));}',
+            '.pm-hist-dir-N{color:var(--e7-green, #34d399);font-weight:600;}',
+            '.pm-hist-dir-R{color:var(--e7-amber, #fb923c);font-weight:600;}'
         ].join('');
         document.head.appendChild(st);
     }
@@ -23981,7 +24021,7 @@ window.renderSignalGroupedTables = function () {
     function renderPmDayHistoryTable(rows) {
         _pmHistEnsureStyles();
         if (!rows.length) {
-            return '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:13px;">No operations recorded today for this point machine.</div>';
+            return '<div style="padding:30px;text-align:center;color:var(--e7-text-3, #94a3b8);font-size:13px;">No operations recorded today for this point machine.</div>';
         }
         var nN = 0, nR = 0;
         for (var c = 0; c < rows.length; c++) { if (rows[c].direction === 'Reverse') nR++; else nN++; }
@@ -24054,7 +24094,7 @@ window.renderSignalGroupedTables = function () {
             body.innerHTML = renderPmDayHistoryTable(rows);
         }, function () {
             if (myReq !== window._pmHistInlineReq[assetId] || !panel.parentNode) return;
-            body.innerHTML = '<div style="padding:30px;text-align:center;color:#b91c1c;">Failed to load history data. Please try again.</div>';
+            body.innerHTML = '<div style="padding:30px;text-align:center;color:var(--e7-red, #b91c1c);">Failed to load history data. Please try again.</div>';
         });
     }
 
@@ -24824,91 +24864,91 @@ function ensureIpsTableStyles() {
         /* ---- IPS TABLE (Aurora) ---- */
         '.ips-table-wrap{padding:6px 2px 12px;width:100%;box-sizing:border-box;}' +
         '.ips-table-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 2px 8px;}' +
-        '.ips-table-head h6{margin:0;font-size:15px;font-weight:600;color:var(--at-t1,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
-        '.ips-table-head .ips-count{background:var(--at-g2,rgba(255,255,255,0.08));color:var(--at-brand,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));}' +
-        '.ips-table-wrap{border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);}' +'.ips-table-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}' +
-        'table.ips-live-table{width:100%;border-collapse:collapse;font-size:13px;background:transparent;min-width:560px;color:var(--at-t2,rgba(255,255,255,0.72));}' +
-        'table.ips-live-table thead th{background:linear-gradient(180deg,var(--at-g2,rgba(255,255,255,0.08)),var(--at-g1,rgba(255,255,255,0.04)));color:var(--at-t1,#fff);font-weight:600;padding:10px 12px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:1px solid var(--at-edge-s,rgba(255,255,255,0.18));backdrop-filter:blur(6px);}' +
-        'table.ips-live-table tbody td{padding:8px 12px;border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.10));color:var(--at-t2,rgba(255,255,255,0.72));vertical-align:middle;}' +
+        '.ips-table-head h6{margin:0;font-size:15px;font-weight:600;color:var(--e7-heading,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
+        '.ips-table-head .ips-count{background:var(--e7-surface-3,rgba(255,255,255,0.08));color:var(--e7-accent,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--e7-border-2,rgba(255,255,255,0.18));}' +
+        '.ips-table-wrap{border:1px solid var(--e7-border,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);}' +'.ips-table-scroll{width:100%;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--e7-border,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;}' +
+        'table.ips-live-table{width:100%;border-collapse:collapse;font-size:13px;background:transparent;min-width:560px;color:var(--e7-text-2,rgba(255,255,255,0.72));}' +
+        'table.ips-live-table thead th{background:linear-gradient(180deg,var(--e7-surface-3,rgba(255,255,255,0.08)),var(--e7-surface-2,rgba(255,255,255,0.04)));color:var(--e7-heading,#fff);font-weight:600;padding:10px 12px;text-align:left;white-space:nowrap;position:sticky;top:0;z-index:2;border-bottom:1px solid var(--e7-border-2,rgba(255,255,255,0.18));backdrop-filter:blur(6px);}' +
+        'table.ips-live-table tbody td{padding:8px 12px;border-bottom:1px solid var(--e7-border,rgba(255,255,255,0.10));color:var(--e7-text-2,rgba(255,255,255,0.72));vertical-align:middle;}' +
         'table.ips-live-table thead th.ips-c-sno,table.ips-live-table thead th.ips-c-val,table.ips-live-table thead th.ips-c-ts,' +
         'table.ips-live-table tbody td.ips-sno,table.ips-live-table tbody td.ips-val,table.ips-live-table tbody td.ips-ts{text-align:center;}' +
-        'table.ips-live-table tbody tr:nth-child(even){background:var(--at-g1,rgba(255,255,255,0.04));}' +
-        'table.ips-live-table tbody tr:hover{background:var(--at-g3,rgba(255,255,255,0.10));}' +
+        'table.ips-live-table tbody tr:nth-child(even){background:var(--e7-surface-2,rgba(255,255,255,0.04));}' +
+        'table.ips-live-table tbody tr:hover{background:var(--e7-surface-3,rgba(255,255,255,0.10));}' +
         'table.ips-live-table tbody tr:last-child td{border-bottom:none;}' +
-        'table.ips-live-table td.ips-aname{font-weight:600;color:var(--at-t1,#fff);white-space:nowrap;}' +
-        'table.ips-live-table td.ips-attr{color:var(--at-t3,rgba(255,255,255,0.50));}' +
-        'table.ips-live-table td.ips-val{font-variant-numeric:tabular-nums;font-family:var(--at-font-mono,monospace);font-weight:700;color:var(--at-brand,#22d3ee);white-space:nowrap;}' +
-        'table.ips-live-table td.ips-val.no-data{color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
-        'table.ips-live-table td.ips-ts{font-variant-numeric:tabular-nums;font-family:var(--at-font-mono,monospace);color:var(--at-t3,rgba(255,255,255,0.50));white-space:nowrap;}' +
+        'table.ips-live-table td.ips-aname{font-weight:600;color:var(--e7-heading,#fff);white-space:nowrap;}' +
+        'table.ips-live-table td.ips-attr{color:var(--e7-text-3,rgba(255,255,255,0.50));}' +
+        'table.ips-live-table td.ips-val{font-variant-numeric:tabular-nums;font-family:var(--at-font-mono,monospace);font-weight:700;color:var(--e7-accent,#22d3ee);white-space:nowrap;}' +
+        'table.ips-live-table td.ips-val.no-data{color:var(--e7-text-4,rgba(255,255,255,0.34));font-weight:400;}' +
+        'table.ips-live-table td.ips-ts{font-variant-numeric:tabular-nums;font-family:var(--at-font-mono,monospace);color:var(--e7-text-3,rgba(255,255,255,0.50));white-space:nowrap;}' +
         /* ---- IPS CARD GRID (Aurora) ---- */
         '.ips-grid-container{width:100%;box-sizing:border-box;padding:6px 2px 12px;}' +
         '.ips-grid-header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 2px 10px;}' +
-        '.ips-grid-header h6{margin:0;font-size:15px;font-weight:600;color:var(--at-t1,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
-        '.ips-grid-badge{background:var(--at-g2,rgba(255,255,255,0.08));color:var(--at-brand,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));}' +
+        '.ips-grid-header h6{margin:0;font-size:15px;font-weight:600;color:var(--e7-heading,#fff);display:flex;align-items:center;gap:8px;font-family:var(--at-font-display,inherit);}' +
+        '.ips-grid-badge{background:var(--e7-surface-3,rgba(255,255,255,0.08));color:var(--e7-accent,#22d3ee);font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;border:1px solid var(--e7-border-2,rgba(255,255,255,0.18));}' +
         // align-items:start lets every card size to its own content. With
         // stretch, a card next to a 10-attribute one was padded out with dead
         // space and its attribute list grew an inner scrollbar.
         '.ips-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;align-items:start;}' +
-        '.ips-asset-card{background:var(--at-bg2,#0e1530);border:1px solid var(--at-edge,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);overflow:hidden;display:flex;flex-direction:column;min-width:0;box-shadow:0 1px 0 rgba(255,255,255,0.03) inset;transition:border-color .15s ease;}' +
-        '.ips-asset-card:hover{border-color:var(--at-edge-s,rgba(255,255,255,0.18));}' +
-        '.ips-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:var(--at-g1,rgba(255,255,255,0.04));border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.10));}' +
-        '.ips-asset-name{font-weight:600;color:var(--at-t1,#fff);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--at-font-display,inherit);}' +
-        '.ips-status-dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--at-ok,#34d399);box-shadow:0 0 6px var(--at-ok,#34d399);}' +
+        '.ips-asset-card{background:var(--e7-surface,#0e1530);border:1px solid var(--e7-border,rgba(255,255,255,0.10));border-radius:var(--at-r-md,12px);overflow:hidden;display:flex;flex-direction:column;min-width:0;box-shadow:0 1px 0 rgba(255,255,255,0.03) inset;transition:border-color .15s ease;}' +
+        '.ips-asset-card:hover{border-color:var(--e7-border-2,rgba(255,255,255,0.18));}' +
+        '.ips-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;background:var(--e7-surface-2,rgba(255,255,255,0.04));border-bottom:1px solid var(--e7-border,rgba(255,255,255,0.10));}' +
+        '.ips-asset-name{font-weight:600;color:var(--e7-heading,#fff);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--at-font-display,inherit);}' +
+        '.ips-status-dot{flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:var(--e7-green,#34d399);box-shadow:0 0 6px var(--e7-green,#34d399);}' +
         // min-width:0 on the flex children is what stops a long attribute name
         // from forcing the card wider than its grid track (the inner horizontal
         // scrollbars). overflow-x:hidden is the backstop.
         '.ips-attr-list{padding:4px 12px 6px;display:flex;flex-direction:column;flex:1 1 auto;min-width:0;overflow-x:hidden;}' +
-        '.ips-attr-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:5px 0;min-width:0;border-bottom:1px solid var(--at-edge,rgba(255,255,255,0.08));}' +
+        '.ips-attr-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:5px 0;min-width:0;border-bottom:1px solid var(--e7-border,rgba(255,255,255,0.08));}' +
         '.ips-attr-row:last-child{border-bottom:none;}' +
-        '.ips-attr-name{color:var(--at-t2,rgba(255,255,255,0.72));font-size:12px;line-height:1.35;white-space:normal;word-break:break-word;overflow-wrap:anywhere;flex:1 1 auto;min-width:0;}' +
-        '.ips-attr-val{color:var(--at-brand,#22d3ee);font-family:var(--at-font-mono,monospace);font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;white-space:nowrap;flex:0 0 auto;text-align:right;line-height:1.35;max-width:45%;overflow:hidden;text-overflow:ellipsis;}' +
-        '.ips-attr-val.no-data{color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
-        '.ips-card-footer{padding:7px 12px;border-top:1px solid var(--at-edge,rgba(255,255,255,0.10));background:var(--at-g1,rgba(255,255,255,0.04));color:var(--at-t3,rgba(255,255,255,0.50));font-size:11px;font-family:var(--at-font-mono,monospace);display:flex;align-items:center;gap:6px;}' +
-        '.ips-card-footer i{color:var(--at-brand,#22d3ee);opacity:0.85;}' +
-        /* ---- stale (Aurora dark) ---- */'.ips-attr-val.ws-stale-val{background:rgba(251,191,36,0.14)!important;color:var(--at-warn,#fbbf24)!important;border:1px solid rgba(251,191,36,0.40)!important;border-left:3px solid var(--at-warn,#fbbf24)!important;border-radius:var(--at-r-sm,8px)!important;padding:1px 6px!important;}' +
-        '.ips-attr-val.ws-stale-val .ws-stale-marker,.ips-attr-val.ws-stale-val i{color:var(--at-warn,#fbbf24)!important;}' +
-        'table.ips-live-table td.ips-val.ws-stale-val{color:var(--at-warn,#fbbf24)!important;}' +
-        'table.ips-live-table td.ips-val.ws-stale-val .ws-stale-marker{color:var(--at-warn,#fbbf24)!important;}' +
+        '.ips-attr-name{color:var(--e7-text-2,rgba(255,255,255,0.72));font-size:12px;line-height:1.35;white-space:normal;word-break:break-word;overflow-wrap:anywhere;flex:1 1 auto;min-width:0;}' +
+        '.ips-attr-val{color:var(--e7-accent,#22d3ee);font-family:var(--at-font-mono,monospace);font-variant-numeric:tabular-nums;font-weight:700;font-size:13px;white-space:nowrap;flex:0 0 auto;text-align:right;line-height:1.35;max-width:45%;overflow:hidden;text-overflow:ellipsis;}' +
+        '.ips-attr-val.no-data{color:var(--e7-text-4,rgba(255,255,255,0.34));font-weight:400;}' +
+        '.ips-card-footer{padding:7px 12px;border-top:1px solid var(--e7-border,rgba(255,255,255,0.10));background:var(--e7-surface-2,rgba(255,255,255,0.04));color:var(--e7-text-3,rgba(255,255,255,0.50));font-size:11px;font-family:var(--at-font-mono,monospace);display:flex;align-items:center;gap:6px;}' +
+        '.ips-card-footer i{color:var(--e7-accent,#22d3ee);opacity:0.85;}' +
+        /* ---- stale (Aurora dark) ---- */'.ips-attr-val.ws-stale-val{background:rgba(251,191,36,0.14)!important;color:var(--e7-amber,#fbbf24)!important;border:1px solid rgba(251,191,36,0.40)!important;border-left:3px solid var(--e7-amber,#fbbf24)!important;border-radius:var(--at-r-sm,8px)!important;padding:1px 6px!important;}' +
+        '.ips-attr-val.ws-stale-val .ws-stale-marker,.ips-attr-val.ws-stale-val i{color:var(--e7-amber,#fbbf24)!important;}' +
+        'table.ips-live-table td.ips-val.ws-stale-val{color:var(--e7-amber,#fbbf24)!important;}' +
+        'table.ips-live-table td.ips-val.ws-stale-val .ws-stale-marker{color:var(--e7-amber,#fbbf24)!important;}' +
                 /* ---- flash on value update ---- */
         '.ips-val-flash{animation:ipsValFlash 1.2s ease-out;}' +
         '.ips-card-flash{animation:ipsCardFlash 1s ease-out;}' +
-        '@keyframes ipsValFlash{0%{background:var(--at-brand-glow,rgba(34,211,238,0.45));}100%{background:transparent;}}' +
-        '@keyframes ipsCardFlash{0%{border-color:var(--at-brand,#22d3ee);}100%{border-color:var(--at-edge,rgba(255,255,255,0.10));}}' +
+        '@keyframes ipsValFlash{0%{background:var(--e7-accent-soft,rgba(34,211,238,0.45));}100%{background:transparent;}}' +
+        '@keyframes ipsCardFlash{0%{border-color:var(--e7-accent,#22d3ee);}100%{border-color:var(--e7-border,rgba(255,255,255,0.10));}}' +
         /* ---- IPS 3-tab (Voltage / Current / Digital) — Aurora ---- */
         '.ips-tabbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 2px 10px;}' +
-        '.ips-tab-btn{appearance:none;border:1px solid var(--at-edge-s,rgba(255,255,255,0.18));background:var(--at-g1,rgba(255,255,255,0.04));color:var(--at-t2,rgba(255,255,255,0.72));font-size:13px;font-weight:600;padding:7px 14px;border-radius:var(--at-r-sm,8px);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s ease;}' +
-        '.ips-tab-btn:hover{background:var(--at-g3,rgba(255,255,255,0.10));color:var(--at-t1,#fff);}' +
-        '.ips-tab-btn.active{background:var(--at-brand,#22d3ee);border-color:var(--at-brand,#22d3ee);color:var(--at-bg2,#0e1530);}' +
-        '.ips-tab-empty{padding:22px 12px;text-align:center;color:var(--at-t4,rgba(255,255,255,0.34));font-size:13px;border:1px dashed var(--at-edge,rgba(255,255,255,0.10));border-top:none;border-radius:0 0 var(--at-r-md,12px) var(--at-r-md,12px);background:transparent;}' +
+        '.ips-tab-btn{appearance:none;border:1px solid var(--e7-border-2,rgba(255,255,255,0.18));background:var(--e7-surface-2,rgba(255,255,255,0.04));color:var(--e7-text-2,rgba(255,255,255,0.72));font-size:13px;font-weight:600;padding:7px 14px;border-radius:var(--at-r-sm,8px);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s ease;}' +
+        '.ips-tab-btn:hover{background:var(--e7-surface-3,rgba(255,255,255,0.10));color:var(--e7-heading,#fff);}' +
+        '.ips-tab-btn.active{background:var(--e7-accent,#22d3ee);border-color:var(--e7-accent,#22d3ee);color:var(--e7-surface,#0e1530);}' +
+        '.ips-tab-empty{padding:22px 12px;text-align:center;color:var(--e7-text-4,rgba(255,255,255,0.34));font-size:13px;border:1px dashed var(--e7-border,rgba(255,255,255,0.10));border-top:none;border-radius:0 0 var(--at-r-md,12px) var(--at-r-md,12px);background:transparent;}' +
         /* S.No via CSS counter on the visible, non-child rows of the active tab */
         'table.ips-live-table tbody{counter-reset:ipssno;}' +
         'table.ips-live-table tbody tr.ips-row-hidden{display:none;}' +
         'table.ips-live-table tbody tr[data-ips-id]:not(.ips-row-hidden):not(.ips-row-child){counter-increment:ipssno;}' +
         'table.ips-live-table tbody td.ips-sno::before{content:counter(ipssno);}' +
         /* Aggregated BATT group row + expandable member breakdown */
-        'table.ips-live-table tbody tr.ips-row-group{background:var(--at-g2,rgba(255,255,255,0.08));font-weight:700;}' +
-        'table.ips-live-table tbody tr.ips-row-group td.ips-aname{color:var(--at-brand,#22d3ee);}' +
+        'table.ips-live-table tbody tr.ips-row-group{background:var(--e7-surface-3,rgba(255,255,255,0.08));font-weight:700;}' +
+        'table.ips-live-table tbody tr.ips-row-group td.ips-aname{color:var(--e7-accent,#22d3ee);}' +
         'table.ips-live-table tbody tr.ips-row-expandable{cursor:pointer;}' +
-        'table.ips-live-table tbody tr.ips-row-expandable:hover{background:var(--at-g3,rgba(255,255,255,0.10));}' +
+        'table.ips-live-table tbody tr.ips-row-expandable:hover{background:var(--e7-surface-3,rgba(255,255,255,0.10));}' +
         'table.ips-live-table tbody tr.ips-child-collapsed{display:none;}' +
-        'table.ips-live-table tbody tr.ips-row-child{background:var(--at-g1,rgba(255,255,255,0.04));}' +
-        'table.ips-live-table tbody tr.ips-row-child:hover{background:var(--at-g3,rgba(255,255,255,0.10));}' +
+        'table.ips-live-table tbody tr.ips-row-child{background:var(--e7-surface-2,rgba(255,255,255,0.04));}' +
+        'table.ips-live-table tbody tr.ips-row-child:hover{background:var(--e7-surface-3,rgba(255,255,255,0.10));}' +
         'table.ips-live-table tbody tr.ips-row-child td.ips-sno::before{content:"";}' +
-        'table.ips-live-table tbody tr.ips-row-child td.ips-aname{font-weight:500;color:var(--at-t2,rgba(255,255,255,0.72));padding-left:28px;position:relative;white-space:nowrap;}' +
-        'table.ips-live-table tbody tr.ips-row-child td.ips-aname::before{content:"\\21B3";position:absolute;left:12px;color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
-        'table.ips-live-table tbody tr.ips-row-child td.ips-attr{color:var(--at-t3,rgba(255,255,255,0.50));}' +
-        'table.ips-live-table tbody tr.ips-row-child td.ips-val{font-weight:600;color:var(--at-brand,#22d3ee);}' +
-        '.ips-caret{display:inline-block;width:0;height:0;margin-right:7px;vertical-align:middle;border-left:5px solid var(--at-brand,#22d3ee);border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s ease;}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-aname{font-weight:500;color:var(--e7-text-2,rgba(255,255,255,0.72));padding-left:28px;position:relative;white-space:nowrap;}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-aname::before{content:"\\21B3";position:absolute;left:12px;color:var(--e7-text-4,rgba(255,255,255,0.34));font-weight:400;}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-attr{color:var(--e7-text-3,rgba(255,255,255,0.50));}' +
+        'table.ips-live-table tbody tr.ips-row-child td.ips-val{font-weight:600;color:var(--e7-accent,#22d3ee);}' +
+        '.ips-caret{display:inline-block;width:0;height:0;margin-right:7px;vertical-align:middle;border-left:5px solid var(--e7-accent,#22d3ee);border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s ease;}' +
         'tr.ips-group-open .ips-caret{transform:rotate(90deg);}' +
-        '.ips-child-badge{display:inline-block;margin-left:6px;background:var(--at-brand,#22d3ee);color:var(--at-bg2,#0e1530);font-size:11px;font-weight:700;line-height:1;padding:2px 7px;border-radius:999px;vertical-align:middle;}' +
+        '.ips-child-badge{display:inline-block;margin-left:6px;background:var(--e7-accent,#22d3ee);color:var(--e7-surface,#0e1530);font-size:11px;font-weight:700;line-height:1;padding:2px 7px;border-radius:999px;vertical-align:middle;}' +
         /* Sum row (shared class name; used by the card-grid sum when enabled) */
-        '.ips-attr-row.ips-sum-row{border-top:1px dashed var(--at-edge-s,rgba(255,255,255,0.18));margin-top:4px;padding-top:6px;}' +
-        '.ips-attr-row.ips-sum-row .ips-attr-name,.ips-attr-row.ips-sum-row .ips-sum-sigma{font-weight:700;color:var(--at-brand,#22d3ee);}' +
-        '.ips-attr-row.ips-sum-row .ips-sum-count{display:inline-block;margin-left:6px;background:var(--at-brand,#22d3ee);color:var(--at-bg2,#0e1530);font-size:10px;font-weight:700;line-height:1;padding:2px 6px;border-radius:999px;vertical-align:middle;}' +
-        '.ips-attr-val.ips-sum-val{font-weight:800;color:var(--at-brand,#22d3ee);}' +
-        '.ips-attr-val.ips-sum-val.no-data{color:var(--at-t4,rgba(255,255,255,0.34));font-weight:400;}' +
+        '.ips-attr-row.ips-sum-row{border-top:1px dashed var(--e7-border-2,rgba(255,255,255,0.18));margin-top:4px;padding-top:6px;}' +
+        '.ips-attr-row.ips-sum-row .ips-attr-name,.ips-attr-row.ips-sum-row .ips-sum-sigma{font-weight:700;color:var(--e7-accent,#22d3ee);}' +
+        '.ips-attr-row.ips-sum-row .ips-sum-count{display:inline-block;margin-left:6px;background:var(--e7-accent,#22d3ee);color:var(--e7-surface,#0e1530);font-size:10px;font-weight:700;line-height:1;padding:2px 6px;border-radius:999px;vertical-align:middle;}' +
+        '.ips-attr-val.ips-sum-val{font-weight:800;color:var(--e7-accent,#22d3ee);}' +
+        '.ips-attr-val.ips-sum-val.no-data{color:var(--e7-text-4,rgba(255,255,255,0.34));font-weight:400;}' +
         /* Server-stale "!" badge for the IPS table value cell (Aurora) */
-        'table.ips-live-table td.ips-val.ws-value-server-stale::before{content:"!";display:inline-block;margin-right:5px;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;background:var(--at-warn,#fbbf24);color:var(--at-bg2,#0e1530);font-weight:700;font-size:10px;}' +
+        'table.ips-live-table td.ips-val.ws-value-server-stale::before{content:"!";display:inline-block;margin-right:5px;width:14px;height:14px;line-height:14px;text-align:center;border-radius:50%;background:var(--e7-amber,#fbbf24);color:var(--e7-surface,#0e1530);font-weight:700;font-size:10px;}' +
         // Responsive: the grid tracks narrow in steps, and below ~560px the
         // cards go single-column so attribute names stay readable.
         '@media (max-width:1400px){.ips-card-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}}' +
@@ -25255,7 +25295,7 @@ function ipsRenderTable() {
     var rows = ipsExpandRowsForDisplay(ipsGroupCurrentRows(buildIpsTableRowModels()));
     if (rows.length === 0) {
         $('#divTelemetryLive').html('<div class="ips-table-wrap"><div class="text-center text-muted p-5">' +
-            '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:#259dab;display:block;"></i>' +
+            '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:var(--e7-accent, #259dab);display:block;"></i>' +
             'Waiting for live data\u2026</div></div>');
         return;
     }
@@ -25274,7 +25314,7 @@ function ipsBuildTableHtml(rows) {
     var activeTab = (window.ipsActiveTab === 'current' || window.ipsActiveTab === 'digital') ? window.ipsActiveTab : 'voltage';
     var h = '<div class="ips-table-wrap">';
     h += '<div class="ips-table-head">' +
-        '<h6><i class="fas fa-table" style="color:#259dab;"></i> IPS Live Grid</h6>' +
+        '<h6><i class="fas fa-table" style="color:var(--e7-accent, #259dab);"></i> IPS Live Grid</h6>' +
         '<span class="ips-count">' + assetCount + ' Asset' + (assetCount !== 1 ? 's' : '') + '</span>' +
         '</div>';
     h += '<div class="ips-tabbar">' +

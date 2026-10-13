@@ -198,7 +198,7 @@ function GetAssestAttributes(id, $this) {
         }
         html += "</tr>"
         html += "</thead>"
-        html += "<tbody style='background:#f0f1f4' id='attributes" + id + "'>"
+        html += "<tbody style='background:var(--e7-surface-2,#f0f1f4)' id='attributes" + id + "'>"
         html += "</tbody>"
         html += "</table>";
         html += "</div>";

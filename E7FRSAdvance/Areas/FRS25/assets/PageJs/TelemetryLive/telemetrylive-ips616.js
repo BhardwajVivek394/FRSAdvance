@@ -86,43 +86,43 @@
         if (document.getElementById('ips616-styles')) return;
         var css =
             '.ips-tabbar{display:flex;gap:6px;flex-wrap:wrap;margin:0 2px 10px;}' +
-            '.ips-tab-btn{appearance:none;border:1px solid var(--at-edge-s,rgba(255,255,255,.18));background:var(--at-g1,rgba(255,255,255,.04));' +
-            'color:var(--at-t2,rgba(255,255,255,.72));font-size:13px;font-weight:600;padding:7px 14px;border-radius:var(--at-r-sm,8px);cursor:pointer;' +
+            '.ips-tab-btn{appearance:none;border:1px solid var(--e7-border-2,rgba(255,255,255,.18));background:var(--e7-surface-2,rgba(255,255,255,.04));' +
+            'color:var(--e7-text-2,rgba(255,255,255,.72));font-size:13px;font-weight:600;padding:7px 14px;border-radius:var(--at-r-sm,8px);cursor:pointer;' +
             'display:inline-flex;align-items:center;gap:6px;transition:background .15s ease,color .15s ease;font-family:var(--at-font-body,inherit);}' +
-            '.ips-tab-btn:hover{background:var(--at-g3,rgba(255,255,255,.08));color:var(--at-t1,#fff);}' +
-            '.ips-tab-btn.active{background:rgba(34,211,238,.16);border-color:var(--at-brand,#22d3ee);color:var(--at-brand,#22d3ee);}' +
-            '.ips-tab-btn .ips-tab-count{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--at-g3,rgba(255,255,255,.08));color:var(--at-t2,rgba(255,255,255,.72));}' +
-            '.ips-tab-empty{padding:22px 12px;text-align:center;color:var(--at-t4,rgba(255,255,255,.34));font-size:13px;' +
-            'border:1px dashed var(--at-edge,rgba(255,255,255,.10));border-radius:var(--at-r-md,12px);margin-top:8px;}' +
+            '.ips-tab-btn:hover{background:var(--e7-surface-3,rgba(255,255,255,.08));color:var(--e7-heading,#fff);}' +
+            '.ips-tab-btn.active{background:var(--e7-accent-soft, rgba(34,211,238,.16));border-color:var(--e7-accent,#22d3ee);color:var(--e7-accent,#22d3ee);}' +
+            '.ips-tab-btn .ips-tab-count{font-size:11px;padding:1px 7px;border-radius:999px;background:var(--e7-surface-3,rgba(255,255,255,.08));color:var(--e7-text-2,rgba(255,255,255,.72));}' +
+            '.ips-tab-empty{padding:22px 12px;text-align:center;color:var(--e7-text-4,rgba(255,255,255,.34));font-size:13px;' +
+            'border:1px dashed var(--e7-border,rgba(255,255,255,.10));border-radius:var(--at-r-md,12px);margin-top:8px;}' +
             'table.ips-live-table tbody tr.ips-row-hidden{display:none;}' +
-            'table.ips-live-table tbody tr.ips-row-group{background:rgba(34,211,238,.07);}' +
-            'table.ips-live-table tbody tr.ips-row-group td.ips-aname{color:var(--at-brand,#22d3ee);}' +
+            'table.ips-live-table tbody tr.ips-row-group{background:var(--e7-accent-soft, rgba(34,211,238,.07));}' +
+            'table.ips-live-table tbody tr.ips-row-group td.ips-aname{color:var(--e7-accent,#22d3ee);}' +
             'table.ips-live-table tbody tr.ips-row-expandable{cursor:pointer;}' +
-            'table.ips-live-table tbody tr.ips-row-expandable:hover{background:rgba(34,211,238,.12);}' +
+            'table.ips-live-table tbody tr.ips-row-expandable:hover{background:var(--e7-accent-soft, rgba(34,211,238,.12));}' +
             'table.ips-live-table tbody tr.ips-child-collapsed{display:none;}' +
-            'table.ips-live-table tbody tr.ips-row-child{background:var(--at-g1,rgba(255,255,255,.03));}' +
-            'table.ips-live-table tbody tr.ips-row-child td.ips-aname{font-weight:500;color:var(--at-t3,rgba(255,255,255,.5));padding-left:28px;position:relative;}' +
-            'table.ips-live-table tbody tr.ips-row-child td.ips-aname::before{content:"\\21B3";position:absolute;left:12px;color:var(--at-t4,rgba(255,255,255,.34));}' +
-            'table.ips-live-table tbody tr.ips-row-child td.ips-val{font-weight:600;color:var(--at-t2,rgba(255,255,255,.72));}' +
-            '.ips-caret{display:inline-block;width:0;height:0;margin-right:7px;vertical-align:middle;border-left:5px solid var(--at-brand,#22d3ee);' +
+            'table.ips-live-table tbody tr.ips-row-child{background:var(--e7-surface-2,rgba(255,255,255,.03));}' +
+            'table.ips-live-table tbody tr.ips-row-child td.ips-aname{font-weight:500;color:var(--e7-text-3,rgba(255,255,255,.5));padding-left:28px;position:relative;}' +
+            'table.ips-live-table tbody tr.ips-row-child td.ips-aname::before{content:"\\21B3";position:absolute;left:12px;color:var(--e7-text-4,rgba(255,255,255,.34));}' +
+            'table.ips-live-table tbody tr.ips-row-child td.ips-val{font-weight:600;color:var(--e7-text-2,rgba(255,255,255,.72));}' +
+            '.ips-caret{display:inline-block;width:0;height:0;margin-right:7px;vertical-align:middle;border-left:5px solid var(--e7-accent,#22d3ee);' +
             'border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .15s ease;}' +
             'tr.ips-group-open .ips-caret{transform:rotate(90deg);}' +
-            '.ips-child-badge{display:inline-block;margin-left:6px;background:var(--at-brand-deep,#0ea5b7);color:#fff;font-size:11px;font-weight:700;' +
+            '.ips-child-badge{display:inline-block;margin-left:6px;background:var(--e7-accent-soft,#0ea5b7);color:var(--e7-accent-ink,#fff);font-size:11px;font-weight:700;' +
             'line-height:1;padding:2px 7px;border-radius:999px;vertical-align:middle;}' +
             'table.ips-live-table td.ips-val .rdpms-dl-badge{font-size:11px;}' +
             // replay-stale "!" marker (same look as the signal port)
-            '.ips-live-table td.ips-val.ws-value-server-stale{color:var(--at-t3,rgba(255,255,255,.5))!important;}' +
+            '.ips-live-table td.ips-val.ws-value-server-stale{color:var(--e7-text-3,rgba(255,255,255,.5))!important;}' +
             '.ips-live-table td.ips-val.ws-value-server-stale::before{content:"!";display:inline-flex;align-items:center;justify-content:center;' +
-            'width:14px;height:14px;margin-right:4px;border-radius:50%;background:var(--at-t4,rgba(255,255,255,.34));color:var(--at-bg0,#060914);' +
+            'width:14px;height:14px;margin-right:4px;border-radius:50%;background:var(--e7-text-4,rgba(255,255,255,.34));color:var(--e7-surface-2,#060914);' +
             'font-size:10px;font-weight:800;line-height:14px;vertical-align:middle;}' +
             // Σ sum rows on cards
-            '.ips-attr-row.ips-sum-row{border-top:1px dashed var(--at-edge-s,rgba(255,255,255,.18));margin-top:4px;padding-top:6px;}' +
-            '.ips-attr-row.ips-sum-row .ips-attr-name{font-weight:700;color:var(--at-brand,#22d3ee);}' +
-            '.ips-attr-row.ips-sum-row .ips-sum-sigma{font-weight:700;margin-right:5px;color:var(--at-brand,#22d3ee);}' +
-            '.ips-attr-row.ips-sum-row .ips-sum-count{display:inline-block;margin-left:6px;background:var(--at-brand-deep,#0ea5b7);color:#fff;' +
+            '.ips-attr-row.ips-sum-row{border-top:1px dashed var(--e7-border-2,rgba(255,255,255,.18));margin-top:4px;padding-top:6px;}' +
+            '.ips-attr-row.ips-sum-row .ips-attr-name{font-weight:700;color:var(--e7-accent,#22d3ee);}' +
+            '.ips-attr-row.ips-sum-row .ips-sum-sigma{font-weight:700;margin-right:5px;color:var(--e7-accent,#22d3ee);}' +
+            '.ips-attr-row.ips-sum-row .ips-sum-count{display:inline-block;margin-left:6px;background:var(--e7-accent-soft,#0ea5b7);color:var(--e7-accent-ink,#fff);' +
             'font-size:10px;font-weight:700;line-height:1;padding:2px 6px;border-radius:999px;vertical-align:middle;}' +
-            '.ips-attr-val.ips-sum-val{font-weight:800;color:var(--at-brand,#22d3ee);}' +
-            '.ips-attr-val.ips-sum-val.no-data{color:var(--at-t4,rgba(255,255,255,.34));font-weight:400;}' +
+            '.ips-attr-val.ips-sum-val{font-weight:800;color:var(--e7-accent,#22d3ee);}' +
+            '.ips-attr-val.ips-sum-val.no-data{color:var(--e7-text-4,rgba(255,255,255,.34));font-weight:400;}' +
             '.ips-card-head .tl-asset-action{margin-left:auto;margin-right:6px;}';
         var st = document.createElement('style');
         st.id = 'ips616-styles';
@@ -371,14 +371,14 @@
         var rows = displayRows();
         if (!rows.length) {
             $c.html('<div class="ips-table-wrap"><div class="text-center text-muted p-5">' +
-                '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:#259dab;display:block;"></i>Waiting for live data…</div></div>');
+                '<i class="fas fa-satellite-dish fa-2x mb-3" style="color:var(--e7-accent, #259dab);display:block;"></i>Waiting for live data…</div></div>');
             return;
         }
         var counts = numberRows(rows);
         var tab = activeTab();
         var n = assetCount();
         var h = '<div class="ips-table-wrap">';
-        h += '<div class="ips-table-head"><h6><i class="fas fa-table" style="color:#259dab;"></i> IPS Live Grid</h6>' +
+        h += '<div class="ips-table-head"><h6><i class="fas fa-table" style="color:var(--e7-accent, #259dab);"></i> IPS Live Grid</h6>' +
             '<span class="ips-count">' + n + ' Asset' + (n !== 1 ? 's' : '') + '</span></div>';
         h += '<div class="ips-tabbar" role="tablist">';
         [['voltage', 'fa-bolt'], ['current', 'fa-wave-square'], ['digital', 'fa-toggle-on']].forEach(function (t) {
@@ -668,7 +668,7 @@
             '<i class="fa-solid fa-chart-column"></i></button><span class="ips-status-dot"></span></div>';
         h += '<div class="ips-attr-list">';
         if (!keys.length) {
-            h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--at-t4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
+            h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--e7-text-4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
         } else {
             for (var k = 0; k < keys.length; k++) {
                 var an = keys[k];

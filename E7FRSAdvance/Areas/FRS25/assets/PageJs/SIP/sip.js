@@ -83,7 +83,7 @@ window.SIP = (function () {
               <button class="sip-play" id="sipPlay" title="Play / pause">▶</button>
               <div class="sip-timeline" id="sipTimeline" title="Every ELD event in series (oldest → recent). Each segment = one trigger's −180s…+5s window; red tick = the ELD moment. Click a segment, or press play to run through them all."></div>
               <span class="sip-speed">Speed
-                <select id="sipSpeed" style="font-size:11px;padding:3px 5px;border-radius:6px;background:var(--panel,#0f1626);color:#dce6f5;border:1px solid var(--line,#26324a)">
+                <select id="sipSpeed" style="font-size:11px;padding:3px 5px;border-radius:6px;background:var(--e7-surface-2,var(--panel,#0f1626));color:var(--e7-text,#dce6f5);border:1px solid var(--e7-border-2,var(--line,#26324a))">
                   <option value="0.5">0.5×</option><option value="1" selected>1×</option>
                   <option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
                 </select></span>
@@ -421,8 +421,8 @@ window.SIP = (function () {
         // subtle grid (light theme)
         const g0 = svgEl('g', { opacity: '0.5' });
         const vb = S.layout.viewBox || [0, 0, 1360, 380];
-        for (let x = 0; x <= vb[2]; x += 40) g0.appendChild(svgEl('line', { x1: x, y1: 0, x2: x, y2: vb[3], stroke: '#cfd8e4', 'stroke-width': .5 }));
-        for (let y = 0; y <= vb[3]; y += 40) g0.appendChild(svgEl('line', { x1: 0, y1: y, x2: vb[2], y2: y, stroke: '#cfd8e4', 'stroke-width': .5 }));
+        for (let x = 0; x <= vb[2]; x += 40) g0.appendChild(svgEl('line', { x1: x, y1: 0, x2: x, y2: vb[3], stroke: '#cfd8e4', style: 'stroke:var(--e7-border-2,#cfd8e4)', 'stroke-width': .5 }));
+        for (let y = 0; y <= vb[3]; y += 40) g0.appendChild(svgEl('line', { x1: 0, y1: y, x2: vb[2], y2: y, stroke: '#cfd8e4', style: 'stroke:var(--e7-border-2,#cfd8e4)', 'stroke-width': .5 }));
         svg.appendChild(g0);
 
         S.nodes = {};
@@ -734,9 +734,9 @@ window.SIP = (function () {
             });
             S.layout = d; S.savedPositions = positionSnapshot(d.elements); S.dirty = false;
             renderChangedList();
-            $('#sipDirty').innerHTML = '<span style="color:#5bd99a;font-weight:700">✓ saved</span>';
+            $('#sipDirty').innerHTML = '<span style="color:var(--e7-green,#5bd99a);font-weight:700">✓ saved</span>';
             setTimeout(() => { if (!S.dirty) $('#sipDirty').innerHTML = ''; }, 2500);
-        } catch (e) { $('#sipDirty').innerHTML = `<span style="color:#ff8b8b">save error: ${e.message || e}</span>`; }
+        } catch (e) { $('#sipDirty').innerHTML = `<span style="color:var(--e7-red,#ff8b8b)">save error: ${e.message || e}</span>`; }
         finally { $('#sipSaveBtn').disabled = false; $('#sipSaveBtn').textContent = '💾 Save layout'; }
     }
 

@@ -24,19 +24,34 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private readonly IZoneService _zoneService;
         private readonly IDivisionService _divisionService;
         private readonly IFRSAlertService _alertService;
+        private readonly IAssetTypeService _assetTypeService;
 
         // Cached CPU counter — keeps a single PerformanceCounter alive between requests
         // so /GetSystemData does not block for 100–500ms on every call.
         private static PerformanceCounter _cpuCounter;
         private static readonly object _cpuLock = new object();
 
-        public HomeController(ISiteService siteService, IZoneService zoneService, IDivisionService divisionService, IFRSAlertService alertService)
+        public HomeController(ISiteService siteService, IZoneService zoneService, IDivisionService divisionService, IFRSAlertService alertService, IAssetTypeService assetTypeService)
         {
             _siteService = siteService;
             _zoneService = zoneService;
             _divisionService = divisionService;
             _alertService = alertService;
+            _assetTypeService = assetTypeService;
         }
+
+        // Dashboard card titles for the core FRS asset types (same names as the web
+        // dashboard's FRSAssetType [Display] attributes). Kept local so the shared enum —
+        // whose raw names other pages match on — is left untouched.
+        private static readonly Dictionary<int, string> DashboardAssetTypeNames = new Dictionary<int, string>
+        {
+            { (int)E7FRSAdvance.Utility.Utility.FRSAssetType.TRACK, "DC Track Circuit" },
+            { (int)E7FRSAdvance.Utility.Utility.FRSAssetType.SIGNAL, "Main Signal" },
+            { (int)E7FRSAdvance.Utility.Utility.FRSAssetType.POINT_MACHINE, "Point Machine" },
+            { (int)E7FRSAdvance.Utility.Utility.FRSAssetType.AXLE_COUNTER, "Axle Counter" },
+            { (int)E7FRSAdvance.Utility.Utility.FRSAssetType.GATE, "LC Gate" },
+            { (int)E7FRSAdvance.Utility.Utility.FRSAssetType.IPS, "IPS" }
+        };
 
         public ActionResult Index()
         {
@@ -46,6 +61,23 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             //ViewBag.FRSAssetType = GetFRSAssetType();
             Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService);
 
+            // Cards / Today's Report: one per asset type in the database (ELD, Equipment
+            // Room, … included), not just the six in the FRSAssetType enum — same as the
+            // web dashboard. Falls back to the enum list SetFilterViewBag already set.
+            var assetTypes = Helper.FilterCacheHelper.GetAllAssetTypes(_assetTypeService);
+            if (assetTypes != null && assetTypes.Count > 0)
+            {
+                ViewBag.FRSAssetType = assetTypes
+                    .Where(x => x != null && x.Id > 0)
+                    .Select(x => new AssetType
+                    {
+                        Id = x.Id,
+                        Name = DashboardAssetTypeNames.ContainsKey(x.Id)
+                            ? DashboardAssetTypeNames[x.Id]
+                            : (string.IsNullOrWhiteSpace(x.Name) ? ("Asset Type " + x.Id) : x.Name.Trim())
+                    })
+                    .ToList();
+            }
 
             return View();
         }

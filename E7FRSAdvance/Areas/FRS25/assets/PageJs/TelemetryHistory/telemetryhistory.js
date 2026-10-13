@@ -1429,7 +1429,7 @@
     function getDerivedHeadersHtml(themeColor) {
         var h = '';
         DERIVED_COLUMNS.forEach(function (col) {
-            h += '<th class="derived-col" style="background:' + themeColor + ';" title="' + col.formula + '">';
+            h += '<th class="derived-col" style="background:var(--e7-surface-2,' + themeColor + ');" title="' + col.formula + '">';
             h += formatAliasName(col.name);
             h += '</th>';
         });
@@ -3542,7 +3542,7 @@ var resolvedName =
         if (date && date._isStartRow) {
             return '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;line-height:1.1;">' +
                 '<span>' + s + '</span>' +
-                '<span class="last-updated-badge" style="display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:1px 6px;font-size:9px;font-weight:600;letter-spacing:.3px;white-space:nowrap;">' +
+                '<span class="last-updated-badge" style="display:inline-block;background:var(--e7-amber-soft,#fef3c7);color:var(--e7-amber,#92400e);border:1px solid var(--e7-amber-soft,#fcd34d);border-radius:3px;padding:1px 6px;font-size:9px;font-weight:600;letter-spacing:.3px;white-space:nowrap;">' +
                 '<i class="fas fa-clock-rotate-left" style="font-size:8px;margin-right:3px;"></i>Last Updated</span>' +
                 '</div>';
         }
@@ -6618,7 +6618,7 @@ if (
         var $pill = $('#historyLoadingPill');
         if (!$pill.length) {
             $pill = $(
-                '<span id="historyLoadingPill" style="display:inline-flex;align-items:center;gap:8px;padding:4px 12px;margin-left:10px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;color:#4338ca;font-size:12px;font-weight:500;vertical-align:middle;">' +
+                '<span id="historyLoadingPill" style="display:inline-flex;align-items:center;gap:8px;padding:4px 12px;margin-left:10px;background:var(--e7-accent-soft,#eef2ff);border:1px solid var(--e7-accent-soft,#c7d2fe);border-radius:14px;color:var(--e7-accent-ink,#4338ca);font-size:12px;font-weight:500;vertical-align:middle;">' +
                 '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width:12px;height:12px;border-width:2px;"></span>' +
                 '<span id="historyLoadingPillText">Loading…</span>' +
                 '</span>'
@@ -6667,9 +6667,9 @@ if (
                 '<style id="historyTableLoaderStyle">' +
                 '@keyframes htlShimmer{0%{background-position:-450px 0}100%{background-position:450px 0}}' +
                 '.htl-wrap{padding:26px 18px;}' +
-                '.htl-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;color:#4338ca;font-size:13px;font-weight:600;}' +
+                '.htl-head{display:flex;align-items:center;gap:10px;margin-bottom:18px;color:var(--e7-accent-ink,#4338ca);font-size:13px;font-weight:600;}' +
                 '.htl-row{height:16px;border-radius:6px;margin-bottom:12px;' +
-                'background:linear-gradient(90deg,#eef2f7 25%,#e2e8f0 37%,#eef2f7 63%);' +
+                'background:linear-gradient(90deg,var(--e7-surface-2,#eef2f7) 25%,var(--e7-surface-3,#e2e8f0) 37%,var(--e7-surface-2,#eef2f7) 63%);' +
                 'background-size:900px 100%;animation:htlShimmer 1.25s ease-in-out infinite;}' +
                 '</style>'
             );
@@ -11555,7 +11555,7 @@ function _vibCalculateArrayMax(values) {
                 _vibBuildTheadForEnd(_activeEnd) +
                 '<tbody>' +
                 '<tr><td colspan="' + _emptyCols + '" class="pm-vh-empty-row" ' +
-                'style="text-align:center;padding:26px 12px;color:#6b7280;">' +
+                'style="text-align:center;padding:26px 12px;color:var(--e7-text-3,#6b7280);">' +
                 '<i class="fas fa-wave-square" style="opacity:.45;margin-right:8px;"></i>' +
                 'No vibration events for the selected date range' +
                 '</td></tr>' +
@@ -13306,8 +13306,8 @@ function _vibCalculateArrayMax(values) {
       */
     function _ipsViewTabsHtml(domId) {
         return '<div id="' + (domId || 'ipsViewToggle') + '" ' +
-            'style="display:flex;align-items:center;gap:4px;background:#f1f5f9;' +
-            'border:1px solid #e2e8f0;border-radius:8px;padding:3px;margin-bottom:10px;width:max-content;">' +
+            'style="display:flex;align-items:center;gap:4px;background:var(--e7-surface-2,#f1f5f9);' +
+            'border:1px solid var(--e7-border,#e2e8f0);border-radius:8px;padding:3px;margin-bottom:10px;width:max-content;">' +
             ['voltage', 'current', 'digital'].map(function (mode) {
                 var label = mode === 'voltage' ? 'IPS Voltage'
                     : mode === 'current' ? 'IPS Current' : 'IPS Digital';
@@ -13876,7 +13876,7 @@ function _vibCalculateArrayMax(values) {
             thPageSizes.push((_srvSt && _srvSt.pageSize) || TH_PAGE_SIZE);
 
             if (cache.allTimestamps.length === 0) {
-                html += '<div class="text-center text-muted p-3" style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:16px;">'
+                html += '<div class="text-center text-muted p-3" style="border:1px solid var(--e7-border,#e2e8f0);border-radius:8px;margin-bottom:16px;">'
                     + '<i class="fas fa-inbox" style="font-size:24px;margin-bottom:8px;display:block;"></i>'
                     + 'No data found for <strong>' + (assetObj.assetName || ('Asset ' + assetObj.assetId)) + '</strong></div>';
                 return;
@@ -15121,8 +15121,20 @@ timestampMs: number, // waveform Array TimestampDevice
                     }
                 );
 
+            // Theme palette from the --e7-* tokens (canvas cannot read var()).
+            var _wt = (function () {
+                var cs = window.getComputedStyle(document.documentElement);
+                var v = function (n, fb) { var x = cs.getPropertyValue(n); return x && x.trim() ? x.trim() : fb; };
+                return {
+                    surface: v('--e7-surface', '#ffffff'), border: v('--e7-border', '#e2e8f0'),
+                    grid: v('--e7-grid-line', '#f1f5f9'), axis: v('--e7-border-2', '#e2e8f0'),
+                    heading: v('--e7-heading', '#1e293b'), text: v('--e7-text', '#1e293b'),
+                    text2: v('--e7-text-2', '#64748b'), text3: v('--e7-text-3', '#94a3b8')
+                };
+            })();
+
             pmHistoryWaveChart.setOption({
-                backgroundColor: '#fff',
+                backgroundColor: _wt.surface,
 
                 title: {
                     text: title,
@@ -15140,12 +15152,12 @@ timestampMs: number, // waveform Array TimestampDevice
                     textStyle: {
                         fontSize: 16,
                         fontWeight: '700',
-                        color: '#1e293b'
+                        color: _wt.heading
                     },
 
                     subtextStyle: {
                         fontSize: 11,
-                        color: '#64748b'
+                        color: _wt.text3
                     }
                 },
 
@@ -15153,7 +15165,7 @@ timestampMs: number, // waveform Array TimestampDevice
                     trigger: 'axis',
 
                     backgroundColor:
-                        'rgba(255,255,255,0.98)',
+                        _wt.surface, textStyle: { color: _wt.text },
 
                     borderColor: color,
                     borderWidth: 1,
@@ -15174,14 +15186,14 @@ timestampMs: number, // waveform Array TimestampDevice
                             '<div style="' +
                             'font-weight:600;' +
                             'margin-bottom:8px;' +
-                            'border-bottom:1px solid #e2e8f0;' +
+                            'border-bottom:1px solid var(--e7-border,#e2e8f0);' +
                             'padding-bottom:6px;">' +
 
                             elapsedMs +
                             ' ms ' +
 
                             '<span style="' +
-                            'color:#64748b;' +
+                            'color:var(--e7-text-3,#64748b);' +
                             'font-weight:400;">(' +
 
                             (
@@ -15215,7 +15227,7 @@ timestampMs: number, // waveform Array TimestampDevice
 
                                     absoluteText =
                                         ' <span style="' +
-                                        'color:#94a3b8;' +
+                                        'color:var(--e7-text-3,#94a3b8);' +
                                         'font-size:10px;">' +
 
                                         '&#64; ' +
@@ -15300,7 +15312,7 @@ timestampMs: number, // waveform Array TimestampDevice
                     left: 'center',
 
                     textStyle: {
-                        fontSize: 11
+                        fontSize: 11, color: _wt.text2
                     },
 
                     itemGap: 15,
@@ -15340,7 +15352,7 @@ timestampMs: number, // waveform Array TimestampDevice
                     nameTextStyle: {
                         fontSize: 12,
                         fontWeight: '600',
-                        color: '#64748b'
+                        color: _wt.text2
                     },
 
                     min: 0,
@@ -15354,7 +15366,7 @@ timestampMs: number, // waveform Array TimestampDevice
 
                     axisLabel: {
                         fontSize: 10,
-                        color: '#64748b',
+                        color: _wt.text2,
 
                         formatter: function (value) {
                             return value + ' ms';
@@ -15363,7 +15375,7 @@ timestampMs: number, // waveform Array TimestampDevice
 
                     axisLine: {
                         lineStyle: {
-                            color: '#e2e8f0'
+                            color: _wt.axis
                         }
                     },
 
@@ -15371,7 +15383,7 @@ timestampMs: number, // waveform Array TimestampDevice
                         show: true,
 
                         lineStyle: {
-                            color: '#f1f5f9'
+                            color: _wt.grid
                         }
                     }
                 },
@@ -15383,12 +15395,12 @@ timestampMs: number, // waveform Array TimestampDevice
                     nameTextStyle: {
                         fontSize: 12,
                         fontWeight: '600',
-                        color: '#64748b'
+                        color: _wt.text2
                     },
 
                     axisLabel: {
                         fontSize: 10,
-                        color: '#64748b',
+                        color: _wt.text2,
 
                         formatter: function (value) {
                             return Number(
@@ -15408,7 +15420,7 @@ timestampMs: number, // waveform Array TimestampDevice
 
                     splitLine: {
                         lineStyle: {
-                            color: '#f1f5f9',
+                            color: _wt.grid,
                             type: 'dashed'
                         }
                     }
@@ -15421,7 +15433,7 @@ timestampMs: number, // waveform Array TimestampDevice
                         bottom: 8,
                         start: 0,
                         end: 100,
-                        borderColor: '#e2e8f0',
+                        borderColor: _wt.border,
                         fillerColor: color + '20',
 
                         handleStyle: {
@@ -16894,7 +16906,7 @@ timestampMs: number, // waveform Array TimestampDevice
                         }
 
                         // Match Live page: bold colored label + plain value, no background
-                        var _labelColor = _isRWKR ? '#b45309' : '#047857';
+                        var _labelColor = _isRWKR ? 'var(--e7-amber,#b45309)' : 'var(--e7-green,#047857)';
 
                         if (rawValue !== null) {
                             var _indVal = Math.max(0, parseFloat(rawValue)).toFixed(2);
@@ -16902,13 +16914,13 @@ timestampMs: number, // waveform Array TimestampDevice
                             cellContent =
                                 '<span style="font-weight:700;color:' + _labelColor + ';">' +
                                 _relayLabel + ': </span>' +
-                                '<span style="color:#1e293b;">' + _indVal + '</span>';
+                                '<span style="color:var(--e7-text,#1e293b);">' + _indVal + '</span>';
                         } else {
                             displayVal = _relayLabel + ': -';
                             cellContent =
                                 '<span style="font-weight:700;color:' + _labelColor + ';">' +
                                 _relayLabel + ': </span>' +
-                                '<span style="color:#94a3b8;">-</span>';
+                                '<span style="color:var(--e7-text-4,#94a3b8);">-</span>';
                         }
                     }
                     else {
@@ -17371,14 +17383,14 @@ timestampMs: number, // waveform Array TimestampDevice
         // lighter at the sub-column level. A End and B End sides get
         // distinct hues (indigo vs teal) so the two groups are
         // visually separable without being aggressive.
-        var C_TITLE = 'background:#4f46e5;color:#ffffff;';                                   // indigo-600  (solid top band)
-        var C_DT = 'background:#e2e8f0;color:#0f172a;border-right:1px solid #cbd5e1;';    // slate-200   (Date & Time rail)
-        var C_DIR = 'background:#e0e7ff;color:#312e81;';                                    // indigo-100  (Direction rail)
-        var C_A = 'background:#c7d2fe;color:#1e1b4b;';                                    // indigo-200  (A End band)
-        var C_A_SUB = 'background:#eef2ff;color:#3730a3;border-bottom:1px solid #c7d2fe;';    // indigo-50   (A End sub)
-        var C_B = 'background:#a5f3fc;color:#083344;';                                    // cyan-200    (B End band)
-        var C_B_SUB = 'background:#ecfeff;color:#155e75;border-bottom:1px solid #a5f3fc;';    // cyan-50     (B End sub)
-        var C_DL = 'background:#e2e8f0;color:#1e293b;border-left:1px solid #cbd5e1;';      // slate-200   (DL column)
+        var C_TITLE = 'background:linear-gradient(112deg,var(--e7-rail-from,#4f46e5),var(--e7-rail-mid,#4f46e5),var(--e7-rail-to,#4f46e5));color:#ffffff;';                                   // indigo-600  (solid top band)
+        var C_DT = 'background:var(--e7-surface-3,#e2e8f0);color:var(--e7-heading,#0f172a);border-right:1px solid var(--e7-border-2,#cbd5e1);';    // slate-200   (Date & Time rail)
+        var C_DIR = 'background:linear-gradient(var(--e7-p-lilac,#e0e7ff),var(--e7-p-lilac,#e0e7ff)),var(--e7-surface,#e0e7ff);color:var(--e7-heading,#312e81);';                                    // indigo-100  (Direction rail)
+        var C_A = 'background:linear-gradient(var(--e7-p-blue,#c7d2fe),var(--e7-p-blue,#c7d2fe)),var(--e7-surface,#c7d2fe);color:var(--e7-heading,#1e1b4b);';                                    // indigo-200  (A End band)
+        var C_A_SUB = 'background:linear-gradient(var(--e7-p-blue-2,#eef2ff),var(--e7-p-blue-2,#eef2ff)),var(--e7-surface,#eef2ff);color:var(--e7-text-2,#3730a3);border-bottom:1px solid var(--e7-border,#c7d2fe);';    // indigo-50   (A End sub)
+        var C_B = 'background:linear-gradient(var(--e7-p-aqua,#a5f3fc),var(--e7-p-aqua,#a5f3fc)),var(--e7-surface,#a5f3fc);color:var(--e7-heading,#083344);';                                    // cyan-200    (B End band)
+        var C_B_SUB = 'background:linear-gradient(var(--e7-p-aqua-2,#ecfeff),var(--e7-p-aqua-2,#ecfeff)),var(--e7-surface,#ecfeff);color:var(--e7-text-2,#155e75);border-bottom:1px solid var(--e7-border,#a5f3fc);';    // cyan-50     (B End sub)
+        var C_DL = 'background:var(--e7-surface-3,#e2e8f0);color:var(--e7-heading,#1e293b);border-left:1px solid var(--e7-border-2,#cbd5e1);';      // slate-200   (DL column)
         var T1 = 'top:0px !important;position:sticky;z-index:12;';
         var T2 = 'top:38px !important;position:sticky;z-index:11;';
         var T3 = 'top:76px !important;position:sticky;z-index:10;';
@@ -17405,7 +17417,7 @@ timestampMs: number, // waveform Array TimestampDevice
         h.push('<tr>');
         h.push('<th rowspan="3" style="' +
             'top:0px !important;position:sticky;left:0;z-index:25;' +
-            'background:#e2e8f0;color:#0f172a;border-right:1px solid #cbd5e1;' +
+            'background:var(--e7-surface-3,#e2e8f0);color:var(--e7-heading,#0f172a);border-right:1px solid var(--e7-border-2,#cbd5e1);' +
             'vertical-align:middle;min-width:160px;text-align:center;font-weight:700;">' +
             'Date &amp; Time</th>');
         assetGroups.forEach(function (g) {
@@ -17435,18 +17447,18 @@ timestampMs: number, // waveform Array TimestampDevice
             // AFTER — add left:160px sticky freeze matching Date & Time width
             h.push('<th rowspan="2" style="' +
                 'top:38px !important;position:sticky;left:160px;z-index:20;' +
-                'background:#e0e7ff;color:#312e81;' +
+                'background:linear-gradient(var(--e7-p-lilac,#e0e7ff),var(--e7-p-lilac,#e0e7ff)),var(--e7-surface,#e0e7ff);color:var(--e7-heading,#312e81);' +
                 'vertical-align:middle;min-width:100px;text-align:center;font-weight:700;' +
                 'box-shadow:2px 0 4px rgba(0,0,0,.08);">Direction</th>');
             if (aSpan > 0) {
                 h.push('<th colspan="' + aSpan + '" style="' + T2 + C_A
                     + 'text-align:center;font-size:13px;font-weight:700;'
-                    + 'border-bottom:2px solid rgba(255,255,255,0.5);">A End</th>');
+                    + 'border-bottom:2px solid var(--e7-border,rgba(255,255,255,0.5));">A End</th>');
             }
             if (bSpan > 0) {
                 h.push('<th colspan="' + bSpan + '" style="' + T2 + C_B
                     + 'text-align:center;font-size:13px;font-weight:700;'
-                    + 'border-bottom:2px solid rgba(255,255,255,0.5);">B End</th>');
+                    + 'border-bottom:2px solid var(--e7-border,rgba(255,255,255,0.5));">B End</th>');
             }
             dCols.forEach(function (col) {
                 h.push('<th rowspan="2" style="' + T2 + C_DL
@@ -17499,9 +17511,9 @@ timestampMs: number, // waveform Array TimestampDevice
                 } else if (col.attrId === 25 || col.attrId === 26) {
                     // Normal (25) shows NWKR, Reverse (26) shows RWKR — but col order only has 25
                     // The direction hint tells user value switches by direction
-                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:#065f46;"></span>';
+                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:var(--e7-green,#065f46);"></span>';
                 } else if (col.attrId === 576 || col.attrId === 577) {
-                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:#065f46;"></span>';
+                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:var(--e7-green,#065f46);"></span>';
                 }
                 h.push('<th style="' + T3 + C_A_SUB +
                     'font-size:11px;font-weight:600;text-align:center;min-width:110px;">' +
@@ -17513,9 +17525,9 @@ timestampMs: number, // waveform Array TimestampDevice
                 if (col.attrId === 3002) {
                     _sub = '<br><span style="font-size:9px;font-weight:400;opacity:0.8;">(Max / Avg)</span>';
                 } else if (col.attrId === 27 || col.attrId === 28) {
-                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:#065f46;"></span>';
+                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:var(--e7-green,#065f46);"></span>';
                 } else if (col.attrId === 578 || col.attrId === 579) {
-                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:#065f46;"></span>';
+                    _sub = '<br><span style="font-size:9px;font-weight:600;opacity:0.85;color:var(--e7-green,#065f46);"></span>';
                 }
                 h.push('<th style="' + T3 + C_B_SUB +
                     'font-size:11px;font-weight:600;text-align:center;min-width:110px;">' +
@@ -17528,11 +17540,11 @@ timestampMs: number, // waveform Array TimestampDevice
         return h.join('');
     }
 
-    var C_DL_COL = 'background:#0d9488;color:#ffffff;';
+    var C_DL_COL = 'background:var(--e7-rail-mid,#0d9488);color:#ffffff;';
     function buildPMIndicationThead(columns, assetGroups, bg) {
-        var C_TITLE = 'background:#4f46e5;color:#ffffff;';
-        var C_DT = 'background:#e2e8f0;color:#0f172a;border-right:1px solid #cbd5e1;';
-        var C_DIR = 'background:#e0e7ff;color:#312e81;';
+        var C_TITLE = 'background:linear-gradient(112deg,var(--e7-rail-from,#4f46e5),var(--e7-rail-mid,#4f46e5),var(--e7-rail-to,#4f46e5));color:#ffffff;';
+        var C_DT = 'background:var(--e7-surface-3,#e2e8f0);color:var(--e7-heading,#0f172a);border-right:1px solid var(--e7-border-2,#cbd5e1);';
+        var C_DIR = 'background:linear-gradient(var(--e7-p-lilac,#e0e7ff),var(--e7-p-lilac,#e0e7ff)),var(--e7-surface,#e0e7ff);color:var(--e7-heading,#312e81);';
         // All data column headers use same primary color — no NWKR/RWKR coloring
         var C_COL = 'background:var(--primary);color:#ffffff;';
 
@@ -17554,10 +17566,10 @@ timestampMs: number, // waveform Array TimestampDevice
 
         var A_IND_IDS = [25, 26, 576, 577];
         var B_IND_IDS = [27, 28, 578, 579];
-        var C_A_IND     = 'background:#c7d2fe;color:#1e1b4b;';
-        var C_A_IND_SUB = 'background:#eef2ff;color:#3730a3;border-bottom:1px solid #c7d2fe;';
-        var C_B_IND     = 'background:#a5f3fc;color:#083344;';
-        var C_B_IND_SUB = 'background:#ecfeff;color:#155e75;border-bottom:1px solid #a5f3fc;';
+        var C_A_IND     = 'background:linear-gradient(var(--e7-p-blue,#c7d2fe),var(--e7-p-blue,#c7d2fe)),var(--e7-surface,#c7d2fe);color:var(--e7-heading,#1e1b4b);';
+        var C_A_IND_SUB = 'background:linear-gradient(var(--e7-p-blue-2,#eef2ff),var(--e7-p-blue-2,#eef2ff)),var(--e7-surface,#eef2ff);color:var(--e7-text-2,#3730a3);border-bottom:1px solid var(--e7-border,#c7d2fe);';
+        var C_B_IND     = 'background:linear-gradient(var(--e7-p-aqua,#a5f3fc),var(--e7-p-aqua,#a5f3fc)),var(--e7-surface,#a5f3fc);color:var(--e7-heading,#083344);';
+        var C_B_IND_SUB = 'background:linear-gradient(var(--e7-p-aqua-2,#ecfeff),var(--e7-p-aqua-2,#ecfeff)),var(--e7-surface,#ecfeff);color:var(--e7-text-2,#155e75);border-bottom:1px solid var(--e7-border,#a5f3fc);';
         var T3 = 'top:76px !important;position:sticky;z-index:10;';
 
         var h = ['<thead>'];
@@ -17566,7 +17578,7 @@ timestampMs: number, // waveform Array TimestampDevice
         h.push('<tr>');
         h.push('<th rowspan="3" style="' +
             'top:0px !important;position:sticky;left:0;z-index:25;' +
-            'background:#e2e8f0;color:#0f172a;border-right:1px solid #cbd5e1;' +
+            'background:var(--e7-surface-3,#e2e8f0);color:var(--e7-heading,#0f172a);border-right:1px solid var(--e7-border-2,#cbd5e1);' +
             'vertical-align:middle;min-width:160px;text-align:center;font-weight:700;">' +
             'Date &amp; Time</th>');
         assetGroups.forEach(function (g) {
@@ -17589,7 +17601,7 @@ timestampMs: number, // waveform Array TimestampDevice
 
             h.push('<th rowspan="2" style="' +
                 'top:38px !important;position:sticky;left:160px;z-index:20;' +
-                'background:#e0e7ff;color:#312e81;' +
+                'background:linear-gradient(var(--e7-p-lilac,#e0e7ff),var(--e7-p-lilac,#e0e7ff)),var(--e7-surface,#e0e7ff);color:var(--e7-heading,#312e81);' +
                 'vertical-align:middle;min-width:100px;text-align:center;font-weight:700;' +
                 'box-shadow:2px 0 4px rgba(0,0,0,.08);">Direction</th>');
 
@@ -17597,13 +17609,13 @@ timestampMs: number, // waveform Array TimestampDevice
                 h.push('<th colspan="' + aCols.length + '" style="' +
                     'top:38px !important;position:sticky;z-index:11;' + C_A_IND +
                     'text-align:center;font-size:13px;font-weight:700;' +
-                    'border-bottom:2px solid rgba(255,255,255,0.5);">A End</th>');
+                    'border-bottom:2px solid var(--e7-border,rgba(255,255,255,0.5));">A End</th>');
             }
             if (bCols.length > 0) {
                 h.push('<th colspan="' + bCols.length + '" style="' +
                     'top:38px !important;position:sticky;z-index:11;' + C_B_IND +
                     'text-align:center;font-size:13px;font-weight:700;' +
-                    'border-bottom:2px solid rgba(255,255,255,0.5);">B End</th>');
+                    'border-bottom:2px solid var(--e7-border,rgba(255,255,255,0.5));">B End</th>');
             }
             dCols.forEach(function (col) {
                 h.push('<th rowspan="2" style="' +
@@ -17726,14 +17738,14 @@ timestampMs: number, // waveform Array TimestampDevice
                         return col2.assetId === (assetGroups[currentAssetIdx] ? assetGroups[currentAssetIdx].assetId : null);
                     });
                     var dirLabel = getPMDirection(assetColsForDir, attributeData, rowTs);
-                    var dirColor = dirLabel.indexOf('Reverse') !== -1 ? '#b45309' : '#1d4ed8';
+                    var dirColor = dirLabel.indexOf('Reverse') !== -1 ? 'var(--e7-amber,#b45309)' : 'var(--e7-c6,#1d4ed8)';
                     h.push('<td class="sticky-dir" style="color:' + dirColor + ';">' + dirLabel + '</td>');
                 }
 
                 var cell = cells[c];
                 var cellHtml;
                 if (col && col.missing) {
-                    cellHtml = '<td style="color:#aaa;text-align:center;">-</td>';
+                    cellHtml = '<td style="color:var(--e7-text-4,#aaa);text-align:center;">-</td>';
                 } else {
                     // Add dl-ind-val class for Combined DL cells in indication view
                     var extraCls = (isPMIndRow && col && col.isDataLogger) ? ' dl-ind-val' : '';
@@ -17770,9 +17782,9 @@ timestampMs: number, // waveform Array TimestampDevice
 
         var infoHtml = '<span class="text-muted" style="font-size:12px;"><i class="fas fa-table text-primary"></i> ';
         infoHtml += thCache.assetGroups.length + ' asset(s) · ' + thCache.columns.length + ' attribute(s)';
-        if (thCache.isTrack) infoHtml += ' · <span style="color:#0369a1;"><i class="fas fa-calculator"></i> ' + DERIVED_COLUMNS.length + ' derived</span>';
+        if (thCache.isTrack) infoHtml += ' · <span style="color:var(--e7-c6,#0369a1);"><i class="fas fa-calculator"></i> ' + DERIVED_COLUMNS.length + ' derived</span>';
         infoHtml += ' · ' + totalRows + ' row(s)';
-        if (thCache.changedCount > 0) infoHtml += ' &nbsp;|&nbsp; <span style="color:#059669;"><i class="fas fa-exchange-alt"></i> ' + thCache.changedCount + ' changed</span>';
+        if (thCache.changedCount > 0) infoHtml += ' &nbsp;|&nbsp; <span style="color:var(--e7-green,#059669);"><i class="fas fa-exchange-alt"></i> ' + thCache.changedCount + ' changed</span>';
         infoHtml += '</span>';
         $('#dataInfo').html(infoHtml);
 
@@ -17823,14 +17835,14 @@ timestampMs: number, // waveform Array TimestampDevice
                     var aId = assetGroups[currentAssetIdx] ? assetGroups[currentAssetIdx].assetId : null;
                     var assetColsForDir = columns.filter(function (col2) { return col2.assetId === aId; });
                     var dirLabel = getPMDirection(assetColsForDir, attributeData, rowTs);
-                    var dirColor = dirLabel.indexOf('Reverse') !== -1 ? '#b45309' : '#1d4ed8';
+                    var dirColor = dirLabel.indexOf('Reverse') !== -1 ? 'var(--e7-amber,#b45309)' : 'var(--e7-c6,#1d4ed8)';
                     h.push('<td class="sticky-dir" style="color:' + dirColor + ';">' + dirLabel + '</td>');
                 }
 
                 var cell = cells[c];
                 var cellHtml;
                 if (col && col.missing) {
-                    cellHtml = '<td style="color:#aaa;text-align:center;">-</td>';
+                    cellHtml = '<td style="color:var(--e7-text-4,#aaa);text-align:center;">-</td>';
                     //} else {
                     //    cellHtml = (cell.cls ? '<td class="' + cell.cls + '">' : '<td>') + cell.html + '</td>';
                     //}
@@ -19813,8 +19825,8 @@ timestampMs: number, // waveform Array TimestampDevice
 
     function _hgPmIndName(id) { return HGPM_IND_META[id].end + ' End - ' + (HGPM_IND_NAMES[id] || ('Attr ' + id)); }
     function _hgPmDirBadge(dir) {
-        if (dir === 'R') return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;background:#fde7cf;color:#9a5b00;">Reverse</span>';
-        return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;background:#d7f0ec;color:#0f5f65;">Normal</span>';
+        if (dir === 'R') return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--e7-amber-soft,#fde7cf);color:var(--e7-amber,#9a5b00);">Reverse</span>';
+        return '<span style="display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;background:var(--e7-accent-soft,#d7f0ec);color:var(--e7-accent-ink,#0f5f65);">Normal</span>';
     }
 
     function renderHistoryPmTabs(assetResults) {
@@ -19825,46 +19837,46 @@ timestampMs: number, // waveform Array TimestampDevice
 
         if (!document.getElementById('hgPmStyles')) {
             var st = document.createElement('style'); st.id = 'hgPmStyles';
-            st.textContent = '.hgpm-optype{padding:6px 12px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid #d1dce8;background:#fff;color:#475569;}.hgpm-optype.on{background:#1a6e74;color:#fff;border-color:#1a6e74;}';
+            st.textContent = '.hgpm-optype{padding:6px 12px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid var(--e7-border-2,#d1dce8);background:var(--e7-surface,#fff);color:var(--e7-text-2,#475569);}.hgpm-optype.on{background:var(--e7-accent,#1a6e74);color:#fff;border-color:var(--e7-accent,#1a6e74);}';
             document.head.appendChild(st);
         }
 
         var h = '';
-        h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;background:linear-gradient(135deg,#042c43,#0a4a6e);border-radius:8px 8px 0 0;">';
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;background:linear-gradient(112deg,var(--e7-rail-from,#54c9c8),var(--e7-rail-mid,#56b9d6),var(--e7-rail-to,#5ba0e2));border-radius:8px 8px 0 0;">';
         h += '<span style="color:#fff;font-size:14px;font-weight:700;"><i class="fas fa-chart-line" style="margin-right:6px;opacity:.85;"></i>' + name + ' - Point Machine Graph</span>';
         h += '<div id="hgPmRange"></div>';
         h += '</div>';
-        h += '<div style="background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:12px 14px;">';
-        h += '<div style="display:flex;gap:6px;margin-bottom:10px;border-bottom:2px solid #e2e8f0;">';
-        h += '<button type="button" id="hgPmTabBtnInd" onclick="hgPmSwitchTab(\'ind\')" style="border:none;background:none;padding:9px 18px;font-size:13px;font-weight:700;color:#1a6e74;border-bottom:3px solid #1a6e74;cursor:pointer;margin-bottom:-2px;"><i class="fas fa-wave-square"></i> Indication</button>';
-        h += '<button type="button" id="hgPmTabBtnOp" onclick="hgPmSwitchTab(\'op\')" style="border:none;background:none;padding:9px 18px;font-size:13px;font-weight:700;color:#64748b;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-2px;"><i class="fas fa-bolt"></i> Operation Event</button>';
+        h += '<div style="background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e2e8f0);border-top:none;border-radius:0 0 8px 8px;padding:12px 14px;">';
+        h += '<div style="display:flex;gap:6px;margin-bottom:10px;border-bottom:2px solid var(--e7-border,#e2e8f0);">';
+        h += '<button type="button" id="hgPmTabBtnInd" onclick="hgPmSwitchTab(\'ind\')" style="border:none;background:none;padding:9px 18px;font-size:13px;font-weight:700;color:var(--e7-accent-ink,#1a6e74);border-bottom:3px solid var(--e7-accent,#1a6e74);cursor:pointer;margin-bottom:-2px;"><i class="fas fa-wave-square"></i> Indication</button>';
+        h += '<button type="button" id="hgPmTabBtnOp" onclick="hgPmSwitchTab(\'op\')" style="border:none;background:none;padding:9px 18px;font-size:13px;font-weight:700;color:var(--e7-text-3,#64748b);border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-2px;"><i class="fas fa-bolt"></i> Operation Event</button>';
         h += '</div>';
         h += '<div id="hgPmTabInd">';
-        h += '<div style="font-size:12px;color:#64748b;margin:2px 0 8px;"><i class="fas fa-info-circle"></i> Indication voltages - A End & B End</div>';
+        h += '<div style="font-size:12px;color:var(--e7-text-3,#64748b);margin:2px 0 8px;"><i class="fas fa-info-circle"></i> Indication voltages - A End & B End</div>';
         h += '<div id="hgPmIndChart" style="width:100%;height:460px;"></div>';
-        h += '<div id="hgPmIndEmpty" style="display:none;text-align:center;padding:50px;color:#64748b;"><i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No indication data in the selected range.</div>';
+        h += '<div id="hgPmIndEmpty" style="display:none;text-align:center;padding:50px;color:var(--e7-text-3,#64748b);"><i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3,#94a3b8);"></i>No indication data in the selected range.</div>';
         h += '</div>';
         h += '<div id="hgPmTabOp" style="display:none;">';
         h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;">';
-        h += '<span style="font-size:12px;font-weight:600;color:#475569;">Signal:</span>';
+        h += '<span style="font-size:12px;font-weight:600;color:var(--e7-text-2,#475569);">Signal:</span>';
         h += '<button type="button" class="hgpm-optype on" data-type="AC" onclick="hgPmSetOpType(\'AC\')">A Current</button>';
         h += '<button type="button" class="hgpm-optype" data-type="AV" onclick="hgPmSetOpType(\'AV\')">A Voltage</button>';
         h += '<button type="button" class="hgpm-optype" data-type="BC" onclick="hgPmSetOpType(\'BC\')">B Current</button>';
         h += '<button type="button" class="hgpm-optype" data-type="BV" onclick="hgPmSetOpType(\'BV\')">B Voltage</button>';
-        h += '<span id="hgPmOpCount" style="font-size:11px;color:#64748b;margin-left:auto;"></span>';
+        h += '<span id="hgPmOpCount" style="font-size:11px;color:var(--e7-text-3,#64748b);margin-left:auto;"></span>';
         h += '</div>';
         h += '<div style="display:flex;gap:14px;align-items:stretch;">';
-        h += '<div style="flex:0 0 240px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;display:flex;flex-direction:column;max-height:520px;">';
-        h += '<div style="padding:11px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:700;color:#1a6e74;"><i class="fas fa-clock"></i> Operation Events <span id="hgPmOpListCount" style="color:#64748b;font-weight:500;"></span></div>';
+        h += '<div style="flex:0 0 240px;background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e2e8f0);border-radius:10px;display:flex;flex-direction:column;max-height:520px;">';
+        h += '<div style="padding:11px 14px;border-bottom:1px solid var(--e7-border,#e2e8f0);font-size:13px;font-weight:700;color:var(--e7-accent-ink,#1a6e74);"><i class="fas fa-clock"></i> Operation Events <span id="hgPmOpListCount" style="color:var(--e7-text-3,#64748b);font-weight:500;"></span></div>';
         h += '<div id="hgPmOpList" style="overflow-y:auto;flex:1;padding:6px;"></div>';
         h += '</div>';
-        h += '<div style="flex:1;min-width:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;">';
+        h += '<div style="flex:1;min-width:0;background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e2e8f0);border-radius:10px;padding:14px;">';
         h += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;">';
-        h += '<div id="hgPmOpSel" style="font-size:13px;color:#475569;font-weight:600;min-height:18px;"></div>';
+        h += '<div id="hgPmOpSel" style="font-size:13px;color:var(--e7-text-2,#475569);font-weight:600;min-height:18px;"></div>';
         h += '<div id="hgPmOpStats" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;"></div>';
         h += '</div>';
         h += '<div id="hgPmOpChart" style="width:100%;height:480px;display:none;"></div>';
-        h += '<div id="hgPmOpEmpty" style="text-align:center;padding:50px;color:#64748b;"><i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>Select a date-time from the list to view its operation waveform.</div>';
+        h += '<div id="hgPmOpEmpty" style="text-align:center;padding:50px;color:var(--e7-text-3,#64748b);"><i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3,#94a3b8);"></i>Select a date-time from the list to view its operation waveform.</div>';
         h += '</div>';
         h += '</div>';
         h += '</div>';
@@ -19989,13 +20001,13 @@ timestampMs: number, // waveform Array TimestampDevice
         hgPm.tab = tab;
         if (tab === 'op') {
             $('#hgPmTabInd').hide(); $('#hgPmTabOp').show();
-            $('#hgPmTabBtnInd').css({ color: '#64748b', 'border-bottom-color': 'transparent' });
-            $('#hgPmTabBtnOp').css({ color: '#1a6e74', 'border-bottom-color': '#1a6e74' });
+            $('#hgPmTabBtnInd').css({ color: 'var(--e7-text-3,#64748b)', 'border-bottom-color': 'transparent' });
+            $('#hgPmTabBtnOp').css({ color: 'var(--e7-accent-ink,#1a6e74)', 'border-bottom-color': 'var(--e7-accent,#1a6e74)' });
             if (hgPm.opChart) setTimeout(function () { hgPm.opChart.resize(); }, 30);
         } else {
             $('#hgPmTabOp').hide(); $('#hgPmTabInd').show();
-            $('#hgPmTabBtnOp').css({ color: '#64748b', 'border-bottom-color': 'transparent' });
-            $('#hgPmTabBtnInd').css({ color: '#1a6e74', 'border-bottom-color': '#1a6e74' });
+            $('#hgPmTabBtnOp').css({ color: 'var(--e7-text-3,#64748b)', 'border-bottom-color': 'transparent' });
+            $('#hgPmTabBtnInd').css({ color: 'var(--e7-accent-ink,#1a6e74)', 'border-bottom-color': 'var(--e7-accent,#1a6e74)' });
             if (hgPm.indChart) setTimeout(function () { hgPm.indChart.resize(); }, 30);
         }
     }
@@ -20094,6 +20106,7 @@ timestampMs: number, // waveform Array TimestampDevice
     // Used only by the Point Machine indication graph tooltip.
     var hgPmActualHoverMs = null;
     function hgPmRenderIndication() {
+        _hgT = _hgTheme();
         var el = document.getElementById('hgPmIndChart'); if (!el) return;
         var data = (window.hgPm && hgPm.attrs) || [];
 
@@ -20470,7 +20483,7 @@ timestampMs: number, // waveform Array TimestampDevice
                 sampling: 'none', hoverAnimation: false, animation: false,
                 progressive: 0, progressiveThreshold: 100000, large: false,
                 lineStyle: { width: meta.loc ? 1.8 : 2.4, color: meta.color, type: meta.loc ? [5, 3] : 'solid', opacity: 0.95 },
-                itemStyle: { color: meta.color, borderWidth: 2, borderColor: '#fff' },
+                itemStyle: { color: meta.color, borderWidth: 2, borderColor: _hgT.surface },
                 emphasis: { disabled: true },
                 blur: { lineStyle: { opacity: 0.95 }, itemStyle: { opacity: 1 } },
                 data: points
@@ -20480,7 +20493,7 @@ timestampMs: number, // waveform Array TimestampDevice
         var ex = echarts.getInstanceByDom(el); if (ex) ex.dispose();
         hgPm.indChart = echarts.init(el);
         hgPm.indChart.setOption({
-            backgroundColor: '#fff',
+            backgroundColor: _hgT.surface,
             animation: false,
             animationDurationUpdate: 0,
             stateAnimation: { duration: 0 },
@@ -20491,13 +20504,13 @@ timestampMs: number, // waveform Array TimestampDevice
                 alwaysShowContent: false,
                 confine: true,
 
-                backgroundColor: '#fff',
-                borderColor: '#e2e8f0',
+                backgroundColor: _hgT.surface,
+                borderColor: _hgT.border,
                 borderWidth: 1,
                 padding: [12, 16],
 
                 textStyle: {
-                    color: '#334155',
+                    color: _hgT.text,
                     fontSize: 12
                 },
 
@@ -20506,13 +20519,13 @@ timestampMs: number, // waveform Array TimestampDevice
                     snap: false,
 
                     lineStyle: {
-                        color: '#94a3b8',
+                        color: _hgT.text3,
                         width: 1,
                         type: 'dashed'
                     },
 
                     crossStyle: {
-                        color: '#94a3b8',
+                        color: _hgT.text3,
                         width: 1,
                         type: 'dashed'
                     },
@@ -20810,9 +20823,9 @@ timestampMs: number, // waveform Array TimestampDevice
                     var html =
                         '<div style="' +
                         'font-weight:700;' +
-                        'color:#0f5f65;' +
+                        'color:var(--e7-accent-ink,#0f5f65);' +
                         'margin-bottom:6px;' +
-                        'border-bottom:1px solid #e2e8f0;' +
+                        'border-bottom:1px solid var(--e7-border,#e2e8f0);' +
                         'padding-bottom:4px;">' +
                         dd + '/' + month + '/' + year +
                         ' ' +
@@ -20904,7 +20917,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
             lastActualChangeText
                 ? (
                     ' <span style="' +
-                    'color:#64748b;' +
+                    'color:var(--e7-text-3,#64748b);' +
                     'font-size:10px;' +
                     'font-weight:400;' +
                     'margin-left:5px;">' +
@@ -20928,7 +20941,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                     return html;
                 }
             },
-            legend: { type: 'plain', data: legends, top: 8, left: 'center', width: '96%', icon: 'roundRect', itemGap: 18, itemWidth: 22, itemHeight: 8, padding: [4, 8], textStyle: { fontSize: 11, color: '#334155' } },
+            legend: { type: 'plain', data: legends, top: 8, left: 'center', width: '96%', icon: 'roundRect', itemGap: 18, itemWidth: 22, itemHeight: 8, padding: [4, 8], textStyle: { fontSize: 11, color: _hgT.text } },
             grid: { left: 56, right: 24, top: 96, bottom: 90, containLabel: true },
             xAxis: {
                 type: 'time',
@@ -20951,13 +20964,13 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                         else                                  return dd + ' ' + mon + '\n' + hh + ':' + mm;
                     }
                 },
-                splitLine: { show: true, lineStyle: { color: '#f1f5f9', type: 'dashed' } }
+                splitLine: { show: true, lineStyle: { color: _hgT.grid, type: 'dashed' } }
             },
             yAxis: {
                 type: 'value', name: 'Voltage (V)',
                 min: 0,
                 max: maxY > 0 ? Math.ceil(maxY * 1.15) : 30,
-                splitLine: { show: true, lineStyle: { color: '#f0f0f0', type: 'dashed' } }
+                splitLine: { show: true, lineStyle: { color: _hgT.grid, type: 'dashed' } }
             },
             dataZoom: [
                 { type: 'slider', height: 22, bottom: 8, start: 0, end: 100, filterMode: 'none', minValueSpan: 60 * 1000 },
@@ -21624,7 +21637,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 .html(
                     '<i class="fas fa-info-circle fa-2x" ' +
                     'style="display:block;margin-bottom:12px;' +
-                    'color:#94a3b8;"></i>' +
+                    'color:var(--e7-text-3,#94a3b8);"></i>' +
                     'No operation events in the selected range.'
                 )
                 .show();
@@ -21665,23 +21678,23 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 : 'No waveform captured';
 
             var waveformColor = av
-                ? '#94a3b8'
-                : '#d97706';
+                ? 'var(--e7-text-3,#94a3b8)'
+                : 'var(--e7-amber,#d97706)';
 
             html +=
                 '<div onclick="hgPmShowOpEvent(' + i + ')" ' +
                 'style="padding:8px 10px;border-radius:7px;' +
                 'cursor:pointer;margin-bottom:4px;border:1px solid ' +
-                (active ? '#1a6e74' : '#eef2f7') +
+                (active ? 'var(--e7-accent,#1a6e74)' : 'var(--e7-border,#eef2f7)') +
                 ';background:' +
-                (active ? '#e6f4f4' : '#fff') +
+                (active ? 'var(--e7-accent-soft,#e6f4f4)' : 'var(--e7-surface,#fff)') +
                 ';">' +
 
                 '<div style="display:flex;align-items:center;' +
                 'justify-content:space-between;gap:6px;">' +
 
                 '<span style="font-size:12px;font-weight:700;' +
-                'color:#1a6e74;">' +
+                'color:var(--e7-accent-ink,#1a6e74);">' +
                 timeStr +
                 '</span>' +
 
@@ -21689,7 +21702,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
                 '</div>' +
 
-                '<div style="font-size:10px;color:#94a3b8;">' +
+                '<div style="font-size:10px;color:var(--e7-text-3,#94a3b8);">' +
                 dateStr +
                 '</div>' +
 
@@ -21773,21 +21786,21 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
         var dirLabel = (ev.dir === 'R') ? 'Reverse' : 'Normal';
         var d = new Date(ev.ts);
         var whenStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-        $('#hgPmOpSel').html(_hgPmDirBadge(ev.dir) + ' <span style="margin-left:6px;">' + (labels[type] || '') + '</span>  |  <span style="color:#1a6e74;">' + whenStr + '</span>');
+        $('#hgPmOpSel').html(_hgPmDirBadge(ev.dir) + ' <span style="margin-left:6px;">' + (labels[type] || '') + '</span>  |  <span style="color:var(--e7-accent-ink,#1a6e74);">' + whenStr + '</span>');
 
         if (!availableTypes.length) {
             // No end was captured for this operation — show a single, clear
             // message instead of a per-type "no waveform" hint.
             $('#hgPmOpChart').hide();
             $('#hgPmOpStats').hide().empty();
-            $('#hgPmOpEmpty').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No A End or B End waveform was captured for this operation.').show();
+            $('#hgPmOpEmpty').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3,#94a3b8);"></i>No A End or B End waveform was captured for this operation.').show();
             return;
         }
 
         if (!arr || !arr.length) {
             $('#hgPmOpChart').hide();
             $('#hgPmOpStats').hide().empty();
-            $('#hgPmOpEmpty').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:#94a3b8;"></i>No ' + labels[type] + ' waveform captured for this operation.').show();
+            $('#hgPmOpEmpty').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3,#94a3b8);"></i>No ' + labels[type] + ' waveform captured for this operation.').show();
             return;
         }
         $('#hgPmOpEmpty').hide(); $('#hgPmOpChart').show();
@@ -21851,12 +21864,12 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
         function _pill(label, val, valColor) {
             return '<span style="display:inline-flex;flex-direction:column;align-items:center;' +
-                'padding:3px 10px;border-radius:6px;background:#f0f9ff;' +
-                'border:1px solid #bae6fd;line-height:1.3;min-width:80px;text-align:center;">' +
+                'padding:3px 10px;border-radius:6px;background:var(--e7-accent-soft,#f0f9ff);' +
+                'border:1px solid var(--e7-border,#bae6fd);line-height:1.3;min-width:80px;text-align:center;">' +
                 '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;' +
-                'text-transform:uppercase;color:#64748b;white-space:nowrap;">' + label + '</span>' +
+                'text-transform:uppercase;color:var(--e7-text-3,#64748b);white-space:nowrap;">' + label + '</span>' +
                 '<span style="font-size:13px;font-weight:800;color:' +
-                (valColor || '#1e293b') + ';white-space:nowrap;">' + val + '</span>' +
+                (valColor || 'var(--e7-text,#1e293b)') + ';white-space:nowrap;">' + val + '</span>' +
                 '</span>';
         }
 
@@ -21865,11 +21878,12 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
             (isVoltage
                 ? _pill('AVG', avg.toFixed(2) + ' ' + unit, color)
                 : _pill('MAX/AVG', mx.toFixed(2) + ' / ' + avg.toFixed(2) + ' ' + unit, color)) +
-            _pill('OPERATION TIME', opTxt, '#1a6e74')
+            _pill('OPERATION TIME', opTxt, 'var(--e7-accent-ink,#1a6e74)')
         ).css({ display: 'flex', gap: '6px', 'align-items': 'center' });
     }
 
     function hgPmRenderArray(ev, arr, title, unit, color) {
+        _hgT = _hgTheme();
         var el = document.getElementById('hgPmOpChart'); if (!el) return;
         var ex = echarts.getInstanceByDom(el); if (ex) ex.dispose();
         hgPm.opChart = echarts.init(el);
@@ -21878,8 +21892,8 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
         var data = arr.map(function (v, i) { return { value: [i * step, v <= 0 ? 0 : v], _absTs: ev.ts + i * step }; });
         var maxMs = (arr.length - 1) * step;
         hgPm.opChart.setOption({
-            backgroundColor: '#fff',
-            title: { text: title, subtext: arr.length + ' samples - dt 20 ms - span ' + maxMs + ' ms', left: 'center', top: 8, textStyle: { fontSize: 15, fontWeight: '700', color: '#1e293b' }, subtextStyle: { fontSize: 11, color: '#64748b' } },
+            backgroundColor: _hgT.surface,
+            title: { text: title, subtext: arr.length + ' samples - dt 20 ms - span ' + maxMs + ' ms', left: 'center', top: 8, textStyle: { fontSize: 15, fontWeight: '700', color: _hgT.text }, subtextStyle: { fontSize: 11, color: _hgT.text3 } },
             tooltip: {
                 trigger: 'axis',
                 formatter: function (ps) {
@@ -21894,8 +21908,8 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 }
             },
             grid: { left: 56, right: 24, top: 70, bottom: 60, containLabel: true },
-            xAxis: { type: 'value', name: 'Elapsed Time (ms)', nameLocation: 'center', nameGap: 30, min: 0, max: maxMs > 0 ? maxMs : null, axisLabel: { formatter: function (v) { return v + ' ms'; } }, splitLine: { show: true, lineStyle: { color: '#f1f5f9' } } },
-            yAxis: { type: 'value', name: unit, scale: true, splitLine: { lineStyle: { color: '#f0f0f0', type: 'dashed' } } },
+            xAxis: { type: 'value', name: 'Elapsed Time (ms)', nameLocation: 'center', nameGap: 30, min: 0, max: maxMs > 0 ? maxMs : null, axisLabel: { formatter: function (v) { return v + ' ms'; } }, splitLine: { show: true, lineStyle: { color: _hgT.grid } } },
+            yAxis: { type: 'value', name: unit, scale: true, splitLine: { lineStyle: { color: _hgT.grid, type: 'dashed' } } },
             dataZoom: [{ type: 'slider', height: 26, bottom: 8 }, { type: 'inside' }],
             series: [{ name: title, type: 'line', smooth: false, symbol: 'circle', symbolSize: arr.length <= 80 ? 5 : 3, showSymbol: true, lineStyle: { width: 2.5, color: color }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: color + '33' }, { offset: 1, color: color + '05' }]) }, itemStyle: { color: color }, data: data }]
         });
@@ -22789,7 +22803,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
             'justify-content:space-between;' +
             'gap:12px;' +
             'padding:7px 12px;' +
-            'background:linear-gradient(135deg,#042c43,#0a4a6e);' +
+            'background:linear-gradient(112deg,var(--e7-rail-from),var(--e7-rail-mid),var(--e7-rail-to));' +
             'border-radius:8px 8px 0 0;">' +
 
             '<span style="' +
@@ -22813,7 +22827,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
             historyModeControls +
 
-            '<span style="color:#a7f3d0;font-size:10.5px;">' +
+            '<span style="color:rgba(255,255,255,.88);font-size:10.5px;">' +
             parsed.columns.length +
             ' series &nbsp;&middot;&nbsp; ' +
             parsed.timestamps.length +
@@ -22950,18 +22964,18 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
         // ── Select All / Unselect All + counter bar ──
         $container.append(
-            '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-top:none;">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--e7-surface-2);border:1px solid var(--e7-border);border-top:none;">' +
             '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<span style="font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;">Attributes:</span>' +
+            '<span style="font-size:10.5px;font-weight:700;color:var(--e7-text-2);text-transform:uppercase;letter-spacing:.5px;">Attributes:</span>' +
             '<button type="button" class="hg-sel-btn" id="hgSelectAll"><i class="fas fa-check-square"></i> Select All</button>' +
             '<button type="button" class="hg-sel-btn" id="hgUnselectAll"><i class="far fa-square"></i> Unselect All</button>' +
             '</div>' +
-            '<span class="hg-attr-counter" id="hgAttrCounter" style="font-size:11px;font-weight:600;color:#64748b;"></span>' +
+            '<span class="hg-attr-counter" id="hgAttrCounter" style="font-size:11px;font-weight:600;color:var(--e7-text-3);"></span>' +
             '</div>'
         );
 
         // ── Attribute checkboxes ──
-        var $chips = $('<div style="display:flex;flex-wrap:wrap;gap:10px 14px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;"></div>');
+        var $chips = $('<div style="display:flex;flex-wrap:wrap;gap:10px 14px;padding:10px 12px;background:var(--e7-surface);border:1px solid var(--e7-border);border-top:none;"></div>');
 
         allCols.forEach(function (col) {
             var co = colorMap[col.compositeKey];
@@ -22999,19 +23013,19 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 'cursor:pointer;' +
                 'user-select:none;' +
                 'font-size:11.5px;' +
-                'color:#1e293b;' +
+                'color:var(--e7-text);' +
                 'min-width:230px;' +
                 'padding:3px 7px;' +
-                'border:1px solid #e2e8f0;' +
+                'border:1px solid var(--e7-border-2);' +
                 'border-radius:5px;' +
-                'background:#ffffff;' +
+                'background:var(--e7-surface-2);' +
                 '">' +
 
                 '<input type="checkbox" checked ' +
                 'style="' +
                 'width:13px;' +
                 'height:13px;' +
-                'accent-color:#4f46e5;' +
+                'accent-color:var(--e7-accent);' +
                 'cursor:pointer;' +
                 'margin:0;' +
                 'flex-shrink:0;' +
@@ -23068,14 +23082,14 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
             return '<button type="button" class="hg-filter-btn' + (f === 'All' ? ' active' : '') + '" data-f="' + f + '">' + f + '</button>';
         }).join('');
         $container.append(
-            '<div style="display:flex;justify-content:flex-start;align-items:center;gap:6px;padding:6px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;">' +
-            '<span style="font-size:10.5px;font-weight:700;color:#64748b;text-transform:uppercase;margin-right:4px;">Filter:</span>' +
+            '<div style="display:flex;justify-content:flex-start;align-items:center;gap:6px;padding:6px 12px;background:var(--e7-surface);border:1px solid var(--e7-border);border-top:none;">' +
+            '<span style="font-size:10.5px;font-weight:700;color:var(--e7-text-3);text-transform:uppercase;margin-right:4px;">Filter:</span>' +
             '<div class="hg-filter-group">' + filterBtns + '</div>' +
             '</div>'
         );
 
         // ── Chart div ──
-        $container.append('<div id="hgChartDiv" style="width:100%;height:380px;background:#fff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;"></div>');
+        $container.append('<div id="hgChartDiv" style="width:100%;height:380px;background:var(--e7-surface);border:1px solid var(--e7-border);border-top:none;border-radius:0 0 8px 8px;"></div>');
 
         // ── Wire events ──
         $container.on('change', '.hg-chk-row input[type=checkbox]', function () {
@@ -23604,7 +23618,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 axisLine: {
                     show: true,
                     lineStyle: {
-                        color: '#cbd5e1'
+                        color: _hgT.axis
                     }
                 },
 
@@ -23619,7 +23633,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                         laneIndex ===
                         laneCount - 1,
 
-                    color: '#64748b',
+                    color: _hgT.text3,
 
                     formatter: function (value) {
                         var date =
@@ -23638,7 +23652,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 splitLine: {
                     show: true,
                     lineStyle: {
-                        color: '#f1f5f9',
+                        color: _hgT.grid,
                         type: 'dashed'
                     }
                 }
@@ -23656,7 +23670,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 name: '',
 
                  axisLabel: {
-                    color: '#64748b',
+                    color: _hgT.text3,
                     fontSize: 9,
 
                     formatter:
@@ -23680,14 +23694,14 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 axisLine: {
                     show: true,
                     lineStyle: {
-                        color: '#cbd5e1'
+                        color: _hgT.axis
                     }
                 },
 
                 splitLine: {
                     show: true,
                     lineStyle: {
-                        color: '#f1f5f9',
+                        color: _hgT.grid,
                         type: 'dashed'
                     }
                 }
@@ -23780,7 +23794,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
         chartInstance.setOption(
             {
-                backgroundColor: '#ffffff',
+                backgroundColor: _hgT.surface,
                 animation: false,
 
                 /*
@@ -24005,7 +24019,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                         ? (
                                             'margin-top:7px;' +
                                             'padding-top:7px;' +
-                                            'border-top:1px solid #e2e8f0;'
+                                            'border-top:1px solid ' + _hgT.border + ';'
                                         )
                                         : ''
                                 ) +
@@ -24014,7 +24028,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                 '<div style="' +
                                 'font-size:11px;' +
                                 'font-weight:600;' +
-                                'color:#0f5f65;' +
+                                'color:' + _hgT.accentInk + ';' +
                                 'margin-bottom:6px;' +
                                 'white-space:nowrap;">' +
 
@@ -24162,7 +24176,56 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
     }
 
 
+    /*
+     * Chart colours for the History graph, read from the Energy7 theme
+     * tokens (e7-energy7-theme.css) so the canvas follows light / dark.
+     * ECharts paints on canvas and cannot resolve var(--…) itself.
+     */
+    function _hgTheme() {
+        var cs = window.getComputedStyle(document.documentElement);
+        var v = function (name, fb) {
+            var x = cs.getPropertyValue(name);
+            return x && x.trim() ? x.trim() : fb;
+        };
+        var dark = document.documentElement.getAttribute('data-aurora') !== 'light';
+        return {
+            surface: v('--e7-surface', '#ffffff'),
+            border: v('--e7-border', '#e7ebf1'),
+            grid: v('--e7-grid-line', '#eef2f7'),
+            axis: v('--e7-border-2', '#cbd5e1'),
+            text: v('--e7-text', '#22303f'),
+            text2: v('--e7-text-2', '#55657a'),
+            text3: v('--e7-text-3', '#627186'),
+            accent: v('--e7-accent', '#2f9ec4'),
+            accentInk: v('--e7-accent-ink', '#1d6f8d'),
+            accentSoft: v('--e7-accent-soft', 'rgba(47,158,196,.12)'),
+            shadow: v('--e7-shadow-pop', '0 18px 40px rgba(20,44,74,.14)'),
+            amber: dark ? '#fcd34d' : '#b45309',
+            amberBg: dark ? 'rgba(245,158,11,.16)' : '#fef3c7',
+            amberBd: dark ? 'rgba(252,211,77,.40)' : '#fcd34d'
+        };
+    }
+
+    var _hgT = _hgTheme();
+    var _hgLastDrawArgs = null;
+
+    // Redraw the History graph when the light / dark toggle flips.
+    if (window.MutationObserver) {
+        new MutationObserver(function () {
+            if (historyEChart && _hgLastDrawArgs && document.getElementById('hgChartDiv')) {
+                _hgDrawECharts.apply(null, _hgLastDrawArgs);
+            }
+            // Point Machine graph: indication chart + the open operation waveform
+            var pm = window.hgPm;
+            if (pm && pm.indChart && document.getElementById('hgPmIndChart')) hgPmRenderIndication();
+            if (pm && pm.opChart && pm.opSel > -1 && pm.opEvents && pm.opEvents[pm.opSel]) hgPmShowOpEvent(pm.opSel);
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-aurora'] });
+    }
+
     function _hgDrawECharts(parsed, colorMap, multiAsset) {
+        _hgT = _hgTheme();
+        _hgLastDrawArgs = [parsed, colorMap, multiAsset];
+
         if (historyEChart) {
             historyEChart.dispose();
             historyEChart = null;
@@ -24499,7 +24562,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
         });
 
         if (!sr.length) {
-            $('#hgChartDiv').html('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:13px;">' +
+            $('#hgChartDiv').html('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--e7-text-3);font-size:13px;">' +
                 '<i class="fas fa-chart-line" style="margin-right:8px;opacity:.3;font-size:20px;"></i>All series hidden</div>');
             return;
         }
@@ -24558,11 +24621,11 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 // Stays 0 unless ITC BATT CHARG went negative.
                 type: 'value', min: (minNegAxis0 < 0 ? -_niceAxisMax(-minNegAxis0) : 0), max: mAmax,
                 name: '', nameLocation: 'end',
-                nameTextStyle: { fontSize: 11, fontWeight: 'bold', color: '#4bacc6', padding: [0, 0, 4, 0] },
-                axisLabel: { fontSize: 10, color: '#475569', formatter: '{value}' },
-                axisLine: { show: hasMA || (!hasV && !hasBin), lineStyle: { color: '#94a3b8', width: 1.5 } },
+                nameTextStyle: { fontSize: 11, fontWeight: 'bold', color: _hgT.accent, padding: [0, 0, 4, 0] },
+                axisLabel: { fontSize: 10, color: _hgT.text2, formatter: '{value}' },
+                axisLine: { show: hasMA || (!hasV && !hasBin), lineStyle: { color: _hgT.axis, width: 1.5 } },
                 axisTick: { show: hasMA || (!hasV && !hasBin) },
-                splitLine: { show: true, lineStyle: { color: '#f1f5f9', type: 'dashed', width: 1 } },
+                splitLine: { show: true, lineStyle: { color: _hgT.grid, type: 'dashed', width: 1 } },
                 show: hasMA || (!hasV && !hasBin)
             },
             {
@@ -24704,7 +24767,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
 
         historyEChart.setOption({
-            backgroundColor: '#ffffff',
+            backgroundColor: _hgT.surface,
             animation: false,
                        tooltip: {
                 trigger: 'axis',
@@ -24924,9 +24987,9 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                     }
                 },
                 confine: false,
-                backgroundColor: 'rgba(255,255,255,0.98)',
-                borderColor: '#e2e8f0', borderWidth: 1, padding: [10, 14],
-                extraCssText: 'box-shadow:0 6px 24px rgba(0,0,0,.18);border-radius:10px;',
+                backgroundColor: _hgT.surface,
+                borderColor: _hgT.border, borderWidth: 1, padding: [10, 14],
+                extraCssText: 'box-shadow:' + _hgT.shadow + ';border-radius:10px;color:' + _hgT.text + ';',
                 formatter: function (params) {
                     if (!params || !params.length) {
                         return '';
@@ -25267,7 +25330,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                 value === null
                                     ? (
                                         '<b style="' +
-                                        'color:#94a3b8;' +
+                                        'color:' + _hgT.text3 + ';' +
                                         'font-size:10px;' +
                                         'flex-shrink:0;' +
                                         'min-width:52px;' +
@@ -25277,7 +25340,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                     )
                                     : (
                                         '<b style="' +
-                                        'color:#0f172a;' +
+                                        'color:' + _hgT.text + ';' +
                                         'font-size:10px;' +
                                         'flex-shrink:0;' +
                                         'min-width:52px;' +
@@ -25309,7 +25372,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                     ? (
                                         /* No reading yet at the cursor → "—" */
                                         '<b style="' +
-                                        'color:#94a3b8;' +
+                                        'color:' + _hgT.text3 + ';' +
                                         'font-size:10px;' +
                                         'flex-shrink:0;' +
                                         'min-width:36px;' +
@@ -25344,8 +25407,8 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                         'color:' +
                                         (
                                             isDerivedSeries
-                                                ? '#b45309'
-                                                : '#1e293b'
+                                                ? _hgT.amber
+                                                : _hgT.text
                                         ) +
                                         ';font-size:10px;' +
                                         'flex-shrink:0;' +
@@ -25376,7 +25439,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
                             '<span style="' +
                             'font-size:10px;' +
-                            'color:#475569;' +
+                            'color:' + _hgT.text2 + ';' +
                             'flex:1;' +
                             'min-width:0;' +
                             'overflow:hidden;' +
@@ -25468,9 +25531,9 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                             ? (
                                 '<span style="' +
                                 'display:inline-block;' +
-                                'background:#fef3c7;' +
-                                'color:#92400e;' +
-                                'border:1px solid #fcd34d;' +
+                                'background:' + _hgT.amberBg + ';' +
+                                'color:' + _hgT.amber + ';' +
+                                'border:1px solid ' + _hgT.amberBd + ';' +
                                 'border-radius:3px;' +
                                 'padding:1px 6px;' +
                                 'font-size:9px;' +
@@ -25493,10 +25556,10 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                         '<div style="' +
                         'font-weight:700;' +
                         'font-size:11px;' +
-                        'color:#0f5f65;' +
+                        'color:' + _hgT.accentInk + ';' +
                         'margin-bottom:6px;' +
                         'padding-bottom:5px;' +
-                        'border-bottom:1px solid #e2e8f0;' +
+                        'border-bottom:1px solid ' + _hgT.border + ';' +
                         'white-space:nowrap;">' +
 
                         '<i class="fas fa-calendar-alt" style="' +
@@ -25558,7 +25621,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                 secondColumn.length
                                     ? (
                                         'padding-right:10px;' +
-                                        'border-right:1px solid #e2e8f0;'
+                                        'border-right:1px solid ' + _hgT.border + ';'
                                     )
                                     : ''
                             ) +
@@ -25638,7 +25701,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                                 columnIndex <
                                     columnCount - 1
                                     ? (
-                                        'border-right:1px solid #f0f0f0;' +
+                                        'border-right:1px solid ' + _hgT.border + ';' +
                                         'padding-right:10px;' +
                                         'margin-right:10px;'
                                     )
@@ -25686,11 +25749,11 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 },
                 min: (_reqStart !== null ? _reqStart : undefined),
                 max: (_reqEnd !== null ? _reqEnd : undefined),
-                axisLine: { show: true, onZero: false, lineStyle: { color: '#64748b', width: 1.5 } },
-                axisTick: { show: true, lineStyle: { color: '#64748b' } },
+                axisLine: { show: true, onZero: false, lineStyle: { color: _hgT.text3, width: 1.5 } },
+                axisTick: { show: true, lineStyle: { color: _hgT.text3 } },
                 axisLabel: {
                     // History keeps date+time labels (DD-MM\nHH:MM) so multi-day windows stay readable
-                    fontSize: 11, color: '#475569',
+                    fontSize: 11, color: _hgT.text2,
                     formatter: function (v) {
                         var d = new Date(v);
                         var hh = String(d.getHours()).padStart(2, '0');
@@ -25700,11 +25763,11 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                         return '{d|' + dd + '-' + mo + '}\n{t|' + hh + ':' + mm + '}';
                     },
                     rich: {
-                        d: { fontSize: 9, color: '#0f5f65', fontWeight: 700, lineHeight: 12 },
-                        t: { fontSize: 10, color: '#475569', lineHeight: 12 }
+                        d: { fontSize: 9, color: _hgT.accentInk, fontWeight: 700, lineHeight: 12 },
+                        t: { fontSize: 10, color: _hgT.text2, lineHeight: 12 }
                     }
                 },
-                splitLine: { show: true, lineStyle: { color: '#f1f5f9', width: 1 } }
+                splitLine: { show: true, lineStyle: { color: _hgT.grid, width: 1 } }
             }],
             yAxis: yAxes,
             // dataZoom: matches live graph — slider height 40, teal handle, bottom:0
@@ -25714,10 +25777,10 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                     filterMode: 'none',
                     startValue: _reqStart, endValue: _reqEnd,
                     minValueSpan: HG_MIN_ZOOM_SPAN_MS,
-                    borderColor: '#e2e8f0',
-                    handleStyle: { color: '#4bacc6', borderColor: '#215968' },
-                    fillerColor: 'rgba(75,172,198,.15)',
-                    textStyle: { fontSize: 11, color: '#475569' },
+                    borderColor: _hgT.border,
+                    handleStyle: { color: _hgT.accent, borderColor: _hgT.accentInk },
+                    fillerColor: _hgT.accentSoft,
+                    textStyle: { fontSize: 11, color: _hgT.text2 },
                     labelFormatter: function (v) {
                         var d = new Date(v);
                         var dd = String(d.getDate()).padStart(2, '0');
@@ -26041,7 +26104,7 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
     function renderNoData() {
         $('#divChartContainer').html(
             '<div style="display:flex;align-items:center;justify-content:center;height:200px;' +
-            'color:#94a3b8;font-size:13px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">' +
+            'color:var(--e7-text-3,#94a3b8);font-size:13px;border:1px solid var(--e7-border,#e2e8f0);border-radius:8px;background:var(--e7-surface,#fff);">' +
             '<i class="fas fa-chart-line" style="margin-right:10px;font-size:24px;opacity:.3;"></i>No data available</div>');
     }
 
@@ -27406,13 +27469,13 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                     '<style id="exportToastStyle">' +
                     '@keyframes expToastIn{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}' +
                     '#exportProgressToast{position:fixed;right:22px;bottom:22px;z-index:20000;min-width:280px;max-width:360px;' +
-                    'background:#fff;border:1px solid #e2e8f0;border-left:4px solid #4338ca;border-radius:10px;' +
-                    'box-shadow:0 8px 28px rgba(15,23,42,.18);padding:14px 16px;animation:expToastIn .18s ease-out;font-size:13px;color:#1e293b;}' +
-                    '#exportProgressToast .ept-head{display:flex;align-items:center;gap:9px;font-weight:600;color:#4338ca;margin-bottom:4px;}' +
-                    '#exportProgressToast .ept-sub{font-size:12px;color:#64748b;line-height:1.4;}' +
-                    '#exportProgressToast .ept-bar{height:3px;border-radius:3px;margin-top:10px;background:#eef2f7;overflow:hidden;position:relative;}' +
+                    'background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e2e8f0);border-left:4px solid var(--e7-accent,#4338ca);border-radius:10px;' +
+                    'box-shadow:var(--e7-shadow-pop,0 8px 28px rgba(15,23,42,.18));padding:14px 16px;animation:expToastIn .18s ease-out;font-size:13px;color:var(--e7-text,#1e293b);}' +
+                    '#exportProgressToast .ept-head{display:flex;align-items:center;gap:9px;font-weight:600;color:var(--e7-accent-ink,#4338ca);margin-bottom:4px;}' +
+                    '#exportProgressToast .ept-sub{font-size:12px;color:var(--e7-text-3,#64748b);line-height:1.4;}' +
+                    '#exportProgressToast .ept-bar{height:3px;border-radius:3px;margin-top:10px;background:var(--e7-surface-3,#eef2f7);overflow:hidden;position:relative;}' +
                     '#exportProgressToast .ept-fill{position:absolute;top:0;left:0;height:100%;width:100%;border-radius:3px;' +
-                    'background:linear-gradient(90deg,transparent,#4338ca,transparent);background-size:220px 100%;animation:htlShimmer 1.15s linear infinite;}' +
+                    'background:linear-gradient(90deg,transparent,var(--e7-accent,#4338ca),transparent);background-size:220px 100%;animation:htlShimmer 1.15s linear infinite;}' +
                     '</style>'
                 );
             }
@@ -30147,34 +30210,34 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
         if (!document.getElementById('selInfoBarStyles')) {
             $('head').append('<style id="selInfoBarStyles">' +
                 '#selInfoBar{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:6px 14px;' +
-                'background:linear-gradient(90deg,#0f1e35 0%,#132340 100%);' +
-                'border-top:1px solid rgba(37,157,171,0.18);border-bottom:1px solid rgba(37,157,171,0.22);' +
-                'font-size:12px;color:#cbd5e1;min-height:34px;box-shadow:0 2px 8px rgba(0,0,0,0.18);}' +
-                '.sib-chip{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.06);' +
-                'border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:2px 10px 2px 8px;white-space:nowrap;color:#e2e8f0;}' +
-                '.sib-chip .sib-label{color:#94a3b8;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-right:2px;}' +
-                '.sib-chip .sib-val{color:#38bdf8;font-weight:500;}' +
-                '.sib-chip .sib-val.sib-all{color:#94a3b8;font-style:italic;}' +
-                '.sib-more-badge{display:inline-flex;align-items:center;background:rgba(56,189,248,0.15);' +
-                'border:1px solid rgba(56,189,248,0.4);border-radius:10px;padding:1px 8px;font-size:11px;' +
-                'color:#38bdf8;cursor:pointer;font-weight:600;margin-left:3px;transition:background .2s;}' +
-                '.sib-more-badge:hover{background:rgba(56,189,248,0.28);}' +
-                '.sib-dot{color:rgba(255,255,255,0.15);font-size:14px;line-height:1;}' +
-                '#sibPeriodChip{margin-left:auto;background:rgba(37,157,171,0.12);border:1px solid rgba(37,157,171,0.3);}' +
-                '#sibPeriodChip .sib-val{color:#34d399;font-weight:600;}' +
-                '#sibAssetsPopup{display:none;position:fixed;z-index:9999;background:#0f1e35;' +
-                'border:1px solid rgba(56,189,248,0.35);border-radius:10px;padding:14px 16px;' +
-                'min-width:200px;max-width:320px;box-shadow:0 8px 32px rgba(0,0,0,.5);color:#e2e8f0;font-size:12px;}' +
+                'background:var(--e7-surface-2,#0f1e35);' +
+                'border-top:1px solid var(--e7-border,rgba(37,157,171,0.18));border-bottom:1px solid var(--e7-border,rgba(37,157,171,0.22));' +
+                'font-size:12px;color:var(--e7-text,#cbd5e1);min-height:34px;box-shadow:none;}' +
+                '.sib-chip{display:inline-flex;align-items:center;gap:4px;background:var(--e7-surface,rgba(255,255,255,0.06));' +
+                'border:1px solid var(--e7-border-2,rgba(255,255,255,0.1));border-radius:14px;padding:2px 10px 2px 8px;white-space:nowrap;color:var(--e7-text,#e2e8f0);}' +
+                '.sib-chip .sib-label{color:var(--e7-text-3,#94a3b8);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-right:2px;}' +
+                '.sib-chip .sib-val{color:var(--e7-accent-ink,#38bdf8);font-weight:500;}' +
+                '.sib-chip .sib-val.sib-all{color:var(--e7-text-3,#94a3b8);font-style:italic;}' +
+                '.sib-more-badge{display:inline-flex;align-items:center;background:var(--e7-accent-soft,rgba(56,189,248,0.15));' +
+                'border:1px solid var(--e7-accent,rgba(56,189,248,0.4));border-radius:10px;padding:1px 8px;font-size:11px;' +
+                'color:var(--e7-accent-ink,#38bdf8);cursor:pointer;font-weight:600;margin-left:3px;transition:background .2s;}' +
+                '.sib-more-badge:hover{background:var(--e7-p-aqua,rgba(56,189,248,0.28));}' +
+                '.sib-dot{color:var(--e7-text-4,rgba(255,255,255,0.15));font-size:14px;line-height:1;}' +
+                '#sibPeriodChip{margin-left:auto;background:var(--e7-live-bg,rgba(37,157,171,0.12));border:1px solid transparent;}' +
+                '#sibPeriodChip .sib-val{color:var(--e7-live-fg,#34d399);font-weight:600;}' +
+                '#sibAssetsPopup{display:none;position:fixed;z-index:9999;background:var(--e7-surface,#0f1e35);' +
+                'border:1px solid var(--e7-border,rgba(56,189,248,0.35));border-radius:10px;padding:14px 16px;' +
+                'min-width:200px;max-width:320px;box-shadow:var(--e7-shadow-pop,0 8px 32px rgba(0,0,0,.5));color:var(--e7-text,#e2e8f0);font-size:12px;}' +
                 '#sibAssetsPopup .sib-popup-title{font-size:11px;font-weight:700;text-transform:uppercase;' +
-                'letter-spacing:.06em;color:#94a3b8;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}' +
-                '#sibAssetsPopup .sib-popup-title span.sib-close-btn{cursor:pointer;color:#64748b;font-size:16px;line-height:1;font-weight:400;padding-left:8px;}' +
-                '#sibAssetsPopup .sib-popup-title span.sib-close-btn:hover{color:#e2e8f0;}' +
+                'letter-spacing:.06em;color:var(--e7-heading,#94a3b8);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}' +
+                '#sibAssetsPopup .sib-popup-title span.sib-close-btn{cursor:pointer;color:var(--e7-text-3,#64748b);font-size:16px;line-height:1;font-weight:400;padding-left:8px;}' +
+                '#sibAssetsPopup .sib-popup-title span.sib-close-btn:hover{color:var(--e7-red,#e2e8f0);}' +
                 '#sibAssetsPopup .sib-asset-list{max-height:260px;overflow-y:auto;}' +
-                '#sibAssetsPopup .sib-asset-item{padding:5px 8px;border-radius:6px;display:flex;align-items:center;gap:7px;color:#cbd5e1;}' +
-                '#sibAssetsPopup .sib-asset-item:hover{background:rgba(255,255,255,0.06);}' +
-                '#sibAssetsPopup .sib-asset-item::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#38bdf8;flex-shrink:0;}' +
-                '#sibAssetsPopup .sib-context{font-size:10px;color:#64748b;margin-bottom:10px;line-height:1.6;}' +
-                '#sibAssetsPopup .sib-context strong{color:#94a3b8;}' +
+                '#sibAssetsPopup .sib-asset-item{padding:5px 8px;border-radius:6px;display:flex;align-items:center;gap:7px;color:var(--e7-text,#cbd5e1);}' +
+                '#sibAssetsPopup .sib-asset-item:hover{background:var(--e7-surface-3,rgba(255,255,255,0.06));}' +
+                '#sibAssetsPopup .sib-asset-item::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--e7-accent,#38bdf8);flex-shrink:0;}' +
+                '#sibAssetsPopup .sib-context{font-size:10px;color:var(--e7-text-3,#64748b);margin-bottom:10px;line-height:1.6;}' +
+                '#sibAssetsPopup .sib-context strong{color:var(--e7-text-2,#94a3b8);}' +
                 '</style>');
         }
 

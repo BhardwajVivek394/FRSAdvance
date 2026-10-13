@@ -10,26 +10,56 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Health History - @siteName</title>
+    <script>
+        /* Standalone page (Layout = null): follow the same Energy7 light/dark choice as the site shell */
+        (function () {
+            var k = 'e7-theme-pref', t;
+            var osDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            try { t = localStorage.getItem(k) || (osDark ? 'dark' : 'light'); } catch (e) { t = osDark ? 'dark' : 'light'; }
+            document.documentElement.setAttribute('data-aurora', t);
+        })();
+    </script>
+    <link href="@Url.Content("~/Areas/FRS25/assets/css/e7-energy7-theme.css")" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         :root {
-            --bg: #070d1d;
-            --panel: #0c1731;
-            --panel2: #101e3e;
-            --bdr: #1b2c55;
-            --bdr2: #27407a;
-            --txt: #e7edf7;
-            --mut: #9fb1d1;
-            --dim: #60749a;
-            --cyan: #22d3ee;
-            --green: #34d399;
-            --red: #fb7185;
-            --amber: #fbbf24;
-            --blue: #60a5fa;
+            /* Energy7 theme tokens (e7-energy7-theme.css); old dark values kept as fallbacks */
+            --bg: var(--e7-page, #070d1d);
+            --panel: var(--e7-surface, #0c1731);
+            --panel2: var(--e7-surface-2, #101e3e);
+            --bdr: var(--e7-border, #1b2c55);
+            --bdr2: var(--e7-border-2, #27407a);
+            --txt: var(--e7-text, #e7edf7);
+            --mut: var(--e7-text-2, #9fb1d1);
+            --dim: var(--e7-text-3, #60749a);
+            --cyan: var(--e7-accent, #22d3ee);
+            --green: var(--e7-green, #34d399);
+            --red: var(--e7-red, #fb7185);
+            --amber: var(--e7-amber, #fbbf24);
+            --blue: var(--e7-c6, #60a5fa);
+            --org: #fb923c;
+            --cs: dark;
             --mono: 'JetBrains Mono',Consolas,monospace;
             --sans: 'Manrope','Segoe UI',Arial,sans-serif
+        }
+
+        html[data-aurora="light"] {
+            --org: #c2410c;
+            --cs: light;
+        }
+
+            html[data-aurora="light"] input[type=date]::-webkit-calendar-picker-indicator,
+            html[data-aurora="light"] input[type=time]::-webkit-calendar-picker-indicator,
+            html[data-aurora="light"] input[type=date]:hover::-webkit-calendar-picker-indicator,
+            html[data-aurora="light"] input[type=time]:hover::-webkit-calendar-picker-indicator {
+                filter: none;
+            }
+
+        option {
+            background: var(--panel);
+            color: var(--txt);
         }
 
         * {
@@ -39,7 +69,7 @@
         body {
             margin: 0;
             min-height: 100vh;
-            background: radial-gradient(1000px 480px at 10% -10%,rgba(34,211,238,.12),transparent 60%),radial-gradient(900px 520px at 100% 0,rgba(96,165,250,.10),transparent 55%),var(--bg);
+            background: var(--bg);
             color: var(--txt);
             font-family: var(--sans);
             padding: 22px
@@ -51,7 +81,7 @@
             justify-content: space-between;
             gap: 14px;
             margin-bottom: 14px;
-            background: rgba(12,23,49,.82);
+            background: var(--panel);
             border: 1px solid var(--bdr);
             border-radius: 16px;
             padding: 14px 18px;
@@ -67,8 +97,8 @@
             width: 42px;
             height: 42px;
             border-radius: 12px;
-            background: linear-gradient(135deg, rgba(34,211,238,.18), rgba(96,165,250,.12));
-            border: 1px solid rgba(34,211,238,.3);
+            background: linear-gradient(135deg, color-mix(in srgb, var(--cyan) 18%, transparent), color-mix(in srgb, var(--blue) 12%, transparent));
+            border: 1px solid color-mix(in srgb, var(--cyan) 30%, transparent);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -89,7 +119,7 @@
 
         .back {
             border: 1px solid var(--bdr2);
-            background: linear-gradient(135deg,#10244d,#0b1733);
+            background: linear-gradient(135deg,var(--panel2),var(--panel));
             color: var(--txt);
             border-radius: 12px;
             padding: 10px 14px;
@@ -108,7 +138,7 @@
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
-            background: rgba(12,23,49,.78);
+            background: var(--panel);
             border: 1px solid var(--bdr);
             border-radius: 14px;
             padding: 10px 14px;
@@ -132,7 +162,7 @@
         }
 
         .datebar input {
-            background: #071126;
+            background: var(--panel2);
             border: 1px solid var(--bdr2);
             color: var(--txt);
             border-radius: 9px;
@@ -140,7 +170,7 @@
             font-family: var(--sans);
             font-size: 13px;
             font-weight: 600;
-            color-scheme: dark;
+            color-scheme: var(--cs, dark);
             min-width: 150px;
             cursor: pointer;
             transition: border-color .2s
@@ -153,7 +183,7 @@
             .datebar input:focus {
                 outline: none;
                 border-color: var(--cyan);
-                box-shadow: 0 0 0 2px rgba(34,211,238,.15)
+                box-shadow: 0 0 0 2px color-mix(in srgb, var(--cyan) 15%, transparent)
             }
 
         /* Make the native calendar picker icon clearly VISIBLE on the dark theme
@@ -199,7 +229,7 @@
                 }
 
                 .qr button:hover, .qr button.active {
-                    background: rgba(34,211,238,.14);
+                    background: color-mix(in srgb, var(--cyan) 14%, transparent);
                     color: var(--cyan);
                 }
 
@@ -215,7 +245,7 @@
             border: 1px solid var(--bdr2);
             border-radius: 12px;
             overflow: hidden;
-            background: rgba(16,30,62,.6);
+            background: var(--panel);
         }
 
         .tab {
@@ -240,7 +270,7 @@
 
             .tab.active {
                 color: var(--cyan);
-                background: rgba(34,211,238,.13);
+                background: color-mix(in srgb, var(--cyan) 13%, transparent);
                 box-shadow: inset 0 -2px 0 var(--cyan);
             }
 
@@ -267,7 +297,7 @@
         }
 
         .side, .main {
-            background: rgba(12,23,49,.82);
+            background: var(--panel);
             border: 1px solid var(--bdr);
             border-radius: 18px;
             padding: 14px;
@@ -321,7 +351,7 @@
         .spin {
             width: 18px;
             height: 18px;
-            border: 3px solid rgba(34,211,238,.20);
+            border: 3px solid color-mix(in srgb, var(--cyan) 20%, transparent);
             border-top-color: var(--cyan);
             border-radius: 50%;
             animation: s 1s linear infinite
@@ -335,7 +365,7 @@
 
         .card {
             border: 1px solid var(--bdr);
-            background: rgba(16,30,62,.72);
+            background: var(--panel);
             border-radius: 14px;
             padding: 12px;
             margin-bottom: 10px;
@@ -343,8 +373,8 @@
         }
 
             .card:hover, .card.selected {
-                border-color: rgba(34,211,238,.65);
-                background: rgba(34,211,238,.08)
+                border-color: color-mix(in srgb, var(--cyan) 65%, transparent);
+                background: color-mix(in srgb, var(--cyan) 8%, transparent)
             }
 
         .card-top {
@@ -373,14 +403,14 @@
 
         .on {
             color: var(--green);
-            border-color: rgba(52,211,153,.45);
-            background: rgba(52,211,153,.08)
+            border-color: color-mix(in srgb, var(--green) 45%, transparent);
+            background: color-mix(in srgb, var(--green) 8%, transparent)
         }
 
         .off {
             color: var(--red);
-            border-color: rgba(251,113,133,.45);
-            background: rgba(251,113,133,.08)
+            border-color: color-mix(in srgb, var(--red) 45%, transparent);
+            background: color-mix(in srgb, var(--red) 8%, transparent)
         }
 
         .card-meta {
@@ -400,13 +430,13 @@
             padding: 8px 10px;
             border-radius: 999px;
             border: 1px solid var(--bdr);
-            background: rgba(16,30,62,.78);
+            background: var(--panel);
             cursor: pointer;
             font-size: 12px
         }
 
             .chip:hover, .chip.selected {
-                border-color: rgba(34,211,238,.65);
+                border-color: color-mix(in srgb, var(--cyan) 65%, transparent);
                 color: var(--cyan)
             }
 
@@ -454,7 +484,7 @@
             border: 1px solid var(--bdr);
             border-radius: 14px;
             padding: 14px 10px;
-            background: linear-gradient(135deg, rgba(16,30,62,.9), rgba(12,23,49,.7));
+            background: linear-gradient(135deg, var(--panel), var(--panel));
             text-align: center;
             position: relative;
             overflow: hidden
@@ -498,13 +528,13 @@
             border: 1px solid var(--bdr);
             border-radius: 18px;
             padding: 18px;
-            background: linear-gradient(160deg, rgba(16,30,62,.72), rgba(7,13,29,.6));
+            background: linear-gradient(160deg, var(--panel), var(--panel2));
             margin-bottom: 14px;
             transition: border-color .2s
         }
 
             .center-device:hover {
-                border-color: rgba(34,211,238,.25)
+                border-color: color-mix(in srgb, var(--cyan) 25%, transparent)
             }
 
         .center-device-hdr {
@@ -514,7 +544,7 @@
             flex-wrap: wrap;
             margin-bottom: 14px;
             padding-bottom: 12px;
-            border-bottom: 1px solid rgba(27,44,85,.5)
+            border-bottom: 1px solid var(--bdr)
         }
 
             .center-device-hdr h2 {
@@ -533,27 +563,27 @@
         }
 
             .cbadge.on {
-                background: rgba(52,211,153,.1);
+                background: color-mix(in srgb, var(--green) 10%, transparent);
                 color: var(--green);
-                border: 1px solid rgba(52,211,153,.35)
+                border: 1px solid color-mix(in srgb, var(--green) 35%, transparent)
             }
 
             .cbadge.off {
-                background: rgba(251,113,133,.1);
+                background: color-mix(in srgb, var(--red) 10%, transparent);
                 color: var(--red);
-                border: 1px solid rgba(251,113,133,.35)
+                border: 1px solid color-mix(in srgb, var(--red) 35%, transparent)
             }
 
             .cbadge.info {
-                background: rgba(96,165,250,.1);
+                background: color-mix(in srgb, var(--blue) 10%, transparent);
                 color: var(--blue);
-                border: 1px solid rgba(96,165,250,.35)
+                border: 1px solid color-mix(in srgb, var(--blue) 35%, transparent)
             }
 
             .cbadge.cy {
-                background: rgba(34,211,238,.1);
+                background: color-mix(in srgb, var(--cyan) 10%, transparent);
                 color: var(--cyan);
-                border: 1px solid rgba(34,211,238,.35)
+                border: 1px solid color-mix(in srgb, var(--cyan) 35%, transparent)
             }
 
         .ckv-grid {
@@ -569,9 +599,9 @@
             align-items: center;
             padding: 9px 14px;
             border-radius: 10px;
-            background: rgba(7,17,38,.55);
+            background: var(--panel2);
             font-size: 12px;
-            border: 1px solid rgba(27,44,85,.4)
+            border: 1px solid var(--bdr)
         }
 
             .ckv .k {
@@ -655,15 +685,15 @@
             border: 1px solid var(--bdr);
             border-radius: 12px;
             padding: 12px;
-            background: rgba(7,17,38,.5);
+            background: var(--panel2);
             cursor: pointer;
             transition: all .2s;
             text-align: center
         }
 
             .ca10:hover {
-                border-color: rgba(34,211,238,.55);
-                background: rgba(34,211,238,.05);
+                border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+                background: color-mix(in srgb, var(--cyan) 5%, transparent);
                 transform: translateY(-1px)
             }
 
@@ -692,7 +722,7 @@
             border: 1px solid var(--bdr);
             border-radius: 16px;
             padding: 16px;
-            background: linear-gradient(160deg, rgba(16,30,62,.72), rgba(7,13,29,.6));
+            background: linear-gradient(160deg, var(--panel), var(--panel2));
             margin-top: 14px
         }
 
@@ -739,12 +769,12 @@
             width: min(1100px,96vw);
             max-height: 90vh;
             overflow: auto;
-            background: #081226;
+            background: var(--panel);
             border: 1px solid var(--bdr2);
             border-radius: 20px;
             display: none;
             z-index: 96;
-            box-shadow: 0 24px 80px rgba(0,0,0,.45)
+            box-shadow: var(--e7-shadow-pop, 0 24px 80px rgba(0,0,0,.45))
         }
 
             .modal.open {
@@ -766,7 +796,7 @@
 
         .x {
             border: 1px solid var(--bdr2);
-            background: #101e3e;
+            background: var(--panel2);
             color: var(--txt);
             border-radius: 10px;
             width: 34px;
@@ -782,7 +812,7 @@
             border: 1px solid var(--bdr);
             border-radius: 16px;
             padding: 12px;
-            background: rgba(16,30,62,.55)
+            background: var(--panel)
         }
 
         .bar {
@@ -801,7 +831,7 @@
 
         .btn {
             border: 1px solid var(--bdr2);
-            background: #10244d;
+            background: var(--panel2);
             color: var(--txt);
             border-radius: 9px;
             padding: 8px 12px;
@@ -820,7 +850,7 @@
             border: 1px solid var(--bdr);
             border-radius: 12px;
             padding: 9px;
-            background: rgba(7,17,38,.7)
+            background: var(--panel2)
         }
 
             .stat b {
@@ -852,7 +882,7 @@
             font-size: 12px;
             color: var(--mut);
             padding: 7px;
-            border-bottom: 1px solid rgba(27,44,85,.55)
+            border-bottom: 1px solid var(--bdr)
         }
 
         @@media(max-width:1280px) {
@@ -941,7 +971,7 @@
             transition: transform .25s;
             display: flex;
             flex-direction: column;
-            box-shadow: -8px 0 40px rgba(0,0,0,.4)
+            box-shadow: var(--e7-shadow-pop, -8px 0 40px rgba(0,0,0,.4))
         }
 
             .dsb.open {
@@ -1077,11 +1107,11 @@
         }
 
             .dbadge.v1 {
-                color: #fb923c
+                color: var(--org)
             }
 
             .dbadge.v2 {
-                color: #a78bfa
+                color: var(--e7-violet, #a78bfa)
             }
 
             .dbadge.mq {
@@ -1166,7 +1196,7 @@
             }
 
         .dcon {
-            background: #050b18;
+            background: var(--e7-surface-3, #050b18);
             border: 1px solid var(--bdr);
             border-radius: 10px;
             overflow: hidden;
@@ -1273,7 +1303,7 @@
                 border-radius: 7px;
                 padding: 5px 7px;
                 font-size: 11px;
-                color-scheme: dark
+                color-scheme: var(--cs, dark)
             }
 
         .dhist {
@@ -1296,8 +1326,8 @@
         }
 
             .dh-card.off {
-                background: rgba(251,113,133,.07);
-                border-color: rgba(251,113,133,.25)
+                background: color-mix(in srgb, var(--red) 7%, transparent);
+                border-color: color-mix(in srgb, var(--red) 25%, transparent)
             }
 
         .dh-time {
@@ -1316,17 +1346,17 @@
         }
 
             .dtag.tcp {
-                background: rgba(96,165,250,.16);
+                background: color-mix(in srgb, var(--blue) 16%, transparent);
                 color: var(--blue)
             }
 
             .dtag.mqtt {
-                background: rgba(52,211,153,.16);
+                background: color-mix(in srgb, var(--green) 16%, transparent);
                 color: var(--green)
             }
 
             .dtag.off {
-                background: rgba(251,113,133,.14);
+                background: color-mix(in srgb, var(--red) 14%, transparent);
                 color: var(--red)
             }
 
@@ -1387,7 +1417,7 @@
                 border-radius: 7px;
                 padding: 5px 8px;
                 font-size: 11px;
-                color-scheme: dark
+                color-scheme: var(--cs, dark)
             }
 
         .dempty {
@@ -1416,7 +1446,7 @@
             }
 
                 .vtoggle button.active {
-                    background: rgba(34,211,238,.16);
+                    background: color-mix(in srgb, var(--cyan) 16%, transparent);
                     color: var(--cyan)
                 }
 
@@ -1481,7 +1511,7 @@
 
         .gbtn {
             border: 1px solid var(--bdr2);
-            background: linear-gradient(135deg,#10244d,#0b1733);
+            background: linear-gradient(135deg,var(--panel2),var(--panel));
             color: var(--txt);
             border-radius: 9px;
             padding: 6px 11px;
@@ -1629,7 +1659,7 @@ function openGraph(title){el('graphTitle').textContent=title;el('ov').classList.
 window.closeGraph=function(){destroyChart();el('ov').classList.remove('open');el('graphModal').classList.remove('open');el('graphBody').innerHTML=''};
 function destroyChart(){if(chart){try{chart.destroy()}catch(e){}chart=null}}
 function loadGraph(){if(!sel)return;destroyChart();lastData=null;el('loader').style.display='flex';el('empty').style.display='none';var f=apiDate(el('fromDate').value),t=apiDate(el('toDate').value);var u=selType==='modem'?MODEM_GRAPH_URL+'?clusterId='+encodeURIComponent(sel.clusterId)+'&fromDate='+encodeURIComponent(f)+'&toDate='+encodeURIComponent(t):A10_GRAPH_URL+'?clusterId='+encodeURIComponent(sel.clusterId)+'&a10Id='+encodeURIComponent(sel.a10Id)+'&fromDate='+encodeURIComponent(f)+'&toDate='+encodeURIComponent(t);fetch(u,{credentials:'include'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(function(j){var data=Array.isArray(j)?j:(j.Data||j.data||[]);lastData=data;draw(data)}).catch(function(e){el('loader').style.display='none';el('empty').style.display='flex';el('empty').innerHTML='Graph load failed<br/>'+esc(e.message)})}
-function draw(data){el('loader').style.display='none';var rows=(data||[]).map(function(x){return{time:parseTs(fd(x.TimeStamp,x.timestamp,x.Timestamp,x.timeStamp,x.CreatedOn,x.time)),type:num(fd(x.TypeId,x.typeId),0),signal:fd(x.SignalStrength,x.signalStrength),uptime:fd(x.Uptime,x.uptime),response:fd(x.ResponseTime,x.responseTime)}}).filter(function(x){return x.time!==null});rows.sort(function(a,b){return a.time-b.time});var showTcp=el('tcp').checked,showMqtt=el('mqtt').checked;rows=rows.filter(function(x){return (x.type===1&&showTcp)||(x.type===2&&showMqtt)||(!x.type)});if(!rows.length){el('empty').style.display='flex';el('chart').style.display='none';el('stats').innerHTML='';return}el('empty').style.display='none';el('chart').style.display='block';var tcp=rows.filter(function(x){return x.type===1}).length,mqtt=rows.filter(function(x){return x.type===2}).length;el('stats').innerHTML='<div class="stat"><b>'+rows.length+'</b><span>Total samples</span></div><div class="stat"><b>'+tcp+'</b><span>TCP samples</span></div><div class="stat"><b>'+mqtt+'</b><span>MQTT samples</span></div><div class="stat"><b>'+esc(new Date(rows[rows.length-1].time).toLocaleString())+'</b><span>Last point</span></div>';var ctx=el('chart');chart=new Chart(ctx,{type:'line',data:{datasets:[{label:'TCP',data:rows.filter(function(x){return x.type===1}).map(function(x){return{x:x.time,y:num(fd(x.signal,x.response,x.uptime),0)}}),borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.1)',borderWidth:2,fill:true,pointRadius:1,pointHoverRadius:5,tension:.25},{label:'MQTT',data:rows.filter(function(x){return x.type===2}).map(function(x){return{x:x.time,y:num(fd(x.signal,x.response,x.uptime),0)}}),borderColor:'#34d399',backgroundColor:'rgba(52,211,153,.1)',borderWidth:2,fill:true,pointRadius:1,pointHoverRadius:5,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,parsing:false,normalized:true,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:'#e7edf7'}},tooltip:{callbacks:{title:function(c){return new Date(c[0].parsed.x).toLocaleString()}}}},scales:{x:{type:'time',time:{displayFormats:{minute:'HH:mm',hour:'HH:mm',day:'dd MMM'}},ticks:{color:'#9fb1d1',maxRotation:45},grid:{color:'rgba(96,116,154,.18)'}},y:{ticks:{color:'#9fb1d1'},grid:{color:'rgba(96,116,154,.18)'}}}}})}
+function draw(data){el('loader').style.display='none';var rows=(data||[]).map(function(x){return{time:parseTs(fd(x.TimeStamp,x.timestamp,x.Timestamp,x.timeStamp,x.CreatedOn,x.time)),type:num(fd(x.TypeId,x.typeId),0),signal:fd(x.SignalStrength,x.signalStrength),uptime:fd(x.Uptime,x.uptime),response:fd(x.ResponseTime,x.responseTime)}}).filter(function(x){return x.time!==null});rows.sort(function(a,b){return a.time-b.time});var showTcp=el('tcp').checked,showMqtt=el('mqtt').checked;rows=rows.filter(function(x){return (x.type===1&&showTcp)||(x.type===2&&showMqtt)||(!x.type)});if(!rows.length){el('empty').style.display='flex';el('chart').style.display='none';el('stats').innerHTML='';return}el('empty').style.display='none';el('chart').style.display='block';var tcp=rows.filter(function(x){return x.type===1}).length,mqtt=rows.filter(function(x){return x.type===2}).length;el('stats').innerHTML='<div class="stat"><b>'+rows.length+'</b><span>Total samples</span></div><div class="stat"><b>'+tcp+'</b><span>TCP samples</span></div><div class="stat"><b>'+mqtt+'</b><span>MQTT samples</span></div><div class="stat"><b>'+esc(new Date(rows[rows.length-1].time).toLocaleString())+'</b><span>Last point</span></div>';var ctx=el('chart');var tcs=getComputedStyle(document.documentElement),tv=function(n,f){var x=tcs.getPropertyValue(n);return x&&x.trim()?x.trim():f},tGrid=tv('--e7-grid-line','rgba(96,116,154,.18)'),tTx=tv('--e7-text-3','#9fb1d1');chart=new Chart(ctx,{type:'line',data:{datasets:[{label:'TCP',data:rows.filter(function(x){return x.type===1}).map(function(x){return{x:x.time,y:num(fd(x.signal,x.response,x.uptime),0)}}),borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.1)',borderWidth:2,fill:true,pointRadius:1,pointHoverRadius:5,tension:.25},{label:'MQTT',data:rows.filter(function(x){return x.type===2}).map(function(x){return{x:x.time,y:num(fd(x.signal,x.response,x.uptime),0)}}),borderColor:'#34d399',backgroundColor:'rgba(52,211,153,.1)',borderWidth:2,fill:true,pointRadius:1,pointHoverRadius:5,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,parsing:false,normalized:true,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:tv('--e7-text-2','#e7edf7')}},tooltip:{backgroundColor:tv('--e7-surface','#0c1731'),titleColor:tv('--e7-text','#e7edf7'),bodyColor:tv('--e7-text-2','#9fb1d1'),borderColor:tv('--e7-border','#1b2c55'),borderWidth:1,callbacks:{title:function(c){return new Date(c[0].parsed.x).toLocaleString()}}}},scales:{x:{type:'time',time:{displayFormats:{minute:'HH:mm',hour:'HH:mm',day:'dd MMM'}},ticks:{color:tTx,maxRotation:45},grid:{color:tGrid}},y:{ticks:{color:tTx},grid:{color:tGrid}}}}})}
 function loadA10Records(){if(selType!=='a10')return;var f=apiDate(el('fromDate').value),t=apiDate(el('toDate').value);var u=A10_RECORDS_URL+'?clusterId='+encodeURIComponent(sel.clusterId)+'&a10Id='+encodeURIComponent(sel.a10Id)+'&ModemId='+encodeURIComponent(sel.modemId||'')+'&fromDate='+encodeURIComponent(f)+'&toDate='+encodeURIComponent(t);fetch(u,{credentials:'include'}).then(function(r){return r.json()}).then(function(j){var arr=Array.isArray(j)?j:(j.Data||j.data||[]);el('records').innerHTML=arr.slice(0,80).map(function(r){return'<div class="row"><span>'+esc(fd(r.TimeStamp,r.timestamp,''))+'</span><span>'+esc(fd(r.TypeId,r.typeId,''))+'</span><span>'+esc(fd(r.Message,r.message,r.Status,r.status,''))+'</span></div>'}).join('')}).catch(function(){})}
 // =====================================================================
 // DEVICE DETAIL SIDEBAR (N/W db parity) + cluster/asset grouping

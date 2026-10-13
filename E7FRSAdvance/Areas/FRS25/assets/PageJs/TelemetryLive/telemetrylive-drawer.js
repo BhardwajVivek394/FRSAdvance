@@ -196,9 +196,9 @@
         '.tld-title{font-size:18px;font-weight:800;color:var(--e7-heading,#1b3c55);}' +
         '.tld-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}' +
         '.tld-chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:700;border:1px solid var(--e7-border,#e7ebf1);color:var(--e7-text-2,#55657a);background:var(--e7-surface-2,#f4f6f9);}' +
-        '.tld-chip.ok{color:#1F9D55;border-color:rgba(31,157,85,.45);background:rgba(31,157,85,.08);}' +
-        '.tld-chip.warn{color:#9A6A00;border-color:rgba(234,179,8,.55);background:rgba(234,179,8,.12);}' +
-        '.tld-chip.bad{color:#C8323A;border-color:rgba(229,72,77,.45);background:rgba(229,72,77,.08);}' +
+        '.tld-chip.ok{color:var(--e7-green,#1F9D55);border-color:rgba(31,157,85,.45);background:rgba(31,157,85,.08);}' +
+        '.tld-chip.warn{color:var(--e7-amber,#9A6A00);border-color:rgba(234,179,8,.55);background:rgba(234,179,8,.12);}' +
+        '.tld-chip.bad{color:var(--e7-red,#C8323A);border-color:rgba(229,72,77,.45);background:rgba(229,72,77,.08);}' +
         '.tld-btn{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}' +
         '.tld-btn:hover{border-color:var(--e7-accent,#2f9ec4);color:var(--e7-accent,#2f9ec4);}' +
         '.tld-btn.sm{height:26px;padding:0 9px;font-size:11.5px;border-radius:7px;}' +
@@ -234,8 +234,8 @@
         '.tld-tile .vl small{font-size:11px;color:var(--e7-text-3,#8b98a8);margin-left:3px;}' +
         '.tld-tile .sl{font-size:11.5px;font-weight:600;color:var(--e7-text-3,#6B7A8C);}' +
         '.tld-tile.low,.tld-tile.near{border-color:rgba(224,161,0,.55);background:rgba(224,161,0,.06);}' +
-        '.tld-tile.low .vl,.tld-tile.low .sl,.tld-tile.near .vl,.tld-tile.near .sl{color:#B47B00;} .tld-tile.low .bg,.tld-tile.near .bg{background:rgba(224,161,0,.2);color:#8A5F00;}' +
-        '.tld-tile.high{border-color:rgba(229,72,77,.55);background:rgba(229,72,77,.06);} .tld-tile.high .vl,.tld-tile.high .sl{color:#C8323A;} .tld-tile.high .bg{background:rgba(229,72,77,.16);color:#C8323A;}' +
+        '.tld-tile.low .vl,.tld-tile.low .sl,.tld-tile.near .vl,.tld-tile.near .sl{color:var(--e7-amber,#B47B00);} .tld-tile.low .bg,.tld-tile.near .bg{background:rgba(224,161,0,.2);color:var(--e7-amber,#8A5F00);}' +
+        '.tld-tile.high{border-color:rgba(229,72,77,.55);background:rgba(229,72,77,.06);} .tld-tile.high .vl,.tld-tile.high .sl{color:var(--e7-red,#C8323A);} .tld-tile.high .bg{background:rgba(229,72,77,.16);color:var(--e7-red,#C8323A);}' +
         '.tld-g{position:relative;height:10px;margin:6px 0 2px;}' +
         '.tld-g .tr{position:absolute;left:0;right:0;top:3px;height:4px;border-radius:3px;background:linear-gradient(90deg,rgba(224,161,0,.55) 0%,rgba(31,157,85,.38) 22%,rgba(31,157,85,.38) 78%,rgba(229,72,77,.45) 100%);}' +
         '.tld-g .mk{position:absolute;top:-2px;width:5px;height:14px;margin-left:-2.5px;border-radius:2px;background:var(--e7-heading,#0F1B2A);}' +
@@ -261,48 +261,48 @@
         /* v618.37 Ask AI ("Drawer final" mockup + E7MRIWeb ChatBot answer rendering) */
         '.tld-chat{display:flex;flex-direction:column;gap:10px;flex:1;min-height:520px;}' +
         '.tld-ib{width:28px;height:28px;border-radius:7px;border:1px solid var(--e7-border,#E4E8EE);background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);cursor:pointer;display:inline-grid;place-items:center;padding:0;}' +
-        '.tld-ib:hover,.tld-ib[aria-pressed="true"]{border-color:#0A7C86;color:#0A7C86;}' +
+        '.tld-ib:hover,.tld-ib[aria-pressed="true"]{border-color:var(--e7-accent,#0A7C86);color:var(--e7-accent-ink,#0A7C86);}' +
         '.tld-chatsec.full{position:fixed;top:0;right:0;bottom:0;width:min(1040px,100vw);z-index:1993;border-radius:0;box-shadow:-18px 0 40px -12px rgba(15,27,42,.35);}' +
         '.tld-chatsec.full .tld-chat{min-height:0;}' +
         '.tld-ctx{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;color:var(--e7-text-3,#6B7A8C);}' +
-        '.tld-ctx span{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:700;color:#0A7C86;background:rgba(10,124,134,.08);border:1px solid rgba(10,124,134,.35);}' +
+        '.tld-ctx span{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:700;color:var(--e7-accent-ink,#0A7C86);background:rgba(10,124,134,.08);border:1px solid rgba(10,124,134,.35);}' +
         '.tld-msgs{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;max-height:640px;overflow-y:auto;padding-right:4px;}' +
         '.tld-chatsec.full .tld-msgs{max-height:none;}' +
-        '.tld-mu{align-self:flex-end;max-width:85%;background:#0A7C86;color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;}' +
+        '.tld-mu{align-self:flex-end;max-width:85%;background:linear-gradient(120deg,var(--e7-ask-from,#0A7C86),var(--e7-ask-to,#0A7C86));color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;}' +
         '.tld-ma{align-self:flex-start;max-width:92%;min-width:60px;background:var(--e7-surface-3,#F1F4F7);color:var(--e7-text,#1F2937);border-radius:14px 14px 14px 4px;padding:9px 12px;font-size:13px;line-height:1.45;overflow-wrap:anywhere;}' +
         '.tld-ma.err .tld-mdb{display:none;}' +
         '.tld-mdb h2,.tld-mdb h3,.tld-mdb h4{margin:8px 0 4px;font-size:13.5px;font-weight:800;color:var(--e7-heading,#0F1B2A);} .tld-mdb h2{font-size:14.5px;}' +
         '.tld-mdb ul,.tld-mdb ol{margin:4px 0 4px 18px;padding:0;} .tld-mdb li{margin:2px 0;}' +
-        '.tld-mdb pre{background:rgba(15,27,42,.06);border-radius:8px;padding:8px 10px;overflow-x:auto;font-size:12px;margin:6px 0;} .tld-mdb code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;}' +
-        '.tld-mdb :not(pre)>code{background:rgba(15,27,42,.06);border-radius:4px;padding:0 4px;}' +
-        '.tld-mdb blockquote{margin:6px 0;padding:2px 10px;border-left:3px solid #0A7C86;color:var(--e7-text-2,#55657a);} .tld-mdb hr{border:none;border-top:1px solid var(--e7-border,#e7ebf1);margin:8px 0;}' +
+        '.tld-mdb pre{background:var(--e7-surface-3,rgba(15,27,42,.06));border-radius:8px;padding:8px 10px;overflow-x:auto;font-size:12px;margin:6px 0;} .tld-mdb code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12px;}' +
+        '.tld-mdb :not(pre)>code{background:var(--e7-surface-3,rgba(15,27,42,.06));border-radius:4px;padding:0 4px;}' +
+        '.tld-mdb blockquote{margin:6px 0;padding:2px 10px;border-left:3px solid var(--e7-accent,#0A7C86);color:var(--e7-text-2,#55657a);} .tld-mdb hr{border:none;border-top:1px solid var(--e7-border,#e7ebf1);margin:8px 0;}' +
         '.tld-mdt{overflow-x:auto;margin:6px 0;} .tld-mdt table{border-collapse:collapse;font-size:12px;width:100%;}' +
-        '.tld-mdt th,.tld-mdt td{border:1px solid var(--e7-border,rgba(15,23,42,.12));padding:4px 8px;text-align:left;} .tld-mdt th{background:rgba(15,27,42,.04);font-weight:700;}' +
+        '.tld-mdt th,.tld-mdt td{border:1px solid var(--e7-border,rgba(15,23,42,.12));padding:4px 8px;text-align:left;} .tld-mdt th{background:var(--e7-surface-2,rgba(15,27,42,.04));font-weight:700;}' +
         '.tld-pc{border:1px solid var(--e7-border,#e7ebf1);border-left:4px solid #94A3B8;border-radius:10px;background:var(--e7-surface,#fff);margin:6px 0;overflow:hidden;}' +
         '.tld-pc.urgent{border-left-color:#E5484D;} .tld-pc.soon{border-left-color:#E0A100;} .tld-pc.monitor{border-left-color:#1F9D55;}' +
         '.tld-pc .pc-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--e7-border,#e7ebf1);}' +
         '.tld-pc .pc-pill{font:800 10px "JetBrains Mono",ui-monospace,monospace;padding:2px 7px;border-radius:999px;background:rgba(148,163,184,.2);}' +
-        '.tld-pc.urgent .pc-pill{background:rgba(229,72,77,.14);color:#C8323A;} .tld-pc.soon .pc-pill{background:rgba(224,161,0,.18);color:#8A5F00;} .tld-pc.monitor .pc-pill{background:rgba(31,157,85,.12);color:#1F9D55;}' +
+        '.tld-pc.urgent .pc-pill{background:rgba(229,72,77,.14);color:var(--e7-red,#C8323A);} .tld-pc.soon .pc-pill{background:rgba(224,161,0,.18);color:var(--e7-amber,#8A5F00);} .tld-pc.monitor .pc-pill{background:rgba(31,157,85,.12);color:var(--e7-green,#1F9D55);}' +
         '.tld-pc .pc-asset{font-weight:800;} .tld-pc .pc-sub{font-size:11.5px;color:var(--e7-text-3,#6B7A8C);}' +
         '.tld-pc .pc-row{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:5px 10px;font-size:12px;} .tld-pc .pc-k{color:var(--e7-text-3,#6B7A8C);font-weight:600;}' +
         '.tld-pc .pc-action{background:rgba(10,124,134,.06);} .tld-pc .pc-note .pc-v{color:var(--e7-text-2,#55657a);font-style:italic;}' +
-        '.tld-tool{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#0A7C86;margin-bottom:4px;}' +
+        '.tld-tool{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:var(--e7-accent-ink,#0A7C86);margin-bottom:4px;}' +
         '.tld-dots{display:inline-flex;gap:4px;padding:4px 0;} .tld-dots i{width:6px;height:6px;border-radius:50%;background:var(--e7-text-3,#8b98a8);animation:tldDot 1.2s infinite ease-in-out;}' +
         '.tld-dots i:nth-child(2){animation-delay:.15s} .tld-dots i:nth-child(3){animation-delay:.3s}' +
         '@keyframes tldDot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}' +
-        '.tld-caret{display:inline-block;width:7px;height:14px;margin-left:2px;vertical-align:-2px;background:#0A7C86;animation:tldBlink 1s steps(2) infinite;}' +
+        '.tld-caret{display:inline-block;width:7px;height:14px;margin-left:2px;vertical-align:-2px;background:var(--e7-accent,#0A7C86);animation:tldBlink 1s steps(2) infinite;}' +
         '@keyframes tldBlink{50%{opacity:0}}' +
-        '.tld-merr{margin-top:6px;font-size:12.5px;color:#C8323A;}' +
+        '.tld-merr{margin-top:6px;font-size:12.5px;color:var(--e7-red,#C8323A);}' +
         '.tld-macts{display:flex;gap:6px;margin-top:6px;}' +
         '.tld-macts button{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:7px;border:1px solid transparent;background:transparent;font:inherit;font-size:11.5px;color:var(--e7-text-3,#6B7A8C);cursor:pointer;}' +
-        '.tld-macts button:hover{border-color:var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:#0A7C86;}' +
+        '.tld-macts button:hover{border-color:var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:var(--e7-accent-ink,#0A7C86);}' +
         '.tld-sugg{display:flex;flex-wrap:wrap;gap:6px;}' +
         '.tld-sugg button{height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--e7-border,#E4E8EE);background:var(--e7-surface,#fff);font:inherit;font-size:11.5px;color:var(--e7-text-2,#415064);cursor:pointer;}' +
-        '.tld-sugg button:hover{border-color:#0A7C86;color:#0A7C86;} .tld-sugg button[disabled]{opacity:.5;cursor:wait;}' +
+        '.tld-sugg button:hover{border-color:var(--e7-accent,#0A7C86);color:var(--e7-accent-ink,#0A7C86);} .tld-sugg button[disabled]{opacity:.5;cursor:wait;}' +
         '.tld-in{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--e7-border,#E4E8EE);border-radius:12px;padding:8px;background:var(--e7-surface,#fff);}' +
-        '.tld-in:focus-within{border-color:#0A7C86;box-shadow:0 0 0 3px rgba(10,124,134,.12);}' +
+        '.tld-in:focus-within{border-color:var(--e7-accent,#0A7C86);box-shadow:0 0 0 3px rgba(10,124,134,.12);}' +
         '.tld-in textarea{flex:1;border:none;resize:none;font:inherit;font-size:13px;outline:none;background:transparent;color:inherit;}' +
-        '.tld-send{width:36px;height:36px;border-radius:10px;border:none;background:#0A7C86;color:#fff;cursor:pointer;display:grid;place-items:center;flex:none;}' +
+        '.tld-send{width:36px;height:36px;border-radius:10px;border:none;background:linear-gradient(120deg,var(--e7-ask-from,#0A7C86),var(--e7-ask-to,#0A7C86));color:#fff;cursor:pointer;display:grid;place-items:center;flex:none;}' +
         '.tld-send.stop{background:#C8323A;}' +
         '.tld-tbl{overflow-x:auto;border:1px solid var(--e7-border,#e7ebf1);border-radius:10px;}' +
         '.tld-tbl table{border-collapse:collapse;width:100%;}' +
@@ -317,7 +317,7 @@
         '.tld-pend{border:1px dashed var(--e7-border-2,#cbd5e1);border-radius:10px;padding:14px;color:var(--e7-text-2,#55657a);font-size:12.5px;line-height:1.5;}' +
         '@media (max-width:820px){.tld-row{grid-template-columns:1fr;}.tld-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}.tld-calc{grid-template-columns:repeat(2,minmax(0,1fr));}}' +
         /* card button */
-        '.tl-asset-action.tl-aa-ai,.sig-action-btn.tl-aa-ai{color:#7C5CFF;}';
+        '.tl-asset-action.tl-aa-ai,.sig-action-btn.tl-aa-ai{color:var(--e7-violet,#7C5CFF);}';
     function ensureCss() {
         if (document.getElementById('tldCss')) return;
         var st = document.createElement('style');
@@ -540,7 +540,7 @@
             '<div class="tld-note">' + (r.findingsSource === 'computed' ? 'Findings computed from the evidence (AI unavailable)' : 'AI health summary') +
             ' &#183; 2-day data, 15-day alerts' + (kind() === 'pm' ? ', PM prediction' : kind() === 'track' ? ', track shorting' : '') +
             (r.generatedAt ? ' &#183; ' + esc(r.generatedAt) : '') + (r.cached ? ' (cached)' : '') +
-            (srcBad.length ? ' &#183; <span style="color:#B47B00">' + esc(srcBad.join(', ')) + '</span>' : '') + '</div>';
+            (srcBad.length ? ' &#183; <span style="color:var(--e7-amber,#B47B00)">' + esc(srcBad.join(', ')) + '</span>' : '') + '</div>';
     }
     /* ------------------------------------------------------------------
        v618.35 MAINTENANCE ROSTER -- this asset on today's roster
@@ -610,7 +610,7 @@
         if (!R || R.loading) return '<div class="tld-hload"><span class="tld-spin"></span>Loading today\'s maintenance roster...</div>';
         if (R.needDivision) return '<div class="tld-empty">Waiting for the asset\'s division (from the health summary) -- or choose a Division in the page filter.</div>';
         var h = '';
-        if (R.sheetErr && !R.items.length) h += '<div class="tld-empty" style="color:#B47B00">Roster worksheet: ' + esc(R.sheetErr) + '</div>';
+        if (R.sheetErr && !R.items.length) h += '<div class="tld-empty" style="color:var(--e7-amber,#B47B00)">Roster worksheet: ' + esc(R.sheetErr) + '</div>';
         else if (!R.items.length) h += '<div class="tld-ok"><b>Not on today\'s maintenance roster</b> (' + esc(R.day) + ').</div>';
         R.items.forEach(function (it) {
             var since = F(it, ['FirstSeenDate', 'firstSeenDate'], ''), days = F(it, ['DayCount', 'dayCount'], null);
@@ -635,7 +635,7 @@
             h += '<div class="tld-rvisit"><b>Maintenance visit:</b> ' + esc(out || 'recorded') + (when ? ' &#183; ' + esc(String(when).replace('T', ' ').slice(0, 16)) : '') +
                 (by ? ' &#183; ' + esc(by) : '') + (rem ? '<div class="tld-note">' + esc(rem) + '</div>' : '') + '</div>';
         });
-        if (R.stateErr) h += '<div class="tld-note" style="color:#B47B00">Maintenance visits: ' + esc(R.stateErr) + '</div>';
+        if (R.stateErr) h += '<div class="tld-note" style="color:var(--e7-amber,#B47B00)">Maintenance visits: ' + esc(R.stateErr) + '</div>';
         return h + '<div class="tld-note">Roster ' + esc(R.day) + ' &#183; division ' + esc(R.div) + ' &#183; <a href="' + ROSTER_PAGE_URL + '" target="_blank" rel="noopener">Open Maintenance Roster</a></div>';
     }
     function paintRoster() { var el = document.getElementById('tldRoster'); if (el) el.innerHTML = rosterHtml(); }
@@ -702,7 +702,7 @@
     function shortHtml() {
         var S = D.short[D.aid];
         if (!S || S.loading) return '<div class="tld-hload"><span class="tld-spin"></span>Running the track shorting analysis (last ' + D.shortDays + ' day' + (D.shortDays > 1 ? 's' : '') + ')...</div>';
-        if (S.err) return '<div class="tld-empty" style="color:#B47B00">' + esc(S.err) + '</div>';
+        if (S.err) return '<div class="tld-empty" style="color:var(--e7-amber,#B47B00)">' + esc(S.err) + '</div>';
         var r = S.data, info = r.leakage_info || {};
         var cond = r.overall_condition || 'Normal', cc = COND[String(cond).split(' ')[0].toLowerCase()] || '';
         var leak = !!info.leakage_detected && info.leakage_type && info.leakage_type !== 'None';
@@ -722,10 +722,10 @@
             (peak > 0 ? '<span class="tld-chip">Peak AUC ' + num(peak) + ' mA-d</span>' : '') + '</div>';
         var A = S.ai || {}, ai = A.info;
         h += '<div class="tld-sh" style="margin-top:4px"><h3 style="font-size:11.5px">Diagnostic reasoning' + (ai ? ' &#183; AI' : '') + '</h3>' +
-            '<button type="button" class="tld-btn sm" data-tld-sai="1"' + (A.loading ? ' disabled' : '') + ' style="color:#7C5CFF">' + (A.loading ? 'Analyzing...' : ai ? '&#8635; AI Analysis' : A.err ? 'Retry AI' : 'AI Analysis') + '</button></div>' +
+            '<button type="button" class="tld-btn sm" data-tld-sai="1"' + (A.loading ? ' disabled' : '') + ' style="color:var(--e7-violet,#7C5CFF)">' + (A.loading ? 'Analyzing...' : ai ? '&#8635; AI Analysis' : A.err ? 'Retry AI' : 'AI Analysis') + '</button></div>' +
             '<div class="tld-ritem" style="margin:0">' +
             (A.loading ? '<div class="tld-hload"><span class="tld-spin"></span>AI is analysing the telemetry scores...</div>' : '') +
-            (A.err ? '<div class="tld-note" style="color:#C8323A">AI analysis failed: ' + esc(A.err) + '</div>' : '') +
+            (A.err ? '<div class="tld-note" style="color:var(--e7-red,#C8323A)">AI analysis failed: ' + esc(A.err) + '</div>' : '') +
             '<div class="tld-rreason" style="font-weight:700">' + esc((ai && ai.simple_summary) || info.simple_summary || 'Track looks healthy right now -- no signs of leakage.') + '</div>' +
             '<div class="tld-note" style="font-size:12px;line-height:1.5">' + esc((ai && ai.reason) || info.reason || 'Track circuit baseline is stable with no signs of internal or external leakage.') + '</div></div>';
         if (evts.length) {
@@ -736,7 +736,7 @@
                     var c = cause[ev.Dominant_Cause] || [ev.Dominant_Cause || '--', ''];
                     return '<tr class="' + (c[1] === 'bad' ? 'f' : 'p') + '"><td>' + esc(ev.Event_ID) + '</td><td class="t">' + esc(ev.Start_Time) + '</td><td class="t">' + esc(ev.End_Time) + '</td>' +
                         '<td>' + num(ev.Duration_Hours, 1) + ' h</td><td><span class="tld-chip ' + c[1] + '">' + esc(c[0]) + '</span></td>' +
-                        '<td class="t">' + num(ev.IF_AUC) + '</td><td class="t">' + num(ev.IR_AUC) + '</td><td class="t" style="color:#C8323A;font-weight:700">' + num(ev.Total_AUC) + ' mA-d</td></tr>';
+                        '<td class="t">' + num(ev.IF_AUC) + '</td><td class="t">' + num(ev.IR_AUC) + '</td><td class="t" style="color:var(--e7-red,#C8323A);font-weight:700">' + num(ev.Total_AUC) + ' mA-d</td></tr>';
                 }).join('') + '</tbody></table></div>';
         } else h += '<div class="tld-ok">No major leakage events (no continuous fault of 4 hours or more) in the period.</div>';
         return h + '<div class="tld-note">' + esc(S.ctx.start_date) + ' &#8594; ' + esc(S.ctx.end_date) +
@@ -764,7 +764,7 @@
         if (!S || !S.data) return '';
         if (!P) return '<button type="button" class="tld-btn sm" data-tld-splots="1">Show If / Ir charts (raw + detected events)</button>';
         if (P.loading) return '<div class="tld-hload"><span class="tld-spin"></span>Loading If / Ir charts...</div>';
-        if (P.err) return '<div class="tld-note" style="color:#B47B00">Charts: ' + esc(P.err) + ' <button type="button" class="tld-btn sm" data-tld-splots="1">Retry</button></div>';
+        if (P.err) return '<div class="tld-note" style="color:var(--e7-amber,#B47B00)">Charts: ' + esc(P.err) + ' <button type="button" class="tld-btn sm" data-tld-splots="1">Retry</button></div>';
         if (!P.raw && !P.events) return '<div class="tld-empty">No chart data for this period.</div>';
         return (P.raw ? '<div class="tld-note" style="font-weight:700">RAW DATA (UNFILTERED &#183; IST)</div><div id="tldShortRaw" style="width:100%;min-height:420px"></div>' : '') +
             (P.events ? '<div class="tld-note" style="font-weight:700;margin-top:8px">DETECTED LEAKAGE EVENTS (CLEANED &#183; NON-TRAIN)</div><div id="tldShortEv" style="width:100%;min-height:420px"></div>' : '') +
@@ -778,10 +778,10 @@
             var fig = typeof figStr === 'string' ? JSON.parse(figStr) : figStr, lay = fig.layout || {};
             if (!isLight()) {
                 lay.paper_bgcolor = 'rgba(0,0,0,0)'; lay.plot_bgcolor = 'rgba(0,0,0,0)';
-                lay.font = $.extend({}, lay.font || {}, { color: '#cbd5e1' });
+                lay.font = $.extend({}, lay.font || {}, { color: (typeof window.tlThemePalette === 'function') ? window.tlThemePalette().text : '#cbd5e1' });
             }
             W.Plotly.newPlot(el, fig.data, lay, { responsive: true, displaylogo: false });
-        } catch (e) { el.innerHTML = '<div class="tld-empty" style="color:#C8323A">Chart render error</div>'; }
+        } catch (e) { el.innerHTML = '<div class="tld-empty" style="color:var(--e7-red,#C8323A)">Chart render error</div>'; }
     }
     function paintShortPlots() {
         var el = document.getElementById('tldShortPlots');
@@ -817,10 +817,10 @@
         var H = D.aid ? D.health[D.aid] : null;
         if (H && H.data) {
             return apiAnalysisHtml(H.data) + (H.loading ? '<div class="tld-note">Refreshing...</div>' : '') +
-                (H.err ? '<div class="tld-note" style="color:#B47B00">Refresh failed: ' + esc(H.err) + '</div>' : '');
+                (H.err ? '<div class="tld-note" style="color:var(--e7-amber,#B47B00)">Refresh failed: ' + esc(H.err) + '</div>' : '');
         }
         var banner = !H || H.loading ? '<div class="tld-hload"><span class="tld-spin"></span>Loading the AI health summary (10-30 s). Live check meanwhile:</div>'
-            : '<div class="tld-note" style="color:#B47B00;margin-bottom:6px">AI health summary unavailable (' + esc(H.err) + '). Live check:</div>';
+            : '<div class="tld-note" style="color:var(--e7-amber,#B47B00);margin-bottom:6px">AI health summary unavailable (' + esc(H.err) + '). Live check:</div>';
         return banner + liveAnalysisHtml(A);
     }
     function paintAnalysis() { var el = document.getElementById('tldAnalysis'); if (el) el.innerHTML = analysisHtml(describe(D.aid)); }
@@ -867,9 +867,9 @@
             sleeper: '#C9CED6', card: '#FFFFFF', cedge: '#D5DBE3', val: '#0F1B2A', tljb: '#232838', tljbText: '#FFFFFF', chg: '#9AA5B1', chgText: '#1F2937',
             blue: '#2F6FD6', green: '#16A34A', amber: '#B47B00', hi: '#C8323A', flow: '#F59E0B', ac: '#A855F7', tag: '#FFFFFF', p24: '#FCA5A5', n24: '#93C5FD'
         } : {
-            bg: '#0B1424', panel: '#122036', pedge: '#24324A', ink: '#E6EDF5', mut: '#9FB0C6', navy: '#8EA2D8', red: '#F05252', brown: '#C08457',
-            sleeper: '#2A3550', card: '#0F1B2D', cedge: '#2A3B55', val: '#F1F5F9', tljb: '#38BDF8', tljbText: '#0B1424', chg: '#64748B', chgText: '#F1F5F9',
-            blue: '#3B82F6', green: '#22C55E', amber: '#F5B70A', hi: '#FF5A4E', flow: '#FBBF24', ac: '#C084FC', tag: '#0F1B2D', p24: '#FECACA', n24: '#93C5FD'
+            bg: '#1d242e', panel: '#212934', pedge: '#36424f',   /* Energy7 dark slate (was navy) */ ink: '#E6EDF5', mut: '#9FB0C6', navy: '#8EA2D8', red: '#F05252', brown: '#C08457',
+            sleeper: '#2A3550', card: '#262f3b', cedge: '#36424f', val: '#F1F5F9', tljb: '#38BDF8', tljbText: '#0B1424', chg: '#64748B', chgText: '#F1F5F9',
+            blue: '#3B82F6', green: '#22C55E', amber: '#F5B70A', hi: '#FF5A4E', flow: '#FBBF24', ac: '#C084FC', tag: '#262f3b', p24: '#FECACA', n24: '#93C5FD'
         };
     }
     function ccard(P, A, key, fallback, x, y, w) {
@@ -1368,12 +1368,12 @@
         if (kind() === 'signal') {
             var S2 = pal();
             return '<div class="tld-note" style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px"><span><b style="color:' + S2.flow + '">- - &#8594;</b> lamp current on the lit aspect / indicator</span>' +
-                '<span><b style="color:#16A34A">&#8593;</b> relay picked up</span><span><b style="color:#CA8A04">&#8595;</b> relay dropped</span><span>click a card for its trend</span></div>';
+                '<span><b style="color:var(--e7-green, #16A34A)">&#8593;</b> relay picked up</span><span><b style="color:var(--e7-amber,#CA8A04)">&#8595;</b> relay dropped</span><span>click a card for its trend</span></div>';
         }
         if (kind() === 'pm') {
             var Q = pal();
             return '<div class="tld-note" style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px"><span><b style="color:' + Q.flow + '">- - &#8594;</b> 24 V indication current through the picked-up detection relay</span>' +
-                '<span><b style="color:#16A34A">&#8593;</b> relay picked up</span><span><b style="color:#CA8A04">&#8595;</b> relay dropped</span><span>hover a card for its value, click for its trend</span></div>';
+                '<span><b style="color:var(--e7-green, #16A34A)">&#8593;</b> relay picked up</span><span><b style="color:var(--e7-amber,#CA8A04)">&#8595;</b> relay dropped</span><span>hover a card for its value, click for its trend</span></div>';
         }
         var P = pal();
         return '<div class="tld-note" style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px">' +

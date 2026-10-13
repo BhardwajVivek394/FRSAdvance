@@ -162,14 +162,14 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         if (document.getElementById('sig616-styles')) return;
         var css =
             // server-stale value marker (v616 _injectWsFreshStyles, Aurora colours)
-            '.ws-value-server-stale{color:var(--at-t3,rgba(255,255,255,.5))!important;}' +
+            '.ws-value-server-stale{color:var(--e7-text-3,rgba(255,255,255,.5))!important;}' +
             '.ws-value-server-stale::before{content:"!";display:inline-flex;align-items:center;justify-content:center;' +
-            'width:14px;height:14px;margin-right:4px;border-radius:50%;background:var(--at-t4,rgba(255,255,255,.34));' +
-            'color:var(--at-bg0,#060914);font-size:10px;font-weight:800;line-height:14px;vertical-align:middle;font-family:var(--at-font-body,inherit);}' +
+            'width:14px;height:14px;margin-right:4px;border-radius:50%;background:var(--e7-text-4,rgba(255,255,255,.34));' +
+            'color:var(--e7-surface-2,#060914);font-size:10px;font-weight:800;line-height:14px;vertical-align:middle;font-family:var(--at-font-body,inherit);}' +
             // dynamic HPR rows
-            '.rdpms-route-table tr.rdpms-hpr-row td{color:var(--at-t2,rgba(255,255,255,.72));}' +
-            '.rdpms-route-table tr.rdpms-hpr-row td span{color:var(--at-brand,#22d3ee);font-family:var(--at-font-mono,monospace);}' +
-            '.rdpms-signal-card .rdpms-waiting{color:var(--at-t3,rgba(255,255,255,.5));font-style:italic;}' +
+            '.rdpms-route-table tr.rdpms-hpr-row td{color:var(--e7-text-2,rgba(255,255,255,.72));}' +
+            '.rdpms-route-table tr.rdpms-hpr-row td span{color:var(--e7-accent,#22d3ee);font-family:var(--at-font-mono,monospace);}' +
+            '.rdpms-signal-card .rdpms-waiting{color:var(--e7-text-3,rgba(255,255,255,.5));font-style:italic;}' +
             // signal group chips
             '.sig616-chip{display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:3px 9px;border-radius:12px;' +
             'background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.22);white-space:nowrap;}' +
@@ -180,7 +180,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
             'body.sig616-no-circuit .tl-aa-circuit,body.sig616-no-circuit .sig-action-circuit,' +
             'body.sig616-no-circuit [onclick^="fnGetAssetCircuit("],' +
             'body.sig616-no-circuit [onclick^="tlOpenAssetView(\'Circuit\'"]{display:none!important;}' +
-            '#rdpmsCircuitError .sig616-circuit-detail{display:block;font-size:11px;color:var(--at-t3,rgba(255,255,255,.5));margin-top:6px;}';
+            '#rdpmsCircuitError .sig616-circuit-detail{display:block;font-size:11px;color:var(--e7-text-3,rgba(255,255,255,.5));margin-top:6px;}';
         var st = document.createElement('style');
         st.id = 'sig616-styles';
         st.appendChild(document.createTextNode(css));
@@ -458,7 +458,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
     function dlCellHtml(asset) {
         var dlRelays = (asset && asset.dlRelays) || {};
         var keys = Object.keys(dlRelays);
-        if (!keys.length) return '<span style="color:var(--at-t4,#94a3b8);font-size:10px;">—</span>';
+        if (!keys.length) return '<span style="color:var(--e7-text-4,#94a3b8);font-size:10px;">—</span>';
         keys.sort(function (a, b) {
             var ra = dlRelays[a], rb = dlRelays[b];
             if (ra.isPickup && !rb.isPickup) return -1;
@@ -509,7 +509,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
             h += '<td class="' + cls + sf.cls + '" data-attr="' + esc(an) + '" style="font-size:12px;padding:6px 10px;"' + sf.title + '>' + esc(disp) + '</td>';
         }
         h += '<td class="dl-cell" style="padding:6px 10px;">' + dlCellHtml(asset) + '</td>';
-        h += '<td class="time-cell" data-attr="LastUpdate" style="font-size:11px;padding:6px 10px;color:var(--at-t3,#64748b);">' + esc(lastUpdateText(asset)) + '</td>';
+        h += '<td class="time-cell" data-attr="LastUpdate" style="font-size:11px;padding:6px 10px;color:var(--e7-text-3,#64748b);">' + esc(lastUpdateText(asset)) + '</td>';
         h += '</tr>';
         return h;
     }
@@ -564,9 +564,9 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
             var gs = colorStyle(label);
             if (tableIndex > 0) html += '<div style="height:18px;"></div>';
             html += '<div class="signal-group-card" data-group-label="' + esc(label) + '" data-aspect-count="' + meta.aspectCount +
-                '" data-route-count="' + meta.routeCount + '" style="border:1px solid var(--at-edge,#e2e8f0);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
+                '" data-route-count="' + meta.routeCount + '" style="border:1px solid var(--e7-border,#e2e8f0);border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">';
             html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;background:' + gs.bar +
-                ';border-bottom:1px solid rgba(255,255,255,0.12);box-shadow:0 2px 8px rgba(0,0,0,0.12);">';
+                ';border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.12));box-shadow:0 2px 8px rgba(0,0,0,0.12);">';
             html += '<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.20);color:#fff;">' +
                 '<i class="fas ' + gs.icon + '" style="font-size:13px;"></i></span>';
             html += '<span class="sig616-group-label" style="font-size:13px;font-weight:700;color:#fff;letter-spacing:0.3px;">' + esc(label) + '</span>';
@@ -931,8 +931,8 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         if (!$('#rdpmsShuntContainer').length) {
             var $wrap = $('#divTelemetryLive .rdpms-container');
             if (!$wrap.length) $wrap = $('#rdpmsMainContainer').parent();
-            $wrap.append('<hr style="margin:20px 0;border-color:var(--at-edge,#e2e8f0);">' +
-                '<h6 style="padding:0 10px;color:var(--at-t3,#64748b);margin-bottom:15px;"><i class="fas fa-random"></i> Shunt Signals</h6>' +
+            $wrap.append('<hr style="margin:20px 0;border-color:var(--e7-border,#e2e8f0);">' +
+                '<h6 style="padding:0 10px;color:var(--e7-text-3,#64748b);margin-bottom:15px;"><i class="fas fa-random"></i> Shunt Signals</h6>' +
                 '<div class="row" id="rdpmsShuntContainer"></div>');
         }
         $('#rdpmsShuntContainer').append(h);
@@ -1714,7 +1714,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
                     $host: $content, assetTypeId: assetTypeId, assetId: assetId, readyDelay: 300,
                     onReady: function () {
                         $content.show();
-                        $content.find('.col-lg-12[style*="border-bottom"]').css('border-bottom', '3px solid #259dab');
+                        $content.find('.col-lg-12[style*="border-bottom"]').css('border-bottom', '3px solid var(--e7-accent, #259dab)');
                         $content.find('.col-lg-12 > .row').first().hide();
                         if (W.appModel && W.appModel.paper) { try { W.appModel.paper.fitToContent({ padding: 20 }); } catch (e) { } }
                         if (siteId && siteId !== '0' && fn('connectCircuitWebSocket')) {

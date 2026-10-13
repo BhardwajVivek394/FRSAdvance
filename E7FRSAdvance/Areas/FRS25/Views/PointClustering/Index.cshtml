@@ -108,30 +108,30 @@
         font-size: 12px;
         font-weight: 600;
         line-height: 1.5;
-        color: #fff;
-        text-shadow: 0 1px 1px rgba(0, 0, 0, .3);
+        color: var(--e7-text, #fff);
+        text-shadow: none;
         cursor: pointer;
         transition: filter .15s ease, transform .15s ease;
     }
 
     .pmc-chip:hover,
     .pmc-chip:focus {
-        color: #fff;
         filter: brightness(1.08);
         transform: translateY(-1px);
     }
 
-    .pmc-chip-good { background: var(--e7-green, #22a06b); }
-    .pmc-chip-bad { background: var(--e7-red, #d64545); }
-    .pmc-chip-mid { background: var(--e7-amber, #d39b14); }
-    .pmc-chip-other { background: var(--e7-accent, var(--primary)); }
+    /* Status chips: soft tint + status ink (tokens switch per scheme) */
+    .pmc-chip-good, .pmc-chip-good:hover, .pmc-chip-good:focus { background: var(--e7-green-soft, #22a06b); border-color: var(--e7-green, #22a06b); color: var(--e7-green, #fff); }
+    .pmc-chip-bad, .pmc-chip-bad:hover, .pmc-chip-bad:focus { background: var(--e7-red-soft, #d64545); border-color: var(--e7-red, #d64545); color: var(--e7-red, #fff); }
+    .pmc-chip-mid, .pmc-chip-mid:hover, .pmc-chip-mid:focus { background: var(--e7-amber-soft, #d39b14); border-color: var(--e7-amber, #d39b14); color: var(--e7-amber, #fff); }
+    .pmc-chip-other, .pmc-chip-other:hover, .pmc-chip-other:focus { background: var(--e7-accent-soft, var(--primary)); border-color: var(--e7-accent, var(--primary)); color: var(--e7-accent-ink, #fff); }
     /* "T" prefixed groups were the *-dark variants in the old theme */
     .pmc-chip-dark { filter: brightness(.78) saturate(1.15); }
     .pmc-chip-dark:hover { filter: brightness(.88) saturate(1.15); }
 
     .pmc-site-btn {
-        background: var(--e7-accent, var(--primary));
-        border-color: var(--e7-accent, var(--primary));
+        background: linear-gradient(120deg, var(--e7-ask-from, var(--primary)), var(--e7-ask-to, var(--primary)));
+        border-color: var(--e7-ask-to, var(--primary));
         color: #fff;
         font-size: 12px;
         font-weight: 600;
@@ -187,6 +187,12 @@
     #modal-graph .modal-content,
     #modal-cluster-image-graph .modal-content {
         pointer-events: auto;
+    }
+
+    /* Native select lists: beat aurora-bridge's dark-only `select option { color:#fff !important }` */
+    #e7Body select option {
+        background-color: var(--e7-surface) !important;
+        color: var(--e7-text) !important;
     }
 
     @@media (min-width: 992px) {
@@ -668,6 +674,29 @@
         });
         $("#modal-graph").modal("show");
         fnShowAIClusters(cluster);
+    }
+
+    // Re-colour the open signature chart when the light/dark scheme is toggled.
+    if (window.MutationObserver) {
+        new MutationObserver(function () {
+            if (!chart || !chart.options || !chart.data) { return; }
+            var lc = fnPmcCssVar(['--e7-c1', '--e7-accent', '--e7-cyan'], 'rgba(75,192,192,1)');
+            var tc = fnPmcCssVar(['--e7-text-2', '--e7-t2'], '#666');
+            var gc = fnPmcCssVar(['--e7-grid-line', '--e7-edge'], 'rgba(0,0,0,0.1)');
+            var pf = fnPmcCssVar(['--e7-surface', '--e7-bg-1'], '#fff');
+            Chart.defaults.global.defaultFontColor = tc;
+            $.each(chart.data.datasets, function (i, ds) {
+                ds.backgroundColor = lc; ds.borderColor = lc; ds.pointBorderColor = lc;
+                ds.pointBackgroundColor = pf; ds.pointHoverBackgroundColor = lc; ds.pointHoverBorderColor = gc;
+            });
+            var sc = chart.options.scales || {};
+            $.each([].concat(sc.xAxes || [], sc.yAxes || []), function (i, ax) {
+                ax.gridLines = ax.gridLines || {}; ax.gridLines.color = gc;
+                ax.ticks = ax.ticks || {}; ax.ticks.fontColor = tc;
+            });
+            if (chart.options.legend) { chart.options.legend.labels = chart.options.legend.labels || {}; chart.options.legend.labels.fontColor = tc; }
+            chart.update();
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-aurora'] });
     }
 
     function fnBindSignatureGragh(data, type, datevalue, direction, name, cluster) {

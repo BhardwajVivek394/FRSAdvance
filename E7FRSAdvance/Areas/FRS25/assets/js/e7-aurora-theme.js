@@ -138,10 +138,10 @@ var E7Theme = (function () {
             pill.querySelectorAll('button').forEach(function (b) {
                 var active = b.dataset.t === cur;
                 b.style.background = active
-                    ? 'linear-gradient(135deg,#22d3ee,#a78bfa)'
+                    ? 'linear-gradient(120deg, var(--e7-ask-from, #4fc9c6), var(--e7-ask-to, #4f9fe4))'
                     : 'none';
                 b.style.color = active ? 'white' : 'var(--e7-t3)';
-                b.style.boxShadow = active ? '0 2px 8px rgba(34,211,238,0.45)' : 'none';
+                b.style.boxShadow = active ? '0 2px 8px var(--e7-accent-soft, rgba(47,158,196,0.25))' : 'none';
             });
         }
         updatePill();

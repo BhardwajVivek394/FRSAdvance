@@ -1623,9 +1623,9 @@ function _fnUpdateVibrationModalNow(assetId) {
     if (!vd) {
         $grid.html(
             '<div class="vib-no-data">' +
-            '<i class="fas fa-wave-square" style="font-size:32px;color:#22d3ee;opacity:.3;display:block;margin-bottom:12px;"></i>' +
+            '<i class="fas fa-wave-square" style="font-size:32px;color:var(--e7-accent, #22d3ee);opacity:.3;display:block;margin-bottom:12px;"></i>' +
             'No vibration data received yet.<br>' +
-            '<small style="color:rgba(255,255,255,0.45);">Waiting for WebSocket messages\u2026</small>' +
+            '<small style="color:var(--e7-text-3, rgba(255,255,255,0.45));">Waiting for WebSocket messages\u2026</small>' +
             '</div>'
         );
         return;
@@ -2080,14 +2080,14 @@ function pmVibrationCellHtml(
         '<div class="pm-vibration-live-reading" style="display:flex;align-items:center;justify-content:center;gap:6px;">' +
         (
             hasValue
-                ? '<span class="pm-vibration-reading-dot" style="width:7px;height:7px;border-radius:50%;background:#16a34a;flex:0 0 auto;"></span>'
+                ? '<span class="pm-vibration-reading-dot" style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;"></span>'
                 : ''
         ) +
         '<strong style="' +
         (
             hasValue
-                ? 'font-size:14px;font-weight:700;color:rgba(255,255,255,0.96);font-variant-numeric:tabular-nums;letter-spacing:.2px;'
-                : 'font-size:13px;font-weight:500;color:rgba(255,255,255,0.45);'
+                ? 'font-size:14px;font-weight:700;color:var(--e7-heading, rgba(255,255,255,0.96));font-variant-numeric:tabular-nums;letter-spacing:.2px;'
+                : 'font-size:13px;font-weight:500;color:var(--e7-text-3, rgba(255,255,255,0.45));'
         ) +
         '">' +
         pmVibrationEscape(displayValue) +
@@ -2131,13 +2131,13 @@ function pmVibrationCellHtml(
                 var maxTxt = (evMax !== null && evMax !== '' && !isNaN(parseFloat(evMax))) ? tlZeroFloor(parseFloat(evMax)).toFixed(3) : '—';
                 /*var avgTxt = (evAvg !== null && evAvg !== '' && !isNaN(parseFloat(evAvg))) ? parseFloat(evAvg).toFixed(3) : '—';*/
                 var avgTxt = (evAvg !== null && evAvg !== '' && !isNaN(parseFloat(evAvg))) ? tlZeroFloor(parseFloat(evAvg)).toFixed(3) : '—';
-                return '<div class="pm-vibration-event-reading" style="margin-top:3px;font-size:10.5px;line-height:1.3;color:rgba(255,255,255,0.45);text-align:center;">' +
-                    '<span style="color:rgba(255,255,255,0.45);">Pk / Avg&nbsp;</span>' +
+                return '<div class="pm-vibration-event-reading" style="margin-top:3px;font-size:10.5px;line-height:1.3;color:var(--e7-text-3, rgba(255,255,255,0.45));text-align:center;">' +
+                    '<span style="color:var(--e7-text-3, rgba(255,255,255,0.45));">Pk / Avg&nbsp;</span>' +
                     '<a href="javascript:void(0)" onclick="pmShowVibrationEventGraph(\'' + assetId + '\',' + dbId + ',\'' + pmVibrationEscape(column.shortTitle) + '\',\'' + endName + '\')" ' +
-                    'style="font-weight:600;color:#22d3ee;text-decoration:underline;cursor:pointer;" title="Click to view waveform">' +
+                    'style="font-weight:600;color:var(--e7-accent, #22d3ee);text-decoration:underline;cursor:pointer;" title="Click to view waveform">' +
                     pmVibrationEscape(maxTxt + ' / ' + avgTxt) + '</a></div>';
             }
-            return '<div class="pm-vibration-event-reading" style="margin-top:3px;font-size:10.5px;color:rgba(255,255,255,0.45);text-align:center;">—</div>';
+            return '<div class="pm-vibration-event-reading" style="margin-top:3px;font-size:10.5px;color:var(--e7-text-3, rgba(255,255,255,0.45));text-align:center;">—</div>';
         })() +
 
         '</td>'
@@ -2272,20 +2272,20 @@ function pmShowVibrationEventGraph(assetId, dbId, colTitle, endName) {
 
     var summaryHtml =
         '<div class="rdpms-graph-time pm-vib-graph-summary" style="display:flex;flex-wrap:wrap;' +
-        'gap:8px 22px;align-items:center;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);' +
-        'border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:rgba(255,255,255,0.72);">' +
+        'gap:8px 22px;align-items:center;background:var(--e7-surface-2, rgba(255,255,255,0.04));border:1px solid var(--e7-border, rgba(255,255,255,0.10));' +
+        'border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:var(--e7-text, rgba(255,255,255,0.72));">' +
 
         '<span style="' + spanStyle + '">' +
-        '<i class="far fa-clock" style="color:#22d3ee;"></i>' +
-        '<strong style="color:#22d3ee;">Date &amp; Time:</strong> ' +
+        '<i class="far fa-clock" style="color:var(--e7-accent, #22d3ee);"></i>' +
+        '<strong style="color:var(--e7-accent, #22d3ee);">Date &amp; Time:</strong> ' +
         pmVibrationEscape(dateText) + '</span>' +
 
         '<span style="' + spanStyle + '">' +
-        '<strong style="color:#22d3ee;">Max:</strong> ' +
+        '<strong style="color:var(--e7-accent, #22d3ee);">Max:</strong> ' +
         pmVibrationEscape(maxText + (maxText === '—' ? '' : unitSuffix)) + '</span>' +
 
         '<span style="' + spanStyle + '">' +
-        '<strong style="color:#22d3ee;">Avg:</strong> ' +
+        '<strong style="color:var(--e7-accent, #22d3ee);">Avg:</strong> ' +
         pmVibrationEscape(avgText + (avgText === '—' ? '' : unitSuffix)) + '</span>' +
 
         '</div>';
@@ -2299,10 +2299,10 @@ function pmShowVibrationEventGraph(assetId, dbId, colTitle, endName) {
         '<h6><i class="fas fa-wave-square"></i> ' + title + '</h6>' +
         '<button class="rdpms-graph-close" onclick="closeGraphModal()">&times;</button>' +
         '</div>' +
-        '<div class="rdpms-graph-body" style="padding:20px;background:rgba(255,255,255,0.04);">' +
+        '<div class="rdpms-graph-body" style="padding:20px;background:var(--e7-surface-2, rgba(255,255,255,0.04));">' +
         summaryHtml +
         '<div id="vibArrayChartDiv" style="width:100%;height:500px;"></div>' +
-        '<div id="vibArrayError" style="display:none;text-align:center;padding:50px;color:#ef4444;"></div>' +
+        '<div id="vibArrayError" style="display:none;text-align:center;padding:50px;color:var(--e7-red, #ef4444);"></div>' +
         '</div></div></div>';
 
     $('#rdpmsGraphOverlay').remove();
@@ -2310,14 +2310,14 @@ function pmShowVibrationEventGraph(assetId, dbId, colTitle, endName) {
 
     if (!arrayValue || typeof arrayValue !== 'string' || arrayValue.indexOf(',') === -1) {
         $('#vibArrayChartDiv').hide();
-        $('#vibArrayError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:rgba(255,255,255,0.45);"></i>No array data received yet for this attribute.').show();
+        $('#vibArrayError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, rgba(255,255,255,0.45));"></i>No array data received yet for this attribute.').show();
         return;
     }
 
     var arr = arrayValue.split(',').map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v); });
     if (!arr.length) {
         $('#vibArrayChartDiv').hide();
-        $('#vibArrayError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:rgba(255,255,255,0.45);"></i>Array is empty.').show();
+        $('#vibArrayError').html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;color:var(--e7-text-3, rgba(255,255,255,0.45));"></i>Array is empty.').show();
         return;
     }
 
@@ -2430,8 +2430,8 @@ function pmShowVibrationEventGraph(assetId, dbId, colTitle, endName) {
 
                 var elapsedMs = params[0].value[0];
                 var html = '<div style="font-weight:600;margin-bottom:8px;' +
-                    'border-bottom:1px solid rgba(255,255,255,0.10);padding-bottom:6px;">' +
-                    elapsedMs + ' ms <span style="color:rgba(255,255,255,0.50);font-weight:400;">(' +
+                    'border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:6px;">' +
+                    elapsedMs + ' ms <span style="color:var(--e7-text-3, rgba(255,255,255,0.50));font-weight:400;">(' +
                     (elapsedMs / 1000).toFixed(3) + ' s)</span></div>';
 
                 params.forEach(function (point) {
