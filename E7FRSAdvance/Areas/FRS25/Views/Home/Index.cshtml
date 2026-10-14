@@ -1882,7 +1882,14 @@
         font-size: 12px;
         font-weight: 600;
         border: 1px solid;
+        cursor: pointer;
+        user-select: none;
+        transition: opacity .15s ease;
     }
+
+        .alert-badge.dimmed {
+            opacity: 0.4;
+        }
 
         .alert-badge .badge-count {
             display: inline-flex;
@@ -3779,9 +3786,9 @@
                 <button class="alert-modal-close" onclick="closeAlertModal()"><i class="fas fa-times"></i></button>
             </div>
             <div class="alert-badge-row">
-                <span class="alert-badge badge-total">Total <span class="badge-count" id="alertBadgeTotal">0</span></span>
-                <span class="alert-badge badge-pred">Predictive <span class="badge-count" id="alertBadgePred">0</span></span>
-                <span class="alert-badge badge-fail">Failure <span class="badge-count" id="alertBadgeFail">0</span></span>
+                <span class="alert-badge badge-total" onclick="filterAlertItems('all')">Total <span class="badge-count" id="alertBadgeTotal">0</span></span>
+                <span class="alert-badge badge-pred" onclick="filterAlertItems('predictive')">Predictive <span class="badge-count" id="alertBadgePred">0</span></span>
+                <span class="alert-badge badge-fail" onclick="filterAlertItems('failure')">Failure <span class="badge-count" id="alertBadgeFail">0</span></span>
             </div>
         </div>
         <div class="alert-modal-body" id="alertModalBody">
@@ -4212,12 +4219,24 @@ function loadDivisions() {
   $('#listDivision').html('<div class="dropdown-empty">Loading…</div>'); $('#chkAllDivision').prop('checked',false); $('#txtDivision').text('Division');
   $('#listSite').html('<div class="dropdown-empty">Select Division first</div>'); $('#chkAllSite').prop('checked',false); $('#txtSite').text('Station');
   if(!zIds.length){$('#listDivision').html('<div class="dropdown-empty">Select Zone first</div>');return;}
-  $.ajax({ url:'/FRS25/Home/GetDivisionByZoneId', type:'POST', data:JSON.stringify({SearchCriteria:{ZoneIds:zIds}}), contentType:'application/json',
-    success: function(data){
+  var key=zIds.slice().sort().join(',');
+  fetchDivisionsByZone(zIds).done(function(data){
+      if(getValues('zone').slice().sort().join(',')!==key) return;   // zone changed while loading
       if(data&&data.length){var h='';data.forEach(function(d){h+='<div class="dropdown-item" data-value="'+d.Id+'" data-text="'+d.Name+'"><input type="checkbox" class="cb-division" value="'+d.Id+'"><span>'+d.Name+'</span></div>';});$('#listDivision').html(h);}
       else $('#listDivision').html('<div class="dropdown-empty">No divisions found</div>');
-    }
   });
+}
+// One GetDivisionByZoneId request per zone selection, shared by the Division dropdown
+// (loadDivisions) and the card/popup station scope (resolveZoneSites) — they used to
+// fire the same request back to back on every zone change.
+var _divByZoneReq = { key: null, xhr: null };
+function fetchDivisionsByZone(zIds){
+  var key=zIds.slice().sort().join(',');
+  if(_divByZoneReq.key===key && _divByZoneReq.xhr) return _divByZoneReq.xhr;
+  var xhr=$.ajax({ url:'/FRS25/Home/GetDivisionByZoneId', type:'POST', contentType:'application/json', data:JSON.stringify({SearchCriteria:{ZoneIds:zIds}}) });
+  xhr.fail(function(){ if(_divByZoneReq.xhr===xhr) _divByZoneReq={ key:null, xhr:null }; });   // allow a retry
+  _divByZoneReq={ key:key, xhr:xhr };
+  return xhr;
 }
 function loadSites() {
   var dIds=getValues('division');
@@ -4226,6 +4245,7 @@ function loadSites() {
     $.ajax({
         url:'/FRS25/Home/GetSiteByDivisionId', type:'POST', data:JSON.stringify({SearchCriteria:{DivisionIds:dIds}}), contentType:'application/json',
     success: function(data){
+      rememberSiteNames(data);
       if(data&&data.length){var h='';data.forEach(function(d){h+='<div class="dropdown-item" data-value="'+d.Id+'" data-text="'+d.Name+'"><input type="checkbox" class="cb-site" value="'+d.Id+'"><span>'+d.Name+'</span></div>';});$('#listSite').html(h);}
       else $('#listSite').html('<div class="dropdown-empty">No stations found</div>');
     }
@@ -4291,20 +4311,44 @@ function resolveZoneSites(zIds,key){
   _zoneSiteCache.pending=key;
   function done(ids){
     _zoneSiteCache={ key:key, ids:ids, pending:null };
+    flushZoneSiteWaiters();
     if(getValues('zone').slice().sort().join(',')===key && !getValues('division').length){
       if(typeof recomputeDeviceHealth==='function') recomputeDeviceHealth();
       if(typeof recomputeSensorHealth==='function') recomputeSensorHealth();
     }
   }
-  $.ajax({ url:'/FRS25/Home/GetDivisionByZoneId', type:'POST', contentType:'application/json', data:JSON.stringify({SearchCriteria:{ZoneIds:zIds}}),
-    success:function(divs){
+  fetchDivisionsByZone(zIds).then(function(divs){
       var dIds=(divs||[]).map(function(d){ return d.Id; });
       if(!dIds.length){ done([]); return; }
       $.ajax({ url:'/FRS25/Home/GetSiteByDivisionId', type:'POST', contentType:'application/json', data:JSON.stringify({SearchCriteria:{DivisionIds:dIds}}),
-        success:function(sites){ done((sites||[]).map(function(s){ return String(s.Id); })); },
-        error:function(){ _zoneSiteCache.pending=null; } });
-    },
-    error:function(){ _zoneSiteCache.pending=null; } });
+        success:function(sites){ rememberSiteNames(sites); done((sites||[]).map(function(s){ return String(s.Id); })); },
+        error:function(){ _zoneSiteCache.pending=null; flushZoneSiteWaiters(); } });
+    }, function(){ _zoneSiteCache.pending=null; flushZoneSiteWaiters(); });
+}
+var _zoneSiteWaiters = [];
+function flushZoneSiteWaiters(){ var w=_zoneSiteWaiters; _zoneSiteWaiters=[]; w.forEach(function(cb){ cb(); }); }
+
+// Station id -> name for every station seen (page-load dropdown, Division->Station and
+// Zone->Station lookups). The popup site picker needs names for zone-scoped stations,
+// which never appear in #listSite while only a Zone is ticked.
+var _siteNameById = {};
+function rememberSiteNames(sites){ (sites||[]).forEach(function(s){ _siteNameById[String(s.Id)] = s.Name; }); }
+$(function(){ $('#listSite .dropdown-item').each(function(){ _siteNameById[String($(this).data('value'))] = $(this).data('text') || $(this).find('span').text(); }); });
+
+// Same scope as the cards (station tab -> ticked stations -> ticked divisions -> ticked
+// zones -> all of the user's stations), but waits for a pending Zone->Station lookup so
+// a popup opened right after picking a zone gets that zone's stations, not everything.
+function withScopeSiteIds(cb){
+  var zIds=getValues('zone');
+  if(!activeTabSiteId && !getValues('site').length && !getValues('division').length && zIds.length){
+    var key=zIds.slice().sort().join(',');
+    if(_zoneSiteCache.key!==key){
+      _zoneSiteWaiters.push(function(){ cb(_zoneSiteCache.key===key ? _zoneSiteCache.ids : getCardSiteIds()); });
+      resolveZoneSites(zIds,key);
+      return;
+    }
+  }
+  cb(getCardSiteIds());
 }
 
 // ==================== DATA LOAD ====================
@@ -4731,6 +4775,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         _alertCurrentAssetTypeId = assetTypeId; _alertCurrentAssetTypeName = title;
         $('#alertModalTitle').text(title);
         $('#alertBadgeTotal,#alertBadgePred,#alertBadgeFail').text('0');
+        _activeAlertFilter = 'all'; $('.alert-badge').removeClass('dimmed');
         $('#alertModalBody').html('<div class="alert-modal-loading"><span class="alert-modal-spinner"></span>Loading alerts…</div>');
         $('#alertModalOverlay').addClass('open'); $('body').css('overflow', 'hidden');
         $.ajax({
@@ -4753,7 +4798,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             return {
                 AlertTypeId: it.AlertTypeId || it.alertTypeId || 0, AssetId: it.AssetId || it.assetId || 0,
                 AssetName: it.AssetName || it.assetName || it.StationName || it.stationName || it.Name || it.name || '',
-                AlertDate: it.AlertDate || it.alertDate || it.CreatedDate || it.createdDate || it.Date || it.date || '',
+                AlertDate: it.SetTimeStamp || it.AlertDate || it.alertDate || it.CreatedDate || it.createdDate || it.Date || it.date || '',
                 CauseCode: it.CauseCode || it.causeCode || it.AlertCode || it.alertCode || '',
                 AlertMessage: it.AlertMessage || it.alertMessage || it.Message || it.message || it.Description || it.description || '',
                 AlertTimestamp: it.SetTimeStamp || it.AlertDate || it.alertDate || it.CreatedDate || '',
@@ -4770,7 +4815,8 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         var groups = {}, groupOrder = [];
         items.forEach(function (it) {
             var label = 'Date: --';
-            if (it.AlertDate) { var d = new Date(it.AlertDate); if (!isNaN(d.getTime())) label = 'Date: ' + pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear(); }
+            var d = parseDotNetDate(it.AlertDate);
+            if (d) label = 'Date: ' + pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear();
             if (!groups[label]) { groups[label] = []; groupOrder.push(label); }
             groups[label].push(it);
         });
@@ -4782,8 +4828,10 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 var typeCls = isPred ? 'predictive' : 'failure', typeText = isPred ? 'Predictive' : 'Failure';
                 var uid = 'ali' + idx + '_' + String(Date.now()).slice(-6);
                 var timeStr = '', tsStr = '';
-                if (it.AlertDate) { var dt = new Date(it.AlertDate); if (!isNaN(dt.getTime())) timeStr = pad(dt.getDate()) + '-' + pad(dt.getMonth() + 1) + '-' + dt.getFullYear() + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes()); }
-                if (it.AlertTimestamp) { var ts = new Date(it.AlertTimestamp); if (!isNaN(ts.getTime())) tsStr = pad(ts.getDate()) + '-' + pad(ts.getMonth() + 1) + '-' + ts.getFullYear() + ' ' + pad(ts.getHours()) + ':' + pad(ts.getMinutes()) + ':' + pad(ts.getSeconds()); else tsStr = it.AlertTimestamp; }
+                var dt = parseDotNetDate(it.AlertDate);
+                if (dt) timeStr = pad(dt.getDate()) + '-' + pad(dt.getMonth() + 1) + '-' + dt.getFullYear() + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
+                var ts = parseDotNetDate(it.AlertTimestamp);
+                if (ts) tsStr = pad(ts.getDate()) + '-' + pad(ts.getMonth() + 1) + '-' + ts.getFullYear() + ' ' + pad(ts.getHours()) + ':' + pad(ts.getMinutes()) + ':' + pad(ts.getSeconds());
                 var alertMsg = it.SetAlertMessage || it.AlertMessage;
                 var shortMsg = alertMsg && alertMsg.length > 140 ? alertMsg.substring(0, 140) + '…' : alertMsg;
                 var hasMore = alertMsg && alertMsg.length > 140;
@@ -4806,6 +4854,22 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             });
         });
         $('#alertModalBody').html(html);
+        filterAlertItems(_activeAlertFilter);
+    }
+
+    var _activeAlertFilter = 'all';
+    function filterAlertItems(type) {
+        _activeAlertFilter = type;
+        var activeCls = type === 'predictive' ? 'badge-pred' : type === 'failure' ? 'badge-fail' : 'badge-total';
+        $('.alert-badge').addClass('dimmed').filter('.' + activeCls).removeClass('dimmed');
+        $('#alertModalBody .alert-item').each(function () {
+            var $b = $(this).find('.alert-type-badge');
+            $(this).toggle(type === 'all' || $b.hasClass(type));
+        });
+        // Hide date labels with no visible items under them
+        $('#alertModalBody .alert-date-label').each(function () {
+            $(this).toggle($(this).nextUntil('.alert-date-label', '.alert-item').filter(':visible').length > 0);
+        });
     }
 
     function toggleAlertItem(uid) { $('#' + uid).toggleClass('expanded'); }
@@ -4978,12 +5042,6 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
 
     // The station this popup can actually show: the selected station tab, or the only
     // station in scope. Null when the dashboard is on "All Stations" with several.
-    function shmFocusedSiteId() {
-        if (activeTabSiteId) return String(activeTabSiteId);
-        var eff = getEffectiveSiteIds();
-        return (eff && eff.length === 1) ? String(eff[0]) : null;
-    }
-
     // Same model as the web (616/619) dashboard: exactly TWO sockets for the whole page —
     // one global 'deviceHealth' and one global 'sensorHealth' subscription (no siteId in
     // the URL). Every message carries its own siteId; groupHealthState /
@@ -5202,21 +5260,24 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
     // listing every station in scope (so the Device/Sensor cards open from "All Stations" instead
     // of refusing with an alert).
     function resolveOrPickSite(onResolved) {
-        var sid = shmFocusedSiteId();
-        if (sid) { onResolved(sid); return; }
-        openSitePickerModal(getEffectiveSiteIds(), onResolved);
+        if (activeTabSiteId) { onResolved(String(activeTabSiteId)); return; }
+        // Zone / Division / Station / nothing selected -> the stations in that scope.
+        withScopeSiteIds(function (ids) {
+            if (ids && ids.length === 1) { onResolved(String(ids[0])); return; }
+            openSitePickerModal(ids, onResolved);
+        });
     }
 
     var _sitePickerCallback = null;
     function openSitePickerModal(candidateIds, onResolved) {
         _sitePickerCallback = onResolved;
-        var idSet = null;
-        if (candidateIds && candidateIds.length) {
-            idSet = {};
-            candidateIds.forEach(function (id) { idSet[String(id)] = true; });
-        }
-        var items = (allSiteItems || []).filter(function (s) { return !idSet || idSet[s.value]; });
-        if (!items.length) items = allSiteItems || [];
+        // Build from the scoped ids (names from _siteNameById) — allSiteItems mirrors
+        // #listSite, which is only a placeholder while just a Zone is ticked.
+        var items = (candidateIds || []).map(function (id) {
+            id = String(id);
+            return { value: id, text: _siteNameById[id] || ('Station ' + id) };
+        });
+        items.sort(function (a, b) { return String(a.text).localeCompare(String(b.text)); });
         var html = items.map(function (s) {
             return '<div class="shm-site-pick-item" data-site-id="' + s.value + '">' + escapeHtml(s.text) + '</div>';
         }).join('');
@@ -5709,10 +5770,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         }
 
         function sensorItemHtml(f, showCluster) {
-            var displayName = shmResolvePmDisplayName(f);
-            var val = shmAssetValueLookup[f.assetId + '|' + f.attId];
-            var hasVal = val !== undefined && val !== null && val !== '';
-            var attrLine = displayName + (hasVal ? ' &middot; ' + val : '');
+            var attrLine = shmResolvePmDisplayName(f);
             return '<div class="shm-sensor-item"><span class="shm-sensor-dot"></span>' +
                 '<div><div class="shm-sensor-asset">' + f.assetName + '</div>' +
                 '<div class="shm-sensor-attr">' + attrLine + '</div>' +
