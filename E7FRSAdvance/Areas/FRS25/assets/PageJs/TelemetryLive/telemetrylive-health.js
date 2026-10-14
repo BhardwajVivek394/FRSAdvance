@@ -208,6 +208,80 @@
     var PM_DEFS = [['iptMax', 'IPT N/R(A) Max'], ['iptAvg', 'IPT N/R(A) Avg'], ['vpt110Avg', 'VPT 110 DC LOC N/R(V)'],
         ['tpt', 'TPT N/R(ms)'], ['locIndication', 'VPT 24 DC LOC N/R(V)'], ['krIndication', 'VPT N/R(V)']];
     function isPmType() { return assetTypeId() === 3; }
+    function isSignalType() { return assetTypeId() === 2; }
+
+    /* ---- Signal: aspect-wise layout (v616 _signalColSeq) ------------------
+       Each reading maps to its aspect group in the 616 sequence
+       RG, DG, HG, HHG, PILOT, Calling-on, Root, Routes AUG..EUG, On / Off
+       aspect, then the proving relays (DPR, HPR, HHPR, route / calling-on
+       HPR), and inside a group current (I / mA) before voltage (V), so
+       "ISIG RG" and "VSIG RG" always sit side by side. */
+    var SIG_LAMPS = ['RG', 'DG', 'HG', 'HHG'];
+    var SIG_LAMP_COL = { RG: '#EF4444', DG: '#22C55E', HG: '#F5B70A', HHG: '#F5B70A' };
+    function sigInfo(label) {
+        var n = strip(label).toUpperCase().replace(/\s+/g, ' ');
+        var q = 2, rest = n, m;
+        if ((m = /^([IV])(RO|CO)?SIG\b\s*(.*)$/.exec(n))) {           /* ISIG RG, IROSIG (BUG), VCOSIG HPR */
+            q = m[1] === 'I' ? 0 : 1;
+            rest = (m[2] ? m[2] + ' ' : '') + m[3];
+        } else if ((m = /^(.+?)\s*\(?(MA|V)\)?$/.exec(n))) {          /* 616 names: RG mA, Co_Hg V */
+            q = m[2] === 'MA' ? 0 : 1;
+            rest = m[1];
+        }
+        var paren = (/\(([A-Z0-9_\- ]+)\)/.exec(rest) || [])[1] || '';
+        var core = rest.replace(/\([^)]*\)/g, '').replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim();
+        var routeOf = function (s) { var r = /\b([A-E])U(G|PR)\b/.exec(s); return r ? r[1] : ''; };
+        /* proving relays: DPR / HPR / HHPR, route HPR (xUPR), calling-on HPR, Sh-HPR */
+        if (/PR$/.test(core) || /UPR$/.test(paren)) {
+            var rt = routeOf(paren), sub;
+            if (/^RO\b/.test(core) || rt) sub = 20 + ('ABCDE'.indexOf(rt) + 1);
+            else if (/^CO\b/.test(core)) sub = 30;
+            else sub = { DPR: 1, HPR: 2, HHPR: 3 }[core.replace(/^SH ?/, '')] || 9;
+            return { g: 'PR', name: 'Proving', col: '', o: 100 + sub, q: q };
+        }
+        var li = SIG_LAMPS.indexOf(core);
+        if (li !== -1) return { g: core, name: core, col: SIG_LAMP_COL[core], o: li, q: q };
+        if (/^PILOT/.test(core)) return { g: 'PILOT', name: 'Pilot', col: '', o: 4, q: q };
+        if (/^CO\b/.test(core)) return { g: 'CO', name: 'Calling-on', col: '#F5B70A', o: 5, q: q };
+        if (/^ROOT/.test(core)) return { g: 'ROOT', name: 'Root', col: '', o: 6, q: q };
+        var route = routeOf(paren) || routeOf(core);
+        if (route || /^RO\b/.test(core)) return { g: 'RO' + route, name: 'Route' + (route ? ' ' + route + 'UG' : ''), col: '', o: 7 + ('ABCDE'.indexOf(route) + 1) / 10, q: q };
+        if (/^ON ASPECT/.test(core)) return { g: 'ONASP', name: 'On aspect', col: '', o: 8, q: q };
+        if (/^OFF ASPECT/.test(core)) return { g: 'OFFASP', name: 'Off aspect', col: '', o: 8.5, q: q };
+        return { g: 'OTHER', name: 'Other', col: '', o: 200, q: q };
+    }
+    function sigCmp(x, y) {
+        return (x.sg.o - y.sg.o) || (x.sg.q - y.sg.q) || x.label.localeCompare(y.label, undefined, { numeric: true });
+    }
+    /* signals with the same aspect make-up share one section, labelled like 616:
+       "3 Aspect + Route + Calling-on", "Shunt Signal" */
+    function sigSections(shown) {
+        var by = {}, out = [];
+        shown.forEach(function (A) {
+            var gs = {}, lamps = 0, route = false, co = false;
+            A.rows.forEach(function (r) {
+                var s = r.sg || sigInfo(r.label);
+                if (gs[s.g]) return;
+                gs[s.g] = 1;
+                if (SIG_LAMPS.indexOf(s.g) !== -1) lamps++;
+                if (s.g.indexOf('RO') === 0 && s.g !== 'ROOT') route = true;
+                if (s.g === 'CO') co = true;
+            });
+            var shunt = /^\s*SH\b|^\s*SH[\s\-_]?\d/i.test(A.name);
+            var label = shunt ? 'Shunt Signal'
+                : (lamps ? lamps + ' Aspect' : 'Signal') + (route ? ' + Route' : '') + (co ? ' + Calling-on' : '');
+            var key = (shunt ? 'SH|' : '') + Object.keys(gs).sort().join(',');
+            if (!by[key]) { by[key] = { key: key, label: label, shunt: shunt, lamps: lamps, route: route, co: co, list: [] }; out.push(by[key]); }
+            by[key].list.push(A);
+        });
+        out.sort(function (a, b) {
+            return (a.shunt - b.shunt) || (a.lamps - b.lamps) || (a.route - b.route) || (a.co - b.co) || a.key.localeCompare(b.key);
+        });
+        return out;
+    }
+    function secHead(S) {
+        return '<div class="hv-sec"><b>' + esc(S.label) + '</b><span>' + S.list.length + ' signal' + (S.list.length > 1 ? 's' : '') + '</span></div>';
+    }
     /* v618.25 IPS: readings split into Voltage / Current / Digital (same rule as
        the IPS table tabs: ipsClassifyTab -- IIPS = current, DataLogger = digital) */
     function isIpsType() { try { return typeof window.isIpsAssetType === 'function' && !!window.isIpsAssetType(); } catch (e) { return false; } }
@@ -304,6 +378,9 @@
                 if (iy < 0) iy = 99;
                 return ix - iy || x.label.localeCompare(y.label);
             });
+        } else if (!pmm && isSignalType()) {
+            rows.forEach(function (x) { x.sg = sigInfo(x.label); });
+            rows.sort(sigCmp);
         } else if (!pmm) {
             rows.sort(function (x, y) { return x.label.localeCompare(y.label, undefined, { numeric: true }); });
         }
@@ -504,6 +581,16 @@
         '.hv-tile.st-high{border-color:rgba(229,72,77,.55);background:rgba(229,72,77,.07);}' +
         '.hv-tile.st-high .vl,.hv-tile.st-high .sl{color:var(--e7-red,#C8323A);} .hv-tile.st-high .bg{background:rgba(229,72,77,.18);color:var(--e7-red,#C8323A);}' +
         '.hv-tile.stale{opacity:.6;}' +
+        /* Signal aspect-wise (616): aspect blocks in the card, sections, table aspect row */
+        '.hv-asps{margin-top:8px;display:flex;flex-direction:column;gap:6px;}' +
+        '.hv-agrp th span i{display:inline-block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px rgba(127,140,160,.18);}' +
+        '.hv-tiles.hv-pair{grid-template-columns:repeat(2,minmax(0,1fr));}' +
+        '.hv-sec{display:flex;align-items:center;gap:8px;margin:16px 2px 8px;}' +
+        '.hv-sec:first-child{margin-top:4px;}' +
+        '.hv-sec b{font-size:13px;font-weight:700;color:var(--e7-heading,inherit);}' +
+        '.hv-sec span{font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:999px;background:rgba(127,140,160,.15);color:var(--e7-text-2,inherit);}' +
+        '.hv-tbl thead tr.hv-agrp th{position:static;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-bottom:0;padding-bottom:0;}' +
+        '.hv-tbl thead tr.hv-agrp th span{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;background:rgba(127,140,160,.10);}' +
         '.hv-cell .hv-g{margin:4px 0 0;}' +
         '.hv-dir{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:999px;margin-left:4px;}' +
         '.hv-dir.nor{color:var(--e7-green,#1F9D55);background:rgba(31,157,85,.12);border:1px solid rgba(31,157,85,.45);}' +
@@ -1351,10 +1438,21 @@
             html += '</div>';
         }
         if (co) html += circuitHtml(A);
-        html += '<div class="hv-rows hv-tiles">';
-        for (var j = 0; j < A.rows.length; j++) html += rowHtml(A, A.rows[j]);
-        if (!A.rows.length) html += '<div class="hv-sum">No live readings yet.</div>';
-        html += '</div>';
+        if (isSignalType() && A.rows.length) {
+            /* aspect-wise: one block per aspect, current and voltage side by side */
+            html += '<div class="hv-asps">';
+            for (var a = 0; a < A.rows.length;) {
+                var sg = A.rows[a].sg || sigInfo(A.rows[a].label), tiles = '';
+                while (a < A.rows.length && (A.rows[a].sg || sigInfo(A.rows[a].label)).g === sg.g) tiles += rowHtml(A, A.rows[a++]);
+                html += '<div class="hv-asp"><div class="hv-tiles hv-pair">' + tiles + '</div></div>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div class="hv-rows hv-tiles">';
+            for (var j = 0; j < A.rows.length; j++) html += rowHtml(A, A.rows[j]);
+            if (!A.rows.length) html += '<div class="hv-sum">No live readings yet.</div>';
+            html += '</div>';
+        }
         if (A.derived && A.derived.length) {
             html += '<div class="hv-derived">';
             for (var d = 0; d < A.derived.length; d++) {
@@ -1367,17 +1465,27 @@
     }
 
     /* ---- table view (v618.14) -------------------------------------------- */
+    /* Signal: one table per aspect make-up (616 renderSignalAspectTables) */
     function tableHtml(shown) {
+        if (!isSignalType()) return tableHtmlOne(shown);
+        return sigSections(shown).map(function (S) { return secHead(S) + tableHtmlOne(S.list); }).join('');
+    }
+    function tableHtmlOne(shown) {
         var cols = [];
         var seen = {};
+        var sig = isSignalType();
         shown.forEach(function (A) {
             A.rows.concat(A.derived || []).forEach(function (r) {
                 if (seen[r.k]) return;
                 seen[r.k] = 1;
-                cols.push({ k: r.k, key: r.key, label: r.label, sub: r.sub, derived: !!r.derived, range: r.range });
+                cols.push({ k: r.k, key: r.key, label: r.label, sub: r.sub, derived: !!r.derived, range: r.range, sg: r.sg });
             });
         });
         if (isPmType()) cols.sort(function () { return 0; });
+        else if (sig) cols.sort(function (x, y) {
+            if (x.derived !== y.derived) return x.derived ? 1 : -1;
+            return sigCmp({ sg: x.sg || sigInfo(x.label), label: x.label }, { sg: y.sg || sigInfo(y.label), label: y.label });
+        });
         else cols.sort(function (x, y) {
             if (x.derived !== y.derived) return x.derived ? 1 : -1;
             var ix = TRACK_ORDER.indexOf(x.key), iy = TRACK_ORDER.indexOf(y.key);
@@ -1385,7 +1493,19 @@
             if (iy < 0) iy = 99;
             return ix - iy || x.label.localeCompare(y.label);
         });
-        var h = '<div class="hv-tblwrap"><table class="hv-tbl"><thead><tr>' +
+        var h = '<div class="hv-tblwrap"><table class="hv-tbl"><thead>';
+        if (sig) {
+            /* aspect header: one cell spanning each aspect's current + voltage columns
+               (Asset / Health / Relays below it); this row scrolls, the column row stays */
+            h += '<tr class="hv-agrp"><th colspan="3"></th>';
+            for (var gi = 0; gi < cols.length;) {
+                var g0 = cols[gi].sg || sigInfo(cols[gi].label), span = 0;
+                while (gi < cols.length && (cols[gi].sg || sigInfo(cols[gi].label)).g === g0.g) { span++; gi++; }
+                h += '<th colspan="' + span + '"><span><i style="background:' + (g0.col || 'var(--e7-text-3,#8D9CB2)') + '"></i>' + esc(g0.name) + '</span></th>';
+            }
+            h += '</tr>';
+        }
+        h += '<tr>' +
             '<th scope="col" class="hv-sticky">Asset</th><th scope="col">Health</th>' + (isPmType() ? '<th scope="col">Direction</th>' : '') + '<th scope="col">Relays</th>';
         cols.forEach(function (c) {
             var g = c.range;
@@ -1542,7 +1662,9 @@
                 ? (isIpsType() ? '<div class="hv-tabs" role="tablist">' + [['all', 'All'], ['voltage', 'Voltage'], ['current', 'Current'], ['digital', 'Digital']].map(function (t) {
                     return '<button type="button" role="tab" data-hv-ipstt="' + t[0] + '" aria-selected="' + ((H.ipsTableTab || 'all') === t[0]) + '">' + t[1] + '</button>';
                 }).join('') + '</div>' : '') + tableHtml(shown)
-                : '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
+                : isSignalType()
+                    ? sigSections(shown).map(function (S) { return secHead(S) + '<div class="hv-grid">' + S.list.map(cardHtml).join('') + '</div>'; }).join('')
+                    : '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
         }
         /* keep focus / caret in the search box across rebuilds */
         var act = document.activeElement;

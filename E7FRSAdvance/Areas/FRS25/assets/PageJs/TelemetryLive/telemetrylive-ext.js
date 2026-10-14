@@ -7091,8 +7091,10 @@ try {
             '.tlgv-dens-s .tlgv-lane-sub{display:none;}',
             '.tlgv-dens-s .tlgv-lane{flex-direction:row;align-items:center;justify-content:space-between;}',
             '.tlgv-dens-s .tlgv-lane-val b{font-size:13px;}',
-            '.tlgv-badge{display:inline-block;padding:1px 8px;border-radius:5px;font-size:10px;font-weight:800;color:#04121c;font-family:Manrope,sans-serif;}',
-            '.tlgv-badge.up{background:#34d399;}.tlgv-badge.dn{background:#fbbf24;}',
+            '.tlgv-badge{display:inline-flex;align-items:center;gap:3px;height:17px;padding:0 7px;border-radius:999px;border:1px solid transparent;font-size:10px;font-weight:700;letter-spacing:.2px;line-height:1;white-space:nowrap;font-family:Manrope,sans-serif;}',
+            '.tlgv-badge.up{color:#34d399;background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.40);}.tlgv-badge.dn{color:#fbbf24;background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.42);}',
+            '.tlgv-badge.up::after{content:"\\2191";}.tlgv-badge.dn::after{content:"\\2193";}',
+            'body[data-aurora="light"] .tlgv-badge.up{color:#047857;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.40);}body[data-aurora="light"] .tlgv-badge.dn{color:#b45309;background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.45);}',
             '.tlgv-na{color:var(--e7-text-4,rgba(255,255,255,.34));}',
             '.tlgv-flash{animation:tlgvFlash 1s ease-out;}',
             '@keyframes tlgvFlash{0%{text-shadow:0 0 10px currentColor;}100%{text-shadow:none;}}',
@@ -8484,7 +8486,11 @@ try {
             '.tlgv-lane-sub{font-size:9.5px;color:var(--e7-text-3,rgba(255,255,255,.5));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
             '.tlgv-lane-act{display:inline-flex;gap:2px;opacity:0;}.tlgv-lane:hover .tlgv-lane-act,.tlgv-card:hover .tlgv-lane-act{opacity:1;}',
             '.tlgv-ico{all:unset;cursor:pointer;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;color:var(--e7-text-3,rgba(255,255,255,.5));font-size:10px;}',
-            '.tlgv-badge{display:inline-block;padding:1px 8px;border-radius:5px;font-size:10px;font-weight:800;color:#04121c;}.tlgv-badge.up{background:#34d399;}.tlgv-badge.dn{background:#fbbf24;}.tlgv-na{color:var(--e7-text-4,rgba(255,255,255,.34));}',
+            '.tlgv-badge{display:inline-flex;align-items:center;gap:3px;height:17px;padding:0 7px;border-radius:999px;border:1px solid transparent;font-size:10px;font-weight:700;letter-spacing:.2px;line-height:1;white-space:nowrap;font-family:Manrope,sans-serif;}',
+            '.tlgv-badge.up{color:#34d399;background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.40);}.tlgv-badge.dn{color:#fbbf24;background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.42);}',
+            '.tlgv-badge.up::after{content:"\\2191";}.tlgv-badge.dn::after{content:"\\2193";}',
+            'body[data-aurora="light"] .tlgv-badge.up{color:#047857;background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.40);}body[data-aurora="light"] .tlgv-badge.dn{color:#b45309;background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.45);}',
+            '.tlgv-na{color:var(--e7-text-4,rgba(255,255,255,.34));}',
             '.tlgv-grid{display:grid;gap:12px;padding:12px;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));}.tlgv-grid.c1{grid-template-columns:1fr;}.tlgv-grid.c2{grid-template-columns:repeat(2,minmax(0,1fr));}.tlgv-grid.c3{grid-template-columns:repeat(3,minmax(0,1fr));}',
             '.tlgv-card{position:relative;display:flex;flex-direction:column;border-radius:14px;background:var(--e7-surface-2, rgba(255,255,255,.04));border:1px solid var(--e7-border,rgba(255,255,255,.10));overflow:hidden;min-width:0;}.tlgv-card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--lane-c,#22d3ee);}.tlgv-card.is-max{grid-column:1/-1;}',
             '.tlgv-card-head{display:flex;align-items:center;gap:8px;padding:10px 12px 4px;min-width:0;}.tlgv-card-dot{width:10px;height:10px;border-radius:50%;background:var(--lane-c,#22d3ee);}.tlgv-card-title{flex:1;min-width:0;}.tlgv-card-title b{display:block;font-size:12.5px;color:var(--e7-heading,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.tlgv-card-title small{display:block;font-size:10px;color:var(--e7-text-3,rgba(255,255,255,.5));}',
@@ -8593,7 +8599,6 @@ try {
             'body[data-aurora="light"] .tlmg-wrap .tlgv-seg button.on,body[data-aurora="light"] .tlmg-btn.on,body[data-aurora="light"] .tlmg-btn.tlmg-primary{color:#fff;}',
             'body[data-aurora="light"] .tlmg-chip,body[data-aurora="light"] .tlmg-mini,body[data-aurora="light"] .tlmg-btn,body[data-aurora="light"] .tlmg-lg{background:var(--e7-surface-2, rgba(11,21,48,.04));}',
             'body[data-aurora="light"] .tlmg-pop{background:var(--e7-surface, #fff);}',
-            'body[data-aurora="light"] .tlmg-wrap .tlgv-badge{color:#04121c;}',
             '@media (max-width:640px){.tlmg-head{padding:10px 12px;}.tlmg-title b{font-size:13.5px;}.tlmg-abody{grid-template-columns:1fr;padding-left:18px;}.tlmg-chart{height:320px;}.tlmg-selbar{padding:6px 10px;}.tlmg-count{width:100%;margin-left:0;}.tlmg-ahdr{right:8px;}}',
             '@media (prefers-reduced-motion:reduce){.tlmg-spin{animation:none;}}',
             /* simplified toolbar */
@@ -9009,7 +9014,14 @@ try {
             if (done >= ids.length) finish(); else pump();
         }
         function one(aid, attempt) {
-            var xhr = $.ajax({ url: histUrl(aid, s, e), type: 'GET', dataType: 'json', timeout: 60000 });
+            // Same source as the v619 graphs: DashboardHistory (GetGraphHistory) keeps the
+            // RDPMS and DataLogger columns apart and types each one — Track has an analog
+            // AND a DataLogger (TPR) attribute both numbered 6, which HistoryValue merged.
+            var fdh = fn('tlFetchDashboardHistory');
+            var fmtH = fn('formatDateForHistoryApi');
+            var xhr = (fdh && fmtH)
+                ? window.tlFetchDashboardHistory({ assetId: aid, startDate: fmtH(s), endDate: fmtH(e) })
+                : $.ajax({ url: histUrl(aid, s, e), type: 'GET', dataType: 'json', timeout: 60000 });
             mgG.xhrs.push(xhr);
             xhr.done(function (r) {
                 if (myReq !== mgG.reqId) return;               // superseded load: ignore
@@ -9074,6 +9086,24 @@ try {
         if (!n && rawName && !/^attr\s*\d+$/i.test(rawName)) n = rawName;
         return n || ('Relay ' + id);
     }
+    // History id -> DataLogger name (TPR, HECR, ...) for one asset, from its
+    // mAssetInfoDataloggers. The History API keys a relay column by Role / Value OR by
+    // DataloggerAttributeId depending on the source (same as Telemetry History's
+    // getDataloggerNameForAsset), so all of them are registered.
+    function dlMetaOf(aid) {
+        var out = {}, meta = window.bulkAssetMap && window.bulkAssetMap[String(aid)];
+        var dls = (meta && (meta.mAssetInfoDataloggers || meta.MAssetInfoDataloggers)) || [];
+        dls.forEach(function (dl) {
+            if (!dl) return;
+            var nm = $.trim(String(dl.DataloggerAttribute || dl.DataloggerAssetName || ''));
+            if (!nm) return;
+            [dl.Value, dl.Role, dl.DataloggerAttributeId].forEach(function (k) {
+                k = $.trim(String(k == null ? '' : k));
+                if (k && k !== '0' && k.toLowerCase() !== 'null' && !out[k]) out[k] = nm;
+            });
+        });
+        return out;
+    }
     function analogName(aid, id, first, rawName, liveNames) {
         var dt = String(first.DataType || '');
         if (mgG.kind === 'ips' && fn('ipsAttrName')) { try { var q = window.ipsAttrName(aid, id, dt, rawName); if (q) return q; } catch (e) { /* fall through */ } }
@@ -9103,6 +9133,7 @@ try {
             if (live && live.attrs) Object.keys(live.attrs).forEach(function (k) { var a = live.attrs[k]; if (!a) return; if (a.AttrId) liveNames[a.AttrId] = k; if (a.AssetAttributeId) liveNames[a.AssetAttributeId] = k; });
             if (live && live.dlRelays) Object.keys(live.dlRelays).forEach(function (k) { var r = live.dlRelays[k]; knownRelays[String(k).toLowerCase()] = true; if (r && r.displayName) knownRelays[String(r.displayName).toLowerCase()] = true; hasLiveRelays = true; });
             var analogMaps = {};   // name -> {t: v}  (Track derived)
+            var dlMeta = dlMetaOf(aid);
             rows.forEach(function (row) {
                 if (!row || row.AttributeId === undefined || row.AttributeId === null || !row.Values) return;
                 var id = row.AttributeId, values = row.Values, vk = Object.keys(values); if (!vk.length) return;
@@ -9119,16 +9150,24 @@ try {
                 });
                 if (!src.length) return;
                 src.sort(function (a, b) { return a.t - b.t || a.i - b.i; });
-                var histDL = dt === 'datalogger';
-                var isRelay;
-                if (mgG.kind === 'ips') isRelay = false;
+                // A column with no / RDPMS DataType that matches this asset's DataLogger
+                // config is a relay too (Track TPR etc. often arrive that way).
+                var dlName = dlMeta[String(id)] || '';
+                var histDL = dt === 'datalogger' || (!!dlName && dt === '');
+                var isRelay, mappedRelay = true;
+                if (mgG.kind === 'ips') { isRelay = histDL && allBin; mappedRelay = false; }   // IPS Digital tab: Pickup / Drop, IPS names
                 else if (mgG.kind === 'eld') isRelay = histDL || allBin;
                 else if (histDL && allBin) {
+                    // Every DataLogger 0/1 attribute is a relay (Pickup / Drop), not a plain
+                    // "Value" series. Ones missing from the live relay map (e.g. signal
+                    // HECR / DECR / RECR / HR) keep their attribute display name.
+                    isRelay = true;
                     var roleKey = String(aid) + '_' + String(id);
-                    isRelay = !hasLiveRelays || !!(window.dlAssetRoleMap && window.dlAssetRoleMap[roleKey]);
-                    if (!isRelay) { var cand = relayName(aid, id, first, rawName); isRelay = !!knownRelays[String(cand).toLowerCase()]; }
+                    mappedRelay = !hasLiveRelays || !!(window.dlAssetRoleMap && window.dlAssetRoleMap[roleKey]);
+                    if (!mappedRelay) { var cand = relayName(aid, id, first, rawName); mappedRelay = !!knownRelays[String(cand).toLowerCase()]; }
                 } else isRelay = false;
-                var name = isRelay ? relayName(aid, id, first, rawName) : analogName(aid, id, first, rawName, liveNames);
+                var name = (isRelay && dlName) ? dlName
+                    : isRelay && mappedRelay ? relayName(aid, id, first, rawName) : analogName(aid, id, first, rawName, liveNames);
 
                 var pts = [], actual = [], before = null;
                 for (var i = 0; i < src.length; i++) {
@@ -9142,7 +9181,9 @@ try {
                 if (!pts.length) return;
                 if (pts[pts.length - 1][0] < end) pts.push([end, pts[pts.length - 1][1]]);
 
-                var key = keyOf(aid, id);
+                // DataLogger columns get their own key (619: DL:<id> vs ATTR:<id>) so a relay
+                // never merges into the analog attribute with the same number (Track #6).
+                var key = keyOf(aid, id) + (histDL ? '||dl' : '');
                 if (mgG.series[key]) {          // History API can repeat AssetId+AttributeId: merge
                     var ex = mgG.series[key], merged = ex.pts.concat(pts).sort(function (a, b) { return a[0] - b[0]; }), uniq = [], seen = {};
                     merged.forEach(function (q) { var sig = q[0] + '|' + q[1]; if (seen[sig]) return; seen[sig] = true; uniq.push(q); });
@@ -9153,7 +9194,7 @@ try {
                 mgG.series[key] = {
                     key: key, assetId: String(aid), attrId: id, name: name, assetName: A.name, kind: kind, unit: unitFor(name, kind),
                     color: seriesColor(A.idx, attrIdx++), pts: pts, actual: actual, isBin: isRelay,
-                    live: isRelay ? { src: 'ws', aid: aid, name: name, dl: true } : (mgG.kind === 'ips' ? { src: 'ips', aid: aid, attrId: id } : { src: 'ws', aid: aid, name: name, attrId: id, dl: false })
+                    live: isRelay ? { src: 'ws', aid: aid, name: name, attrId: id, dl: true } : (mgG.kind === 'ips' ? { src: 'ips', aid: aid, attrId: id } : { src: 'ws', aid: aid, name: name, attrId: id, dl: false })
                 };
                 mgG.order.push(key);
                 if (mgG.checked[key] === undefined) mgG.checked[key] = true;
@@ -9167,6 +9208,9 @@ try {
             if (mgG.kind === 'track') addDerived(aid, analogMaps, attrIdx);
         });
         if (mgG.kind === 'ips') groupIpsBatt();
+        // DataLogger relays (Pickup / Drop) go last; analog / derived keep their order.
+        mgG.order = mgG.order.filter(function (k) { return mgG.series[k] && mgG.series[k].kind !== 'bin'; })
+            .concat(mgG.order.filter(function (k) { return mgG.series[k] && mgG.series[k].kind === 'bin'; }));
         Object.keys(mgG.checked).forEach(function (k) { if (!mgG.series[k]) delete mgG.checked[k]; });
         mgG.model = null;
         updateCount();
@@ -9360,7 +9404,14 @@ try {
             try { var dv = calc(idx.attrs, L.aid) || {}; var x = dv[L.key]; return (x === undefined || x === null || isNaN(x)) ? null : x; } catch (e) { return null; }
         }
         if (L.src === 'ips') { var v1 = idx.byId[parseInt(L.attrId, 10)]; return v1 === undefined ? null : v1; }
-        if (L.dl) { var d = idx.dl[L.name]; if (d === undefined && L.attrId !== undefined) d = idx.dl[String(L.attrId)]; return d === undefined ? null : d; }
+        if (L.dl) {
+            var d = idx.dl[L.name]; if (d === undefined && L.attrId !== undefined) d = idx.dl[String(L.attrId)];
+            if (d !== undefined) return d;
+            // Relay not in dlRelays (e.g. signal HECR / DECR): its 0/1 arrives as a plain attribute
+            var a2 = (L.attrId !== undefined) ? idx.byId[parseInt(L.attrId, 10)] : undefined;
+            if (a2 === undefined || a2 === null) a2 = idx.byName[L.name];
+            return (a2 === undefined || a2 === null) ? null : (a2 >= 0.5 ? 1 : 0);
+        }
         var v2 = (L.attrId !== undefined) ? idx.byId[parseInt(L.attrId, 10)] : undefined;
         if (v2 === undefined || v2 === null) v2 = idx.byName[L.name];
         return (v2 === undefined) ? null : v2;
@@ -9535,19 +9586,25 @@ try {
         var tip = {
             trigger: 'axis', confine: true, appendToBody: false, axisPointer: { type: 'line', snap: false, lineStyle: { color: 'rgba(34,211,238,0.7)', type: 'dashed' } },
             backgroundColor: T.tipBg, borderColor: 'rgba(34,211,238,.28)', borderWidth: 1, padding: [8, 12], textStyle: { color: T.tipTxt, fontSize: 11.5 },
-            extraCssText: 'box-shadow:var(--e7-shadow-pop, 0 8px 32px rgba(0,0,0,.45));border-radius:10px;max-width:760px;',
+            extraCssText: 'box-shadow:var(--e7-shadow-pop, 0 8px 32px rgba(0,0,0,.45));border-radius:10px;max-width:min(980px, 92vw);',
             formatter: function (params) {
                 if (!params || !params.length) return '';
                 var t = params[0].axisValue != null ? Number(params[0].axisValue) : Number(params[0].value[0]);
                 var h = '<div style="font-family:JetBrains Mono,monospace;color:var(--e7-accent, #22d3ee);font-weight:700;margin-bottom:6px;">' + fmtFull(t) + '</div><div style="display:flex;flex-wrap:wrap;gap:6px 18px;">';
                 groupsOf(list).forEach(function (g) {
-                    h += '<div style="min-width:180px;"><div style="font-weight:800;color:' + g.asset.color + ';margin-bottom:2px;">' + esc(g.asset.name) + '</div>';
+                    // Long asset lists flow into columns (max ~10 rows each, up to 4) so
+                    // the tooltip grows sideways instead of running off the chart.
+                    var n = g.list.length, cols = Math.min(4, Math.max(1, Math.ceil(n / 10))), rows = Math.ceil(n / cols);
+                    h += '<div style="min-width:180px;"><div style="font-weight:800;color:' + g.asset.color + ';margin-bottom:2px;">' + esc(g.asset.name) + '</div>' +
+                        '<div style="display:grid;grid-auto-flow:column;grid-template-rows:repeat(' + rows + ',auto);grid-auto-columns:minmax(170px,auto);column-gap:18px;row-gap:1px;">';
                     g.list.forEach(function (s) {
                         var v = valueAt(s.pts, t), on = mgG.focusShown === s.key;
+                        var val = s.kind === 'bin' ? valHtml(v, 'bin')
+                            : '<b style="font-family:JetBrains Mono,monospace;">' + fmtVal(v, s.kind) + (v === null ? '' : ' ' + esc(s.unit)) + '</b>';
                         h += '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;' + (on ? 'background:' + hexA(s.color, .16) + ';border-radius:4px;margin:0 -4px;padding:0 4px;font-weight:700;' : (mgG.focusShown ? 'opacity:.6;' : '')) + '"><span style="width:8px;height:8px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
-                            '<span style="opacity:.8;flex:1;">' + esc(s.short) + '</span><b style="margin-left:8px;font-family:JetBrains Mono,monospace;">' + fmtVal(v, s.kind) + (s.kind === 'bin' || v === null ? '' : ' ' + esc(s.unit)) + '</b></div>';
+                            '<span style="opacity:.8;flex:1;">' + esc(s.short) + '</span><span style="margin-left:8px;">' + val + '</span></div>';
                     });
-                    h += '</div>';
+                    h += '</div></div>';
                 });
                 return h + '</div>';
             }
